@@ -16,26 +16,56 @@ export default function CsvUploader() {
         setIsUploading(true);
         Papa.parse(file, {
             header: true,
+            skipEmptyLines: true,
+            transformHeader: (h) => h.toLowerCase().trim().replace(/[\s_]+/g, ''),
             complete: async (results) => {
                 const data = results.data;
-                const validRows = data.filter(row => row.lat && row.lng && row.address_hash);
                 
-                if (validRows.length === 0) {
-                    alert("No valid rows found. Check CSV format.");
+                // Flexible mapping
+                // We expect normalized headers: lat, lng, addresshash, housenumber, streetname, fulladdress, originalstatus
+                // But user might provide: Latitude, Longitude, Address, etc.
+                
+                const entities = [];
+                let errorCount = 0;
+
+                data.forEach(row => {
+                    // Try to find lat/lng
+                    const lat = parseFloat(row.lat || row.latitude);
+                    const lng = parseFloat(row.lng || row.longitude || row.long);
+                    
+                    if (isNaN(lat) || isNaN(lng)) {
+                        errorCount++;
+                        return;
+                    }
+
+                    // House Number & Street
+                    const houseNumber = parseInt(row.housenumber || row.number || 0);
+                    const streetName = row.streetname || row.street || 'Unknown Street';
+                    const fullAddress = row.fulladdress || row.address || `${houseNumber} ${streetName}`;
+
+                    // Generate Hash if missing
+                    let addressHash = row.addresshash || row.id || row.hash;
+                    if (!addressHash) {
+                        // Simple consistent ID generation
+                        addressHash = btoa(`${streetName}-${houseNumber}-${lat}-${lng}`).replace(/[^a-zA-Z0-9]/g, '').substring(0, 16);
+                    }
+
+                    entities.push({
+                        address_hash: addressHash,
+                        house_number: houseNumber,
+                        street_name: streetName,
+                        full_address: fullAddress,
+                        lat: lat,
+                        lng: lng,
+                        original_status: (row.originalstatus || row.status || 'ELIGIBLE').toUpperCase()
+                    });
+                });
+
+                if (entities.length === 0) {
+                    alert(`No valid rows found. Parsed ${data.length} rows. Please check your CSV has "lat" and "lng" columns.`);
                     setIsUploading(false);
                     return;
                 }
-
-                // Transform to entity format
-                const entities = validRows.map(row => ({
-                    address_hash: row.address_hash,
-                    house_number: parseInt(row.house_number) || 0,
-                    street_name: row.street_name || '',
-                    full_address: row.full_address || '',
-                    lat: parseFloat(row.lat),
-                    lng: parseFloat(row.lng),
-                    original_status: row.original_status || 'ELIGIBLE'
-                }));
 
                 try {
                     // In a real app we might want to batch this or use a bulk endpoint

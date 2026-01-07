@@ -55,7 +55,7 @@ export default function Home() {
             </div>
 
             {/* Overlays */}
-            <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
+            <div className="absolute top-4 left-4 z-50 flex flex-col gap-2">
                 <div className="flex gap-2">
                     <CsvUploader />
                     <SyncManager logs={logs} />
