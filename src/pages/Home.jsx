@@ -12,7 +12,7 @@ export default function Home() {
     // Fetch Master Properties
     const { data: properties, isLoading: propsLoading } = useQuery({
         queryKey: ['masterProperties'],
-        queryFn: () => base44.entities.MasterProperty.list({limit: 1000}), // Increase limit for map
+        queryFn: () => base44.entities.MasterProperty.list({limit: 5000, sort: {created_date: -1}}), // Increased limit and sort by newest
         initialData: []
     });
 

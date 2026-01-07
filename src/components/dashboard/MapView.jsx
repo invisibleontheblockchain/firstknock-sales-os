@@ -11,7 +11,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { parseResult } from '../logic/nlpParser';
 import { generateGhostLeads } from '../logic/ghostLeadGenerator';
 import { determineEffectiveStatus, generateSweepRoute } from '../logic/territoryLogic';
-import { Locate, Navigation, Plus, Search, Layers } from 'lucide-react';
+import { Locate, Navigation, Plus, Search, Layers, Maximize } from 'lucide-react';
 import moment from 'moment';
 
 // Fix Leaflet icons
@@ -167,13 +167,29 @@ export default function MapView({ properties, logs, onLogInteraction }) {
                 ))}
             </MapContainer>
 
-            {/* Floating Action Button for Location */}
-            <Button 
-                className="absolute bottom-24 right-4 rounded-full w-12 h-12 shadow-lg bg-slate-800 hover:bg-slate-700 z-[400]"
-                size="icon"
-            >
-                <Locate className="w-5 h-5 text-white" />
-            </Button>
+            {/* Floating Action Buttons */}
+            <div className="absolute bottom-24 right-4 flex flex-col gap-2 z-[400]">
+                 <Button 
+                    className="rounded-full w-12 h-12 shadow-lg bg-slate-800 hover:bg-slate-700"
+                    size="icon"
+                    onClick={() => {
+                        const map = document.querySelector('.leaflet-container')?._leaflet_map;
+                        if (map && allMarkers.length > 0) {
+                            const group = new L.FeatureGroup(allMarkers.map(m => L.marker([m.lat, m.lng])));
+                            map.fitBounds(group.getBounds(), { padding: [50, 50] });
+                        }
+                    }}
+                    title="Fit to Properties"
+                >
+                    <Maximize className="w-5 h-5 text-white" />
+                </Button>
+                <Button 
+                    className="rounded-full w-12 h-12 shadow-lg bg-slate-800 hover:bg-slate-700"
+                    size="icon"
+                >
+                    <Locate className="w-5 h-5 text-white" />
+                </Button>
+            </div>
 
             {/* Interaction Drawer */}
             <Drawer open={!!selectedProp} onOpenChange={(open) => !open && setSelectedProp(null)}>
