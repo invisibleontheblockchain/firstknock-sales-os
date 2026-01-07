@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Circle, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { parseResult } from '../logic/nlpParser';
 import { generateGhostLeads } from '../logic/ghostLeadGenerator';
-import { determineEffectiveStatus } from '../logic/territoryLogic';
+import { determineEffectiveStatus, generateSweepRoute } from '../logic/territoryLogic';
 import { Locate, Navigation, Plus, Search, Layers } from 'lucide-react';
 import moment from 'moment';
 
@@ -78,6 +78,9 @@ export default function MapView({ properties, logs, onLogInteraction }) {
     const ghostLeads = generateGhostLeads(properties);
     const allMarkers = [...effectiveProperties, ...ghostLeads];
 
+    // Generate Sweep Route
+    const sweepRoute = generateSweepRoute(allMarkers);
+
     const handleInteractionChange = (e) => {
         const text = e.target.value;
         setInteractionText(text);
@@ -120,6 +123,12 @@ export default function MapView({ properties, logs, onLogInteraction }) {
                 />
                 <LocationMarker />
                 
+                {/* Sweep Route Line */}
+                <Polyline 
+                    positions={sweepRoute} 
+                    pathOptions={{ color: '#6366f1', weight: 3, opacity: 0.5, dashArray: '10, 10' }} 
+                />
+
                 {allMarkers.map((prop) => (
                     <Marker 
                         key={prop.address_hash} 

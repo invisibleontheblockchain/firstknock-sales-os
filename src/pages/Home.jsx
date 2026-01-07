@@ -1,7 +1,7 @@
 import React from 'react';
-import Layout from '../Layout';
 import MapView from '../components/dashboard/MapView';
 import CsvUploader from '../components/dashboard/CsvUploader';
+import SyncManager from '../components/dashboard/SyncManager';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from 'lucide-react';
@@ -55,9 +55,12 @@ export default function Home() {
             </div>
 
             {/* Overlays */}
-            <div className="absolute top-4 left-4 z-10 flex gap-2">
-                <CsvUploader />
-                <div className="bg-slate-900/80 backdrop-blur-sm border border-slate-700/50 rounded-md px-3 py-1.5 flex items-center gap-2">
+            <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
+                <div className="flex gap-2">
+                    <CsvUploader />
+                    <SyncManager logs={logs} />
+                </div>
+                <div className="bg-slate-900/80 backdrop-blur-sm border border-slate-700/50 rounded-md px-3 py-1.5 flex items-center gap-2 w-fit">
                    <div className="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]"></div>
                    <span className="text-xs font-medium text-slate-300">
                        {properties.length} Properties
