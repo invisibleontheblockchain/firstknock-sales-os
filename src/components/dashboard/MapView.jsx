@@ -53,13 +53,30 @@ function LocationMarker() {
     useEffect(() => {
         map.locate().on("locationfound", function (e) {
             setPosition(e.latlng);
-            map.flyTo(e.latlng, map.getZoom());
+            // map.flyTo(e.latlng, map.getZoom()); // Don't auto-fly to GPS on load if we have properties to show
         });
     }, [map]);
 
     return position === null ? null : (
         <Circle center={position} radius={20} pathOptions={{ fillColor: '#3b82f6', fillOpacity: 0.2, color: '#3b82f6', weight: 1 }} />
     );
+}
+
+// Component to auto-fit map bounds to properties
+function MapAutoFitter({ markers }) {
+    const map = useMap();
+
+    useEffect(() => {
+        if (markers.length > 0) {
+            const group = new L.FeatureGroup(markers.map(m => L.marker([m.lat, m.lng])));
+            const bounds = group.getBounds();
+            if (bounds.isValid()) {
+                map.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 });
+            }
+        }
+    }, [markers, map]);
+
+    return null;
 }
 
 export default function MapView({ properties, logs, onLogInteraction }) {
@@ -130,6 +147,7 @@ export default function MapView({ properties, logs, onLogInteraction }) {
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
                 <LocationMarker />
+                <MapAutoFitter markers={allMarkers} />
                 
                 {/* Sweep Route Line */}
                 <Polyline 
