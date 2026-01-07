@@ -62,17 +62,26 @@ export default function CsvUploader() {
                 });
 
                 if (entities.length === 0) {
-                    alert(`No valid rows found. Parsed ${data.length} rows. Please check your CSV has "lat" and "lng" columns.`);
+                    const firstRow = data[0] || {};
+                    const keys = Object.keys(firstRow).join(', ');
+                    alert(`No valid rows found. Parsed ${data.length} rows.\n\nRequired columns: "lat", "lng".\n\nColumns found in your CSV: ${keys}\n\nPlease rename your columns to match "lat" and "lng" or "latitude" and "longitude".`);
                     setIsUploading(false);
                     return;
                 }
 
                 try {
-                    // In a real app we might want to batch this or use a bulk endpoint
-                    // For now, let's just do a bulk create (which is supported by base44 entities)
-                    await base44.entities.MasterProperty.bulkCreate(entities);
-                    queryClient.invalidateQueries(['masterProperties']);
-                    alert(`Successfully imported ${entities.length} properties.`);
+                    // Batching to avoid payload limits
+                    const BATCH_SIZE = 500;
+                    let importedCount = 0;
+                    
+                    for (let i = 0; i < entities.length; i += BATCH_SIZE) {
+                        const batch = entities.slice(i, i + BATCH_SIZE);
+                        await base44.entities.MasterProperty.bulkCreate(batch);
+                        importedCount += batch.length;
+                    }
+
+                    queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
+                    alert(`Successfully imported ${importedCount} properties.`);
                 } catch (error) {
                     console.error("Import error", error);
                     alert("Failed to import properties.");
