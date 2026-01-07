@@ -17,54 +17,79 @@ export default function CsvUploader() {
         Papa.parse(file, {
             header: true,
             skipEmptyLines: true,
-            transformHeader: (h) => h.toLowerCase().trim().replace(/[\s_]+/g, ''),
             complete: async (results) => {
                 const data = results.data;
                 
-                // Flexible mapping
-                // We expect normalized headers: lat, lng, addresshash, housenumber, streetname, fulladdress, originalstatus
-                // But user might provide: Latitude, Longitude, Address, etc.
+                // Get original headers for debugging
+                const originalHeaders = results.meta.fields || [];
+                console.log("CSV Headers found:", originalHeaders);
+                console.log("First row sample:", data[0]);
+                
+                // Normalize headers for matching
+                const normalizeKey = (key) => key.toLowerCase().trim().replace(/[\s_-]+/g, '');
                 
                 const entities = [];
                 let errorCount = 0;
 
-                data.forEach(row => {
-                    // Try to find lat/lng
-                    const lat = parseFloat(row.lat || row.latitude);
-                    const lng = parseFloat(row.lng || row.longitude || row.long);
+                data.forEach((row, idx) => {
+                    // Create normalized version of row keys
+                    const normalizedRow = {};
+                    Object.keys(row).forEach(key => {
+                        normalizedRow[normalizeKey(key)] = row[key];
+                    });
+                    
+                    // Try to find lat/lng with many variations
+                    const lat = parseFloat(
+                        normalizedRow.lat || normalizedRow.latitude || 
+                        normalizedRow.y || normalizedRow.geocodelat || row.Lat || row.LAT || row.Latitude
+                    );
+                    const lng = parseFloat(
+                        normalizedRow.lng || normalizedRow.lon || normalizedRow.long || 
+                        normalizedRow.longitude || normalizedRow.x || normalizedRow.geocodelong ||
+                        row.Lng || row.LNG || row.Long || row.Longitude
+                    );
                     
                     if (isNaN(lat) || isNaN(lng)) {
                         errorCount++;
+                        if (idx === 0) {
+                            console.log("First row failed - lat:", lat, "lng:", lng, "normalizedRow:", normalizedRow);
+                        }
                         return;
                     }
 
-                    // House Number & Street
-                    const houseNumber = parseInt(row.housenumber || row.number || 0);
-                    const streetName = row.streetname || row.street || 'Unknown Street';
-                    const fullAddress = row.fulladdress || row.address || `${houseNumber} ${streetName}`;
+                    // House Number & Street - try many variations
+                    const houseNumber = parseInt(
+                        normalizedRow.housenumber || normalizedRow.number || normalizedRow.streetnumber ||
+                        normalizedRow.addressnumber || normalizedRow.no || row.HouseNumber || row.Number || 0
+                    );
+                    const streetName = normalizedRow.streetname || normalizedRow.street || 
+                        normalizedRow.streetaddress || row.StreetName || row.Street || 'Unknown Street';
+                    const fullAddress = normalizedRow.fulladdress || normalizedRow.address || 
+                        normalizedRow.propertyaddress || row.FullAddress || row.Address || `${houseNumber} ${streetName}`;
 
                     // Generate Hash if missing
-                    let addressHash = row.addresshash || row.id || row.hash;
+                    let addressHash = normalizedRow.addresshash || normalizedRow.id || normalizedRow.hash || 
+                        normalizedRow.propertyid || row.ID || row.Id;
                     if (!addressHash) {
                         // Simple consistent ID generation
                         addressHash = btoa(`${streetName}-${houseNumber}-${lat}-${lng}`).replace(/[^a-zA-Z0-9]/g, '').substring(0, 16);
                     }
 
                     entities.push({
-                        address_hash: addressHash,
+                        address_hash: String(addressHash),
                         house_number: houseNumber,
                         street_name: streetName,
                         full_address: fullAddress,
                         lat: lat,
                         lng: lng,
-                        original_status: (row.originalstatus || row.status || 'ELIGIBLE').toUpperCase()
+                        original_status: (normalizedRow.originalstatus || normalizedRow.status || row.Status || 'ELIGIBLE').toUpperCase()
                     });
                 });
 
                 if (entities.length === 0) {
                     const firstRow = data[0] || {};
                     const keys = Object.keys(firstRow).join(', ');
-                    alert(`No valid rows found. Parsed ${data.length} rows.\n\nRequired columns: "lat", "lng".\n\nColumns found in your CSV: ${keys}\n\nPlease rename your columns to match "lat" and "lng" or "latitude" and "longitude".`);
+                    alert(`No valid rows found. Parsed ${data.length} rows, ${errorCount} had invalid lat/lng.\n\nYour CSV columns: ${keys}\n\nLooking for lat/lng columns like: lat, latitude, Lat, LAT, lng, lon, long, longitude, Lng, Long\n\nFirst row values: ${JSON.stringify(firstRow).substring(0, 200)}`);
                     setIsUploading(false);
                     return;
                 }
