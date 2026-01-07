@@ -1,0 +1,214 @@
+import React, { useState, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, useMap, Circle } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { Button } from "@/components/ui/button";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { base44 } from '@/api/base44Client';
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { parseResult } from '../logic/nlpParser';
+import { generateGhostLeads } from '../logic/ghostLeadGenerator';
+import { determineEffectiveStatus } from '../logic/territoryLogic';
+import { Locate, Navigation, Plus, Search, Layers } from 'lucide-react';
+import moment from 'moment';
+
+// Fix Leaflet icons
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
+
+// Custom Icons
+const createIcon = (color) => new L.DivIcon({
+    className: 'custom-icon',
+    html: `<div style="background-color: ${color}; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7]
+});
+
+const createGhostIcon = () => new L.DivIcon({
+    className: 'ghost-icon',
+    html: `<div style="background-color: #10b981; width: 10px; height: 10px; border-radius: 50%; border: 2px dashed white; opacity: 0.6;"></div>`,
+    iconSize: [10, 10],
+    iconAnchor: [5, 5]
+});
+
+const Icons = {
+    ELIGIBLE: createIcon('#22c55e'), // Green
+    SOLD: createIcon('#ef4444'),     // Red
+    HARD_NO: createIcon('#ef4444'),  // Red
+    CALLBACK: createIcon('#eab308'), // Yellow
+    NO_ANSWER: createIcon('#94a3b8'),// Grey
+    GHOST: createGhostIcon()         // Ghost
+};
+
+function LocationMarker() {
+    const [position, setPosition] = useState(null);
+    const map = useMap();
+
+    useEffect(() => {
+        map.locate().on("locationfound", function (e) {
+            setPosition(e.latlng);
+            map.flyTo(e.latlng, map.getZoom());
+        });
+    }, [map]);
+
+    return position === null ? null : (
+        <Circle center={position} radius={20} pathOptions={{ fillColor: '#3b82f6', fillOpacity: 0.2, color: '#3b82f6', weight: 1 }} />
+    );
+}
+
+export default function MapView({ properties, logs, onLogInteraction }) {
+    const [selectedProp, setSelectedProp] = useState(null);
+    const [interactionText, setInteractionText] = useState("");
+    const [parsedResult, setParsedResult] = useState(null);
+
+    // Calculate effective status for all properties
+    const effectiveProperties = properties.map(prop => {
+        const propLogs = logs.filter(l => l.address_hash === prop.address_hash);
+        const status = determineEffectiveStatus(prop, propLogs);
+        return { ...prop, effective_status: status };
+    });
+
+    // Generate Ghost Leads
+    const ghostLeads = generateGhostLeads(properties);
+    const allMarkers = [...effectiveProperties, ...ghostLeads];
+
+    const handleInteractionChange = (e) => {
+        const text = e.target.value;
+        setInteractionText(text);
+        setParsedResult(parseResult(text));
+    };
+
+    const submitInteraction = () => {
+        if (!selectedProp || !parsedResult) return;
+        
+        onLogInteraction({
+            address_hash: selectedProp.address_hash,
+            raw_input_text: interactionText,
+            parsed_status: parsedResult.status,
+            next_eligible_date: parsedResult.nextDate,
+            gps_proof_lat: selectedProp.lat, // In real app, use actual GPS
+            gps_proof_lng: selectedProp.lng
+        });
+        
+        setSelectedProp(null);
+        setInteractionText("");
+        setParsedResult(null);
+    };
+
+    // Calculate center
+    const center = properties.length > 0 
+        ? [properties[0].lat, properties[0].lng] 
+        : [34.0522, -118.2437]; // Default LA
+
+    return (
+        <div className="relative w-full h-full">
+            <MapContainer 
+                center={center} 
+                zoom={18} 
+                style={{ height: '100%', width: '100%', background: '#1e293b' }}
+                zoomControl={false}
+            >
+                <TileLayer
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <LocationMarker />
+                
+                {allMarkers.map((prop) => (
+                    <Marker 
+                        key={prop.address_hash} 
+                        position={[prop.lat, prop.lng]}
+                        icon={prop.is_ghost ? Icons.GHOST : Icons[prop.effective_status] || Icons.ELIGIBLE}
+                        eventHandlers={{
+                            click: () => setSelectedProp(prop),
+                        }}
+                    />
+                ))}
+            </MapContainer>
+
+            {/* Floating Action Button for Location */}
+            <Button 
+                className="absolute bottom-24 right-4 rounded-full w-12 h-12 shadow-lg bg-slate-800 hover:bg-slate-700 z-[400]"
+                size="icon"
+            >
+                <Locate className="w-5 h-5 text-white" />
+            </Button>
+
+            {/* Interaction Drawer */}
+            <Drawer open={!!selectedProp} onOpenChange={(open) => !open && setSelectedProp(null)}>
+                <DrawerContent className="bg-slate-900 border-t-slate-700 text-slate-100">
+                    <div className="mx-auto w-full max-w-sm">
+                        <DrawerHeader>
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <DrawerTitle className="text-xl font-bold">{selectedProp?.full_address}</DrawerTitle>
+                                    <DrawerDescription className="text-slate-400">
+                                        Current Status: <span className={
+                                            selectedProp?.effective_status === 'ELIGIBLE' ? 'text-green-400' :
+                                            selectedProp?.effective_status === 'SOLD' ? 'text-red-400' :
+                                            selectedProp?.effective_status === 'CALLBACK' ? 'text-yellow-400' : 'text-slate-400'
+                                        }>{selectedProp?.effective_status}</span>
+                                        {selectedProp?.is_ghost && <span className="ml-2 text-xs bg-slate-800 px-2 py-0.5 rounded text-slate-400">GHOST</span>}
+                                    </DrawerDescription>
+                                </div>
+                                <Badge variant="outline" className="bg-slate-800 text-indigo-400 border-indigo-900">
+                                    {selectedProp?.house_number % 2 === 0 ? 'EVEN' : 'ODD'}
+                                </Badge>
+                            </div>
+                        </DrawerHeader>
+                        
+                        <div className="p-4 space-y-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-300">Log Interaction</label>
+                                <Input 
+                                    placeholder="Type result (e.g., 'Not home', 'Sold', 'Come back tomorrow')..." 
+                                    value={interactionText}
+                                    onChange={handleInteractionChange}
+                                    className="bg-slate-800 border-slate-700 text-white placeholder:text-slate-500"
+                                    autoFocus
+                                />
+                            </div>
+
+                            {parsedResult && interactionText && (
+                                <div className="bg-slate-800/50 p-3 rounded-lg border border-slate-700/50">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="text-xs text-slate-400 uppercase tracking-wider">Detected Status</span>
+                                        <Badge className={
+                                            parsedResult.status === 'SOLD' ? 'bg-red-900 text-red-200' :
+                                            parsedResult.status === 'HARD_NO' ? 'bg-red-900 text-red-200' :
+                                            parsedResult.status === 'CALLBACK' ? 'bg-yellow-900 text-yellow-200' :
+                                            parsedResult.status === 'NO_ANSWER' ? 'bg-slate-700 text-slate-300' :
+                                            'bg-green-900 text-green-200'
+                                        }>
+                                            {parsedResult.status}
+                                        </Badge>
+                                    </div>
+                                    {parsedResult.nextDate && (
+                                        <div className="text-xs text-slate-400">
+                                            Next Eligible: {moment(parsedResult.nextDate).format('MMM D, h:mm a')}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        <DrawerFooter>
+                            <Button onClick={submitInteraction} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">
+                                Save Log
+                            </Button>
+                            <DrawerClose asChild>
+                                <Button variant="outline" className="w-full border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white">Cancel</Button>
+                            </DrawerClose>
+                        </DrawerFooter>
+                    </div>
+                </DrawerContent>
+            </Drawer>
+        </div>
+    );
+}
