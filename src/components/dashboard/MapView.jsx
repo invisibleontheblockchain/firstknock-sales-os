@@ -76,7 +76,15 @@ export default function MapView({ properties, logs, onLogInteraction }) {
 
     // Generate Ghost Leads
     const ghostLeads = generateGhostLeads(properties);
-    const allMarkers = [...effectiveProperties, ...ghostLeads];
+
+    // Apply logs to Ghost Leads so they maintain status (e.g. if a ghost lead was knocked and marked)
+    const effectiveGhostLeads = ghostLeads.map(prop => {
+        const propLogs = logs.filter(l => l.address_hash === prop.address_hash);
+        const status = determineEffectiveStatus(prop, propLogs);
+        return { ...prop, effective_status: status };
+    });
+
+    const allMarkers = [...effectiveProperties, ...effectiveGhostLeads];
 
     // Generate Sweep Route
     const sweepRoute = generateSweepRoute(allMarkers);
