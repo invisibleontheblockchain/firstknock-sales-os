@@ -19,7 +19,7 @@ export default function Layout({ children }) {
             `}</style>
             
             {/* Header */}
-            <header className="bg-slate-800 border-b border-slate-700 p-4 z-20 shadow-md">
+            <header className="bg-black border-b border-slate-800 p-4 z-20 shadow-md">
                 <div className="flex justify-between items-center max-w-7xl mx-auto w-full">
                     <div className="flex items-center gap-2">
                         <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center">
@@ -41,7 +41,7 @@ export default function Layout({ children }) {
             </main>
 
             {/* Bottom Navigation */}
-            <nav className="bg-slate-800 border-t border-slate-700 z-20 safe-area-bottom">
+            <nav className="bg-black border-t border-slate-800 z-20 safe-area-bottom">
                 <div className="flex justify-around items-center h-16 max-w-full mx-auto">
                     <NavItem 
                       icon={Map} 
