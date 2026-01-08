@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, MapPin, Search, Navigation } from 'lucide-react';
+import { Loader2, MapPin, Search, Navigation, Info, X } from 'lucide-react';
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
@@ -24,7 +25,8 @@ export default function ListPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [view, setView] = useState('routes'); // 'routes' or 'properties'
     const [selectedSize, setSelectedSize] = useState(50);
-    
+    const [selectedRouteDetails, setSelectedRouteDetails] = useState(null); // Route object to show details for
+
     const { data: properties = [], isLoading: propsLoading } = useQuery({
         queryKey: ['masterProperties'],
         queryFn: () => base44.entities.MasterProperty.list('-created_date', 5000),
@@ -124,10 +126,75 @@ export default function ListPage() {
                             style={{ background: BRAND.charcoal, borderColor: '#333', color: BRAND.offWhite }}
                         />
                     </div>
-                )}
-                </div>
+                    )}
+                    </div>
 
-                {/* Content */}
+                    {/* Route Details Modal */}
+                    {selectedRouteDetails && (
+                    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedRouteDetails(null)} />
+                    <div 
+                        className="relative w-full max-w-2xl max-h-[80vh] rounded-2xl flex flex-col shadow-2xl overflow-hidden"
+                        style={{ background: BRAND.charcoal, border: `1px solid ${BRAND.gold}40` }}
+                    >
+                        <div className="p-4 border-b flex justify-between items-center" style={{ borderColor: '#333' }}>
+                            <div>
+                                <h3 className="font-bold text-lg" style={{ color: BRAND.offWhite }}>{selectedRouteDetails.name}</h3>
+                                <p className="text-xs text-gray-400">{selectedRouteDetails.metrics?.house_count} properties</p>
+                            </div>
+                            <button onClick={() => setSelectedRouteDetails(null)} className="p-2 hover:bg-[#333] rounded-full transition-colors">
+                                <X className="w-5 h-5 text-gray-400" />
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-auto p-4">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="text-xs uppercase text-gray-500 border-b border-[#333]">
+                                        <th className="pb-2 pl-2">#</th>
+                                        <th className="pb-2">Address</th>
+                                        <th className="pb-2">Status</th>
+                                        <th className="pb-2 text-right">Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="text-sm">
+                                    {selectedRouteDetails.property_hashes.map((hash, idx) => {
+                                        const prop = properties.find(p => p.address_hash === hash);
+                                        const propLogs = logs.filter(l => l.address_hash === hash);
+                                        const status = prop ? determineEffectiveStatus(prop, propLogs) : 'UNKNOWN';
+
+                                        if (!prop) return null;
+
+                                        return (
+                                            <tr key={hash} className="border-b border-[#333] hover:bg-[#252525]">
+                                                <td className="py-3 pl-2 text-gray-500 font-mono text-xs">{idx + 1}</td>
+                                                <td className="py-3 font-medium text-gray-200">
+                                                    {prop.house_number} {prop.street_name}
+                                                </td>
+                                                <td className="py-3">
+                                                    <Badge variant="outline" className="text-[10px]" style={{
+                                                        borderColor: status === 'SOLD' ? '#22c55e' : status === 'HARD_NO' ? '#ef4444' : '#6b7280',
+                                                        color: status === 'SOLD' ? '#22c55e' : status === 'HARD_NO' ? '#ef4444' : '#6b7280'
+                                                    }}>
+                                                        {status}
+                                                    </Badge>
+                                                </td>
+                                                <td className="py-3 text-right text-xs text-gray-400">
+                                                    {prop.beds && <span className="mr-2">{prop.beds}bd</span>}
+                                                    {prop.baths && <span className="mr-2">{prop.baths}ba</span>}
+                                                    {prop.sqft && <span>{prop.sqft}sqft</span>}
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    </div>
+                    )}
+
+                    {/* Content */}
                 <div className="flex-1 overflow-auto p-4 space-y-3">
                 {isLoading ? (
                     <div className="flex justify-center p-8">
@@ -180,11 +247,17 @@ export default function ListPage() {
                                                 LOAD ROUTE
                                             </Button>
                                         </Link>
+                                        <Button 
+                                            onClick={() => setSelectedRouteDetails(route)}
+                                            className="h-10 px-3 bg-[#333] hover:bg-[#444] text-white border border-[#444]"
+                                        >
+                                            <Info className="w-4 h-4" />
+                                        </Button>
                                     </div>
-                                </Card>
-                            ))
-                        )}
-                    </>
+                                    </Card>
+                                    ))
+                                    )}
+                                    </>
                 ) : (
                     <>
                         {filteredProperties.length === 0 ? (

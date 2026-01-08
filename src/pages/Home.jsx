@@ -81,6 +81,11 @@ export default function Home() {
         queryFn: () => base44.entities.MasterProperty.list('-created_date', 5000),
     });
 
+    const { data: savedRoutes = [] } = useQuery({
+        queryKey: ['savedRoutes'],
+        queryFn: () => base44.entities.SavedRoute.list('-created_date', 100),
+    });
+
     const createRouteMutation = useMutation({
         mutationFn: (routeData) => base44.entities.SavedRoute.create(routeData),
         onSuccess: () => {
@@ -127,6 +132,36 @@ export default function Home() {
                 };
             });
     }, [properties, logs]);
+
+    // Handle Load Route from URL
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const savedRouteId = params.get('savedRoute');
+        
+        if (savedRouteId && savedRoutes.length > 0 && effectiveProperties.length > 0 && !activeRoute) {
+            const saved = savedRoutes.find(r => r.id === savedRouteId);
+            if (saved) {
+                // Reconstruct route object
+                const routeProps = saved.property_hashes
+                    .map(hash => effectiveProperties.find(p => p.address_hash === hash))
+                    .filter(Boolean);
+                
+                if (routeProps.length > 0) {
+                    setActiveRoute({
+                        id: saved.id,
+                        name: saved.name,
+                        properties: routeProps,
+                        houseCount: saved.metrics?.house_count || routeProps.length,
+                        totalDistance: saved.metrics?.distance || 0,
+                        competitivenessScore: saved.metrics?.score || 0,
+                        status: saved.status
+                    });
+                    // Clear param so we don't reload it if we navigate away and back without intent
+                    window.history.replaceState({}, '', window.location.pathname);
+                }
+            }
+        }
+    }, [savedRoutes, effectiveProperties, activeRoute]);
 
     // Generate routes with configurable houses per route
     const [routes, setRoutes] = useState([]);
