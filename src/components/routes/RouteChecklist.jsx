@@ -21,7 +21,7 @@ const STATUS_OPTIONS = [
 
 const STATUS_COLORS = {
     ELIGIBLE: '#22c55e',
-    SOLD: BRAND.gold,
+    SOLD: '#22c55e', // Green for Sold
     HARD_NO: '#ef4444',
     CALLBACK: '#eab308',
     NO_ANSWER: '#6b7280',
@@ -63,8 +63,23 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
         return { pending, done, total: route.properties.length };
     }, [route.properties, propertyStatuses]);
 
+    const [callbackPhone, setCallbackPhone] = useState('');
+    const [selectedAction, setSelectedAction] = useState(null); // { propertyId, statusId }
+
     const handleSelectStatus = (property, statusId) => {
+        if (statusId === 'CALLBACK') {
+            setSelectedAction({ propertyId: property.address_hash, statusId });
+            return;
+        }
         onLogResult(property, statusId);
+        setExpandedId(null);
+    };
+
+    const confirmCallback = (property) => {
+        const note = callbackPhone ? `Callback Phone: ${callbackPhone}` : 'Callback';
+        onLogResult(property, 'CALLBACK', note); // Pass note if supported by handler, else will be in text
+        setCallbackPhone('');
+        setSelectedAction(null);
         setExpandedId(null);
     };
 
@@ -191,20 +206,47 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                                     <div className="px-4 pb-4 pt-1 border-t" style={{ borderColor: '#333' }}>
                                         <p className="text-xs mb-3" style={{ color: '#888' }}>SELECT OUTCOME:</p>
                                         <div className="grid grid-cols-2 gap-2">
-                                            {STATUS_OPTIONS.map(opt => (
-                                                <Button
-                                                    key={opt.id}
-                                                    onClick={() => handleSelectStatus(prop, opt.id)}
-                                                    className="h-11 text-xs font-bold tracking-wide"
-                                                    style={{ 
-                                                        background: opt.color, 
-                                                        color: opt.textColor 
-                                                    }}
-                                                >
-                                                    <opt.icon className="w-4 h-4 mr-2" />
-                                                    {opt.label}
-                                                </Button>
-                                            ))}
+                                            {selectedAction?.propertyId === prop.address_hash && selectedAction?.statusId === 'CALLBACK' ? (
+                                                <div className="col-span-2 space-y-2">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Enter Phone Number..."
+                                                        value={callbackPhone}
+                                                        onChange={(e) => setCallbackPhone(e.target.value)}
+                                                        className="w-full p-2 rounded text-black text-sm"
+                                                        autoFocus
+                                                    />
+                                                    <div className="flex gap-2">
+                                                        <Button 
+                                                            onClick={() => confirmCallback(prop)}
+                                                            className="flex-1 bg-yellow-500 text-black font-bold"
+                                                        >
+                                                            SAVE CALLBACK
+                                                        </Button>
+                                                        <Button 
+                                                            onClick={() => { setSelectedAction(null); setCallbackPhone(''); }}
+                                                            className="bg-gray-700 text-white"
+                                                        >
+                                                            CANCEL
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                STATUS_OPTIONS.map(opt => (
+                                                    <Button
+                                                        key={opt.id}
+                                                        onClick={() => handleSelectStatus(prop, opt.id)}
+                                                        className="h-11 text-xs font-bold tracking-wide"
+                                                        style={{ 
+                                                            background: opt.color, 
+                                                            color: opt.textColor 
+                                                        }}
+                                                    >
+                                                        <opt.icon className="w-4 h-4 mr-2" />
+                                                        {opt.label}
+                                                    </Button>
+                                                ))
+                                            )}
                                         </div>
                                         
                                         <Button

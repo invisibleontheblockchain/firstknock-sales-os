@@ -141,10 +141,10 @@ export default function Home() {
 
     const center = effectiveProperties[0] ? [effectiveProperties[0].lat, effectiveProperties[0].lng] : [34.0522, -118.2437];
 
-    const handleLogResult = useCallback((property, status) => {
+    const handleLogResult = useCallback((property, status, note = null) => {
         createLogMutation.mutate({
             address_hash: property.address_hash,
-            raw_input_text: status,
+            raw_input_text: note || status,
             parsed_status: status,
             gps_proof_lat: property.lat,
             gps_proof_lng: property.lng
@@ -181,8 +181,26 @@ export default function Home() {
                 <LocationMarker />
                 <MapController fitBounds={fitBounds} />
 
-                {/* All markers when no route selected - filtered by quickFilter */}
-                {!activeRoute && effectiveProperties
+                {/* Display Routes (Clusters) when generated and no active route */}
+                {!activeRoute && routes.length > 0 && routes.map((route, rIdx) => {
+                    const routeColor = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
+                    return route.properties.map(p => (
+                        <CircleMarker
+                            key={`${route.id}-${p.address_hash}`}
+                            center={[p.lat, p.lng]}
+                            radius={6}
+                            pathOptions={{
+                                fillColor: routeColor,
+                                fillOpacity: 0.7,
+                                color: routeColor,
+                                weight: 1
+                            }}
+                        />
+                    ));
+                })}
+
+                {/* Display loose properties when no routes generated or fallback */}
+                {!activeRoute && routes.length === 0 && effectiveProperties
                     .filter(p => {
                         if (quickFilter === 'all') return true;
                         if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
@@ -355,6 +373,18 @@ export default function Home() {
                             <button onClick={() => setShowRoutePanel(false)} className="p-2">
                                 <X className="w-5 h-5" style={{ color: BRAND.offWhite }} />
                             </button>
+                        </div>
+
+                        {/* Scoring Legend */}
+                        <div className="px-5 py-2 text-[10px] space-y-1" style={{ color: '#888', background: '#151515' }}>
+                            <p className="font-bold text-gray-400">SCORE CRITERIA:</p>
+                            <ul className="list-disc pl-4 space-y-0.5">
+                                <li><span style={{color: BRAND.gold}}>+50</span> for Eligible (Not Visited)</li>
+                                <li><span style={{color: '#22c55e'}}>+70</span> for Qualified/Hot Leads</li>
+                                <li><span style={{color: '#eab308'}}>+30</span> for Callback Needed</li>
+                                <li><span style={{color: '#ef4444'}}>0</span> for Sold/Rejected (Excluded)</li>
+                                <li>Distance Efficiency & Clustering applied</li>
+                            </ul>
                         </div>
                         <div className="overflow-y-auto h-[calc(70vh-80px)] p-4 space-y-3">
                             {filteredRoutes.length === 0 ? (

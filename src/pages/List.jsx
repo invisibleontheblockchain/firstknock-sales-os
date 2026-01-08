@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
@@ -49,6 +50,11 @@ export default function ListPage() {
             });
     }, [properties, logs]);
 
+    const filteredProperties = effectiveProperties.filter(p => 
+        p.full_address?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        p.street_name?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
     // Generate routes for selected size
     const [routes, setRoutes] = useState([]);
     const [routesGenerating, setRoutesGenerating] = useState(false);
@@ -65,11 +71,6 @@ export default function ListPage() {
             setRoutesGenerating(false);
         }, 100);
     };
-
-    const filteredProperties = properties.filter(p => 
-        p.full_address?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.street_name?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
 
     const isLoading = propsLoading || logsLoading;
 
@@ -244,14 +245,14 @@ export default function ListPage() {
                                             </div>
                                         </div>
                                         <Badge variant="outline" style={{
-                                            background: prop.original_status === 'SOLD' ? '#22c55e20' : 
-                                                       prop.original_status === 'HARD_NO' ? '#ef444420' : '#6b728020',
-                                            color: prop.original_status === 'SOLD' ? '#22c55e' : 
-                                                   prop.original_status === 'HARD_NO' ? '#ef4444' : '#6b7280',
-                                            borderColor: prop.original_status === 'SOLD' ? '#22c55e' : 
-                                                         prop.original_status === 'HARD_NO' ? '#ef4444' : '#6b7280'
+                                            background: prop.effective_status === 'SOLD' ? '#22c55e20' : 
+                                                        prop.effective_status === 'HARD_NO' ? '#ef444420' : '#6b728020',
+                                            color: prop.effective_status === 'SOLD' ? '#22c55e' : 
+                                                    prop.effective_status === 'HARD_NO' ? '#ef4444' : '#6b7280',
+                                            borderColor: prop.effective_status === 'SOLD' ? '#22c55e' : 
+                                                            prop.effective_status === 'HARD_NO' ? '#ef4444' : '#6b7280'
                                         }}>
-                                            {prop.original_status || 'ELIGIBLE'}
+                                            {prop.effective_status || 'ELIGIBLE'}
                                         </Badge>
                                     </div>
                                 </Card>
