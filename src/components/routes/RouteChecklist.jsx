@@ -193,19 +193,31 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                     className="w-full mt-4 h-12 font-bold tracking-wide"
                     style={{ background: BRAND.charcoal, color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}
                     onClick={() => {
-                        const props = route.properties.slice(0, 10);
-                        const origin = props[0];
-                        const dest = props[props.length - 1];
-                        // Apple Maps URL format
-                        const waypoints = props.slice(1, -1).map(p => `${p.lat},${p.lng}`).join('+to:');
-                        let url = `https://maps.apple.com/?saddr=${origin.lat},${origin.lng}&daddr=${dest.lat},${dest.lng}`;
-                        if (waypoints) url = `https://maps.apple.com/?saddr=${origin.lat},${origin.lng}&daddr=${waypoints}+to:${dest.lat},${dest.lng}`;
-                        url += '&dirflg=w'; // walking directions
+                        // Apple Maps handles multi-stop via daddr with addresses separated by " to "
+                        // Use up to ~15 stops for reasonable URL length
+                        const maxStops = Math.min(route.properties.length, 15);
+                        const step = Math.max(1, Math.floor(route.properties.length / maxStops));
+
+                        const selectedProps = [];
+                        for (let i = 0; i < route.properties.length; i += step) {
+                            selectedProps.push(route.properties[i]);
+                        }
+                        // Always include last property
+                        if (selectedProps[selectedProps.length - 1] !== route.properties[route.properties.length - 1]) {
+                            selectedProps.push(route.properties[route.properties.length - 1]);
+                        }
+
+                        const origin = selectedProps[0];
+                        const destinations = selectedProps.slice(1);
+
+                        // Apple Maps format: daddr=lat,lng+to:lat,lng+to:lat,lng
+                        const daddrStr = destinations.map(p => `${p.lat},${p.lng}`).join('+to:');
+                        const url = `https://maps.apple.com/?saddr=${origin.lat},${origin.lng}&daddr=${daddrStr}&dirflg=w`;
                         window.open(url, '_blank');
                     }}
                 >
                     <Navigation className="w-4 h-4 mr-2" />
-                    EXPORT ROUTE TO APPLE MAPS
+                    EXPORT ROUTE TO APPLE MAPS ({Math.min(route.properties.length, 15)} stops)
                 </Button>
             </div>
 
