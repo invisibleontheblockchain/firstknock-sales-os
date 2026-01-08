@@ -56,12 +56,7 @@ export default function Layout({ children }) {
                       to={createPageUrl('List')} 
                       active={window.location.pathname.endsWith('List')}
                     />
-                    <NavItem 
-                      icon={Navigation} 
-                      label="Routes" 
-                      to={createPageUrl('Routes')} 
-                      active={window.location.pathname.endsWith('Routes')}
-                    />
+
                     <NavItem 
                       icon={Upload} 
                       label="Sync" 
