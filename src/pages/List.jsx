@@ -153,12 +153,13 @@ export default function ListPage() {
                                     <tr className="text-xs uppercase text-gray-500 border-b border-[#333]">
                                         <th className="pb-2 pl-2">#</th>
                                         <th className="pb-2">Address</th>
-                                        <th className="pb-2">Status</th>
-                                        <th className="pb-2 text-right">Details</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="text-sm">
-                                    {selectedRouteDetails.property_hashes.map((hash, idx) => {
+                                        <th className="pb-2">Details</th>
+                                        <th className="pb-2">Sales Info</th>
+                                        <th className="pb-2 text-right">Status</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody className="text-sm">
+                                        {selectedRouteDetails.property_hashes.map((hash, idx) => {
                                         const prop = properties.find(p => p.address_hash === hash);
                                         const propLogs = logs.filter(l => l.address_hash === hash);
                                         const status = prop ? determineEffectiveStatus(prop, propLogs) : 'UNKNOWN';
@@ -169,9 +170,19 @@ export default function ListPage() {
                                             <tr key={hash} className="border-b border-[#333] hover:bg-[#252525]">
                                                 <td className="py-3 pl-2 text-gray-500 font-mono text-xs">{idx + 1}</td>
                                                 <td className="py-3 font-medium text-gray-200">
-                                                    {prop.house_number} {prop.street_name}
+                                                    <div>{prop.house_number} {prop.street_name}</div>
+                                                    <div className="text-xs text-gray-500">{prop.city}, {prop.state} {prop.zip_code}</div>
                                                 </td>
-                                                <td className="py-3">
+                                                <td className="py-3 text-xs text-gray-400">
+                                                    {prop.beds && <span className="mr-2">{prop.beds}bd</span>}
+                                                    {prop.baths && <span className="mr-2">{prop.baths}ba</span>}
+                                                    {prop.sqft && <span>{prop.sqft}sqft</span>}
+                                                </td>
+                                                <td className="py-3 text-xs text-gray-400">
+                                                    {prop.price && <div className="text-green-500">${prop.price.toLocaleString()}</div>}
+                                                    {prop.sold_date && <div className="text-[10px]">{new Date(prop.sold_date).toLocaleDateString()}</div>}
+                                                </td>
+                                                <td className="py-3 text-right">
                                                     <Badge variant="outline" className="text-[10px]" style={{
                                                         borderColor: status === 'SOLD' ? '#22c55e' : status === 'HARD_NO' ? '#ef4444' : '#6b7280',
                                                         color: status === 'SOLD' ? '#22c55e' : status === 'HARD_NO' ? '#ef4444' : '#6b7280'
@@ -179,14 +190,9 @@ export default function ListPage() {
                                                         {status}
                                                     </Badge>
                                                 </td>
-                                                <td className="py-3 text-right text-xs text-gray-400">
-                                                    {prop.beds && <span className="mr-2">{prop.beds}bd</span>}
-                                                    {prop.baths && <span className="mr-2">{prop.baths}ba</span>}
-                                                    {prop.sqft && <span>{prop.sqft}sqft</span>}
-                                                </td>
                                             </tr>
                                         );
-                                    })}
+                                        })}
                                 </tbody>
                             </table>
                         </div>
