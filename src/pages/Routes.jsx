@@ -29,9 +29,10 @@ export default function RoutesPage() {
         initialData: []
     });
 
-    // Calculate effective status - NO GHOST LEADS for performance
+    // Calculate effective status - LIMIT to 2000 properties max for performance
     const effectiveProperties = useMemo(() => {
-        return properties
+        const limited = properties.slice(0, 2000);
+        return limited
             .filter(prop => prop.lat && prop.lng)
             .map(prop => {
                 const propLogs = logs.filter(l => l.address_hash === prop.address_hash);
@@ -40,7 +41,7 @@ export default function RoutesPage() {
             });
     }, [properties, logs]);
 
-    // Generate routes - debounced to prevent constant recalculation
+    // Generate routes - debounced and limited
     const [routes, setRoutes] = useState([]);
     const [generating, setGenerating] = useState(false);
 
@@ -52,10 +53,18 @@ export default function RoutesPage() {
 
         setGenerating(true);
         const timer = setTimeout(() => {
-            const generated = generateOptimizedRoutes(effectiveProperties, housesPerRoute);
-            setRoutes(generated);
+            try {
+                // Limit to max 20 routes to prevent crash
+                const maxRoutes = Math.min(20, Math.ceil(effectiveProperties.length / housesPerRoute));
+                const limitedProps = effectiveProperties.slice(0, maxRoutes * housesPerRoute);
+                const generated = generateOptimizedRoutes(limitedProps, housesPerRoute);
+                setRoutes(generated);
+            } catch (error) {
+                console.error('Route generation error:', error);
+                setRoutes([]);
+            }
             setGenerating(false);
-        }, 300);
+        }, 500);
 
         return () => clearTimeout(timer);
     }, [effectiveProperties.length, housesPerRoute]);

@@ -46,12 +46,12 @@ export default function RouteMapPreview({ routes, selectedRouteId }) {
             key={selectedRoute.id}
             center={center} 
             zoom={15} 
-            style={{ height: '100%', width: '100%', background: '#1e293b' }}
+            style={{ height: '100%', width: '100%', background: '#1a1a1a' }}
             zoomControl={true}
         >
             <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://www.mapbox.com/">Mapbox</a>'
+                url="https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/{z}/{x}/{y}?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4NXVycTA2emYycXBndHRqcmZ3N3gifQ.rJcFIG214AriISLbB6B5aw"
             />
 
             {/* Route Line */}
