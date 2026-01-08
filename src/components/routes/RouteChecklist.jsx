@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Check, X, Phone, Ban, Clock, ChevronDown, ChevronUp, MapPin, Home, Navigation, Mic } from 'lucide-react';
+import { Check, X, Phone, Ban, Clock, ChevronDown, ChevronUp, MapPin, Home, Navigation, Mic, FileText } from 'lucide-react';
+import { getPropertyResultSummary } from '../logic/territoryLogic';
 
 // Brand Colors
 const BRAND = {
@@ -32,17 +33,26 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
     const [expandedId, setExpandedId] = useState(null);
     const [filter, setFilter] = useState('all');
 
-    const propertyStatuses = useMemo(() => {
-        const statusMap = {};
+    const propertyData = useMemo(() => {
+        const dataMap = {};
         route.properties.forEach(p => {
             const propLogs = logs.filter(l => l.address_hash === p.address_hash);
-            if (propLogs.length > 0) {
-                const sorted = [...propLogs].sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
-                statusMap[p.address_hash] = sorted[0].parsed_status;
+            const summary = getPropertyResultSummary(propLogs);
+            dataMap[p.address_hash] = summary;
+        });
+        return dataMap;
+    }, [route.properties, logs]);
+
+    // Legacy compatibility
+    const propertyStatuses = useMemo(() => {
+        const statusMap = {};
+        Object.entries(propertyData).forEach(([hash, data]) => {
+            if (data.hasResult) {
+                statusMap[hash] = data.status;
             }
         });
         return statusMap;
-    }, [route.properties, logs]);
+    }, [propertyData]);
 
     const filteredProperties = useMemo(() => {
         return route.properties.filter(p => {
@@ -201,6 +211,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
             <ScrollArea className="flex-1">
                 <div className="p-4 space-y-2">
                     {filteredProperties.map((prop, idx) => {
+                        const propData = propertyData[prop.address_hash] || {};
                         const currentStatus = propertyStatuses[prop.address_hash];
                         const isExpanded = expandedId === prop.address_hash;
                         const isDone = currentStatus && currentStatus !== 'ELIGIBLE';
@@ -216,10 +227,10 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                             >
                                 <button
                                     onClick={() => setExpandedId(isExpanded ? null : prop.address_hash)}
-                                    className="w-full p-4 flex items-center gap-3 text-left"
+                                    className="w-full p-4 flex items-start gap-3 text-left"
                                 >
                                     <div 
-                                        className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+                                        className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
                                         style={{ 
                                             background: isDone ? '#333' : BRAND.gold,
                                             color: isDone ? '#666' : BRAND.voidBlack
@@ -233,19 +244,34 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                                             {prop.full_address}
                                         </p>
                                         <p className="text-xs" style={{ color: '#666' }}>{prop.street_name}</p>
+
+                                        {/* Show Result/Notes if available */}
+                                        {propData.hasResult && propData.resultText && (
+                                            <div className="mt-2 p-2 rounded-lg bg-black/30 border-l-2" style={{ borderColor: STATUS_COLORS[propData.status] }}>
+                                                <div className="flex items-center gap-1 mb-1">
+                                                    <FileText className="w-3 h-3" style={{ color: '#888' }} />
+                                                    <span className="text-[10px] uppercase font-bold" style={{ color: '#888' }}>Result Notes</span>
+                                                </div>
+                                                <p className="text-xs" style={{ color: BRAND.offWhite }}>
+                                                    "{propData.resultText}"
+                                                </p>
+                                            </div>
+                                        )}
                                     </div>
 
-                                    {currentStatus && (
-                                        <Badge style={{ background: STATUS_COLORS[currentStatus], color: currentStatus === 'SOLD' ? BRAND.voidBlack : '#fff' }}>
-                                            {currentStatus}
-                                        </Badge>
-                                    )}
+                                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                        {currentStatus && (
+                                            <Badge style={{ background: STATUS_COLORS[currentStatus], color: currentStatus === 'SOLD' ? BRAND.voidBlack : '#fff' }}>
+                                                {currentStatus}
+                                            </Badge>
+                                        )}
 
-                                    {isExpanded ? (
-                                        <ChevronUp className="w-5 h-5" style={{ color: '#666' }} />
-                                    ) : (
-                                        <ChevronDown className="w-5 h-5" style={{ color: '#666' }} />
-                                    )}
+                                        {isExpanded ? (
+                                            <ChevronUp className="w-5 h-5" style={{ color: '#666' }} />
+                                        ) : (
+                                            <ChevronDown className="w-5 h-5" style={{ color: '#666' }} />
+                                        )}
+                                    </div>
                                 </button>
 
                                 {isExpanded && (
