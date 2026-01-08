@@ -7,7 +7,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Loader2, Navigation, Locate, List, Play, ChevronRight, X, Check, Phone, Ban, Home, Clock } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, Play, ChevronRight, X, Check, Phone, Ban, Home as HomeIcon, Clock } from 'lucide-react';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
 import RouteChecklist from '../components/routes/RouteChecklist';
