@@ -63,9 +63,27 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
         return { pending, done, total: route.properties.length };
     }, [route.properties, propertyStatuses]);
 
+    const [callbackPhone, setCallbackPhone] = useState("");
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [selectedStatus, setSelectedStatus] = useState(null);
+
     const handleSelectStatus = (property, statusId) => {
+        if (statusId === 'CALLBACK') {
+            setSelectedStatus({ property, statusId });
+            return;
+        }
         onLogResult(property, statusId);
         setExpandedId(null);
+    };
+
+    const handleCallbackSubmit = () => {
+        if (selectedStatus) {
+            const resultText = callbackPhone ? `CALLBACK - ${callbackPhone}` : 'CALLBACK';
+            onLogResult(selectedStatus.property, resultText);
+            setExpandedId(null);
+            setSelectedStatus(null);
+            setCallbackPhone("");
+        }
     };
 
     return (
