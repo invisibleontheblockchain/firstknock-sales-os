@@ -35,15 +35,17 @@ export function scoreProperty(property) {
     if (property.effective_status === 'SOLD' || property.effective_status === 'HARD_NO') score = 0; // Don't route to these
     
     // 2. Freshness Scoring (Date Sold)
-    // "If someone just bought their house we are going to get to them first"
+    // "Get to the home buyers first" - Granular decay based on exact days
     if (property.sold_date) {
         const soldDate = new Date(property.sold_date);
         const now = new Date();
-        const monthsAgo = (now - soldDate) / (1000 * 60 * 60 * 24 * 30);
+        const daysAgo = (now - soldDate) / (1000 * 60 * 60 * 24);
         
-        if (monthsAgo <= 6) score += 100;      // Super fresh (0-6 mo)
-        else if (monthsAgo <= 12) score += 50; // Fresh (6-12 mo)
-        else if (monthsAgo <= 24) score += 25; // Recent (1-2 yr)
+        if (daysAgo <= 7) score += 200;       // Critical: First week (Hot!)
+        else if (daysAgo <= 30) score += 150; // Very High: First month
+        else if (daysAgo <= 90) score += 100; // High: First quarter
+        else if (daysAgo <= 180) score += 50; // Medium: First 6 months
+        else if (daysAgo <= 365) score += 25; // Low: First year
     }
 
     // 3. Price/Value Scoring
