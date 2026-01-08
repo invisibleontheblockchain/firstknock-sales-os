@@ -1,75 +1,56 @@
 /**
- * Advanced Route Optimization Engine
- * Clusters properties into optimal driving routes based on:
- * - Geographic proximity
- * - Property value/score
- * - Distance minimization
- * - Realistic door-to-door patterns
+ * Route Optimization Engine
+ * K-means clustering + Nearest Neighbor TSP
  */
 
 // Haversine distance in miles
-function calculateDistance(lat1, lng1, lat2, lng2) {
-    const R = 3959; // Earth radius in miles
+function haversineDistance(lat1, lng1, lat2, lng2) {
+    const R = 3959;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = 
-        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-        Math.sin(dLng / 2) * Math.sin(dLng / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
+    const a = Math.sin(dLat / 2) ** 2 +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-/**
- * Score a property based on multiple factors
- * Higher score = better target
- */
-export function scoreProperty(property) {
-    let score = 100; // Base score
-    
-    // Status scoring
-    if (property.effective_status === 'ELIGIBLE') score += 50;
-    if (property.effective_status === 'CALLBACK') score += 30;
-    if (property.effective_status === 'NO_ANSWER') score += 20;
-    if (property.effective_status === 'QUALIFIED') score += 70;
-    if (property.effective_status === 'SOLD' || property.effective_status === 'HARD_NO') score = 0;
-    
-    // Ghost leads get lower priority
-    if (property.is_ghost) score = score * 0.5;
-    
-    return score;
+// Score property for prioritization
+function scoreProperty(prop) {
+    const statusScores = {
+        'ELIGIBLE': 50,
+        'CALLBACK': 30,
+        'QUALIFIED': 70,
+        'NO_ANSWER': 20,
+        'OTHER': 10,
+        'SOLD': 0,
+        'HARD_NO': 0,
+        'DO_NOT_KNOCK': 0
+    };
+    return statusScores[prop.effective_status] || 0;
 }
 
-/**
- * K-means clustering for geographic grouping
- */
-function kMeansClustering(properties, numClusters) {
-    if (properties.length <= numClusters) {
+// K-means clustering
+function kMeansClustering(properties, k) {
+    if (properties.length <= k) {
         return properties.map((p, i) => ({ ...p, cluster: i }));
     }
     
-    // Initialize centroids randomly
-    let centroids = properties
-        .slice()
-        .sort(() => 0.5 - Math.random())
-        .slice(0, numClusters)
-        .map(p => ({ lat: p.lat, lng: p.lng }));
+    // Initialize centroids
+    const shuffled = [...properties].sort(() => Math.random() - 0.5);
+    let centroids = shuffled.slice(0, k).map(p => ({ lat: p.lat, lng: p.lng }));
     
-    let iterations = 0;
-    const maxIterations = 50;
-    let changed = true;
+    const result = properties.map(p => ({ ...p, cluster: 0 }));
     
-    while (changed && iterations < maxIterations) {
-        changed = false;
-        iterations++;
+    for (let iter = 0; iter < 30; iter++) {
+        let changed = false;
         
-        // Assign each property to nearest centroid
-        properties.forEach(prop => {
+        // Assign to nearest centroid
+        result.forEach(prop => {
             let minDist = Infinity;
             let bestCluster = 0;
             
-            centroids.forEach((centroid, idx) => {
-                const dist = calculateDistance(prop.lat, prop.lng, centroid.lat, centroid.lng);
+            centroids.forEach((c, idx) => {
+                const dist = haversineDistance(prop.lat, prop.lng, c.lat, c.lng);
                 if (dist < minDist) {
                     minDist = dist;
                     bestCluster = idx;
@@ -77,218 +58,159 @@ function kMeansClustering(properties, numClusters) {
             });
             
             if (prop.cluster !== bestCluster) {
-                changed = true;
                 prop.cluster = bestCluster;
+                changed = true;
             }
         });
+        
+        if (!changed) break;
         
         // Recalculate centroids
         centroids = centroids.map((_, idx) => {
-            const clusterProps = properties.filter(p => p.cluster === idx);
-            if (clusterProps.length === 0) return centroids[idx];
-            
-            const avgLat = clusterProps.reduce((sum, p) => sum + p.lat, 0) / clusterProps.length;
-            const avgLng = clusterProps.reduce((sum, p) => sum + p.lng, 0) / clusterProps.length;
-            return { lat: avgLat, lng: avgLng };
+            const cluster = result.filter(p => p.cluster === idx);
+            if (cluster.length === 0) return centroids[idx];
+            return {
+                lat: cluster.reduce((s, p) => s + p.lat, 0) / cluster.length,
+                lng: cluster.reduce((s, p) => s + p.lng, 0) / cluster.length
+            };
         });
     }
     
-    return properties;
+    return result;
 }
 
-/**
- * Nearest Neighbor TSP approximation for route ordering
- */
-function optimizeRouteOrder(properties, startLat = null, startLng = null) {
-    if (properties.length === 0) return [];
+// Nearest neighbor route ordering
+function optimizeOrder(properties) {
+    if (properties.length <= 1) return properties;
     
     const unvisited = [...properties];
-    const route = [];
+    const route = [unvisited.shift()];
     
-    // Start from provided location or first property
-    let current = startLat && startLng 
-        ? { lat: startLat, lng: startLng }
-        : unvisited.shift();
-    
-    if (startLat && startLng) {
-        // Find nearest to start
-        let nearestIdx = 0;
-        let minDist = Infinity;
-        unvisited.forEach((prop, idx) => {
-            const dist = calculateDistance(current.lat, current.lng, prop.lat, prop.lng);
-            if (dist < minDist) {
-                minDist = dist;
-                nearestIdx = idx;
-            }
-        });
-        current = unvisited.splice(nearestIdx, 1)[0];
-    }
-    
-    route.push(current);
-    
-    // Nearest neighbor
     while (unvisited.length > 0) {
+        const current = route[route.length - 1];
         let nearestIdx = 0;
         let minDist = Infinity;
         
-        unvisited.forEach((prop, idx) => {
-            const dist = calculateDistance(current.lat, current.lng, prop.lat, prop.lng);
+        unvisited.forEach((p, idx) => {
+            const dist = haversineDistance(current.lat, current.lng, p.lat, p.lng);
             if (dist < minDist) {
                 minDist = dist;
                 nearestIdx = idx;
             }
         });
         
-        current = unvisited.splice(nearestIdx, 1)[0];
-        route.push(current);
+        route.push(unvisited.splice(nearestIdx, 1)[0]);
     }
     
     return route;
 }
 
 /**
- * Generate optimized routes with clustering
- * @param {Array} properties - All properties to route
- * @param {Number} housesPerRoute - Target houses per route (default 50)
- * @param {Object} startLocation - Optional {lat, lng} starting point
- * @returns {Array} Array of route objects with metadata
+ * Generate optimized routes
  */
-export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLocation = null) {
+export function generateRoutes(properties, housesPerRoute = 50) {
     // Filter out excluded statuses
     const eligible = properties.filter(p => 
         p.effective_status !== 'SOLD' && 
-        p.effective_status !== 'HARD_NO'
+        p.effective_status !== 'HARD_NO' &&
+        p.effective_status !== 'DO_NOT_KNOCK'
     );
     
     if (eligible.length === 0) return [];
     
-    // Score all properties
-    const scored = eligible.map(p => ({
-        ...p,
-        score: scoreProperty(p)
-    }));
+    // Limit for performance
+    const limited = eligible.slice(0, 1000);
+    const numRoutes = Math.min(20, Math.ceil(limited.length / housesPerRoute));
     
-    // Calculate number of routes needed
-    const numRoutes = Math.ceil(scored.length / housesPerRoute);
+    // Cluster
+    const clustered = kMeansClustering(limited, numRoutes);
     
-    // Cluster properties geographically
-    const clustered = kMeansClustering(scored, numRoutes);
-    
-    // Generate routes for each cluster
+    // Generate routes
     const routes = [];
     for (let i = 0; i < numRoutes; i++) {
         const clusterProps = clustered.filter(p => p.cluster === i);
         if (clusterProps.length === 0) continue;
         
-        // Optimize order within cluster
-        const orderedProps = optimizeRouteOrder(
-            clusterProps, 
-            startLocation?.lat, 
-            startLocation?.lng
-        );
+        const ordered = optimizeOrder(clusterProps);
         
-        // Calculate route metrics
-        let totalDistance = 0;
+        // Calculate metrics
+        let distance = 0;
         let totalScore = 0;
         
-        for (let j = 0; j < orderedProps.length - 1; j++) {
-            const dist = calculateDistance(
-                orderedProps[j].lat,
-                orderedProps[j].lng,
-                orderedProps[j + 1].lat,
-                orderedProps[j + 1].lng
-            );
-            totalDistance += dist;
-            totalScore += orderedProps[j].score;
+        for (let j = 0; j < ordered.length; j++) {
+            totalScore += scoreProperty(ordered[j]);
+            if (j > 0) {
+                distance += haversineDistance(
+                    ordered[j-1].lat, ordered[j-1].lng,
+                    ordered[j].lat, ordered[j].lng
+                );
+            }
         }
-        totalScore += orderedProps[orderedProps.length - 1]?.score || 0;
         
-        // Calculate competitiveness score (higher = better)
-        const avgScore = totalScore / orderedProps.length;
-        const efficiency = orderedProps.length / Math.max(totalDistance, 0.1);
-        const competitivenessScore = Math.round((avgScore * 0.6 + efficiency * 100 * 0.4));
+        const avgScore = Math.round(totalScore / ordered.length);
+        const efficiency = Math.round((ordered.length / Math.max(distance, 0.1)) * 10);
         
         routes.push({
             id: `route_${i + 1}`,
             name: `Route ${i + 1}`,
-            properties: orderedProps,
-            houseCount: orderedProps.length,
-            totalDistance: Math.round(totalDistance * 100) / 100,
-            totalScore: Math.round(totalScore),
-            avgScore: Math.round(avgScore),
-            competitivenessScore,
-            status: 'NOT_STARTED',
-            completedCount: 0
+            properties: ordered,
+            houseCount: ordered.length,
+            distance: Math.round(distance * 100) / 100,
+            totalScore,
+            avgScore,
+            competitiveness: avgScore + efficiency
         });
     }
     
-    // Sort routes by competitiveness (best first)
-    routes.sort((a, b) => b.competitivenessScore - a.competitivenessScore);
-    
-    return routes;
+    // Sort by competitiveness
+    return routes.sort((a, b) => b.competitiveness - a.competitiveness);
 }
 
 /**
- * Export route to JSON format
+ * Generate Google Maps URL
  */
-export function exportRouteToJSON(route) {
-    return {
-        route_metadata: {
-            route_id: route.id,
-            route_name: route.name,
-            total_houses: route.houseCount,
-            total_distance_miles: route.totalDistance,
-            competitiveness_score: route.competitivenessScore,
-            status: route.status,
-            completed: route.completedCount,
-            generated_date: new Date().toISOString()
-        },
-        properties: route.properties.map((p, idx) => ({
-            sequence: idx + 1,
-            address_hash: p.address_hash,
-            full_address: p.full_address,
-            house_number: p.house_number,
-            street_name: p.street_name,
-            lat: p.lat,
-            lng: p.lng,
-            status: p.effective_status,
-            score: p.score,
-            is_ghost: p.is_ghost || false
-        }))
-    };
-}
-
-/**
- * Generate Google Maps URL for route
- */
-export function generateGoogleMapsUrl(route) {
-    if (!route.properties || route.properties.length === 0) return '';
+export function getGoogleMapsUrl(route) {
+    if (!route.properties?.length) return '';
     
-    // Google Maps supports up to 10 waypoints, so we'll use key stops
-    const properties = route.properties;
-    const maxStops = Math.min(properties.length, 10);
-    const step = Math.max(1, Math.floor(properties.length / maxStops));
+    const props = route.properties;
+    const origin = `${props[0].lat},${props[0].lng}`;
+    const dest = `${props[props.length - 1].lat},${props[props.length - 1].lng}`;
     
-    const origin = properties[0];
-    const destination = properties[properties.length - 1];
-    
-    // Select waypoints evenly distributed
+    // Select up to 8 waypoints evenly
     const waypoints = [];
-    for (let i = step; i < properties.length - 1; i += step) {
-        if (waypoints.length < 8) { // Leave room for origin and destination
-            waypoints.push(properties[i]);
-        }
+    const step = Math.max(1, Math.floor(props.length / 8));
+    for (let i = step; i < props.length - 1 && waypoints.length < 8; i += step) {
+        waypoints.push(`${props[i].lat},${props[i].lng}`);
     }
     
-    const originStr = `${origin.lat},${origin.lng}`;
-    const destStr = `${destination.lat},${destination.lng}`;
-    const waypointsStr = waypoints.map(p => `${p.lat},${p.lng}`).join('|');
-    
-    let url = `https://www.google.com/maps/dir/?api=1&origin=${originStr}&destination=${destStr}`;
-    if (waypointsStr) {
-        url += `&waypoints=${waypointsStr}`;
+    let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}&travelmode=walking`;
+    if (waypoints.length) {
+        url += `&waypoints=${waypoints.join('|')}`;
     }
-    url += '&travelmode=walking';
     
     return url;
+}
+
+/**
+ * Export route to JSON
+ */
+export function exportRouteJSON(route) {
+    return {
+        metadata: {
+            id: route.id,
+            name: route.name,
+            houses: route.houseCount,
+            distance_miles: route.distance,
+            score: route.competitiveness,
+            generated: new Date().toISOString()
+        },
+        stops: route.properties.map((p, i) => ({
+            sequence: i + 1,
+            address_hash: p.address_hash,
+            address: p.full_address,
+            lat: p.lat,
+            lng: p.lng,
+            status: p.effective_status
+        }))
+    };
 }
