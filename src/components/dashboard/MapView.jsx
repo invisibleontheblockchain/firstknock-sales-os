@@ -67,14 +67,22 @@ function MapAutoFitter({ markers }) {
     const map = useMap();
 
     useEffect(() => {
-        if (markers.length > 0) {
-            const group = new L.FeatureGroup(markers.map(m => L.marker([m.lat, m.lng])));
-            const bounds = group.getBounds();
-            if (bounds.isValid()) {
-                map.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 });
-            }
+        if (markers.length > 0 && map) {
+            setTimeout(() => {
+                try {
+                    const validMarkers = markers.filter(m => m.lat && m.lng && !isNaN(m.lat) && !isNaN(m.lng));
+                    if (validMarkers.length > 0) {
+                        const bounds = L.latLngBounds(validMarkers.map(m => [m.lat, m.lng]));
+                        if (bounds.isValid()) {
+                            map.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 });
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error fitting bounds:", err);
+                }
+            }, 100);
         }
-    }, [markers, map]);
+    }, [markers.length, map]);
 
     return null;
 }
@@ -150,10 +158,12 @@ export default function MapView({ properties, logs, onLogInteraction }) {
                 <MapAutoFitter markers={allMarkers} />
                 
                 {/* Sweep Route Line */}
-                <Polyline 
-                    positions={sweepRoute} 
-                    pathOptions={{ color: '#6366f1', weight: 3, opacity: 0.5, dashArray: '10, 10' }} 
-                />
+                {sweepRoute.length > 0 && (
+                    <Polyline 
+                        positions={sweepRoute} 
+                        pathOptions={{ color: '#6366f1', weight: 3, opacity: 0.5, dashArray: '10, 10' }} 
+                    />
+                )}
 
                 {allMarkers.map((prop) => (
                     <Marker 
@@ -173,10 +183,19 @@ export default function MapView({ properties, logs, onLogInteraction }) {
                     className="rounded-full w-12 h-12 shadow-lg bg-slate-800 hover:bg-slate-700"
                     size="icon"
                     onClick={() => {
-                        const map = document.querySelector('.leaflet-container')?._leaflet_map;
-                        if (map && allMarkers.length > 0) {
-                            const group = new L.FeatureGroup(allMarkers.map(m => L.marker([m.lat, m.lng])));
-                            map.fitBounds(group.getBounds(), { padding: [50, 50] });
+                        try {
+                            const map = document.querySelector('.leaflet-container')?._leaflet_map;
+                            if (map && allMarkers.length > 0) {
+                                const validMarkers = allMarkers.filter(m => m.lat && m.lng && !isNaN(m.lat) && !isNaN(m.lng));
+                                if (validMarkers.length > 0) {
+                                    const bounds = L.latLngBounds(validMarkers.map(m => [m.lat, m.lng]));
+                                    if (bounds.isValid()) {
+                                        map.fitBounds(bounds, { padding: [50, 50] });
+                                    }
+                                }
+                            }
+                        } catch (err) {
+                            console.error("Error fitting bounds:", err);
                         }
                     }}
                     title="Fit to Properties"
