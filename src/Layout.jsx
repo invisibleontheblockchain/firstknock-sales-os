@@ -1,9 +1,47 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Map, List, Upload, Settings, Navigation } from 'lucide-react';
+import { Map, List, Upload, Settings, Navigation, LogIn } from 'lucide-react';
+import { base44 } from '@/api/base44Client';
+import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
 
 export default function Layout({ children }) {
+    const { data: user, isLoading, error } = useQuery({
+        queryKey: ['user'],
+        queryFn: () => base44.auth.me(),
+        retry: false
+    });
+
+    if (isLoading) {
+        return (
+            <div className="flex h-screen items-center justify-center bg-black text-white">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-yellow-500"></div>
+            </div>
+        );
+    }
+
+    if (!user) {
+        return (
+            <div className="flex h-screen flex-col items-center justify-center bg-black text-white p-6 text-center space-y-6">
+                <div className="w-20 h-20 bg-yellow-500 rounded-2xl flex items-center justify-center mb-4 shadow-[0_0_30px_rgba(255,215,0,0.3)]">
+                    <Navigation className="w-10 h-10 text-black" />
+                </div>
+                <h1 className="text-3xl font-bold tracking-tight">FirstKnock</h1>
+                <p className="text-gray-400 max-w-xs">
+                    Your personal door-to-door sales territory manager. Login to access your secure data.
+                </p>
+                <Button 
+                    onClick={() => base44.auth.redirectToLogin()}
+                    className="w-full max-w-xs h-12 bg-yellow-500 text-black font-bold hover:bg-yellow-400 text-base"
+                >
+                    <LogIn className="w-5 h-5 mr-2" />
+                    LOGIN / SIGN UP
+                </Button>
+            </div>
+        );
+    }
+
     return (
         <div className="flex flex-col h-screen font-sans overflow-hidden" style={{ background: '#0A0A0A', color: '#E5E5E5' }}>
             {/* Brand Theme + Map Styles */}
@@ -32,8 +70,11 @@ export default function Layout({ children }) {
                     </div>
                     {/* Status Indicator */}
                     <div className="flex items-center gap-2">
+                         <button onClick={() => base44.auth.logout()} className="text-xs text-slate-400 hover:text-white mr-2">
+                            LOGOUT
+                        </button>
                         <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                        <span className="text-xs text-slate-400 font-medium">ONLINE</span>
+                        <span className="text-xs text-slate-400 font-medium truncate max-w-[100px]">{user?.email}</span>
                     </div>
                 </div>
             </header>

@@ -74,16 +74,19 @@ export default function Home() {
     const [startAddressInput, setStartAddressInput] = useState("");
     const [showAllProperties, setShowAllProperties] = useState(false);
     const mapRef = useRef(null);
+    const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
-    // Fetch ALL 5000 properties
+    // Fetch ALL 5000 properties (User Specific)
     const { data: properties = [], isLoading: propsLoading } = useQuery({
-        queryKey: ['masterProperties'],
-        queryFn: () => base44.entities.MasterProperty.list('-created_date', 5000),
+        queryKey: ['masterProperties', user?.email],
+        queryFn: () => user ? base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 5000) : [],
+        enabled: !!user
     });
 
     const { data: savedRoutes = [] } = useQuery({
-        queryKey: ['savedRoutes'],
-        queryFn: () => base44.entities.SavedRoute.list('-created_date', 100),
+        queryKey: ['savedRoutes', user?.email],
+        queryFn: () => user ? base44.entities.SavedRoute.filter({ created_by: user.email }, '-created_date', 100) : [],
+        enabled: !!user
     });
 
     const createRouteMutation = useMutation({
@@ -109,8 +112,9 @@ export default function Home() {
     };
 
     const { data: logs = [], isLoading: logsLoading } = useQuery({
-        queryKey: ['interactionLogs'],
-        queryFn: () => base44.entities.InteractionLog.list('-created_date', 10000),
+        queryKey: ['interactionLogs', user?.email],
+        queryFn: () => user ? base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 10000) : [],
+        enabled: !!user
     });
 
     const createLogMutation = useMutation({

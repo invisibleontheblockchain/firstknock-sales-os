@@ -12,11 +12,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 export default function Setup() {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
     
     // Fetch count
     const { data: properties = [], isLoading } = useQuery({
-        queryKey: ['masterProperties'],
-        queryFn: () => base44.entities.MasterProperty.list('-created_date', 10000),
+        queryKey: ['masterProperties', user?.email],
+        queryFn: () => user ? base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 10000) : [],
+        enabled: !!user
     });
 
     const handleContinue = () => {

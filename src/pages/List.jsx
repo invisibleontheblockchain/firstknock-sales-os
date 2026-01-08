@@ -26,20 +26,24 @@ export default function ListPage() {
     const [view, setView] = useState('routes'); // 'routes' or 'properties'
     const [selectedSize, setSelectedSize] = useState(50);
     const [selectedRouteDetails, setSelectedRouteDetails] = useState(null); // Route object to show details for
+    const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
     const { data: properties = [], isLoading: propsLoading } = useQuery({
-        queryKey: ['masterProperties'],
-        queryFn: () => base44.entities.MasterProperty.list('-created_date', 5000),
+        queryKey: ['masterProperties', user?.email],
+        queryFn: () => user ? base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 5000) : [],
+        enabled: !!user
     });
 
     const { data: savedRoutes = [], isLoading: routesLoading } = useQuery({
-        queryKey: ['savedRoutes'],
-        queryFn: () => base44.entities.SavedRoute.list('-created_date', 100),
+        queryKey: ['savedRoutes', user?.email],
+        queryFn: () => user ? base44.entities.SavedRoute.filter({ created_by: user.email }, '-created_date', 100) : [],
+        enabled: !!user
     });
 
     const { data: logs = [], isLoading: logsLoading } = useQuery({
-        queryKey: ['interactionLogs'],
-        queryFn: () => base44.entities.InteractionLog.list('-created_date', 10000),
+        queryKey: ['interactionLogs', user?.email],
+        queryFn: () => user ? base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 10000) : [],
+        enabled: !!user
     });
 
     const effectiveProperties = useMemo(() => {
