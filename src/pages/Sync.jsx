@@ -26,7 +26,7 @@ export default function SyncPage() {
                             Import Data
                         </CardTitle>
                         <CardDescription className="text-slate-400">
-                            Upload a Master CSV file to update property records.
+                            Upload a CSV or JSON file to update property records.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
