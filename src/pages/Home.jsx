@@ -6,7 +6,7 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+
 import { Slider } from "@/components/ui/slider";
 import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, ArrowUpDown, Filter } from 'lucide-react';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
@@ -336,155 +336,176 @@ export default function Home() {
                 </div>
             </div>
 
-            {/* Routes Panel */}
-            <Sheet open={showRoutePanel} onOpenChange={setShowRoutePanel}>
-                <SheetContent side="bottom" className="h-[75vh] rounded-t-3xl p-0" style={{ background: BRAND.voidBlack, borderColor: BRAND.charcoal }}>
-                    <div className="p-5 border-b" style={{ borderColor: BRAND.charcoal }}>
-                        <SheetTitle className="flex items-center gap-2 text-lg font-bold tracking-wide" style={{ color: BRAND.gold }}>
-                            <Navigation className="w-5 h-5" />
-                            OPTIMIZED ROUTES
-                        </SheetTitle>
-                        <p className="text-xs mt-1" style={{ color: '#888' }}>{filteredRoutes.length} routes from {effectiveProperties.length} properties</p>
-                    </div>
-                    <div className="overflow-y-auto max-h-[calc(75vh-80px)] p-4 space-y-3">
-                        {filteredRoutes.map((route) => (
-                            <button
-                                key={route.id}
-                                onClick={() => { setActiveRoute(route); setPreviewRoute(null); setShowRoutePanel(false); }}
-                                onMouseEnter={() => setPreviewRoute(route)}
-                                onMouseLeave={() => setPreviewRoute(null)}
-                                onTouchStart={() => setPreviewRoute(route)}
-                                className="w-full p-4 rounded-xl border transition-all text-left"
-                                style={{ 
-                                    background: activeRoute?.id === route.id ? `${BRAND.gold}20` : previewRoute?.id === route.id ? `${BRAND.gold}10` : BRAND.charcoal,
-                                    borderColor: activeRoute?.id === route.id ? BRAND.gold : previewRoute?.id === route.id ? `${BRAND.gold}60` : '#333'
-                                }}
-                            >
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="font-bold" style={{ color: BRAND.offWhite }}>{route.name}</span>
-                                    <Badge style={{ 
-                                        background: route.competitivenessScore >= 150 ? '#22c55e' : route.competitivenessScore >= 100 ? '#eab308' : '#666',
-                                        color: '#000'
-                                    }}>
-                                        {route.competitivenessScore}
-                                    </Badge>
-                                </div>
-                                <div className="flex gap-4 text-xs" style={{ color: '#888' }}>
-                                    <span>{route.houseCount} houses</span>
-                                    <span>{route.totalDistance} mi</span>
-                                    <span>Avg: {route.avgScore}</span>
-                                </div>
+            {/* Routes Panel - using Dialog-style overlay */}
+            {showRoutePanel && (
+                <div className="fixed inset-0 z-[2000]">
+                    <div className="absolute inset-0 bg-black/60" onClick={() => setShowRoutePanel(false)} />
+                    <div 
+                        className="absolute bottom-0 left-0 right-0 h-[70vh] rounded-t-3xl overflow-hidden"
+                        style={{ background: BRAND.voidBlack, borderTop: `1px solid ${BRAND.charcoal}` }}
+                    >
+                        <div className="p-5 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
+                            <div>
+                                <h2 className="flex items-center gap-2 text-lg font-bold tracking-wide" style={{ color: BRAND.gold }}>
+                                    <Navigation className="w-5 h-5" />
+                                    OPTIMIZED ROUTES
+                                </h2>
+                                <p className="text-xs mt-1" style={{ color: '#888' }}>{filteredRoutes.length} routes from {effectiveProperties.length} properties</p>
+                            </div>
+                            <button onClick={() => setShowRoutePanel(false)} className="p-2">
+                                <X className="w-5 h-5" style={{ color: BRAND.offWhite }} />
                             </button>
-                        ))}
-                    </div>
-                </SheetContent>
-            </Sheet>
-
-            {/* Compare Panel */}
-            <Sheet open={showCompare} onOpenChange={setShowCompare}>
-                <SheetContent side="right" className="w-full sm:max-w-md p-0" style={{ background: BRAND.voidBlack, borderColor: BRAND.charcoal }}>
-                    <div className="p-5 border-b" style={{ borderColor: BRAND.charcoal }}>
-                        <SheetTitle className="flex items-center gap-2 font-bold tracking-wide" style={{ color: BRAND.gold }}>
-                            <BarChart3 className="w-5 h-5" />
-                            ROUTE COMPARISON
-                        </SheetTitle>
-                    </div>
-                    
-                    <div className="p-5 space-y-6">
-                        {/* Houses Per Route */}
-                        <div>
-                            <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                HOUSES PER ROUTE: {housesPerRoute}
-                            </label>
-                            <Slider
-                                value={[housesPerRoute]}
-                                onValueChange={([v]) => setHousesPerRoute(v)}
-                                min={20}
-                                max={100}
-                                step={5}
-                                className="w-full"
-                            />
                         </div>
-
-                        {/* Min Score Filter */}
-                        <div>
-                            <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                MIN SCORE: {minScore}
-                            </label>
-                            <Slider
-                                value={[minScore]}
-                                onValueChange={([v]) => setMinScore(v)}
-                                min={0}
-                                max={200}
-                                step={10}
-                                className="w-full"
-                            />
-                        </div>
-
-                        {/* Sort By */}
-                        <div>
-                            <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                <Filter className="w-3 h-3 inline mr-1" /> SORT BY
-                            </label>
-                            <div className="flex gap-2">
-                                {[{ id: 'score', label: 'SCORE' }, { id: 'houses', label: 'HOUSES' }, { id: 'distance', label: 'DISTANCE' }].map(opt => (
+                        <div className="overflow-y-auto h-[calc(70vh-80px)] p-4 space-y-3">
+                            {filteredRoutes.length === 0 ? (
+                                <p className="text-center py-8" style={{ color: '#888' }}>No routes available</p>
+                            ) : (
+                                filteredRoutes.map((route) => (
                                     <button
-                                        key={opt.id}
-                                        onClick={() => setSortBy(opt.id)}
-                                        className="px-3 py-2 rounded-lg text-xs font-bold tracking-wide transition-all"
+                                        key={route.id}
+                                        onClick={() => { setActiveRoute(route); setPreviewRoute(null); setShowRoutePanel(false); }}
+                                        className="w-full p-4 rounded-xl border transition-all text-left"
                                         style={{ 
-                                            background: sortBy === opt.id ? BRAND.gold : BRAND.charcoal,
-                                            color: sortBy === opt.id ? BRAND.voidBlack : BRAND.offWhite
+                                            background: activeRoute?.id === route.id ? `${BRAND.gold}20` : BRAND.charcoal,
+                                            borderColor: activeRoute?.id === route.id ? BRAND.gold : '#333'
                                         }}
                                     >
-                                        {opt.label}
+                                        <div className="flex items-center justify-between mb-2">
+                                            <span className="font-bold" style={{ color: BRAND.offWhite }}>{route.name}</span>
+                                            <Badge style={{ 
+                                                background: route.competitivenessScore >= 150 ? '#22c55e' : route.competitivenessScore >= 100 ? '#eab308' : '#666',
+                                                color: '#000'
+                                            }}>
+                                                {route.competitivenessScore}
+                                            </Badge>
+                                        </div>
+                                        <div className="flex gap-4 text-xs" style={{ color: '#888' }}>
+                                            <span>{route.houseCount} houses</span>
+                                            <span>{route.totalDistance} mi</span>
+                                            <span>Avg: {route.avgScore}</span>
+                                        </div>
                                     </button>
-                                ))}
-                            </div>
+                                ))
+                            )}
                         </div>
+                    </div>
+                </div>
+            )}
 
-                        {/* Route Comparison Table */}
-                        <div className="mt-6">
-                            <h3 className="text-xs font-bold tracking-wide mb-3" style={{ color: BRAND.gold }}>
-                                TOP ROUTES ({filteredRoutes.length})
-                            </h3>
-                            <div className="space-y-2 max-h-[400px] overflow-y-auto">
-                                {filteredRoutes.slice(0, 20).map((route, idx) => (
-                                    <div 
-                                        key={route.id}
-                                        className="p-3 rounded-lg flex items-center justify-between cursor-pointer transition-all hover:opacity-80"
-                                        style={{ background: BRAND.charcoal, borderLeft: `3px solid ${ROUTE_COLORS[idx % ROUTE_COLORS.length]}` }}
-                                        onClick={() => { setActiveRoute(route); setShowCompare(false); }}
-                                    >
-                                        <div>
-                                            <p className="font-bold text-sm" style={{ color: BRAND.offWhite }}>{route.name}</p>
-                                            <p className="text-xs" style={{ color: '#888' }}>{route.houseCount} • {route.totalDistance}mi</p>
+            {/* Filter Panel */}
+            {showCompare && (
+                <div className="fixed inset-0 z-[2000]">
+                    <div className="absolute inset-0 bg-black/60" onClick={() => setShowCompare(false)} />
+                    <div 
+                        className="absolute top-0 right-0 bottom-0 w-full max-w-md overflow-hidden"
+                        style={{ background: BRAND.voidBlack, borderLeft: `1px solid ${BRAND.charcoal}` }}
+                    >
+                        <div className="p-5 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
+                            <h2 className="flex items-center gap-2 font-bold tracking-wide" style={{ color: BRAND.gold }}>
+                                <BarChart3 className="w-5 h-5" />
+                                ROUTE FILTERS
+                            </h2>
+                            <button onClick={() => setShowCompare(false)} className="p-2">
+                                <X className="w-5 h-5" style={{ color: BRAND.offWhite }} />
+                            </button>
+                        </div>
+                        
+                        <div className="p-5 space-y-6 overflow-y-auto h-[calc(100%-70px)]">
+                            <div>
+                                <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                    HOUSES PER ROUTE: {housesPerRoute}
+                                </label>
+                                <Slider
+                                    value={[housesPerRoute]}
+                                    onValueChange={([v]) => setHousesPerRoute(v)}
+                                    min={20}
+                                    max={100}
+                                    step={5}
+                                    className="w-full"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                    MIN SCORE: {minScore}
+                                </label>
+                                <Slider
+                                    value={[minScore]}
+                                    onValueChange={([v]) => setMinScore(v)}
+                                    min={0}
+                                    max={200}
+                                    step={10}
+                                    className="w-full"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                    <Filter className="w-3 h-3 inline mr-1" /> SORT BY
+                                </label>
+                                <div className="flex gap-2">
+                                    {[{ id: 'score', label: 'SCORE' }, { id: 'houses', label: 'HOUSES' }, { id: 'distance', label: 'DISTANCE' }].map(opt => (
+                                        <button
+                                            key={opt.id}
+                                            onClick={() => setSortBy(opt.id)}
+                                            className="px-3 py-2 rounded-lg text-xs font-bold tracking-wide transition-all"
+                                            style={{ 
+                                                background: sortBy === opt.id ? BRAND.gold : BRAND.charcoal,
+                                                color: sortBy === opt.id ? BRAND.voidBlack : BRAND.offWhite
+                                            }}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="mt-6">
+                                <h3 className="text-xs font-bold tracking-wide mb-3" style={{ color: BRAND.gold }}>
+                                    TOP ROUTES ({filteredRoutes.length})
+                                </h3>
+                                <div className="space-y-2">
+                                    {filteredRoutes.slice(0, 20).map((route, idx) => (
+                                        <div 
+                                            key={route.id}
+                                            className="p-3 rounded-lg flex items-center justify-between cursor-pointer transition-all hover:opacity-80"
+                                            style={{ background: BRAND.charcoal, borderLeft: `3px solid ${ROUTE_COLORS[idx % ROUTE_COLORS.length]}` }}
+                                            onClick={() => { setActiveRoute(route); setShowCompare(false); }}
+                                        >
+                                            <div>
+                                                <p className="font-bold text-sm" style={{ color: BRAND.offWhite }}>{route.name}</p>
+                                                <p className="text-xs" style={{ color: '#888' }}>{route.houseCount} • {route.totalDistance}mi</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="font-bold text-lg" style={{ color: BRAND.gold }}>{route.competitivenessScore}</p>
+                                                <p className="text-xs" style={{ color: '#888' }}>score</p>
+                                            </div>
                                         </div>
-                                        <div className="text-right">
-                                            <p className="font-bold text-lg" style={{ color: BRAND.gold }}>{route.competitivenessScore}</p>
-                                            <p className="text-xs" style={{ color: '#888' }}>score</p>
-                                        </div>
-                                    </div>
-                                ))}
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     </div>
-                </SheetContent>
-            </Sheet>
+                </div>
+            )}
 
             {/* Route Checklist */}
-            <Sheet open={showChecklist} onOpenChange={setShowChecklist}>
-                <SheetContent side="right" className="w-full sm:max-w-lg p-0" style={{ background: BRAND.voidBlack, borderColor: BRAND.charcoal }}>
-                    {activeRoute && (
+            {showChecklist && activeRoute && (
+                <div className="fixed inset-0 z-[2000]">
+                    <div className="absolute inset-0 bg-black/60" onClick={() => setShowChecklist(false)} />
+                    <div 
+                        className="absolute top-0 right-0 bottom-0 w-full max-w-lg overflow-hidden"
+                        style={{ background: BRAND.voidBlack, borderLeft: `1px solid ${BRAND.charcoal}` }}
+                    >
                         <RouteChecklist
                             route={activeRoute}
                             logs={logs}
                             onLogResult={handleLogResult}
                             onClose={() => setShowChecklist(false)}
                         />
-                    )}
-                </SheetContent>
-            </Sheet>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
