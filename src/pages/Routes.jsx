@@ -29,23 +29,36 @@ export default function RoutesPage() {
         initialData: []
     });
 
-    // Calculate effective status
+    // Calculate effective status - NO GHOST LEADS for performance
     const effectiveProperties = useMemo(() => {
-        const ghostLeads = generateGhostLeads(properties);
-        const allProps = [...properties, ...ghostLeads];
-        
-        return allProps.map(prop => {
-            const propLogs = logs.filter(l => l.address_hash === prop.address_hash);
-            const status = determineEffectiveStatus(prop, propLogs);
-            return { ...prop, effective_status: status };
-        });
+        return properties
+            .filter(prop => prop.lat && prop.lng)
+            .map(prop => {
+                const propLogs = logs.filter(l => l.address_hash === prop.address_hash);
+                const status = determineEffectiveStatus(prop, propLogs);
+                return { ...prop, effective_status: status };
+            });
     }, [properties, logs]);
 
-    // Generate routes
-    const routes = useMemo(() => {
-        if (effectiveProperties.length === 0) return [];
-        return generateOptimizedRoutes(effectiveProperties, housesPerRoute);
-    }, [effectiveProperties, housesPerRoute]);
+    // Generate routes - debounced to prevent constant recalculation
+    const [routes, setRoutes] = useState([]);
+    const [generating, setGenerating] = useState(false);
+
+    useEffect(() => {
+        if (effectiveProperties.length === 0) {
+            setRoutes([]);
+            return;
+        }
+
+        setGenerating(true);
+        const timer = setTimeout(() => {
+            const generated = generateOptimizedRoutes(effectiveProperties, housesPerRoute);
+            setRoutes(generated);
+            setGenerating(false);
+        }, 300);
+
+        return () => clearTimeout(timer);
+    }, [effectiveProperties.length, housesPerRoute]);
 
     const handleExportRoute = (route) => {
         const jsonData = exportRouteToJSON(route);
@@ -58,12 +71,15 @@ export default function RoutesPage() {
         URL.revokeObjectURL(url);
     };
 
-    const isLoading = propsLoading || logsLoading;
+    const isLoading = propsLoading || logsLoading || generating;
 
-    if (isLoading) {
+    if (propsLoading || logsLoading) {
         return (
             <div className="h-full bg-slate-900 flex items-center justify-center">
-                <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
+                <div className="text-center">
+                    <Loader2 className="w-8 h-8 text-indigo-500 animate-spin mx-auto mb-2" />
+                    <p className="text-slate-400 text-sm">Loading properties...</p>
+                </div>
             </div>
         );
     }
@@ -74,7 +90,10 @@ export default function RoutesPage() {
             <div className="p-4 border-b border-slate-700">
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-xl font-bold text-white">Route Optimizer</h1>
+                        <h1 className="text-xl font-bold text-white flex items-center gap-2">
+                            Route Optimizer
+                            {generating && <Loader2 className="w-4 h-4 animate-spin" />}
+                        </h1>
                         <p className="text-slate-400 text-xs">{effectiveProperties.length} properties → {routes.length} optimized routes</p>
                     </div>
                     <div className="flex items-center gap-3">
