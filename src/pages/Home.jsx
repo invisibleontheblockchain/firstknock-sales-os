@@ -21,15 +21,15 @@ const BRAND = {
     offWhite: '#E5E5E5'
 };
 
-// Status colors: White = not visited, Green = sold, Red = couldn't sell
+// Status colors: Gray = not visited, Green = sold, Red = couldn't sell
 const STATUS_COLORS = {
-    ELIGIBLE: '#FFFFFF',      // White - not visited
+    ELIGIBLE: '#6b7280',      // Gray - not visited
     SOLD: '#22c55e',          // Green - sold
     HARD_NO: '#ef4444',       // Red - couldn't sell
     CALLBACK: '#eab308',      // Yellow - callback
-    NO_ANSWER: '#FFFFFF',     // White - not visited yet
+    NO_ANSWER: '#6b7280',     // Gray - not visited yet
     QUALIFIED: '#22c55e',     // Green - qualified/sold
-    OTHER: '#FFFFFF'          // White - default
+    OTHER: '#6b7280'          // Gray - default
 };
 
 const ROUTE_COLORS = [BRAND.gold, '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#f97316', '#a855f7'];
@@ -65,6 +65,7 @@ export default function Home() {
     const [showRoutePanel, setShowRoutePanel] = useState(false);
     const [showCompare, setShowCompare] = useState(false);
     const [housesPerRoute, setHousesPerRoute] = useState(50);
+    const ROUTE_SIZE_OPTIONS = [25, 50, 75, 100];
     const [sortBy, setSortBy] = useState('score'); // score, houses, distance
     const [minScore, setMinScore] = useState(0);
     const [quickFilter, setQuickFilter] = useState('all'); // all, eligible, sold, rejected
@@ -276,7 +277,7 @@ export default function Home() {
                     <div className="pointer-events-auto flex gap-2 justify-center">
                         {[
                             { id: 'all', label: 'ALL', color: BRAND.offWhite },
-                            { id: 'eligible', label: 'NOT VISITED', color: '#FFFFFF' },
+                            { id: 'eligible', label: 'NOT VISITED', color: '#6b7280' },
                             { id: 'sold', label: 'SOLD', color: '#22c55e' },
                             { id: 'rejected', label: 'REJECTED', color: '#ef4444' },
                         ].map(f => (
@@ -413,16 +414,23 @@ export default function Home() {
                         <div className="p-5 space-y-6 overflow-y-auto h-[calc(100%-70px)]">
                             <div>
                                 <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                    HOUSES PER ROUTE: {housesPerRoute}
+                                    HOUSES PER ROUTE
                                 </label>
-                                <Slider
-                                    value={[housesPerRoute]}
-                                    onValueChange={([v]) => setHousesPerRoute(v)}
-                                    min={20}
-                                    max={100}
-                                    step={5}
-                                    className="w-full"
-                                />
+                                <div className="flex gap-2">
+                                    {ROUTE_SIZE_OPTIONS.map(size => (
+                                        <button
+                                            key={size}
+                                            onClick={() => setHousesPerRoute(size)}
+                                            className="flex-1 py-3 rounded-lg text-sm font-bold tracking-wide transition-all"
+                                            style={{ 
+                                                background: housesPerRoute === size ? BRAND.gold : BRAND.charcoal,
+                                                color: housesPerRoute === size ? BRAND.voidBlack : BRAND.offWhite
+                                            }}
+                                        >
+                                            {size}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
 
                             <div>
