@@ -188,7 +188,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                     ))}
                 </div>
 
-                {/* Export to Google Maps */}
+                {/* Export to Apple Maps */}
                 <Button
                     className="w-full mt-4 h-12 font-bold tracking-wide"
                     style={{ background: BRAND.charcoal, color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}
@@ -196,14 +196,16 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                         const props = route.properties.slice(0, 10);
                         const origin = props[0];
                         const dest = props[props.length - 1];
-                        const waypoints = props.slice(1, -1).map(p => `${p.lat},${p.lng}`).join('|');
-                        let url = `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${dest.lat},${dest.lng}&travelmode=walking`;
-                        if (waypoints) url += `&waypoints=${waypoints}`;
+                        // Apple Maps URL format
+                        const waypoints = props.slice(1, -1).map(p => `${p.lat},${p.lng}`).join('+to:');
+                        let url = `https://maps.apple.com/?saddr=${origin.lat},${origin.lng}&daddr=${dest.lat},${dest.lng}`;
+                        if (waypoints) url = `https://maps.apple.com/?saddr=${origin.lat},${origin.lng}&daddr=${waypoints}+to:${dest.lat},${dest.lng}`;
+                        url += '&dirflg=w'; // walking directions
                         window.open(url, '_blank');
                     }}
                 >
                     <Navigation className="w-4 h-4 mr-2" />
-                    EXPORT ROUTE TO GOOGLE MAPS
+                    EXPORT ROUTE TO APPLE MAPS
                 </Button>
             </div>
 
@@ -336,10 +338,10 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                                             variant="outline"
                                             className="w-full mt-3 text-xs font-bold tracking-wide"
                                             style={{ borderColor: '#333', color: BRAND.offWhite }}
-                                            onClick={() => window.open(`https://www.google.com/maps?q=${prop.lat},${prop.lng}`, '_blank')}
+                                            onClick={() => window.open(`https://maps.apple.com/?q=${prop.lat},${prop.lng}`, '_blank')}
                                         >
                                             <MapPin className="w-4 h-4 mr-2" />
-                                            OPEN IN MAPS
+                                            OPEN IN APPLE MAPS
                                         </Button>
                                     </div>
                                 )}
