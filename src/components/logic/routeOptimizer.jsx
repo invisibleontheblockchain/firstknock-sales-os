@@ -154,11 +154,9 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null) {
  * @returns {Array} Array of route objects with metadata
  */
 export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLocation = null) {
-    // Filter out excluded statuses
-    const eligible = properties.filter(p => 
-        p.effective_status !== 'SOLD' && 
-        p.effective_status !== 'HARD_NO'
-    );
+    // Use ALL properties - don't filter by status
+    // Properties without interaction logs are ELIGIBLE
+    const eligible = properties.filter(p => p && p.lat && p.lng);
     
     if (eligible.length === 0) return [];
     

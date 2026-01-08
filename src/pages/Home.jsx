@@ -107,13 +107,13 @@ export default function Home() {
     const [routes, setRoutes] = useState([]);
     const [routesGenerating, setRoutesGenerating] = useState(false);
 
-    useEffect(() => {
+    const generateRoutes = useCallback(() => {
         if (effectiveProperties.length === 0) {
             setRoutes([]);
             return;
         }
         setRoutesGenerating(true);
-        const timer = setTimeout(() => {
+        setTimeout(() => {
             try {
                 const generated = generateOptimizedRoutes(effectiveProperties, housesPerRoute);
                 setRoutes(generated);
@@ -121,8 +121,7 @@ export default function Home() {
                 console.error(e);
             }
             setRoutesGenerating(false);
-        }, 500);
-        return () => clearTimeout(timer);
+        }, 100);
     }, [effectiveProperties, housesPerRoute]);
 
     // Filter and sort routes
@@ -432,6 +431,19 @@ export default function Home() {
                                     ))}
                                 </div>
                             </div>
+
+                            <Button
+                                onClick={generateRoutes}
+                                disabled={routesGenerating}
+                                className="w-full h-12 font-bold tracking-wide"
+                                style={{ background: BRAND.gold, color: BRAND.voidBlack }}
+                            >
+                                {routesGenerating ? (
+                                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> GENERATING...</>
+                                ) : (
+                                    <><Navigation className="w-4 h-4 mr-2" /> GENERATE {Math.ceil(effectiveProperties.length / housesPerRoute)} ROUTES</>
+                                )}
+                            </Button>
 
                             <div>
                                 <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>

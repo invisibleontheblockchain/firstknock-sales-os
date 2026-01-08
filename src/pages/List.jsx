@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, MapPin, Search, Navigation, ChevronRight, BarChart3 } from 'lucide-react';
+import { Loader2, MapPin, Search, Navigation } from 'lucide-react';
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -50,10 +50,21 @@ export default function ListPage() {
     }, [properties, logs]);
 
     // Generate routes for selected size
-    const routes = useMemo(() => {
-        if (effectiveProperties.length === 0) return [];
-        return generateOptimizedRoutes(effectiveProperties, selectedSize);
-    }, [effectiveProperties, selectedSize]);
+    const [routes, setRoutes] = useState([]);
+    const [routesGenerating, setRoutesGenerating] = useState(false);
+
+    const generateRoutes = () => {
+        if (effectiveProperties.length === 0) {
+            setRoutes([]);
+            return;
+        }
+        setRoutesGenerating(true);
+        setTimeout(() => {
+            const generated = generateOptimizedRoutes(effectiveProperties, selectedSize);
+            setRoutes(generated);
+            setRoutesGenerating(false);
+        }, 100);
+    };
 
     const filteredProperties = properties.filter(p => 
         p.full_address?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -92,8 +103,8 @@ export default function ListPage() {
                 </div>
 
                 {view === 'routes' && (
-                    <div>
-                        <p className="text-xs font-bold tracking-wide mb-2" style={{ color: '#888' }}>ROUTE SIZE</p>
+                    <div className="space-y-3">
+                        <p className="text-xs font-bold tracking-wide" style={{ color: '#888' }}>ROUTE SIZE</p>
                         <div className="flex gap-2">
                             {ROUTE_SIZE_OPTIONS.map(size => (
                                 <button
@@ -109,6 +120,18 @@ export default function ListPage() {
                                 </button>
                             ))}
                         </div>
+                        <Button
+                            onClick={generateRoutes}
+                            disabled={routesGenerating || effectiveProperties.length === 0}
+                            className="w-full h-12 font-bold tracking-wide"
+                            style={{ background: BRAND.gold, color: BRAND.voidBlack }}
+                        >
+                            {routesGenerating ? (
+                                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> GENERATING...</>
+                            ) : (
+                                <><Navigation className="w-4 h-4 mr-2" /> GENERATE ROUTES ({effectiveProperties.length} homes)</>
+                            )}
+                        </Button>
                     </div>
                 )}
 
