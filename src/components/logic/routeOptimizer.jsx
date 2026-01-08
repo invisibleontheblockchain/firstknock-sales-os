@@ -257,3 +257,38 @@ export function exportRouteToJSON(route) {
         }))
     };
 }
+
+/**
+ * Generate Google Maps URL for route
+ */
+export function generateGoogleMapsUrl(route) {
+    if (!route.properties || route.properties.length === 0) return '';
+    
+    // Google Maps supports up to 10 waypoints, so we'll use key stops
+    const properties = route.properties;
+    const maxStops = Math.min(properties.length, 10);
+    const step = Math.max(1, Math.floor(properties.length / maxStops));
+    
+    const origin = properties[0];
+    const destination = properties[properties.length - 1];
+    
+    // Select waypoints evenly distributed
+    const waypoints = [];
+    for (let i = step; i < properties.length - 1; i += step) {
+        if (waypoints.length < 8) { // Leave room for origin and destination
+            waypoints.push(properties[i]);
+        }
+    }
+    
+    const originStr = `${origin.lat},${origin.lng}`;
+    const destStr = `${destination.lat},${destination.lng}`;
+    const waypointsStr = waypoints.map(p => `${p.lat},${p.lng}`).join('|');
+    
+    let url = `https://www.google.com/maps/dir/?api=1&origin=${originStr}&destination=${destStr}`;
+    if (waypointsStr) {
+        url += `&waypoints=${waypointsStr}`;
+    }
+    url += '&travelmode=walking';
+    
+    return url;
+}
