@@ -4,8 +4,11 @@
  * - Geographic proximity
  * - Property value/score
  * - Distance minimization
- * - Realistic door-to-door patterns
+ * - Street Sweep pattern (all houses on a street)
+ * - Street Cooldown (avoid recently visited streets)
  */
+
+import { filterByStreetCooldown, orderForStreetSweep, COOLDOWN_CONFIG } from './territoryLogic';
 
 // Haversine distance in miles
 function calculateDistance(lat1, lng1, lat2, lng2) {
@@ -181,11 +184,35 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null) {
  * @param {Array} properties - All properties to route
  * @param {Number} housesPerRoute - Target houses per route (default 50)
  * @param {Object} startLocation - Optional {lat, lng} starting point
+ * @param {Array} allLogs - Optional logs for street cooldown filtering
+ * @param {Object} options - Additional options { streetCooldownDays, useStreetSweep }
  * @returns {Array} Array of route objects with metadata
  */
-export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLocation = null) {
-    // Use ALL properties
-    const eligible = properties.filter(p => p && p.lat && p.lng);
+export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLocation = null, allLogs = [], options = {}) {
+    const { 
+        streetCooldownDays = COOLDOWN_CONFIG.STREET_COOLDOWN_DAYS,
+        useStreetSweep = true 
+    } = options;
+
+    // Filter out properties on streets that are on cooldown
+    let eligible = properties.filter(p => p && p.lat && p.lng);
+    
+    // Apply street cooldown filter if logs are provided
+    let cooldownInfo = null;
+    if (allLogs && allLogs.length > 0) {
+        const filtered = filterByStreetCooldown(eligible, allLogs, streetCooldownDays);
+        eligible = filtered.eligible;
+        cooldownInfo = {
+            streetsOnCooldown: filtered.cooldownStreets,
+            propertiesExcluded: filtered.onCooldown.length
+        };
+    }
+    
+    // Also exclude HARD_NO and SOLD from routing
+    eligible = eligible.filter(p => 
+        p.effective_status !== 'HARD_NO' && p.effective_status !== 'SOLD'
+    );
+    
     if (eligible.length === 0) return [];
     
     // Score all properties
@@ -206,12 +233,17 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         const clusterProps = clustered.filter(p => p.cluster === i);
         if (clusterProps.length === 0) continue;
         
-        // Optimize order
-        const orderedProps = optimizeRouteOrder(
-            clusterProps, 
-            startLocation?.lat, 
-            startLocation?.lng
-        );
+        // Use street sweep ordering if enabled
+        let orderedProps;
+        if (useStreetSweep) {
+            orderedProps = orderForStreetSweep(clusterProps);
+        } else {
+            orderedProps = optimizeRouteOrder(
+                clusterProps, 
+                startLocation?.lat, 
+                startLocation?.lng
+            );
+        }
         
         // Metrics
         let totalDistance = 0;
@@ -244,11 +276,16 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         
         let competitivenessScore = Math.round((avgScore * 0.6 + efficiency * 100 * 0.4) - commutePenalty);
         
+        // Get unique streets in this route
+        const routeStreets = [...new Set(orderedProps.map(p => p.street_name).filter(Boolean))];
+        
         routes.push({
             id: `route_${i + 1}`,
             name: `Route ${i + 1}`,
             properties: orderedProps,
             houseCount: orderedProps.length,
+            streetCount: routeStreets.length,
+            streets: routeStreets,
             totalDistance: Math.round(totalDistance * 100) / 100,
             distanceFromStart: Math.round(distanceFromStart * 100) / 100,
             totalScore: Math.round(totalScore),
@@ -261,6 +298,11 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
     
     // Sort routes by competitiveness
     routes.sort((a, b) => b.competitivenessScore - a.competitivenessScore);
+    
+    // Attach cooldown info to result
+    if (cooldownInfo) {
+        routes._cooldownInfo = cooldownInfo;
+    }
     
     return routes;
 }
