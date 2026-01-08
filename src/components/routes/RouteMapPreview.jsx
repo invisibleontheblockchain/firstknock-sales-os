@@ -24,18 +24,28 @@ const routeColors = [
 
 export default function RouteMapPreview({ routes, selectedRouteId }) {
     const selectedRoute = routes.find(r => r.id === selectedRouteId);
-    const displayRoutes = selectedRoute ? [selectedRoute] : routes;
+    
+    // ONLY show selected route to prevent performance issues
+    if (!selectedRoute) {
+        return (
+            <div className="h-full w-full bg-slate-900 flex items-center justify-center">
+                <div className="text-center text-slate-400">
+                    <MapPin className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">Select a route to preview</p>
+                </div>
+            </div>
+        );
+    }
 
-    // Calculate center from all routes
-    const allProps = displayRoutes.flatMap(r => r.properties);
-    const center = allProps.length > 0 
-        ? [allProps[0].lat, allProps[0].lng]
-        : [34.0522, -118.2437];
+    const color = routeColors[routes.findIndex(r => r.id === selectedRoute.id) % routeColors.length];
+    const positions = selectedRoute.properties.map(p => [p.lat, p.lng]);
+    const center = [selectedRoute.properties[0].lat, selectedRoute.properties[0].lng];
 
     return (
         <MapContainer 
+            key={selectedRoute.id}
             center={center} 
-            zoom={13} 
+            zoom={15} 
             style={{ height: '100%', width: '100%', background: '#1e293b' }}
             zoomControl={true}
         >
@@ -44,35 +54,31 @@ export default function RouteMapPreview({ routes, selectedRouteId }) {
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
 
-            {displayRoutes.map((route, routeIdx) => {
-                const color = routeColors[routeIdx % routeColors.length];
-                const positions = route.properties.map(p => [p.lat, p.lng]);
+            {/* Route Line */}
+            <Polyline 
+                positions={positions}
+                pathOptions={{ color, weight: 4, opacity: 0.8 }}
+            />
 
+            {/* Only show first, last, and every 5th marker to reduce load */}
+            {selectedRoute.properties.map((prop, idx) => {
+                const showMarker = idx === 0 || idx === selectedRoute.properties.length - 1 || idx % 5 === 0;
+                if (!showMarker) return null;
+                
                 return (
-                    <React.Fragment key={route.id}>
-                        {/* Route Line */}
-                        <Polyline 
-                            positions={positions}
-                            pathOptions={{ color, weight: 3, opacity: 0.7 }}
-                        />
-
-                        {/* Markers */}
-                        {route.properties.map((prop, idx) => (
-                            <Marker
-                                key={prop.address_hash}
-                                position={[prop.lat, prop.lng]}
-                                icon={createNumberedIcon(idx + 1, color)}
-                            >
-                                <Popup>
-                                    <div className="text-xs">
-                                        <div className="font-bold">{prop.full_address}</div>
-                                        <div className="text-slate-600">Stop #{idx + 1}</div>
-                                        <div className="text-slate-600">Status: {prop.effective_status}</div>
-                                    </div>
-                                </Popup>
-                            </Marker>
-                        ))}
-                    </React.Fragment>
+                    <Marker
+                        key={prop.address_hash}
+                        position={[prop.lat, prop.lng]}
+                        icon={createNumberedIcon(idx + 1, color)}
+                    >
+                        <Popup>
+                            <div className="text-xs">
+                                <div className="font-bold">{prop.full_address}</div>
+                                <div className="text-slate-600">Stop #{idx + 1}</div>
+                                <div className="text-slate-600">Status: {prop.effective_status}</div>
+                            </div>
+                        </Popup>
+                    </Marker>
                 );
             })}
         </MapContainer>
