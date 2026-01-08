@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Map, List, Upload, Settings } from 'lucide-react';
+import { Map, List, Upload, Settings, Navigation } from 'lucide-react';
 
 export default function Layout({ children }) {
     return (
@@ -43,7 +43,7 @@ export default function Layout({ children }) {
 
             {/* Bottom Navigation */}
             <nav className="bg-slate-800 border-t border-slate-700 z-20 safe-area-bottom">
-                <div className="flex justify-around items-center h-16 max-w-md mx-auto">
+                <div className="flex justify-around items-center h-16 max-w-full mx-auto">
                     <NavItem 
                       icon={Map} 
                       label="Map" 
@@ -55,6 +55,12 @@ export default function Layout({ children }) {
                       label="List" 
                       to={createPageUrl('List')} 
                       active={window.location.pathname.endsWith('List')}
+                    />
+                    <NavItem 
+                      icon={Navigation} 
+                      label="Routes" 
+                      to={createPageUrl('Routes')} 
+                      active={window.location.pathname.endsWith('Routes')}
                     />
                     <NavItem 
                       icon={Upload} 
