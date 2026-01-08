@@ -22,10 +22,13 @@ export default function Layout({ children }) {
             <header className="bg-black border-b border-slate-800 p-4 z-20 shadow-md">
                 <div className="flex justify-between items-center max-w-7xl mx-auto w-full">
                     <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-indigo-500 rounded-lg flex items-center justify-center">
-                            <span className="font-bold text-white text-lg">FK</span>
-                        </div>
-                        <h1 className="text-xl font-bold tracking-tight">FirstKnock</h1>
+                        <svg width="32" height="32" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M256 100 L400 120 V400 L256 420 V100 Z" fill="#FFD700" stroke="none" style={{filter: 'drop-shadow(0 0 8px rgba(255, 215, 0, 0.5))'}}/>
+                            <rect x="150" y="80" width="220" height="360" rx="4" stroke="#333333" strokeWidth="12" fill="none"/>
+                            <path d="M160 90 L256 100 V410 L160 420 V90 Z" fill="#0A0A0A" stroke="#1F1F1F" strokeWidth="2"/>
+                            <rect x="235" y="240" width="8" height="24" rx="2" fill="#FFD700"/>
+                        </svg>
+                        <h1 className="text-xl font-bold tracking-tight text-white">FirstKnock</h1>
                     </div>
                     {/* Status Indicator */}
                     <div className="flex items-center gap-2">
@@ -76,7 +79,7 @@ export default function Layout({ children }) {
 
 function NavItem({ icon: Icon, label, to, active }) {
     return (
-        <Link to={to} className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors duration-200 ${active ? 'text-indigo-400' : 'text-slate-500 hover:text-slate-300'}`}>
+        <Link to={to} className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors duration-200 ${active ? 'text-yellow-400' : 'text-white hover:text-yellow-300'}`}>
             <Icon className={`w-6 h-6 ${active ? 'fill-current/20' : ''}`} />
             <span className="text-[10px] font-medium">{label}</span>
         </Link>

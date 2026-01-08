@@ -21,15 +21,15 @@ const BRAND = {
     offWhite: '#E5E5E5'
 };
 
-// Status colors
+// Status colors: White = not visited, Green = sold, Red = couldn't sell
 const STATUS_COLORS = {
-    ELIGIBLE: '#22c55e',
-    SOLD: BRAND.gold,
-    HARD_NO: '#ef4444',
-    CALLBACK: '#eab308',
-    NO_ANSWER: '#6b7280',
-    QUALIFIED: '#3b82f6',
-    OTHER: '#94a3b8'
+    ELIGIBLE: '#FFFFFF',      // White - not visited
+    SOLD: '#22c55e',          // Green - sold
+    HARD_NO: '#ef4444',       // Red - couldn't sell
+    CALLBACK: '#eab308',      // Yellow - callback
+    NO_ANSWER: '#FFFFFF',     // White - not visited yet
+    QUALIFIED: '#22c55e',     // Green - qualified/sold
+    OTHER: '#FFFFFF'          // White - default
 };
 
 const ROUTE_COLORS = [BRAND.gold, '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#f97316', '#a855f7'];
@@ -67,6 +67,8 @@ export default function Home() {
     const [housesPerRoute, setHousesPerRoute] = useState(50);
     const [sortBy, setSortBy] = useState('score'); // score, houses, distance
     const [minScore, setMinScore] = useState(0);
+    const [quickFilter, setQuickFilter] = useState('all'); // all, eligible, sold, rejected
+    const [previewRoute, setPreviewRoute] = useState(null);
     const mapRef = useRef(null);
 
     // Fetch ALL 5000 properties
@@ -179,20 +181,36 @@ export default function Home() {
                 <LocationMarker />
                 <MapController fitBounds={fitBounds} />
 
-                {/* All markers when no route selected */}
-                {!activeRoute && effectiveProperties.map(p => (
+                {/* All markers when no route selected - filtered by quickFilter */}
+                {!activeRoute && effectiveProperties
+                    .filter(p => {
+                        if (quickFilter === 'all') return true;
+                        if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
+                        if (quickFilter === 'sold') return p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED';
+                        if (quickFilter === 'rejected') return p.effective_status === 'HARD_NO';
+                        return true;
+                    })
+                    .map(p => (
                     <CircleMarker
                         key={p.address_hash}
                         center={[p.lat, p.lng]}
                         radius={5}
                         pathOptions={{
                             fillColor: STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER,
-                            fillOpacity: 0.85,
-                            color: BRAND.charcoal,
+                            fillOpacity: 0.9,
+                            color: '#333',
                             weight: 1
                         }}
                     />
                 ))}
+                
+                {/* Preview Route (hover/tap from list) */}
+                {previewRoute && !activeRoute && (
+                    <Polyline
+                        positions={previewRoute.properties.map(p => [p.lat, p.lng])}
+                        pathOptions={{ color: BRAND.gold, weight: 3, opacity: 0.6, dashArray: '5,10' }}
+                    />
+                )}
 
                 {/* Active Route */}
                 {activeRoute && (
@@ -219,39 +237,65 @@ export default function Home() {
             </MapContainer>
 
             {/* Top Stats Bar */}
-            <div className="absolute top-4 left-4 right-4 z-[1000] flex justify-between items-start pointer-events-none">
-                <div className="pointer-events-auto flex gap-2">
-                    <div className="rounded-lg px-4 py-2 border" style={{ background: `${BRAND.voidBlack}ee`, borderColor: BRAND.charcoal }}>
-                        <div className="flex items-center gap-3">
-                            <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: BRAND.gold, boxShadow: `0 0 8px ${BRAND.gold}` }} />
-                            <span className="text-sm font-bold tracking-wide" style={{ color: BRAND.offWhite }}>
-                                {effectiveProperties.length.toLocaleString()}
-                            </span>
-                            <span className="text-xs" style={{ color: '#888' }}>PROPERTIES</span>
+            <div className="absolute top-4 left-4 right-4 z-[1000] flex flex-col gap-2 pointer-events-none">
+                <div className="flex justify-between items-start">
+                    <div className="pointer-events-auto flex gap-2">
+                        <div className="rounded-lg px-4 py-2 border" style={{ background: `${BRAND.voidBlack}ee`, borderColor: BRAND.charcoal }}>
+                            <div className="flex items-center gap-3">
+                                <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: BRAND.gold, boxShadow: `0 0 8px ${BRAND.gold}` }} />
+                                <span className="text-sm font-bold tracking-wide" style={{ color: BRAND.offWhite }}>
+                                    {effectiveProperties.length.toLocaleString()}
+                                </span>
+                            </div>
                         </div>
+                        {activeRoute && (
+                            <div className="rounded-lg px-4 py-2 flex items-center gap-2" style={{ background: BRAND.gold }}>
+                                <Navigation className="w-4 h-4" style={{ color: BRAND.voidBlack }} />
+                                <span className="text-sm font-bold" style={{ color: BRAND.voidBlack }}>{activeRoute.name}</span>
+                                <button onClick={() => setActiveRoute(null)} className="ml-1">
+                                    <X className="w-4 h-4" style={{ color: BRAND.voidBlack }} />
+                                </button>
+                            </div>
+                        )}
                     </div>
-                    {activeRoute && (
-                        <div className="rounded-lg px-4 py-2 flex items-center gap-2" style={{ background: BRAND.gold }}>
-                            <Navigation className="w-4 h-4" style={{ color: BRAND.voidBlack }} />
-                            <span className="text-sm font-bold" style={{ color: BRAND.voidBlack }}>{activeRoute.name}</span>
-                            <button onClick={() => setActiveRoute(null)} className="ml-1">
-                                <X className="w-4 h-4" style={{ color: BRAND.voidBlack }} />
-                            </button>
-                        </div>
-                    )}
+                    
+                    <div className="pointer-events-auto">
+                        <Button
+                            onClick={() => setShowCompare(true)}
+                            className="rounded-lg h-10 px-4 font-bold tracking-wide"
+                            style={{ background: BRAND.charcoal, color: BRAND.gold, border: `1px solid ${BRAND.gold}40` }}
+                        >
+                            <BarChart3 className="w-4 h-4 mr-2" />
+                            FILTER
+                        </Button>
+                    </div>
                 </div>
                 
-                {/* Compare Button */}
-                <div className="pointer-events-auto">
-                    <Button
-                        onClick={() => setShowCompare(true)}
-                        className="rounded-lg h-10 px-4 font-bold tracking-wide"
-                        style={{ background: BRAND.charcoal, color: BRAND.gold, border: `1px solid ${BRAND.gold}40` }}
-                    >
-                        <BarChart3 className="w-4 h-4 mr-2" />
-                        COMPARE
-                    </Button>
-                </div>
+                {/* Quick Filter Bar */}
+                {!activeRoute && (
+                    <div className="pointer-events-auto flex gap-2 justify-center">
+                        {[
+                            { id: 'all', label: 'ALL', color: BRAND.offWhite },
+                            { id: 'eligible', label: 'NOT VISITED', color: '#FFFFFF' },
+                            { id: 'sold', label: 'SOLD', color: '#22c55e' },
+                            { id: 'rejected', label: 'REJECTED', color: '#ef4444' },
+                        ].map(f => (
+                            <button
+                                key={f.id}
+                                onClick={() => setQuickFilter(f.id)}
+                                className="px-3 py-1.5 rounded-full text-[10px] font-bold tracking-wide transition-all flex items-center gap-1.5"
+                                style={{ 
+                                    background: quickFilter === f.id ? BRAND.gold : `${BRAND.voidBlack}dd`,
+                                    color: quickFilter === f.id ? BRAND.voidBlack : BRAND.offWhite,
+                                    border: `1px solid ${quickFilter === f.id ? BRAND.gold : '#333'}`
+                                }}
+                            >
+                                <span className="w-2 h-2 rounded-full" style={{ background: f.color }} />
+                                {f.label}
+                            </button>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Bottom Action Bar */}
@@ -306,11 +350,14 @@ export default function Home() {
                         {filteredRoutes.map((route) => (
                             <button
                                 key={route.id}
-                                onClick={() => { setActiveRoute(route); setShowRoutePanel(false); }}
+                                onClick={() => { setActiveRoute(route); setPreviewRoute(null); setShowRoutePanel(false); }}
+                                onMouseEnter={() => setPreviewRoute(route)}
+                                onMouseLeave={() => setPreviewRoute(null)}
+                                onTouchStart={() => setPreviewRoute(route)}
                                 className="w-full p-4 rounded-xl border transition-all text-left"
                                 style={{ 
-                                    background: activeRoute?.id === route.id ? `${BRAND.gold}20` : BRAND.charcoal,
-                                    borderColor: activeRoute?.id === route.id ? BRAND.gold : '#333'
+                                    background: activeRoute?.id === route.id ? `${BRAND.gold}20` : previewRoute?.id === route.id ? `${BRAND.gold}10` : BRAND.charcoal,
+                                    borderColor: activeRoute?.id === route.id ? BRAND.gold : previewRoute?.id === route.id ? `${BRAND.gold}60` : '#333'
                                 }}
                             >
                                 <div className="flex items-center justify-between mb-2">
