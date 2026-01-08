@@ -2,6 +2,7 @@ import React from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { MapPin } from 'lucide-react';
 
 // Custom Route Marker Icons
 const createNumberedIcon = (number, color) => new L.DivIcon({
