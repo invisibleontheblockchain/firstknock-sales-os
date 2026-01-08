@@ -448,12 +448,12 @@ export default function Home() {
 
                         {/* Scoring Legend */}
                         <div className="px-5 py-2 text-[10px] space-y-1" style={{ color: '#888', background: '#151515' }}>
-                            <p className="font-bold text-gray-400">SCORE CRITERIA:</p>
+                            <p className="font-bold text-gray-400">SCORE CRITERIA (FRESHNESS FIRST):</p>
                             <ul className="list-disc pl-4 space-y-0.5">
-                                <li><span style={{color: BRAND.gold}}>+50</span> for Eligible (Not Visited)</li>
-                                <li><span style={{color: '#22c55e'}}>+70</span> for Qualified/Hot Leads</li>
-                                <li><span style={{color: '#eab308'}}>+30</span> for Callback Needed</li>
-                                <li><span style={{color: '#ef4444'}}>0</span> for Sold/Rejected (Excluded)</li>
+                                <li><span style={{color: BRAND.gold}}>+200</span> Sold &lt; 7 days ago (Hot!)</li>
+                                <li><span style={{color: BRAND.gold}}>+180-20</span> Sold 1-12 months ago</li>
+                                <li><span style={{color: '#22c55e'}}>+20-40</span> High Value Property</li>
+                                <li><span style={{color: '#fff'}}>+50</span> Eligible / <span style={{color: '#eab308'}}>+30</span> Callback</li>
                                 <li>Distance Efficiency & Clustering applied</li>
                             </ul>
                         </div>
