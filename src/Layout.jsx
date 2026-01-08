@@ -5,17 +5,16 @@ import { Map, List, Upload, Settings, Navigation } from 'lucide-react';
 
 export default function Layout({ children }) {
     return (
-        <div className="flex flex-col h-screen bg-slate-900 text-slate-100 font-sans overflow-hidden">
-            {/* Dark Mode Map Style Injection for Leaflet */}
+        <div className="flex flex-col h-screen font-sans overflow-hidden" style={{ background: '#0A0A0A', color: '#E5E5E5' }}>
+            {/* Brand Theme + Map Styles */}
             <style>{`
+                @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
+                
+                body { font-family: 'Inter', sans-serif; }
+                h1, h2, h3, h4, h5, h6 { font-family: 'Montserrat', sans-serif; }
+                
                 .leaflet-container {
-                    background: #1e293b !important;
-                }
-                .leaflet-layer,
-                .leaflet-control-zoom-in,
-                .leaflet-control-zoom-out,
-                .leaflet-control-attribution {
-                    filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+                    background: #0A0A0A !important;
                 }
             `}</style>
             
