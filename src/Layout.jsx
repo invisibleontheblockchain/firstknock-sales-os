@@ -45,33 +45,27 @@ export default function Layout({ children }) {
 
             {/* Bottom Navigation */}
             <nav className="bg-black border-t border-slate-800 z-20 safe-area-bottom">
-                <div className="flex justify-around items-center h-16 max-w-full mx-auto">
-                    <NavItem 
-                      icon={Map} 
-                      label="Map" 
-                      to={createPageUrl('Home')} 
-                      active={window.location.pathname.endsWith('Home') || window.location.pathname === '/'} 
-                    />
-                    <NavItem 
-                      icon={List} 
-                      label="List" 
-                      to={createPageUrl('List')} 
-                      active={window.location.pathname.endsWith('List')}
-                    />
+              <div className="flex justify-around items-center h-16 max-w-full mx-auto">
+                  <NavItem 
+                    icon={Map} 
+                    label="Map" 
+                    to={createPageUrl('Home')} 
+                    active={window.location.pathname.endsWith('Home') || window.location.pathname === '/'} 
+                  />
+                  <NavItem 
+                    icon={List} 
+                    label="List" 
+                    to={createPageUrl('List')} 
+                    active={window.location.pathname.endsWith('List')}
+                  />
 
-                    <NavItem 
-                      icon={Upload} 
-                      label="Sync" 
-                      to={createPageUrl('Sync')} 
-                      active={window.location.pathname.endsWith('Sync')}
-                    />
-                    <NavItem 
-                      icon={Settings} 
-                      label="Settings" 
-                      to="#" 
-                      active={window.location.pathname.endsWith('Settings')}
-                    />
-                </div>
+                  <NavItem 
+                    icon={Upload} 
+                    label="Setup" 
+                    to={createPageUrl('Setup')} 
+                    active={window.location.pathname.endsWith('Setup')}
+                  />
+              </div>
             </nav>
         </div>
     );

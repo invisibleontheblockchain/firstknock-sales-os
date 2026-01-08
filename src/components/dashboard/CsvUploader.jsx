@@ -89,18 +89,29 @@ export default function CsvUploader() {
             }
 
             // House Number & Street - try many variations
-            const houseNumber = parseInt(
+            let houseNumber = parseInt(
                 normalizedRow.housenumber || normalizedRow.number || normalizedRow.streetnumber ||
                 normalizedRow.addressnumber || normalizedRow.no || row.HouseNumber || row.Number || 0
             );
-            const streetName = normalizedRow.streetname || normalizedRow.street || 
-                normalizedRow.streetaddress || row.StreetName || row.Street || 'Unknown Street';
+            let streetName = normalizedRow.streetname || normalizedRow.street || 
+                normalizedRow.streetaddress || row.StreetName || row.Street || '';
             const fullAddress = normalizedRow.fulladdress || normalizedRow.address || 
-                normalizedRow.propertyaddress || row.FullAddress || row.Address || `${houseNumber} ${streetName}`;
+                normalizedRow.propertyaddress || row.FullAddress || row.Address || row.ADDRESS || `${houseNumber} ${streetName}`;
+
+            // Smart Parse Address if components missing
+            if ((!houseNumber || !streetName || streetName === 'Unknown Street') && fullAddress) {
+                const parts = fullAddress.trim().split(' ');
+                if (parts.length > 1 && !isNaN(parseInt(parts[0]))) {
+                    houseNumber = parseInt(parts[0]);
+                    streetName = parts.slice(1).join(' ');
+                }
+            }
+            
+            if (!streetName) streetName = 'Unknown Street';
 
             // Generate Hash if missing
             let addressHash = normalizedRow.addresshash || normalizedRow.id || normalizedRow.hash || 
-                normalizedRow.propertyid || row.ID || row.Id;
+                normalizedRow.propertyid || row.ID || row.Id || row["MLS#"];
             if (!addressHash) {
                 // Simple consistent ID generation
                 addressHash = btoa(`${streetName}-${houseNumber}-${lat}-${lng}`).replace(/[^a-zA-Z0-9]/g, '').substring(0, 16);
@@ -113,7 +124,23 @@ export default function CsvUploader() {
                 full_address: fullAddress,
                 lat: lat,
                 lng: lng,
-                original_status: (normalizedRow.originalstatus || normalizedRow.status || row.Status || 'ELIGIBLE').toUpperCase()
+                original_status: (normalizedRow.originalstatus || normalizedRow.status || row.Status || row.STATUS || 'ELIGIBLE').toUpperCase(),
+                
+                // New Fields
+                beds: parseFloat(normalizedRow.beds || row.BEDS || 0),
+                baths: parseFloat(normalizedRow.baths || row.BATHS || 0),
+                sqft: parseFloat(normalizedRow.squarefeet || normalizedRow.sqft || row["SQUARE FEET"] || 0),
+                lot_size: parseFloat(normalizedRow.lotsize || row["LOT SIZE"] || 0),
+                year_built: parseInt(normalizedRow.yearbuilt || row["YEAR BUILT"] || 0),
+                price: parseFloat(normalizedRow.price || row.PRICE || 0),
+                sold_date: normalizedRow.solddate || row["SOLD DATE"] || null,
+                sale_type: normalizedRow.saletype || row["SALE TYPE"] || null,
+                property_type: normalizedRow.propertytype || row["PROPERTY TYPE"] || null,
+                city: normalizedRow.city || row.CITY || null,
+                state: normalizedRow.state || row["STATE OR PROVINCE"] || null,
+                zip_code: normalizedRow.zipcode || normalizedRow.postalcode || row["ZIP OR POSTAL CODE"] || null,
+                url: normalizedRow.url || row["URL (SEE https://www.redfin.com/buy-a-home/comparative-market-analysis FOR INFO ON PRICING)"] || null,
+                mls_id: normalizedRow.mlsid || row["MLS#"] || null
             });
         });
 

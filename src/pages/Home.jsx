@@ -70,6 +70,7 @@ export default function Home() {
     const [minScore, setMinScore] = useState(0);
     const [quickFilter, setQuickFilter] = useState('all'); // all, eligible, sold, rejected
     const [previewRoute, setPreviewRoute] = useState(null);
+    const [startLocation, setStartLocation] = useState(null); // { lat, lng }
     const mapRef = useRef(null);
 
     // Fetch ALL 5000 properties
@@ -115,14 +116,18 @@ export default function Home() {
         setRoutesGenerating(true);
         setTimeout(() => {
             try {
-                const generated = generateOptimizedRoutes(effectiveProperties, housesPerRoute);
+                // Use current map center as start location if not set
+                const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
+                const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
+                
+                const generated = generateOptimizedRoutes(effectiveProperties, housesPerRoute, start);
                 setRoutes(generated);
             } catch (e) {
                 console.error(e);
             }
             setRoutesGenerating(false);
         }, 100);
-    }, [effectiveProperties, housesPerRoute]);
+    }, [effectiveProperties, housesPerRoute, startLocation]);
 
     // Filter and sort routes
     const filteredRoutes = useMemo(() => {
@@ -173,6 +178,9 @@ export default function Home() {
                 zoom={15}
                 style={{ height: '100%', width: '100%' }}
                 zoomControl={false}
+                onMoveEnd={(e) => {
+                    // Optional: Track center for dynamic start location
+                }}
             >
                 <TileLayer
                     url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
@@ -411,8 +419,8 @@ export default function Home() {
                                         </div>
                                         <div className="flex gap-4 text-xs" style={{ color: '#888' }}>
                                             <span>{route.houseCount} houses</span>
-                                            <span>{route.totalDistance} mi</span>
-                                            <span>Avg: {route.avgScore}</span>
+                                            <span>{route.totalDistance} mi walk</span>
+                                            {route.distanceFromStart > 0 && <span>{route.distanceFromStart} mi away</span>}
                                         </div>
                                     </button>
                                 ))

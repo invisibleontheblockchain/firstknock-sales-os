@@ -154,10 +154,8 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null) {
  * @returns {Array} Array of route objects with metadata
  */
 export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLocation = null) {
-    // Use ALL properties - don't filter by status
-    // Properties without interaction logs are ELIGIBLE
+    // Use ALL properties
     const eligible = properties.filter(p => p && p.lat && p.lng);
-    
     if (eligible.length === 0) return [];
     
     // Score all properties
@@ -166,45 +164,55 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         score: scoreProperty(p)
     }));
     
-    // Calculate number of routes needed
+    // Calculate number of routes
     const numRoutes = Math.ceil(scored.length / housesPerRoute);
     
-    // Cluster properties geographically
+    // Cluster properties
     const clustered = kMeansClustering(scored, numRoutes);
     
-    // Generate routes for each cluster
+    // Generate routes
     const routes = [];
     for (let i = 0; i < numRoutes; i++) {
         const clusterProps = clustered.filter(p => p.cluster === i);
         if (clusterProps.length === 0) continue;
         
-        // Optimize order within cluster
+        // Optimize order
         const orderedProps = optimizeRouteOrder(
             clusterProps, 
             startLocation?.lat, 
             startLocation?.lng
         );
         
-        // Calculate route metrics
+        // Metrics
         let totalDistance = 0;
         let totalScore = 0;
         
         for (let j = 0; j < orderedProps.length - 1; j++) {
-            const dist = calculateDistance(
-                orderedProps[j].lat,
-                orderedProps[j].lng,
-                orderedProps[j + 1].lat,
-                orderedProps[j + 1].lng
+            totalDistance += calculateDistance(
+                orderedProps[j].lat, orderedProps[j].lng,
+                orderedProps[j + 1].lat, orderedProps[j + 1].lng
             );
-            totalDistance += dist;
             totalScore += orderedProps[j].score;
         }
         totalScore += orderedProps[orderedProps.length - 1]?.score || 0;
         
-        // Calculate competitiveness score (higher = better)
         const avgScore = totalScore / orderedProps.length;
         const efficiency = orderedProps.length / Math.max(totalDistance, 0.1);
-        const competitivenessScore = Math.round((avgScore * 0.6 + efficiency * 100 * 0.4));
+        
+        // Factor in distance from start location (if provided)
+        let distanceFromStart = 0;
+        if (startLocation && orderedProps.length > 0) {
+            distanceFromStart = calculateDistance(
+                startLocation.lat, startLocation.lng,
+                orderedProps[0].lat, orderedProps[0].lng
+            );
+        }
+        
+        // Competitiveness: Score (60%) + Efficiency (30%) - Commute Penalty (10%)
+        // Commute penalty: subtract 10 points per mile away?
+        const commutePenalty = distanceFromStart * 5; 
+        
+        let competitivenessScore = Math.round((avgScore * 0.6 + efficiency * 100 * 0.4) - commutePenalty);
         
         routes.push({
             id: `route_${i + 1}`,
@@ -212,6 +220,7 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
             properties: orderedProps,
             houseCount: orderedProps.length,
             totalDistance: Math.round(totalDistance * 100) / 100,
+            distanceFromStart: Math.round(distanceFromStart * 100) / 100,
             totalScore: Math.round(totalScore),
             avgScore: Math.round(avgScore),
             competitivenessScore,
@@ -220,7 +229,7 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         });
     }
     
-    // Sort routes by competitiveness (best first)
+    // Sort routes by competitiveness
     routes.sort((a, b) => b.competitivenessScore - a.competitivenessScore);
     
     return routes;
