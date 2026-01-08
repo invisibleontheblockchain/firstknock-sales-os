@@ -70,7 +70,9 @@ export default function Home() {
     const [minScore, setMinScore] = useState(0);
     const [quickFilter, setQuickFilter] = useState('all'); // all, eligible, sold, rejected
     const [previewRoute, setPreviewRoute] = useState(null);
-    const [startLocation, setStartLocation] = useState(null); // { lat, lng }
+    const [startLocation, setStartLocation] = useState(null); // { lat, lng, address }
+    const [startAddressInput, setStartAddressInput] = useState("");
+    const [showAllProperties, setShowAllProperties] = useState(false);
     const mapRef = useRef(null);
 
     // Fetch ALL 5000 properties
@@ -78,6 +80,28 @@ export default function Home() {
         queryKey: ['masterProperties'],
         queryFn: () => base44.entities.MasterProperty.list('-created_date', 5000),
     });
+
+    const createRouteMutation = useMutation({
+        mutationFn: (routeData) => base44.entities.SavedRoute.create(routeData),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+            alert("Route saved to My Routes!");
+        }
+    });
+
+    const handleSaveRoute = (route) => {
+        createRouteMutation.mutate({
+            name: route.name,
+            property_hashes: route.properties.map(p => p.address_hash),
+            metrics: {
+                distance: route.totalDistance,
+                house_count: route.houseCount,
+                score: route.competitivenessScore
+            },
+            status: 'ACTIVE',
+            start_location: startLocation
+        });
+    };
 
     const { data: logs = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs'],
@@ -207,8 +231,8 @@ export default function Home() {
                     ));
                 })}
 
-                {/* Display loose properties when no routes generated or fallback */}
-                {!activeRoute && routes.length === 0 && effectiveProperties
+                {/* Display loose properties ONLY if toggled ON */}
+                {!activeRoute && routes.length === 0 && showAllProperties && effectiveProperties
                     .filter(p => {
                         if (quickFilter === 'all') return true;
                         if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
@@ -418,17 +442,27 @@ export default function Home() {
                                             </Badge>
                                         </div>
                                         <div className="flex gap-4 text-xs" style={{ color: '#888' }}>
-                                            <span>{route.houseCount} houses</span>
-                                            <span>{route.totalDistance} mi walk</span>
-                                            {route.distanceFromStart > 0 && <span>{route.distanceFromStart} mi away</span>}
+                                        <span>{route.houseCount} houses</span>
+                                        <span>{route.totalDistance} mi walk</span>
+                                        {route.distanceFromStart > 0 && <span>{route.distanceFromStart} mi away</span>}
                                         </div>
-                                    </button>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
+                                        <Button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleSaveRoute(route);
+                                        }}
+                                        size="sm"
+                                        className="mt-2 w-full h-8 text-[10px] bg-[#333] hover:bg-[#444] text-white"
+                                        >
+                                        SAVE TO MY ROUTES
+                                        </Button>
+                                        </button>
+                                        ))
+                                        )}
+                                        </div>
+                                        </div>
+                                        </div>
+                                        )}
 
             {/* Filter Panel */}
             {showCompare && (
@@ -451,6 +485,36 @@ export default function Home() {
                         <div className="p-5 space-y-6 overflow-y-auto h-[calc(100%-70px)]">
                             <div>
                                 <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                    STARTING LOCATION
+                                </label>
+                                <div className="flex gap-2">
+                                    <input 
+                                        type="text"
+                                        placeholder="Enter start address..."
+                                        value={startAddressInput}
+                                        onChange={(e) => setStartAddressInput(e.target.value)}
+                                        className="flex-1 px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
+                                    />
+                                    <Button
+                                        onClick={() => {
+                                            // Mock geocoding for now or just store address
+                                            // In real app, we'd geocode. Here we might just use map center if empty
+                                            if (mapRef.current) {
+                                                const c = mapRef.current.getCenter();
+                                                setStartLocation({ lat: c.lat, lng: c.lng, address: startAddressInput || "Map Center" });
+                                            }
+                                        }}
+                                        size="icon"
+                                        className="bg-[#1F1F1F] hover:bg-[#333]"
+                                    >
+                                        <MapPin className="w-4 h-4" />
+                                    </Button>
+                                </div>
+                                {startLocation && <p className="text-[10px] text-green-500 mt-1">✓ Set: {startLocation.address}</p>}
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
                                     HOUSES PER ROUTE
                                 </label>
                                 <div className="flex gap-2">
@@ -470,18 +534,27 @@ export default function Home() {
                                 </div>
                             </div>
 
-                            <Button
-                                onClick={generateRoutes}
-                                disabled={routesGenerating}
-                                className="w-full h-12 font-bold tracking-wide"
-                                style={{ background: BRAND.gold, color: BRAND.voidBlack }}
-                            >
-                                {routesGenerating ? (
-                                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> GENERATING...</>
-                                ) : (
-                                    <><Navigation className="w-4 h-4 mr-2" /> GENERATE {Math.ceil(effectiveProperties.length / housesPerRoute)} ROUTES</>
-                                )}
-                            </Button>
+                            <div className="flex gap-2">
+                                <Button
+                                    onClick={generateRoutes}
+                                    disabled={routesGenerating}
+                                    className="flex-1 h-12 font-bold tracking-wide"
+                                    style={{ background: BRAND.gold, color: BRAND.voidBlack }}
+                                >
+                                    {routesGenerating ? (
+                                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> GENERATING...</>
+                                    ) : (
+                                        <><Navigation className="w-4 h-4 mr-2" /> GENERATE</>
+                                    )}
+                                </Button>
+                                <Button
+                                    onClick={() => setShowAllProperties(!showAllProperties)}
+                                    className="w-12 h-12"
+                                    style={{ background: showAllProperties ? BRAND.gold : BRAND.charcoal, color: showAllProperties ? BRAND.voidBlack : BRAND.gold }}
+                                >
+                                    <List className="w-5 h-5" />
+                                </Button>
+                            </div>
 
                             <div>
                                 <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>

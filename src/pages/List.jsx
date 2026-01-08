@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
@@ -29,6 +28,11 @@ export default function ListPage() {
     const { data: properties = [], isLoading: propsLoading } = useQuery({
         queryKey: ['masterProperties'],
         queryFn: () => base44.entities.MasterProperty.list('-created_date', 5000),
+    });
+
+    const { data: savedRoutes = [], isLoading: routesLoading } = useQuery({
+        queryKey: ['savedRoutes'],
+        queryFn: () => base44.entities.SavedRoute.list('-created_date', 100),
     });
 
     const { data: logs = [], isLoading: logsLoading } = useQuery({
@@ -88,7 +92,7 @@ export default function ListPage() {
                         }}
                     >
                         <Navigation className="w-4 h-4 inline mr-2" />
-                        ROUTES
+                        MY ROUTES
                     </button>
                     <button
                         onClick={() => setView('properties')}
@@ -105,34 +109,7 @@ export default function ListPage() {
 
                 {view === 'routes' && (
                     <div className="space-y-3">
-                        <p className="text-xs font-bold tracking-wide" style={{ color: '#888' }}>ROUTE SIZE</p>
-                        <div className="flex gap-2">
-                            {ROUTE_SIZE_OPTIONS.map(size => (
-                                <button
-                                    key={size}
-                                    onClick={() => setSelectedSize(size)}
-                                    className="flex-1 py-2 rounded-lg text-sm font-bold tracking-wide transition-all"
-                                    style={{ 
-                                        background: selectedSize === size ? BRAND.gold : BRAND.charcoal,
-                                        color: selectedSize === size ? BRAND.voidBlack : BRAND.offWhite
-                                    }}
-                                >
-                                    {size}
-                                </button>
-                            ))}
-                        </div>
-                        <Button
-                            onClick={generateRoutes}
-                            disabled={routesGenerating || effectiveProperties.length === 0}
-                            className="w-full h-12 font-bold tracking-wide"
-                            style={{ background: BRAND.gold, color: BRAND.voidBlack }}
-                        >
-                            {routesGenerating ? (
-                                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> GENERATING...</>
-                            ) : (
-                                <><Navigation className="w-4 h-4 mr-2" /> GENERATE ROUTES ({effectiveProperties.length} homes)</>
-                            )}
-                        </Button>
+                        {/* Saved routes, no generation here anymore, just listing */}
                     </div>
                 )}
 
@@ -148,26 +125,25 @@ export default function ListPage() {
                         />
                     </div>
                 )}
-            </div>
+                </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-auto p-4 space-y-3">
+                {/* Content */}
+                <div className="flex-1 overflow-auto p-4 space-y-3">
                 {isLoading ? (
                     <div className="flex justify-center p-8">
                         <Loader2 className="w-8 h-8 animate-spin" style={{ color: BRAND.gold }} />
                     </div>
                 ) : view === 'routes' ? (
                     <>
-                        <div className="mb-4 p-3 rounded-lg" style={{ background: BRAND.charcoal }}>
-                            <p className="text-xs" style={{ color: '#888' }}>
-                                {effectiveProperties.length.toLocaleString()} properties → {routes.length} routes of ~{selectedSize} homes
-                            </p>
-                        </div>
-                        
-                        {routes.length === 0 ? (
-                            <p className="text-center py-8" style={{ color: '#888' }}>No routes available</p>
+                        {savedRoutes.length === 0 ? (
+                            <div className="text-center py-10">
+                                <p style={{ color: '#888' }} className="mb-4">No saved routes yet</p>
+                                <Link to={createPageUrl('Home')}>
+                                    <Button className="bg-yellow-500 text-black font-bold">CREATE ROUTES ON MAP</Button>
+                                </Link>
+                            </div>
                         ) : (
-                            routes.map((route, idx) => (
+                            savedRoutes.map((route, idx) => (
                                 <Card 
                                     key={route.id} 
                                     className="p-4 cursor-pointer transition-all hover:opacity-90"
@@ -177,25 +153,23 @@ export default function ListPage() {
                                         <div>
                                             <h3 className="font-bold" style={{ color: BRAND.offWhite }}>{route.name}</h3>
                                             <p className="text-xs mt-1" style={{ color: '#888' }}>
-                                                {route.houseCount} homes • {route.totalDistance} mi
+                                                {route.metrics?.house_count} homes • {route.metrics?.distance} mi
                                             </p>
+                                            {route.start_location && (
+                                                <p className="text-[10px] text-gray-500">Start: {route.start_location.address}</p>
+                                            )}
                                         </div>
                                         <Badge style={{ 
-                                            background: route.competitivenessScore >= 150 ? '#22c55e' : route.competitivenessScore >= 100 ? '#eab308' : '#666',
+                                            background: route.status === 'COMPLETED' ? '#22c55e' : '#eab308',
                                             color: '#000'
                                         }}>
-                                            {route.competitivenessScore}
+                                            {route.status}
                                         </Badge>
-                                    </div>
-                                    
-                                    <div className="flex gap-4 text-xs mb-3" style={{ color: '#666' }}>
-                                        <span>Avg Score: {route.avgScore}</span>
-                                        <span>Total: {route.totalScore}</span>
                                     </div>
 
                                     <div className="flex gap-2">
                                         <Link 
-                                            to={`${createPageUrl('Home')}?route=${idx}&size=${selectedSize}`}
+                                            to={`${createPageUrl('Home')}?savedRoute=${route.id}`}
                                             className="flex-1"
                                         >
                                             <Button 
@@ -203,25 +177,9 @@ export default function ListPage() {
                                                 style={{ background: BRAND.gold, color: BRAND.voidBlack }}
                                             >
                                                 <Navigation className="w-4 h-4 mr-2" />
-                                                VIEW ON MAP
+                                                LOAD ROUTE
                                             </Button>
                                         </Link>
-                                        <Button 
-                                            variant="outline"
-                                            className="h-10"
-                                            style={{ borderColor: '#333', color: BRAND.offWhite }}
-                                            onClick={() => {
-                                                const props = route.properties.slice(0, 10);
-                                                const origin = props[0];
-                                                const dest = props[props.length - 1];
-                                                const waypoints = props.slice(1, -1).map(p => `${p.lat},${p.lng}`).join('|');
-                                                let url = `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${dest.lat},${dest.lng}&travelmode=walking`;
-                                                if (waypoints) url += `&waypoints=${waypoints}`;
-                                                window.open(url, '_blank');
-                                            }}
-                                        >
-                                            <MapPin className="w-4 h-4" />
-                                        </Button>
                                     </div>
                                 </Card>
                             ))
