@@ -93,26 +93,32 @@ export default function MapView({ properties, logs, onLogInteraction }) {
     const [parsedResult, setParsedResult] = useState(null);
 
     // Calculate effective status for all properties
-    const effectiveProperties = properties.map(prop => {
-        const propLogs = logs.filter(l => l.address_hash === prop.address_hash);
-        const status = determineEffectiveStatus(prop, propLogs);
-        return { ...prop, effective_status: status };
-    });
+    const effectiveProperties = properties
+        .filter(prop => prop.lat && prop.lng && !isNaN(prop.lat) && !isNaN(prop.lng))
+        .map(prop => {
+            const propLogs = logs.filter(l => l.address_hash === prop.address_hash);
+            const status = determineEffectiveStatus(prop, propLogs);
+            return { ...prop, effective_status: status };
+        });
 
     // Generate Ghost Leads
     const ghostLeads = generateGhostLeads(properties);
 
-    // Apply logs to Ghost Leads so they maintain status (e.g. if a ghost lead was knocked and marked)
-    const effectiveGhostLeads = ghostLeads.map(prop => {
-        const propLogs = logs.filter(l => l.address_hash === prop.address_hash);
-        const status = determineEffectiveStatus(prop, propLogs);
-        return { ...prop, effective_status: status };
-    });
+    // Apply logs to Ghost Leads so they maintain status
+    const effectiveGhostLeads = ghostLeads
+        .filter(prop => prop.lat && prop.lng && !isNaN(prop.lat) && !isNaN(prop.lng))
+        .map(prop => {
+            const propLogs = logs.filter(l => l.address_hash === prop.address_hash);
+            const status = determineEffectiveStatus(prop, propLogs);
+            return { ...prop, effective_status: status };
+        });
 
     const allMarkers = [...effectiveProperties, ...effectiveGhostLeads];
 
     // Generate Sweep Route
-    const sweepRoute = generateSweepRoute(allMarkers);
+    const sweepRoute = generateSweepRoute(allMarkers).filter(pos => 
+        pos && pos.length === 2 && !isNaN(pos[0]) && !isNaN(pos[1])
+    );
 
     const handleInteractionChange = (e) => {
         const text = e.target.value;
@@ -165,16 +171,19 @@ export default function MapView({ properties, logs, onLogInteraction }) {
                     />
                 )}
 
-                {allMarkers.map((prop) => (
-                    <Marker 
-                        key={prop.address_hash} 
-                        position={[prop.lat, prop.lng]}
-                        icon={prop.is_ghost ? Icons.GHOST : Icons[prop.effective_status] || Icons.ELIGIBLE}
-                        eventHandlers={{
-                            click: () => setSelectedProp(prop),
-                        }}
-                    />
-                ))}
+                {allMarkers.map((prop) => {
+                    if (!prop.lat || !prop.lng || isNaN(prop.lat) || isNaN(prop.lng)) return null;
+                    return (
+                        <Marker 
+                            key={prop.address_hash} 
+                            position={[prop.lat, prop.lng]}
+                            icon={prop.is_ghost ? Icons.GHOST : Icons[prop.effective_status] || Icons.ELIGIBLE}
+                            eventHandlers={{
+                                click: () => setSelectedProp(prop),
+                            }}
+                        />
+                    );
+                })}
             </MapContainer>
 
             {/* Floating Action Buttons */}
