@@ -12,14 +12,14 @@ export default function Home() {
     // Fetch Master Properties
     const { data: properties, isLoading: propsLoading } = useQuery({
         queryKey: ['masterProperties'],
-        queryFn: () => base44.entities.MasterProperty.list({limit: 5000, sort: {created_date: -1}}), // Increased limit and sort by newest
+        queryFn: () => base44.entities.MasterProperty.list('-created_date', 5000),
         initialData: []
     });
 
     // Fetch Logs
     const { data: logs, isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs'],
-        queryFn: () => base44.entities.InteractionLog.list({limit: 5000, sort: {created_date: -1}}),
+        queryFn: () => base44.entities.InteractionLog.list('-created_date', 5000),
         initialData: []
     });
 

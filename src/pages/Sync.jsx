@@ -10,7 +10,7 @@ export default function SyncPage() {
     // Fetch Logs for SyncManager
     const { data: logs } = useQuery({
         queryKey: ['interactionLogs'],
-        queryFn: () => base44.entities.InteractionLog.list({limit: 5000, sort: {created_date: -1}}),
+        queryFn: () => base44.entities.InteractionLog.list('-created_date', 5000),
         initialData: []
     });
 
