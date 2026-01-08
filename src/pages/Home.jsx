@@ -171,6 +171,9 @@ export default function Home() {
     const [routes, setRoutes] = useState([]);
     const [routesGenerating, setRoutesGenerating] = useState(false);
 
+    const [streetCooldownDays, setStreetCooldownDays] = useState(30);
+    const [cooldownInfo, setCooldownInfo] = useState(null);
+
     const generateRoutes = useCallback(() => {
         if (effectiveProperties.length === 0) {
             setRoutes([]);
@@ -183,14 +186,27 @@ export default function Home() {
                 const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
                 const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
                 
-                const generated = generateOptimizedRoutes(effectiveProperties, housesPerRoute, start);
+                // Pass logs for street cooldown filtering
+                const generated = generateOptimizedRoutes(
+                    effectiveProperties, 
+                    housesPerRoute, 
+                    start, 
+                    logs, 
+                    { streetCooldownDays, useStreetSweep: true }
+                );
+                
+                // Extract cooldown info if available
+                if (generated._cooldownInfo) {
+                    setCooldownInfo(generated._cooldownInfo);
+                }
+                
                 setRoutes(generated);
             } catch (e) {
                 console.error(e);
             }
             setRoutesGenerating(false);
         }, 100);
-    }, [effectiveProperties, housesPerRoute, startLocation]);
+    }, [effectiveProperties, housesPerRoute, startLocation, logs, streetCooldownDays]);
 
     // Filter and sort routes
     const filteredRoutes = useMemo(() => {
@@ -454,8 +470,16 @@ export default function Home() {
                                 <li><span style={{color: BRAND.gold}}>+180-20</span> Sold 1-12 months ago</li>
                                 <li><span style={{color: '#22c55e'}}>+20-40</span> High Value Property</li>
                                 <li><span style={{color: '#fff'}}>+50</span> Eligible / <span style={{color: '#eab308'}}>+30</span> Callback</li>
-                                <li>Distance Efficiency & Clustering applied</li>
+                                <li>Street Sweep Mode: All houses per street</li>
+                                <li><span style={{color: '#ef4444'}}>EXCLUDED:</span> Streets visited in last {streetCooldownDays} days (No Answer)</li>
                             </ul>
+                            {cooldownInfo && cooldownInfo.streetsOnCooldown?.length > 0 && (
+                                <div className="mt-2 pt-2 border-t border-[#333]">
+                                    <p className="text-red-400 font-bold">
+                                        {cooldownInfo.streetsOnCooldown.length} streets on cooldown ({cooldownInfo.propertiesExcluded} properties)
+                                    </p>
+                                </div>
+                            )}
                         </div>
                         <div className="overflow-y-auto h-[calc(70vh-80px)] p-4 space-y-3">
                             {filteredRoutes.length === 0 ? (
@@ -482,8 +506,8 @@ export default function Home() {
                                         </div>
                                         <div className="flex gap-4 text-xs" style={{ color: '#888' }}>
                                         <span>{route.houseCount} houses</span>
-                                        <span>{route.totalDistance} mi walk</span>
-                                        {route.distanceFromStart > 0 && <span>{route.distanceFromStart} mi away</span>}
+                                        <span>{route.streetCount || '?'} streets</span>
+                                        <span>{route.totalDistance} mi</span>
                                         </div>
                                         <Button 
                                         onClick={(e) => {
@@ -607,6 +631,28 @@ export default function Home() {
                                     step={10}
                                     className="w-full"
                                 />
+                            </div>
+
+                            <div>
+                                <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                    STREET COOLDOWN: {streetCooldownDays} DAYS
+                                </label>
+                                <p className="text-[10px] text-gray-500 mb-2">
+                                    Skip streets with "No Answer" in the last X days
+                                </p>
+                                <Slider
+                                    value={[streetCooldownDays]}
+                                    onValueChange={([v]) => setStreetCooldownDays(v)}
+                                    min={7}
+                                    max={90}
+                                    step={7}
+                                    className="w-full"
+                                />
+                                <div className="flex justify-between text-[10px] text-gray-500 mt-1">
+                                    <span>1 week</span>
+                                    <span>1 month</span>
+                                    <span>3 months</span>
+                                </div>
                             </div>
 
                             <div>
