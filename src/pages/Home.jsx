@@ -181,19 +181,6 @@ export default function Home() {
                 <LocationMarker />
                 <MapController fitBounds={fitBounds} />
 
-                {/* Show All Route Clusters when no active route */}
-                {!activeRoute && routes.map((route, idx) => (
-                    <Polyline
-                        key={route.id}
-                        positions={route.properties.map(p => [p.lat, p.lng])}
-                        pathOptions={{ 
-                            color: ROUTE_COLORS[idx % ROUTE_COLORS.length], 
-                            weight: 2, 
-                            opacity: 0.4 
-                        }}
-                    />
-                ))}
-
                 {/* All markers when no route selected - filtered by quickFilter */}
                 {!activeRoute && effectiveProperties
                     .filter(p => {
@@ -216,12 +203,12 @@ export default function Home() {
                         }}
                     />
                 ))}
-
+                
                 {/* Preview Route (hover/tap from list) */}
                 {previewRoute && !activeRoute && (
                     <Polyline
                         positions={previewRoute.properties.map(p => [p.lat, p.lng])}
-                        pathOptions={{ color: BRAND.gold, weight: 4, opacity: 0.8 }}
+                        pathOptions={{ color: BRAND.gold, weight: 3, opacity: 0.6, dashArray: '5,10' }}
                     />
                 )}
 

@@ -244,14 +244,14 @@ export default function ListPage() {
                                             </div>
                                         </div>
                                         <Badge variant="outline" style={{
-                                            background: prop.effective_status === 'SOLD' ? '#22c55e20' : 
-                                                       prop.effective_status === 'HARD_NO' ? '#ef444420' : '#6b728020',
-                                            color: prop.effective_status === 'SOLD' ? '#22c55e' : 
-                                                   prop.effective_status === 'HARD_NO' ? '#ef4444' : '#6b7280',
-                                            borderColor: prop.effective_status === 'SOLD' ? '#22c55e' : 
-                                                         prop.effective_status === 'HARD_NO' ? '#ef4444' : '#6b7280'
+                                            background: prop.original_status === 'SOLD' ? '#22c55e20' : 
+                                                       prop.original_status === 'HARD_NO' ? '#ef444420' : '#6b728020',
+                                            color: prop.original_status === 'SOLD' ? '#22c55e' : 
+                                                   prop.original_status === 'HARD_NO' ? '#ef4444' : '#6b7280',
+                                            borderColor: prop.original_status === 'SOLD' ? '#22c55e' : 
+                                                         prop.original_status === 'HARD_NO' ? '#ef4444' : '#6b7280'
                                         }}>
-                                            {prop.effective_status || 'ELIGIBLE'}
+                                            {prop.original_status || 'ELIGIBLE'}
                                         </Badge>
                                     </div>
                                 </Card>
