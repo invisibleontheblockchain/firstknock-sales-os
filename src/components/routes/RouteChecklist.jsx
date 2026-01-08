@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Check, X, Phone, Ban, Clock, ChevronDown, ChevronUp, MapPin, Home } from 'lucide-react';
+import { Check, X, Phone, Ban, Clock, ChevronDown, ChevronUp, MapPin, Home, Navigation } from 'lucide-react';
 
 // Brand Colors
 const BRAND = {
@@ -13,10 +13,10 @@ const BRAND = {
 };
 
 const STATUS_OPTIONS = [
-    { id: 'SOLD', label: 'SOLD', icon: Check, color: BRAND.gold },
-    { id: 'NO_ANSWER', label: 'NO ANSWER', icon: Home, color: '#6b7280' },
-    { id: 'CALLBACK', label: 'CALLBACK', icon: Phone, color: '#eab308' },
-    { id: 'HARD_NO', label: 'NOT INTERESTED', icon: Ban, color: '#ef4444' },
+    { id: 'SOLD', label: 'SOLD', icon: Check, color: '#22c55e', textColor: '#fff' },
+    { id: 'NO_ANSWER', label: 'NO ANSWER', icon: Home, color: '#3b82f6', textColor: '#fff' },
+    { id: 'CALLBACK', label: 'CALLBACK', icon: Phone, color: '#FFFFFF', textColor: '#000' },
+    { id: 'HARD_NO', label: 'NOT INTERESTED', icon: Ban, color: '#ef4444', textColor: '#fff' },
 ];
 
 const STATUS_COLORS = {
@@ -97,7 +97,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                 </div>
 
                 {/* Filters */}
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                     {[
                         { id: 'all', label: 'ALL' },
                         { id: 'pending', label: `PENDING (${stats.pending})` },
@@ -116,6 +116,24 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                         </button>
                     ))}
                 </div>
+
+                {/* Export to Google Maps */}
+                <Button
+                    className="w-full mt-4 h-12 font-bold tracking-wide"
+                    style={{ background: BRAND.charcoal, color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}
+                    onClick={() => {
+                        const props = route.properties.slice(0, 10);
+                        const origin = props[0];
+                        const dest = props[props.length - 1];
+                        const waypoints = props.slice(1, -1).map(p => `${p.lat},${p.lng}`).join('|');
+                        let url = `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${dest.lat},${dest.lng}&travelmode=walking`;
+                        if (waypoints) url += `&waypoints=${waypoints}`;
+                        window.open(url, '_blank');
+                    }}
+                >
+                    <Navigation className="w-4 h-4 mr-2" />
+                    EXPORT ROUTE TO GOOGLE MAPS
+                </Button>
             </div>
 
             {/* Property List */}
@@ -180,7 +198,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                                                     className="h-11 text-xs font-bold tracking-wide"
                                                     style={{ 
                                                         background: opt.color, 
-                                                        color: opt.id === 'SOLD' ? BRAND.voidBlack : '#fff' 
+                                                        color: opt.textColor 
                                                     }}
                                                 >
                                                     <opt.icon className="w-4 h-4 mr-2" />
