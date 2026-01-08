@@ -1,123 +1,122 @@
-/**
- * NLP Result Parser - Converts free-form text to structured status
- */
 import moment from 'moment';
 
-const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 
-                'july', 'august', 'september', 'october', 'november', 'december'];
-
+/**
+ * Parse free-form result text according to master system rules
+ */
 export function parseResultText(text) {
     if (!text || !text.trim()) {
-        return { status: 'OTHER', nextDate: null, callbackTarget: null };
+        return { status: 'ELIGIBLE', notes: '', nextDate: null, callbackTarget: null };
     }
-    
+
     const lower = text.toLowerCase().trim();
     
-    // SOLD detection
-    if (/\b(sold|closed|signed|deal|purchased|bought)\b/.test(lower)) {
-        return { status: 'SOLD', nextDate: null, callbackTarget: null };
-    }
-    
-    // QUALIFIED detection
-    if (/\b(qualified|interested|wants|scheduled|appointment|appt)\b/.test(lower)) {
-        return { status: 'QUALIFIED', nextDate: null, callbackTarget: null };
-    }
-    
-    // HARD_NO detection
-    if (/\b(not interested|go away|never|dni|do not|don't come|hostile|rude|angry)\b/.test(lower)) {
-        return { status: 'HARD_NO', nextDate: null, callbackTarget: null };
-    }
-    
-    // NO_ANSWER detection - eligible again in 14 days
-    if (/\b(nh|n\/a|no answer|nobody|not home|no one|vacant|empty)\b/.test(lower)) {
-        return { 
-            status: 'NO_ANSWER', 
-            nextDate: moment().add(14, 'days').toISOString(),
-            callbackTarget: null 
+    // SOLD / CLOSED
+    if (lower.includes('sold') || lower.includes('closed') || lower.includes('signed') || lower.includes('deal')) {
+        return {
+            status: 'SOLD',
+            notes: text,
+            nextDate: null,
+            callbackTarget: null
         };
     }
     
-    // CALLBACK detection with date parsing
-    if (/\b(call\s*back|come\s*back|return|later|tomorrow|next\s*week|next\s*month)\b/.test(lower)) {
-        let nextDate = moment().add(7, 'days'); // Default 1 week
-        let callbackTarget = null;
+    // QUALIFIED / INTERESTED
+    if (lower.includes('qualified') || lower.includes('interested') || lower.includes('hot lead')) {
+        return {
+            status: 'QUALIFIED',
+            notes: text,
+            nextDate: null,
+            callbackTarget: null
+        };
+    }
+    
+    // CALLBACK with month detection
+    if (lower.includes('back') || lower.includes('callback') || lower.includes('call back') || lower.includes('return')) {
+        const monthMatch = text.match(/(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i);
         
-        // Check for tomorrow
-        if (/tomorrow/.test(lower)) {
-            nextDate = moment().add(1, 'day');
-        }
-        // Check for next week
-        else if (/next\s*week/.test(lower)) {
-            nextDate = moment().add(7, 'days');
-        }
-        // Check for next month
-        else if (/next\s*month/.test(lower)) {
-            nextDate = moment().add(1, 'month');
-        }
-        // Check for specific month
-        else {
-            for (let i = 0; i < MONTHS.length; i++) {
-                if (lower.includes(MONTHS[i]) || lower.includes(MONTHS[i].substring(0, 3))) {
-                    const targetMonth = i;
-                    const currentMonth = moment().month();
-                    let targetYear = moment().year();
-                    
-                    // If month has passed, assume next year
-                    if (targetMonth <= currentMonth) {
-                        targetYear++;
-                    }
-                    
-                    nextDate = moment().year(targetYear).month(targetMonth).date(1);
-                    callbackTarget = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}`;
-                    break;
-                }
+        let callbackTarget = null;
+        let nextDate = moment().add(1, 'month').startOf('month');
+        
+        if (monthMatch) {
+            const monthName = monthMatch[0];
+            const targetMonth = moment(monthName, 'MMMM').month();
+            const currentMonth = moment().month();
+            
+            callbackTarget = moment().month(targetMonth).format('YYYY-MM');
+            nextDate = moment().month(targetMonth).startOf('month');
+            
+            // If target month is in the past, assume next year
+            if (targetMonth < currentMonth) {
+                callbackTarget = moment().add(1, 'year').month(targetMonth).format('YYYY-MM');
+                nextDate = moment().add(1, 'year').month(targetMonth).startOf('month');
             }
         }
         
-        return { 
-            status: 'CALLBACK', 
+        return {
+            status: 'CALLBACK',
+            notes: text,
             nextDate: nextDate.toISOString(),
-            callbackTarget 
+            callbackTarget: callbackTarget
         };
     }
     
-    // Default to OTHER
-    return { status: 'OTHER', nextDate: null, callbackTarget: null };
+    // NO_ANSWER / NOT HOME
+    if (lower.includes('no answer') || lower.includes('not home') || lower.includes('nh') || lower.includes('nobody')) {
+        return {
+            status: 'NO_ANSWER',
+            notes: text,
+            nextDate: moment().add(14, 'days').toISOString(),
+            callbackTarget: null
+        };
+    }
+    
+    // HARD_NO
+    if (lower.includes('not interested') || lower.includes('dni') || lower.includes('do not') || lower.includes('go away') || lower === 'no') {
+        return {
+            status: 'HARD_NO',
+            notes: text,
+            nextDate: null,
+            callbackTarget: null
+        };
+    }
+    
+    // OTHER - unrecognized
+    return {
+        status: 'OTHER',
+        notes: text,
+        nextDate: null,
+        callbackTarget: null
+    };
 }
 
 /**
- * Determine effective status based on property and visit history
+ * Determine if property is eligible based on latest result and rules
  */
-export function getEffectiveStatus(property, results = []) {
-    // Check original status first
-    if (property.original_status === 'SOLD' || property.original_status === 'HARD_NO' || property.original_status === 'DO_NOT_KNOCK') {
-        return property.original_status;
+export function isPropertyEligible(property, dailyResults) {
+    const propResults = dailyResults.filter(r => r.address_hash === property.address_hash);
+    
+    if (propResults.length === 0) {
+        return property.original_status === 'ELIGIBLE';
     }
     
-    // No results = use original status
-    if (!results || results.length === 0) {
-        return property.original_status || 'ELIGIBLE';
-    }
+    // Sort by most recent
+    const sorted = propResults.sort((a, b) => new Date(b.date_visited) - new Date(a.date_visited));
+    const latest = sorted[0];
     
-    // Get most recent result
-    const sortedResults = [...results].sort((a, b) => 
-        new Date(b.date_visited) - new Date(a.date_visited)
-    );
-    const latest = sortedResults[0];
-    
-    // Permanent statuses
+    // SOLD and HARD_NO are permanent exclusions
     if (latest.parsed_status === 'SOLD' || latest.parsed_status === 'HARD_NO') {
-        return latest.parsed_status;
+        return false;
     }
     
-    // Check if cooldown has passed
-    if (latest.next_eligible_date) {
-        const eligibleDate = moment(latest.next_eligible_date);
-        if (moment().isBefore(eligibleDate)) {
-            return latest.parsed_status; // Still in cooldown
-        }
+    // CALLBACK - check if eligible date has passed
+    if (latest.parsed_status === 'CALLBACK' && latest.next_eligible_date) {
+        return moment().isAfter(moment(latest.next_eligible_date));
     }
     
-    // Cooldown passed or no cooldown - eligible again
-    return 'ELIGIBLE';
+    // NO_ANSWER - check cooldown period (14 days)
+    if (latest.parsed_status === 'NO_ANSWER' && latest.next_eligible_date) {
+        return moment().isAfter(moment(latest.next_eligible_date));
+    }
+    
+    return true;
 }
