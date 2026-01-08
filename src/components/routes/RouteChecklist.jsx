@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Check, X, Phone, Ban, Clock, ChevronDown, ChevronUp, MapPin, Home, Navigation } from 'lucide-react';
+import { Check, X, Phone, Ban, Clock, ChevronDown, ChevronUp, MapPin, Home, Navigation, Mic } from 'lucide-react';
 
 // Brand Colors
 const BRAND = {
@@ -65,6 +65,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
 
     const [callbackPhone, setCallbackPhone] = useState('');
     const [selectedAction, setSelectedAction] = useState(null); // { propertyId, statusId }
+    const [isListening, setIsListening] = useState(false);
 
     const handleSelectStatus = (property, statusId) => {
         if (statusId === 'CALLBACK') {
@@ -81,6 +82,51 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
         setCallbackPhone('');
         setSelectedAction(null);
         setExpandedId(null);
+    };
+
+    const handleVoiceInput = (property) => {
+        if (!('webkitSpeechRecognition' in window)) {
+            alert("Voice input not supported in this browser.");
+            return;
+        }
+
+        const recognition = new window.webkitSpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+
+        setIsListening(true);
+
+        recognition.onresult = (event) => {
+            const text = event.results[0][0].transcript;
+            setIsListening(false);
+            // Simple keyword matching for status
+            let status = 'ELIGIBLE';
+            let note = text;
+            
+            const lower = text.toLowerCase();
+            if (lower.includes('sold') || lower.includes('bought')) status = 'SOLD';
+            else if (lower.includes('not interested') || lower.includes('no') || lower.includes('go away')) status = 'HARD_NO';
+            else if (lower.includes('call') || lower.includes('back') || lower.includes('busy')) status = 'CALLBACK';
+            else if (lower.includes('no answer') || lower.includes('nobody')) status = 'NO_ANSWER';
+            else if (lower.includes('yes') || lower.includes('interested')) status = 'QUALIFIED';
+
+            if (confirm(`Heard: "${text}"\nParsed Status: ${status}\n\nSave this?`)) {
+                onLogResult(property, status, note);
+                setExpandedId(null);
+            }
+        };
+
+        recognition.onerror = (event) => {
+            console.error(event.error);
+            setIsListening(false);
+        };
+
+        recognition.onend = () => {
+            setIsListening(false);
+        };
+
+        recognition.start();
     };
 
     return (
@@ -204,7 +250,18 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
 
                                 {isExpanded && (
                                     <div className="px-4 pb-4 pt-1 border-t" style={{ borderColor: '#333' }}>
-                                        <p className="text-xs mb-3" style={{ color: '#888' }}>SELECT OUTCOME:</p>
+                                        <div className="flex justify-between items-center mb-3">
+                                            <p className="text-xs" style={{ color: '#888' }}>SELECT OUTCOME:</p>
+                                            <Button
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => handleVoiceInput(prop)}
+                                                className={`${isListening ? 'text-red-500 animate-pulse' : 'text-yellow-500'}`}
+                                            >
+                                                <Mic className="w-4 h-4 mr-1" />
+                                                {isListening ? 'LISTENING...' : 'VOICE NOTE'}
+                                            </Button>
+                                        </div>
                                         <div className="grid grid-cols-2 gap-2">
                                             {selectedAction?.propertyId === prop.address_hash && selectedAction?.statusId === 'CALLBACK' ? (
                                                 <div className="col-span-2 space-y-2">

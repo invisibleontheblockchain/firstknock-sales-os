@@ -27,13 +27,33 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
 export function scoreProperty(property) {
     let score = 100; // Base score
     
-    // Status scoring
+    // 1. Status Scoring
     if (property.effective_status === 'ELIGIBLE') score += 50;
     if (property.effective_status === 'CALLBACK') score += 30;
     if (property.effective_status === 'NO_ANSWER') score += 20;
     if (property.effective_status === 'QUALIFIED') score += 70;
-    if (property.effective_status === 'SOLD' || property.effective_status === 'HARD_NO') score = 0;
+    if (property.effective_status === 'SOLD' || property.effective_status === 'HARD_NO') score = 0; // Don't route to these
     
+    // 2. Freshness Scoring (Date Sold)
+    // "If someone just bought their house we are going to get to them first"
+    if (property.sold_date) {
+        const soldDate = new Date(property.sold_date);
+        const now = new Date();
+        const monthsAgo = (now - soldDate) / (1000 * 60 * 60 * 24 * 30);
+        
+        if (monthsAgo <= 6) score += 100;      // Super fresh (0-6 mo)
+        else if (monthsAgo <= 12) score += 50; // Fresh (6-12 mo)
+        else if (monthsAgo <= 24) score += 25; // Recent (1-2 yr)
+    }
+
+    // 3. Price/Value Scoring
+    // "How expensive the house is"
+    if (property.price) {
+        if (property.price > 1000000) score += 40;
+        else if (property.price > 750000) score += 30;
+        else if (property.price > 500000) score += 20;
+    }
+
     // Ghost leads get lower priority
     if (property.is_ghost) score = score * 0.5;
     
