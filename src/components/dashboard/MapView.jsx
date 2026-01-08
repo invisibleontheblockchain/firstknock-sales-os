@@ -65,24 +65,30 @@ function LocationMarker() {
 // Component to auto-fit map bounds to properties
 function MapAutoFitter({ markers }) {
     const map = useMap();
+    const [fitted, setFitted] = React.useState(false);
 
     useEffect(() => {
-        if (markers.length > 0 && map) {
+        if (!fitted && markers.length > 0 && map) {
             setTimeout(() => {
                 try {
-                    const validMarkers = markers.filter(m => m.lat && m.lng && !isNaN(m.lat) && !isNaN(m.lng));
+                    const validMarkers = markers.filter(m => 
+                        m && m.lat && m.lng && 
+                        !isNaN(parseFloat(m.lat)) && !isNaN(parseFloat(m.lng)) &&
+                        Math.abs(m.lat) <= 90 && Math.abs(m.lng) <= 180
+                    );
                     if (validMarkers.length > 0) {
-                        const bounds = L.latLngBounds(validMarkers.map(m => [m.lat, m.lng]));
+                        const bounds = L.latLngBounds(validMarkers.map(m => [parseFloat(m.lat), parseFloat(m.lng)]));
                         if (bounds.isValid()) {
                             map.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 });
+                            setFitted(true);
                         }
                     }
                 } catch (err) {
                     console.error("Error fitting bounds:", err);
                 }
-            }, 100);
+            }, 200);
         }
-    }, [markers.length, map]);
+    }, [markers.length, map, fitted]);
 
     return null;
 }
@@ -92,33 +98,54 @@ export default function MapView({ properties, logs, onLogInteraction }) {
     const [interactionText, setInteractionText] = useState("");
     const [parsedResult, setParsedResult] = useState(null);
 
-    // Calculate effective status for all properties
+    // Validate and calculate effective status for all properties
     const effectiveProperties = properties
-        .filter(prop => prop.lat && prop.lng && !isNaN(prop.lat) && !isNaN(prop.lng))
+        .filter(prop => 
+            prop && prop.lat && prop.lng && 
+            !isNaN(parseFloat(prop.lat)) && !isNaN(parseFloat(prop.lng)) &&
+            Math.abs(prop.lat) <= 90 && Math.abs(prop.lng) <= 180
+        )
         .map(prop => {
             const propLogs = logs.filter(l => l.address_hash === prop.address_hash);
             const status = determineEffectiveStatus(prop, propLogs);
-            return { ...prop, effective_status: status };
+            return { 
+                ...prop, 
+                lat: parseFloat(prop.lat), 
+                lng: parseFloat(prop.lng),
+                effective_status: status 
+            };
         });
 
-    // Generate Ghost Leads
-    const ghostLeads = generateGhostLeads(properties);
+    // Generate Ghost Leads only if we have valid properties
+    const ghostLeads = properties.length > 0 ? generateGhostLeads(properties) : [];
 
     // Apply logs to Ghost Leads so they maintain status
     const effectiveGhostLeads = ghostLeads
-        .filter(prop => prop.lat && prop.lng && !isNaN(prop.lat) && !isNaN(prop.lng))
+        .filter(prop => 
+            prop && prop.lat && prop.lng && 
+            !isNaN(parseFloat(prop.lat)) && !isNaN(parseFloat(prop.lng)) &&
+            Math.abs(prop.lat) <= 90 && Math.abs(prop.lng) <= 180
+        )
         .map(prop => {
             const propLogs = logs.filter(l => l.address_hash === prop.address_hash);
             const status = determineEffectiveStatus(prop, propLogs);
-            return { ...prop, effective_status: status };
+            return { 
+                ...prop,
+                lat: parseFloat(prop.lat), 
+                lng: parseFloat(prop.lng),
+                effective_status: status 
+            };
         });
 
     const allMarkers = [...effectiveProperties, ...effectiveGhostLeads];
 
-    // Generate Sweep Route
-    const sweepRoute = generateSweepRoute(allMarkers).filter(pos => 
-        pos && pos.length === 2 && !isNaN(pos[0]) && !isNaN(pos[1])
-    );
+    // Generate Sweep Route with validation
+    const sweepRoute = allMarkers.length > 0 
+        ? generateSweepRoute(allMarkers).filter(pos => 
+            pos && Array.isArray(pos) && pos.length === 2 && 
+            !isNaN(parseFloat(pos[0])) && !isNaN(parseFloat(pos[1]))
+          )
+        : [];
 
     const handleInteractionChange = (e) => {
         const text = e.target.value;
@@ -143,9 +170,9 @@ export default function MapView({ properties, logs, onLogInteraction }) {
         setParsedResult(null);
     };
 
-    // Calculate center
-    const center = properties.length > 0 
-        ? [properties[0].lat, properties[0].lng] 
+    // Calculate center with validation
+    const center = effectiveProperties.length > 0 
+        ? [effectiveProperties[0].lat, effectiveProperties[0].lng] 
         : [34.0522, -118.2437]; // Default LA
 
     return (
