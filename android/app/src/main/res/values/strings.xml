@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Firstknock Sales OS</string>
+    <string name="title_activity_main">Firstknock Sales OS</string>
+    <string name="package_name">com.firstknock.salesos</string>
+    <string name="custom_url_scheme">com.firstknock.salesos</string>
+</resources>

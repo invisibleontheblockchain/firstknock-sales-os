@@ -9,11 +9,15 @@
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "mobile:build": "vite build && cap sync"
   },
   "dependencies": {
     "@base44/sdk": "^0.8.3",
     "@base44/vite-plugin": "^0.2.14",
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.0.0",
     "@hello-pangea/dnd": "^17.0.0",
     "@hookform/resolvers": "^4.1.2",
     "@radix-ui/react-accordion": "^1.2.3",
@@ -56,10 +60,12 @@
     "html2canvas": "^1.4.1",
     "input-otp": "^1.4.2",
     "jspdf": "^2.5.2",
+    "leaflet": "^1.9.4",
     "lodash": "^4.17.21",
     "lucide-react": "^0.475.0",
     "moment": "^2.30.1",
     "next-themes": "^0.4.4",
+    "papaparse": "^5.4.1",
     "react": "^18.2.0",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18.2.0",
@@ -75,13 +81,12 @@
     "tailwind-merge": "^3.0.2",
     "tailwindcss-animate": "^1.0.7",
     "three": "^0.171.0",
+    "turf": "^3.0.14",
     "vaul": "^1.1.2",
-    "zod": "^3.24.2",
-    "leaflet": "^1.9.4",
-    "papaparse": "^5.4.1",
-    "turf": "^3.0.14"
+    "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
     "@eslint/js": "^9.19.0",
     "@types/node": "^22.13.5",
     "@types/react": "^18.2.66",
