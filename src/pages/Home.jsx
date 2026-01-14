@@ -12,6 +12,7 @@ import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, ArrowUpD
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
 import RouteChecklist from '../components/routes/RouteChecklist';
+import NearbyHotLeads from '../components/nearby/NearbyHotLeads';
 
 // Brand Colors
 const BRAND = {
