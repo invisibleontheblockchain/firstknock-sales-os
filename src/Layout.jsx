@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Map, List, Upload, Settings, Navigation, LogIn } from 'lucide-react';
+import { Map, List, Upload, Settings, Navigation, LogIn, Users } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -101,11 +101,17 @@ export default function Layout({ children }) {
                   />
 
                   <NavItem 
-                    icon={Upload} 
-                    label="Setup" 
-                    to={createPageUrl('Setup')} 
-                    active={window.location.pathname.endsWith('Setup')}
-                  />
+                                            icon={Upload} 
+                                            label="Setup" 
+                                            to={createPageUrl('Setup')} 
+                                            active={window.location.pathname.endsWith('Setup')}
+                                          />
+                                          <NavItem 
+                                            icon={Users} 
+                                            label="Team" 
+                                            to={createPageUrl('AdminTeam')} 
+                                            active={window.location.pathname.endsWith('AdminTeam')}
+                                          />
               </div>
             </nav>
         </div>
