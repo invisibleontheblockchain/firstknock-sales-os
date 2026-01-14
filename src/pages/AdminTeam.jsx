@@ -22,6 +22,7 @@ const REP_COLORS = ['#FFD700', '#ef4444', '#22c55e', '#3b82f6', '#a855f7', '#ec4
 export default function AdminTeam() {
     const queryClient = useQueryClient();
     const [showAddMember, setShowAddMember] = useState(false);
+    const [showCampaignWizard, setShowCampaignWizard] = useState(false);
     const [newMember, setNewMember] = useState({ name: '', email: '', phone: '', role: 'rep' });
     const [selectedRep, setSelectedRep] = useState(null);
     const [assigningRoute, setAssigningRoute] = useState(null);
