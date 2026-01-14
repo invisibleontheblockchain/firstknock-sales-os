@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 import { Slider } from "@/components/ui/slider";
-import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, ArrowUpDown, Filter, MapPin } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, ArrowUpDown, Filter, MapPin, User, Shield } from 'lucide-react';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
 import RouteChecklist from '../components/routes/RouteChecklist';
+import NearbyHotLeads from '../components/nearby/NearbyHotLeads';
 
 // Brand Colors
 const BRAND = {
@@ -139,6 +140,25 @@ export default function Home() {
                 };
             });
     }, [properties, logs]);
+
+    // Hydrate Saved Routes for Map Display
+    const hydratedSavedRoutes = useMemo(() => {
+        return savedRoutes.map(route => {
+            const routeProps = route.property_hashes
+                .map(hash => effectiveProperties.find(p => p.address_hash === hash))
+                .filter(Boolean);
+
+            return {
+                ...route,
+                id: route.id,
+                properties: routeProps,
+                houseCount: route.metrics?.house_count || routeProps.length,
+                totalDistance: route.metrics?.distance || 0,
+                competitivenessScore: route.metrics?.score || 0,
+                isSaved: true
+            };
+        }).filter(r => r.properties.length > 0);
+    }, [savedRoutes, effectiveProperties]);
 
     // Handle Load Route from URL
     useEffect(() => {
@@ -271,8 +291,39 @@ export default function Home() {
                 <LocationMarker />
                 <MapController fitBounds={fitBounds} />
 
-                {/* Display Routes (Clusters) when generated and no active route */}
-                {!activeRoute && routes.length > 0 && routes.map((route, rIdx) => {
+                {/* Display Saved Routes (Clusters) - ALWAYS SHOW IF EXISTS & NO ACTIVE ROUTE */}
+                {!activeRoute && hydratedSavedRoutes.length > 0 && hydratedSavedRoutes.map((route, rIdx) => {
+                    const isAssignedToMe = route.assigned_to === user?.id || route.assigned_to_name === user?.email; // Approx check
+                    const baseColor = isAssignedToMe ? BRAND.gold : (route.assigned_to ? '#3b82f6' : '#666');
+
+                    return (
+                        <React.Fragment key={route.id}>
+                            {/* Central Route Marker/Icon could go here, but for now just the dots */}
+                            {route.properties.map(p => (
+                                <CircleMarker
+                                    key={`${route.id}-${p.address_hash}`}
+                                    center={[p.lat, p.lng]}
+                                    radius={4}
+                                    eventHandlers={{
+                                        click: (e) => {
+                                            L.DomEvent.stopPropagation(e);
+                                            setActiveRoute(route);
+                                        }
+                                    }}
+                                    pathOptions={{
+                                        fillColor: baseColor,
+                                        fillOpacity: 0.6,
+                                        color: baseColor,
+                                        weight: 1
+                                    }}
+                                />
+                            ))}
+                        </React.Fragment>
+                    );
+                })}
+
+                {/* Display Generated Routes (Clusters) - Only if no saved routes or explicitly generating */}
+                {!activeRoute && hydratedSavedRoutes.length === 0 && routes.length > 0 && routes.map((route, rIdx) => {
                     const routeColor = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
                     return route.properties.map(p => (
                         <CircleMarker
@@ -289,8 +340,8 @@ export default function Home() {
                     ));
                 })}
 
-                {/* Display loose properties ONLY if toggled ON */}
-                {!activeRoute && routes.length === 0 && showAllProperties && effectiveProperties
+                {/* Display loose properties ONLY if toggled ON and no routes visible */}
+                {!activeRoute && routes.length === 0 && hydratedSavedRoutes.length === 0 && showAllProperties && effectiveProperties
                     .filter(p => {
                         if (quickFilter === 'all') return true;
                         if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
@@ -359,7 +410,14 @@ export default function Home() {
                         {activeRoute && (
                             <div className="rounded-lg px-4 py-2 flex items-center gap-2" style={{ background: BRAND.gold }}>
                                 <Navigation className="w-4 h-4" style={{ color: BRAND.voidBlack }} />
-                                <span className="text-sm font-bold" style={{ color: BRAND.voidBlack }}>{activeRoute.name}</span>
+                                <div>
+                                    <span className="text-sm font-bold block leading-none" style={{ color: BRAND.voidBlack }}>{activeRoute.name}</span>
+                                    {activeRoute.assigned_to_name && (
+                                        <span className="text-[10px] font-bold opacity-75 block leading-none mt-0.5" style={{ color: BRAND.voidBlack }}>
+                                            {activeRoute.assigned_to_name}
+                                        </span>
+                                    )}
+                                </div>
                                 <button onClick={() => setActiveRoute(null)} className="ml-1">
                                     <X className="w-4 h-4" style={{ color: BRAND.voidBlack }} />
                                 </button>
@@ -417,8 +475,10 @@ export default function Home() {
                         <Navigation className="w-5 h-5 mr-2" />
                         ROUTES
                         {routesGenerating && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
-                        {!routesGenerating && routes.length > 0 && (
-                            <Badge className="ml-2" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>{routes.length}</Badge>
+                        {!routesGenerating && (hydratedSavedRoutes.length > 0 || routes.length > 0) && (
+                            <Badge className="ml-2" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
+                                {hydratedSavedRoutes.length > 0 ? hydratedSavedRoutes.length : routes.length}
+                            </Badge>
                         )}
                     </Button>
 
@@ -456,76 +516,129 @@ export default function Home() {
                             <div>
                                 <h2 className="flex items-center gap-2 text-lg font-bold tracking-wide" style={{ color: BRAND.gold }}>
                                     <Navigation className="w-5 h-5" />
-                                    OPTIMIZED ROUTES
+                                    {hydratedSavedRoutes.length > 0 ? 'ACTIVE CAMPAIGN ROUTES' : 'OPTIMIZED ROUTES'}
                                 </h2>
-                                <p className="text-xs mt-1" style={{ color: '#888' }}>{filteredRoutes.length} routes from {effectiveProperties.length} properties</p>
+                                <p className="text-xs mt-1" style={{ color: '#888' }}>
+                                    {hydratedSavedRoutes.length > 0
+                                        ? `${hydratedSavedRoutes.length} saved routes loaded`
+                                        : `${filteredRoutes.length} routes from ${effectiveProperties.length} properties`
+                                    }
+                                </p>
                             </div>
                             <button onClick={() => setShowRoutePanel(false)} className="p-2">
                                 <X className="w-5 h-5" style={{ color: BRAND.offWhite }} />
                             </button>
                         </div>
 
-                        {/* Scoring Legend */}
-                        <div className="px-5 py-2 text-[10px] space-y-1" style={{ color: '#888', background: '#151515' }}>
-                            <p className="font-bold text-gray-400">SCORE CRITERIA (FRESHNESS FIRST):</p>
-                            <ul className="list-disc pl-4 space-y-0.5">
-                                <li><span style={{ color: BRAND.gold }}>+200</span> Sold &lt; 7 days ago (Hot!)</li>
-                                <li><span style={{ color: BRAND.gold }}>+180-20</span> Sold 1-12 months ago</li>
-                                <li><span style={{ color: '#22c55e' }}>+20-40</span> High Value Property</li>
-                                <li><span style={{ color: '#fff' }}>+50</span> Eligible / <span style={{ color: '#eab308' }}>+30</span> Callback</li>
-                                <li>Street Sweep Mode: All houses per street</li>
-                                <li><span style={{ color: '#ef4444' }}>EXCLUDED:</span> Streets visited in last {streetCooldownDays} days (No Answer)</li>
-                            </ul>
-                            {cooldownInfo && cooldownInfo.streetsOnCooldown?.length > 0 && (
-                                <div className="mt-2 pt-2 border-t border-[#333]">
-                                    <p className="text-red-400 font-bold">
-                                        {cooldownInfo.streetsOnCooldown.length} streets on cooldown ({cooldownInfo.propertiesExcluded} properties)
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                        <div className="overflow-y-auto h-[calc(70vh-80px)] p-4 space-y-3">
-                            {filteredRoutes.length === 0 ? (
-                                <p className="text-center py-8" style={{ color: '#888' }}>No routes available</p>
-                            ) : (
-                                filteredRoutes.map((route) => (
-                                    <button
-                                        key={route.id}
-                                        onClick={() => { setActiveRoute(route); setPreviewRoute(null); setShowRoutePanel(false); }}
-                                        className="w-full p-4 rounded-xl border transition-all text-left"
-                                        style={{
-                                            background: activeRoute?.id === route.id ? `${BRAND.gold}20` : BRAND.charcoal,
-                                            borderColor: activeRoute?.id === route.id ? BRAND.gold : '#333'
-                                        }}
-                                    >
-                                        <div className="flex items-center justify-between mb-2">
-                                            <span className="font-bold" style={{ color: BRAND.offWhite }}>{route.name}</span>
-                                            <Badge style={{
-                                                background: route.competitivenessScore >= 150 ? '#22c55e' : route.competitivenessScore >= 100 ? '#eab308' : '#666',
-                                                color: '#000'
-                                            }}>
-                                                {route.competitivenessScore}
-                                            </Badge>
-                                        </div>
-                                        <div className="flex gap-4 text-xs" style={{ color: '#888' }}>
-                                            <span>{route.houseCount} houses</span>
-                                            <span>{route.streetCount || '?'} streets</span>
-                                            <span>{route.totalDistance} mi</span>
-                                        </div>
-                                        <Button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleSaveRoute(route);
+                        {/* Saved Routes List */}
+                        {hydratedSavedRoutes.length > 0 && (
+                            <div className="overflow-y-auto h-[calc(70vh-80px)] p-4 space-y-3">
+                                {hydratedSavedRoutes.map((route) => {
+                                    const isAssignedToMe = route.assigned_to === user?.id || route.assigned_to_name === user?.email;
+                                    return (
+                                        <button
+                                            key={route.id}
+                                            onClick={() => { setActiveRoute(route); setPreviewRoute(null); setShowRoutePanel(false); }}
+                                            className="w-full p-4 rounded-xl border transition-all text-left"
+                                            style={{
+                                                background: activeRoute?.id === route.id ? `${BRAND.gold}20` : BRAND.charcoal,
+                                                borderColor: isAssignedToMe ? BRAND.gold : (route.assigned_to ? '#3b82f6' : '#333')
                                             }}
-                                            size="sm"
-                                            className="mt-2 w-full h-8 text-[10px] bg-[#333] hover:bg-[#444] text-white"
                                         >
-                                            SAVE TO MY ROUTES
-                                        </Button>
-                                    </button>
-                                ))
-                            )}
-                        </div>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <div>
+                                                    <span className="font-bold block" style={{ color: BRAND.offWhite }}>{route.name}</span>
+                                                    {route.assigned_to_name && (
+                                                        <span className="text-[10px] font-bold flex items-center gap-1 mt-1" style={{ color: isAssignedToMe ? BRAND.gold : '#3b82f6' }}>
+                                                            {isAssignedToMe ? <User className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
+                                                            {route.assigned_to_name}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <Badge style={{
+                                                    background: route.status === 'COMPLETED' ? '#22c55e' :
+                                                        route.status === 'IN_PROGRESS' ? '#3b82f6' : '#333',
+                                                    color: '#fff'
+                                                }}>
+                                                    {route.status}
+                                                </Badge>
+                                            </div>
+                                            <div className="flex gap-4 text-xs" style={{ color: '#888' }}>
+                                                <span>{route.houseCount} houses</span>
+                                                <span>{route.metrics?.score || 0} score</span>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {/* Generated Routes List (Hidden if Saved Routes exist for simplicity, or we could toggle) */}
+                        {hydratedSavedRoutes.length === 0 && (
+                            <>
+                                {/* Scoring Legend */}
+                                <div className="px-5 py-2 text-[10px] space-y-1" style={{ color: '#888', background: '#151515' }}>
+                                    <p className="font-bold text-gray-400">SCORE CRITERIA (FRESHNESS FIRST):</p>
+                                    <ul className="list-disc pl-4 space-y-0.5">
+                                        <li><span style={{ color: BRAND.gold }}>+200</span> Sold &lt; 7 days ago (Hot!)</li>
+                                        <li><span style={{ color: BRAND.gold }}>+180-20</span> Sold 1-12 months ago</li>
+                                        <li><span style={{ color: '#22c55e' }}>+20-40</span> High Value Property</li>
+                                        <li><span style={{ color: '#fff' }}>+50</span> Eligible / <span style={{ color: '#eab308' }}>+30</span> Callback</li>
+                                        <li>Street Sweep Mode: All houses per street</li>
+                                        <li><span style={{ color: '#ef4444' }}>EXCLUDED:</span> Streets visited in last {streetCooldownDays} days (No Answer)</li>
+                                    </ul>
+                                    {cooldownInfo && cooldownInfo.streetsOnCooldown?.length > 0 && (
+                                        <div className="mt-2 pt-2 border-t border-[#333]">
+                                            <p className="text-red-400 font-bold">
+                                                {cooldownInfo.streetsOnCooldown.length} streets on cooldown ({cooldownInfo.propertiesExcluded} properties)
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="overflow-y-auto h-[calc(70vh-80px)] p-4 space-y-3">
+                                    {filteredRoutes.length === 0 ? (
+                                        <p className="text-center py-8" style={{ color: '#888' }}>No routes available</p>
+                                    ) : (
+                                        filteredRoutes.map((route) => (
+                                            <button
+                                                key={route.id}
+                                                onClick={() => { setActiveRoute(route); setPreviewRoute(null); setShowRoutePanel(false); }}
+                                                className="w-full p-4 rounded-xl border transition-all text-left"
+                                                style={{
+                                                    background: activeRoute?.id === route.id ? `${BRAND.gold}20` : BRAND.charcoal,
+                                                    borderColor: activeRoute?.id === route.id ? BRAND.gold : '#333'
+                                                }}
+                                            >
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="font-bold" style={{ color: BRAND.offWhite }}>{route.name}</span>
+                                                    <Badge style={{
+                                                        background: route.competitivenessScore >= 150 ? '#22c55e' : route.competitivenessScore >= 100 ? '#eab308' : '#666',
+                                                        color: '#000'
+                                                    }}>
+                                                        {route.competitivenessScore}
+                                                    </Badge>
+                                                </div>
+                                                <div className="flex gap-4 text-xs" style={{ color: '#888' }}>
+                                                    <span>{route.houseCount} houses</span>
+                                                    <span>{route.streetCount || '?'} streets</span>
+                                                    <span>{route.totalDistance} mi</span>
+                                                </div>
+                                                <Button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleSaveRoute(route);
+                                                    }}
+                                                    size="sm"
+                                                    className="mt-2 w-full h-8 text-[10px] bg-[#333] hover:bg-[#444] text-white"
+                                                >
+                                                    SAVE TO MY ROUTES
+                                                </Button>
+                                            </button>
+                                        ))
+                                    )}
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             )}
@@ -707,6 +820,13 @@ export default function Home() {
                     </div>
                 </div>
             )}
+
+            {/* Nearby Hot Leads Banner */}
+            <NearbyHotLeads
+                properties={effectiveProperties}
+                radiusMiles={1}
+                maxLeads={5}
+            />
 
             {/* Route Checklist */}
             {showChecklist && activeRoute && (
