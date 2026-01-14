@@ -94,6 +94,7 @@ export default function Home() {
         enabled: !!user?.email
     });
 
+
     // Fallback query for mobile - fetch from unknown@user.local
     const { data: fallbackProperties = [] } = useQuery({
         queryKey: ['masterProperties', 'fallback'],
