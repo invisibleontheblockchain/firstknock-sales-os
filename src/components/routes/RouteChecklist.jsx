@@ -146,7 +146,10 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                 <div className="flex items-center justify-between mb-4">
                     <div>
                         <h2 className="text-lg font-bold tracking-wide" style={{ color: BRAND.gold }}>{route.name}</h2>
-                        <p className="text-xs" style={{ color: '#888' }}>{route.houseCount} properties</p>
+                        <p className="text-xs" style={{ color: '#888' }}>
+                            {route.assigned_to_name ? <span className="text-blue-400 font-bold mr-1">{route.assigned_to_name}</span> : null}
+                            <span className="opacity-50">• {route.houseCount} properties</span>
+                        </p>
                     </div>
                     <Button variant="ghost" size="icon" onClick={onClose}>
                         <X className="w-5 h-5" style={{ color: BRAND.offWhite }} />
