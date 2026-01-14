@@ -24,7 +24,6 @@ export default function CsvUploader() {
     const handleFileUpload = async (event) => {
         await ensureSession();
         const file = event.target.files[0];
-        const file = event.target.files[0];
         if (!file) return;
 
         setIsUploading(true);
