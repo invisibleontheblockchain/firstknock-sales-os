@@ -35,8 +35,15 @@ export default function AdminTeam() {
 
     const { data: savedRoutes = [], isLoading: routesLoading } = useQuery({
         queryKey: ['savedRoutes'],
-        queryFn: () => base44.entities.SavedRoute.list('-created_date', 200)
+        queryFn: () => base44.entities.SavedRoute.list('-created_date', 500)
     });
+
+    const { data: plans = [], isLoading: plansLoading } = useQuery({
+        queryKey: ['territoryPlans'],
+        queryFn: () => base44.entities.TerritoryPlan.list('-created_date', 1)
+    });
+
+    const activePlan = plans[0];
 
     const createMemberMutation = useMutation({
         mutationFn: (data) => base44.entities.TeamMember.create(data),
@@ -59,6 +66,46 @@ export default function AdminTeam() {
             setAssigningRoute(null);
         }
     });
+
+    const createPlanMutation = useMutation({
+        mutationFn: (data) => base44.entities.TerritoryPlan.create(data),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['territoryPlans'] })
+    });
+
+    const updatePlanMutation = useMutation({
+        mutationFn: ({id, data}) => base44.entities.TerritoryPlan.update(id, data),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['territoryPlans'] })
+    });
+
+    // Auto-distribute unassigned routes to active reps
+    const handleAutoDistribute = async () => {
+        const unassigned = routesByRep.unassigned;
+        const activeReps = teamMembers.filter(m => m.status === 'active');
+        
+        if (unassigned.length === 0 || activeReps.length === 0) return;
+
+        if (!confirm(`Distribute ${unassigned.length} routes across ${activeReps.length} reps?`)) return;
+
+        // Simple round-robin distribution for now
+        // In a real "AI" version, this would check proximity to rep's home base or existing routes
+        const updates = unassigned.map((route, idx) => {
+            const rep = activeReps[idx % activeReps.length];
+            return {
+                id: route.id,
+                data: {
+                    assigned_to: rep.id,
+                    assigned_to_name: rep.name,
+                    status: 'PENDING',
+                    priority: Math.floor(idx / activeReps.length) + 1 // Queue order: 1, 1, 1, 2, 2, 2...
+                }
+            };
+        });
+
+        // Batch update (simulated via Promise.all)
+        await Promise.all(updates.map(u => base44.entities.SavedRoute.update(u.id, u.data)));
+        queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+        alert("Routes distributed!");
+    };
 
     const handleAddMember = () => {
         const color = REP_COLORS[teamMembers.length % REP_COLORS.length];
@@ -125,20 +172,87 @@ export default function AdminTeam() {
                     <div>
                         <h1 className="text-2xl font-bold flex items-center gap-2" style={{ color: BRAND.gold }}>
                             <Users className="w-6 h-6" />
-                            Team Management
+                            Command Center
                         </h1>
-                        <p className="text-sm mt-1" style={{ color: '#888' }}>
-                            {teamMembers.length} team members • {savedRoutes.length} routes
-                        </p>
                     </div>
-                    <Button
-                        onClick={() => setShowAddMember(true)}
-                        style={{ background: BRAND.gold, color: BRAND.voidBlack }}
-                        className="font-bold"
-                    >
-                        <Plus className="w-4 h-4 mr-2" />
-                        ADD REP
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button
+                            onClick={handleAutoDistribute}
+                            disabled={routesByRep.unassigned.length === 0}
+                            variant="outline"
+                            className="font-bold border-gray-700 text-gray-300 hover:text-white"
+                        >
+                            <Route className="w-4 h-4 mr-2" />
+                            Auto-Distribute Routes
+                        </Button>
+                        <Button
+                            onClick={() => setShowAddMember(true)}
+                            style={{ background: BRAND.gold, color: BRAND.voidBlack }}
+                            className="font-bold"
+                        >
+                            <Plus className="w-4 h-4 mr-2" />
+                            Add Rep
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Master Plan Card */}
+                <div className="rounded-xl p-6 border relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #1F1F1F 0%, #0A0A0A 100%)', borderColor: '#333' }}>
+                    <div className="absolute top-0 right-0 p-4 opacity-10">
+                        <Route className="w-32 h-32" style={{ color: BRAND.gold }} />
+                    </div>
+                    
+                    {!activePlan ? (
+                        <div className="text-center py-4">
+                            <h3 className="text-xl font-bold mb-2" style={{ color: BRAND.offWhite }}>No Active Territory Plan</h3>
+                            <p className="text-gray-500 mb-4">Initialize a plan to track team progress against a goal.</p>
+                            <Button 
+                                onClick={() => createPlanMutation.mutate({
+                                    name: `Campaign ${new Date().getFullYear()}`,
+                                    goal_houses: 5000,
+                                    status: 'ACTIVE',
+                                    start_date: new Date().toISOString().split('T')[0]
+                                })}
+                                style={{ background: BRAND.gold, color: BRAND.voidBlack }}
+                            >
+                                Initialize Campaign
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="relative z-10">
+                            <div className="flex justify-between items-start mb-6">
+                                <div>
+                                    <Badge className="mb-2" style={{ background: BRAND.gold, color: BRAND.voidBlack }}>ACTIVE CAMPAIGN</Badge>
+                                    <h2 className="text-2xl font-bold text-white">{activePlan.name}</h2>
+                                    <p className="text-gray-400">Target: {activePlan.goal_houses.toLocaleString()} Homes</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-3xl font-bold" style={{ color: BRAND.gold }}>
+                                        {Object.values(repStats).reduce((acc, s) => acc + s.completed, 0)}
+                                        <span className="text-sm text-gray-500 ml-1">/ {activePlan.goal_houses.toLocaleString()}</span>
+                                    </p>
+                                    <p className="text-xs text-gray-500">HOUSES KNOCKED</p>
+                                </div>
+                            </div>
+                            
+                            {/* Progress Bar */}
+                            <div className="h-4 bg-black rounded-full overflow-hidden border border-gray-800 mb-2">
+                                <div 
+                                    className="h-full transition-all duration-1000 ease-out relative"
+                                    style={{ 
+                                        width: `${Math.min(100, (Object.values(repStats).reduce((acc, s) => acc + s.completed, 0) / activePlan.goal_houses) * 100)}%`,
+                                        background: `linear-gradient(90deg, ${BRAND.gold}, #f59e0b)`
+                                    }}
+                                >
+                                    <div className="absolute inset-0 bg-white/20 animate-pulse"></div>
+                                </div>
+                            </div>
+                            <div className="flex justify-between text-xs text-gray-500">
+                                <span>Start: {activePlan.start_date || 'Today'}</span>
+                                <span>{Math.round((Object.values(repStats).reduce((acc, s) => acc + s.completed, 0) / activePlan.goal_houses) * 100)}% Complete</span>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Add Member Form */}
