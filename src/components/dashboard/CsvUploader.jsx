@@ -9,7 +9,21 @@ export default function CsvUploader() {
     const [isUploading, setIsUploading] = useState(false);
     const queryClient = useQueryClient();
 
-    const handleFileUpload = (event) => {
+    // Ensure auth session is active before upload
+    const ensureSession = async () => {
+        try {
+            const user = await base44.auth.me();
+            console.log("Upload session check - User:", user?.email);
+            return user;
+        } catch (e) {
+            console.warn("Upload session check failed:", e);
+            return null;
+        }
+    };
+
+    const handleFileUpload = async (event) => {
+        await ensureSession();
+        const file = event.target.files[0];
         const file = event.target.files[0];
         if (!file) return;
 

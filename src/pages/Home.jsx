@@ -77,10 +77,31 @@ export default function Home() {
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
-    // Fetch ALL 5000 properties (User Specific)
+    // Fetch ALL 5000 properties (User Specific + Fallback for iOS uploads)
     const { data: properties = [], isLoading: propsLoading } = useQuery({
         queryKey: ['masterProperties', user?.email],
-        queryFn: () => user ? base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 5000) : [],
+        queryFn: async () => {
+            if (!user) return [];
+            // Fetch both user-owned and fallback (unknown@user.local) properties to handle iOS/Capacitor auth issues
+            try {
+                const [userProps, fallbackProps] = await Promise.all([
+                    base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 5000),
+                    base44.entities.MasterProperty.filter({ created_by: 'unknown@user.local' }, '-created_date', 5000)
+                ]);
+                
+                // Merge and deduplicate by ID
+                const seen = new Set();
+                const merged = [...(userProps || []), ...(fallbackProps || [])].filter(p => {
+                    if (seen.has(p.id)) return false;
+                    seen.add(p.id);
+                    return true;
+                });
+                return merged;
+            } catch (e) {
+                console.error("Error fetching properties:", e);
+                return [];
+            }
+        },
         enabled: !!user
     });
 
