@@ -34,20 +34,23 @@ export default function ListPage() {
         enabled: !!user
     });
 
-    const { data: savedRoutes = [], isLoading: routesLoading } = useQuery({
+    const { data: savedRoutesRaw = [], isLoading: routesLoading } = useQuery({
         queryKey: ['savedRoutes', user?.email],
         queryFn: () => user ? base44.entities.SavedRoute.filter({ created_by: user.email }, '-created_date', 100) : [],
         enabled: !!user
     });
+    const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
 
-    const { data: logs = [], isLoading: logsLoading } = useQuery({
+    const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs', user?.email],
         queryFn: () => user ? base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 10000) : [],
         enabled: !!user
     });
+    const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
 
     const effectiveProperties = useMemo(() => {
-        return properties
+        const propsArray = Array.isArray(properties) ? properties : (properties?.items || []);
+        return propsArray
             .filter(p => p?.lat && p?.lng && !isNaN(p.lat) && !isNaN(p.lng))
             .map(p => {
                 const propLogs = logs.filter(l => l.address_hash === p.address_hash);
@@ -60,7 +63,7 @@ export default function ListPage() {
             });
     }, [properties, logs]);
 
-    const filteredProperties = effectiveProperties.filter(p => 
+    const filteredProperties = effectiveProperties.filter(p =>
         p.full_address?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.street_name?.toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -92,7 +95,7 @@ export default function ListPage() {
                     <button
                         onClick={() => setView('routes')}
                         className="flex-1 py-3 rounded-lg font-bold tracking-wide transition-all"
-                        style={{ 
+                        style={{
                             background: view === 'routes' ? BRAND.gold : BRAND.charcoal,
                             color: view === 'routes' ? BRAND.voidBlack : BRAND.offWhite
                         }}
@@ -103,7 +106,7 @@ export default function ListPage() {
                     <button
                         onClick={() => setView('properties')}
                         className="flex-1 py-3 rounded-lg font-bold tracking-wide transition-all"
-                        style={{ 
+                        style={{
                             background: view === 'properties' ? BRAND.gold : BRAND.charcoal,
                             color: view === 'properties' ? BRAND.voidBlack : BRAND.offWhite
                         }}
@@ -122,22 +125,22 @@ export default function ListPage() {
                 {view === 'properties' && (
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" style={{ color: '#666' }} />
-                        <Input 
-                            placeholder="Search addresses..." 
+                        <Input
+                            placeholder="Search addresses..."
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="pl-9"
                             style={{ background: BRAND.charcoal, borderColor: '#333', color: BRAND.offWhite }}
                         />
                     </div>
-                    )}
-                    </div>
+                )}
+            </div>
 
-                    {/* Route Details Modal */}
-                    {selectedRouteDetails && (
-                    <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
+            {/* Route Details Modal */}
+            {selectedRouteDetails && (
+                <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4">
                     <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setSelectedRouteDetails(null)} />
-                    <div 
+                    <div
                         className="relative w-full max-w-2xl max-h-[80vh] rounded-2xl flex flex-col shadow-2xl overflow-hidden"
                         style={{ background: BRAND.charcoal, border: `1px solid ${BRAND.gold}40` }}
                     >
@@ -160,10 +163,10 @@ export default function ListPage() {
                                         <th className="pb-2">Details</th>
                                         <th className="pb-2">Sales Info</th>
                                         <th className="pb-2 text-right">Status</th>
-                                        </tr>
-                                        </thead>
-                                        <tbody className="text-sm">
-                                        {selectedRouteDetails.property_hashes.map((hash, idx) => {
+                                    </tr>
+                                </thead>
+                                <tbody className="text-sm">
+                                    {selectedRouteDetails.property_hashes.map((hash, idx) => {
                                         const prop = properties.find(p => p.address_hash === hash);
                                         const propLogs = logs.filter(l => l.address_hash === hash);
                                         const status = prop ? determineEffectiveStatus(prop, propLogs) : 'UNKNOWN';
@@ -196,16 +199,16 @@ export default function ListPage() {
                                                 </td>
                                             </tr>
                                         );
-                                        })}
+                                    })}
                                 </tbody>
                             </table>
                         </div>
                     </div>
-                    </div>
-                    )}
+                </div>
+            )}
 
-                    {/* Content */}
-                <div className="flex-1 overflow-auto p-4 space-y-3">
+            {/* Content */}
+            <div className="flex-1 overflow-auto p-4 space-y-3">
                 {isLoading ? (
                     <div className="flex justify-center p-8">
                         <Loader2 className="w-8 h-8 animate-spin" style={{ color: BRAND.gold }} />
@@ -221,8 +224,8 @@ export default function ListPage() {
                             </div>
                         ) : (
                             savedRoutes.map((route, idx) => (
-                                <Card 
-                                    key={route.id} 
+                                <Card
+                                    key={route.id}
                                     className="p-4 cursor-pointer transition-all hover:opacity-90"
                                     style={{ background: BRAND.charcoal, borderColor: '#333', borderLeft: `3px solid ${BRAND.gold}` }}
                                 >
@@ -236,7 +239,7 @@ export default function ListPage() {
                                                 <p className="text-[10px] text-gray-500">Start: {route.start_location.address}</p>
                                             )}
                                         </div>
-                                        <Badge style={{ 
+                                        <Badge style={{
                                             background: route.status === 'COMPLETED' ? '#22c55e' : '#eab308',
                                             color: '#000'
                                         }}>
@@ -245,11 +248,11 @@ export default function ListPage() {
                                     </div>
 
                                     <div className="flex gap-2">
-                                        <Link 
+                                        <Link
                                             to={`${createPageUrl('Home')}?savedRoute=${route.id}`}
                                             className="flex-1"
                                         >
-                                            <Button 
+                                            <Button
                                                 className="w-full h-10 font-bold tracking-wide"
                                                 style={{ background: BRAND.gold, color: BRAND.voidBlack }}
                                             >
@@ -257,17 +260,17 @@ export default function ListPage() {
                                                 LOAD ROUTE
                                             </Button>
                                         </Link>
-                                        <Button 
+                                        <Button
                                             onClick={() => setSelectedRouteDetails(route)}
                                             className="h-10 px-3 bg-[#333] hover:bg-[#444] text-white border border-[#444]"
                                         >
                                             <Info className="w-4 h-4" />
                                         </Button>
                                     </div>
-                                    </Card>
-                                    ))
-                                    )}
-                                    </>
+                                </Card>
+                            ))
+                        )}
+                    </>
                 ) : (
                     <>
                         {filteredProperties.length === 0 ? (
@@ -286,12 +289,12 @@ export default function ListPage() {
                                             </div>
                                         </div>
                                         <Badge variant="outline" style={{
-                                            background: prop.effective_status === 'SOLD' ? '#22c55e20' : 
-                                                        prop.effective_status === 'HARD_NO' ? '#ef444420' : '#6b728020',
-                                            color: prop.effective_status === 'SOLD' ? '#22c55e' : 
-                                                    prop.effective_status === 'HARD_NO' ? '#ef4444' : '#6b7280',
-                                            borderColor: prop.effective_status === 'SOLD' ? '#22c55e' : 
-                                                            prop.effective_status === 'HARD_NO' ? '#ef4444' : '#6b7280'
+                                            background: prop.effective_status === 'SOLD' ? '#22c55e20' :
+                                                prop.effective_status === 'HARD_NO' ? '#ef444420' : '#6b728020',
+                                            color: prop.effective_status === 'SOLD' ? '#22c55e' :
+                                                prop.effective_status === 'HARD_NO' ? '#ef4444' : '#6b7280',
+                                            borderColor: prop.effective_status === 'SOLD' ? '#22c55e' :
+                                                prop.effective_status === 'HARD_NO' ? '#ef4444' : '#6b7280'
                                         }}>
                                             {prop.effective_status || 'ELIGIBLE'}
                                         </Badge>

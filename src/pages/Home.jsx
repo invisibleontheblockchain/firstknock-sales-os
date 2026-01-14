@@ -52,7 +52,7 @@ function MapController({ fitBounds }) {
             try {
                 const bounds = L.latLngBounds(fitBounds);
                 if (bounds.isValid()) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
-            } catch (e) {}
+            } catch (e) { }
         }
     }, [fitBounds, map]);
     return null;
@@ -83,11 +83,12 @@ export default function Home() {
         enabled: !!user
     });
 
-    const { data: savedRoutes = [] } = useQuery({
+    const { data: savedRoutesRaw = [] } = useQuery({
         queryKey: ['savedRoutes', user?.email],
         queryFn: () => user ? base44.entities.SavedRoute.filter({ created_by: user.email }, '-created_date', 100) : [],
         enabled: !!user
     });
+    const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
 
     const createRouteMutation = useMutation({
         mutationFn: (routeData) => base44.entities.SavedRoute.create(routeData),
@@ -111,11 +112,12 @@ export default function Home() {
         });
     };
 
-    const { data: logs = [], isLoading: logsLoading } = useQuery({
+    const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs', user?.email],
         queryFn: () => user ? base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 10000) : [],
         enabled: !!user
     });
+    const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
 
     const createLogMutation = useMutation({
         mutationFn: (logData) => base44.entities.InteractionLog.create(logData),
@@ -124,7 +126,8 @@ export default function Home() {
 
     // Process ALL properties
     const effectiveProperties = useMemo(() => {
-        return properties
+        const propsArray = Array.isArray(properties) ? properties : (properties?.items || []);
+        return propsArray
             .filter(p => p?.lat && p?.lng && !isNaN(p.lat) && !isNaN(p.lng))
             .map(p => {
                 const propLogs = logs.filter(l => l.address_hash === p.address_hash);
@@ -141,7 +144,7 @@ export default function Home() {
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         const savedRouteId = params.get('savedRoute');
-        
+
         if (savedRouteId && savedRoutes.length > 0 && effectiveProperties.length > 0 && !activeRoute) {
             const saved = savedRoutes.find(r => r.id === savedRouteId);
             if (saved) {
@@ -149,7 +152,7 @@ export default function Home() {
                 const routeProps = saved.property_hashes
                     .map(hash => effectiveProperties.find(p => p.address_hash === hash))
                     .filter(Boolean);
-                
+
                 if (routeProps.length > 0) {
                     setActiveRoute({
                         id: saved.id,
@@ -185,21 +188,21 @@ export default function Home() {
                 // Use current map center as start location if not set
                 const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
                 const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
-                
+
                 // Pass logs for street cooldown filtering
                 const generated = generateOptimizedRoutes(
-                    effectiveProperties, 
-                    housesPerRoute, 
-                    start, 
-                    logs, 
+                    effectiveProperties,
+                    housesPerRoute,
+                    start,
+                    logs,
                     { streetCooldownDays, useStreetSweep: true }
                 );
-                
+
                 // Extract cooldown info if available
                 if (generated._cooldownInfo) {
                     setCooldownInfo(generated._cooldownInfo);
                 }
-                
+
                 setRoutes(generated);
             } catch (e) {
                 console.error(e);
@@ -296,19 +299,19 @@ export default function Home() {
                         return true;
                     })
                     .map(p => (
-                    <CircleMarker
-                        key={p.address_hash}
-                        center={[p.lat, p.lng]}
-                        radius={5}
-                        pathOptions={{
-                            fillColor: STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER,
-                            fillOpacity: 0.9,
-                            color: '#333',
-                            weight: 1
-                        }}
-                    />
-                ))}
-                
+                        <CircleMarker
+                            key={p.address_hash}
+                            center={[p.lat, p.lng]}
+                            radius={5}
+                            pathOptions={{
+                                fillColor: STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER,
+                                fillOpacity: 0.9,
+                                color: '#333',
+                                weight: 1
+                            }}
+                        />
+                    ))}
+
                 {/* Preview Route (hover/tap from list) */}
                 {previewRoute && !activeRoute && (
                     <Polyline
@@ -363,7 +366,7 @@ export default function Home() {
                             </div>
                         )}
                     </div>
-                    
+
                     <div className="pointer-events-auto">
                         <Button
                             onClick={() => setShowCompare(true)}
@@ -375,7 +378,7 @@ export default function Home() {
                         </Button>
                     </div>
                 </div>
-                
+
                 {/* Quick Filter Bar */}
                 {!activeRoute && (
                     <div className="pointer-events-auto flex gap-2 justify-center">
@@ -389,7 +392,7 @@ export default function Home() {
                                 key={f.id}
                                 onClick={() => setQuickFilter(f.id)}
                                 className="px-3 py-1.5 rounded-full text-[10px] font-bold tracking-wide transition-all flex items-center gap-1.5"
-                                style={{ 
+                                style={{
                                     background: quickFilter === f.id ? BRAND.gold : `${BRAND.voidBlack}dd`,
                                     color: quickFilter === f.id ? BRAND.voidBlack : BRAND.offWhite,
                                     border: `1px solid ${quickFilter === f.id ? BRAND.gold : '#333'}`
@@ -445,7 +448,7 @@ export default function Home() {
             {showRoutePanel && (
                 <div className="fixed inset-0 z-[2000]">
                     <div className="absolute inset-0 bg-black/60" onClick={() => setShowRoutePanel(false)} />
-                    <div 
+                    <div
                         className="absolute bottom-0 left-0 right-0 h-[70vh] rounded-t-3xl overflow-hidden"
                         style={{ background: BRAND.voidBlack, borderTop: `1px solid ${BRAND.charcoal}` }}
                     >
@@ -466,12 +469,12 @@ export default function Home() {
                         <div className="px-5 py-2 text-[10px] space-y-1" style={{ color: '#888', background: '#151515' }}>
                             <p className="font-bold text-gray-400">SCORE CRITERIA (FRESHNESS FIRST):</p>
                             <ul className="list-disc pl-4 space-y-0.5">
-                                <li><span style={{color: BRAND.gold}}>+200</span> Sold &lt; 7 days ago (Hot!)</li>
-                                <li><span style={{color: BRAND.gold}}>+180-20</span> Sold 1-12 months ago</li>
-                                <li><span style={{color: '#22c55e'}}>+20-40</span> High Value Property</li>
-                                <li><span style={{color: '#fff'}}>+50</span> Eligible / <span style={{color: '#eab308'}}>+30</span> Callback</li>
+                                <li><span style={{ color: BRAND.gold }}>+200</span> Sold &lt; 7 days ago (Hot!)</li>
+                                <li><span style={{ color: BRAND.gold }}>+180-20</span> Sold 1-12 months ago</li>
+                                <li><span style={{ color: '#22c55e' }}>+20-40</span> High Value Property</li>
+                                <li><span style={{ color: '#fff' }}>+50</span> Eligible / <span style={{ color: '#eab308' }}>+30</span> Callback</li>
                                 <li>Street Sweep Mode: All houses per street</li>
-                                <li><span style={{color: '#ef4444'}}>EXCLUDED:</span> Streets visited in last {streetCooldownDays} days (No Answer)</li>
+                                <li><span style={{ color: '#ef4444' }}>EXCLUDED:</span> Streets visited in last {streetCooldownDays} days (No Answer)</li>
                             </ul>
                             {cooldownInfo && cooldownInfo.streetsOnCooldown?.length > 0 && (
                                 <div className="mt-2 pt-2 border-t border-[#333]">
@@ -490,14 +493,14 @@ export default function Home() {
                                         key={route.id}
                                         onClick={() => { setActiveRoute(route); setPreviewRoute(null); setShowRoutePanel(false); }}
                                         className="w-full p-4 rounded-xl border transition-all text-left"
-                                        style={{ 
+                                        style={{
                                             background: activeRoute?.id === route.id ? `${BRAND.gold}20` : BRAND.charcoal,
                                             borderColor: activeRoute?.id === route.id ? BRAND.gold : '#333'
                                         }}
                                     >
                                         <div className="flex items-center justify-between mb-2">
                                             <span className="font-bold" style={{ color: BRAND.offWhite }}>{route.name}</span>
-                                            <Badge style={{ 
+                                            <Badge style={{
                                                 background: route.competitivenessScore >= 150 ? '#22c55e' : route.competitivenessScore >= 100 ? '#eab308' : '#666',
                                                 color: '#000'
                                             }}>
@@ -505,34 +508,34 @@ export default function Home() {
                                             </Badge>
                                         </div>
                                         <div className="flex gap-4 text-xs" style={{ color: '#888' }}>
-                                        <span>{route.houseCount} houses</span>
-                                        <span>{route.streetCount || '?'} streets</span>
-                                        <span>{route.totalDistance} mi</span>
+                                            <span>{route.houseCount} houses</span>
+                                            <span>{route.streetCount || '?'} streets</span>
+                                            <span>{route.totalDistance} mi</span>
                                         </div>
-                                        <Button 
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleSaveRoute(route);
-                                        }}
-                                        size="sm"
-                                        className="mt-2 w-full h-8 text-[10px] bg-[#333] hover:bg-[#444] text-white"
+                                        <Button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleSaveRoute(route);
+                                            }}
+                                            size="sm"
+                                            className="mt-2 w-full h-8 text-[10px] bg-[#333] hover:bg-[#444] text-white"
                                         >
-                                        SAVE TO MY ROUTES
+                                            SAVE TO MY ROUTES
                                         </Button>
-                                        </button>
-                                        ))
-                                        )}
-                                        </div>
-                                        </div>
-                                        </div>
-                                        )}
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Filter Panel */}
             {showCompare && (
                 <div className="fixed inset-0 z-[2000]">
                     <div className="absolute inset-0 bg-black/60" onClick={() => setShowCompare(false)} />
-                    <div 
-                        className="absolute top-0 right-0 bottom-0 w-full max-w-md overflow-hidden"
+                    <div
+                        className="absolute top-0 right-0 bottom-0 w-full max-w-md overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
                         style={{ background: BRAND.voidBlack, borderLeft: `1px solid ${BRAND.charcoal}` }}
                     >
                         <div className="p-5 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
@@ -540,18 +543,18 @@ export default function Home() {
                                 <BarChart3 className="w-5 h-5" />
                                 ROUTE FILTERS
                             </h2>
-                            <button onClick={() => setShowCompare(false)} className="p-2">
-                                <X className="w-5 h-5" style={{ color: BRAND.offWhite }} />
+                            <button onClick={() => setShowCompare(false)} className="p-4 -mr-2 hover:bg-[#333] rounded-full transition-colors">
+                                <X className="w-6 h-6" style={{ color: BRAND.offWhite }} />
                             </button>
                         </div>
-                        
+
                         <div className="p-5 space-y-6 overflow-y-auto h-[calc(100%-70px)]">
                             <div>
                                 <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
                                     STARTING LOCATION
                                 </label>
                                 <div className="flex gap-2">
-                                    <input 
+                                    <input
                                         type="text"
                                         placeholder="Enter start address..."
                                         value={startAddressInput}
@@ -586,7 +589,7 @@ export default function Home() {
                                             key={size}
                                             onClick={() => setHousesPerRoute(size)}
                                             className="flex-1 py-3 rounded-lg text-sm font-bold tracking-wide transition-all"
-                                            style={{ 
+                                            style={{
                                                 background: housesPerRoute === size ? BRAND.gold : BRAND.charcoal,
                                                 color: housesPerRoute === size ? BRAND.voidBlack : BRAND.offWhite
                                             }}
@@ -665,7 +668,7 @@ export default function Home() {
                                             key={opt.id}
                                             onClick={() => setSortBy(opt.id)}
                                             className="px-3 py-2 rounded-lg text-xs font-bold tracking-wide transition-all"
-                                            style={{ 
+                                            style={{
                                                 background: sortBy === opt.id ? BRAND.gold : BRAND.charcoal,
                                                 color: sortBy === opt.id ? BRAND.voidBlack : BRAND.offWhite
                                             }}
@@ -682,7 +685,7 @@ export default function Home() {
                                 </h3>
                                 <div className="space-y-2">
                                     {filteredRoutes.slice(0, 20).map((route, idx) => (
-                                        <div 
+                                        <div
                                             key={route.id}
                                             className="p-3 rounded-lg flex items-center justify-between cursor-pointer transition-all hover:opacity-80"
                                             style={{ background: BRAND.charcoal, borderLeft: `3px solid ${ROUTE_COLORS[idx % ROUTE_COLORS.length]}` }}
@@ -709,7 +712,7 @@ export default function Home() {
             {showChecklist && activeRoute && (
                 <div className="fixed inset-0 z-[2000]">
                     <div className="absolute inset-0 bg-black/60" onClick={() => setShowChecklist(false)} />
-                    <div 
+                    <div
                         className="absolute top-0 right-0 bottom-0 w-full max-w-lg overflow-hidden"
                         style={{ background: BRAND.voidBlack, borderLeft: `1px solid ${BRAND.charcoal}` }}
                     >
