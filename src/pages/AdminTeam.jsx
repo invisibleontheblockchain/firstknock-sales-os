@@ -80,15 +80,17 @@ export default function AdminTeam() {
     // Auto-distribute unassigned routes to active reps
     const handleAutoDistribute = async () => {
         const unassigned = routesByRep.unassigned;
+        // Sort by priority (score) so we assign best routes first
+        const sortedUnassigned = [...unassigned].sort((a, b) => (b.metrics?.score || 0) - (a.metrics?.score || 0));
+        
         const activeReps = teamMembers.filter(m => m.status === 'active');
         
-        if (unassigned.length === 0 || activeReps.length === 0) return;
+        if (sortedUnassigned.length === 0 || activeReps.length === 0) return;
 
-        if (!confirm(`Distribute ${unassigned.length} routes across ${activeReps.length} reps?`)) return;
+        if (!confirm(`Distribute ${sortedUnassigned.length} optimal routes across ${activeReps.length} reps?`)) return;
 
-        // Simple round-robin distribution for now
-        // In a real "AI" version, this would check proximity to rep's home base or existing routes
-        const updates = unassigned.map((route, idx) => {
+        // Distribute best routes evenly
+        const updates = sortedUnassigned.map((route, idx) => {
             const rep = activeReps[idx % activeReps.length];
             return {
                 id: route.id,
@@ -96,15 +98,14 @@ export default function AdminTeam() {
                     assigned_to: rep.id,
                     assigned_to_name: rep.name,
                     status: 'PENDING',
-                    priority: Math.floor(idx / activeReps.length) + 1 // Queue order: 1, 1, 1, 2, 2, 2...
+                    priority: Math.floor(idx / activeReps.length) + 1 // Queue order: 1, 1, 1...
                 }
             };
         });
 
-        // Batch update (simulated via Promise.all)
         await Promise.all(updates.map(u => base44.entities.SavedRoute.update(u.id, u.data)));
         queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
-        alert("Routes distributed!");
+        alert("Routes distributed optimally!");
     };
 
     const handleAddMember = () => {
@@ -205,16 +206,13 @@ export default function AdminTeam() {
                     {!activePlan ? (
                         <div className="text-center py-4">
                             <h3 className="text-xl font-bold mb-2" style={{ color: BRAND.offWhite }}>No Active Territory Plan</h3>
-                            <p className="text-gray-500 mb-4">Initialize a plan to track team progress against a goal.</p>
+                            <p className="text-gray-500 mb-4">Configure your data filters and routing strategy to begin.</p>
                             <Button 
-                                onClick={() => createPlanMutation.mutate({
-                                    name: `Campaign ${new Date().getFullYear()}`,
-                                    goal_houses: 5000,
-                                    status: 'ACTIVE',
-                                    start_date: new Date().toISOString().split('T')[0]
-                                })}
+                                onClick={() => setShowCampaignWizard(true)}
                                 style={{ background: BRAND.gold, color: BRAND.voidBlack }}
+                                className="font-bold"
                             >
+                                <Route className="w-4 h-4 mr-2" />
                                 Initialize Campaign
                             </Button>
                         </div>
@@ -222,9 +220,22 @@ export default function AdminTeam() {
                         <div className="relative z-10">
                             <div className="flex justify-between items-start mb-6">
                                 <div>
-                                    <Badge className="mb-2" style={{ background: BRAND.gold, color: BRAND.voidBlack }}>ACTIVE CAMPAIGN</Badge>
+                                    <div className="flex gap-2 mb-2">
+                                        <Badge style={{ background: BRAND.gold, color: BRAND.voidBlack }}>ACTIVE CAMPAIGN</Badge>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="sm" 
+                                            className="h-5 text-[10px] text-gray-400 hover:text-white p-0"
+                                            onClick={() => setShowCampaignWizard(true)}
+                                        >
+                                            <Settings className="w-3 h-3 mr-1" />
+                                            SETTINGS
+                                        </Button>
+                                    </div>
                                     <h2 className="text-2xl font-bold text-white">{activePlan.name}</h2>
-                                    <p className="text-gray-400">Target: {activePlan.goal_houses.toLocaleString()} Homes</p>
+                                    <p className="text-gray-400 text-sm">
+                                        Target: {activePlan.goal_houses.toLocaleString()} Homes • {savedRoutes.length} Routes Generated
+                                    </p>
                                 </div>
                                 <div className="text-right">
                                     <p className="text-3xl font-bold" style={{ color: BRAND.gold }}>
@@ -253,6 +264,13 @@ export default function AdminTeam() {
                             </div>
                         </div>
                     )}
+
+                {/* Campaign Wizard */}
+                <CampaignWizard 
+                    open={showCampaignWizard} 
+                    onOpenChange={setShowCampaignWizard}
+                    existingPlan={activePlan}
+                />
                 </div>
 
                 {/* Add Member Form */}
