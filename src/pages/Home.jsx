@@ -4,6 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { storage } from '@/lib/storage';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -77,12 +78,59 @@ export default function Home() {
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
-    // Fetch ALL 5000 properties (User Specific)
-    const { data: properties = [], isLoading: propsLoading } = useQuery({
+    // Fetch Properties - support both user-specific and fallback for mobile auth
+    const { data: userProperties = [], isLoading: propsLoading } = useQuery({
         queryKey: ['masterProperties', user?.email],
-        queryFn: () => user ? base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 5000) : [],
-        enabled: !!user
+        queryFn: async () => {
+            if (!user?.email) return [];
+            try {
+                const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 10000);
+                return Array.isArray(result) ? result : (result?.items || []);
+            } catch (e) {
+                console.log('[Home] Error fetching user properties:', e);
+                return [];
+            }
+        },
+        enabled: !!user?.email
     });
+
+    // Fallback query for mobile - fetch from unknown@user.local
+    const { data: fallbackProperties = [] } = useQuery({
+        queryKey: ['masterProperties', 'fallback'],
+        queryFn: async () => {
+            try {
+                console.log('[Home] Fetching fallback properties...');
+                const result = await base44.entities.MasterProperty.filter({ created_by: 'unknown@user.local' }, '-created_date', 10000);
+                const items = Array.isArray(result) ? result : (result?.items || []);
+                console.log('[Home] Fallback properties count:', items.length);
+                return items;
+            } catch (e) {
+                console.log('[Home] Error fetching fallback properties:', e);
+                return [];
+            }
+        }
+    });
+
+    // Local Storage query (Offline support)
+    const { data: localProperties = [] } = useQuery({
+        queryKey: ['localProperties'],
+        queryFn: async () => {
+            const items = await storage.getProperties();
+            console.log('[Home] Local properties count:', items.length);
+            return items;
+        }
+    });
+
+    // Combine all sources and deduplicate by address_hash
+    const properties = useMemo(() => {
+        const combined = [...userProperties, ...fallbackProperties, ...localProperties];
+        const seen = new Set();
+        return combined.filter(p => {
+            if (!p?.address_hash || seen.has(p.address_hash)) return false;
+            seen.add(p.address_hash);
+            return true;
+        });
+    }, [userProperties, fallbackProperties, localProperties]);
 
     const { data: savedRoutesRaw = [] } = useQuery({
         queryKey: ['savedRoutes', user?.email],
@@ -92,9 +140,24 @@ export default function Home() {
     const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
 
     const createRouteMutation = useMutation({
-        mutationFn: (routeData) => base44.entities.SavedRoute.create(routeData),
+        mutationFn: async (routeData) => {
+            // Save locally first (Optimistic / Offline First)
+            // We give it a temporary ID so it has a unique key
+            const localRoute = { ...routeData, id: `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}` };
+            await storage.saveRoute(localRoute);
+            console.log('[Home] Saved route locally');
+
+            // Try backend (might fail if offline/auth issue)
+            try {
+                return await base44.entities.SavedRoute.create(routeData);
+            } catch (e) {
+                console.warn('[Home] Failed to save route to backend, but saved locally:', e);
+                return localRoute;
+            }
+        },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+            queryClient.invalidateQueries({ queryKey: ['localRoutes'] }); // Ensure local readers update
             alert("Route saved to My Routes!");
         }
     });

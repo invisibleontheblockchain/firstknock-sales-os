@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-    Users, Plus, Trash2, Route, ChevronRight, User, 
+import {
+    Users, Plus, Trash2, Route, ChevronRight, User,
     CheckCircle, Clock, AlertCircle, GripVertical, X, Settings
 } from 'lucide-react';
 import CampaignWizard from '@/components/team/CampaignWizard';
@@ -30,20 +30,23 @@ export default function AdminTeam() {
 
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
-    const { data: teamMembers = [], isLoading: teamLoading } = useQuery({
+    const { data: teamMembersRaw = [], isLoading: teamLoading } = useQuery({
         queryKey: ['teamMembers'],
         queryFn: () => base44.entities.TeamMember.list('-created_date', 100)
     });
+    const teamMembers = (Array.isArray(teamMembersRaw) ? teamMembersRaw : (teamMembersRaw?.items || [])).filter(m => m && typeof m === 'object');
 
-    const { data: savedRoutes = [], isLoading: routesLoading } = useQuery({
+    const { data: savedRoutesRaw = [], isLoading: routesLoading } = useQuery({
         queryKey: ['savedRoutes'],
         queryFn: () => base44.entities.SavedRoute.list('-created_date', 500)
     });
+    const savedRoutes = (Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || [])).filter(r => r && typeof r === 'object');
 
-    const { data: plans = [], isLoading: plansLoading } = useQuery({
+    const { data: plansRaw = [], isLoading: plansLoading } = useQuery({
         queryKey: ['territoryPlans'],
         queryFn: () => base44.entities.TerritoryPlan.list('-created_date', 1)
     });
+    const plans = Array.isArray(plansRaw) ? plansRaw : (plansRaw?.items || []);
 
     const activePlan = plans[0];
 
@@ -75,7 +78,7 @@ export default function AdminTeam() {
     });
 
     const updatePlanMutation = useMutation({
-        mutationFn: ({id, data}) => base44.entities.TerritoryPlan.update(id, data),
+        mutationFn: ({ id, data }) => base44.entities.TerritoryPlan.update(id, data),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['territoryPlans'] })
     });
 
@@ -84,9 +87,9 @@ export default function AdminTeam() {
         const unassigned = routesByRep.unassigned;
         // Sort by priority (score) so we assign best routes first
         const sortedUnassigned = [...unassigned].sort((a, b) => (b.metrics?.score || 0) - (a.metrics?.score || 0));
-        
+
         const activeReps = teamMembers.filter(m => m.status === 'active');
-        
+
         if (sortedUnassigned.length === 0 || activeReps.length === 0) return;
 
         if (!confirm(`Distribute ${sortedUnassigned.length} optimal routes across ${activeReps.length} reps?`)) return;
@@ -135,7 +138,7 @@ export default function AdminTeam() {
     const routesByRep = useMemo(() => {
         const grouped = { unassigned: [] };
         teamMembers.forEach(m => { grouped[m.id] = []; });
-        
+
         savedRoutes.forEach(route => {
             if (route.assigned_to && grouped[route.assigned_to]) {
                 grouped[route.assigned_to].push(route);
@@ -204,12 +207,12 @@ export default function AdminTeam() {
                     <div className="absolute top-0 right-0 p-4 opacity-10">
                         <Route className="w-32 h-32" style={{ color: BRAND.gold }} />
                     </div>
-                    
+
                     {!activePlan ? (
                         <div className="text-center py-4">
                             <h3 className="text-xl font-bold mb-2" style={{ color: BRAND.offWhite }}>No Active Territory Plan</h3>
                             <p className="text-gray-500 mb-4">Configure your data filters and routing strategy to begin.</p>
-                            <Button 
+                            <Button
                                 onClick={() => setShowCampaignWizard(true)}
                                 style={{ background: BRAND.gold, color: BRAND.voidBlack }}
                                 className="font-bold"
@@ -224,9 +227,9 @@ export default function AdminTeam() {
                                 <div>
                                     <div className="flex gap-2 mb-2">
                                         <Badge style={{ background: BRAND.gold, color: BRAND.voidBlack }}>ACTIVE CAMPAIGN</Badge>
-                                        <Button 
-                                            variant="ghost" 
-                                            size="sm" 
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
                                             className="h-5 text-[10px] text-gray-400 hover:text-white p-0"
                                             onClick={() => setShowCampaignWizard(true)}
                                         >
@@ -247,12 +250,12 @@ export default function AdminTeam() {
                                     <p className="text-xs text-gray-500">HOUSES KNOCKED</p>
                                 </div>
                             </div>
-                            
+
                             {/* Progress Bar */}
                             <div className="h-4 bg-black rounded-full overflow-hidden border border-gray-800 mb-2">
-                                <div 
+                                <div
                                     className="h-full transition-all duration-1000 ease-out relative"
-                                    style={{ 
+                                    style={{
                                         width: `${Math.min(100, (Object.values(repStats).reduce((acc, s) => acc + s.completed, 0) / activePlan.goal_houses) * 100)}%`,
                                         background: `linear-gradient(90deg, ${BRAND.gold}, #f59e0b)`
                                     }}
@@ -267,12 +270,12 @@ export default function AdminTeam() {
                         </div>
                     )}
 
-                {/* Campaign Wizard */}
-                <CampaignWizard 
-                    open={showCampaignWizard} 
-                    onOpenChange={setShowCampaignWizard}
-                    existingPlan={activePlan}
-                />
+                    {/* Campaign Wizard */}
+                    <CampaignWizard
+                        open={showCampaignWizard}
+                        onOpenChange={setShowCampaignWizard}
+                        existingPlan={activePlan}
+                    />
                 </div>
 
                 {/* Add Member Form */}
@@ -329,7 +332,7 @@ export default function AdminTeam() {
                         </div>
                         <div className="space-y-2">
                             {routesByRep.unassigned.map(route => (
-                                <div 
+                                <div
                                     key={route.id}
                                     className="p-3 rounded-lg flex items-center justify-between"
                                     style={{ background: BRAND.charcoal }}
@@ -368,31 +371,31 @@ export default function AdminTeam() {
                         const routes = routesByRep[member.id] || [];
 
                         return (
-                            <div 
+                            <div
                                 key={member.id}
                                 className="rounded-xl border overflow-hidden"
                                 style={{ background: BRAND.charcoal, borderColor: member.color + '40' }}
                             >
                                 {/* Rep Header */}
-                                <div 
+                                <div
                                     className="p-4 flex items-center justify-between"
                                     style={{ borderBottom: `2px solid ${member.color}` }}
                                 >
                                     <div className="flex items-center gap-3">
-                                        <div 
+                                        <div
                                             className="w-10 h-10 rounded-full flex items-center justify-center text-black font-bold"
                                             style={{ background: member.color }}
                                         >
-                                            {member.name.charAt(0)}
+                                            {(member.name || '?').charAt(0)}
                                         </div>
                                         <div>
-                                            <p className="font-bold" style={{ color: BRAND.offWhite }}>{member.name}</p>
+                                            <p className="font-bold" style={{ color: BRAND.offWhite }}>{member.name || 'Unknown Rep'}</p>
                                             <p className="text-xs" style={{ color: '#888' }}>{member.email}</p>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <Badge style={{ background: member.role === 'manager' ? '#3b82f6' : '#333' }}>
-                                            {member.role.toUpperCase()}
+                                            {(member.role || 'rep').toUpperCase()}
                                         </Badge>
                                         <button onClick={() => deleteMemberMutation.mutate(member.id)}>
                                             <Trash2 className="w-4 h-4 text-red-500" />
@@ -427,14 +430,14 @@ export default function AdminTeam() {
                                     ) : (
                                         <div className="space-y-2">
                                             {routes.map((route, idx) => (
-                                                <div 
+                                                <div
                                                     key={route.id}
                                                     className="p-2 rounded-lg flex items-center gap-2"
                                                     style={{ background: '#1a1a1a' }}
                                                 >
-                                                    <div 
+                                                    <div
                                                         className="w-6 h-6 rounded flex items-center justify-center text-xs font-bold"
-                                                        style={{ 
+                                                        style={{
                                                             background: idx === 0 ? BRAND.gold : '#333',
                                                             color: idx === 0 ? BRAND.voidBlack : '#888'
                                                         }}
@@ -449,11 +452,11 @@ export default function AdminTeam() {
                                                             {route.metrics?.house_count} houses • {route.metrics?.distance}mi
                                                         </p>
                                                     </div>
-                                                    <Badge 
+                                                    <Badge
                                                         className="text-[9px]"
-                                                        style={{ 
-                                                            background: route.status === 'COMPLETED' ? '#22c55e' : 
-                                                                        route.status === 'IN_PROGRESS' ? '#3b82f6' : '#333'
+                                                        style={{
+                                                            background: route.status === 'COMPLETED' ? '#22c55e' :
+                                                                route.status === 'IN_PROGRESS' ? '#3b82f6' : '#333'
                                                         }}
                                                     >
                                                         {route.status}

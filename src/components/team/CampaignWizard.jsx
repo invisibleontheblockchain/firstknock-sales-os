@@ -39,19 +39,20 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
     });
 
     // Fetch Master Properties for generation
-    const { data: allProperties = [] } = useQuery({
+    const { data: allPropertiesRaw = [] } = useQuery({
         queryKey: ['masterProperties'],
         queryFn: () => base44.entities.MasterProperty.list('-created_date', 5000),
         enabled: open
     });
+    const allProperties = Array.isArray(allPropertiesRaw) ? allPropertiesRaw : (allPropertiesRaw?.items || []);
 
     const createPlanMutation = useMutation({
         mutationFn: (data) => base44.entities.TerritoryPlan.create(data),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['territoryPlans'] })
     });
-    
+
     const updatePlanMutation = useMutation({
-        mutationFn: ({id, data}) => base44.entities.TerritoryPlan.update(id, data),
+        mutationFn: ({ id, data }) => base44.entities.TerritoryPlan.update(id, data),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['territoryPlans'] })
     });
 
@@ -69,26 +70,26 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
             const filteredProps = allProperties.filter(p => {
                 // Status Filter
                 if (!config.included_statuses.includes(p.original_status)) return false;
-                
+
                 // Price Filter
                 if (config.min_price > 0 && p.price < config.min_price) return false;
                 if (config.max_price > 0 && p.price > config.max_price) return false;
-                
+
                 // Sold Date Filter
                 if (p.sold_date) {
                     const yearsAgo = (new Date() - new Date(p.sold_date)) / (1000 * 60 * 60 * 24 * 365);
                     if (yearsAgo < config.sold_years_min || yearsAgo > config.sold_years_max) return false;
                 }
-                
+
                 return true;
             });
 
             setGenerationProgress(`Generating routes from ${filteredProps.length} properties...`);
-            
+
             // 2. Generate Routes (Client-side optimization)
             // We use a small delay to let UI render the progress message
             await new Promise(r => setTimeout(r, 100));
-            
+
             const generatedRoutes = generateOptimizedRoutes(
                 filteredProps,
                 config.houses_per_route,
@@ -146,7 +147,7 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
 
             setGenerationProgress("Complete!");
             onOpenChange(false);
-            
+
         } catch (e) {
             console.error(e);
             alert("Error generating campaign: " + e.message);
@@ -182,9 +183,9 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
                     {/* General Info */}
                     <div className="space-y-2">
                         <Label>Campaign Name</Label>
-                        <Input 
-                            value={config.name} 
-                            onChange={e => setConfig({...config, name: e.target.value})}
+                        <Input
+                            value={config.name}
+                            onChange={e => setConfig({ ...config, name: e.target.value })}
                             className="bg-[#1F1F1F] border-[#333]"
                         />
                     </div>
@@ -195,18 +196,18 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
                             <h3 className="font-bold text-sm text-gray-400 uppercase tracking-wider border-b border-[#333] pb-2">
                                 1. Data Filters
                             </h3>
-                            
+
                             <div className="space-y-2">
                                 <Label className="text-xs">Property Status</Label>
                                 <div className="grid grid-cols-2 gap-2">
                                     {STATUS_OPTIONS.map(status => (
                                         <div key={status} className="flex items-center space-x-2">
-                                            <Checkbox 
+                                            <Checkbox
                                                 id={`status-${status}`}
                                                 checked={config.included_statuses.includes(status)}
                                                 onCheckedChange={(checked) => {
-                                                    if (checked) setConfig({...config, included_statuses: [...config.included_statuses, status]});
-                                                    else setConfig({...config, included_statuses: config.included_statuses.filter(s => s !== status)});
+                                                    if (checked) setConfig({ ...config, included_statuses: [...config.included_statuses, status] });
+                                                    else setConfig({ ...config, included_statuses: config.included_statuses.filter(s => s !== status) });
                                                 }}
                                                 className="border-gray-600 data-[state=checked]:bg-yellow-500"
                                             />
@@ -218,10 +219,10 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
 
                             <div className="space-y-2">
                                 <Label className="text-xs">Min Price ($)</Label>
-                                <Input 
-                                    type="number" 
-                                    value={config.min_price} 
-                                    onChange={e => setConfig({...config, min_price: parseInt(e.target.value) || 0})}
+                                <Input
+                                    type="number"
+                                    value={config.min_price}
+                                    onChange={e => setConfig({ ...config, min_price: parseInt(e.target.value) || 0 })}
                                     className="bg-[#1F1F1F] border-[#333] h-8 text-xs"
                                 />
                             </div>
@@ -238,9 +239,9 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
                                     <Label className="text-xs">Houses Per Route</Label>
                                     <span className="text-xs font-bold text-yellow-500">{config.houses_per_route}</span>
                                 </div>
-                                <Slider 
-                                    value={[config.houses_per_route]} 
-                                    onValueChange={([v]) => setConfig({...config, houses_per_route: v})}
+                                <Slider
+                                    value={[config.houses_per_route]}
+                                    onValueChange={([v]) => setConfig({ ...config, houses_per_route: v })}
                                     min={10} max={100} step={5}
                                     className="py-2"
                                 />
@@ -255,17 +256,17 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
                                     <span className="text-xs font-bold text-yellow-500">{config.sold_years_min} - {config.sold_years_max} yrs</span>
                                 </div>
                                 <div className="flex gap-2">
-                                    <Input 
+                                    <Input
                                         type="number" placeholder="Min"
                                         value={config.sold_years_min}
-                                        onChange={e => setConfig({...config, sold_years_min: parseInt(e.target.value) || 0})}
+                                        onChange={e => setConfig({ ...config, sold_years_min: parseInt(e.target.value) || 0 })}
                                         className="bg-[#1F1F1F] border-[#333] h-8 text-xs w-20"
                                     />
                                     <span className="text-gray-500">-</span>
-                                    <Input 
+                                    <Input
                                         type="number" placeholder="Max"
                                         value={config.sold_years_max}
-                                        onChange={e => setConfig({...config, sold_years_max: parseInt(e.target.value) || 100})}
+                                        onChange={e => setConfig({ ...config, sold_years_max: parseInt(e.target.value) || 100 })}
                                         className="bg-[#1F1F1F] border-[#333] h-8 text-xs w-20"
                                     />
                                 </div>

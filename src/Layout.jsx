@@ -1,13 +1,14 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Map, List, Upload, Settings, Navigation, LogIn, Users } from 'lucide-react';
+import { Map, List, Upload, Navigation, LogIn, Users } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 
 export default function Layout({ children }) {
-    const { data: user, isLoading, error } = useQuery({
+    const queryClient = useQueryClient();
+    const { data: user, isLoading } = useQuery({
         queryKey: ['user'],
         queryFn: () => base44.auth.me(),
         retry: false
@@ -31,7 +32,7 @@ export default function Layout({ children }) {
                 <p className="text-gray-400 max-w-xs">
                     Your personal door-to-door sales territory manager. Login to access your secure data.
                 </p>
-                <Button 
+                <Button
                     onClick={() => base44.auth.redirectToLogin()}
                     className="w-full max-w-xs h-12 bg-yellow-500 text-black font-bold hover:bg-yellow-400 text-base"
                 >
@@ -55,26 +56,35 @@ export default function Layout({ children }) {
                     background: #0A0A0A !important;
                 }
             `}</style>
-            
+
             {/* Header */}
-            <header className="bg-black border-b border-slate-800 p-4 z-20 shadow-md">
-                <div className="flex justify-between items-center max-w-7xl mx-auto w-full">
-                    <div className="flex items-center gap-2">
-                        <svg width="32" height="32" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M256 100 L400 120 V400 L256 420 V100 Z" fill="#FFD700" stroke="none" style={{filter: 'drop-shadow(0 0 8px rgba(255, 215, 0, 0.5))'}}/>
-                            <rect x="150" y="80" width="220" height="360" rx="4" stroke="#333333" strokeWidth="12" fill="none"/>
-                            <path d="M160 90 L256 100 V410 L160 420 V90 Z" fill="#0A0A0A" stroke="#1F1F1F" strokeWidth="2"/>
-                            <rect x="235" y="240" width="8" height="24" rx="2" fill="#FFD700"/>
-                        </svg>
-                        <h1 className="text-xl font-bold tracking-tight text-white">FirstKnock</h1>
+            <header className="bg-black border-b border-slate-800 px-4 pt-[env(safe-area-inset-top)] pb-3 z-20 shadow-md">
+                <div className="flex justify-between items-center max-w-7xl mx-auto w-full pt-3">
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-yellow-500 rounded-lg flex items-center justify-center">
+                            <span className="text-black font-bold text-sm">FK</span>
+                        </div>
+                        <h1 className="text-lg font-bold tracking-tight text-white">FirstKnock</h1>
                     </div>
                     {/* Status Indicator */}
                     <div className="flex items-center gap-2">
-                         <button onClick={() => base44.auth.logout()} className="text-xs text-slate-400 hover:text-white mr-2">
+                        <button
+                            onClick={async () => {
+                                try {
+                                    await base44.auth.logout();
+                                } catch (e) {
+                                    console.log('Logout error:', e);
+                                }
+                                // Clear all cached queries
+                                queryClient.clear();
+                                // Force page reload to reset auth state
+                                window.location.reload();
+                            }}
+                            className="text-xs text-slate-400 hover:text-white mr-2"
+                        >
                             LOGOUT
                         </button>
                         <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                        <span className="text-xs text-slate-400 font-medium truncate max-w-[100px]">{user?.email}</span>
                     </div>
                 </div>
             </header>
@@ -86,33 +96,33 @@ export default function Layout({ children }) {
 
             {/* Bottom Navigation */}
             <nav className="bg-black border-t border-slate-800 z-20 safe-area-bottom">
-              <div className="flex justify-around items-center h-16 max-w-full mx-auto">
-                  <NavItem 
-                    icon={Map} 
-                    label="Map" 
-                    to={createPageUrl('Home')} 
-                    active={window.location.pathname.endsWith('Home') || window.location.pathname === '/'} 
-                  />
-                  <NavItem 
-                    icon={List} 
-                    label="List" 
-                    to={createPageUrl('List')} 
-                    active={window.location.pathname.endsWith('List')}
-                  />
+                <div className="flex justify-around items-center h-16 max-w-full mx-auto">
+                    <NavItem
+                        icon={Map}
+                        label="Map"
+                        to={createPageUrl('Home')}
+                        active={window.location.pathname.endsWith('Home') || window.location.pathname === '/'}
+                    />
+                    <NavItem
+                        icon={List}
+                        label="List"
+                        to={createPageUrl('List')}
+                        active={window.location.pathname.endsWith('List')}
+                    />
 
-                  <NavItem 
-                                            icon={Upload} 
-                                            label="Setup" 
-                                            to={createPageUrl('Setup')} 
-                                            active={window.location.pathname.endsWith('Setup')}
-                                          />
-                                          <NavItem 
-                                            icon={Users} 
-                                            label="Team" 
-                                            to={createPageUrl('AdminTeam')} 
-                                            active={window.location.pathname.endsWith('AdminTeam')}
-                                          />
-              </div>
+                    <NavItem
+                        icon={Upload}
+                        label="Setup"
+                        to={createPageUrl('Setup')}
+                        active={window.location.pathname.endsWith('Setup')}
+                    />
+                    <NavItem
+                        icon={Users}
+                        label="Team"
+                        to={createPageUrl('AdminTeam')}
+                        active={window.location.pathname.endsWith('AdminTeam')}
+                    />
+                </div>
             </nav>
         </div>
     );

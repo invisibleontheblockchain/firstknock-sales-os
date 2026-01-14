@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
+import { storage } from '@/lib/storage';
 import { Loader2, MapPin, Search, Navigation, Info, X } from 'lucide-react';
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -39,7 +40,27 @@ export default function ListPage() {
         queryFn: () => user ? base44.entities.SavedRoute.filter({ created_by: user.email }, '-created_date', 100) : [],
         enabled: !!user
     });
-    const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
+
+    const { data: localRoutes = [] } = useQuery({
+        queryKey: ['localRoutes'],
+        queryFn: async () => await storage.getRoutes()
+    });
+
+    const savedRoutes = useMemo(() => {
+        const backend = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
+        // Combine local and backend. Local first so they appear at top if sorted by time?
+        // Actually both should be sorted by date.
+        // We'll trust the sort.
+        const combined = [...localRoutes, ...backend];
+
+        // Simple dedup by ID
+        const seen = new Set();
+        return combined.filter(r => {
+            if (seen.has(r.id)) return false;
+            seen.add(r.id);
+            return true;
+        });
+    }, [savedRoutesRaw, localRoutes]);
 
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs', user?.email],

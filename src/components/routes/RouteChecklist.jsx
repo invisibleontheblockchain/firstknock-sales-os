@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Check, X, Phone, Ban, Clock, ChevronDown, ChevronUp, MapPin, Home, Navigation, Mic, FileText } from 'lucide-react';
 import { getPropertyResultSummary } from '../logic/territoryLogic';
+import { openInMaps } from '@/utils';
 
 // Brand Colors
 const BRAND = {
@@ -113,7 +114,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
             // Simple keyword matching for status
             let status = 'ELIGIBLE';
             let note = text;
-            
+
             const lower = text.toLowerCase();
             if (lower.includes('sold') || lower.includes('bought')) status = 'SOLD';
             else if (lower.includes('not interested') || lower.includes('no') || lower.includes('go away')) status = 'HARD_NO';
@@ -142,7 +143,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
     return (
         <div className="h-full flex flex-col" style={{ background: BRAND.voidBlack }}>
             {/* Header */}
-            <div className="p-5 border-b" style={{ borderColor: BRAND.charcoal }}>
+            <div className="p-6 border-b" style={{ borderColor: BRAND.charcoal }}>
                 <div className="flex items-center justify-between mb-4">
                     <div>
                         <h2 className="text-lg font-bold tracking-wide" style={{ color: BRAND.gold }}>{route.name}</h2>
@@ -163,7 +164,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                         <span style={{ color: BRAND.gold }}>{stats.done}/{stats.total}</span>
                     </div>
                     <div className="h-2 rounded-full overflow-hidden" style={{ background: BRAND.charcoal }}>
-                        <div 
+                        <div
                             className="h-full transition-all duration-500"
                             style={{ width: `${(stats.done / stats.total) * 100}%`, background: BRAND.gold }}
                         />
@@ -181,7 +182,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                             key={f.id}
                             onClick={() => setFilter(f.id)}
                             className="px-3 py-2 rounded-lg text-xs font-bold tracking-wide transition-colors"
-                            style={{ 
+                            style={{
                                 background: filter === f.id ? BRAND.gold : BRAND.charcoal,
                                 color: filter === f.id ? BRAND.voidBlack : BRAND.offWhite
                             }}
@@ -191,36 +192,24 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                     ))}
                 </div>
 
-                {/* Export to Apple Maps */}
+                {/* Open First Stop in Apple Maps */}
                 <Button
                     className="w-full mt-4 h-12 font-bold tracking-wide"
                     style={{ background: BRAND.charcoal, color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}
                     onClick={() => {
-                                                  // Google Maps multi-stop route
-                                                  const maxStops = Math.min(route.properties.length, 10);
-                                                  const step = Math.max(1, Math.floor(route.properties.length / maxStops));
+                        // Open Apple Maps to the first pending property
+                        const nextProp = filteredProperties.find(p => {
+                            const status = propertyStatuses[p.address_hash];
+                            return !status || status === 'ELIGIBLE';
+                        }) || filteredProperties[0];
 
-                                                  const selectedProps = [];
-                                                  for (let i = 0; i < route.properties.length; i += step) {
-                                                      selectedProps.push(route.properties[i]);
-                                                  }
-                                                  if (selectedProps[selectedProps.length - 1] !== route.properties[route.properties.length - 1]) {
-                                                      selectedProps.push(route.properties[route.properties.length - 1]);
-                                                  }
-
-                                                  const origin = selectedProps[0];
-                                                  const destination = selectedProps[selectedProps.length - 1];
-                                                  const waypoints = selectedProps.slice(1, -1);
-
-                                                  let url = `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}&travelmode=driving`;
-                                                  if (waypoints.length > 0) {
-                                                      url += `&waypoints=${waypoints.map(p => `${p.lat},${p.lng}`).join('|')}`;
-                                                  }
-                                                  window.open(url, '_blank');
-                                              }}
+                        if (nextProp) {
+                            openInMaps(nextProp.lat, nextProp.lng);
+                        }
+                    }}
                 >
                     <Navigation className="w-4 h-4 mr-2" />
-                    EXPORT ROUTE TO GOOGLE MAPS ({Math.min(route.properties.length, 10)} stops)
+                    START ROUTE IN APPLE MAPS
                 </Button>
             </div>
 
@@ -234,10 +223,10 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                         const isDone = currentStatus && currentStatus !== 'ELIGIBLE';
 
                         return (
-                            <div 
+                            <div
                                 key={prop.address_hash}
                                 className="rounded-xl border transition-all"
-                                style={{ 
+                                style={{
                                     background: isDone ? `${BRAND.charcoal}80` : BRAND.charcoal,
                                     borderColor: isExpanded ? BRAND.gold : '#333'
                                 }}
@@ -246,9 +235,9 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                                     onClick={() => setExpandedId(isExpanded ? null : prop.address_hash)}
                                     className="w-full p-4 flex items-start gap-3 text-left"
                                 >
-                                    <div 
+                                    <div
                                         className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                                        style={{ 
+                                        style={{
                                             background: isDone ? '#333' : BRAND.gold,
                                             color: isDone ? '#666' : BRAND.voidBlack
                                         }}
@@ -317,13 +306,13 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                                                         autoFocus
                                                     />
                                                     <div className="flex gap-2">
-                                                        <Button 
+                                                        <Button
                                                             onClick={() => confirmCallback(prop)}
                                                             className="flex-1 bg-yellow-500 text-black font-bold"
                                                         >
                                                             SAVE CALLBACK
                                                         </Button>
-                                                        <Button 
+                                                        <Button
                                                             onClick={() => { setSelectedAction(null); setCallbackPhone(''); }}
                                                             className="bg-gray-700 text-white"
                                                         >
@@ -337,9 +326,9 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                                                         key={opt.id}
                                                         onClick={() => handleSelectStatus(prop, opt.id)}
                                                         className="h-11 text-xs font-bold tracking-wide"
-                                                        style={{ 
-                                                            background: opt.color, 
-                                                            color: opt.textColor 
+                                                        style={{
+                                                            background: opt.color,
+                                                            color: opt.textColor
                                                         }}
                                                     >
                                                         <opt.icon className="w-4 h-4 mr-2" />
@@ -348,15 +337,15 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                                                 ))
                                             )}
                                         </div>
-                                        
+
                                         <Button
                                             variant="outline"
                                             className="w-full mt-3 text-xs font-bold tracking-wide"
                                             style={{ borderColor: '#333', color: BRAND.offWhite }}
-                                            onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${prop.lat},${prop.lng}&travelmode=driving`, '_blank')}
+                                            onClick={() => openInMaps(prop.lat, prop.lng)}
                                         >
                                             <MapPin className="w-4 h-4 mr-2" />
-                                            OPEN IN GOOGLE MAPS
+                                            OPEN IN APPLE MAPS
                                         </Button>
                                     </div>
                                 )}

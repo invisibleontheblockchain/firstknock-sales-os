@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { X, Navigation, Flame, MapPin, ChevronRight } from 'lucide-react';
 import { scoreProperty } from '../logic/routeOptimizer';
+import { openInMaps } from '@/utils';
 
 // Haversine distance in miles
 function getDistance(lat1, lng1, lat2, lng2) {
@@ -74,19 +75,19 @@ export default function NearbyHotLeads({ properties, radiusMiles = 1, maxLeads =
 
     const topLead = nearbyLeads[0];
 
-    const openInMaps = (lead) => {
-        window.open(`https://www.google.com/maps/dir/?api=1&destination=${lead.lat},${lead.lng}&travelmode=driving`, '_blank');
+    const handleOpenInMaps = (lead) => {
+        openInMaps(lead.lat, lead.lng);
     };
 
     return (
-        <div 
+        <div
             className="absolute bottom-28 left-4 right-4 z-[1500] animate-in slide-in-from-bottom-4 duration-300"
         >
             {/* Collapsed: Single Hot Lead Banner */}
             {!expanded ? (
-                <div 
+                <div
                     className="rounded-xl p-4 border shadow-2xl cursor-pointer"
-                    style={{ 
+                    style={{
                         background: `linear-gradient(135deg, ${BRAND.charcoal} 0%, #1a1a1a 100%)`,
                         borderColor: BRAND.gold,
                         boxShadow: `0 0 20px ${BRAND.gold}40`
@@ -95,7 +96,7 @@ export default function NearbyHotLeads({ properties, radiusMiles = 1, maxLeads =
                 >
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <div 
+                            <div
                                 className="w-10 h-10 rounded-full flex items-center justify-center animate-pulse"
                                 style={{ background: `${BRAND.gold}30` }}
                             >
@@ -130,7 +131,7 @@ export default function NearbyHotLeads({ properties, radiusMiles = 1, maxLeads =
                                 <Navigation className="w-4 h-4 mr-1" />
                                 GO
                             </Button>
-                            <button 
+                            <button
                                 onClick={(e) => { e.stopPropagation(); setDismissed(true); }}
                                 className="p-1"
                             >
@@ -149,9 +150,9 @@ export default function NearbyHotLeads({ properties, radiusMiles = 1, maxLeads =
                 </div>
             ) : (
                 /* Expanded: Show all nearby leads */
-                <div 
+                <div
                     className="rounded-xl border shadow-2xl overflow-hidden"
-                    style={{ 
+                    style={{
                         background: BRAND.charcoal,
                         borderColor: BRAND.gold,
                         boxShadow: `0 0 20px ${BRAND.gold}40`
@@ -175,13 +176,13 @@ export default function NearbyHotLeads({ properties, radiusMiles = 1, maxLeads =
                     </div>
                     <div className="max-h-60 overflow-y-auto">
                         {nearbyLeads.map((lead, idx) => (
-                            <div 
+                            <div
                                 key={lead.address_hash}
                                 className="p-3 flex items-center justify-between border-b last:border-0"
                                 style={{ borderColor: '#222' }}
                             >
                                 <div className="flex items-center gap-3">
-                                    <div 
+                                    <div
                                         className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
                                         style={{ background: idx === 0 ? BRAND.gold : '#333', color: idx === 0 ? BRAND.voidBlack : BRAND.offWhite }}
                                     >
