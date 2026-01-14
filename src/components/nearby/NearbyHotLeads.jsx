@@ -75,7 +75,7 @@ export default function NearbyHotLeads({ properties, radiusMiles = 1, maxLeads =
     const topLead = nearbyLeads[0];
 
     const openInMaps = (lead) => {
-        window.open(`https://maps.apple.com/?daddr=${lead.lat},${lead.lng}&dirflg=w`, '_blank');
+        window.open(`https://www.google.com/maps/dir/?api=1&destination=${lead.lat},${lead.lng}&travelmode=driving`, '_blank');
     };
 
     return (

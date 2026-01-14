@@ -193,31 +193,31 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                     className="w-full mt-4 h-12 font-bold tracking-wide"
                     style={{ background: BRAND.charcoal, color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}
                     onClick={() => {
-                        // Apple Maps handles multi-stop via daddr with addresses separated by " to "
-                        // Use up to ~15 stops for reasonable URL length
-                        const maxStops = Math.min(route.properties.length, 15);
-                        const step = Math.max(1, Math.floor(route.properties.length / maxStops));
+                                                  // Google Maps multi-stop route
+                                                  const maxStops = Math.min(route.properties.length, 10);
+                                                  const step = Math.max(1, Math.floor(route.properties.length / maxStops));
 
-                        const selectedProps = [];
-                        for (let i = 0; i < route.properties.length; i += step) {
-                            selectedProps.push(route.properties[i]);
-                        }
-                        // Always include last property
-                        if (selectedProps[selectedProps.length - 1] !== route.properties[route.properties.length - 1]) {
-                            selectedProps.push(route.properties[route.properties.length - 1]);
-                        }
+                                                  const selectedProps = [];
+                                                  for (let i = 0; i < route.properties.length; i += step) {
+                                                      selectedProps.push(route.properties[i]);
+                                                  }
+                                                  if (selectedProps[selectedProps.length - 1] !== route.properties[route.properties.length - 1]) {
+                                                      selectedProps.push(route.properties[route.properties.length - 1]);
+                                                  }
 
-                        const origin = selectedProps[0];
-                        const destinations = selectedProps.slice(1);
+                                                  const origin = selectedProps[0];
+                                                  const destination = selectedProps[selectedProps.length - 1];
+                                                  const waypoints = selectedProps.slice(1, -1);
 
-                        // Apple Maps format: daddr=lat,lng+to:lat,lng+to:lat,lng
-                        const daddrStr = destinations.map(p => `${p.lat},${p.lng}`).join('+to:');
-                        const url = `https://maps.apple.com/?saddr=${origin.lat},${origin.lng}&daddr=${daddrStr}&dirflg=w`;
-                        window.open(url, '_blank');
-                    }}
+                                                  let url = `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${destination.lat},${destination.lng}&travelmode=driving`;
+                                                  if (waypoints.length > 0) {
+                                                      url += `&waypoints=${waypoints.map(p => `${p.lat},${p.lng}`).join('|')}`;
+                                                  }
+                                                  window.open(url, '_blank');
+                                              }}
                 >
                     <Navigation className="w-4 h-4 mr-2" />
-                    EXPORT ROUTE TO APPLE MAPS ({Math.min(route.properties.length, 15)} stops)
+                    EXPORT ROUTE TO GOOGLE MAPS ({Math.min(route.properties.length, 10)} stops)
                 </Button>
             </div>
 
@@ -350,10 +350,10 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                                             variant="outline"
                                             className="w-full mt-3 text-xs font-bold tracking-wide"
                                             style={{ borderColor: '#333', color: BRAND.offWhite }}
-                                            onClick={() => window.open(`https://maps.apple.com/?q=${prop.lat},${prop.lng}`, '_blank')}
+                                            onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${prop.lat},${prop.lng}&travelmode=driving`, '_blank')}
                                         >
                                             <MapPin className="w-4 h-4 mr-2" />
-                                            OPEN IN APPLE MAPS
+                                            OPEN IN GOOGLE MAPS
                                         </Button>
                                     </div>
                                 )}
