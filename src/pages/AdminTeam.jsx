@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
     Users, Plus, Trash2, Route, ChevronRight, User, 
-    CheckCircle, Clock, AlertCircle, GripVertical, X 
+    CheckCircle, Clock, AlertCircle, GripVertical, X, Settings
 } from 'lucide-react';
+import CampaignWizard from '@/components/team/CampaignWizard';
 
 const BRAND = {
     voidBlack: '#0A0A0A',
