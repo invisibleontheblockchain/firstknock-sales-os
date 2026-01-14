@@ -706,8 +706,15 @@ export default function Home() {
                 </div>
             )}
 
-            {/* Route Checklist */}
-            {showChecklist && activeRoute && (
+            {/* Nearby Hot Leads Banner */}
+                            <NearbyHotLeads 
+                                properties={effectiveProperties} 
+                                radiusMiles={1} 
+                                maxLeads={5} 
+                            />
+
+                            {/* Route Checklist */}
+                            {showChecklist && activeRoute && (
                 <div className="fixed inset-0 z-[2000]">
                     <div className="absolute inset-0 bg-black/60" onClick={() => setShowChecklist(false)} />
                     <div 
