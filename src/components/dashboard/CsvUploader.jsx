@@ -204,7 +204,13 @@ export default function CsvUploader() {
                 zip_code: normalizedRow.zipcode || normalizedRow.postalcode || row["ZIP OR POSTAL CODE"] || null,
                 url: normalizedRow.url || row["URL (SEE https://www.redfin.com/buy-a-home/comparative-market-analysis FOR INFO ON PRICING)"] || null,
                 mls_id: normalizedRow.mlsid || row["MLS#"] || null,
-                created_by: userEmail
+                created_by: userEmail,
+                // New fields for Cooldowns & Street Sweep
+                next_eligible_date: normalizedRow.next_eligible_date || normalizedRow.nexteligibledate || row.Next_Eligible_Date || null,
+                street_key: normalizedRow.street_key || normalizedRow.streetkey || row.Street_Key || null,
+                street_last_visited: normalizedRow.street_last_visited || normalizedRow.streetlastvisited || row.Street_Last_Visited || null,
+                street_next_eligible_date: normalizedRow.street_next_eligible_date || normalizedRow.streetnexteligibledate || row.Street_Next_Eligible_Date || null,
+                street_cooldown_source: normalizedRow.street_cooldown_source || normalizedRow.streetcooldownsource || row.Street_Cooldown_Source || null
             });
 
             if (idx === 0) {

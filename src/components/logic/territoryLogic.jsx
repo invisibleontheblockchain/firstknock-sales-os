@@ -13,30 +13,38 @@ export const COOLDOWN_CONFIG = {
  * Master data stays ELIGIBLE - this determines routing/display priority
  */
 export const determineEffectiveStatus = (masterProp, logs) => {
+    // Check CSV Property Cooldown
+    if (masterProp.next_eligible_date) {
+        const nextEligible = new Date(masterProp.next_eligible_date);
+        if (new Date() < nextEligible) {
+            return 'COOLDOWN';
+        }
+    }
+
     // If no interaction logs, property is ELIGIBLE (not visited yet)
     if (!logs || logs.length === 0) {
         return 'ELIGIBLE';
     }
-    
+
     // Sort logs by timestamp desc
     const sortedLogs = [...logs].sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
     const latestLog = sortedLogs[0];
-    
+
     // HARD_NO and SOLD are permanent exclusions from routing
     if (latestLog.parsed_status === 'HARD_NO' || latestLog.parsed_status === 'SOLD') {
         return latestLog.parsed_status;
     }
-    
+
     // Check cooldown for NO_ANSWER
     if (latestLog.parsed_status === 'NO_ANSWER') {
         const cooldownDate = new Date(latestLog.next_eligible_date);
         if (cooldownDate && new Date() < cooldownDate) {
-            return 'NO_ANSWER'; // Still cooling down
+            return 'COOLDOWN'; // Still cooling down
         } else {
             return 'ELIGIBLE'; // Cooldown expired
         }
     }
-    
+
     // CALLBACK - check if callback date has passed
     if (latestLog.parsed_status === 'CALLBACK') {
         if (latestLog.next_eligible_date) {
@@ -47,7 +55,7 @@ export const determineEffectiveStatus = (masterProp, logs) => {
         }
         return 'CALLBACK';
     }
-    
+
     return latestLog.parsed_status;
 };
 
@@ -67,7 +75,7 @@ export const getStreetCooldownStatus = (streetName, streetLogs, cooldownDays = C
         return { onCooldown: false, daysRemaining: 0, lastVisit: null };
     }
 
-    const sortedLogs = [...noAnswerLogs].sort((a, b) => 
+    const sortedLogs = [...noAnswerLogs].sort((a, b) =>
         new Date(b.created_date) - new Date(a.created_date)
     );
 
@@ -90,16 +98,28 @@ export const getStreetCooldownStatus = (streetName, streetLogs, cooldownDays = C
 export const filterByStreetCooldown = (properties, allLogs, cooldownDays = COOLDOWN_CONFIG.STREET_COOLDOWN_DAYS) => {
     // Build a map of street -> last no-answer date
     const streetLastNoAnswer = {};
-    
+    const streetCsvCooldowns = {};
+    const now = new Date();
+
     properties.forEach(prop => {
         if (!prop.street_name) return;
-        
+
+        // Check CSV-based Street Cooldown
+        if (prop.street_next_eligible_date) {
+            const csvEligibleDate = new Date(prop.street_next_eligible_date);
+            if (csvEligibleDate > now) {
+                streetCsvCooldowns[prop.street_name] = csvEligibleDate;
+            }
+        }
+
         // Find logs for properties on this street
         const streetLogs = allLogs.filter(log => {
             const logProp = properties.find(p => p.address_hash === log.address_hash);
-            return logProp && logProp.street_name === prop.street_name;
+            // Fallback to matching logs by street name if prop link missing, or use linked prop
+            if (logProp) return logProp.street_name === prop.street_name;
+            return false;
         });
-        
+
         const noAnswerLogs = streetLogs.filter(l => l.parsed_status === 'NO_ANSWER');
         if (noAnswerLogs.length > 0) {
             const sorted = noAnswerLogs.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
@@ -111,9 +131,9 @@ export const filterByStreetCooldown = (properties, allLogs, cooldownDays = COOLD
         }
     });
 
-    const now = new Date();
     const cooldownStreets = new Set();
 
+    // Log-based cooldowns
     Object.entries(streetLastNoAnswer).forEach(([street, lastDate]) => {
         const daysSince = (now - lastDate) / (1000 * 60 * 60 * 24);
         if (daysSince < cooldownDays) {
@@ -121,19 +141,37 @@ export const filterByStreetCooldown = (properties, allLogs, cooldownDays = COOLD
         }
     });
 
+    // CSV-based cooldowns
+    Object.entries(streetCsvCooldowns).forEach(([street, eligibleDate]) => {
+        cooldownStreets.add(street);
+    });
+
     return {
         eligible: properties.filter(p => !cooldownStreets.has(p.street_name)),
         onCooldown: properties.filter(p => cooldownStreets.has(p.street_name)),
         cooldownStreets: Array.from(cooldownStreets),
-        streetCooldownInfo: Object.entries(streetLastNoAnswer).map(([street, date]) => {
-            const daysSince = (now - date) / (1000 * 60 * 60 * 24);
-            return {
-                street,
-                lastVisit: date,
-                daysRemaining: Math.max(0, Math.ceil(cooldownDays - daysSince)),
-                onCooldown: daysSince < cooldownDays
-            };
-        })
+        streetCooldownInfo: [
+            ...Object.entries(streetLastNoAnswer).map(([street, date]) => {
+                const daysSince = (now - date) / (1000 * 60 * 60 * 24);
+                return {
+                    street,
+                    lastVisit: date,
+                    daysRemaining: Math.max(0, Math.ceil(cooldownDays - daysSince)),
+                    onCooldown: daysSince < cooldownDays,
+                    source: 'LOGS'
+                };
+            }),
+            ...Object.entries(streetCsvCooldowns).map(([street, date]) => {
+                const daysRemaining = Math.max(0, Math.ceil((date - now) / (1000 * 60 * 60 * 24)));
+                return {
+                    street,
+                    lastVisit: null,
+                    daysRemaining: daysRemaining,
+                    onCooldown: true,
+                    source: 'CSV_DATA'
+                };
+            })
+        ]
     };
 };
 
@@ -152,7 +190,7 @@ export const expandToFullStreetSweep = (selectedProperties, allProperties) => {
     );
 
     // Get ALL properties on those streets (excluding HARD_NO and SOLD)
-    const fullSweep = allProperties.filter(p => 
+    const fullSweep = allProperties.filter(p =>
         p.street_name && targetStreets.has(p.street_name)
     );
 
@@ -190,7 +228,7 @@ export const generateSweepRoute = (properties) => {
         const sortedEvens = evens.sort((a, b) => b.house_number - a.house_number);
 
         const sweep = [...sortedOdds, ...sortedEvens];
-        
+
         const points = sweep.map(p => [p.lat, p.lng]);
         routePoints = [...routePoints, ...points];
     });
@@ -218,11 +256,11 @@ export const orderForStreetSweep = (properties) => {
     Object.entries(streetGroups).forEach(([streetName, streetProps]) => {
         // Sort by house number
         streetProps.sort((a, b) => (a.house_number || 0) - (b.house_number || 0));
-        
+
         // Separate odd and even
         const odds = streetProps.filter(p => (p.house_number || 0) % 2 === 1);
         const evens = streetProps.filter(p => (p.house_number || 0) % 2 === 0);
-        
+
         // Walk up odd side (ascending), then back down even side (descending)
         odds.forEach(p => orderedProperties.push({ ...p, _sweepSide: 'odd', _streetName: streetName }));
         evens.reverse().forEach(p => orderedProperties.push({ ...p, _sweepSide: 'even', _streetName: streetName }));
@@ -239,10 +277,10 @@ export const getPropertyResultSummary = (logs) => {
     if (!logs || logs.length === 0) {
         return { hasResult: false, latestResult: null, resultText: null, status: 'ELIGIBLE' };
     }
-    
+
     const sortedLogs = [...logs].sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
     const latest = sortedLogs[0];
-    
+
     return {
         hasResult: true,
         latestResult: latest,

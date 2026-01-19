@@ -15,7 +15,7 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
     const R = 3959; // Earth radius in miles
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLng = (lng2 - lng1) * Math.PI / 180;
-    const a = 
+    const a =
         Math.sin(dLat / 2) * Math.sin(dLat / 2) +
         Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
         Math.sin(dLng / 2) * Math.sin(dLng / 2);
@@ -29,21 +29,21 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
  */
 export function scoreProperty(property) {
     let score = 100; // Base score
-    
+
     // 1. Status Scoring
     if (property.effective_status === 'ELIGIBLE') score += 50;
     if (property.effective_status === 'CALLBACK') score += 30;
     if (property.effective_status === 'NO_ANSWER') score += 20;
     if (property.effective_status === 'QUALIFIED') score += 70;
     if (property.effective_status === 'SOLD' || property.effective_status === 'HARD_NO') score = 0; // Don't route to these
-    
+
     // 2. Freshness Scoring (Date Sold)
     // "Get to the home buyers first" - Extremely granular decay
     if (property.sold_date) {
         const soldDate = new Date(property.sold_date);
         const now = new Date();
         const daysAgo = (now - soldDate) / (1000 * 60 * 60 * 24);
-        
+
         if (daysAgo <= 7) score += 200;        // 1 week: Hot!
         else if (daysAgo <= 30) score += 180;  // 1 month
         else if (daysAgo <= 60) score += 160;  // 2 months
@@ -69,7 +69,7 @@ export function scoreProperty(property) {
 
     // Ghost leads get lower priority
     if (property.is_ghost) score = score * 0.5;
-    
+
     return score;
 }
 
@@ -80,27 +80,27 @@ function kMeansClustering(properties, numClusters) {
     if (properties.length <= numClusters) {
         return properties.map((p, i) => ({ ...p, cluster: i }));
     }
-    
+
     // Initialize centroids randomly
     let centroids = properties
         .slice()
         .sort(() => 0.5 - Math.random())
         .slice(0, numClusters)
         .map(p => ({ lat: p.lat, lng: p.lng }));
-    
+
     let iterations = 0;
     const maxIterations = 50;
     let changed = true;
-    
+
     while (changed && iterations < maxIterations) {
         changed = false;
         iterations++;
-        
+
         // Assign each property to nearest centroid
         properties.forEach(prop => {
             let minDist = Infinity;
             let bestCluster = 0;
-            
+
             centroids.forEach((centroid, idx) => {
                 const dist = calculateDistance(prop.lat, prop.lng, centroid.lat, centroid.lng);
                 if (dist < minDist) {
@@ -108,24 +108,24 @@ function kMeansClustering(properties, numClusters) {
                     bestCluster = idx;
                 }
             });
-            
+
             if (prop.cluster !== bestCluster) {
                 changed = true;
                 prop.cluster = bestCluster;
             }
         });
-        
+
         // Recalculate centroids
         centroids = centroids.map((_, idx) => {
             const clusterProps = properties.filter(p => p.cluster === idx);
             if (clusterProps.length === 0) return centroids[idx];
-            
+
             const avgLat = clusterProps.reduce((sum, p) => sum + p.lat, 0) / clusterProps.length;
             const avgLng = clusterProps.reduce((sum, p) => sum + p.lng, 0) / clusterProps.length;
             return { lat: avgLat, lng: avgLng };
         });
     }
-    
+
     return properties;
 }
 
@@ -134,15 +134,15 @@ function kMeansClustering(properties, numClusters) {
  */
 function optimizeRouteOrder(properties, startLat = null, startLng = null) {
     if (properties.length === 0) return [];
-    
+
     const unvisited = [...properties];
     const route = [];
-    
+
     // Start from provided location or first property
-    let current = startLat && startLng 
+    let current = startLat && startLng
         ? { lat: startLat, lng: startLng }
         : unvisited.shift();
-    
+
     if (startLat && startLng) {
         // Find nearest to start
         let nearestIdx = 0;
@@ -156,14 +156,14 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null) {
         });
         current = unvisited.splice(nearestIdx, 1)[0];
     }
-    
+
     route.push(current);
-    
+
     // Nearest neighbor
     while (unvisited.length > 0) {
         let nearestIdx = 0;
         let minDist = Infinity;
-        
+
         unvisited.forEach((prop, idx) => {
             const dist = calculateDistance(current.lat, current.lng, prop.lat, prop.lng);
             if (dist < minDist) {
@@ -171,11 +171,11 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null) {
                 nearestIdx = idx;
             }
         });
-        
+
         current = unvisited.splice(nearestIdx, 1)[0];
         route.push(current);
     }
-    
+
     return route;
 }
 
@@ -189,14 +189,14 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null) {
  * @returns {Array} Array of route objects with metadata
  */
 export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLocation = null, allLogs = [], options = {}) {
-    const { 
+    const {
         streetCooldownDays = COOLDOWN_CONFIG.STREET_COOLDOWN_DAYS,
-        useStreetSweep = true 
+        useStreetSweep = true
     } = options;
 
     // Filter out properties on streets that are on cooldown
     let eligible = properties.filter(p => p && p.lat && p.lng);
-    
+
     // Apply street cooldown filter if logs are provided
     let cooldownInfo = null;
     if (allLogs && allLogs.length > 0) {
@@ -207,48 +207,48 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
             propertiesExcluded: filtered.onCooldown.length
         };
     }
-    
+
     // Also exclude HARD_NO and SOLD from routing
-    eligible = eligible.filter(p => 
-        p.effective_status !== 'HARD_NO' && p.effective_status !== 'SOLD'
+    eligible = eligible.filter(p =>
+        p.effective_status !== 'HARD_NO' && p.effective_status !== 'SOLD' && p.effective_status !== 'COOLDOWN'
     );
-    
+
     if (eligible.length === 0) return [];
-    
+
     // Score all properties
     const scored = eligible.map(p => ({
         ...p,
         score: scoreProperty(p)
     }));
-    
+
     // Calculate number of routes
     const numRoutes = Math.ceil(scored.length / housesPerRoute);
-    
+
     // Cluster properties
     const clustered = kMeansClustering(scored, numRoutes);
-    
+
     // Generate routes
     const routes = [];
     for (let i = 0; i < numRoutes; i++) {
         const clusterProps = clustered.filter(p => p.cluster === i);
         if (clusterProps.length === 0) continue;
-        
+
         // Use street sweep ordering if enabled
         let orderedProps;
         if (useStreetSweep) {
             orderedProps = orderForStreetSweep(clusterProps);
         } else {
             orderedProps = optimizeRouteOrder(
-                clusterProps, 
-                startLocation?.lat, 
+                clusterProps,
+                startLocation?.lat,
                 startLocation?.lng
             );
         }
-        
+
         // Metrics
         let totalDistance = 0;
         let totalScore = 0;
-        
+
         for (let j = 0; j < orderedProps.length - 1; j++) {
             totalDistance += calculateDistance(
                 orderedProps[j].lat, orderedProps[j].lng,
@@ -257,10 +257,10 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
             totalScore += orderedProps[j].score;
         }
         totalScore += orderedProps[orderedProps.length - 1]?.score || 0;
-        
+
         const avgScore = totalScore / orderedProps.length;
         const efficiency = orderedProps.length / Math.max(totalDistance, 0.1);
-        
+
         // Factor in distance from start location (if provided)
         let distanceFromStart = 0;
         if (startLocation && orderedProps.length > 0) {
@@ -269,16 +269,16 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
                 orderedProps[0].lat, orderedProps[0].lng
             );
         }
-        
+
         // Competitiveness: Score (60%) + Efficiency (30%) - Commute Penalty (10%)
         // Commute penalty: subtract 10 points per mile away?
-        const commutePenalty = distanceFromStart * 5; 
-        
+        const commutePenalty = distanceFromStart * 5;
+
         let competitivenessScore = Math.round((avgScore * 0.6 + efficiency * 100 * 0.4) - commutePenalty);
-        
+
         // Get unique streets in this route
         const routeStreets = [...new Set(orderedProps.map(p => p.street_name).filter(Boolean))];
-        
+
         routes.push({
             id: `route_${i + 1}`,
             name: `Route ${i + 1}`,
@@ -295,15 +295,15 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
             completedCount: 0
         });
     }
-    
+
     // Sort routes by competitiveness
     routes.sort((a, b) => b.competitivenessScore - a.competitivenessScore);
-    
+
     // Attach cooldown info to result
     if (cooldownInfo) {
         routes._cooldownInfo = cooldownInfo;
     }
-    
+
     return routes;
 }
 
@@ -342,14 +342,14 @@ export function exportRouteToJSON(route) {
  */
 export function generateAppleMapsUrl(route) {
     if (!route.properties || route.properties.length === 0) return '';
-    
+
     const properties = route.properties;
     const maxStops = Math.min(properties.length, 10);
     const step = Math.max(1, Math.floor(properties.length / maxStops));
-    
+
     const origin = properties[0];
     const destination = properties[properties.length - 1];
-    
+
     // Select waypoints evenly distributed
     const waypoints = [];
     for (let i = step; i < properties.length - 1; i += step) {
@@ -357,11 +357,11 @@ export function generateAppleMapsUrl(route) {
             waypoints.push(properties[i]);
         }
     }
-    
+
     // Apple Maps format: saddr (start), daddr (destination with +to: for waypoints)
     const originStr = `${origin.lat},${origin.lng}`;
     const destStr = `${destination.lat},${destination.lng}`;
-    
+
     let url;
     if (waypoints.length > 0) {
         const waypointsStr = waypoints.map(p => `${p.lat},${p.lng}`).join('+to:');
@@ -369,6 +369,6 @@ export function generateAppleMapsUrl(route) {
     } else {
         url = `https://maps.apple.com/?saddr=${originStr}&daddr=${destStr}&dirflg=w`;
     }
-    
+
     return url;
 }
