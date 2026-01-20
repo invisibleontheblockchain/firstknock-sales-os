@@ -602,7 +602,7 @@ export default function Home() {
                 <div className="fixed inset-0 z-[2000]">
                     <div className="absolute inset-0 bg-black/60" onClick={() => setShowRoutePanel(false)} />
                     <div
-                        className="absolute bottom-0 left-0 right-0 h-[70vh] rounded-t-3xl overflow-hidden"
+                        className="absolute bottom-0 left-0 right-0 h-[70vh] rounded-t-3xl overflow-hidden flex flex-col"
                         style={{ background: BRAND.voidBlack, borderTop: `1px solid ${BRAND.charcoal}` }}
                     >
                         <div className="p-5 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
