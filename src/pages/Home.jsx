@@ -134,6 +134,12 @@ export default function Home() {
         });
     }, [userProperties, fallbackProperties, localProperties]);
 
+    const { data: savedRoutesRaw = [] } = useQuery({
+        queryKey: ['savedRoutes'],
+        queryFn: () => base44.entities.SavedRoute.list('-created_date', 500)
+    });
+    const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
+
     // Identify properties already assigned to saved routes
     const assignedHashes = useMemo(() => {
         const hashes = new Set();
@@ -145,12 +151,6 @@ export default function Home() {
         });
         return hashes;
     }, [savedRoutes]);
-
-    const { data: savedRoutesRaw = [] } = useQuery({
-        queryKey: ['savedRoutes'],
-        queryFn: () => base44.entities.SavedRoute.list('-created_date', 500)
-    });
-    const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
 
     const createRouteMutation = useMutation({
         mutationFn: async (routeData) => {
