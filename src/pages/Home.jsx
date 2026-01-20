@@ -386,8 +386,8 @@ export default function Home() {
                     );
                 })}
 
-                {/* Display Generated Routes (Clusters) - Only if no saved routes or explicitly generating */}
-                {!activeRoute && hydratedSavedRoutes.length === 0 && routes.length > 0 && routes.map((route, rIdx) => {
+                {/* Display Generated Routes (Clusters) - ALWAYS SHOW IF GENERATED */}
+                {!activeRoute && routes.length > 0 && routes.map((route, rIdx) => {
                     const routeColor = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
                     return route.properties.map(p => (
                         <CircleMarker
@@ -579,14 +579,11 @@ export default function Home() {
                         <div className="p-5 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
                             <div>
                                 <h2 className="flex items-center gap-2 text-lg font-bold tracking-wide" style={{ color: BRAND.gold }}>
-                                    <Navigation className="w-5 h-5" />
-                                    {hydratedSavedRoutes.length > 0 ? 'ACTIVE CAMPAIGN ROUTES' : 'OPTIMIZED ROUTES'}
+                                <Navigation className="w-5 h-5" />
+                                ROUTES & CAMPAIGNS
                                 </h2>
                                 <p className="text-xs mt-1" style={{ color: '#888' }}>
-                                    {hydratedSavedRoutes.length > 0
-                                        ? `${hydratedSavedRoutes.length} saved routes loaded`
-                                        : `${filteredRoutes.length} routes from ${effectiveProperties.length} properties`
-                                    }
+                                {hydratedSavedRoutes.length} active • {filteredRoutes.length} new generated
                                 </p>
                             </div>
                             <button onClick={() => setShowRoutePanel(false)} className="p-2">
@@ -637,8 +634,8 @@ export default function Home() {
                             </div>
                         )}
 
-                        {/* Generated Routes List (Hidden if Saved Routes exist for simplicity, or we could toggle) */}
-                        {hydratedSavedRoutes.length === 0 && (
+                        {/* Generated Routes List */}
+                        {routes.length > 0 && (
                             <>
                                 {/* Scoring Legend */}
                                 <div className="px-5 py-2 text-[10px] space-y-1" style={{ color: '#888', background: '#151515' }}>

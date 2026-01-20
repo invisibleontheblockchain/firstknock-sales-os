@@ -1,12 +1,10 @@
-import { lazy } from 'react';
+import AdminTeam from './pages/AdminTeam';
+import Home from './pages/Home';
+import List from './pages/List';
+import Setup from './pages/Setup';
+import Sync from './pages/Sync';
 import __Layout from './Layout.jsx';
 
-// Lazy load pages
-const AdminTeam = lazy(() => import('./pages/AdminTeam'));
-const Home = lazy(() => import('./pages/Home'));
-const List = lazy(() => import('./pages/List'));
-const Setup = lazy(() => import('./pages/Setup'));
-const Sync = lazy(() => import('./pages/Sync'));
 
 export const PAGES = {
     "AdminTeam": AdminTeam,
