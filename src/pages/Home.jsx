@@ -240,7 +240,8 @@ export default function Home() {
                 competitivenessScore: route.metrics?.score || 0,
                 isSaved: true
             };
-        }).filter(r => r.properties.length > 0);
+        }).filter(r => r.properties.length > 0)
+        .sort((a, b) => (b.competitivenessScore || 0) - (a.competitivenessScore || 0));
     }, [savedRoutes, effectiveProperties, repFilter]);
 
     // Extract unique reps from saved routes for filter
