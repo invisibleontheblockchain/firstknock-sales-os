@@ -134,6 +134,18 @@ export default function Home() {
         });
     }, [userProperties, fallbackProperties, localProperties]);
 
+    // Identify properties already assigned to saved routes
+    const assignedHashes = useMemo(() => {
+        const hashes = new Set();
+        // Look at ALL saved routes to exclude assigned properties, regardless of filter
+        savedRoutes.forEach(r => {
+            if (r.property_hashes && Array.isArray(r.property_hashes)) {
+                r.property_hashes.forEach(h => hashes.add(h));
+            }
+        });
+        return hashes;
+    }, [savedRoutes]);
+
     const { data: savedRoutesRaw = [] } = useQuery({
         queryKey: ['savedRoutes'],
         queryFn: () => base44.entities.SavedRoute.list('-created_date', 500)
@@ -205,6 +217,11 @@ export default function Home() {
             });
     }, [properties, logs]);
 
+    // Filter out properties that are already in saved routes for generation
+    const availableProperties = useMemo(() => {
+        return effectiveProperties.filter(p => !assignedHashes.has(p.address_hash));
+    }, [effectiveProperties, assignedHashes]);
+
     // Hydrate Saved Routes for Map Display
     const hydratedSavedRoutes = useMemo(() => {
         return savedRoutes
@@ -270,7 +287,7 @@ export default function Home() {
     const [cooldownInfo, setCooldownInfo] = useState(null);
 
     const generateRoutes = useCallback(() => {
-        if (effectiveProperties.length === 0) {
+        if (availableProperties.length === 0) {
             setRoutes([]);
             return;
         }
@@ -282,8 +299,9 @@ export default function Home() {
                 const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
 
                 // Pass logs for street cooldown filtering
+                // IMPORTANT: Use availableProperties (excluding saved routes)
                 const generated = generateOptimizedRoutes(
-                    effectiveProperties,
+                    availableProperties,
                     housesPerRoute,
                     start,
                     logs,
@@ -301,7 +319,7 @@ export default function Home() {
             }
             setRoutesGenerating(false);
         }, 100);
-    }, [effectiveProperties, housesPerRoute, startLocation, logs, streetCooldownDays]);
+    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays]);
 
     // Filter and sort routes
     const filteredRoutes = useMemo(() => {
@@ -314,11 +332,13 @@ export default function Home() {
 
     const fitBounds = useMemo(() => {
         if (activeRoute?.properties?.length > 0) return activeRoute.properties.map(p => [p.lat, p.lng]);
+        if (availableProperties.length > 0) return availableProperties.slice(0, 1000).map(p => [p.lat, p.lng]);
         if (effectiveProperties.length > 0) return effectiveProperties.slice(0, 1000).map(p => [p.lat, p.lng]);
         return null;
-    }, [activeRoute, effectiveProperties]);
+    }, [activeRoute, availableProperties, effectiveProperties]);
 
-    const center = effectiveProperties[0] ? [effectiveProperties[0].lat, effectiveProperties[0].lng] : [34.0522, -118.2437];
+    const center = availableProperties[0] ? [availableProperties[0].lat, availableProperties[0].lng] : 
+                  (effectiveProperties[0] ? [effectiveProperties[0].lat, effectiveProperties[0].lng] : [34.0522, -118.2437]);
 
     const handleLogResult = useCallback((property, status, note = null) => {
         createLogMutation.mutate({
@@ -591,60 +611,124 @@ export default function Home() {
                                 ROUTES & CAMPAIGNS
                                 </h2>
                                 <p className="text-xs mt-1" style={{ color: '#888' }}>
-                                {hydratedSavedRoutes.length} active • {filteredRoutes.length} new generated
+                                    {filteredRoutes.length} New Opportunities • {hydratedSavedRoutes.length} Active
                                 </p>
-                            </div>
-                            <button onClick={() => setShowRoutePanel(false)} className="p-2">
+                                </div>
+                                <button onClick={() => setShowRoutePanel(false)} className="p-2">
                                 <X className="w-5 h-5" style={{ color: BRAND.offWhite }} />
-                            </button>
-                        </div>
+                                </button>
+                                </div>
 
-                        {/* Saved Routes List */}
-                        {hydratedSavedRoutes.length > 0 && (
-                            <div className="overflow-y-auto h-[calc(70vh-80px)] p-4 space-y-3">
-                                {hydratedSavedRoutes.map((route) => {
-                                    const isAssignedToMe = route.assigned_to === user?.id || route.assigned_to_name === user?.email;
-                                    return (
+                                {/* TABS / SECTIONS */}
+                                <div className="flex-1 overflow-y-auto bg-[#0A0A0A]">
+                                {/* Generated Routes (Priority Display) */}
+                                {routes.length > 0 && (
+                                <div className="p-4 space-y-3">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Badge className="bg-yellow-500 text-black font-bold">NEW</Badge>
+                                        <span className="text-xs font-bold text-gray-400">OPTIMIZED ROUTES (UNASSIGNED)</span>
+                                    </div>
+
+                                    {/* Scoring Legend */}
+                                    <div className="px-4 py-3 rounded-lg text-[10px] space-y-1 mb-4" style={{ color: '#888', background: '#151515', border: '1px solid #333' }}>
+                                        <p className="font-bold text-gray-400 mb-1">SCORING CRITERIA:</p>
+                                        <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+                                            <div><span style={{ color: BRAND.gold }}>+200</span> Sold &lt; 7 days</div>
+                                            <div><span style={{ color: BRAND.gold }}>+180</span> Sold &lt; 30 days</div>
+                                            <div><span style={{ color: '#22c55e' }}>+40</span> High Value</div>
+                                            <div><span style={{ color: '#ef4444' }}>Excl.</span> Cooldown ({streetCooldownDays}d)</div>
+                                        </div>
+                                    </div>
+
+                                    {filteredRoutes.map((route) => (
                                         <button
                                             key={route.id}
                                             onClick={() => { setActiveRoute(route); setPreviewRoute(null); setShowRoutePanel(false); }}
-                                            className="w-full p-4 rounded-xl border transition-all text-left"
+                                            className="w-full p-4 rounded-xl border transition-all text-left group"
                                             style={{
                                                 background: activeRoute?.id === route.id ? `${BRAND.gold}20` : BRAND.charcoal,
-                                                borderColor: isAssignedToMe ? BRAND.gold : (route.assigned_to ? '#3b82f6' : '#333')
+                                                borderColor: activeRoute?.id === route.id ? BRAND.gold : '#333'
                                             }}
                                         >
                                             <div className="flex items-center justify-between mb-2">
-                                                <div>
-                                                    <span className="font-bold block" style={{ color: BRAND.offWhite }}>{route.name}</span>
-                                                    {route.assigned_to_name && (
-                                                        <span className="text-[10px] font-bold flex items-center gap-1 mt-1" style={{ color: isAssignedToMe ? BRAND.gold : '#3b82f6' }}>
-                                                            {isAssignedToMe ? <User className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
-                                                            {route.assigned_to_name}
-                                                        </span>
-                                                    )}
-                                                </div>
+                                                <span className="font-bold group-hover:text-yellow-400 transition-colors" style={{ color: BRAND.offWhite }}>{route.name}</span>
                                                 <Badge style={{
-                                                    background: route.status === 'COMPLETED' ? '#22c55e' :
-                                                        route.status === 'IN_PROGRESS' ? '#3b82f6' : '#333',
-                                                    color: '#fff'
+                                                    background: route.competitivenessScore >= 150 ? '#22c55e' : route.competitivenessScore >= 100 ? '#eab308' : '#666',
+                                                    color: '#000'
                                                 }}>
-                                                    {route.status}
+                                                    {route.competitivenessScore}
                                                 </Badge>
                                             </div>
                                             <div className="flex gap-4 text-xs" style={{ color: '#888' }}>
                                                 <span>{route.houseCount} houses</span>
-                                                <span>{route.metrics?.score || 0} score</span>
+                                                <span>{route.streetCount || '?'} streets</span>
+                                                <span>{route.totalDistance} mi</span>
                                             </div>
+                                            <Button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleSaveRoute(route);
+                                                }}
+                                                size="sm"
+                                                className="mt-3 w-full h-8 text-[10px] font-bold bg-[#333] hover:bg-yellow-500 hover:text-black text-white transition-all"
+                                            >
+                                                SAVE TO MY ROUTES
+                                            </Button>
                                         </button>
-                                    );
-                                })}
-                            </div>
-                        )}
+                                    ))}
+                                </div>
+                                )}
 
-                        {/* Generated Routes List */}
-                        {routes.length > 0 && (
-                            <>
+                                {/* Saved Routes (Secondary Display) */}
+                                {hydratedSavedRoutes.length > 0 && (
+                                <div className="p-4 pt-0 space-y-3">
+                                    <div className="flex items-center gap-2 mb-2 mt-4 pt-4 border-t border-[#333]">
+                                        <Badge variant="outline" className="text-gray-400 border-gray-600">ACTIVE</Badge>
+                                        <span className="text-xs font-bold text-gray-400">SAVED CAMPAIGNS</span>
+                                    </div>
+                                    {hydratedSavedRoutes.map((route) => {
+                                        const isAssignedToMe = route.assigned_to === user?.id || route.assigned_to_name === user?.email;
+                                        return (
+                                            <button
+                                                key={route.id}
+                                                onClick={() => { setActiveRoute(route); setPreviewRoute(null); setShowRoutePanel(false); }}
+                                                className="w-full p-4 rounded-xl border transition-all text-left opacity-75 hover:opacity-100"
+                                                style={{
+                                                    background: activeRoute?.id === route.id ? `${BRAND.gold}20` : '#151515',
+                                                    borderColor: isAssignedToMe ? BRAND.gold : (route.assigned_to ? '#3b82f6' : '#333')
+                                                }}
+                                            >
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <div>
+                                                        <span className="font-bold block" style={{ color: BRAND.offWhite }}>{route.name}</span>
+                                                        {route.assigned_to_name && (
+                                                            <span className="text-[10px] font-bold flex items-center gap-1 mt-1" style={{ color: isAssignedToMe ? BRAND.gold : '#3b82f6' }}>
+                                                                {isAssignedToMe ? <User className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
+                                                                {route.assigned_to_name}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <Badge style={{
+                                                        background: route.status === 'COMPLETED' ? '#22c55e' :
+                                                            route.status === 'IN_PROGRESS' ? '#3b82f6' : '#333',
+                                                        color: '#fff'
+                                                    }}>
+                                                        {route.status}
+                                                    </Badge>
+                                                </div>
+                                                <div className="flex gap-4 text-xs" style={{ color: '#888' }}>
+                                                    <span>{route.houseCount} houses</span>
+                                                    <span>{route.metrics?.score || 0} score</span>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                )}
+                                </div>
+                                {/* End of Content */}
+                                {false && (
+                                <>
                                 {/* Scoring Legend */}
                                 <div className="px-5 py-2 text-[10px] space-y-1" style={{ color: '#888', background: '#151515' }}>
                                     <p className="font-bold text-gray-400">SCORE CRITERIA (FRESHNESS FIRST):</p>
@@ -708,7 +792,8 @@ export default function Home() {
                                 </div>
                             </>
                         )}
-                    </div>
+                        </>
+                    )}
                 </div>
             )}
 
