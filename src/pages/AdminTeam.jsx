@@ -31,13 +31,13 @@ export default function AdminTeam() {
 
     const { data: teamMembersRaw = [], isLoading: teamLoading } = useQuery({
         queryKey: ['teamMembers'],
-        queryFn: () => base44.entities.TeamMember.list('-created_date', 100)
+        queryFn: () => base44.entities.TeamMember.list('-created_date', 1000)
     });
     const teamMembers = (Array.isArray(teamMembersRaw) ? teamMembersRaw : (teamMembersRaw?.items || [])).filter(m => m && typeof m === 'object');
 
     const { data: savedRoutesRaw = [], isLoading: routesLoading } = useQuery({
         queryKey: ['savedRoutes'],
-        queryFn: () => base44.entities.SavedRoute.list('-created_date', 500)
+        queryFn: () => base44.entities.SavedRoute.list('-created_date', 1000)
     });
     const savedRoutes = (Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || [])).filter(r => r && typeof r === 'object');
 
@@ -102,9 +102,9 @@ export default function AdminTeam() {
             }
         });
 
-        // Sort each group by priority
+        // Sort each group by Score (highest first)
         Object.keys(grouped).forEach(key => {
-            grouped[key].sort((a, b) => (a.priority || 999) - (b.priority || 999));
+            grouped[key].sort((a, b) => (b.metrics?.score || 0) - (a.metrics?.score || 0));
         });
 
         return grouped;
@@ -339,7 +339,7 @@ export default function AdminTeam() {
                             <AlertCircle className="w-4 h-4 text-red-500" />
                             <h3 className="font-bold text-red-400">Unassigned Routes ({routesByRep.unassigned.length})</h3>
                         </div>
-                        <div className="space-y-2">
+                        <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
                             {routesByRep.unassigned.map(route => (
                                 <div
                                     key={route.id}
@@ -433,7 +433,7 @@ export default function AdminTeam() {
                                 </div>
 
                                 {/* Route Queue */}
-                                <div className="p-3 max-h-60 overflow-y-auto">
+                                <div className="p-3 max-h-[400px] overflow-y-auto custom-scrollbar">
                                     {routes.length === 0 ? (
                                         <p className="text-center py-4 text-sm" style={{ color: '#666' }}>No routes assigned</p>
                                     ) : (
