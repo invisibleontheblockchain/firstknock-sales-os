@@ -602,7 +602,7 @@ export default function Home() {
                 <div className="fixed inset-0 z-[2000]">
                     <div className="absolute inset-0 bg-black/60" onClick={() => setShowRoutePanel(false)} />
                     <div
-                        className="absolute bottom-0 left-0 right-0 h-[70vh] rounded-t-3xl overflow-hidden flex flex-col"
+                        className="fixed bottom-0 left-0 right-0 h-[70vh] rounded-t-3xl overflow-hidden flex flex-col z-[3000] pb-safe"
                         style={{ background: BRAND.voidBlack, borderTop: `1px solid ${BRAND.charcoal}` }}
                     >
                         <div className="p-5 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
@@ -621,7 +621,7 @@ export default function Home() {
                                 </div>
 
                                 {/* TABS / SECTIONS */}
-                                <div className="flex-1 overflow-y-auto bg-[#0A0A0A]">
+                                <div className="flex-1 overflow-y-auto bg-[#0A0A0A] overscroll-contain pb-20">
                                 {/* Generated Routes (Priority Display) */}
                                 {routes.length > 0 && (
                                 <div className="p-4 space-y-3">

@@ -104,7 +104,7 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
 
             // 2. Generate Routes (Client-side optimization)
             // We use a small delay to let UI render the progress message
-            await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 500));
 
             const generatedRoutes = generateOptimizedRoutes(
                 filteredProps,

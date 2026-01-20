@@ -339,7 +339,7 @@ export default function AdminTeam() {
                             <AlertCircle className="w-4 h-4 text-red-500" />
                             <h3 className="font-bold text-red-400">Unassigned Routes ({routesByRep.unassigned.length})</h3>
                         </div>
-                        <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                        <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-2 overscroll-contain">
                             {routesByRep.unassigned.map(route => (
                                 <div
                                     key={route.id}
@@ -433,7 +433,7 @@ export default function AdminTeam() {
                                 </div>
 
                                 {/* Route Queue */}
-                                <div className="p-3 max-h-[400px] overflow-y-auto custom-scrollbar">
+                                <div className="p-3 max-h-[30vh] overflow-y-auto overscroll-contain">
                                     {routes.length === 0 ? (
                                         <p className="text-center py-4 text-sm" style={{ color: '#666' }}>No routes assigned</p>
                                     ) : (
