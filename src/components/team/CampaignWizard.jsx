@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from '@/api/base44Client';
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,7 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
     const [generationProgress, setGenerationProgress] = useState("");
 
     // Form State
-    const [config, setConfig] = useState(existingPlan?.strategy_config || {
+    const [config, setConfig] = useState({
         name: `Campaign ${new Date().getFullYear()}`,
         min_price: 0,
         max_price: 0, // 0 = no max
@@ -37,6 +37,22 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
         houses_per_route: 50,
         street_cooldown_days: 30
     });
+
+    // Sync state with props when modal opens or plan changes
+    useEffect(() => {
+        if (open) {
+            setConfig(existingPlan?.strategy_config || {
+                name: `Campaign ${new Date().getFullYear()}`,
+                min_price: 0,
+                max_price: 0,
+                sold_years_min: 0,
+                sold_years_max: 30,
+                included_statuses: ['ELIGIBLE'],
+                houses_per_route: 50,
+                street_cooldown_days: 30
+            });
+        }
+    }, [open, existingPlan]);
 
     // Fetch Master Properties for generation
     const { data: allPropertiesRaw = [] } = useQuery({
