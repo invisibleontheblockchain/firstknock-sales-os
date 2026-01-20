@@ -81,6 +81,42 @@ export default function AdminTeam() {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['territoryPlans'] })
     });
 
+    // Group routes by assignee
+    const routesByRep = useMemo(() => {
+        const grouped = { unassigned: [] };
+        teamMembers.forEach(m => { grouped[m.id] = []; });
+
+        savedRoutes.forEach(route => {
+            if (route.assigned_to && grouped[route.assigned_to]) {
+                grouped[route.assigned_to].push(route);
+            } else {
+                grouped.unassigned.push(route);
+            }
+        });
+
+        // Sort each group by priority
+        Object.keys(grouped).forEach(key => {
+            grouped[key].sort((a, b) => (a.priority || 999) - (b.priority || 999));
+        });
+
+        return grouped;
+    }, [savedRoutes, teamMembers]);
+
+    // Stats per rep
+    const repStats = useMemo(() => {
+        const stats = {};
+        teamMembers.forEach(m => {
+            const routes = routesByRep[m.id] || [];
+            stats[m.id] = {
+                totalRoutes: routes.length,
+                totalHouses: routes.reduce((sum, r) => sum + (r.metrics?.house_count || 0), 0),
+                completed: routes.filter(r => r.status === 'COMPLETED').length,
+                inProgress: routes.filter(r => r.status === 'IN_PROGRESS').length
+            };
+        });
+        return stats;
+    }, [teamMembers, routesByRep]);
+
     // Auto-distribute unassigned routes to active reps
     const handleAutoDistribute = async () => {
         const unassigned = routesByRep.unassigned;
@@ -133,41 +169,7 @@ export default function AdminTeam() {
         updateRouteMutation.mutate({ id: routeId, data: { priority } });
     };
 
-    // Group routes by assignee
-    const routesByRep = useMemo(() => {
-        const grouped = { unassigned: [] };
-        teamMembers.forEach(m => { grouped[m.id] = []; });
 
-        savedRoutes.forEach(route => {
-            if (route.assigned_to && grouped[route.assigned_to]) {
-                grouped[route.assigned_to].push(route);
-            } else {
-                grouped.unassigned.push(route);
-            }
-        });
-
-        // Sort each group by priority
-        Object.keys(grouped).forEach(key => {
-            grouped[key].sort((a, b) => (a.priority || 999) - (b.priority || 999));
-        });
-
-        return grouped;
-    }, [savedRoutes, teamMembers]);
-
-    // Stats per rep
-    const repStats = useMemo(() => {
-        const stats = {};
-        teamMembers.forEach(m => {
-            const routes = routesByRep[m.id] || [];
-            stats[m.id] = {
-                totalRoutes: routes.length,
-                totalHouses: routes.reduce((sum, r) => sum + (r.metrics?.house_count || 0), 0),
-                completed: routes.filter(r => r.status === 'COMPLETED').length,
-                inProgress: routes.filter(r => r.status === 'IN_PROGRESS').length
-            };
-        });
-        return stats;
-    }, [teamMembers, routesByRep]);
 
     return (
         <div className="h-full overflow-auto p-4" style={{ background: BRAND.voidBlack }}>
