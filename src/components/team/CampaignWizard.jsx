@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Loader2, Settings2, Database, Map as MapIcon, Save } from 'lucide-react';
 import { generateOptimizedRoutes } from '../logic/routeOptimizer';
+import { determineEffectiveStatus, expandToFullStreetSweep } from '../logic/territoryLogic';
 
 // Constants
 const BRAND = {
@@ -62,6 +63,14 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
     });
     const allProperties = Array.isArray(allPropertiesRaw) ? allPropertiesRaw : (allPropertiesRaw?.items || []);
 
+    // Fetch Logs for Status/Cooldown
+    const { data: logsRaw = [] } = useQuery({
+        queryKey: ['interactionLogs_wizard'],
+        queryFn: () => base44.entities.InteractionLog.list('-created_date', 5000),
+        enabled: open
+    });
+    const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
+
     const createPlanMutation = useMutation({
         mutationFn: (data) => base44.entities.TerritoryPlan.create(data),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['territoryPlans'] })
@@ -79,13 +88,27 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
 
     const handleGenerate = async () => {
         setIsGenerating(true);
-        setGenerationProgress("Filtering properties...");
+        setGenerationProgress("Processing properties & logs...");
 
         try {
-            // 1. Filter Properties
-            const filteredProps = allProperties.filter(p => {
-                // Status Filter
-                if (!config.included_statuses.includes(p.original_status)) return false;
+            // 0. Calculate Effective Status
+            const effectiveProperties = allProperties.map(p => {
+                const propLogs = logs.filter(l => l.address_hash === p.address_hash);
+                return {
+                    ...p,
+                    effective_status: determineEffectiveStatus(p, propLogs)
+                };
+            });
+
+            // 1. Filter Properties (Seeds)
+            const seedProperties = effectiveProperties.filter(p => {
+                // Status Filter - Check Effective Status AND Original Status?
+                // Usually we care about effective status for routing (don't route to SOLD/HARD_NO)
+                // But filters might be on "Eligible"
+                if (!config.included_statuses.includes(p.effective_status) && !config.included_statuses.includes(p.original_status)) return false;
+                
+                // Exclude Cooldowns explicitly if not already handled
+                if (p.effective_status === 'COOLDOWN') return false;
 
                 // Price Filter
                 if (config.min_price > 0 && p.price < config.min_price) return false;
@@ -100,18 +123,24 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
                 return true;
             });
 
-            setGenerationProgress(`Generating routes from ${filteredProps.length} properties...`);
+            setGenerationProgress(`Found ${seedProperties.length} target properties. Expanding to streets...`);
+            
+            // 1b. Expand to Full Street Sweep (Neighbors)
+            // "If a house is promoted, all eligible houses on that street must be prompted"
+            const campaignProperties = expandToFullStreetSweep(seedProperties, effectiveProperties);
+
+            setGenerationProgress(`Generating routes from ${campaignProperties.length} properties...`);
 
             // 2. Generate Routes (Client-side optimization)
             // We use a small delay to let UI render the progress message
             await new Promise(r => setTimeout(r, 100));
 
             const generatedRoutes = generateOptimizedRoutes(
-                filteredProps,
+                campaignProperties,
                 config.houses_per_route,
                 null, // No specific start location, use clustering
-                [], // No logs for initial generation
-                { streetCooldownDays: config.street_cooldown_days }
+                logs, // Pass logs for Street Cooldown check
+                { streetCooldownDays: config.street_cooldown_days, useStreetSweep: true }
             );
 
             setGenerationProgress(`Saving plan and ${generatedRoutes.length} routes...`);
