@@ -25,6 +25,7 @@ const ROUTE_SIZE_OPTIONS = [25, 50, 75, 100];
 export default function ListPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [view, setView] = useState('routes'); // 'routes' or 'properties'
+    const [repFilter, setRepFilter] = useState('all');
     const [selectedSize, setSelectedSize] = useState(50);
     const [selectedRouteDetails, setSelectedRouteDetails] = useState(null); // Route object to show details for
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
@@ -36,9 +37,8 @@ export default function ListPage() {
     });
 
     const { data: savedRoutesRaw = [], isLoading: routesLoading } = useQuery({
-        queryKey: ['savedRoutes', user?.email],
-        queryFn: () => user ? base44.entities.SavedRoute.filter({ created_by: user.email }, '-created_date', 100) : [],
-        enabled: !!user
+        queryKey: ['savedRoutes'],
+        queryFn: () => base44.entities.SavedRoute.list('-created_date', 500)
     });
 
     const { data: localRoutes = [] } = useQuery({
@@ -59,8 +59,15 @@ export default function ListPage() {
             if (seen.has(r.id)) return false;
             seen.add(r.id);
             return true;
-        });
-    }, [savedRoutesRaw, localRoutes]);
+        }).filter(r => repFilter === 'all' || (r.assigned_to_name && r.assigned_to_name.includes(repFilter)));
+    }, [savedRoutesRaw, localRoutes, repFilter]);
+
+    // Extract unique reps
+    const uniqueReps = useMemo(() => {
+        const backend = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
+        const reps = new Set(backend.map(r => r.assigned_to_name).filter(Boolean));
+        return Array.from(reps);
+    }, [savedRoutesRaw]);
 
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs', user?.email],
@@ -139,7 +146,17 @@ export default function ListPage() {
 
                 {view === 'routes' && (
                     <div className="space-y-3">
-                        {/* Saved routes, no generation here anymore, just listing */}
+                        {/* Filter by Rep */}
+                        <select
+                            value={repFilter}
+                            onChange={(e) => setRepFilter(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
+                        >
+                            <option value="all">Filter by Rep: All</option>
+                            {uniqueReps.map(rep => (
+                                <option key={rep} value={rep}>{rep}</option>
+                            ))}
+                        </select>
                     </div>
                 )}
 

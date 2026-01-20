@@ -71,6 +71,7 @@ export default function Home() {
     const [sortBy, setSortBy] = useState('score'); // score, houses, distance
     const [minScore, setMinScore] = useState(0);
     const [quickFilter, setQuickFilter] = useState('all'); // all, eligible, sold, rejected
+    const [repFilter, setRepFilter] = useState('all');
     const [previewRoute, setPreviewRoute] = useState(null);
     const [startLocation, setStartLocation] = useState(null); // { lat, lng, address }
     const [startAddressInput, setStartAddressInput] = useState("");
@@ -134,9 +135,8 @@ export default function Home() {
     }, [userProperties, fallbackProperties, localProperties]);
 
     const { data: savedRoutesRaw = [] } = useQuery({
-        queryKey: ['savedRoutes', user?.email],
-        queryFn: () => user ? base44.entities.SavedRoute.filter({ created_by: user.email }, '-created_date', 100) : [],
-        enabled: !!user
+        queryKey: ['savedRoutes'],
+        queryFn: () => base44.entities.SavedRoute.list('-created_date', 500)
     });
     const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
 
@@ -207,7 +207,9 @@ export default function Home() {
 
     // Hydrate Saved Routes for Map Display
     const hydratedSavedRoutes = useMemo(() => {
-        return savedRoutes.map(route => {
+        return savedRoutes
+            .filter(r => repFilter === 'all' || (r.assigned_to_name && r.assigned_to_name.includes(repFilter)))
+            .map(route => {
             const routeProps = route.property_hashes
                 .map(hash => effectiveProperties.find(p => p.address_hash === hash))
                 .filter(Boolean);
@@ -222,7 +224,13 @@ export default function Home() {
                 isSaved: true
             };
         }).filter(r => r.properties.length > 0);
-    }, [savedRoutes, effectiveProperties]);
+    }, [savedRoutes, effectiveProperties, repFilter]);
+
+    // Extract unique reps from saved routes for filter
+    const uniqueReps = useMemo(() => {
+        const reps = new Set(savedRoutes.map(r => r.assigned_to_name).filter(Boolean));
+        return Array.from(reps);
+    }, [savedRoutes]);
 
     // Handle Load Route from URL
     useEffect(() => {
@@ -723,6 +731,22 @@ export default function Home() {
                         </div>
 
                         <div className="p-5 space-y-6 overflow-y-auto h-[calc(100%-70px)]">
+                            <div>
+                                <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                    FILTER BY REP
+                                </label>
+                                <select
+                                    value={repFilter}
+                                    onChange={(e) => setRepFilter(e.target.value)}
+                                    className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
+                                >
+                                    <option value="all">All Reps</option>
+                                    {uniqueReps.map(rep => (
+                                        <option key={rep} value={rep}>{rep}</option>
+                                    ))}
+                                </select>
+                            </div>
+
                             <div>
                                 <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
                                     STARTING LOCATION
