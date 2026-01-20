@@ -55,7 +55,7 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
     }, [open, existingPlan]);
 
     // Fetch Master Properties for generation
-    const { data: allPropertiesRaw = [] } = useQuery({
+    const { data: allPropertiesRaw = [], isLoading: propsLoading } = useQuery({
         queryKey: ['masterProperties'],
         queryFn: () => base44.entities.MasterProperty.list('-created_date', 5000),
         enabled: open
@@ -314,9 +314,17 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
                                     Save Settings
                                 </Button>
                             ) : (
-                                <Button onClick={handleGenerate} style={{ background: BRAND.gold, color: BRAND.voidBlack }} className="font-bold w-full sm:w-auto">
-                                    <MapIcon className="w-4 h-4 mr-2" />
-                                    Generate Territory & Routes
+                                <Button 
+                                    onClick={handleGenerate} 
+                                    disabled={propsLoading}
+                                    style={{ background: BRAND.gold, color: BRAND.voidBlack }} 
+                                    className="font-bold w-full sm:w-auto"
+                                >
+                                    {propsLoading ? (
+                                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Loading Data...</>
+                                    ) : (
+                                        <><MapIcon className="w-4 h-4 mr-2" /> Generate Territory & Routes</>
+                                    )}
                                 </Button>
                             )}
                         </>
