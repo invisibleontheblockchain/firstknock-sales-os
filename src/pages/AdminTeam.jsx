@@ -94,9 +94,9 @@ export default function AdminTeam() {
             }
         });
 
-        // Sort each group by priority
+        // Sort each group by score (highest first)
         Object.keys(grouped).forEach(key => {
-            grouped[key].sort((a, b) => (a.priority || 999) - (b.priority || 999));
+            grouped[key].sort((a, b) => (b.metrics?.score || 0) - (a.metrics?.score || 0));
         });
 
         return grouped;
