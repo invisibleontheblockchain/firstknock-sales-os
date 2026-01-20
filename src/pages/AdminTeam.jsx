@@ -6,8 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-    Users, Plus, Trash2, Route, ChevronRight, User,
-    CheckCircle, Clock, AlertCircle, GripVertical, X, Settings
+    Users, Plus, Trash2, Route, AlertCircle, X, Settings
 } from 'lucide-react';
 import CampaignWizard from '@/components/team/CampaignWizard';
 

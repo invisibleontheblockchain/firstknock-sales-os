@@ -34,7 +34,7 @@ const STATUS_COLORS = {
     OTHER: '#6b7280'          // Gray - default
 };
 
-const ROUTE_COLORS = [BRAND.gold, '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#f97316', '#a855f7'];
+const ROUTE_COLORS = ['#FFD700', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#f97316', '#a855f7'];
 
 function LocationMarker() {
     const [position, setPosition] = useState(null);
