@@ -726,74 +726,7 @@ export default function Home() {
                                 </div>
                                 )}
                                 </div>
-                                {/* End of Content */}
-                                {false && (
-                                <>
-                                {/* Scoring Legend */}
-                                <div className="px-5 py-2 text-[10px] space-y-1" style={{ color: '#888', background: '#151515' }}>
-                                    <p className="font-bold text-gray-400">SCORE CRITERIA (FRESHNESS FIRST):</p>
-                                    <ul className="list-disc pl-4 space-y-0.5">
-                                        <li><span style={{ color: BRAND.gold }}>+200</span> Sold &lt; 7 days ago (Hot!)</li>
-                                        <li><span style={{ color: BRAND.gold }}>+180-20</span> Sold 1-12 months ago</li>
-                                        <li><span style={{ color: '#22c55e' }}>+20-40</span> High Value Property</li>
-                                        <li><span style={{ color: '#fff' }}>+50</span> Eligible / <span style={{ color: '#eab308' }}>+30</span> Callback</li>
-                                        <li>Street Sweep Mode: All houses per street</li>
-                                        <li><span style={{ color: '#ef4444' }}>EXCLUDED:</span> Streets visited in last {streetCooldownDays} days (No Answer)</li>
-                                    </ul>
-                                    {cooldownInfo && cooldownInfo.streetsOnCooldown?.length > 0 && (
-                                        <div className="mt-2 pt-2 border-t border-[#333]">
-                                            <p className="text-red-400 font-bold">
-                                                {cooldownInfo.streetsOnCooldown.length} streets on cooldown ({cooldownInfo.propertiesExcluded} properties)
-                                            </p>
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="overflow-y-auto h-[calc(70vh-80px)] p-4 space-y-3">
-                                    {filteredRoutes.length === 0 ? (
-                                        <p className="text-center py-8" style={{ color: '#888' }}>No routes available</p>
-                                    ) : (
-                                        filteredRoutes.map((route) => (
-                                            <button
-                                                key={route.id}
-                                                onClick={() => { setActiveRoute(route); setPreviewRoute(null); setShowRoutePanel(false); }}
-                                                className="w-full p-4 rounded-xl border transition-all text-left"
-                                                style={{
-                                                    background: activeRoute?.id === route.id ? `${BRAND.gold}20` : BRAND.charcoal,
-                                                    borderColor: activeRoute?.id === route.id ? BRAND.gold : '#333'
-                                                }}
-                                            >
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <span className="font-bold" style={{ color: BRAND.offWhite }}>{route.name}</span>
-                                                    <Badge style={{
-                                                        background: route.competitivenessScore >= 150 ? '#22c55e' : route.competitivenessScore >= 100 ? '#eab308' : '#666',
-                                                        color: '#000'
-                                                    }}>
-                                                        {route.competitivenessScore}
-                                                    </Badge>
-                                                </div>
-                                                <div className="flex gap-4 text-xs" style={{ color: '#888' }}>
-                                                    <span>{route.houseCount} houses</span>
-                                                    <span>{route.streetCount || '?'} streets</span>
-                                                    <span>{route.totalDistance} mi</span>
-                                                </div>
-                                                <Button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleSaveRoute(route);
-                                                    }}
-                                                    size="sm"
-                                                    className="mt-2 w-full h-8 text-[10px] bg-[#333] hover:bg-[#444] text-white"
-                                                >
-                                                    SAVE TO MY ROUTES
-                                                </Button>
-                                            </button>
-                                        ))
-                                    )}
-                                </div>
-                            </>
-                        )}
-                        </>
-                    )}
+
                 </div>
             )}
 
