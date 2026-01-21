@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Upload, Download, Database } from 'lucide-react';
 import CsvUploader from '../components/dashboard/CsvUploader';
+import DataMarketplace from '../components/dashboard/DataMarketplace';
 import { createPageUrl } from '@/utils';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
@@ -56,6 +57,8 @@ export default function Setup() {
         navigate(createPageUrl('Home'));
     };
 
+    const [activeTab, setActiveTab] = React.useState('upload');
+
     const handleExport = () => {
         if (properties.length === 0) {
             alert("No data to export");
@@ -84,40 +87,61 @@ export default function Setup() {
                     </div>
                     <h1 className="text-2xl font-bold tracking-tight text-white">Data Center</h1>
                     <p className="text-gray-400 text-sm max-w-sm mx-auto">
-                        Your property data is securely stored. Upload new data to update or expand your territory.
+                        Manage your territory data. Upload lists or connect to national feeds.
                     </p>
                 </div>
 
-                <div className="space-y-4">
-                    <div className="p-4 rounded-xl bg-[#0A0A0A] border border-[#222]">
-                        <h3 className="text-base font-bold text-white mb-1">Upload New List</h3>
-                        <p className="text-xs text-gray-500 mb-3">CSV, JSON. Merges with existing records.</p>
-                        <CsvUploader />
-                    </div>
+                <div className="flex p-1 bg-[#0A0A0A] rounded-lg mb-6 border border-[#222]">
+                    <button
+                        onClick={() => setActiveTab('upload')}
+                        className={`flex-1 py-2 text-sm font-bold rounded-md transition-colors ${activeTab === 'upload' ? 'bg-[#222] text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                        My Uploads
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('marketplace')}
+                        className={`flex-1 py-2 text-sm font-bold rounded-md transition-colors ${activeTab === 'marketplace' ? 'bg-[#222] text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                        National Feeds
+                    </button>
+                </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="p-3 rounded-xl bg-[#0A0A0A] border border-[#222]">
-                            <h4 className="text-white font-bold flex items-center gap-2 text-sm">
-                                <Database className="w-4 h-4 text-green-500" />
-                                {isLoading ? '...' : properties.length.toLocaleString()} Records
-                            </h4>
-                            <p className="text-xs text-gray-500 mt-1">Saved in database</p>
-                        </div>
-                        <button
-                            onClick={handleExport}
-                            className="p-3 rounded-xl bg-[#0A0A0A] border border-[#222] text-left hover:bg-[#151515] transition-colors"
-                        >
-                            <h4 className="text-white font-bold flex items-center gap-2 text-sm">
-                                <Download className="w-4 h-4 text-blue-500" />
-                                Export Data
-                            </h4>
-                            <p className="text-xs text-gray-500 mt-1">Download backup</p>
-                        </button>
-                    </div>
+                <div className="space-y-4">
+                    {activeTab === 'upload' ? (
+                        <>
+                            <div className="p-4 rounded-xl bg-[#0A0A0A] border border-[#222]">
+                                <h3 className="text-base font-bold text-white mb-1">Upload New List</h3>
+                                <p className="text-xs text-gray-500 mb-3">CSV, JSON. Merges with existing records.</p>
+                                <CsvUploader />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="p-3 rounded-xl bg-[#0A0A0A] border border-[#222]">
+                                    <h4 className="text-white font-bold flex items-center gap-2 text-sm">
+                                        <Database className="w-4 h-4 text-green-500" />
+                                        {isLoading ? '...' : properties.length.toLocaleString()} Records
+                                    </h4>
+                                    <p className="text-xs text-gray-500 mt-1">Saved in database</p>
+                                </div>
+                                <button
+                                    onClick={handleExport}
+                                    className="p-3 rounded-xl bg-[#0A0A0A] border border-[#222] text-left hover:bg-[#151515] transition-colors"
+                                >
+                                    <h4 className="text-white font-bold flex items-center gap-2 text-sm">
+                                        <Download className="w-4 h-4 text-blue-500" />
+                                        Export Data
+                                    </h4>
+                                    <p className="text-xs text-gray-500 mt-1">Download backup</p>
+                                </button>
+                            </div>
+                        </>
+                    ) : (
+                        <DataMarketplace />
+                    )}
 
                     <Button
                         onClick={handleContinue}
-                        className="w-full h-12 text-base bg-yellow-500 text-black font-bold hover:bg-yellow-400 rounded-xl"
+                        className="w-full h-12 text-base bg-yellow-500 text-black font-bold hover:bg-yellow-400 rounded-xl mt-4"
                     >
                         GO TO MAP
                     </Button>
