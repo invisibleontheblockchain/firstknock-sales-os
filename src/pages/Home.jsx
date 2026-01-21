@@ -546,8 +546,8 @@ export default function Home() {
                 <div className="flex justify-center gap-3">
                     <Button
                         onClick={() => setShowRoutePanel(true)}
-                        className="rounded-full px-6 h-14 font-bold tracking-wide shadow-2xl"
-                        style={{ background: BRAND.gold, color: BRAND.voidBlack }}
+                        className="rounded-full px-8 h-14 font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform hover:-translate-y-1 active:scale-95"
+                        style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
                     >
                         <Navigation className="w-5 h-5 mr-2" />
                         ROUTES
@@ -562,8 +562,8 @@ export default function Home() {
                     {activeRoute && (
                         <Button
                             onClick={() => setShowChecklist(true)}
-                            className="rounded-full px-6 h-14 font-bold tracking-wide shadow-2xl"
-                            style={{ background: BRAND.charcoal, color: BRAND.gold, border: `2px solid ${BRAND.gold}` }}
+                            className="rounded-full px-8 h-14 font-bold tracking-wide shadow-2xl backdrop-blur-md transition-all duration-300 transform hover:-translate-y-1 active:scale-95"
+                            style={{ background: 'rgba(31, 31, 31, 0.8)', color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}
                         >
                             <List className="w-5 h-5 mr-2" />
                             CHECKLIST
@@ -584,10 +584,10 @@ export default function Home() {
             {/* Routes Panel - using Dialog-style overlay */}
             {showRoutePanel && (
                 <div className="fixed inset-0 z-[2000]">
-                    <div className="absolute inset-0 bg-black/60" onClick={() => setShowRoutePanel(false)} />
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowRoutePanel(false)} />
                     <div
-                        className="fixed bottom-0 left-0 right-0 h-[70vh] rounded-t-3xl overflow-hidden flex flex-col z-[3000] pb-safe"
-                        style={{ background: BRAND.voidBlack, borderTop: `1px solid ${BRAND.charcoal}` }}
+                        className="fixed bottom-0 left-0 right-0 h-[70vh] rounded-t-3xl overflow-hidden flex flex-col z-[3000] pb-safe backdrop-blur-xl shadow-2xl animate-in slide-in-from-bottom duration-300"
+                        style={{ background: 'rgba(10, 10, 10, 0.9)', borderTop: '1px solid rgba(255, 255, 255, 0.1)', boxShadow: '0 -10px 40px rgba(0,0,0,0.5)' }}
                     >
                         <div className="p-5 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
                             <div>
@@ -718,10 +718,10 @@ export default function Home() {
             {/* Filter Panel */}
             {showCompare && (
                 <div className="fixed inset-0 z-[2000]">
-                    <div className="absolute inset-0 bg-black/60" onClick={() => setShowCompare(false)} />
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowCompare(false)} />
                     <div
-                        className="absolute top-0 right-0 bottom-0 w-full max-w-md overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
-                        style={{ background: BRAND.voidBlack, borderLeft: `1px solid ${BRAND.charcoal}` }}
+                        className="absolute top-0 right-0 bottom-0 w-full max-w-md overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] backdrop-blur-xl shadow-2xl animate-in slide-in-from-right duration-300"
+                        style={{ background: 'rgba(10, 10, 10, 0.95)', borderLeft: '1px solid rgba(255, 255, 255, 0.1)' }}
                     >
                         <div className="p-5 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
                             <h2 className="flex items-center gap-2 font-bold tracking-wide" style={{ color: BRAND.gold }}>
@@ -919,10 +919,10 @@ export default function Home() {
             {/* Route Checklist */}
             {showChecklist && activeRoute && (
                 <div className="fixed inset-0 z-[2000]">
-                    <div className="absolute inset-0 bg-black/60" onClick={() => setShowChecklist(false)} />
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowChecklist(false)} />
                     <div
-                        className="absolute top-0 right-0 bottom-0 w-full max-w-lg overflow-hidden"
-                        style={{ background: BRAND.voidBlack, borderLeft: `1px solid ${BRAND.charcoal}` }}
+                        className="absolute top-0 right-0 bottom-0 w-full max-w-lg overflow-hidden shadow-2xl animate-in slide-in-from-right duration-300"
+                        style={{ background: 'transparent' }}
                     >
                         <RouteChecklist
                             route={activeRoute}

@@ -141,9 +141,9 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
     };
 
     return (
-        <div className="h-full flex flex-col" style={{ background: BRAND.voidBlack }}>
+        <div className="h-full flex flex-col backdrop-blur-2xl" style={{ background: 'rgba(10, 10, 10, 0.95)' }}>
             {/* Header */}
-            <div className="p-6 border-b" style={{ borderColor: BRAND.charcoal }}>
+            <div className="p-6 border-b bg-gradient-to-b from-black/20 to-transparent" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
                 <div className="flex items-center justify-between mb-4">
                     <div>
                         <h2 className="text-lg font-bold tracking-wide" style={{ color: BRAND.gold }}>{route.name}</h2>
@@ -225,10 +225,11 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                         return (
                             <div
                                 key={prop.address_hash}
-                                className="rounded-xl border transition-all"
+                                className="rounded-xl border transition-all duration-300 overflow-hidden"
                                 style={{
-                                    background: isDone ? `${BRAND.charcoal}80` : BRAND.charcoal,
-                                    borderColor: isExpanded ? BRAND.gold : '#333'
+                                    background: isDone ? 'rgba(31, 31, 31, 0.4)' : 'rgba(31, 31, 31, 0.7)',
+                                    borderColor: isExpanded ? BRAND.gold : 'rgba(255, 255, 255, 0.05)',
+                                    boxShadow: isExpanded ? `0 0 20px -5px ${BRAND.gold}40` : 'none'
                                 }}
                             >
                                 <button
