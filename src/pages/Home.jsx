@@ -407,6 +407,12 @@ export default function Home() {
                             key={`${route.id}-${p.address_hash}`}
                             center={[p.lat, p.lng]}
                             radius={6}
+                            eventHandlers={{
+                                click: (e) => {
+                                    L.DomEvent.stopPropagation(e);
+                                    setActiveRoute(route);
+                                }
+                            }}
                             pathOptions={{
                                 fillColor: routeColor,
                                 fillOpacity: 0.7,
