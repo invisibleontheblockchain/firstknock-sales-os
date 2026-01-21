@@ -37,26 +37,20 @@ export function scoreProperty(property) {
     if (property.effective_status === 'QUALIFIED') score += 70;
     if (property.effective_status === 'SOLD' || property.effective_status === 'HARD_NO') score = 0; // Don't route to these
 
-    // 2. Freshness Scoring (Date Sold)
-    // "Get to the home buyers first" - Extremely granular decay
+    // 2. Tenure Scoring (Version 2.0)
+    // Prioritize homeowners with 5+ years tenure (equity, stability) over brand new buyers
     if (property.sold_date) {
         const soldDate = new Date(property.sold_date);
         const now = new Date();
-        const daysAgo = (now - soldDate) / (1000 * 60 * 60 * 24);
+        const yearsOwned = (now - soldDate) / (1000 * 60 * 60 * 24 * 365);
 
-        if (daysAgo <= 7) score += 200;        // 1 week: Hot!
-        else if (daysAgo <= 30) score += 180;  // 1 month
-        else if (daysAgo <= 60) score += 160;  // 2 months
-        else if (daysAgo <= 90) score += 140;  // 3 months
-        else if (daysAgo <= 120) score += 120; // 4 months
-        else if (daysAgo <= 150) score += 100; // 5 months
-        else if (daysAgo <= 180) score += 80;  // 6 months
-        else if (daysAgo <= 210) score += 70;  // 7 months
-        else if (daysAgo <= 240) score += 60;  // 8 months
-        else if (daysAgo <= 270) score += 50;  // 9 months
-        else if (daysAgo <= 300) score += 40;  // 10 months
-        else if (daysAgo <= 330) score += 30;  // 11 months
-        else if (daysAgo <= 365) score += 20;  // 1 year
+        if (yearsOwned < 2) {
+            score -= 50; // Penalty: New homeowner (low probability)
+        } else if (yearsOwned >= 5) {
+            score += 50; // Bonus: Gold Zone (5+ years tenure)
+        } else {
+            score += 10; // Neutral: 2-5 years
+        }
     }
 
     // 3. Price/Value Scoring
