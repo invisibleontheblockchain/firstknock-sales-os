@@ -49,13 +49,7 @@ export default function AdminTeam() {
 
     const activePlan = plans[0];
 
-    if (teamLoading || routesLoading || plansLoading) {
-        return (
-            <div className="h-full flex items-center justify-center bg-[#0A0A0A]">
-                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-[#FFD700]"></div>
-            </div>
-        );
-    }
+
 
     const createMemberMutation = useMutation({
         mutationFn: (data) => base44.entities.TeamMember.create(data),
@@ -178,6 +172,14 @@ export default function AdminTeam() {
     };
 
 
+
+    if (teamLoading || routesLoading || plansLoading) {
+        return (
+            <div className="h-full flex items-center justify-center bg-[#0A0A0A]">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-[#FFD700]"></div>
+            </div>
+        );
+    }
 
     return (
         <div className="h-full overflow-auto p-4" style={{ background: BRAND.voidBlack }}>
