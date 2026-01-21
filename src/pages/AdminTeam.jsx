@@ -248,13 +248,13 @@ export default function AdminTeam() {
                                     </div>
                                     <h2 className="text-2xl font-bold text-white">{activePlan.name}</h2>
                                     <p className="text-gray-400 text-sm">
-                                        Target: {activePlan.goal_houses.toLocaleString()} Homes • {savedRoutes.length} Routes Generated
+                                        Target: {(activePlan.goal_houses || 0).toLocaleString()} Homes • {savedRoutes.length} Routes Generated
                                     </p>
                                 </div>
                                 <div className="text-right">
                                     <p className="text-3xl font-bold" style={{ color: BRAND.gold }}>
                                         {Object.values(repStats).reduce((acc, s) => acc + s.completed, 0)}
-                                        <span className="text-sm text-gray-500 ml-1">/ {activePlan.goal_houses.toLocaleString()}</span>
+                                        <span className="text-sm text-gray-500 ml-1">/ {(activePlan.goal_houses || 0).toLocaleString()}</span>
                                     </p>
                                     <p className="text-xs text-gray-500">HOUSES KNOCKED</p>
                                 </div>
@@ -265,7 +265,7 @@ export default function AdminTeam() {
                                 <div
                                     className="h-full transition-all duration-1000 ease-out relative"
                                     style={{
-                                        width: `${Math.min(100, (Object.values(repStats).reduce((acc, s) => acc + s.completed, 0) / activePlan.goal_houses) * 100)}%`,
+                                        width: `${Math.min(100, (Object.values(repStats).reduce((acc, s) => acc + s.completed, 0) / (activePlan.goal_houses || 1)) * 100)}%`,
                                         background: `linear-gradient(90deg, ${BRAND.gold}, #f59e0b)`
                                     }}
                                 >
@@ -274,7 +274,7 @@ export default function AdminTeam() {
                             </div>
                             <div className="flex justify-between text-xs text-gray-500">
                                 <span>Start: {activePlan.start_date || 'Today'}</span>
-                                <span>{Math.round((Object.values(repStats).reduce((acc, s) => acc + s.completed, 0) / activePlan.goal_houses) * 100)}% Complete</span>
+                                <span>{Math.round((Object.values(repStats).reduce((acc, s) => acc + s.completed, 0) / (activePlan.goal_houses || 1)) * 100)}% Complete</span>
                             </div>
                         </div>
                     )}

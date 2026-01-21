@@ -41,7 +41,7 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
     // Sync state with props when modal opens or plan changes
     useEffect(() => {
         if (open) {
-            setConfig(existingPlan?.strategy_config || {
+            const defaults = {
                 name: `Campaign ${new Date().getFullYear()}`,
                 min_price: 0,
                 max_price: 0,
@@ -50,7 +50,8 @@ export default function CampaignWizard({ open, onOpenChange, existingPlan = null
                 included_statuses: ['ELIGIBLE'],
                 houses_per_route: 50,
                 street_cooldown_days: 30
-            });
+            };
+            setConfig({ ...defaults, ...(existingPlan?.strategy_config || {}) });
         }
     }, [open, existingPlan]);
 
