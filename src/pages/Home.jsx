@@ -96,22 +96,6 @@ export default function Home() {
     });
 
 
-    // Fallback query for mobile - fetch from unknown@user.local
-    const { data: fallbackProperties = [] } = useQuery({
-        queryKey: ['masterProperties', 'fallback'],
-        queryFn: async () => {
-            try {
-                console.log('[Home] Fetching fallback properties...');
-                const result = await base44.entities.MasterProperty.filter({ created_by: 'unknown@user.local' }, '-created_date', 10000);
-                const items = Array.isArray(result) ? result : (result?.items || []);
-                console.log('[Home] Fallback properties count:', items.length);
-                return items;
-            } catch (e) {
-                console.log('[Home] Error fetching fallback properties:', e);
-                return [];
-            }
-        }
-    });
 
     // Local Storage query (Offline support)
     const { data: localProperties = [] } = useQuery({
@@ -125,14 +109,14 @@ export default function Home() {
 
     // Combine all sources and deduplicate by address_hash
     const properties = useMemo(() => {
-        const combined = [...userProperties, ...fallbackProperties, ...localProperties];
+        const combined = [...userProperties, ...localProperties];
         const seen = new Set();
         return combined.filter(p => {
             if (!p?.address_hash || seen.has(p.address_hash)) return false;
             seen.add(p.address_hash);
             return true;
         });
-    }, [userProperties, fallbackProperties, localProperties]);
+    }, [userProperties, localProperties]);
 
     const { data: savedRoutesRaw = [] } = useQuery({
         queryKey: ['savedRoutes'],
