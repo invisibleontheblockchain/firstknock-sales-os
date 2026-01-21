@@ -9,9 +9,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 import { Slider } from "@/components/ui/slider";
-import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, ArrowUpDown, Filter, MapPin, User, Shield } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, ArrowUpDown, Filter, MapPin, User, Shield, Layers, Flame } from 'lucide-react';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
+import { generateHeatmapGrid, getHeatColor } from '../components/logic/heatmapLogic';
 import RouteChecklist from '../components/routes/RouteChecklist';
 import NearbyHotLeads from '../components/nearby/NearbyHotLeads';
 
@@ -76,6 +77,7 @@ export default function Home() {
     const [startLocation, setStartLocation] = useState(null); // { lat, lng, address }
     const [startAddressInput, setStartAddressInput] = useState("");
     const [showAllProperties, setShowAllProperties] = useState(false);
+    const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
@@ -271,6 +273,12 @@ export default function Home() {
     const [streetCooldownDays, setStreetCooldownDays] = useState(30);
     const [cooldownInfo, setCooldownInfo] = useState(null);
 
+    // Heatmap Data
+    const heatmapData = useMemo(() => {
+        if (viewMode !== 'heatmap') return [];
+        return generateHeatmapGrid(effectiveProperties);
+    }, [effectiveProperties, viewMode]);
+
     const generateRoutes = useCallback(() => {
         if (availableProperties.length === 0) {
             setRoutes([]);
@@ -423,8 +431,23 @@ export default function Home() {
                     ));
                 })}
 
-                {/* Display loose properties ONLY if toggled ON and no routes visible */}
-                {!activeRoute && routes.length === 0 && hydratedSavedRoutes.length === 0 && showAllProperties && effectiveProperties
+                {/* HEATMAP LAYER */}
+                {viewMode === 'heatmap' && !activeRoute && heatmapData.map(cell => (
+                    <Circle
+                        key={cell.id}
+                        center={[cell.lat, cell.lng]}
+                        radius={200} // ~200 meters
+                        pathOptions={{
+                            fillColor: getHeatColor(cell.avgScore),
+                            fillOpacity: 0.5 + (cell.intensity * 0.3),
+                            color: 'transparent',
+                            weight: 0
+                        }}
+                    />
+                ))}
+
+                {/* PIN LAYER - Display loose properties ONLY if toggled ON and no routes visible and NOT in heatmap mode */}
+                {viewMode === 'pins' && !activeRoute && routes.length === 0 && hydratedSavedRoutes.length === 0 && showAllProperties && effectiveProperties
                     .filter(p => {
                         if (quickFilter === 'all') return true;
                         if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
@@ -577,13 +600,27 @@ export default function Home() {
                         </Button>
                     )}
 
-                    <Button
-                        size="icon"
-                        className="rounded-full w-14 h-14 shadow-2xl"
-                        style={{ background: BRAND.charcoal, color: BRAND.gold, border: `1px solid ${BRAND.gold}40` }}
-                    >
-                        <Locate className="w-5 h-5" />
-                    </Button>
+                    <div className="flex flex-col gap-2">
+                         <Button
+                            onClick={() => setViewMode(viewMode === 'pins' ? 'heatmap' : 'pins')}
+                            size="icon"
+                            className="rounded-full w-14 h-14 shadow-2xl backdrop-blur-md transition-all duration-300"
+                            style={{ 
+                                background: viewMode === 'heatmap' ? BRAND.gold : 'rgba(31, 31, 31, 0.8)', 
+                                color: viewMode === 'heatmap' ? BRAND.voidBlack : BRAND.gold, 
+                                border: `1px solid ${BRAND.gold}40` 
+                            }}
+                        >
+                            {viewMode === 'heatmap' ? <Flame className="w-6 h-6 animate-pulse" /> : <Layers className="w-6 h-6" />}
+                        </Button>
+                        <Button
+                            size="icon"
+                            className="rounded-full w-14 h-14 shadow-2xl backdrop-blur-md"
+                            style={{ background: 'rgba(31, 31, 31, 0.8)', color: BRAND.gold, border: `1px solid ${BRAND.gold}40` }}
+                        >
+                            <Locate className="w-5 h-5" />
+                        </Button>
+                    </div>
                 </div>
             </div>
 
