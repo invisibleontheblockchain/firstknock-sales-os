@@ -27,7 +27,15 @@ export default function DataMarketplace() {
 
     const subscribeMutation = useMutation({
         mutationFn: async (regionId) => {
-            // Mock API call to subscribe to data stream
+            // If it's the Test County, actually run the simulated pipeline
+            if (regionId === 999) {
+                // Dynamic import to avoid bundling backend logic in frontend bundle (conceptually)
+                const { runIngestionPipeline } = await import('@/functions/pipeline/ingestCounty');
+                await runIngestionPipeline('TEST_COUNTY');
+                return regionId;
+            }
+            
+            // Mock API call for others
             await new Promise(resolve => setTimeout(resolve, 1500));
             return regionId;
         },
@@ -35,6 +43,10 @@ export default function DataMarketplace() {
             setSubscribedRegions(prev => new Set(prev).add(regionId));
             // In a real app, this would trigger a backend sync job
             // For now, we simulate success
+            if (regionId === 999) {
+                // Reload page or invalidate queries to show new data
+                window.location.reload(); 
+            }
         }
     });
 
