@@ -31,13 +31,13 @@ export default function AdminTeam() {
 
     const { data: teamMembersRaw = [], isLoading: teamLoading } = useQuery({
         queryKey: ['teamMembers'],
-        queryFn: () => base44.entities.TeamMember.list('-created_date', 1000)
+        queryFn: () => base44.entities.TeamMember.list('-created_date', 100)
     });
     const teamMembers = (Array.isArray(teamMembersRaw) ? teamMembersRaw : (teamMembersRaw?.items || [])).filter(m => m && typeof m === 'object');
 
     const { data: savedRoutesRaw = [], isLoading: routesLoading } = useQuery({
         queryKey: ['savedRoutes'],
-        queryFn: () => base44.entities.SavedRoute.list('-created_date', 1000)
+        queryFn: () => base44.entities.SavedRoute.list('-created_date', 200)
     });
     const savedRoutes = (Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || [])).filter(r => r && typeof r === 'object');
 
