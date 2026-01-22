@@ -32,13 +32,13 @@ export default function ListPage() {
 
     const { data: properties = [], isLoading: propsLoading } = useQuery({
         queryKey: ['masterProperties', user?.email],
-        queryFn: () => user ? base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 5000) : [],
+        queryFn: () => user ? base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 1000) : [],
         enabled: !!user
     });
 
     const { data: savedRoutesRaw = [], isLoading: routesLoading } = useQuery({
         queryKey: ['savedRoutes'],
-        queryFn: () => base44.entities.SavedRoute.list('-created_date', 500)
+        queryFn: () => base44.entities.SavedRoute.list('-created_date', 200)
     });
 
     const { data: localRoutes = [] } = useQuery({
@@ -71,7 +71,7 @@ export default function ListPage() {
 
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs', user?.email],
-        queryFn: () => user ? base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 10000) : [],
+        queryFn: () => user ? base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 1000) : [],
         enabled: !!user
     });
     const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
