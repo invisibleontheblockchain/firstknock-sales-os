@@ -12,7 +12,7 @@ import { Slider } from "@/components/ui/slider";
 import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, ArrowUpDown, Filter, MapPin, User, Shield, Layers, Flame } from 'lucide-react';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
-import { generateHeatmapGrid, getHeatColor } from '../components/logic/heatmapLogic';
+import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../components/logic/heatmapLogic';
 import RouteChecklist from '../components/routes/RouteChecklist';
 import NearbyHotLeads from '../components/nearby/NearbyHotLeads';
 
@@ -48,8 +48,16 @@ function LocationMarker() {
     ) : null;
 }
 
-function MapController({ fitBounds }) {
+function MapController({ fitBounds, onZoomChange }) {
     const map = useMap();
+    
+    // Track zoom level
+    useEffect(() => {
+        const handleZoom = () => onZoomChange(map.getZoom());
+        map.on('zoomend', handleZoom);
+        return () => map.off('zoomend', handleZoom);
+    }, [map, onZoomChange]);
+
     useEffect(() => {
         if (fitBounds?.length > 0) {
             try {
@@ -78,6 +86,7 @@ export default function Home() {
     const [startAddressInput, setStartAddressInput] = useState("");
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
+    const [zoomLevel, setZoomLevel] = useState(15);
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
@@ -273,11 +282,18 @@ export default function Home() {
     const [streetCooldownDays, setStreetCooldownDays] = useState(30);
     const [cooldownInfo, setCooldownInfo] = useState(null);
 
-    // Heatmap Data
+    // Heatmap Data (High Zoom)
     const heatmapData = useMemo(() => {
-        if (viewMode !== 'heatmap') return [];
+        if (viewMode !== 'heatmap' || zoomLevel < 10) return [];
         return generateHeatmapGrid(effectiveProperties);
-    }, [effectiveProperties, viewMode]);
+    }, [effectiveProperties, viewMode, zoomLevel]);
+
+    // State Cluster Data (Low Zoom)
+    const stateClusters = useMemo(() => {
+        // Show state clusters if zoomed out, regardless of view mode (unless active route)
+        if (activeRoute || zoomLevel >= 10) return [];
+        return generateStateClusters(effectiveProperties);
+    }, [effectiveProperties, zoomLevel, activeRoute]);
 
     const generateRoutes = useCallback(() => {
         if (availableProperties.length === 0) {
@@ -374,9 +390,27 @@ export default function Home() {
                     attribution='&copy; CARTO'
                 />
                 <LocationMarker />
-                <MapController fitBounds={fitBounds} />
+                <MapController fitBounds={fitBounds} onZoomChange={setZoomLevel} />
 
-                {/* Display Saved Routes (Clusters) - ALWAYS SHOW IF EXISTS & NO ACTIVE ROUTE */}
+                {/* LOW ZOOM: STATE CLUSTERS (Bubbles) */}
+                {!activeRoute && stateClusters.map(cluster => (
+                    <CircleMarker
+                        key={`state-${cluster.id}`}
+                        center={[cluster.lat, cluster.lng]}
+                        radius={30 + Math.min(cluster.count / 100, 30)} // Dynamic size
+                        pathOptions={{
+                            fillColor: getHeatColor(cluster.avgScore),
+                            fillOpacity: 0.8,
+                            color: BRAND.offWhite,
+                            weight: 2
+                        }}
+                    >
+                         {/* Simple tooltip or popup could go here */}
+                    </CircleMarker>
+                ))}
+
+                {/* Display Saved Routes (Clusters) - ALWAYS SHOW IF EXISTS & NO ACTIVE ROUTE & Zoom is high enough */}
+                {!activeRoute && zoomLevel >= 8 && hydratedSavedRoutes.length > 0 && hydratedSavedRoutes.map((route, rIdx) => {
                 {!activeRoute && hydratedSavedRoutes.length > 0 && hydratedSavedRoutes.map((route, rIdx) => {
                     const isAssignedToMe = route.assigned_to === user?.id || route.assigned_to_name === user?.email; // Approx check
                     const baseColor = isAssignedToMe ? BRAND.gold : (route.assigned_to ? '#3b82f6' : '#666');
@@ -431,8 +465,8 @@ export default function Home() {
                     ));
                 })}
 
-                {/* HEATMAP LAYER */}
-                {viewMode === 'heatmap' && !activeRoute && heatmapData.map(cell => (
+                {/* HEATMAP LAYER (Only at Zoom >= 10) */}
+                {viewMode === 'heatmap' && zoomLevel >= 10 && !activeRoute && heatmapData.map(cell => (
                     <Circle
                         key={cell.id}
                         center={[cell.lat, cell.lng]}
@@ -446,8 +480,8 @@ export default function Home() {
                     />
                 ))}
 
-                {/* PIN LAYER - Display loose properties ONLY if toggled ON and no routes visible and NOT in heatmap mode */}
-                {viewMode === 'pins' && !activeRoute && routes.length === 0 && hydratedSavedRoutes.length === 0 && showAllProperties && effectiveProperties
+                {/* PIN LAYER - Display loose properties ONLY if toggled ON and no routes visible and NOT in heatmap mode AND Zoom >= 13 */}
+                {viewMode === 'pins' && zoomLevel >= 13 && !activeRoute && routes.length === 0 && hydratedSavedRoutes.length === 0 && showAllProperties && effectiveProperties
                     .filter(p => {
                         if (quickFilter === 'all') return true;
                         if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';

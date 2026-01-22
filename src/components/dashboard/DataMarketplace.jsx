@@ -18,6 +18,13 @@ export default function DataMarketplace() {
     const [subscribedRegions, setSubscribedRegions] = useState(new Set());
     const [loading, setLoading] = useState(false);
 
+    // Mock Live Stream Data
+    const [liveFeed, setLiveFeed] = useState([
+        { id: 1, text: "New Deed Recorded: 123 Maple Dr, Dallas TX", time: "2s ago" },
+        { id: 2, text: "Property Sold: 4500 Ocean Blvd, Miami FL", time: "5s ago" },
+        { id: 3, text: "New Build Permit: 88 Industrial Way, Phoenix AZ", time: "12s ago" },
+    ]);
+
     const subscribeMutation = useMutation({
         mutationFn: async (regionId) => {
             // Mock API call to subscribe to data stream
@@ -37,6 +44,19 @@ export default function DataMarketplace() {
 
     return (
         <div className="space-y-6">
+            {/* Live Feed Ticker */}
+            <div className="bg-black/50 border border-green-900/30 rounded-lg p-3 mb-6 flex items-center gap-3 overflow-hidden">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse flex-shrink-0" />
+                <span className="text-xs font-bold text-green-500 whitespace-nowrap">LIVE FEED:</span>
+                <div className="flex gap-8 overflow-hidden w-full mask-linear-fade">
+                    {liveFeed.map(item => (
+                        <span key={item.id} className="text-xs text-gray-400 whitespace-nowrap flex items-center gap-2">
+                            {item.text} <span className="text-[10px] text-gray-600">({item.time})</span>
+                        </span>
+                    ))}
+                </div>
+            </div>
+
             <div className="bg-[#151515] p-6 rounded-xl border border-[#333]">
                 <div className="flex items-center gap-4 mb-6">
                     <div className="w-12 h-12 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-900/20">

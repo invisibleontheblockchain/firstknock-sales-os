@@ -5,7 +5,9 @@
 
 import { scoreProperty } from './routeOptimizer';
 
-const GRID_SIZE_MILES = 0.25; // Size of each heat cell (approx 1/4 mile)
+// Grid size ~0.25 miles
+const GRID_LAT_STEP = 0.004;
+const GRID_LNG_STEP = 0.004;
 
 export function generateHeatmapGrid(properties) {
     if (!properties || properties.length === 0) return [];
@@ -16,16 +18,15 @@ export function generateHeatmapGrid(properties) {
         if (!p.lat || !p.lng) return;
 
         // Create a grid key based on rounded coordinates (bucketing)
-        // 1 degree lat ~ 69 miles. 0.004 degrees ~ 0.25 miles
-        const latKey = Math.floor(p.lat / 0.004);
-        const lngKey = Math.floor(p.lng / 0.004);
+        const latKey = Math.floor(p.lat / GRID_LAT_STEP);
+        const lngKey = Math.floor(p.lng / GRID_LNG_STEP);
         const key = `${latKey},${lngKey}`;
 
         if (!grid[key]) {
             grid[key] = {
                 id: key,
-                lat: (latKey * 0.004) + 0.002, // Center of cell
-                lng: (lngKey * 0.004) + 0.002,
+                lat: (latKey * GRID_LAT_STEP) + (GRID_LAT_STEP / 2), // Center of cell
+                lng: (lngKey * GRID_LNG_STEP) + (GRID_LNG_STEP / 2),
                 count: 0,
                 totalScore: 0,
                 properties: []
@@ -47,12 +48,46 @@ export function generateHeatmapGrid(properties) {
 }
 
 export function getHeatColor(avgScore) {
-    // Gradient from Red (Low) to Yellow (Med) to Green (High)
-    // Actually for "Hot" leads, maybe Red is Hot? 
-    // Let's stick to the brand: Gold/Yellow is Hot/Target.
-    
     if (avgScore > 200) return '#FFD700'; // Super Hot (Gold)
     if (avgScore > 150) return '#f59e0b'; // Hot (Amber)
     if (avgScore > 100) return '#f97316'; // Warm (Orange)
     return '#3b82f6'; // Cold (Blue)
+}
+
+/**
+ * Aggregates properties by State for high-level (low zoom) map view
+ * Returns list of { state, count, lat, lng, avgScore }
+ */
+export function generateStateClusters(properties) {
+    if (!properties || properties.length === 0) return [];
+
+    const states = {};
+
+    properties.forEach(p => {
+        // Use state field or fallback to 'Unknown'
+        const stateCode = p.state || 'Unknown';
+        
+        if (!states[stateCode]) {
+            states[stateCode] = {
+                id: stateCode,
+                count: 0,
+                totalLat: 0,
+                totalLng: 0,
+                totalScore: 0
+            };
+        }
+
+        states[stateCode].count++;
+        states[stateCode].totalLat += (p.lat || 0);
+        states[stateCode].totalLng += (p.lng || 0);
+        states[stateCode].totalScore += scoreProperty(p);
+    });
+
+    return Object.values(states).map(s => ({
+        id: s.id,
+        count: s.count,
+        lat: s.totalLat / s.count,
+        lng: s.totalLng / s.count,
+        avgScore: s.totalScore / s.count
+    }));
 }
