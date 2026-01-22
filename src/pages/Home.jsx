@@ -411,7 +411,6 @@ export default function Home() {
 
                 {/* Display Saved Routes (Clusters) - ALWAYS SHOW IF EXISTS & NO ACTIVE ROUTE & Zoom is high enough */}
                 {!activeRoute && zoomLevel >= 8 && hydratedSavedRoutes.length > 0 && hydratedSavedRoutes.map((route, rIdx) => {
-                {!activeRoute && hydratedSavedRoutes.length > 0 && hydratedSavedRoutes.map((route, rIdx) => {
                     const isAssignedToMe = route.assigned_to === user?.id || route.assigned_to_name === user?.email; // Approx check
                     const baseColor = isAssignedToMe ? BRAND.gold : (route.assigned_to ? '#3b82f6' : '#666');
 
