@@ -6,6 +6,7 @@ import { base44 } from '@/api/base44Client';
 import { useMutation } from "@tanstack/react-query";
 
 const MOCK_REGIONS = [
+    { id: 999, name: "Test County (Pipeline Demo)", count: 5000, price: "Free (Test)", status: "available" },
     { id: 'ca-la', name: 'Los Angeles County, CA', count: 2450000, price: '$0.00 (Public)', status: 'available' },
     { id: 'ca-oc', name: 'Orange County, CA', count: 980000, price: '$0.00 (Public)', status: 'available' },
     { id: 'tx-harris', name: 'Harris County, TX', count: 1200000, price: '$0.00 (Public)', status: 'available' },
