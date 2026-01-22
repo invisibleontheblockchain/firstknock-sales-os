@@ -11,15 +11,16 @@
  * 4. Loader: Batched upsert into Base44 Database.
  */
 
-import { base44 } from '@/api/base44Client'; // In real backend, this would be the server SDK
+import { base44 } from '@/api/base44Client';
 
 // Schema Mapping Configuration (Example for "Test County")
 const SCHEMA_MAP = {
     'TEST_COUNTY': {
         source_fields: {
             'PropertyAddress': 'full_address',
-            'OwnerName': 'owner_name', // We don't store owner name in MasterProperty directly for privacy, but logic could hash it
-            'ParcelID': 'mls_id', // Mapping Parcel ID to MLS ID field for tracking
+            'City': 'city',
+            'State': 'state',
+            'Zip': 'zip_code',
             'SaleDate': 'sold_date',
             'SalePrice': 'price',
             'Latitude': 'lat',
@@ -40,9 +41,9 @@ async function fetchRawCountyData(countyId) {
 
     if (countyId === 'TEST_COUNTY') {
         return [
-            { PropertyAddress: "101 Test Blvd", City: "Testville", State: "GA", Zip: "30000", SaleDate: "2025-01-15", SalePrice: 450000, Latitude: 33.7490, Longitude: -84.3880, YearBuilt: 2020, Bedrooms: 4, Bathrooms: 3 },
-            { PropertyAddress: "102 Test Blvd", City: "Testville", State: "GA", Zip: "30000", SaleDate: "2025-01-10", SalePrice: 380000, Latitude: 33.7495, Longitude: -84.3885, YearBuilt: 2018, Bedrooms: 3, Bathrooms: 2 },
-            { PropertyAddress: "103 Test Blvd", City: "Testville", State: "GA", Zip: "30000", SaleDate: "2024-12-28", SalePrice: 520000, Latitude: 33.7500, Longitude: -84.3890, YearBuilt: 2022, Bedrooms: 5, Bathrooms: 4 },
+            { PropertyAddress: "101 Test Blvd", City: "Testville", State: "GA", Zip: "30000", SaleDate: "2025-01-15", SalePrice: 450000, Latitude: 33.7490, Longitude: -84.3880, YearBuilt: 2020, Bedrooms: 4, Bathrooms: 3, TotalLivingArea: 2500 },
+            { PropertyAddress: "102 Test Blvd", City: "Testville", State: "GA", Zip: "30000", SaleDate: "2025-01-10", SalePrice: 380000, Latitude: 33.7495, Longitude: -84.3885, YearBuilt: 2018, Bedrooms: 3, Bathrooms: 2, TotalLivingArea: 1800 },
+            { PropertyAddress: "103 Test Blvd", City: "Testville", State: "GA", Zip: "30000", SaleDate: "2024-12-28", SalePrice: 520000, Latitude: 33.7500, Longitude: -84.3890, YearBuilt: 2022, Bedrooms: 5, Bathrooms: 4, TotalLivingArea: 3200 },
             // ... represents thousands of records
         ];
     }
@@ -66,8 +67,8 @@ function normalizeRecord(rawRecord, schemaMap) {
         city: rawRecord.City,
         state: rawRecord.State,
         zip_code: rawRecord.Zip,
-        lat: rawRecord[Object.keys(rawRecord).find(k => map[k] === 'lat')] || rawRecord.Latitude,
-        lng: rawRecord[Object.keys(rawRecord).find(k => map[k] === 'lng')] || rawRecord.Longitude,
+        lat: parseFloat(rawRecord.Latitude),
+        lng: parseFloat(rawRecord.Longitude),
         price: rawRecord.SalePrice,
         sold_date: rawRecord.SaleDate,
         year_built: rawRecord.YearBuilt,
@@ -93,19 +94,22 @@ export async function runIngestionPipeline(countyId) {
         const normalizedData = rawData.map(record => normalizeRecord(record, SCHEMA_MAP['TEST_COUNTY']));
         
         // 3. Load (Batch Insert)
-        // In real backend: await base44.entities.MasterProperty.bulkCreate(normalizedData);
-        // Simulating here:
+        let successCount = 0;
+        let failCount = 0;
+
+        // Use sequential create to allow partial success (simulating resilience)
         for (const prop of normalizedData) {
             try {
-                // Check if exists (upsert logic needed in real app)
                 await base44.entities.MasterProperty.create(prop);
+                successCount++;
             } catch (e) {
-                // Ignore duplicates for demo
+                console.warn(`[Pipeline] Failed to insert record ${prop.address_hash}:`, e);
+                failCount++;
             }
         }
         
-        console.log(`[Pipeline] Successfully ingested ${normalizedData.length} records into MasterProperty`);
-        return { success: true, count: normalizedData.length };
+        console.log(`[Pipeline] Ingestion Complete. Success: ${successCount}, Failed: ${failCount}`);
+        return { success: true, count: successCount, errors: failCount };
     } catch (error) {
         console.error('[Pipeline] Ingestion Failed:', error);
         return { success: false, error: error.message };

@@ -96,7 +96,7 @@ export default function Home() {
         queryFn: async () => {
             if (!user?.email) return [];
             try {
-                const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 10000);
+                const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 1000);
                 return Array.isArray(result) ? result : (result?.items || []);
             } catch (e) {
                 console.log('[Home] Error fetching user properties:', e);
@@ -186,7 +186,7 @@ export default function Home() {
 
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs', user?.email],
-        queryFn: () => user ? base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 10000) : [],
+        queryFn: () => user ? base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 1000) : [],
         enabled: !!user
     });
     const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
