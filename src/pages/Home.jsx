@@ -597,7 +597,7 @@ export default function Home() {
                             { id: 'all', label: 'ALL', color: BRAND.offWhite },
                             { id: 'eligible', label: 'NOT VISITED', color: '#6b7280' },
                             { id: 'sold', label: 'SOLD', color: '#22c55e' },
-                            { id: 'rejected', label: 'REJECTED', color: '#ef4444' },
+                            { id: 'rejected', label: 'UNDECIDED', color: '#ef4444' },
                         ].map(f => (
                             <button
                                 key={f.id}
