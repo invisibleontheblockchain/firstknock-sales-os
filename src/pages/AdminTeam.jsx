@@ -19,6 +19,8 @@ const BRAND = {
 export default function AdminTeam() {
     const queryClient = useQueryClient();
     const [isAddRepOpen, setIsAddRepOpen] = useState(false);
+    const [isRouteManagerOpen, setIsRouteManagerOpen] = useState(false);
+    const [routeSearch, setRouteSearch] = useState('');
     const [newRep, setNewRep] = useState({ name: '', email: '', phone: '', role: 'rep' });
 
     // --- Queries ---
@@ -113,13 +115,69 @@ export default function AdminTeam() {
                         <p className="text-gray-400 mt-1">Manage your reps and assign territories.</p>
                     </div>
                     
-                    <Dialog open={isAddRepOpen} onOpenChange={setIsAddRepOpen}>
-                        <DialogTrigger asChild>
-                            <Button className="bg-yellow-500 text-black font-bold hover:bg-yellow-400">
-                                <UserPlus className="w-4 h-4 mr-2" />
-                                Add New Rep
-                            </Button>
-                        </DialogTrigger>
+                    <div className="flex gap-3">
+                        <Dialog open={isRouteManagerOpen} onOpenChange={setIsRouteManagerOpen}>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" className="border-gray-700 text-white hover:bg-gray-800">
+                                    <Map className="w-4 h-4 mr-2" />
+                                    Route Registry
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="bg-[#1F1F1F] border-gray-800 text-white max-w-4xl max-h-[80vh] flex flex-col">
+                                <DialogHeader>
+                                    <DialogTitle>Route Registry</DialogTitle>
+                                </DialogHeader>
+                                <div className="p-4 space-y-4 flex-1 overflow-hidden flex flex-col">
+                                    <Input 
+                                        placeholder="Search routes..." 
+                                        value={routeSearch}
+                                        onChange={(e) => setRouteSearch(e.target.value)}
+                                        className="bg-black border-gray-700"
+                                    />
+                                    <div className="flex-1 overflow-y-auto space-y-2 pr-2">
+                                        {routes
+                                            .filter(r => r.name.toLowerCase().includes(routeSearch.toLowerCase()))
+                                            .map(route => (
+                                            <div key={route.id} className="flex items-center justify-between p-3 bg-black/40 rounded border border-gray-800">
+                                                <div>
+                                                    <p className="font-bold text-white">{route.name}</p>
+                                                    <p className="text-xs text-gray-400">
+                                                        {route.metrics?.house_count || 0} homes • {route.status}
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-3">
+                                                    {route.assigned_to_name && (
+                                                        <Badge variant="outline" className="text-xs border-gray-600">
+                                                            Assigned: {route.assigned_to_name}
+                                                        </Badge>
+                                                    )}
+                                                    <Select onValueChange={(memberId) => handleAssign(route.id, memberId)}>
+                                                        <SelectTrigger className="w-[180px] h-8 text-xs bg-[#1F1F1F] border-gray-700">
+                                                            <SelectValue placeholder="Reassign..." />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
+                                                            {teamMembers.map(m => (
+                                                                <SelectItem key={m.id} value={m.id}>
+                                                                    {m.name}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
+
+                        <Dialog open={isAddRepOpen} onOpenChange={setIsAddRepOpen}>
+                            <DialogTrigger asChild>
+                                <Button className="bg-yellow-500 text-black font-bold hover:bg-yellow-400">
+                                    <UserPlus className="w-4 h-4 mr-2" />
+                                    Add New Rep
+                                </Button>
+                            </DialogTrigger>
                         <DialogContent className="bg-[#1F1F1F] border-gray-800 text-white">
                             <DialogHeader>
                                 <DialogTitle>Add Team Member</DialogTitle>
