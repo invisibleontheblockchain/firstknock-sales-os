@@ -121,41 +121,59 @@ export default function Layout({ children }) {
                 {children}
             </main>
 
-            {/* Bottom Navigation */}
+            {/* Bottom Navigation - Different for Rep vs Manager */}
             <nav className="bg-black border-t border-slate-800 z-20 safe-area-bottom">
-                <div className="flex justify-around items-center h-16 max-w-full mx-auto">
-                    <NavItem
-                        icon={Map}
-                        label="Map"
-                        to={createPageUrl('Home')}
-                        active={window.location.pathname.endsWith('Home') || window.location.pathname === '/'}
-                    />
-                    <NavItem
-                        icon={List}
-                        label="List"
-                        to={createPageUrl('List')}
-                        active={window.location.pathname.endsWith('List')}
-                    />
-
-                    <NavItem
-                        icon={Upload}
-                        label="Setup"
-                        to={createPageUrl('Setup')}
-                        active={window.location.pathname.endsWith('Setup')}
-                    />
-                    <NavItem
-                        icon={Users}
-                        label="Team"
-                        to={createPageUrl('AdminTeam')}
-                        active={window.location.pathname.endsWith('AdminTeam')}
-                    />
-                    <NavItem
-                        icon={HelpCircle}
-                        label="Help"
-                        to={createPageUrl('Tutorial')}
-                        active={window.location.pathname.endsWith('Tutorial')}
-                    />
-                </div>
+                {user.app_role === 'rep' ? (
+                    // Rep Navigation - Simple
+                    <div className="flex justify-around items-center h-16 max-w-full mx-auto">
+                        <NavItem
+                            icon={Map}
+                            label="My Route"
+                            to={createPageUrl('RepHome')}
+                            active={window.location.pathname.includes('RepHome') || window.location.pathname === '/'}
+                        />
+                        <NavItem
+                            icon={HelpCircle}
+                            label="Help"
+                            to={createPageUrl('Tutorial')}
+                            active={window.location.pathname.endsWith('Tutorial')}
+                        />
+                    </div>
+                ) : (
+                    // Manager Navigation - Full
+                    <div className="flex justify-around items-center h-16 max-w-full mx-auto">
+                        <NavItem
+                            icon={Map}
+                            label="Map"
+                            to={createPageUrl('Home')}
+                            active={window.location.pathname.endsWith('Home') || window.location.pathname === '/'}
+                        />
+                        <NavItem
+                            icon={List}
+                            label="List"
+                            to={createPageUrl('List')}
+                            active={window.location.pathname.endsWith('List')}
+                        />
+                        <NavItem
+                            icon={Upload}
+                            label="Setup"
+                            to={createPageUrl('Setup')}
+                            active={window.location.pathname.endsWith('Setup')}
+                        />
+                        <NavItem
+                            icon={Users}
+                            label="Team"
+                            to={createPageUrl('AdminTeam')}
+                            active={window.location.pathname.endsWith('AdminTeam')}
+                        />
+                        <NavItem
+                            icon={HelpCircle}
+                            label="Help"
+                            to={createPageUrl('Tutorial')}
+                            active={window.location.pathname.endsWith('Tutorial')}
+                        />
+                    </div>
+                )}
             </nav>
         </div>
     );
