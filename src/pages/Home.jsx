@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Polyline, useMap, Circle, LayerGroup } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Polyline, useMap, Circle, LayerGroup, FeatureGroup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { base44 } from '@/api/base44Client';
@@ -453,79 +453,81 @@ export default function Home() {
                 )}
 
                 {/* LOW ZOOM: STATE CLUSTERS (Bubbles) */}
-                <LayerGroup>
-                    {!activeRoute && stateClusters.map(cluster => (
-                        <CircleMarker
-                            key={`state-${cluster.id}`}
-                            center={[cluster.lat, cluster.lng]}
-                            radius={30 + Math.min(cluster.count / 100, 30)} // Dynamic size
-                            pathOptions={{
-                                fillColor: getHeatColor(cluster.avgScore),
-                                fillOpacity: 0.8,
-                                color: BRAND.offWhite,
-                                weight: 2
-                            }}
-                        />
-                    ))}
-                </LayerGroup>
-
-                {/* Display Saved Routes (Clusters) */}
-                <LayerGroup>
-                    {!activeRoute && zoomLevel >= 8 && hydratedSavedRoutes.map((route) => {
-                        const isAssignedToMe = route.assigned_to === user?.id || route.assigned_to_name === user?.email; 
-                        const baseColor = isAssignedToMe ? BRAND.gold : (route.assigned_to ? '#3b82f6' : '#666');
-
-                        return (
-                            <React.Fragment key={route.id}>
-                                {route.properties.map(p => (
-                                    <CircleMarker
-                                        key={`${route.id}-${p.address_hash}`}
-                                        center={[p.lat, p.lng]}
-                                        radius={4}
-                                        eventHandlers={{
-                                            click: (e) => {
-                                                L.DomEvent.stopPropagation(e);
-                                                setActiveRoute(route);
-                                            }
-                                        }}
-                                        pathOptions={{
-                                            fillColor: baseColor,
-                                            fillOpacity: 0.6,
-                                            color: baseColor,
-                                            weight: 1
-                                        }}
-                                    />
-                                ))}
-                            </React.Fragment>
-                        );
-                    })}
-                </LayerGroup>
-
-                {/* Display Generated Routes (Clusters) */}
-                <LayerGroup>
-                    {!activeRoute && routes.length > 0 && routes.map((route, rIdx) => {
-                        const routeColor = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
-                        return route.properties.map(p => (
+                {!activeRoute && (
+                    <FeatureGroup key="clusters-group">
+                        {stateClusters.map(cluster => (
                             <CircleMarker
-                                key={`${route.id}-${p.address_hash}`}
-                                center={[p.lat, p.lng]}
-                                radius={6}
-                                eventHandlers={{
-                                    click: (e) => {
-                                        L.DomEvent.stopPropagation(e);
-                                        setActiveRoute(route);
-                                    }
-                                }}
+                                key={`state-${cluster.id}`}
+                                center={[cluster.lat, cluster.lng]}
+                                radius={30 + Math.min(cluster.count / 100, 30)}
                                 pathOptions={{
-                                    fillColor: routeColor,
-                                    fillOpacity: 0.7,
-                                    color: routeColor,
-                                    weight: 1
+                                    fillColor: getHeatColor(cluster.avgScore),
+                                    fillOpacity: 0.8,
+                                    color: BRAND.offWhite,
+                                    weight: 2
                                 }}
                             />
-                        ));
-                    })}
-                </LayerGroup>
+                        ))}
+                    </FeatureGroup>
+                )}
+
+                {/* Display Saved Routes */}
+                {!activeRoute && zoomLevel >= 8 && (
+                    <FeatureGroup key="saved-routes-group">
+                        {hydratedSavedRoutes.map((route) => {
+                            const isAssignedToMe = route.assigned_to === user?.id || route.assigned_to_name === user?.email; 
+                            const baseColor = isAssignedToMe ? BRAND.gold : (route.assigned_to ? '#3b82f6' : '#666');
+
+                            return route.properties.map(p => (
+                                <CircleMarker
+                                    key={`saved-${route.id}-${p.address_hash}`}
+                                    center={[p.lat, p.lng]}
+                                    radius={4}
+                                    eventHandlers={{
+                                        click: (e) => {
+                                            L.DomEvent.stopPropagation(e);
+                                            setActiveRoute(route);
+                                        }
+                                    }}
+                                    pathOptions={{
+                                        fillColor: baseColor,
+                                        fillOpacity: 0.6,
+                                        color: baseColor,
+                                        weight: 1
+                                    }}
+                                />
+                            ));
+                        })}
+                    </FeatureGroup>
+                )}
+
+                {/* Display Generated Routes */}
+                {!activeRoute && routes.length > 0 && (
+                    <FeatureGroup key="generated-routes-group">
+                        {routes.map((route, rIdx) => {
+                            const routeColor = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
+                            return route.properties.map(p => (
+                                <CircleMarker
+                                    key={`generated-${route.id}-${p.address_hash}`}
+                                    center={[p.lat, p.lng]}
+                                    radius={6}
+                                    eventHandlers={{
+                                        click: (e) => {
+                                            L.DomEvent.stopPropagation(e);
+                                            setActiveRoute(route);
+                                        }
+                                    }}
+                                    pathOptions={{
+                                        fillColor: routeColor,
+                                        fillOpacity: 0.7,
+                                        color: routeColor,
+                                        weight: 1
+                                    }}
+                                />
+                            ));
+                        })}
+                    </FeatureGroup>
+                )}
 
                 {/* HEATMAP LAYER (Only at Zoom >= 10) */}
                 {viewMode === 'heatmap' && zoomLevel >= 10 && !activeRoute && heatmapData.map(cell => (
