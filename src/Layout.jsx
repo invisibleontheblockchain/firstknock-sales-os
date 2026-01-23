@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Map, List, Upload, Navigation, LogIn, Users } from 'lucide-react';
+import { Map, List, Upload, Navigation, LogIn, Users, HelpCircle } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -121,6 +121,12 @@ export default function Layout({ children }) {
                         label="Team"
                         to={createPageUrl('AdminTeam')}
                         active={window.location.pathname.endsWith('AdminTeam')}
+                    />
+                    <NavItem
+                        icon={HelpCircle}
+                        label="Help"
+                        to={createPageUrl('Tutorial')}
+                        active={window.location.pathname.endsWith('Tutorial')}
                     />
                 </div>
             </nav>
