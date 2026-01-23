@@ -539,7 +539,7 @@ export default function Home() {
                                     weight: 2
                                 }}
                             >
-                                <L.Tooltip permanent direction="center" className="route-number-tooltip">
+                                <Tooltip permanent direction="center" className="route-number-tooltip">
                                     <span style={{ 
                                         color: idx === 0 ? '#000' : BRAND.gold, 
                                         fontWeight: 'bold', 
@@ -547,7 +547,7 @@ export default function Home() {
                                     }}>
                                         {idx + 1}
                                     </span>
-                                </L.Tooltip>
+                                </Tooltip>
                             </CircleMarker>
                         ))}
                     </>
