@@ -4,7 +4,7 @@ import { getKnockWindowLabel, getNextBestWindow, getDailySchedule } from '../log
 
 export default function KnockTimeBanner({ expanded = false, onToggle }) {
   const now = new Date();
-  const window = getKnockWindowLabel(now);
+  const knockWindow = getKnockWindowLabel(now);
   const nextWindows = getNextBestWindow(now);
   const schedule = getDailySchedule(now);
   
@@ -19,13 +19,13 @@ export default function KnockTimeBanner({ expanded = false, onToggle }) {
         onClick={onToggle}
         className="flex items-center gap-2 px-3 py-2 rounded-lg border transition-all hover:scale-105"
         style={{ 
-          background: `${window.color}20`, 
-          borderColor: `${window.color}50`,
+          background: `${knockWindow.color}20`, 
+          borderColor: `${knockWindow.color}50`,
         }}
       >
-        <Clock className="w-4 h-4" style={{ color: window.color }} />
-        <span className="text-xs font-bold" style={{ color: window.color }}>
-          {window.emoji} {window.label}
+        <Clock className="w-4 h-4" style={{ color: knockWindow.color }} />
+        <span className="text-xs font-bold" style={{ color: knockWindow.color }}>
+          {knockWindow.emoji} {knockWindow.label}
         </span>
         <span className="text-[10px] text-gray-400">
           {displayHour}{ampm}
@@ -44,14 +44,14 @@ export default function KnockTimeBanner({ expanded = false, onToggle }) {
         <div className="flex items-center gap-2">
           <div 
             className="w-10 h-10 rounded-lg flex items-center justify-center"
-            style={{ background: `${window.color}20` }}
+            style={{ background: `${knockWindow.color}20` }}
           >
-            <Clock className="w-5 h-5" style={{ color: window.color }} />
+            <Clock className="w-5 h-5" style={{ color: knockWindow.color }} />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-lg font-bold" style={{ color: window.color }}>
-                {window.emoji} {window.label}
+              <span className="text-lg font-bold" style={{ color: knockWindow.color }}>
+                {knockWindow.emoji} {knockWindow.label}
               </span>
             </div>
             <span className="text-xs text-gray-500">
