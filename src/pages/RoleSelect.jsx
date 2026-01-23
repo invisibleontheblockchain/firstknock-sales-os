@@ -5,10 +5,14 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Navigation, Users, Briefcase, ChevronRight } from 'lucide-react';
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
 
 export default function RoleSelect() {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
+    const [inviteCode, setInviteCode] = React.useState('');
+    const [isLoading, setIsLoading] = React.useState(false);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
     const updateUserMutation = useMutation({
@@ -22,6 +26,50 @@ export default function RoleSelect() {
             navigate(createPageUrl('Home'));
         } else {
             navigate(createPageUrl('RepHome'));
+        }
+    };
+
+    const handleCodeSubmit = async () => {
+        if (!inviteCode) return;
+        setIsLoading(true);
+        try {
+            const codes = await base44.entities.InviteCode.filter({ code: inviteCode, is_active: true }, '-created_date', 1);
+            const validCode = codes?.items?.[0] || (Array.isArray(codes) ? codes[0] : null);
+
+            if (validCode) {
+                // 1. Update User Role
+                await updateUserMutation.mutateAsync({ app_role: validCode.role });
+
+                // 2. Create Team Member record if not exists
+                const existingMembers = await base44.entities.TeamMember.filter({ email: user.email }, '-created_date', 1);
+                const memberExists = existingMembers?.items?.length > 0 || (Array.isArray(existingMembers) && existingMembers.length > 0);
+
+                if (!memberExists) {
+                    await base44.entities.TeamMember.create({
+                        name: user.full_name || user.email.split('@')[0],
+                        email: user.email,
+                        role: validCode.role,
+                        status: 'active',
+                        color: '#' + Math.floor(Math.random()*16777215).toString(16) // Random color
+                    });
+                }
+
+                toast.success(`Welcome to the team! You are now a ${validCode.role}.`);
+
+                // 3. Navigate
+                if (validCode.role === 'manager') {
+                    navigate(createPageUrl('Home'));
+                } else {
+                    navigate(createPageUrl('RepHome'));
+                }
+            } else {
+                toast.error("Invalid or expired code");
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error("Failed to verify code");
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -39,6 +87,36 @@ export default function RoleSelect() {
             </p>
 
             <div className="w-full max-w-sm space-y-4">
+                {/* Code Entry Section */}
+                <div className="bg-[#1F1F1F] rounded-xl p-4 border border-gray-800 mb-6">
+                    <label className="text-xs font-bold text-gray-400 mb-2 block uppercase">Have a Team Code?</label>
+                    <div className="flex gap-2">
+                        <Input
+                            value={inviteCode}
+                            onChange={(e) => setInviteCode(e.target.value)}
+                            placeholder="Enter PIN code..."
+                            className="bg-black border-gray-700 text-white"
+                            type="text"
+                        />
+                        <Button 
+                            onClick={handleCodeSubmit} 
+                            disabled={!inviteCode || isLoading}
+                            className="bg-green-600 hover:bg-green-700 font-bold"
+                        >
+                            {isLoading ? '...' : 'JOIN'}
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="relative py-2">
+                    <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t border-gray-800" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-black px-2 text-gray-500">Or Select Role</span>
+                    </div>
+                </div>
+
                 <button
                     onClick={() => selectRole('rep')}
                     className="w-full p-5 rounded-xl border-2 border-yellow-500 bg-yellow-500/10 hover:bg-yellow-500/20 transition-all text-left group"

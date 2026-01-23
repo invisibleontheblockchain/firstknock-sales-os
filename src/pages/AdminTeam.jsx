@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Users, Plus, UserPlus, Map, CheckCircle2, AlertCircle, X } from 'lucide-react';
+import { Users, Plus, UserPlus, Map, CheckCircle2, AlertCircle, X, Key } from 'lucide-react';
 import { toast } from "sonner";
 
 const BRAND = {
@@ -20,8 +20,10 @@ export default function AdminTeam() {
     const queryClient = useQueryClient();
     const [isAddRepOpen, setIsAddRepOpen] = useState(false);
     const [isRouteManagerOpen, setIsRouteManagerOpen] = useState(false);
+    const [isCodeManagerOpen, setIsCodeManagerOpen] = useState(false);
     const [routeSearch, setRouteSearch] = useState('');
     const [newRep, setNewRep] = useState({ name: '', email: '', phone: '', role: 'rep' });
+    const [newCode, setNewCode] = useState({ code: '', role: 'manager', label: '' });
 
     // --- Queries ---
     const { data: teamMembers = [], isLoading: teamLoading } = useQuery({
@@ -36,6 +38,14 @@ export default function AdminTeam() {
         queryKey: ['allRoutes'],
         queryFn: async () => {
             const res = await base44.entities.SavedRoute.list('-created_date', 200);
+            return Array.isArray(res) ? res : (res?.items || []);
+        }
+    });
+
+    const { data: inviteCodes = [] } = useQuery({
+        queryKey: ['inviteCodes'],
+        queryFn: async () => {
+            const res = await base44.entities.InviteCode.list('-created_date', 50);
             return Array.isArray(res) ? res : (res?.items || []);
         }
     });
@@ -62,6 +72,20 @@ export default function AdminTeam() {
             queryClient.invalidateQueries({ queryKey: ['allRoutes'] });
             toast.success("Route assigned");
         }
+    });
+
+    const createCodeMutation = useMutation({
+        mutationFn: (data) => base44.entities.InviteCode.create(data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['inviteCodes'] });
+            setNewCode({ code: '', role: 'manager', label: '' });
+            toast.success("Invite code created");
+        }
+    });
+
+    const deleteCodeMutation = useMutation({
+        mutationFn: (id) => base44.entities.InviteCode.delete(id),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inviteCodes'] })
     });
 
     // --- Derived State ---
@@ -116,6 +140,87 @@ export default function AdminTeam() {
                     </div>
                     
                     <div className="flex gap-3">
+                        <Dialog open={isCodeManagerOpen} onOpenChange={setIsCodeManagerOpen}>
+                            <DialogTrigger asChild>
+                                <Button variant="outline" className="border-gray-700 text-white hover:bg-gray-800">
+                                    <Key className="w-4 h-4 mr-2" />
+                                    Codes
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="bg-[#1F1F1F] border-gray-800 text-white">
+                                <DialogHeader>
+                                    <DialogTitle>Access Codes</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-6">
+                                    <div className="space-y-3 p-4 bg-black/40 rounded-lg border border-gray-800">
+                                        <h4 className="text-xs font-bold text-gray-500 uppercase">Create New Code</h4>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <Input 
+                                                placeholder="Code (e.g. 1234)" 
+                                                value={newCode.code}
+                                                onChange={(e) => setNewCode({...newCode, code: e.target.value})}
+                                                className="bg-black border-gray-700"
+                                            />
+                                            <Input 
+                                                placeholder="Label (e.g. Managers)" 
+                                                value={newCode.label}
+                                                onChange={(e) => setNewCode({...newCode, label: e.target.value})}
+                                                className="bg-black border-gray-700"
+                                            />
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <Select 
+                                                value={newCode.role} 
+                                                onValueChange={(v) => setNewCode({...newCode, role: v})}
+                                            >
+                                                <SelectTrigger className="bg-black border-gray-700 flex-1">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
+                                                    <SelectItem value="rep">Sales Rep</SelectItem>
+                                                    <SelectItem value="manager">Manager</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            <Button 
+                                                onClick={() => createCodeMutation.mutate(newCode)}
+                                                disabled={!newCode.code}
+                                                className="bg-green-600 hover:bg-green-700 font-bold"
+                                            >
+                                                Create
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <h4 className="text-xs font-bold text-gray-500 uppercase">Active Codes</h4>
+                                        {inviteCodes.length === 0 ? (
+                                            <p className="text-sm text-gray-500 italic">No active codes</p>
+                                        ) : (
+                                            inviteCodes.map(code => (
+                                                <div key={code.id} className="flex items-center justify-between p-3 bg-black/20 rounded border border-gray-800">
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="font-mono font-bold text-yellow-500 text-lg">{code.code}</span>
+                                                            <Badge variant="outline" className="text-[10px] border-gray-700">{code.role}</Badge>
+                                                        </div>
+                                                        <p className="text-xs text-gray-400">{code.label}</p>
+                                                    </div>
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        size="sm"
+                                                        onClick={() => deleteCodeMutation.mutate(code.id)}
+                                                        className="text-red-500 hover:bg-red-900/20 h-8 w-8 p-0"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </Button>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
+
                         <Dialog open={isRouteManagerOpen} onOpenChange={setIsRouteManagerOpen}>
                             <DialogTrigger asChild>
                                 <Button variant="outline" className="border-gray-700 text-white hover:bg-gray-800">
