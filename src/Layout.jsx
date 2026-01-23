@@ -55,6 +55,15 @@ export default function Layout({ children }) {
                 .leaflet-container {
                     background: #0A0A0A !important;
                 }
+                .route-number-tooltip {
+                    background: transparent !important;
+                    border: none !important;
+                    box-shadow: none !important;
+                    padding: 0 !important;
+                }
+                .route-number-tooltip::before {
+                    display: none !important;
+                }
             `}</style>
 
             {/* Header */}
