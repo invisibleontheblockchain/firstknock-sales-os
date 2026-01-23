@@ -1,26 +1,21 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Loader2, Navigation, CheckCircle, Clock, MapPin } from 'lucide-react';
-
-// Brand constants
-const BRAND = {
-    gold: '#FFD700',
-    black: '#0A0A0A',
-};
+import { Loader2, Navigation, CheckCircle, Clock, MapPin, AlertCircle } from 'lucide-react';
 
 export default function RepHome() {
     const queryClient = useQueryClient();
+    const [error, setError] = useState(null);
     
-    // User Query
+    // 1. User Query - Safe
     const { data: user, isLoading: userLoading } = useQuery({ 
         queryKey: ['user'], 
-        queryFn: () => base44.auth.me(),
-        retry: false
+        queryFn: () => base44.auth.me().catch(e => null),
+        staleTime: 1000 * 60 * 5 // 5 minutes
     });
 
-    // Routes Query
+    // 2. Routes Query - Safe
     const { data: myRoutesRaw = [], isLoading: routesLoading } = useQuery({
         queryKey: ['myRoutes', user?.email],
         queryFn: async () => {
@@ -34,14 +29,14 @@ export default function RepHome() {
                     (!r.assigned_to && r.status === 'ACTIVE')
                 );
             } catch (e) {
-                console.error("Fetch routes error", e);
+                console.error("Route fetch failed", e);
                 return [];
             }
         },
         enabled: !!user?.email
     });
 
-    // Properties Query
+    // 3. Properties Query - Safe
     const { data: properties = [], isLoading: propsLoading } = useQuery({
         queryKey: ['masterProperties', user?.email],
         queryFn: async () => {
@@ -50,14 +45,14 @@ export default function RepHome() {
                 const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 5000);
                 return Array.isArray(result) ? result : (result?.items || []);
             } catch (e) {
-                console.error("Fetch properties error", e);
+                console.error("Property fetch failed", e);
                 return [];
             }
         },
         enabled: !!user?.email
     });
 
-    // Logs Query
+    // 4. Logs Query - Safe
     const { data: logsRaw = [] } = useQuery({
         queryKey: ['interactionLogs', user?.email],
         queryFn: async () => {
@@ -73,68 +68,65 @@ export default function RepHome() {
     });
     const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
 
-    // Mutation
+    // 5. Mutation - Safe
     const createLogMutation = useMutation({
-        mutationFn: (logData) => base44.entities.InteractionLog.create(logData),
+        mutationFn: async (logData) => {
+            try {
+                return await base44.entities.InteractionLog.create(logData);
+            } catch (e) {
+                console.error("Log creation failed", e);
+                throw e;
+            }
+        },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['interactionLogs'] });
         },
     });
 
-    // Derived State
-    const currentRoute = useMemo(() => {
-        if (!myRoutesRaw.length) return null;
-        return myRoutesRaw.find(r => r.status === 'IN_PROGRESS') || myRoutesRaw.find(r => r.status === 'ACTIVE');
-    }, [myRoutesRaw]);
+    // 6. Logic - Safe with Try/Catch inside Memo
+    const { currentRoute, routeProperties, progress, nextHouse, nextIdx } = useMemo(() => {
+        try {
+            const route = myRoutesRaw.find(r => r.status === 'IN_PROGRESS') || myRoutesRaw.find(r => r.status === 'ACTIVE');
+            
+            if (!route || !route.property_hashes) {
+                return { currentRoute: null, routeProperties: [], progress: { visited: 0, total: 0, percent: 0 }, nextHouse: null, nextIdx: -1 };
+            }
 
-    const routeProperties = useMemo(() => {
-        if (!currentRoute?.property_hashes) return [];
-        if (!properties.length) return [];
-        
-        return currentRoute.property_hashes
-            .map(hash => properties.find(p => p.address_hash === hash))
-            .filter(p => !!p)
-            .map(p => {
-                // Inline status logic to prevent import crashes
-                const propLogs = logs.filter(l => l.address_hash === p.address_hash);
-                let status = 'ELIGIBLE';
-                if (propLogs.length > 0) {
-                    const latest = propLogs.sort((a, b) => new Date(b.created_date) - new Date(a.created_date))[0];
-                    status = latest.parsed_status || 'ELIGIBLE';
-                }
-                
-                return {
-                    ...p,
-                    lat: parseFloat(p.lat || 0),
-                    lng: parseFloat(p.lng || 0),
-                    effective_status: status
-                };
-            });
-    }, [currentRoute, properties, logs]);
+            const rProps = route.property_hashes
+                .map(hash => properties.find(p => p.address_hash === hash))
+                .filter(p => !!p)
+                .map(p => {
+                    const propLogs = logs.filter(l => l.address_hash === p.address_hash);
+                    let status = 'ELIGIBLE';
+                    if (propLogs.length > 0) {
+                        const latest = propLogs.sort((a, b) => new Date(b.created_date) - new Date(a.created_date))[0];
+                        status = latest.parsed_status || 'ELIGIBLE';
+                    }
+                    return { ...p, effective_status: status };
+                });
 
-    const progress = useMemo(() => {
-        const total = routeProperties.length;
-        const visited = routeProperties.filter(p => 
-            p.effective_status !== 'ELIGIBLE' && p.effective_status !== 'NO_ANSWER'
-        ).length;
-        return { total, visited, percent: total > 0 ? Math.round((visited / total) * 100) : 0 };
-    }, [routeProperties]);
+            const total = rProps.length;
+            const visited = rProps.filter(p => p.effective_status !== 'ELIGIBLE' && p.effective_status !== 'NO_ANSWER').length;
+            const percent = total > 0 ? Math.round((visited / total) * 100) : 0;
+            
+            const next = rProps.find(p => p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER');
+            const idx = next ? rProps.indexOf(next) : -1;
 
-    const nextHouse = useMemo(() => {
-        return routeProperties.find(p => p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER');
-    }, [routeProperties]);
-    
-    const nextIdx = nextHouse ? routeProperties.indexOf(nextHouse) : -1;
+            return { currentRoute: route, routeProperties: rProps, progress: { visited, total, percent }, nextHouse: next, nextIdx: idx };
+        } catch (e) {
+            console.error("Logic error", e);
+            return { currentRoute: null, routeProperties: [], progress: { visited: 0, total: 0, percent: 0 }, nextHouse: null, nextIdx: -1 };
+        }
+    }, [myRoutesRaw, properties, logs]);
 
-    // Handlers
     const handleLogResult = (property, status) => {
         if (!property) return;
         createLogMutation.mutate({
             address_hash: property.address_hash,
             raw_input_text: status,
             parsed_status: status,
-            gps_proof_lat: property.lat,
-            gps_proof_lng: property.lng
+            gps_proof_lat: parseFloat(property.lat || 0),
+            gps_proof_lng: parseFloat(property.lng || 0)
         });
     };
 
@@ -144,135 +136,103 @@ export default function RepHome() {
         window.open(url, '_blank');
     };
 
-    // Rendering
-    if (userLoading || (!!user && (routesLoading || propsLoading))) {
+    // 7. Loading State
+    if (userLoading) {
         return (
-            <div className="h-full flex flex-col items-center justify-center bg-black text-white">
-                <Loader2 className="w-10 h-10 animate-spin text-yellow-500 mb-4" />
-                <p className="text-gray-400">Loading Route...</p>
+            <div className="flex h-full items-center justify-center bg-black">
+                <Loader2 className="h-8 w-8 animate-spin text-yellow-500" />
             </div>
         );
     }
 
-    if (!user) {
-        return null; // Layout handles redirect
-    }
-
+    // 8. No Route State
     if (!currentRoute) {
         return (
-            <div className="h-full flex flex-col items-center justify-center p-6 bg-black text-white">
-                <div className="w-20 h-20 bg-yellow-500/20 rounded-full flex items-center justify-center mb-6">
-                    <Navigation className="w-10 h-10 text-yellow-500" />
+            <div className="flex h-full flex-col items-center justify-center bg-black p-6 text-center">
+                <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-yellow-500/20">
+                    <Navigation className="h-10 w-10 text-yellow-500" />
                 </div>
-                <h2 className="text-2xl font-bold mb-2">No Route Assigned</h2>
-                <p className="text-gray-400 text-center max-w-xs">
-                    Please ask your manager to assign a route to you.
-                </p>
-                <Button 
-                    onClick={() => window.location.reload()}
-                    className="mt-6 bg-gray-800"
-                >
-                    Refresh
-                </Button>
+                <h2 className="mb-2 text-2xl font-bold text-white">No Route Active</h2>
+                <p className="text-gray-400">Please ask your manager to assign a route.</p>
             </div>
         );
     }
 
+    // 9. Route Complete State
     if (!nextHouse) {
         return (
-            <div className="h-full flex flex-col items-center justify-center p-6 bg-black text-white">
-                <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mb-6">
-                    <CheckCircle className="w-10 h-10 text-green-500" />
+            <div className="flex h-full flex-col items-center justify-center bg-black p-6 text-center">
+                <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-green-500/20">
+                    <CheckCircle className="h-10 w-10 text-green-500" />
                 </div>
-                <h2 className="text-2xl font-bold mb-2">Route Complete!</h2>
-                <p className="text-gray-400 text-center">
-                    You've visited all {routeProperties.length} houses. Great job!
-                </p>
+                <h2 className="mb-2 text-2xl font-bold text-white">Route Complete!</h2>
+                <p className="text-gray-400">You finished {progress.total} houses.</p>
             </div>
         );
     }
 
+    // 10. Main Render
     return (
-        <div className="h-full flex flex-col bg-black text-white overflow-hidden">
+        <div className="flex h-full flex-col bg-black text-white">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-800 bg-black">
-                <div className="flex justify-between items-center mb-3">
+            <div className="border-b border-gray-800 bg-black p-4">
+                <div className="mb-3 flex items-center justify-between">
                     <div>
-                        <h3 className="text-sm font-bold text-gray-400 tracking-wider">CURRENT ROUTE</h3>
-                        <p className="text-lg font-bold truncate max-w-[200px]">{currentRoute.name}</p>
+                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Current Route</p>
+                        <p className="text-lg font-bold">{currentRoute.name}</p>
                     </div>
                     <div className="text-right">
-                        <p className="text-2xl font-bold text-yellow-500">{progress.visited}<span className="text-gray-600 text-lg">/{progress.total}</span></p>
+                        <p className="text-2xl font-bold text-yellow-500">{progress.visited}<span className="text-base text-gray-600">/{progress.total}</span></p>
                     </div>
                 </div>
-                <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
-                    <div 
-                        className="bg-green-500 h-full transition-all duration-500" 
-                        style={{ width: `${progress.percent}%` }}
-                    />
+                <div className="h-2 w-full overflow-hidden rounded-full bg-gray-800">
+                    <div className="h-full bg-green-500 transition-all" style={{ width: `${progress.percent}%` }} />
                 </div>
             </div>
 
-            {/* Main Content */}
-            <div className="flex-1 flex flex-col items-center justify-center p-6 relative">
-                <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-yellow-500/5 via-transparent to-transparent pointer-events-none" />
-                
-                <div className="relative z-10 text-center w-full max-w-md">
-                    <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-yellow-500 text-black text-4xl font-bold mb-8 shadow-[0_0_50px_rgba(255,215,0,0.3)]">
-                        {nextIdx + 1}
-                    </div>
-
-                    <div className="space-y-2 mb-8">
-                        <h2 className="text-3xl font-bold leading-tight">
-                            {nextHouse.house_number} {nextHouse.street_name}
-                        </h2>
-                        {nextHouse.city && (
-                            <div className="flex items-center justify-center text-gray-400 gap-1">
-                                <MapPin className="w-4 h-4" />
-                                <span>{nextHouse.city}</span>
-                            </div>
-                        )}
-                    </div>
-
-                    <Button 
-                        onClick={() => openInMaps(nextHouse)}
-                        className="w-full h-16 text-xl font-bold bg-yellow-500 hover:bg-yellow-400 text-black rounded-2xl shadow-lg shadow-yellow-500/20 transition-all hover:scale-[1.02]"
-                    >
-                        <Navigation className="w-6 h-6 mr-3" />
-                        NAVIGATE
-                    </Button>
+            {/* Content */}
+            <div className="relative flex flex-1 flex-col items-center justify-center p-6">
+                <div className="mb-8 flex h-24 w-24 items-center justify-center rounded-full bg-yellow-500 shadow-lg shadow-yellow-500/20">
+                    <span className="text-4xl font-bold text-black">{nextIdx + 1}</span>
                 </div>
+
+                <div className="mb-8 text-center">
+                    <h2 className="text-3xl font-bold leading-tight mb-2">
+                        {nextHouse.house_number} {nextHouse.street_name}
+                    </h2>
+                    {nextHouse.city && (
+                        <div className="flex items-center justify-center text-gray-400 gap-2">
+                            <MapPin className="h-4 w-4" />
+                            <span>{nextHouse.city}</span>
+                        </div>
+                    )}
+                </div>
+
+                <Button 
+                    onClick={() => openInMaps(nextHouse)}
+                    className="h-16 w-full max-w-sm rounded-2xl bg-yellow-500 text-xl font-bold text-black hover:bg-yellow-400"
+                >
+                    <Navigation className="mr-3 h-6 w-6" />
+                    NAVIGATE
+                </Button>
             </div>
 
-            {/* Action Grid */}
-            <div className="p-4 bg-gray-900/50 border-t border-gray-800 backdrop-blur-sm">
-                <p className="text-center text-gray-500 text-xs font-bold mb-3 uppercase tracking-widest">Log Outcome</p>
-                <div className="grid grid-cols-2 gap-3 mb-3">
-                    <Button
-                        onClick={() => handleLogResult(nextHouse, 'SOLD')}
-                        className="h-14 bg-green-600 hover:bg-green-500 text-white font-bold text-lg rounded-xl"
-                    >
+            {/* Actions */}
+            <div className="border-t border-gray-800 bg-gray-900/50 p-4 backdrop-blur-sm">
+                <div className="mb-3 grid grid-cols-2 gap-3">
+                    <Button onClick={() => handleLogResult(nextHouse, 'SOLD')} className="h-14 rounded-xl bg-green-600 text-lg font-bold hover:bg-green-500">
                         SOLD
                     </Button>
-                    <Button
-                        onClick={() => handleLogResult(nextHouse, 'NO_ANSWER')}
-                        className="h-14 bg-gray-700 hover:bg-gray-600 text-white font-bold text-lg rounded-xl"
-                    >
+                    <Button onClick={() => handleLogResult(nextHouse, 'NO_ANSWER')} className="h-14 rounded-xl bg-gray-700 text-lg font-bold hover:bg-gray-600">
                         NO ANSWER
                     </Button>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                    <Button
-                        onClick={() => handleLogResult(nextHouse, 'CALLBACK')}
-                        className="h-12 bg-yellow-600 hover:bg-yellow-500 text-black font-bold rounded-xl"
-                    >
+                    <Button onClick={() => handleLogResult(nextHouse, 'CALLBACK')} className="h-12 rounded-xl bg-yellow-600 font-bold text-black hover:bg-yellow-500">
                         CALLBACK
                     </Button>
-                    <Button
-                        onClick={() => handleLogResult(nextHouse, 'HARD_NO')}
-                        className="h-12 bg-red-900/50 hover:bg-red-900 text-red-200 border border-red-800 font-bold rounded-xl"
-                    >
-                        NOT INTERESTED
+                    <Button onClick={() => handleLogResult(nextHouse, 'HARD_NO')} className="h-12 rounded-xl border border-red-800 bg-red-900/50 font-bold text-red-200 hover:bg-red-900">
+                        NO
                     </Button>
                 </div>
             </div>
