@@ -6,6 +6,44 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 
+class ErrorBoundary extends React.Component {
+    constructor(props) {
+      super(props);
+      this.state = { hasError: false, error: null };
+    }
+  
+    static getDerivedStateFromError(error) {
+      return { hasError: true, error };
+    }
+  
+    componentDidCatch(error, errorInfo) {
+      console.error("Layout Error Boundary caught error:", error, errorInfo);
+    }
+  
+    render() {
+      if (this.state.hasError) {
+        return (
+          <div className="flex h-screen items-center justify-center bg-black text-white p-6 text-center">
+            <div>
+              <h2 className="text-xl font-bold text-red-500 mb-2">Something went wrong</h2>
+              <pre className="text-xs text-gray-500 bg-gray-900 p-4 rounded text-left overflow-auto max-w-lg mx-auto">
+                {this.state.error?.toString()}
+              </pre>
+              <button 
+                onClick={() => window.location.reload()} 
+                className="mt-6 bg-yellow-500 text-black font-bold px-6 py-2 rounded-full"
+              >
+                Reload App
+              </button>
+            </div>
+          </div>
+        );
+      }
+  
+      return this.props.children;
+    }
+  }
+
 export default function Layout({ children }) {
     const queryClient = useQueryClient();
     const { data: user, isLoading } = useQuery({
@@ -118,7 +156,9 @@ export default function Layout({ children }) {
 
             {/* Main Content Area */}
             <main className="flex-1 relative overflow-hidden">
-                {children}
+                <ErrorBoundary>
+                    {children}
+                </ErrorBoundary>
             </main>
 
             {/* Bottom Navigation - Different for Rep vs Manager */}
