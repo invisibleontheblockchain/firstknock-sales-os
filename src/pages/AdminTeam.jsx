@@ -142,7 +142,7 @@ export default function AdminTeam() {
                     <div className="flex gap-3">
                         <Dialog open={isCodeManagerOpen} onOpenChange={setIsCodeManagerOpen}>
                             <DialogTrigger asChild>
-                                <Button variant="outline" className="border-gray-700 text-white hover:bg-gray-800">
+                                <Button variant="outline" className="h-10 border-gray-700 text-white hover:bg-gray-800">
                                     <Key className="w-4 h-4 mr-2" />
                                     Codes
                                 </Button>
@@ -159,13 +159,13 @@ export default function AdminTeam() {
                                                 placeholder="Code (e.g. 1234)" 
                                                 value={newCode.code}
                                                 onChange={(e) => setNewCode({...newCode, code: e.target.value})}
-                                                className="bg-black border-gray-700"
+                                                className="h-10 bg-black border-gray-700"
                                             />
                                             <Input 
                                                 placeholder="Label (e.g. Managers)" 
                                                 value={newCode.label}
                                                 onChange={(e) => setNewCode({...newCode, label: e.target.value})}
-                                                className="bg-black border-gray-700"
+                                                className="h-10 bg-black border-gray-700"
                                             />
                                         </div>
                                         <div className="flex gap-2">
@@ -173,7 +173,7 @@ export default function AdminTeam() {
                                                 value={newCode.role} 
                                                 onValueChange={(v) => setNewCode({...newCode, role: v})}
                                             >
-                                                <SelectTrigger className="bg-black border-gray-700 flex-1">
+                                                <SelectTrigger className="h-10 bg-black border-gray-700 flex-1">
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
@@ -184,7 +184,7 @@ export default function AdminTeam() {
                                             <Button 
                                                 onClick={() => createCodeMutation.mutate(newCode)}
                                                 disabled={!newCode.code}
-                                                className="bg-green-600 hover:bg-green-700 font-bold"
+                                                className="h-10 bg-green-600 hover:bg-green-700 font-bold"
                                             >
                                                 Create
                                             </Button>
@@ -223,7 +223,7 @@ export default function AdminTeam() {
 
                         <Dialog open={isRouteManagerOpen} onOpenChange={setIsRouteManagerOpen}>
                             <DialogTrigger asChild>
-                                <Button variant="outline" className="border-gray-700 text-white hover:bg-gray-800">
+                                <Button variant="outline" className="h-10 border-gray-700 text-white hover:bg-gray-800">
                                     <Map className="w-4 h-4 mr-2" />
                                     Route Registry
                                 </Button>
@@ -237,7 +237,7 @@ export default function AdminTeam() {
                                         placeholder="Search routes..." 
                                         value={routeSearch}
                                         onChange={(e) => setRouteSearch(e.target.value)}
-                                        className="bg-black border-gray-700"
+                                        className="h-10 bg-black border-gray-700"
                                     />
                                     <div className="flex-1 overflow-y-auto space-y-2 pr-2">
                                         {routes
@@ -257,7 +257,7 @@ export default function AdminTeam() {
                                                         </Badge>
                                                     )}
                                                     <Select onValueChange={(memberId) => handleAssign(route.id, memberId)}>
-                                                        <SelectTrigger className="w-[180px] h-8 text-xs bg-[#1F1F1F] border-gray-700">
+                                                        <SelectTrigger className="w-[180px] h-9 text-xs bg-[#1F1F1F] border-gray-700">
                                                             <SelectValue placeholder="Reassign..." />
                                                         </SelectTrigger>
                                                         <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
@@ -278,7 +278,7 @@ export default function AdminTeam() {
 
                         <Dialog open={isAddRepOpen} onOpenChange={setIsAddRepOpen}>
                             <DialogTrigger asChild>
-                                <Button className="bg-yellow-500 text-black font-bold hover:bg-yellow-400">
+                                <Button className="h-10 bg-yellow-500 text-black font-bold hover:bg-yellow-400">
                                     <UserPlus className="w-4 h-4 mr-2" />
                                     Add New Rep
                                 </Button>
@@ -293,7 +293,7 @@ export default function AdminTeam() {
                                     <Input 
                                         value={newRep.name}
                                         onChange={(e) => setNewRep({...newRep, name: e.target.value})}
-                                        className="bg-black border-gray-700"
+                                        className="h-10 bg-black border-gray-700"
                                         placeholder="John Doe"
                                     />
                                 </div>
@@ -302,7 +302,7 @@ export default function AdminTeam() {
                                     <Input 
                                         value={newRep.email}
                                         onChange={(e) => setNewRep({...newRep, email: e.target.value})}
-                                        className="bg-black border-gray-700"
+                                        className="h-10 bg-black border-gray-700"
                                         placeholder="john@example.com"
                                     />
                                 </div>
@@ -311,7 +311,7 @@ export default function AdminTeam() {
                                     <Input 
                                         value={newRep.phone}
                                         onChange={(e) => setNewRep({...newRep, phone: e.target.value})}
-                                        className="bg-black border-gray-700"
+                                        className="h-10 bg-black border-gray-700"
                                         placeholder="(555) 123-4567"
                                     />
                                 </div>
@@ -321,7 +321,7 @@ export default function AdminTeam() {
                                         value={newRep.role} 
                                         onValueChange={(v) => setNewRep({...newRep, role: v})}
                                     >
-                                        <SelectTrigger className="bg-black border-gray-700">
+                                        <SelectTrigger className="h-10 bg-black border-gray-700">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
@@ -332,7 +332,7 @@ export default function AdminTeam() {
                                 </div>
                                 <Button 
                                     onClick={handleAddRep}
-                                    className="w-full bg-yellow-500 text-black font-bold mt-4"
+                                    className="w-full h-10 bg-yellow-500 text-black font-bold mt-4"
                                 >
                                     Create Member
                                 </Button>
@@ -360,7 +360,7 @@ export default function AdminTeam() {
                                     </div>
                                     <div className="mt-auto">
                                         <Select onValueChange={(memberId) => handleAssign(route.id, memberId)}>
-                                            <SelectTrigger className="w-full h-8 text-xs bg-[#1F1F1F] border-gray-700">
+                                            <SelectTrigger className="w-full h-9 text-xs bg-[#1F1F1F] border-gray-700">
                                                 <SelectValue placeholder="Assign to Rep..." />
                                             </SelectTrigger>
                                             <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
