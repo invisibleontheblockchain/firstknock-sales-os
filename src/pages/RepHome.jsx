@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { format } from 'date-fns';
 import { optimizeRouteForTime, getKnockWindowLabel } from '@/components/logic/knockTimeOptimizer';
 import { determineEffectiveStatus } from '@/components/logic/territoryLogic';
 
@@ -58,19 +59,32 @@ export default function RepHome() {
         enabled: !!user
     });
 
-    // 2. Fetch My Properties (for context)
+    // --- Derived State ---
+
+    // Get the Active Route (Highest priority or most recent active)
+    const activeRoute = useMemo(() => {
+        if (!routes.length) return null;
+        // Prioritize 'IN_PROGRESS' then 'ACTIVE'
+        return routes.find(r => r.status === 'IN_PROGRESS') || routes.find(r => r.status === 'ACTIVE') || routes[0];
+    }, [routes]);
+
+    // 2. Fetch Route Properties (filtered by hash)
     const { data: properties = [], isLoading: propsLoading } = useQuery({
-        queryKey: ['myProperties', user?.email],
+        queryKey: ['routeProperties', activeRoute?.id],
         queryFn: async () => {
-            if (!user?.email) return [];
+            if (!activeRoute?.property_hashes?.length) return [];
             try {
-                const res = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 1000);
+                // Fetch only properties in this route using the hashes
+                const res = await base44.entities.MasterProperty.filter({ 
+                    address_hash: activeRoute.property_hashes 
+                }, '-created_date', 1000);
                 return Array.isArray(res) ? res : (res?.items || []);
             } catch (e) {
+                console.error("Error fetching properties", e);
                 return [];
             }
         },
-        enabled: !!user
+        enabled: !!activeRoute
     });
 
     // 3. Fetch Interaction Logs (for status)
@@ -91,15 +105,6 @@ export default function RepHome() {
             setSelectedProperty(null); // Close detail view on success
         }
     });
-
-    // --- Derived State ---
-
-    // Get the Active Route (Highest priority or most recent active)
-    const activeRoute = useMemo(() => {
-        if (!routes.length) return null;
-        // Prioritize 'IN_PROGRESS' then 'ACTIVE'
-        return routes.find(r => r.status === 'IN_PROGRESS') || routes.find(r => r.status === 'ACTIVE') || routes[0];
-    }, [routes]);
 
     // Hydrate Route with Property Data & Status
     const routeProperties = useMemo(() => {
