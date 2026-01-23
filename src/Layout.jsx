@@ -91,13 +91,13 @@ export default function Layout({ children }) {
         return null;
     }
 
-    // If rep tries to access manager pages, redirect to RepHome
+    // If rep tries to access manager pages, redirect to RepHome (Disabled for debug)
     const managerPages = ['Home', 'Setup', 'AdminTeam', 'List'];
     const isManagerPage = managerPages.some(p => window.location.pathname.endsWith(p));
-    if (user.app_role === 'rep' && isManagerPage) {
-        window.location.href = createPageUrl('RepHome');
-        return null;
-    }
+    // if (user.app_role === 'rep' && isManagerPage) {
+    //     window.location.href = createPageUrl('RepHome');
+    //     return null;
+    // }
 
     return (
         <div className="flex flex-col h-screen font-sans overflow-hidden" style={{ background: '#0A0A0A', color: '#E5E5E5' }}>
@@ -131,6 +131,20 @@ export default function Layout({ children }) {
                         </div>
                         <h1 className="text-lg font-bold tracking-tight text-white">FirstKnock</h1>
                     </div>
+                    
+                    <button 
+                        onClick={() => {
+                            if(confirm("Reset Role?")) {
+                                base44.auth.updateMe({ app_role: null }).then(() => {
+                                    window.location.href = createPageUrl('RoleSelect');
+                                });
+                            }
+                        }}
+                        className="bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded mx-2"
+                    >
+                        RESET ROLE
+                    </button>
+
                     {/* Status Indicator */}
                     <div className="flex items-center gap-2">
                         <button
