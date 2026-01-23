@@ -524,25 +524,31 @@ export default function Home() {
                     />
                 )}
 
-                {/* Active Route */}
+                {/* Active Route - Simple numbered markers */}
                 {activeRoute && (
                     <>
-                        <Polyline
-                            positions={activeRoute.properties.map(p => [p.lat, p.lng])}
-                            pathOptions={{ color: BRAND.gold, weight: 4, opacity: 0.9 }}
-                        />
                         {activeRoute.properties.map((p, idx) => (
                             <CircleMarker
                                 key={p.address_hash}
                                 center={[p.lat, p.lng]}
-                                radius={idx === 0 ? 10 : 6}
+                                radius={12}
                                 pathOptions={{
-                                    fillColor: idx === 0 ? BRAND.gold : STATUS_COLORS[p.effective_status],
+                                    fillColor: idx === 0 ? BRAND.gold : '#333',
                                     fillOpacity: 1,
-                                    color: '#fff',
+                                    color: BRAND.gold,
                                     weight: 2
                                 }}
-                            />
+                            >
+                                <L.Tooltip permanent direction="center" className="route-number-tooltip">
+                                    <span style={{ 
+                                        color: idx === 0 ? '#000' : BRAND.gold, 
+                                        fontWeight: 'bold', 
+                                        fontSize: '10px' 
+                                    }}>
+                                        {idx + 1}
+                                    </span>
+                                </L.Tooltip>
+                            </CircleMarker>
                         ))}
                     </>
                 )}
