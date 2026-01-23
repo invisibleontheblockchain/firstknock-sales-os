@@ -43,6 +43,24 @@ export default function Layout({ children }) {
         );
     }
 
+    // Check if user needs to select role (first login)
+    const isRoleSelectPage = window.location.pathname.includes('RoleSelect');
+    const isRepPage = window.location.pathname.includes('RepHome');
+    
+    if (!user.app_role && !isRoleSelectPage) {
+        // Redirect to role selection
+        window.location.href = createPageUrl('RoleSelect');
+        return null;
+    }
+
+    // If rep tries to access manager pages, redirect to RepHome
+    const managerPages = ['Home', 'Setup', 'AdminTeam', 'List'];
+    const isManagerPage = managerPages.some(p => window.location.pathname.endsWith(p));
+    if (user.app_role === 'rep' && isManagerPage) {
+        window.location.href = createPageUrl('RepHome');
+        return null;
+    }
+
     return (
         <div className="flex flex-col h-screen font-sans overflow-hidden" style={{ background: '#0A0A0A', color: '#E5E5E5' }}>
             {/* Brand Theme + Map Styles */}
