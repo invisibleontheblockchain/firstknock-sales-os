@@ -15,6 +15,7 @@ import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
 import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../components/logic/heatmapLogic';
 import RouteChecklist from '../components/routes/RouteChecklist';
 import NearbyHotLeads from '../components/nearby/NearbyHotLeads';
+import KnockTimeBanner from '../components/timing/KnockTimeBanner';
 
 // Brand Colors
 const BRAND = {
@@ -97,6 +98,7 @@ export default function Home() {
     const [startAddressInput, setStartAddressInput] = useState("");
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
+    const [showTimingPanel, setShowTimingPanel] = useState(false);
     const [zoomLevel, setZoomLevel] = useState(15);
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
@@ -566,6 +568,10 @@ export default function Home() {
                                 </span>
                             </div>
                         </div>
+                        <KnockTimeBanner 
+                            expanded={showTimingPanel} 
+                            onToggle={() => setShowTimingPanel(!showTimingPanel)} 
+                        />
                         {activeRoute && (
                             <div className="rounded-lg px-4 py-2 flex items-center gap-2" style={{ background: BRAND.gold }}>
                                 <Navigation className="w-4 h-4" style={{ color: BRAND.voidBlack }} />
