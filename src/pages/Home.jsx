@@ -405,7 +405,7 @@ export default function Home() {
                 <MapController 
                     fitBounds={fitBounds} 
                     onZoomChange={setZoomLevel} 
-                    onMoveEnd={(bounds) => setMapBounds(bounds)}
+                    onMoveEnd={() => {}}
                 />
 
 
