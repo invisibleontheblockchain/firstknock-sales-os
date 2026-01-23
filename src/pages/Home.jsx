@@ -573,46 +573,53 @@ export default function Home() {
 
             {/* Top Stats Bar */}
             <div className="absolute top-4 left-4 right-4 z-[1000] flex flex-col gap-2 pointer-events-none">
-                <div className="flex justify-between items-start">
-                    <div className="pointer-events-auto flex gap-2">
-                        <div className="rounded-lg px-4 py-2 border" style={{ background: `${BRAND.voidBlack}ee`, borderColor: BRAND.charcoal }}>
-                            <div className="flex items-center gap-3">
-                                <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: BRAND.gold, boxShadow: `0 0 8px ${BRAND.gold}` }} />
-                                <span className="text-sm font-bold tracking-wide" style={{ color: BRAND.offWhite }}>
-                                    {effectiveProperties.length.toLocaleString()}
-                                </span>
-                            </div>
-                        </div>
-                        <KnockTimeBanner 
-                            expanded={showTimingPanel} 
-                            onToggle={() => setShowTimingPanel(!showTimingPanel)} 
-                        />
-                        {activeRoute && (
-                            <div className="rounded-lg px-4 py-2 flex items-center gap-2" style={{ background: BRAND.gold }}>
-                                <Navigation className="w-4 h-4" style={{ color: BRAND.voidBlack }} />
-                                <div>
-                                    <span className="text-sm font-bold block leading-none" style={{ color: BRAND.voidBlack }}>{activeRoute.name}</span>
-                                    {activeRoute.assigned_to_name && (
-                                        <span className="text-[10px] font-bold opacity-75 block leading-none mt-0.5" style={{ color: BRAND.voidBlack }}>
-                                            {activeRoute.assigned_to_name}
-                                        </span>
-                                    )}
+                <div className="flex items-start gap-2 overflow-hidden">
+                    {/* Scrollable Stats Row */}
+                    <div className="pointer-events-auto flex-1 overflow-x-auto no-scrollbar pb-1">
+                        <div className="flex gap-2 whitespace-nowrap">
+                            <div className="rounded-lg px-3 py-2 border shrink-0" style={{ background: `${BRAND.voidBlack}ee`, borderColor: BRAND.charcoal }}>
+                                <div className="flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: BRAND.gold, boxShadow: `0 0 8px ${BRAND.gold}` }} />
+                                    <span className="text-sm font-bold tracking-wide" style={{ color: BRAND.offWhite }}>
+                                        {effectiveProperties.length.toLocaleString()}
+                                    </span>
                                 </div>
-                                <button onClick={() => setActiveRoute(null)} className="ml-1">
-                                    <X className="w-4 h-4" style={{ color: BRAND.voidBlack }} />
-                                </button>
                             </div>
-                        )}
+                            
+                            <div className="shrink-0">
+                                <KnockTimeBanner 
+                                    expanded={showTimingPanel} 
+                                    onToggle={() => setShowTimingPanel(!showTimingPanel)} 
+                                />
+                            </div>
+
+                            {activeRoute && (
+                                <div className="rounded-lg px-3 py-2 flex items-center gap-2 shrink-0" style={{ background: BRAND.gold }}>
+                                    <Navigation className="w-4 h-4" style={{ color: BRAND.voidBlack }} />
+                                    <div>
+                                        <span className="text-sm font-bold block leading-none" style={{ color: BRAND.voidBlack }}>{activeRoute.name}</span>
+                                        {activeRoute.assigned_to_name && (
+                                            <span className="text-[10px] font-bold opacity-75 block leading-none mt-0.5" style={{ color: BRAND.voidBlack }}>
+                                                {activeRoute.assigned_to_name}
+                                            </span>
+                                        )}
+                                    </div>
+                                    <button onClick={() => setActiveRoute(null)} className="ml-1 p-1 hover:bg-black/10 rounded-full">
+                                        <X className="w-3 h-3" style={{ color: BRAND.voidBlack }} />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
 
-                    <div className="pointer-events-auto">
+                    <div className="pointer-events-auto shrink-0">
                         <Button
                             onClick={() => setShowCompare(true)}
-                            className="rounded-lg h-10 px-4 font-bold tracking-wide"
+                            size="icon"
+                            className="rounded-lg h-10 w-10 font-bold tracking-wide shadow-lg"
                             style={{ background: BRAND.charcoal, color: BRAND.gold, border: `1px solid ${BRAND.gold}40` }}
                         >
-                            <BarChart3 className="w-4 h-4 mr-2" />
-                            FILTER
+                            <BarChart3 className="w-5 h-5" />
                         </Button>
                     </div>
                 </div>
@@ -646,35 +653,37 @@ export default function Home() {
 
             {/* Bottom Action Bar */}
             <div className="absolute bottom-6 left-4 right-4 z-[1000]">
-                <div className="flex justify-center gap-3">
-                    <Button
-                        onClick={() => setShowRoutePanel(true)}
-                        className="rounded-full px-8 h-14 font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform hover:-translate-y-1 active:scale-95"
-                        style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
-                    >
-                        <Navigation className="w-5 h-5 mr-2" />
-                        ROUTES
-                        {routesGenerating && <Loader2 className="w-4 h-4 ml-2 animate-spin" />}
-                        {!routesGenerating && (hydratedSavedRoutes.length > 0 || routes.length > 0) && (
-                            <Badge className="ml-2" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
-                                {hydratedSavedRoutes.length > 0 ? hydratedSavedRoutes.length : routes.length}
-                            </Badge>
-                        )}
-                    </Button>
-
-                    {activeRoute && (
+                <div className="flex items-end gap-2">
+                    <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar pb-1">
                         <Button
-                            onClick={() => setShowChecklist(true)}
-                            className="rounded-full px-8 h-14 font-bold tracking-wide shadow-2xl backdrop-blur-md transition-all duration-300 transform hover:-translate-y-1 active:scale-95"
-                            style={{ background: 'rgba(31, 31, 31, 0.8)', color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}
+                            onClick={() => setShowRoutePanel(true)}
+                            className="rounded-full flex-1 px-4 h-12 sm:h-14 text-xs sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform hover:-translate-y-1 active:scale-95 whitespace-nowrap min-w-[120px]"
+                            style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
                         >
-                            <List className="w-5 h-5 mr-2" />
-                            CHECKLIST
-                            <ChevronRight className="w-4 h-4 ml-1" />
+                            <Navigation className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+                            ROUTES
+                            {routesGenerating && <Loader2 className="w-3 h-3 ml-2 animate-spin" />}
+                            {!routesGenerating && (hydratedSavedRoutes.length > 0 || routes.length > 0) && (
+                                <Badge className="ml-2 h-5 min-w-[20px] px-1" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
+                                    {hydratedSavedRoutes.length > 0 ? hydratedSavedRoutes.length : routes.length}
+                                </Badge>
+                            )}
                         </Button>
-                    )}
 
-                    <div className="flex flex-col gap-2">
+                        {activeRoute && (
+                            <Button
+                                onClick={() => setShowChecklist(true)}
+                                className="rounded-full flex-1 px-4 h-12 sm:h-14 text-xs sm:text-sm font-bold tracking-wide shadow-2xl backdrop-blur-md transition-all duration-300 transform hover:-translate-y-1 active:scale-95 whitespace-nowrap min-w-[120px]"
+                                style={{ background: 'rgba(31, 31, 31, 0.8)', color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}
+                            >
+                                <List className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+                                CHECKLIST
+                                <ChevronRight className="w-3 h-3 ml-1" />
+                            </Button>
+                        )}
+                    </div>
+
+                    <div className="flex flex-col gap-2 shrink-0">
                          <Button
                             onClick={() => setViewMode(viewMode === 'pins' ? 'heatmap' : 'pins')}
                             size="icon"
