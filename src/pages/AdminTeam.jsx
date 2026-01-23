@@ -234,6 +234,7 @@ export default function AdminTeam() {
                             </div>
                         </DialogContent>
                     </Dialog>
+                    </div>
                 </div>
 
                 {/* Unassigned Routes Section */}
