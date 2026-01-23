@@ -431,43 +431,7 @@ export default function Home() {
                     onMoveEnd={(bounds) => setMapBounds(bounds)}
                 />
 
-                {/* Search This Area Button */}
-                {mapBounds && (
-                    <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[1000]">
-                        <Button 
-                            onClick={() => {
-                                setIsSearchingArea(true);
-                                queryClient.invalidateQueries(['masterProperties']);
-                            }}
-                            size="sm"
-                            className="rounded-full shadow-lg font-bold text-xs animate-in slide-in-from-top fade-in duration-300"
-                            style={{ background: BRAND.gold, color: BRAND.voidBlack }}
-                        >
-                            {propsFetching ? (
-                                <><Loader2 className="w-3 h-3 mr-2 animate-spin" /> LOADING AREA...</>
-                            ) : (
-                                <><Search className="w-3 h-3 mr-2" /> SEARCH THIS AREA</>
-                            )}
-                        </Button>
-                    </div>
-                )}
 
-                {/* LOW ZOOM: STATE CLUSTERS (Bubbles) */}
-                <LayerGroup>
-                    {!activeRoute && stateClusters.map(cluster => (
-                        <CircleMarker
-                            key={`state-${cluster.id}`}
-                            center={[cluster.lat, cluster.lng]}
-                            radius={30 + Math.min(cluster.count / 100, 30)}
-                            pathOptions={{
-                                fillColor: getHeatColor(cluster.avgScore),
-                                fillOpacity: 0.8,
-                                color: BRAND.offWhite,
-                                weight: 2
-                            }}
-                        />
-                    ))}
-                </LayerGroup>
 
                 {/* Display Saved Routes */}
                 <LayerGroup>
@@ -637,9 +601,30 @@ export default function Home() {
                     </div>
                 </div>
 
+                {/* Search This Area Button */}
+                {mapBounds && !activeRoute && (
+                    <div className="pointer-events-auto flex justify-center">
+                        <Button 
+                            onClick={() => {
+                                setIsSearchingArea(true);
+                                queryClient.invalidateQueries(['masterProperties']);
+                            }}
+                            size="sm"
+                            className="rounded-full shadow-lg font-bold text-xs"
+                            style={{ background: BRAND.gold, color: BRAND.voidBlack }}
+                        >
+                            {propsFetching ? (
+                                <><Loader2 className="w-3 h-3 mr-2 animate-spin" /> LOADING AREA...</>
+                            ) : (
+                                <><Search className="w-3 h-3 mr-2" /> SEARCH THIS AREA</>
+                            )}
+                        </Button>
+                    </div>
+                )}
+
                 {/* Quick Filter Bar */}
                 {!activeRoute && (
-                    <div className="pointer-events-auto flex gap-2 justify-center">
+                    <div className="pointer-events-auto flex gap-2 justify-center flex-wrap">
                         {[
                             { id: 'all', label: 'ALL', color: BRAND.offWhite },
                             { id: 'eligible', label: 'NOT VISITED', color: '#6b7280' },
