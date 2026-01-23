@@ -4,6 +4,8 @@ import List from './pages/List';
 import Setup from './pages/Setup';
 import Sync from './pages/Sync';
 import Tutorial from './pages/Tutorial';
+import RepHome from './pages/RepHome';
+import RoleSelect from './pages/RoleSelect';
 import __Layout from './Layout.jsx';
 
 
@@ -14,6 +16,8 @@ export const PAGES = {
     "Setup": Setup,
     "Sync": Sync,
     "Tutorial": Tutorial,
+    "RepHome": RepHome,
+    "RoleSelect": RoleSelect,
 }
 
 export const pagesConfig = {
