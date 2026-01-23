@@ -479,7 +479,7 @@ export default function Home() {
                 </LayerGroup>
 
                 {/* HEATMAP LAYER (Only at Zoom >= 10) */}
-                {viewMode === 'heatmap' && zoomLevel >= 10 && !activeRoute && heatmapData.map(cell => (
+                {viewMode === 'heatmap' && zoomLevel >= 10 && heatmapData.map(cell => (
                     <Circle
                         key={cell.id}
                         center={[cell.lat, cell.lng]}
@@ -673,6 +673,11 @@ export default function Home() {
                             {viewMode === 'heatmap' ? <Flame className="w-6 h-6 animate-pulse" /> : <Layers className="w-6 h-6" />}
                         </Button>
                         <Button
+                            onClick={() => {
+                                if (mapRef.current) {
+                                    mapRef.current.locate({ setView: true, maxZoom: 16 });
+                                }
+                            }}
                             size="icon"
                             className="rounded-full w-14 h-14 shadow-2xl backdrop-blur-md"
                             style={{ background: 'rgba(31, 31, 31, 0.8)', color: BRAND.gold, border: `1px solid ${BRAND.gold}40` }}
