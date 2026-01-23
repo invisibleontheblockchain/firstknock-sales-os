@@ -38,9 +38,25 @@ export default function RepHome() {
     const [searchQuery, setSearchQuery] = useState('');
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me().catch(() => null) });
 
+    // 0. Fetch Team Member Profile (to link Auth User -> Team Member ID)
+    const { data: teamMember } = useQuery({
+        queryKey: ['myTeamMember', user?.email],
+        queryFn: async () => {
+            if (!user?.email) return null;
+            try {
+                const res = await base44.entities.TeamMember.filter({ email: user.email }, '-created_date', 1);
+                return Array.isArray(res) ? res[0] : (res?.items?.[0] || null);
+            } catch (e) {
+                console.error("Error fetching team member profile", e);
+                return null;
+            }
+        },
+        enabled: !!user?.email
+    });
+
     // 1. Fetch Assigned Routes
     const { data: routes = [], isLoading: routesLoading } = useQuery({
-        queryKey: ['myRoutes', user?.id],
+        queryKey: ['myRoutes', user?.id, teamMember?.id],
         queryFn: async () => {
             if (!user) return [];
             try {
@@ -49,11 +65,12 @@ export default function RepHome() {
                 const res = await base44.entities.SavedRoute.list('-created_date', 50);
                 const allRoutes = Array.isArray(res) ? res : (res?.items || []);
                 
-                // Filter for routes assigned to me OR created by me if I'm a rep
+                // Filter for routes assigned to me (by Team ID) OR created by me if I'm a rep
                 return allRoutes.filter(r => 
-                    r.assigned_to === user.id || 
-                    r.assigned_to_name === user.email || 
-                    (r.status === 'ACTIVE' && r.created_by === user.email)
+                    (teamMember && r.assigned_to === teamMember.id) || // Match TeamMember ID (Primary)
+                    r.assigned_to === user.id || // Match Auth ID (Fallback)
+                    r.assigned_to_name === user.email || // Match Email (Legacy)
+                    (r.status === 'ACTIVE' && r.created_by === user.email) // Creator
                 );
             } catch (e) {
                 console.error("Error fetching routes", e);
