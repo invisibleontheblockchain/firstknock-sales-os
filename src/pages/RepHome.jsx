@@ -179,7 +179,7 @@ export default function RepHome() {
     };
 
     return (
-        <div className="min-h-screen bg-black text-white pb-safe">
+        <div className="h-full overflow-y-auto bg-black text-white pb-safe">
             {/* 1. Header Area */}
             <div className="sticky top-0 z-30 bg-black/80 backdrop-blur-md border-b border-gray-800 px-4 py-3">
                 <div className="flex justify-between items-center mb-3">
