@@ -3,11 +3,9 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
     Loader2, MapPin, Navigation, CheckCircle2, Circle, Clock, 
-    ChevronRight, Phone, AlertTriangle, User, Home, Calendar, ArrowRight,
-    Search, Filter, ListFilter
+    ChevronRight, Phone, AlertTriangle, User, Home, Calendar, ArrowRight
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -34,8 +32,6 @@ const STATUS_CONFIG = {
 export default function RepHome() {
     const queryClient = useQueryClient();
     const [selectedProperty, setSelectedProperty] = useState(null);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [activeFilter, setActiveFilter] = useState('todo'); // 'todo', 'callback', 'done', 'all'
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me().catch(() => null) });
 
     // 1. Fetch Assigned Routes
@@ -139,26 +135,6 @@ export default function RepHome() {
         };
     }, [routeProperties]);
 
-    // Filtered Properties
-    const filteredProperties = useMemo(() => {
-        return routeProperties.filter(p => {
-            // 1. Search
-            if (searchQuery) {
-                const query = searchQuery.toLowerCase();
-                const address = `${p.house_number} ${p.street_name} ${p.city || ''}`.toLowerCase();
-                if (!address.includes(query)) return false;
-            }
-
-            // 2. Status Filter
-            if (activeFilter === 'all') return true;
-            if (activeFilter === 'todo') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
-            if (activeFilter === 'callback') return p.effective_status === 'CALLBACK';
-            if (activeFilter === 'done') return p.effective_status === 'SOLD' || p.effective_status === 'HARD_NO' || p.effective_status === 'QUALIFIED';
-            
-            return true;
-        });
-    }, [routeProperties, searchQuery, activeFilter]);
-
     const knockWindow = getKnockWindowLabel(new Date());
 
     if (routesLoading || propsLoading || logsLoading) {
@@ -232,76 +208,28 @@ export default function RepHome() {
                     </div>
                     <Progress value={stats.percent} className="h-2 bg-gray-800" indicatorClassName="bg-yellow-500" />
                 </div>
-
-                {/* Filters & Search */}
-                <div className="mt-3 space-y-3">
-                    <div className="relative">
-                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-500" />
-                        <Input 
-                            placeholder="Search address..." 
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-9 bg-gray-900 border-gray-800 text-white h-9 text-sm focus:border-yellow-500 focus:ring-yellow-500/20" 
-                        />
-                    </div>
-                    <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                        {[
-                            { id: 'todo', label: 'To Do', icon: ListFilter },
-                            { id: 'callback', label: 'Callbacks', icon: Clock },
-                            { id: 'done', label: 'Completed', icon: CheckCircle2 },
-                            { id: 'all', label: 'All', icon: Home }
-                        ].map(f => {
-                            const Icon = f.icon;
-                            const isActive = activeFilter === f.id;
-                            return (
-                                <button
-                                    key={f.id}
-                                    onClick={() => setActiveFilter(f.id)}
-                                    className={`
-                                        flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all
-                                        ${isActive ? 'bg-yellow-500 text-black' : 'bg-gray-900 text-gray-400 border border-gray-800 hover:border-gray-700'}
-                                    `}
-                                >
-                                    <Icon className="w-3.5 h-3.5" />
-                                    {f.label}
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
             </div>
 
             {/* 2. Main Content - Optimized List */}
-            <div className="px-4 pb-4 space-y-4">
+            <div className="p-4 space-y-4">
                 <div className="flex items-center justify-between text-xs font-bold text-gray-500 tracking-wider">
-                    <span>
-                        {activeFilter === 'all' ? 'ALL PROPERTIES' : 
-                         activeFilter === 'todo' ? 'UP NEXT' : 
-                         activeFilter.toUpperCase()} 
-                        ({filteredProperties.length})
-                    </span>
+                    <span>UP NEXT ({routeProperties.length - stats.done})</span>
                     <span>OPTIMIZED BY TIME</span>
                 </div>
 
-                {filteredProperties.length === 0 ? (
-                    <div className="text-center py-12 text-gray-500 bg-[#151515] rounded-xl border border-gray-800 border-dashed">
-                        <Search className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                        <p>No properties found</p>
-                        {activeFilter !== 'all' && (
-                            <button onClick={() => setActiveFilter('all')} className="text-yellow-500 text-xs mt-2 hover:underline">
-                                Clear filters
-                            </button>
-                        )}
+                {routeProperties.length === 0 ? (
+                    <div className="text-center py-10 text-gray-500">
+                        <p>No properties in this route.</p>
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        {filteredProperties.map((prop, idx) => {
-                            const isDone = prop.effective_status !== 'ELIGIBLE' && prop.effective_status !== 'CALLBACK' && prop.effective_status !== 'NO_ANSWER';
-                            // Note: NO_ANSWER is technically "visited" but usually stays in "Todo" lists for re-knocking. 
-                            // My filter logic handles 'todo' including NO_ANSWER.
-                            
+                        {routeProperties.map((prop, idx) => {
+                            const isDone = prop.effective_status !== 'ELIGIBLE' && prop.effective_status !== 'CALLBACK';
                             const statusConfig = STATUS_CONFIG[prop.effective_status] || STATUS_CONFIG.ELIGIBLE;
                             const StatusIcon = statusConfig.icon;
+
+                            // Opacity for done items
+                            if (isDone) return null; // Hide done items for focus mode? Or show at bottom? Let's hide for focus.
 
                             return (
                                 <Card 
