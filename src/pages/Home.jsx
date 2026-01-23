@@ -453,81 +453,75 @@ export default function Home() {
                 )}
 
                 {/* LOW ZOOM: STATE CLUSTERS (Bubbles) */}
-                {!activeRoute && (
-                    <FeatureGroup key="clusters-group">
-                        {stateClusters.map(cluster => (
-                            <CircleMarker
-                                key={`state-${cluster.id}`}
-                                center={[cluster.lat, cluster.lng]}
-                                radius={30 + Math.min(cluster.count / 100, 30)}
-                                pathOptions={{
-                                    fillColor: getHeatColor(cluster.avgScore),
-                                    fillOpacity: 0.8,
-                                    color: BRAND.offWhite,
-                                    weight: 2
-                                }}
-                            />
-                        ))}
-                    </FeatureGroup>
-                )}
+                <LayerGroup>
+                    {!activeRoute && stateClusters.map(cluster => (
+                        <CircleMarker
+                            key={`state-${cluster.id}`}
+                            center={[cluster.lat, cluster.lng]}
+                            radius={30 + Math.min(cluster.count / 100, 30)}
+                            pathOptions={{
+                                fillColor: getHeatColor(cluster.avgScore),
+                                fillOpacity: 0.8,
+                                color: BRAND.offWhite,
+                                weight: 2
+                            }}
+                        />
+                    ))}
+                </LayerGroup>
 
                 {/* Display Saved Routes */}
-                {!activeRoute && zoomLevel >= 8 && (
-                    <FeatureGroup key="saved-routes-group">
-                        {hydratedSavedRoutes.map((route) => {
-                            const isAssignedToMe = route.assigned_to === user?.id || route.assigned_to_name === user?.email; 
-                            const baseColor = isAssignedToMe ? BRAND.gold : (route.assigned_to ? '#3b82f6' : '#666');
+                <LayerGroup>
+                    {!activeRoute && zoomLevel >= 8 && hydratedSavedRoutes.map((route) => {
+                        const isAssignedToMe = route.assigned_to === user?.id || route.assigned_to_name === user?.email; 
+                        const baseColor = isAssignedToMe ? BRAND.gold : (route.assigned_to ? '#3b82f6' : '#666');
 
-                            return route.properties.map(p => (
-                                <CircleMarker
-                                    key={`saved-${route.id}-${p.address_hash}`}
-                                    center={[p.lat, p.lng]}
-                                    radius={4}
-                                    eventHandlers={{
-                                        click: (e) => {
-                                            L.DomEvent.stopPropagation(e);
-                                            setActiveRoute(route);
-                                        }
-                                    }}
-                                    pathOptions={{
-                                        fillColor: baseColor,
-                                        fillOpacity: 0.6,
-                                        color: baseColor,
-                                        weight: 1
-                                    }}
-                                />
-                            ));
-                        })}
-                    </FeatureGroup>
-                )}
+                        return route.properties.map(p => (
+                            <CircleMarker
+                                key={`saved-${route.id}-${p.address_hash}`}
+                                center={[p.lat, p.lng]}
+                                radius={4}
+                                eventHandlers={{
+                                    click: (e) => {
+                                        L.DomEvent.stopPropagation(e);
+                                        setActiveRoute(route);
+                                    }
+                                }}
+                                pathOptions={{
+                                    fillColor: baseColor,
+                                    fillOpacity: 0.6,
+                                    color: baseColor,
+                                    weight: 1
+                                }}
+                            />
+                        ));
+                    })}
+                </LayerGroup>
 
                 {/* Display Generated Routes */}
-                {!activeRoute && routes.length > 0 && (
-                    <FeatureGroup key="generated-routes-group">
-                        {routes.map((route, rIdx) => {
-                            const routeColor = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
-                            return route.properties.map(p => (
-                                <CircleMarker
-                                    key={`generated-${route.id}-${p.address_hash}`}
-                                    center={[p.lat, p.lng]}
-                                    radius={6}
-                                    eventHandlers={{
-                                        click: (e) => {
-                                            L.DomEvent.stopPropagation(e);
-                                            setActiveRoute(route);
-                                        }
-                                    }}
-                                    pathOptions={{
-                                        fillColor: routeColor,
-                                        fillOpacity: 0.7,
-                                        color: routeColor,
-                                        weight: 1
-                                    }}
-                                />
-                            ));
-                        })}
-                    </FeatureGroup>
-                )}
+                <LayerGroup>
+                    {!activeRoute && routes.length > 0 && routes.map((route, rIdx) => {
+                        const routeColor = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
+                        return route.properties.map(p => (
+                            <CircleMarker
+                                key={`generated-${route.id}-${p.address_hash}`}
+                                center={[p.lat, p.lng]}
+                                radius={6}
+                                eventHandlers={{
+                                    click: (e) => {
+                                        L.DomEvent.stopPropagation(e);
+                                        setActiveRoute(route);
+                                    }
+                                }}
+                                pathOptions={{
+                                    fillColor: routeColor,
+                                    fillOpacity: 0.7,
+                                    color: routeColor,
+                                    weight: 1
+                                }}
+                            />
+                        ));
+                    })}
+                </LayerGroup>
 
                 {/* HEATMAP LAYER (Only at Zoom >= 10) */}
                 {viewMode === 'heatmap' && zoomLevel >= 10 && !activeRoute && heatmapData.map(cell => (
@@ -544,28 +538,30 @@ export default function Home() {
                     />
                 ))}
 
-                {/* PIN LAYER - Display loose properties ONLY if toggled ON and no routes visible and NOT in heatmap mode AND Zoom >= 13 */}
-                {viewMode === 'pins' && zoomLevel >= 13 && !activeRoute && routes.length === 0 && hydratedSavedRoutes.length === 0 && showAllProperties && effectiveProperties
-                    .filter(p => {
-                        if (quickFilter === 'all') return true;
-                        if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
-                        if (quickFilter === 'sold') return p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED';
-                        if (quickFilter === 'rejected') return p.effective_status === 'HARD_NO';
-                        return true;
-                    })
-                    .map(p => (
-                        <CircleMarker
-                            key={p.address_hash}
-                            center={[p.lat, p.lng]}
-                            radius={5}
-                            pathOptions={{
-                                fillColor: STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER,
-                                fillOpacity: 0.9,
-                                color: '#333',
-                                weight: 1
-                            }}
-                        />
-                    ))}
+                {/* PIN LAYER */}
+                <LayerGroup>
+                    {viewMode === 'pins' && zoomLevel >= 13 && !activeRoute && routes.length === 0 && hydratedSavedRoutes.length === 0 && showAllProperties && effectiveProperties
+                        .filter(p => {
+                            if (quickFilter === 'all') return true;
+                            if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
+                            if (quickFilter === 'sold') return p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED';
+                            if (quickFilter === 'rejected') return p.effective_status === 'HARD_NO';
+                            return true;
+                        })
+                        .map(p => (
+                            <CircleMarker
+                                key={p.address_hash}
+                                center={[p.lat, p.lng]}
+                                radius={5}
+                                pathOptions={{
+                                    fillColor: STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER,
+                                    fillOpacity: 0.9,
+                                    color: '#333',
+                                    weight: 1
+                                }}
+                            />
+                        ))}
+                </LayerGroup>
 
                 {/* Preview Route (hover/tap from list) */}
                 {previewRoute && !activeRoute && (
