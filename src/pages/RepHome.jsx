@@ -313,33 +313,33 @@ export default function RepHome() {
                             </div>
 
                             {/* Main Actions */}
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-2 gap-3">
                                 <Button 
-                                    className="h-14 bg-green-600 hover:bg-green-700 font-bold text-lg"
+                                    className="h-12 bg-green-600 hover:bg-green-700 font-bold text-xs sm:text-sm"
                                     onClick={() => handleLog('SOLD')}
                                 >
-                                    <CheckCircle2 className="w-5 h-5 mr-2" />
+                                    <CheckCircle2 className="w-4 h-4 mr-2" />
                                     SOLD / LEAD
                                 </Button>
                                 <Button 
-                                    className="h-14 bg-red-600 hover:bg-red-700 font-bold text-lg"
+                                    className="h-12 bg-red-600 hover:bg-red-700 font-bold text-xs sm:text-sm"
                                     onClick={() => handleLog('HARD_NO')}
                                 >
-                                    <AlertTriangle className="w-5 h-5 mr-2" />
+                                    <AlertTriangle className="w-4 h-4 mr-2" />
                                     NOT INTERESTED
                                 </Button>
                                 <Button 
-                                    className="h-14 bg-yellow-600 hover:bg-yellow-700 font-bold text-lg"
+                                    className="h-12 bg-yellow-600 hover:bg-yellow-700 font-bold text-xs sm:text-sm"
                                     onClick={() => handleLog('CALLBACK')}
                                 >
-                                    <Clock className="w-5 h-5 mr-2" />
+                                    <Clock className="w-4 h-4 mr-2" />
                                     CALLBACK
                                 </Button>
                                 <Button 
-                                    className="h-14 bg-gray-700 hover:bg-gray-600 font-bold text-lg"
+                                    className="h-12 bg-gray-700 hover:bg-gray-600 font-bold text-xs sm:text-sm"
                                     onClick={() => handleLog('NO_ANSWER')}
                                 >
-                                    <Home className="w-5 h-5 mr-2" />
+                                    <Home className="w-4 h-4 mr-2" />
                                     NO ANSWER
                                 </Button>
                             </div>
