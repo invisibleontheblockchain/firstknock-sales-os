@@ -48,15 +48,22 @@ function LocationMarker() {
     ) : null;
 }
 
-function MapController({ fitBounds, onZoomChange }) {
+function MapController({ fitBounds, onZoomChange, onMoveEnd }) {
     const map = useMap();
     
-    // Track zoom level
+    // Track zoom & move
     useEffect(() => {
         const handleZoom = () => onZoomChange(map.getZoom());
+        const handleMove = () => onMoveEnd(map.getBounds());
+        
         map.on('zoomend', handleZoom);
-        return () => map.off('zoomend', handleZoom);
-    }, [map, onZoomChange]);
+        map.on('moveend', handleMove);
+        
+        return () => {
+            map.off('zoomend', handleZoom);
+            map.off('moveend', handleMove);
+        };
+    }, [map, onZoomChange, onMoveEnd]);
 
     useEffect(() => {
         if (fitBounds?.length > 0) {
@@ -91,19 +98,43 @@ export default function Home() {
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
     // Fetch Properties - support both user-specific and fallback for mobile auth
-    const { data: userProperties = [], isLoading: propsLoading } = useQuery({
-        queryKey: ['masterProperties', user?.email],
+    const [mapBounds, setMapBounds] = useState(null);
+    const [isSearchingArea, setIsSearchingArea] = useState(false);
+
+    // Geospatial Query: Fetch properties ONLY within current map view
+    const { data: userProperties = [], isLoading: propsLoading, isFetching: propsFetching } = useQuery({
+        queryKey: ['masterProperties', user?.email, mapBounds],
         queryFn: async () => {
             if (!user?.email) return [];
+            
+            // If we have bounds, use them for a geospatial query
+            if (mapBounds && isSearchingArea) {
+                try {
+                    console.log('Fetching properties within bounds:', mapBounds);
+                    const filter = {
+                        created_by: user.email,
+                        lat: { $gte: mapBounds.getSouth(), $lte: mapBounds.getNorth() },
+                        lng: { $gte: mapBounds.getWest(), $lte: mapBounds.getEast() }
+                    };
+                    const result = await base44.entities.MasterProperty.filter(filter, '-created_date', 500);
+                    return Array.isArray(result) ? result : (result?.items || []);
+                } catch (e) {
+                    console.log('[Home] Error fetching geospatial properties:', e);
+                    return [];
+                }
+            }
+            
+            // Fallback: Initial load (latest 100)
             try {
-                const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 1000);
+                const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 100);
                 return Array.isArray(result) ? result : (result?.items || []);
             } catch (e) {
-                console.log('[Home] Error fetching user properties:', e);
+                console.log('[Home] Error fetching properties:', e);
                 return [];
             }
         },
-        enabled: !!user?.email
+        enabled: !!user?.email,
+        keepPreviousData: true
     });
 
 
@@ -390,7 +421,32 @@ export default function Home() {
                     attribution='&copy; CARTO'
                 />
                 <LocationMarker />
-                <MapController fitBounds={fitBounds} onZoomChange={setZoomLevel} />
+                <MapController 
+                    fitBounds={fitBounds} 
+                    onZoomChange={setZoomLevel} 
+                    onMoveEnd={(bounds) => setMapBounds(bounds)}
+                />
+
+                {/* Search This Area Button */}
+                {mapBounds && (
+                    <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[1000]">
+                        <Button 
+                            onClick={() => {
+                                setIsSearchingArea(true);
+                                queryClient.invalidateQueries(['masterProperties']);
+                            }}
+                            size="sm"
+                            className="rounded-full shadow-lg font-bold text-xs animate-in slide-in-from-top fade-in duration-300"
+                            style={{ background: BRAND.gold, color: BRAND.voidBlack }}
+                        >
+                            {propsFetching ? (
+                                <><Loader2 className="w-3 h-3 mr-2 animate-spin" /> LOADING AREA...</>
+                            ) : (
+                                <><Search className="w-3 h-3 mr-2" /> SEARCH THIS AREA</>
+                            )}
+                        </Button>
+                    </div>
+                )}
 
                 {/* LOW ZOOM: STATE CLUSTERS (Bubbles) */}
                 {!activeRoute && stateClusters.map(cluster => (
