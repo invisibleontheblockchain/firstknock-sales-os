@@ -208,11 +208,23 @@ export default function Home() {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['interactionLogs'] }),
     });
 
-    // Process ALL properties
+    // Process ALL properties with territory filter
     const effectiveProperties = useMemo(() => {
         const propsArray = Array.isArray(properties) ? properties : (properties?.items || []);
+        const territoryZips = user?.territory_zip_codes || [];
+        
         return propsArray
-            .filter(p => p?.lat && p?.lng && !isNaN(p.lat) && !isNaN(p.lng))
+            .filter(p => {
+                if (!p?.lat || !p?.lng || isNaN(p.lat) || isNaN(p.lng)) return false;
+                
+                // Apply territory filter if user has zip codes configured
+                if (territoryZips.length > 0) {
+                    const propZip = String(p.zip_code || '').trim().slice(0, 5);
+                    if (!territoryZips.includes(propZip)) return false;
+                }
+                
+                return true;
+            })
             .map(p => {
                 const propLogs = logs.filter(l => l.address_hash === p.address_hash);
                 return {
@@ -222,7 +234,7 @@ export default function Home() {
                     effective_status: determineEffectiveStatus(p, propLogs)
                 };
             });
-    }, [properties, logs]);
+    }, [properties, logs, user?.territory_zip_codes]);
 
     // Filter out properties that are already in saved routes for generation
     const availableProperties = useMemo(() => {
