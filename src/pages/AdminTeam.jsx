@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Users, Plus, UserPlus, Map, CheckCircle2, AlertCircle, X, Key } from 'lucide-react';
+import { Users, Plus, UserPlus, Map, CheckCircle2, AlertCircle, X, Key, Sparkles } from 'lucide-react';
 import { toast } from "sonner";
 
 const BRAND = {
@@ -159,12 +159,21 @@ export default function AdminTeam() {
                                     <div className="space-y-3 p-4 bg-black/40 rounded-lg border border-gray-800">
                                         <h4 className="text-xs font-bold text-gray-500 uppercase">Create New Code</h4>
                                         <div className="grid grid-cols-2 gap-2">
-                                            <Input 
-                                                placeholder="Code (e.g. 1234)" 
-                                                value={newCode.code}
-                                                onChange={(e) => setNewCode({...newCode, code: e.target.value})}
-                                                className="h-10 bg-black border-gray-700"
-                                            />
+                                            <div className="relative">
+                                                <Input 
+                                                    placeholder="Code" 
+                                                    value={newCode.code}
+                                                    onChange={(e) => setNewCode({...newCode, code: e.target.value})}
+                                                    className="h-10 bg-black border-gray-700 pr-8"
+                                                />
+                                                <button 
+                                                    onClick={() => setNewCode({...newCode, code: Math.floor(1000 + Math.random() * 9000).toString()})}
+                                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-yellow-500 hover:text-yellow-400"
+                                                    title="Generate Random PIN"
+                                                >
+                                                    <Sparkles className="w-4 h-4" />
+                                                </button>
+                                            </div>
                                             <Input 
                                                 placeholder="Label (e.g. Managers)" 
                                                 value={newCode.label}
@@ -175,7 +184,15 @@ export default function AdminTeam() {
                                         <div className="flex gap-2">
                                             <Select 
                                                 value={newCode.role} 
-                                                onValueChange={(v) => setNewCode({...newCode, role: v})}
+                                                onValueChange={(v) => {
+                                                    // Auto-generate code if empty when role is selected
+                                                    const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
+                                                    setNewCode({
+                                                        ...newCode, 
+                                                        role: v, 
+                                                        code: newCode.code || randomCode
+                                                    });
+                                                }}
                                             >
                                                 <SelectTrigger className="h-10 bg-black border-gray-700 flex-1">
                                                     <SelectValue />
