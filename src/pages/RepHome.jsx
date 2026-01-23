@@ -3,9 +3,11 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
     Loader2, MapPin, Navigation, CheckCircle2, Circle, Clock, 
-    ChevronRight, Phone, AlertTriangle, User, Home, Calendar, ArrowRight
+    ChevronRight, Phone, AlertTriangle, User, Home, Calendar, ArrowRight,
+    Search, Filter, X
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -32,6 +34,8 @@ const STATUS_CONFIG = {
 export default function RepHome() {
     const queryClient = useQueryClient();
     const [selectedProperty, setSelectedProperty] = useState(null);
+    const [filterStatus, setFilterStatus] = useState('todo'); // 'todo', 'done', 'all'
+    const [searchQuery, setSearchQuery] = useState('');
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me().catch(() => null) });
 
     // 1. Fetch Assigned Routes
@@ -135,6 +139,24 @@ export default function RepHome() {
         };
     }, [routeProperties]);
 
+    const filteredProperties = useMemo(() => {
+        return routeProperties.filter(p => {
+            // Search filter
+            if (searchQuery) {
+                const searchLower = searchQuery.toLowerCase();
+                const address = `${p.house_number} ${p.street_name}`.toLowerCase();
+                if (!address.includes(searchLower)) return false;
+            }
+
+            // Status filter
+            const isDone = p.effective_status !== 'ELIGIBLE' && p.effective_status !== 'CALLBACK';
+            
+            if (filterStatus === 'todo') return !isDone;
+            if (filterStatus === 'done') return isDone;
+            return true;
+        });
+    }, [routeProperties, filterStatus, searchQuery]);
+
     const knockWindow = getKnockWindowLabel(new Date());
 
     if (routesLoading || propsLoading || logsLoading) {
@@ -208,28 +230,85 @@ export default function RepHome() {
                     </div>
                     <Progress value={stats.percent} className="h-2 bg-gray-800" indicatorClassName="bg-yellow-500" />
                 </div>
+
+                {/* Filters & Search */}
+                <div className="mt-3 space-y-3">
+                    {/* Search */}
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                        <Input 
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Search address..."
+                            className="h-10 pl-9 bg-gray-900 border-gray-800 text-white placeholder:text-gray-600 focus:border-yellow-500"
+                        />
+                        {searchQuery && (
+                            <button 
+                                onClick={() => setSearchQuery('')}
+                                className="absolute right-3 top-1/2 -translate-y-1/2"
+                            >
+                                <X className="w-4 h-4 text-gray-500" />
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Filter Tabs */}
+                    <div className="flex p-1 bg-gray-900 rounded-lg border border-gray-800">
+                        <button
+                            onClick={() => setFilterStatus('todo')}
+                            className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${
+                                filterStatus === 'todo' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-gray-300'
+                            }`}
+                        >
+                            TO DO ({routeProperties.length - stats.done})
+                        </button>
+                        <button
+                            onClick={() => setFilterStatus('done')}
+                            className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${
+                                filterStatus === 'done' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-gray-300'
+                            }`}
+                        >
+                            DONE ({stats.done})
+                        </button>
+                        <button
+                            onClick={() => setFilterStatus('all')}
+                            className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${
+                                filterStatus === 'all' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-gray-300'
+                            }`}
+                        >
+                            ALL
+                        </button>
+                    </div>
+                </div>
             </div>
 
             {/* 2. Main Content - Optimized List */}
-            <div className="p-4 space-y-4">
+            <div className="px-4 pb-20 space-y-4">
                 <div className="flex items-center justify-between text-xs font-bold text-gray-500 tracking-wider">
-                    <span>UP NEXT ({routeProperties.length - stats.done})</span>
+                    <span>
+                        {searchQuery ? 'SEARCH RESULTS' : filterStatus === 'done' ? 'COMPLETED' : 'UP NEXT'} 
+                        {' '}({filteredProperties.length})
+                    </span>
                     <span>OPTIMIZED BY TIME</span>
                 </div>
 
-                {routeProperties.length === 0 ? (
-                    <div className="text-center py-10 text-gray-500">
-                        <p>No properties in this route.</p>
+                {filteredProperties.length === 0 ? (
+                    <div className="text-center py-20 border border-dashed border-gray-800 rounded-xl bg-gray-900/20">
+                        <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                            {filterStatus === 'done' ? <CheckCircle2 className="w-8 h-8 text-green-500" /> : <Home className="w-8 h-8 text-gray-600" />}
+                        </div>
+                        <p className="text-gray-500 font-medium">
+                            {searchQuery ? 'No matching properties found' : 
+                             filterStatus === 'done' ? 'No completed properties yet' : 
+                             'All caught up! Great work.'}
+                        </p>
                     </div>
                 ) : (
                     <div className="space-y-3">
-                        {routeProperties.map((prop, idx) => {
+                        {filteredProperties.map((prop, idx) => {
                             const isDone = prop.effective_status !== 'ELIGIBLE' && prop.effective_status !== 'CALLBACK';
                             const statusConfig = STATUS_CONFIG[prop.effective_status] || STATUS_CONFIG.ELIGIBLE;
                             const StatusIcon = statusConfig.icon;
-
-                            // Opacity for done items
-                            if (isDone) return null; // Hide done items for focus mode? Or show at bottom? Let's hide for focus.
 
                             return (
                                 <Card 
@@ -274,14 +353,6 @@ export default function RepHome() {
                             );
                         })}
                         
-                        {/* Show completed items collapsed or at bottom? */}
-                        {stats.done > 0 && (
-                            <div className="text-center py-4">
-                                <p className="text-xs text-gray-600">
-                                    {stats.done} properties completed
-                                </p>
-                            </div>
-                        )}
                     </div>
                 )}
             </div>
