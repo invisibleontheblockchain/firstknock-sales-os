@@ -26,7 +26,7 @@ const BRAND = {
 const STATUS_CONFIG = {
     ELIGIBLE: { color: 'bg-gray-500', label: 'Not Visited', icon: Circle },
     SOLD: { color: 'bg-green-500', label: 'Sold', icon: CheckCircle2 },
-    HARD_NO: { color: 'bg-red-500', label: 'Hard No', icon: AlertTriangle },
+    HARD_NO: { color: 'bg-purple-500', label: 'Hard No', icon: AlertTriangle },
     CALLBACK: { color: 'bg-yellow-500', label: 'Callback', icon: Clock },
     NO_ANSWER: { color: 'bg-orange-500', label: 'No Answer', icon: Home },
 };
@@ -393,7 +393,7 @@ export default function RepHome() {
                                     SOLD / LEAD
                                 </Button>
                                 <Button 
-                                    className="h-12 bg-red-600 hover:bg-red-700 font-bold text-xs sm:text-sm"
+                                    className="h-12 bg-purple-600 hover:bg-purple-700 font-bold text-xs sm:text-sm"
                                     onClick={() => handleLog('HARD_NO')}
                                 >
                                     <AlertTriangle className="w-4 h-4 mr-2" />

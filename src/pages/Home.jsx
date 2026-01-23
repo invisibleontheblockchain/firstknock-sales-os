@@ -31,7 +31,7 @@ const BRAND = {
 const STATUS_COLORS = {
     ELIGIBLE: '#6b7280',      // Gray - not visited
     SOLD: '#22c55e',          // Green - sold
-    HARD_NO: '#ef4444',       // Red - couldn't sell
+    HARD_NO: '#8B5CF6',       // Purple - couldn't sell
     CALLBACK: '#eab308',      // Yellow - callback
     NO_ANSWER: '#6b7280',     // Gray - not visited yet
     QUALIFIED: '#22c55e',     // Green - qualified/sold
@@ -624,7 +624,7 @@ export default function Home() {
                             { id: 'all', label: 'ALL', color: BRAND.offWhite },
                             { id: 'eligible', label: 'NOT VISITED', color: '#6b7280' },
                             { id: 'sold', label: 'SOLD', color: '#22c55e' },
-                            { id: 'rejected', label: 'UNDECIDED', color: '#ef4444' },
+                            { id: 'rejected', label: 'UNDECIDED', color: '#8B5CF6' },
                         ].map(f => (
                             <button
                                 key={f.id}

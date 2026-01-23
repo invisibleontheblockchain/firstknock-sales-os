@@ -18,13 +18,13 @@ const STATUS_OPTIONS = [
     { id: 'SOLD', label: 'SOLD', icon: Check, color: '#22c55e', textColor: '#fff' },
     { id: 'NO_ANSWER', label: 'NO ANSWER', icon: Home, color: '#3b82f6', textColor: '#fff' },
     { id: 'CALLBACK', label: 'CALLBACK', icon: Phone, color: '#FFFFFF', textColor: '#000' },
-    { id: 'HARD_NO', label: 'NOT INTERESTED', icon: Ban, color: '#ef4444', textColor: '#fff' },
+    { id: 'HARD_NO', label: 'NOT INTERESTED', icon: Ban, color: '#8B5CF6', textColor: '#fff' },
 ];
 
 const STATUS_COLORS = {
     ELIGIBLE: '#22c55e',
     SOLD: '#22c55e', // Green for Sold
-    HARD_NO: '#ef4444',
+    HARD_NO: '#8B5CF6',
     CALLBACK: '#eab308',
     NO_ANSWER: '#6b7280',
     QUALIFIED: '#3b82f6'
