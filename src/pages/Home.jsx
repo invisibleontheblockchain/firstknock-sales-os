@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 import { Slider } from "@/components/ui/slider";
-import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, ArrowUpDown, Filter, MapPin, User, Shield, Layers, Flame, Search } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, Filter, MapPin, User, Shield, Layers, Flame } from 'lucide-react';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
 import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../components/logic/heatmapLogic';
@@ -102,43 +102,20 @@ export default function Home() {
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
     // Fetch Properties - support both user-specific and fallback for mobile auth
-    const [mapBounds, setMapBounds] = useState(null);
-    const [isSearchingArea, setIsSearchingArea] = useState(false);
-
-    // Geospatial Query: Fetch properties ONLY within current map view
-    const { data: userProperties = [], isLoading: propsLoading, isFetching: propsFetching } = useQuery({
-        queryKey: ['masterProperties', user?.email, mapBounds],
+    const { data: userProperties = [], isLoading: propsLoading } = useQuery({
+        queryKey: ['masterProperties', user?.email],
         queryFn: async () => {
             if (!user?.email) return [];
             
-            // If we have bounds, use them for a geospatial query
-            if (mapBounds && isSearchingArea) {
-                try {
-                    console.log('Fetching properties within bounds:', mapBounds);
-                    const filter = {
-                        created_by: user.email,
-                        lat: { $gte: mapBounds.getSouth(), $lte: mapBounds.getNorth() },
-                        lng: { $gte: mapBounds.getWest(), $lte: mapBounds.getEast() }
-                    };
-                    const result = await base44.entities.MasterProperty.filter(filter, '-created_date', 500);
-                    return Array.isArray(result) ? result : (result?.items || []);
-                } catch (e) {
-                    console.log('[Home] Error fetching geospatial properties:', e);
-                    return [];
-                }
-            }
-            
-            // Fallback: Initial load (latest 100)
             try {
-                const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 100);
+                const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 1000);
                 return Array.isArray(result) ? result : (result?.items || []);
             } catch (e) {
                 console.log('[Home] Error fetching properties:', e);
                 return [];
             }
         },
-        enabled: !!user?.email,
-        keepPreviousData: true
+        enabled: !!user?.email
     });
 
 
@@ -600,27 +577,6 @@ export default function Home() {
                         </Button>
                     </div>
                 </div>
-
-                {/* Search This Area Button */}
-                {mapBounds && !activeRoute && (
-                    <div className="pointer-events-auto flex justify-center">
-                        <Button 
-                            onClick={() => {
-                                setIsSearchingArea(true);
-                                queryClient.invalidateQueries(['masterProperties']);
-                            }}
-                            size="sm"
-                            className="rounded-full shadow-lg font-bold text-xs"
-                            style={{ background: BRAND.gold, color: BRAND.voidBlack }}
-                        >
-                            {propsFetching ? (
-                                <><Loader2 className="w-3 h-3 mr-2 animate-spin" /> LOADING AREA...</>
-                            ) : (
-                                <><Search className="w-3 h-3 mr-2" /> SEARCH THIS AREA</>
-                            )}
-                        </Button>
-                    </div>
-                )}
 
                 {/* Quick Filter Bar */}
                 {!activeRoute && (
