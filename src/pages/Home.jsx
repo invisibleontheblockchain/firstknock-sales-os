@@ -41,7 +41,11 @@ function LocationMarker() {
     const [position, setPosition] = useState(null);
     const map = useMap();
     useEffect(() => {
-        map.locate().on("locationfound", (e) => setPosition(e.latlng));
+        const handleLocationFound = (e) => setPosition(e.latlng);
+        map.locate().on("locationfound", handleLocationFound);
+        return () => {
+            map.off("locationfound", handleLocationFound);
+        };
     }, [map]);
     return position ? (
         <Circle center={position} radius={15} pathOptions={{ fillColor: BRAND.gold, fillOpacity: 0.3, color: BRAND.gold, weight: 2 }} />
@@ -450,19 +454,17 @@ export default function Home() {
 
                 {/* LOW ZOOM: STATE CLUSTERS (Bubbles) */}
                 {!activeRoute && stateClusters.map(cluster => (
-                    <CircleMarker
-                        key={`state-${cluster.id}`}
-                        center={[cluster.lat, cluster.lng]}
-                        radius={30 + Math.min(cluster.count / 100, 30)} // Dynamic size
-                        pathOptions={{
-                            fillColor: getHeatColor(cluster.avgScore),
-                            fillOpacity: 0.8,
-                            color: BRAND.offWhite,
-                            weight: 2
-                        }}
-                    >
-                         {/* Simple tooltip or popup could go here */}
-                    </CircleMarker>
+                <CircleMarker
+                    key={`state-${cluster.id}`}
+                    center={[cluster.lat, cluster.lng]}
+                    radius={30 + Math.min(cluster.count / 100, 30)} // Dynamic size
+                    pathOptions={{
+                        fillColor: getHeatColor(cluster.avgScore),
+                        fillOpacity: 0.8,
+                        color: BRAND.offWhite,
+                        weight: 2
+                    }}
+                />
                 ))}
 
                 {/* Display Saved Routes (Clusters) - ALWAYS SHOW IF EXISTS & NO ACTIVE ROUTE & Zoom is high enough */}
