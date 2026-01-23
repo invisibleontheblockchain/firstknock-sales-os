@@ -44,8 +44,11 @@ export default function RepHome() {
         queryFn: async () => {
             if (!user?.email) return null;
             try {
-                const res = await base44.entities.TeamMember.filter({ email: user.email }, '-created_date', 1);
-                return Array.isArray(res) ? res[0] : (res?.items?.[0] || null);
+                // Fetch list and find client-side for robust case-insensitive matching
+                const res = await base44.entities.TeamMember.list('-created_date', 100);
+                const members = Array.isArray(res) ? res : (res?.items || []);
+                // Robust match: trim and lowercase
+                return members.find(m => m.email?.trim().toLowerCase() === user.email.trim().toLowerCase()) || null;
             } catch (e) {
                 console.error("Error fetching team member profile", e);
                 return null;

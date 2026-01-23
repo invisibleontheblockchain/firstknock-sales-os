@@ -109,7 +109,11 @@ export default function AdminTeam() {
             toast.error("Name and Email are required");
             return;
         }
-        createRepMutation.mutate(newRep);
+        // Normalize email to ensure better matching
+        createRepMutation.mutate({
+            ...newRep,
+            email: newRep.email.trim().toLowerCase()
+        });
     };
 
     const handleAssign = (routeId, memberId) => {
