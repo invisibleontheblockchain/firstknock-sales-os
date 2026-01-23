@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Upload, Download, Database } from 'lucide-react';
 import CsvUploader from '../components/dashboard/CsvUploader';
 import DataMarketplace from '../components/dashboard/DataMarketplace';
+import TerritoryFilter from '../components/setup/TerritoryFilter';
 import { createPageUrl } from '@/utils';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
@@ -134,6 +135,9 @@ export default function Setup() {
                                     <p className="text-xs text-gray-500 mt-1">Download backup</p>
                                 </button>
                             </div>
+
+                            {/* Territory Filter */}
+                            <TerritoryFilter user={user} properties={properties} />
                         </>
                     ) : (
                         <DataMarketplace />
