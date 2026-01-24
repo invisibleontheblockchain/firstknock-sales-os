@@ -219,9 +219,9 @@ export default function AdminTeam() {
                     <div className="flex gap-3 flex-wrap">
                         <Dialog open={isCodeManagerOpen} onOpenChange={setIsCodeManagerOpen}>
                             <DialogTrigger asChild>
-                                <Button variant="outline" className="h-10 border-gray-700 text-white hover:bg-gray-800">
+                                <Button className="h-10 bg-[#1F1F1F] border border-gray-700 text-white hover:bg-[#333] hover:text-yellow-500 hover:border-yellow-500/50 transition-all">
                                     <Key className="w-4 h-4 mr-2" />
-                                    Codes
+                                    Access Codes
                                 </Button>
                             </DialogTrigger>
                             <DialogContent className="bg-[#1F1F1F] border-gray-800 text-white">
@@ -317,7 +317,7 @@ export default function AdminTeam() {
 
                         <Dialog open={isRouteManagerOpen} onOpenChange={setIsRouteManagerOpen}>
                             <DialogTrigger asChild>
-                                <Button variant="outline" className="h-10 border-gray-700 text-white hover:bg-gray-800">
+                                <Button className="h-10 bg-[#1F1F1F] border border-gray-700 text-white hover:bg-[#333] hover:text-blue-400 hover:border-blue-500/50 transition-all">
                                     <Map className="w-4 h-4 mr-2" />
                                     Route Registry
                                 </Button>
