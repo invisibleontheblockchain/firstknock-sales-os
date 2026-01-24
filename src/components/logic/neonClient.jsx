@@ -115,14 +115,14 @@ export class DarkRoomClient {
             const sw = bounds._southWest || bounds.getSouthWest?.() || { lat: bounds.south, lng: bounds.west };
             const ne = bounds._northEast || bounds.getNorthEast?.() || { lat: bounds.north, lng: bounds.east };
 
-            // For low zoom, return clusters instead of pins
-            if (zoom < 14) {
+            // For very low zoom only, use clusters to prevent browser crash
+            if (zoom < 10) {
                 return this.fetchClusters(bounds, zoom);
             }
 
-            // High zoom: individual properties
-            const limit = zoom >= 17 ? 1000 : zoom >= 15 ? 500 : 250;
-            const minScore = zoom >= 16 ? 0 : 30;
+            // High zoom: individual properties - no limit to show all 94k
+            const limit = 10000; // Allow full viewport load
+            const minScore = 0; // Show all scores
 
             const result = await sql`
                 SELECT 
