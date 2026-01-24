@@ -161,6 +161,10 @@ export default function Home() {
             console.log('[Home] Dark Room connection test:', result);
             if (result.connected) {
                 setDarkRoomCount(result.totalProperties);
+                // Run data quality report
+                darkRoom.getDataQualityReport().then(report => {
+                    console.log('[Home] 📊 DATA QUALITY REPORT:', report);
+                });
             } else {
                 console.error('[Home] Dark Room connection failed:', result.message);
             }
