@@ -100,6 +100,63 @@ export class DarkRoomClient {
         }
     }
 
+    /**
+     * Get geographic distribution - states, cities, zip codes
+     */
+    async getGeographicDistribution() {
+        try {
+            const sql = await this.connect();
+            
+            // Get state breakdown
+            const stateResult = await sql`
+                SELECT state, COUNT(*) as count 
+                FROM properties 
+                WHERE state IS NOT NULL 
+                GROUP BY state 
+                ORDER BY count DESC 
+                LIMIT 20
+            `;
+            
+            // Get unique zip code count
+            const zipResult = await sql`
+                SELECT 
+                    COUNT(DISTINCT zip_code) as unique_zips,
+                    COUNT(zip_code) as has_zip
+                FROM properties
+            `;
+            
+            // Get top cities
+            const cityResult = await sql`
+                SELECT city, state, COUNT(*) as count 
+                FROM properties 
+                WHERE city IS NOT NULL 
+                GROUP BY city, state 
+                ORDER BY count DESC 
+                LIMIT 15
+            `;
+            
+            // Get date range of sold_date
+            const dateResult = await sql`
+                SELECT 
+                    MIN(sold_date) as earliest_sale,
+                    MAX(sold_date) as latest_sale,
+                    COUNT(sold_date) as has_sold_date
+                FROM properties
+            `;
+
+            return {
+                byState: stateResult,
+                uniqueZipCodes: parseInt(zipResult[0]?.unique_zips) || 0,
+                propertiesWithZip: parseInt(zipResult[0]?.has_zip) || 0,
+                topCities: cityResult,
+                dateRange: dateResult[0]
+            };
+        } catch (error) {
+            console.error('[DarkRoom] Geographic distribution check failed:', error);
+            return null;
+        }
+    }
+
     // Generate cache key from viewport
     _viewportKey(bounds, zoom) {
         const sw = bounds._southWest || bounds.getSouthWest?.() || bounds;
