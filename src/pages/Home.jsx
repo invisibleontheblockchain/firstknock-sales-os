@@ -1253,13 +1253,37 @@ export default function Home() {
                                 <div>
                                     <h4 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center gap-2">
                                         <Shield className="w-3 h-3" /> Property Intel
+                                        {selectedProperty.is_dark_room && (
+                                            <Badge className="ml-2 bg-purple-600 text-white text-[8px]">DARK ROOM</Badge>
+                                        )}
                                     </h4>
+
+                                    {/* Smart Score (Dark Room) */}
+                                    {selectedProperty.is_dark_room && selectedProperty.smart_score > 0 && (
+                                        <div className="mb-3 p-3 rounded-lg border" style={{ 
+                                            background: `${DarkRoomClient.getScoreColor(selectedProperty.smart_score)}15`,
+                                            borderColor: DarkRoomClient.getScoreColor(selectedProperty.smart_score)
+                                        }}>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs font-bold text-gray-400">SMART SCORE</span>
+                                                <span className="text-2xl font-bold" style={{ color: DarkRoomClient.getScoreColor(selectedProperty.smart_score) }}>
+                                                    {selectedProperty.smart_score.toFixed(0)}
+                                                </span>
+                                            </div>
+                                            {selectedProperty.turnover_prob > 0 && (
+                                                <p className="text-[10px] text-gray-500 mt-1">
+                                                    Turnover Probability: {(selectedProperty.turnover_prob * 100).toFixed(1)}%
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="p-3 bg-black/40 rounded-lg border border-gray-800">
                                             <p className="text-[10px] text-gray-500 uppercase mb-1 flex items-center gap-1">
                                                 <DollarSign className="w-3 h-3" /> Est. Value
                                             </p>
-                                            <p className="font-bold text-white">${(selectedProperty.price / 1000).toFixed(0)}k</p>
+                                            <p className="font-bold text-white">{selectedProperty.price ? `$${(selectedProperty.price / 1000).toFixed(0)}k` : '-'}</p>
                                         </div>
                                         <div className="p-3 bg-black/40 rounded-lg border border-gray-800">
                                             <p className="text-[10px] text-gray-500 uppercase mb-1 flex items-center gap-1">
@@ -1281,6 +1305,18 @@ export default function Home() {
                                                 {selectedProperty.sold_date ? format(new Date(selectedProperty.sold_date), 'yyyy') : '-'}
                                             </p>
                                         </div>
+                                        {selectedProperty.beds && (
+                                            <div className="p-3 bg-black/40 rounded-lg border border-gray-800">
+                                                <p className="text-[10px] text-gray-500 uppercase mb-1">Beds/Baths</p>
+                                                <p className="font-bold text-white">{selectedProperty.beds}bd / {selectedProperty.baths || '-'}ba</p>
+                                            </div>
+                                        )}
+                                        {selectedProperty.equity && (
+                                            <div className="p-3 bg-black/40 rounded-lg border border-gray-800">
+                                                <p className="text-[10px] text-gray-500 uppercase mb-1">Est. Equity</p>
+                                                <p className="font-bold text-green-500">${(selectedProperty.equity / 1000).toFixed(0)}k</p>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
