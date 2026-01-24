@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Users, Plus, UserPlus, Map, CheckCircle2, AlertCircle, X, Key, Sparkles } from 'lucide-react';
+import { Users, Plus, UserPlus, Map, CheckCircle2, AlertCircle, X, Key, Sparkles, TrendingUp, DollarSign, Home } from 'lucide-react';
 import { toast } from "sonner";
+import TeamMemberCard from "@/components/team/TeamMemberCard";
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -46,6 +47,16 @@ export default function AdminTeam() {
         queryKey: ['inviteCodes'],
         queryFn: async () => {
             const res = await base44.entities.InviteCode.list('-created_date', 50);
+            return Array.isArray(res) ? res : (res?.items || []);
+        }
+    });
+
+    // Fetch Logs for Metrics
+    const { data: logs = [] } = useQuery({
+        queryKey: ['teamLogs'],
+        queryFn: async () => {
+            // Fetch recent logs to aggregate metrics
+            const res = await base44.entities.InteractionLog.list('-created_date', 5000);
             return Array.isArray(res) ? res : (res?.items || []);
         }
     });
@@ -103,6 +114,46 @@ export default function AdminTeam() {
         return grouped;
     }, [routes, teamMembers]);
 
+    // Aggregate Metrics by Rep Email
+    const metricsByRep = useMemo(() => {
+        const metrics = {};
+        
+        // Initialize for all members
+        teamMembers.forEach(m => {
+            metrics[m.email] = {
+                doorsKnocked: 0,
+                talkedTo: 0,
+                sales: 0
+            };
+        });
+
+        logs.forEach(log => {
+            const email = log.created_by;
+            if (!metrics[email]) return; // Skip if not current team member (or old rep)
+
+            metrics[email].doorsKnocked++;
+            
+            if (log.parsed_status !== 'NO_ANSWER' && log.parsed_status !== 'ELIGIBLE') {
+                metrics[email].talkedTo++;
+            }
+
+            if (log.parsed_status === 'SOLD' || log.parsed_status === 'QUALIFIED') {
+                metrics[email].sales++;
+            }
+        });
+
+        return metrics;
+    }, [logs, teamMembers]);
+
+    // Total Team Metrics
+    const teamTotals = useMemo(() => {
+        return Object.values(metricsByRep).reduce((acc, curr) => ({
+            doorsKnocked: acc.doorsKnocked + curr.doorsKnocked,
+            talkedTo: acc.talkedTo + curr.talkedTo,
+            sales: acc.sales + curr.sales
+        }), { doorsKnocked: 0, talkedTo: 0, sales: 0 });
+    }, [metricsByRep]);
+
     // --- Handlers ---
     const handleAddRep = () => {
         if (!newRep.name || !newRep.email) {
@@ -134,16 +185,38 @@ export default function AdminTeam() {
             <div className="max-w-6xl mx-auto space-y-8">
                 
                 {/* Header */}
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
                     <div>
-                        <h1 className="text-3xl font-bold flex items-center gap-3">
-                            <Users className="w-8 h-8 text-yellow-500" />
-                            Team Management
+                        <h1 className="text-4xl font-extrabold flex items-center gap-3 tracking-tight">
+                            <Users className="w-10 h-10 text-yellow-500" />
+                            Team Command
                         </h1>
-                        <p className="text-gray-400 mt-1">Manage your reps and assign territories.</p>
+                        <p className="text-gray-400 mt-2 font-medium">Manage your elite sales force and territories.</p>
+                        
+                        {/* Team Stats Summary */}
+                        <div className="flex gap-6 mt-6">
+                            <div>
+                                <p className="text-2xl font-bold text-white">{teamTotals.doorsKnocked.toLocaleString()}</p>
+                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                                    <Home className="w-3 h-3" /> Total Doors
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-2xl font-bold text-white">{teamTotals.sales.toLocaleString()}</p>
+                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                                    <DollarSign className="w-3 h-3 text-green-500" /> Total Sales
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-2xl font-bold text-white">{routes.length}</p>
+                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                                    <Map className="w-3 h-3 text-blue-500" /> Active Routes
+                                </p>
+                            </div>
+                        </div>
                     </div>
                     
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 flex-wrap">
                         <Dialog open={isCodeManagerOpen} onOpenChange={setIsCodeManagerOpen}>
                             <DialogTrigger asChild>
                                 <Button variant="outline" className="h-10 border-gray-700 text-white hover:bg-gray-800">
@@ -399,69 +472,21 @@ export default function AdminTeam() {
                     </div>
                 )}
 
-                {/* Team Roster & Assignments */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Team Roster & Assignments Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                     {teamMembers.map(member => {
                         const memberRoutes = routesByRep[member.id] || [];
-                        const completedRoutes = memberRoutes.filter(r => r.status === 'COMPLETED').length;
+                        const memberMetrics = metricsByRep[member.email] || { doorsKnocked: 0, talkedTo: 0, sales: 0 };
                         
                         return (
-                            <div key={member.id} className="bg-[#1F1F1F] border border-gray-800 rounded-xl overflow-hidden">
-                                <div className="p-5 border-b border-gray-800 flex justify-between items-start">
-                                    <div className="flex gap-4">
-                                        <div className="w-12 h-12 rounded-full bg-yellow-500 flex items-center justify-center text-black font-bold text-xl">
-                                            {member.name?.[0] || '?'}
-                                        </div>
-                                        <div>
-                                            <h3 className="font-bold text-lg">{member.name}</h3>
-                                            <p className="text-sm text-gray-400">{member.email}</p>
-                                            <div className="flex gap-2 mt-2">
-                                                <Badge variant="outline" className="border-gray-600 text-xs">
-                                                    {member.role?.toUpperCase()}
-                                                </Badge>
-                                                <Badge className="bg-green-900 text-green-300 hover:bg-green-900 text-xs">
-                                                    ACTIVE
-                                                </Badge>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-2xl font-bold text-white">{memberRoutes.length}</p>
-                                        <p className="text-[10px] text-gray-500 font-bold tracking-wider">ROUTES</p>
-                                    </div>
-                                </div>
-
-                                {/* Assigned Routes List */}
-                                <div className="p-4 bg-black/20 min-h-[100px]">
-                                    <h4 className="text-xs font-bold text-gray-500 mb-3 uppercase tracking-wider">Assigned Territories</h4>
-                                    {memberRoutes.length === 0 ? (
-                                        <p className="text-sm text-gray-600 italic">No active routes assigned</p>
-                                    ) : (
-                                        <div className="space-y-2">
-                                            {memberRoutes.map(route => (
-                                                <div key={route.id} className="flex items-center justify-between bg-[#151515] p-2 rounded border border-gray-800">
-                                                    <div className="flex items-center gap-3">
-                                                        <Map className="w-4 h-4 text-gray-500" />
-                                                        <div>
-                                                            <p className="text-sm font-medium">{route.name}</p>
-                                                            <p className="text-[10px] text-gray-500">
-                                                                {route.metrics?.house_count} homes
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <Badge className={
-                                                        route.status === 'COMPLETED' ? 'bg-green-500 text-black' : 
-                                                        route.status === 'IN_PROGRESS' ? 'bg-blue-500 text-white' : 
-                                                        'bg-gray-700 text-gray-300'
-                                                    }>
-                                                        {route.status}
-                                                    </Badge>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                            <TeamMemberCard 
+                                key={member.id}
+                                member={member} 
+                                routes={memberRoutes} 
+                                metrics={memberMetrics}
+                                allRoutes={routesByRep.unassigned}
+                                onAssignRoute={handleAssign}
+                            />
                         );
                     })}
                 </div>
