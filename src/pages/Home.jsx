@@ -165,6 +165,10 @@ export default function Home() {
                 darkRoom.getDataQualityReport().then(report => {
                     console.log('[Home] 📊 DATA QUALITY REPORT:', report);
                 });
+                // Run geographic distribution report
+                darkRoom.getGeographicDistribution().then(report => {
+                    console.log('[Home] 🗺️ GEOGRAPHIC DISTRIBUTION:', report);
+                });
             } else {
                 console.error('[Home] Dark Room connection failed:', result.message);
             }
