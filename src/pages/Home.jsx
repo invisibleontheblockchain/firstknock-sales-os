@@ -594,18 +594,22 @@ export default function Home() {
                             </div>
 
                             {activeRoute && (
-                                <div className="rounded-lg px-3 py-2 flex items-center gap-2 shrink-0" style={{ background: BRAND.gold }}>
+                                <div className="rounded-xl pl-4 pr-2 py-2 flex items-center gap-3 shrink-0 shadow-lg border border-yellow-600/50" style={{ background: BRAND.gold }}>
                                     <Navigation className="w-4 h-4" style={{ color: BRAND.voidBlack }} />
                                     <div>
                                         <span className="text-sm font-bold block leading-none" style={{ color: BRAND.voidBlack }}>{activeRoute.name}</span>
                                         {activeRoute.assigned_to_name && (
-                                            <span className="text-[10px] font-bold opacity-75 block leading-none mt-0.5" style={{ color: BRAND.voidBlack }}>
+                                            <span className="text-[10px] font-bold opacity-80 block leading-none mt-1" style={{ color: BRAND.voidBlack }}>
                                                 {activeRoute.assigned_to_name}
                                             </span>
                                         )}
                                     </div>
-                                    <button onClick={() => setActiveRoute(null)} className="ml-1 p-1 hover:bg-black/10 rounded-full">
-                                        <X className="w-3 h-3" style={{ color: BRAND.voidBlack }} />
+                                    <div className="w-px h-6 bg-black/10 mx-1" />
+                                    <button 
+                                        onClick={() => setActiveRoute(null)} 
+                                        className="w-8 h-8 flex items-center justify-center hover:bg-black/10 active:bg-black/20 rounded-full transition-colors"
+                                    >
+                                        <X className="w-5 h-5" style={{ color: BRAND.voidBlack }} />
                                     </button>
                                 </div>
                             )}
