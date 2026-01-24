@@ -18,7 +18,7 @@ import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../com
 import RouteChecklist from '../components/routes/RouteChecklist';
 import NearbyHotLeads from '../components/nearby/NearbyHotLeads';
 import KnockTimeBanner from '../components/timing/KnockTimeBanner';
-import { darkRoom } from '@/components/logic/neonClient';
+import { darkRoom, DarkRoomClient } from '@/components/logic/neonClient';
 
 // Brand Colors
 const BRAND = {
@@ -105,12 +105,17 @@ export default function Home() {
     const [selectedProperty, setSelectedProperty] = useState(null);
     const [zoomLevel, setZoomLevel] = useState(15);
     const [darkRoomProperties, setDarkRoomProperties] = useState([]);
+    const [darkRoomClusters, setDarkRoomClusters] = useState([]);
+    const [darkRoomCount, setDarkRoomCount] = useState(0);
+    const [isLoadingDarkRoom, setIsLoadingDarkRoom] = useState(false);
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
-    // Dark Room Data Fetching (Debounced)
+    // Dark Room Data Fetching with Debounce & Clustering
     useEffect(() => {
         if (!mapRef.current) return;
+        
+        let debounceTimer = null;
         
         const fetchDarkRoomData = async () => {
             const map = mapRef.current;
@@ -119,29 +124,45 @@ export default function Home() {
             const bounds = map.getBounds();
             const zoom = map.getZoom();
             
-            // Only fetch if enabled/relevant (e.g., higher zooms or specific mode)
-            // For now, fetching always when user is interacting to show the "Dark Room" stream
-            if (zoom >= 10) {
-                try {
-                    const props = await darkRoom.fetchPropertiesInViewport(bounds, zoom);
-                    setDarkRoomProperties(props);
-                } catch (e) {
-                    console.error("Failed to fetch Dark Room stream:", e);
-                }
-            } else {
-                setDarkRoomProperties([]); // Clear when zoomed out too far to avoid noise
+            setIsLoadingDarkRoom(true);
+            
+            try {
+                const data = await darkRoom.fetchPropertiesInViewport(bounds, zoom);
+                
+                // Separate clusters from individual properties
+                const clusters = data.filter(d => d.isCluster);
+                const properties = data.filter(d => !d.isCluster);
+                
+                setDarkRoomClusters(clusters);
+                setDarkRoomProperties(properties);
+                
+            } catch (e) {
+                console.error("Failed to fetch Dark Room stream:", e);
+            } finally {
+                setIsLoadingDarkRoom(false);
             }
         };
 
+        // Debounced fetch to prevent hammering the DB
+        const debouncedFetch = () => {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(fetchDarkRoomData, 300);
+        };
+
         const map = mapRef.current;
-        const handleMoveEnd = () => fetchDarkRoomData();
+        map.on('moveend', debouncedFetch);
+        map.on('zoomend', debouncedFetch);
         
-        map.on('moveend', handleMoveEnd);
         // Initial fetch
         fetchDarkRoomData();
+        
+        // Get total count on mount
+        darkRoom.getTotalCount().then(count => setDarkRoomCount(count));
 
         return () => {
-            map.off('moveend', handleMoveEnd);
+            map.off('moveend', debouncedFetch);
+            map.off('zoomend', debouncedFetch);
+            if (debounceTimer) clearTimeout(debounceTimer);
         };
     }, [mapRef.current]);
 
