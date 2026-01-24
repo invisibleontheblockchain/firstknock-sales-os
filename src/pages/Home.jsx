@@ -561,9 +561,66 @@ export default function Home() {
                     />
                 ))}
 
-                {/* PIN LAYER */}
+                {/* DARK ROOM CLUSTER LAYER (Low Zoom) */}
+                <LayerGroup>
+                    {zoomLevel < 14 && darkRoomClusters.map(cluster => (
+                        <CircleMarker
+                            key={cluster.id}
+                            center={[cluster.lat, cluster.lng]}
+                            radius={Math.min(25, 8 + Math.sqrt(cluster.count) * 2)}
+                            eventHandlers={{
+                                click: () => {
+                                    // Zoom in on cluster click
+                                    if (mapRef.current) {
+                                        mapRef.current.setView([cluster.lat, cluster.lng], Math.min(zoomLevel + 3, 16));
+                                    }
+                                }
+                            }}
+                            pathOptions={{
+                                fillColor: DarkRoomClient.getScoreColor(cluster.avgScore),
+                                fillOpacity: 0.7,
+                                color: '#000',
+                                weight: 2
+                            }}
+                        >
+                            <Tooltip permanent direction="center" className="route-number-tooltip">
+                                <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '10px', textShadow: '0 0 3px #000' }}>
+                                    {cluster.count}
+                                </span>
+                            </Tooltip>
+                        </CircleMarker>
+                    ))}
+                </LayerGroup>
+
+                {/* DARK ROOM INDIVIDUAL PINS (High Zoom) */}
+                <LayerGroup>
+                    {zoomLevel >= 14 && darkRoomProperties.map(p => (
+                        <CircleMarker
+                            key={p.id}
+                            center={[p.lat, p.lng]}
+                            radius={5}
+                            eventHandlers={{
+                                click: async (e) => {
+                                    L.DomEvent.stopPropagation(e);
+                                    // Lazy load full details
+                                    const details = await darkRoom.fetchPropertyDetails(p.id);
+                                    setSelectedProperty(details || p);
+                                }
+                            }}
+                            pathOptions={{
+                                fillColor: DarkRoomClient.getScoreColor(p.smart_score),
+                                fillOpacity: 0.85,
+                                color: '#000',
+                                weight: 1
+                            }}
+                        />
+                    ))}
+                </LayerGroup>
+
+                {/* USER PROPERTIES PIN LAYER */}
                 <LayerGroup>
                     {viewMode === 'pins' && zoomLevel >= 13 && !activeRoute && routes.length === 0 && hydratedSavedRoutes.length === 0 && showAllProperties && effectiveProperties
+                        .filter(p => !p.is_dark_room) // Exclude dark room from this layer
                         .filter(p => {
                             if (quickFilter === 'all') return true;
                             if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
@@ -575,7 +632,7 @@ export default function Home() {
                             <CircleMarker
                                 key={p.address_hash}
                                 center={[p.lat, p.lng]}
-                                radius={p.is_dark_room ? 4 : 6} // Smaller dots for the massive stream
+                                radius={6}
                                 eventHandlers={{
                                     click: (e) => {
                                         L.DomEvent.stopPropagation(e);
@@ -583,13 +640,9 @@ export default function Home() {
                                     }
                                 }}
                                 pathOptions={{
-                                    fillColor: p.is_dark_room ? (
-                                        p.smart_score > 90 ? '#00ff00' : // Hot
-                                        p.smart_score > 70 ? '#ffff00' : // Warm
-                                        '#666' // Cold
-                                    ) : (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER),
-                                    fillOpacity: p.is_dark_room ? 0.8 : 0.9,
-                                    color: p.is_dark_room ? 'transparent' : '#333',
+                                    fillColor: STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER,
+                                    fillOpacity: 0.9,
+                                    color: '#333',
                                     weight: 1
                                 }}
                             />
@@ -647,13 +700,21 @@ export default function Home() {
                     <div className="pointer-events-auto flex-1 overflow-x-auto no-scrollbar pb-1">
                         <div className="flex gap-2 whitespace-nowrap">
                             <div className="rounded-lg px-3 py-2 border shrink-0" style={{ background: `${BRAND.voidBlack}ee`, borderColor: BRAND.charcoal }}>
-                                <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: BRAND.gold, boxShadow: `0 0 8px ${BRAND.gold}` }} />
-                                    <span className="text-sm font-bold tracking-wide" style={{ color: BRAND.offWhite }}>
-                                        {effectiveProperties.length.toLocaleString()}
-                                    </span>
-                                </div>
-                            </div>
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: BRAND.gold, boxShadow: `0 0 8px ${BRAND.gold}` }} />
+                                            <span className="text-sm font-bold tracking-wide" style={{ color: BRAND.offWhite }}>
+                                                {effectiveProperties.length.toLocaleString()}
+                                            </span>
+                                            {darkRoomCount > 0 && (
+                                                <span className="text-[10px] text-gray-500">
+                                                    + {(darkRoomCount / 1000).toFixed(0)}k Dark Room
+                                                </span>
+                                            )}
+                                            {isLoadingDarkRoom && (
+                                                <Loader2 className="w-3 h-3 animate-spin text-yellow-500" />
+                                            )}
+                                        </div>
+                                    </div>
                             
                             <div className="shrink-0">
                                 <KnockTimeBanner 
