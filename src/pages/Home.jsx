@@ -18,7 +18,7 @@ import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../com
 import RouteChecklist from '../components/routes/RouteChecklist';
 import NearbyHotLeads from '../components/nearby/NearbyHotLeads';
 import KnockTimeBanner from '../components/timing/KnockTimeBanner';
-import { darkRoom } from '@/functions/neonClient';
+import { darkRoom } from '@/components/logic/neonClient';
 
 // Brand Colors
 const BRAND = {
