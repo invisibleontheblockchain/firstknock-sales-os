@@ -593,26 +593,7 @@ export default function Home() {
                                 />
                             </div>
 
-                            {activeRoute && (
-                                <div className="rounded-xl pl-4 pr-2 py-2 flex items-center gap-3 shrink-0 shadow-lg border border-yellow-600/50" style={{ background: BRAND.gold }}>
-                                    <Navigation className="w-4 h-4" style={{ color: BRAND.voidBlack }} />
-                                    <div>
-                                        <span className="text-sm font-bold block leading-none" style={{ color: BRAND.voidBlack }}>{activeRoute.name}</span>
-                                        {activeRoute.assigned_to_name && (
-                                            <span className="text-[10px] font-bold opacity-80 block leading-none mt-1" style={{ color: BRAND.voidBlack }}>
-                                                {activeRoute.assigned_to_name}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <div className="w-px h-6 bg-black/10 mx-1" />
-                                    <button 
-                                        onClick={() => setActiveRoute(null)} 
-                                        className="w-8 h-8 flex items-center justify-center hover:bg-black/10 active:bg-black/20 rounded-full transition-colors"
-                                    >
-                                        <X className="w-5 h-5" style={{ color: BRAND.voidBlack }} />
-                                    </button>
-                                </div>
-                            )}
+
                         </div>
                     </div>
 
@@ -627,6 +608,29 @@ export default function Home() {
                         </Button>
                     </div>
                 </div>
+
+                {/* Active Route Persistent Banner */}
+                {activeRoute && (
+                    <div className="pointer-events-auto rounded-xl px-4 py-3 flex items-center justify-between shadow-2xl border border-yellow-600/50 animate-in slide-in-from-top-2 mx-1" style={{ background: BRAND.gold }}>
+                        <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-full bg-black/10 flex items-center justify-center shrink-0">
+                                <Navigation className="w-5 h-5" style={{ color: BRAND.voidBlack }} />
+                            </div>
+                            <div className="truncate">
+                                <span className="text-sm font-bold block leading-tight truncate" style={{ color: BRAND.voidBlack }}>{activeRoute.name}</span>
+                                <span className="text-[10px] font-bold opacity-75 block leading-none mt-1 truncate" style={{ color: BRAND.voidBlack }}>
+                                    {activeRoute.assigned_to_name ? activeRoute.assigned_to_name : 'Active Route'}
+                                </span>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => setActiveRoute(null)} 
+                            className="w-10 h-10 flex items-center justify-center bg-black/10 hover:bg-black/20 active:bg-black/30 rounded-full transition-colors ml-3 shrink-0"
+                        >
+                            <X className="w-6 h-6" style={{ color: BRAND.voidBlack }} />
+                        </button>
+                    </div>
+                )}
 
                 {/* Quick Filter Bar */}
                 {!activeRoute && (
