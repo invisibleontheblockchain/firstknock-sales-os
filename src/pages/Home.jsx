@@ -18,6 +18,7 @@ import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../com
 import RouteChecklist from '../components/routes/RouteChecklist';
 import NearbyHotLeads from '../components/nearby/NearbyHotLeads';
 import KnockTimeBanner from '../components/timing/KnockTimeBanner';
+import { darkRoom } from '@/lib/neonClient';
 
 // Brand Colors
 const BRAND = {
@@ -103,8 +104,46 @@ export default function Home() {
     const [showTimingPanel, setShowTimingPanel] = useState(false);
     const [selectedProperty, setSelectedProperty] = useState(null);
     const [zoomLevel, setZoomLevel] = useState(15);
+    const [darkRoomProperties, setDarkRoomProperties] = useState([]);
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
+
+    // Dark Room Data Fetching (Debounced)
+    useEffect(() => {
+        if (!mapRef.current) return;
+        
+        const fetchDarkRoomData = async () => {
+            const map = mapRef.current;
+            if (!map) return;
+            
+            const bounds = map.getBounds();
+            const zoom = map.getZoom();
+            
+            // Only fetch if enabled/relevant (e.g., higher zooms or specific mode)
+            // For now, fetching always when user is interacting to show the "Dark Room" stream
+            if (zoom >= 10) {
+                try {
+                    const props = await darkRoom.fetchPropertiesInViewport(bounds, zoom);
+                    setDarkRoomProperties(props);
+                } catch (e) {
+                    console.error("Failed to fetch Dark Room stream:", e);
+                }
+            } else {
+                setDarkRoomProperties([]); // Clear when zoomed out too far to avoid noise
+            }
+        };
+
+        const map = mapRef.current;
+        const handleMoveEnd = () => fetchDarkRoomData();
+        
+        map.on('moveend', handleMoveEnd);
+        // Initial fetch
+        fetchDarkRoomData();
+
+        return () => {
+            map.off('moveend', handleMoveEnd);
+        };
+    }, [mapRef.current]);
 
     // Fetch Properties - support both user-specific and fallback for mobile auth
     const { data: userProperties = [], isLoading: propsLoading } = useQuery({
@@ -137,14 +176,18 @@ export default function Home() {
 
     // Combine all sources and deduplicate by address_hash
     const properties = useMemo(() => {
-        const combined = [...userProperties, ...localProperties];
+        // Merge Dark Room properties with User/Local properties
+        // Dark Room properties are mapped to have similar structure
+        const combined = [...userProperties, ...localProperties, ...darkRoomProperties];
         const seen = new Set();
         return combined.filter(p => {
-            if (!p?.address_hash || seen.has(p.address_hash)) return false;
-            seen.add(p.address_hash);
+            // Use id as fallback for address_hash if missing (Dark Room props might rely on ID)
+            const id = p.address_hash || p.id;
+            if (!id || seen.has(id)) return false;
+            seen.add(id);
             return true;
         });
-    }, [userProperties, localProperties]);
+    }, [userProperties, localProperties, darkRoomProperties]);
 
     const { data: savedRoutesRaw = [] } = useQuery({
         queryKey: ['savedRoutes'],
@@ -510,7 +553,7 @@ export default function Home() {
                             <CircleMarker
                                 key={p.address_hash}
                                 center={[p.lat, p.lng]}
-                                radius={6} // Slightly larger for better tap target
+                                radius={p.is_dark_room ? 4 : 6} // Smaller dots for the massive stream
                                 eventHandlers={{
                                     click: (e) => {
                                         L.DomEvent.stopPropagation(e);
@@ -518,9 +561,13 @@ export default function Home() {
                                     }
                                 }}
                                 pathOptions={{
-                                    fillColor: STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER,
-                                    fillOpacity: 0.9,
-                                    color: '#333',
+                                    fillColor: p.is_dark_room ? (
+                                        p.smart_score > 90 ? '#00ff00' : // Hot
+                                        p.smart_score > 70 ? '#ffff00' : // Warm
+                                        '#666' // Cold
+                                    ) : (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER),
+                                    fillOpacity: p.is_dark_room ? 0.8 : 0.9,
+                                    color: p.is_dark_room ? 'transparent' : '#333',
                                     weight: 1
                                 }}
                             />
