@@ -561,9 +561,9 @@ export default function Home() {
                     />
                 ))}
 
-                {/* DARK ROOM CLUSTER LAYER (Low Zoom) */}
+                {/* DARK ROOM CLUSTER LAYER (Very Low Zoom Only) */}
                 <LayerGroup>
-                    {zoomLevel < 14 && darkRoomClusters.map(cluster => (
+                    {zoomLevel < 10 && darkRoomClusters.map(cluster => (
                         <CircleMarker
                             key={cluster.id}
                             center={[cluster.lat, cluster.lng]}
@@ -592,9 +592,9 @@ export default function Home() {
                     ))}
                 </LayerGroup>
 
-                {/* DARK ROOM INDIVIDUAL PINS (High Zoom) */}
+                {/* DARK ROOM INDIVIDUAL PINS (Zoom 10+) */}
                 <LayerGroup>
-                    {zoomLevel >= 14 && darkRoomProperties.map(p => (
+                    {zoomLevel >= 10 && darkRoomProperties.map(p => (
                         <CircleMarker
                             key={p.id}
                             center={[p.lat, p.lng]}
