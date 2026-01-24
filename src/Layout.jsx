@@ -45,6 +45,12 @@ class ErrorBoundary extends React.Component {
   }
 
 export default function Layout({ children }) {
+    // Handle /login 404 by redirecting to home
+    if (typeof window !== 'undefined' && window.location.pathname === '/login') {
+        window.location.replace('/');
+        return null;
+    }
+
     const queryClient = useQueryClient();
     const { data: user, isLoading } = useQuery({
         queryKey: ['user'],
@@ -150,14 +156,13 @@ export default function Layout({ children }) {
                         <button
                             onClick={async () => {
                                 try {
-                                    await base44.auth.logout();
+                                    // Redirect to home after logout
+                                    await base44.auth.logout(window.location.origin);
                                 } catch (e) {
                                     console.log('Logout error:', e);
+                                    window.location.reload();
                                 }
-                                // Clear all cached queries
                                 queryClient.clear();
-                                // Force page reload to reset auth state
-                                window.location.reload();
                             }}
                             className="text-xs text-slate-400 hover:text-white mr-2"
                         >
