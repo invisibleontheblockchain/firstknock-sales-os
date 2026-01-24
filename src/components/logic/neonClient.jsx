@@ -64,6 +64,42 @@ export class DarkRoomClient {
         }
     }
 
+    /**
+     * Get data quality report - check which fields are populated
+     */
+    async getDataQualityReport() {
+        try {
+            const sql = await this.connect();
+            const result = await sql`
+                SELECT 
+                    COUNT(*) as total,
+                    COUNT(location) as has_location,
+                    COUNT(smart_score) as has_smart_score,
+                    COUNT(NULLIF(smart_score, 0)) as has_nonzero_score,
+                    COUNT(address) as has_address,
+                    COUNT(city) as has_city,
+                    COUNT(state) as has_state,
+                    COUNT(zip_code) as has_zip,
+                    COUNT(sold_date) as has_sold_date,
+                    COUNT(beds) as has_beds,
+                    COUNT(baths) as has_baths,
+                    COUNT(sqft) as has_sqft,
+                    COUNT(price) as has_price,
+                    COUNT(equity) as has_equity,
+                    COUNT(year_built) as has_year_built,
+                    COUNT(turnover_prob) as has_turnover_prob,
+                    AVG(smart_score) as avg_score,
+                    MIN(smart_score) as min_score,
+                    MAX(smart_score) as max_score
+                FROM properties
+            `;
+            return result[0];
+        } catch (error) {
+            console.error('[DarkRoom] Data quality check failed:', error);
+            return null;
+        }
+    }
+
     // Generate cache key from viewport
     _viewportKey(bounds, zoom) {
         const sw = bounds._southWest || bounds.getSouthWest?.() || bounds;
