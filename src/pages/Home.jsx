@@ -156,8 +156,15 @@ export default function Home() {
         // Initial fetch
         fetchDarkRoomData();
         
-        // Get total count on mount
-        darkRoom.getTotalCount().then(count => setDarkRoomCount(count));
+        // Test connection and get total count on mount
+        darkRoom.testConnection().then(result => {
+            console.log('[Home] Dark Room connection test:', result);
+            if (result.connected) {
+                setDarkRoomCount(result.totalProperties);
+            } else {
+                console.error('[Home] Dark Room connection failed:', result.message);
+            }
+        });
 
         return () => {
             map.off('moveend', debouncedFetch);
