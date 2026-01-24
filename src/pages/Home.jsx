@@ -652,12 +652,12 @@ export default function Home() {
             </div>
 
             {/* Bottom Action Bar */}
-            <div className="absolute bottom-6 left-4 right-4 z-[1000]">
+            <div className="absolute bottom-6 left-4 right-4 z-[1000] pointer-events-none">
                 <div className="flex items-end gap-2">
-                    <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                    <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar pb-1 pointer-events-auto">
                         <Button
                             onClick={() => setShowRoutePanel(true)}
-                            className="rounded-full flex-1 px-4 h-12 sm:h-14 text-xs sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform hover:-translate-y-1 active:scale-95 whitespace-nowrap min-w-[120px]"
+                            className="rounded-full flex-1 px-4 h-12 sm:h-14 text-xs sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap min-w-[100px]"
                             style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
                         >
                             <Navigation className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
@@ -673,7 +673,7 @@ export default function Home() {
                         {activeRoute && (
                             <Button
                                 onClick={() => setShowChecklist(true)}
-                                className="rounded-full flex-1 px-4 h-12 sm:h-14 text-xs sm:text-sm font-bold tracking-wide shadow-2xl backdrop-blur-md transition-all duration-300 transform hover:-translate-y-1 active:scale-95 whitespace-nowrap min-w-[120px]"
+                                className="rounded-full flex-1 px-4 h-12 sm:h-14 text-xs sm:text-sm font-bold tracking-wide shadow-2xl backdrop-blur-md transition-all duration-300 transform active:scale-95 whitespace-nowrap min-w-[100px]"
                                 style={{ background: 'rgba(31, 31, 31, 0.8)', color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}
                             >
                                 <List className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
@@ -683,7 +683,7 @@ export default function Home() {
                         )}
                     </div>
 
-                    <div className="flex flex-col gap-2 shrink-0">
+                    <div className="flex flex-col gap-2 shrink-0 pointer-events-auto">
                          <Button
                             onClick={() => setViewMode(viewMode === 'pins' ? 'heatmap' : 'pins')}
                             size="icon"
