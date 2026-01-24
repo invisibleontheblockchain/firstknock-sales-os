@@ -19,17 +19,49 @@ export class DarkRoomClient {
         this.connectPromise = (async () => {
             try {
                 this.sql = neon(CONNECTION_STRING);
-                this.isConnected = true;
-                console.log('[DarkRoom] Connected to Neon DB (94k+ properties)');
-                return this.sql;
+                // Test the connection with a simple query
+                const testResult = await this.sql`SELECT 1 as test`;
+                if (testResult && testResult[0]?.test === 1) {
+                    this.isConnected = true;
+                    console.log('[DarkRoom] ✅ Connected to Neon DB successfully');
+                    return this.sql;
+                } else {
+                    throw new Error('Connection test failed');
+                }
             } catch (error) {
-                console.error('[DarkRoom] Connection error:', error);
+                console.error('[DarkRoom] ❌ Connection error:', error.message || error);
                 this.connectPromise = null;
+                this.isConnected = false;
                 throw error;
             }
         })();
             
         return this.connectPromise;
+    }
+
+    /**
+     * Test connection and return diagnostic info
+     */
+    async testConnection() {
+        try {
+            const sql = await this.connect();
+            const countResult = await sql`SELECT COUNT(*) as count FROM properties`;
+            const sampleResult = await sql`SELECT id, address, smart_score FROM properties LIMIT 1`;
+            
+            return {
+                connected: true,
+                totalProperties: parseInt(countResult[0]?.count) || 0,
+                sampleProperty: sampleResult[0] || null,
+                message: 'Database connection successful'
+            };
+        } catch (error) {
+            return {
+                connected: false,
+                totalProperties: 0,
+                sampleProperty: null,
+                message: error.message || 'Connection failed'
+            };
+        }
     }
 
     // Generate cache key from viewport
