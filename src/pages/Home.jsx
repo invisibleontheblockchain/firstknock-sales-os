@@ -18,7 +18,7 @@ import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../com
 import RouteChecklist from '../components/routes/RouteChecklist';
 import NearbyHotLeads from '../components/nearby/NearbyHotLeads';
 import KnockTimeBanner from '../components/timing/KnockTimeBanner';
-import { darkRoom } from '@/lib/neonClient';
+import { darkRoom } from '@/functions/neonClient';
 
 // Brand Colors
 const BRAND = {
@@ -274,12 +274,13 @@ export default function Home() {
                 return true;
             })
             .map(p => {
-                const propLogs = logs.filter(l => l.address_hash === p.address_hash);
+                const propLogs = logs.filter(l => (p.address_hash && l.address_hash === p.address_hash));
                 return {
                     ...p,
+                    address_hash: p.address_hash || p.id,
                     lat: parseFloat(p.lat),
                     lng: parseFloat(p.lng),
-                    effective_status: determineEffectiveStatus(p, propLogs)
+                    effective_status: p.is_dark_room ? (p.effective_status || 'ELIGIBLE') : determineEffectiveStatus(p, propLogs)
                 };
             });
     }, [properties, logs, user?.territory_zip_codes]);
