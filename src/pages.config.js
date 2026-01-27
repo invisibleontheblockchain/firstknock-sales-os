@@ -8,6 +8,7 @@ import SignIn from './pages/SignIn';
 import Sync from './pages/Sync';
 import Tutorial from './pages/Tutorial';
 import ZipCodeExplorer from './pages/ZipCodeExplorer';
+import DatabaseDiagnostic from './pages/DatabaseDiagnostic';
 import __Layout from './Layout.jsx';
 
 
@@ -22,6 +23,7 @@ export const PAGES = {
     "Sync": Sync,
     "Tutorial": Tutorial,
     "ZipCodeExplorer": ZipCodeExplorer,
+    "DatabaseDiagnostic": DatabaseDiagnostic,
 }
 
 export const pagesConfig = {
