@@ -20,13 +20,13 @@ L.Icon.Default.mergeOptions({
 });
 
 // Component to move map to new center
-function MapMover({ center, zoom }) {
+function MapMover({ center, zoom, searchId }) {
   const map = useMap();
   React.useEffect(() => {
-    if (center) {
+    if (center && searchId) {
       map.flyTo(center, zoom || 14);
     }
-  }, [center, zoom, map]);
+  }, [searchId]); // Only move when searchId changes
   return null;
 }
 
@@ -36,6 +36,7 @@ export default function ZipCodeExplorer() {
   const [properties, setProperties] = useState([]);
   const [mapCenter, setMapCenter] = useState([39.8283, -98.5795]); // Center of US
   const [mapZoom, setMapZoom] = useState(4);
+  const [searchId, setSearchId] = useState(0);
   const [error, setError] = useState(null);
   const [stats, setStats] = useState(null);
   const [zipColumn, setZipColumn] = useState('zip_code');
@@ -76,19 +77,47 @@ export default function ZipCodeExplorer() {
       const sql = getConnection();
       const col = zipColumn;
 
-      // Conditional query construction
+      // Dynamic query using the correct column name and joining with zip_codes table
+      // We use the safe column name variable `col` which is determined from schema check
       let results;
       let totalCountRes;
-      
+
       if (col === 'zip') {
-        results = await sql`SELECT * FROM properties WHERE zip = ${zipCode} LIMIT 500`;
+        results = await sql`
+          SELECT 
+            p.*, 
+            COALESCE(p.latitude, z.latitude) as latitude,
+            COALESCE(p.longitude, z.longitude) as longitude
+          FROM properties p
+          LEFT JOIN zip_codes z ON p.zip = z.code
+          WHERE p.zip = ${zipCode} 
+          LIMIT 500
+        `;
         totalCountRes = await sql`SELECT COUNT(*) as count FROM properties WHERE zip = ${zipCode}`;
       } else if (col === 'postal_code') {
-        results = await sql`SELECT * FROM properties WHERE postal_code = ${zipCode} LIMIT 500`;
+        results = await sql`
+          SELECT 
+            p.*, 
+            COALESCE(p.latitude, z.latitude) as latitude,
+            COALESCE(p.longitude, z.longitude) as longitude
+          FROM properties p
+          LEFT JOIN zip_codes z ON p.postal_code = z.code
+          WHERE p.postal_code = ${zipCode} 
+          LIMIT 500
+        `;
         totalCountRes = await sql`SELECT COUNT(*) as count FROM properties WHERE postal_code = ${zipCode}`;
       } else {
         // Default to zip_code
-        results = await sql`SELECT * FROM properties WHERE zip_code = ${zipCode} LIMIT 500`;
+        results = await sql`
+          SELECT 
+            p.*, 
+            COALESCE(p.latitude, z.latitude) as latitude,
+            COALESCE(p.longitude, z.longitude) as longitude
+          FROM properties p
+          LEFT JOIN zip_codes z ON p.zip_code = z.code
+          WHERE p.zip_code = ${zipCode} 
+          LIMIT 500
+        `;
         totalCountRes = await sql`SELECT COUNT(*) as count FROM properties WHERE zip_code = ${zipCode}`;
       }
       
@@ -108,6 +137,7 @@ export default function ZipCodeExplorer() {
         const avgLng = withCoords.reduce((sum, p) => sum + parseFloat(p.longitude), 0) / withCoords.length;
         setMapCenter([avgLat, avgLng]);
         setMapZoom(14);
+        setSearchId(prev => prev + 1); // Trigger map move
       } else {
         setError('Properties found but they have no latitude/longitude data.');
       }
@@ -192,7 +222,7 @@ export default function ZipCodeExplorer() {
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          <MapMover center={mapCenter} zoom={mapZoom} />
+          <MapMover center={mapCenter} zoom={mapZoom} searchId={searchId} />
           
           {properties.filter(p => p.latitude && p.longitude).map((property, idx) => (
             <Marker 
