@@ -339,9 +339,41 @@ export default function ZipCodeExplorer() {
     // Add small delay to allow UI to update
     setTimeout(() => {
       try {
-        const routes = generateOptimizedRoutes(properties, 50, null, [], { streetCooldownDays: 0, useStreetSweep: true });
+        // Apply filters to properties
+        const now = new Date();
+        const cutoffDate = new Date();
+        cutoffDate.setFullYear(now.getFullYear() - filters.soldWithinYears);
+        
+        const filteredProps = properties.filter(p => {
+          // Price filter
+          const price = p.price || 0;
+          if (price < filters.minPrice || price > filters.maxPrice) return false;
+          
+          // Sold date filter
+          if (p.sold_date) {
+            const soldDate = new Date(p.sold_date);
+            if (soldDate < cutoffDate) return false;
+          }
+          
+          return true;
+        });
+        
+        if (filteredProps.length === 0) {
+          toast.error("No properties match your filters");
+          setIsGenerating(false);
+          return;
+        }
+        
+        // Generate routes with filtered properties and custom houses per route
+        let routes = generateOptimizedRoutes(filteredProps, filters.housesPerRoute, null, [], { streetCooldownDays: 0, useStreetSweep: true });
+        
+        // Limit number of routes
+        if (routes.length > filters.maxRoutes) {
+          routes = routes.slice(0, filters.maxRoutes);
+        }
+        
         setGeneratedRoutes(routes);
-        toast.success(`Generated ${routes.length} optimized routes!`);
+        toast.success(`Generated ${routes.length} routes with ${filteredProps.length} filtered properties!`);
       } catch (e) {
         console.error(e);
         toast.error("Failed to generate routes");
