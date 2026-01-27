@@ -380,6 +380,7 @@ export default function ZipCodeExplorer() {
             center={mapCenter}
             zoom={mapZoom}
             className="h-full w-full absolute inset-0"
+            style={{ height: '100%', width: '100%' }}
             >
             <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
@@ -388,21 +389,31 @@ export default function ZipCodeExplorer() {
             <MapMover center={mapCenter} zoom={mapZoom} searchId={searchId} />
             
             {/* Properties (Before Generation) */}
-            {generatedRoutes.length === 0 && properties.map((property, idx) => (
-                <CircleMarker 
-                key={idx} 
-                center={[property.lat, property.lng]}
-                radius={4}
-                pathOptions={{ fillColor: '#3b82f6', fillOpacity: 0.6, color: '#2563eb', weight: 1 }}
-                >
-                <Popup>
-                    <div className="text-sm">
-                    <p className="font-bold">{property.address || property.full_address}</p>
-                    <p className="text-xs text-gray-500">{property.city}, {property.state}</p>
-                    </div>
-                </Popup>
-                </CircleMarker>
-            ))}
+            {generatedRoutes.length === 0 && (
+                <LayerGroup>
+                    {properties.map((property, idx) => (
+                        <CircleMarker 
+                        key={property.address_hash || idx} 
+                        center={[property.lat, property.lng]}
+                        radius={6}
+                        pathOptions={{ 
+                            fillColor: '#3b82f6', 
+                            fillOpacity: 0.8, 
+                            color: '#1d4ed8', 
+                            weight: 2,
+                            stroke: true
+                        }}
+                        >
+                        <Popup>
+                            <div className="text-sm">
+                            <p className="font-bold">{property.address || property.full_address}</p>
+                            <p className="text-xs text-gray-500">{property.city}, {property.state}</p>
+                            </div>
+                        </Popup>
+                        </CircleMarker>
+                    ))}
+                </LayerGroup>
+            )}
 
             {/* Generated Routes */}
             {generatedRoutes.map((route, rIdx) => {
