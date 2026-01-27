@@ -515,6 +515,18 @@ export default function ZipCodeExplorer() {
           </div>
           
           <div className="flex gap-2">
+             {properties.length > 0 && (
+                <Button 
+                    variant="outline"
+                    onClick={() => setShowFilters(!showFilters)}
+                    className="border-gray-300"
+                >
+                    <SlidersHorizontal className="w-4 h-4 mr-2" />
+                    Filters
+                    {showFilters ? <ChevronUp className="w-4 h-4 ml-1" /> : <ChevronDown className="w-4 h-4 ml-1" />}
+                </Button>
+             )}
+
              {properties.length > 0 && generatedRoutes.length === 0 && (
                 <Button 
                     onClick={handleGenerateRoutes} 
@@ -525,16 +537,25 @@ export default function ZipCodeExplorer() {
                     Generate Routes
                 </Button>
              )}
-             
+
              {generatedRoutes.length > 0 && (
-                <Button 
-                    onClick={handleSaveAllRoutes} 
-                    disabled={isSaving}
-                    className="bg-green-600 hover:bg-green-700"
-                >
-                    {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
-                    Save {generatedRoutes.length} Routes
-                </Button>
+                <>
+                  <Button 
+                      variant="outline"
+                      onClick={() => setGeneratedRoutes([])}
+                      className="border-gray-300"
+                  >
+                      Reset
+                  </Button>
+                  <Button 
+                      onClick={handleSaveAllRoutes} 
+                      disabled={isSaving}
+                      className="bg-green-600 hover:bg-green-700"
+                  >
+                      {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                      Save {generatedRoutes.length} Routes
+                  </Button>
+                </>
              )}
           </div>
         </div>
