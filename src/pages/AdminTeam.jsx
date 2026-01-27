@@ -407,9 +407,9 @@ export default function AdminTeam() {
 
                         <Dialog open={isAddRepOpen} onOpenChange={setIsAddRepOpen}>
                             <DialogTrigger asChild>
-                                <Button className="h-10 bg-yellow-500 text-black font-bold hover:bg-yellow-400">
-                                    <UserPlus className="w-4 h-4 mr-2" />
-                                    Add New Rep
+                                <Button className="h-9 bg-yellow-500 text-black font-bold hover:bg-yellow-400 text-xs whitespace-nowrap hidden md:flex">
+                                    <UserPlus className="w-4 h-4 mr-1" />
+                                    Add Rep
                                 </Button>
                             </DialogTrigger>
                         <DialogContent className="bg-[#1F1F1F] border-gray-800 text-white">
