@@ -387,9 +387,9 @@ export default function ZipCodeExplorer() {
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               className="font-mono text-lg"
             />
-            <Button onClick={handleSearch} disabled={loading}>
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
-              Search
+            <Button onClick={() => handleSearch()} disabled={loading || isFetching}>
+              {loading || isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+              {isFetching ? 'Generating...' : 'Search'}
             </Button>
           </div>
           
