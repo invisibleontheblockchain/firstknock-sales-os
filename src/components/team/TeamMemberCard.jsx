@@ -121,7 +121,11 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                 ) : (
                     <div className="space-y-2">
                         {routes.slice(0, 3).map(route => (
-                            <div key={route.id} className="flex items-center justify-between bg-[#151515] p-3 rounded-lg border border-gray-800 hover:border-gray-700 transition-colors">
+                            <Link 
+                                key={route.id} 
+                                to={createPageUrl('ZipCodeExplorer') + `?routeId=${route.id}`}
+                                className="flex items-center justify-between bg-[#151515] p-3 rounded-lg border border-gray-800 hover:border-yellow-500/50 hover:bg-[#1a1a1a] transition-colors cursor-pointer"
+                            >
                                 <div className="flex items-center gap-3">
                                     <div className={`w-2 h-2 rounded-full ${route.status === 'COMPLETED' ? 'bg-green-500' : 'bg-blue-500 animate-pulse'}`} />
                                     <div>
@@ -134,7 +138,7 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                                 <Badge variant="secondary" className="text-[10px] h-5 bg-gray-800 text-gray-300">
                                     {route.status}
                                 </Badge>
-                            </div>
+                            </Link>
                         ))}
                         {routes.length > 3 && (
                             <button className="w-full py-2 text-[10px] text-gray-500 hover:text-white transition-colors flex items-center justify-center gap-1">
