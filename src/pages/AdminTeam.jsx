@@ -508,7 +508,7 @@ export default function AdminTeam() {
                 )}
 
                 {/* Team Roster & Assignments Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                     {teamMembers.map(member => {
                         const memberRoutes = routesByRep[member.id] || [];
                         const memberMetrics = metricsByRep[member.email] || { doorsKnocked: 0, talkedTo: 0, sales: 0 };
