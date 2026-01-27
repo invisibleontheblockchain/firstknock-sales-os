@@ -352,9 +352,9 @@ export default function AdminTeam() {
 
                         <Dialog open={isRouteManagerOpen} onOpenChange={setIsRouteManagerOpen}>
                             <DialogTrigger asChild>
-                                <Button className="h-10 bg-[#1F1F1F] border border-gray-700 text-white hover:bg-[#333] hover:text-blue-400 hover:border-blue-500/50 transition-all">
-                                    <Map className="w-4 h-4 mr-2" />
-                                    Route Registry
+                                <Button className="h-9 bg-[#1F1F1F] border border-gray-700 text-white hover:bg-[#333] text-xs whitespace-nowrap">
+                                    <Map className="w-4 h-4 mr-1" />
+                                    Routes
                                 </Button>
                             </DialogTrigger>
                             <DialogContent className="bg-[#1F1F1F] border-gray-800 text-white max-w-4xl max-h-[80vh] flex flex-col">
