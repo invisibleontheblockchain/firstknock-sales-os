@@ -57,6 +57,27 @@ Deno.serve(async (req) => {
     // 6. Sample record to see actual data
     const sampleRecord = await sql`SELECT * FROM properties LIMIT 1`;
     
+    // 7. Check how many records have lat/lng
+    const coordStats = await sql`
+      SELECT 
+        COUNT(*) as total,
+        COUNT(latitude) as with_lat,
+        COUNT(longitude) as with_lng
+      FROM properties
+    `;
+    
+    // 8. If zip provided, check coords for that zip
+    let zipWithCoords = null;
+    if (zipCode) {
+      const coordCheck = await sql`
+        SELECT COUNT(*) as total,
+               COUNT(latitude) as with_coords
+        FROM properties 
+        WHERE zip_code = ${zipCode}
+      `;
+      zipWithCoords = coordCheck[0];
+    }
+    
     return Response.json({
       allColumns: columns,
       zipColumns,
@@ -64,7 +85,9 @@ Deno.serve(async (req) => {
       lngColumns,
       zipCountsForQuery: zipCounts,
       topZipCodes: sampleZips,
-      sampleRecord: sampleRecord[0]
+      sampleRecord: sampleRecord[0],
+      coordinateStats: coordStats[0],
+      zipCoordinateStats: zipWithCoords
     });
     
   } catch (error) {
