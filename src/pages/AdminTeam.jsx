@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Users, Plus, UserPlus, Map, CheckCircle2, AlertCircle, X, Key, Sparkles, TrendingUp, DollarSign, Home } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '../utils';
 import { toast } from "sonner";
 import TeamMemberCard from "@/components/team/TeamMemberCard";
 
@@ -314,6 +316,13 @@ export default function AdminTeam() {
                                 </div>
                             </DialogContent>
                         </Dialog>
+
+                        <Link to={createPageUrl('ZipCodeExplorer')}>
+                            <Button className="h-10 bg-[#1F1F1F] border border-gray-700 text-white hover:bg-[#333] hover:text-blue-400 hover:border-blue-500/50 transition-all">
+                                <Sparkles className="w-4 h-4 mr-2 text-blue-400" />
+                                Route Generator
+                            </Button>
+                        </Link>
 
                         <Dialog open={isRouteManagerOpen} onOpenChange={setIsRouteManagerOpen}>
                             <DialogTrigger asChild>

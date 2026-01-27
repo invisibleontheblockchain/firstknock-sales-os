@@ -27,7 +27,7 @@ export const PAGES = {
 }
 
 export const pagesConfig = {
-    mainPage: "ZipCodeExplorer",
+    mainPage: "SignIn",
     Pages: PAGES,
     Layout: __Layout,
 };
