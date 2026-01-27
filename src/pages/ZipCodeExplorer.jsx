@@ -77,7 +77,7 @@ export default function ZipCodeExplorer() {
         return;
       }
 
-      // Query properties by their hashes/IDs
+      // Query properties by their IDs
       const results = await sql`
         SELECT 
           p.*, 
@@ -85,7 +85,7 @@ export default function ZipCodeExplorer() {
           COALESCE(p.longitude, z.longitude) + (random() - 0.5) * 0.015 as longitude
         FROM properties p
         LEFT JOIN zip_codes z ON p.zip_code = z.code
-        WHERE p.address_hash = ANY(${hashes}) OR p.id::text = ANY(${hashes})
+        WHERE p.id::text = ANY(${hashes})
         LIMIT 500
       `;
 
