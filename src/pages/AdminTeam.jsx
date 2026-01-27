@@ -473,12 +473,12 @@ export default function AdminTeam() {
 
                 {/* Unassigned Routes Section */}
                 {routesByRep.unassigned.length > 0 && (
-                    <div className="bg-[#1a0f0f] border border-red-900/30 rounded-xl p-6">
-                        <div className="flex items-center gap-2 mb-4 text-red-400">
-                            <AlertCircle className="w-5 h-5" />
-                            <h3 className="font-bold text-lg">Unassigned Routes ({routesByRep.unassigned.length})</h3>
+                    <div className="bg-[#1a0f0f] border border-red-900/30 rounded-xl p-4">
+                        <div className="flex items-center gap-2 mb-3 text-red-400">
+                            <AlertCircle className="w-4 h-4" />
+                            <h3 className="font-bold text-sm">Unassigned ({routesByRep.unassigned.length})</h3>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                             {routesByRep.unassigned.map(route => (
                                 <div key={route.id} className="bg-black/40 border border-gray-800 rounded-lg p-4 flex flex-col gap-3">
                                     <div>
