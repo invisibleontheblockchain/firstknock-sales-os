@@ -230,28 +230,47 @@ export default function ZipCodeExplorer() {
         totalCountRes = await sql`SELECT COUNT(*) as count FROM properties WHERE zip_code = ${searchZip}`;
       }
       
-      // If no results, try to fetch/generate properties for this zip
+      // If no results in DB, generate properties in-memory from zip centroid
       if (results.length === 0) {
         setIsFetching(true);
-        toast.info(`No data for ${searchZip}. Generating properties...`);
+        toast.info(`Generating properties for ${searchZip}...`);
         
         try {
-          const fetchRes = await base44.functions.invoke('fetchZipProperties', { zip_code: searchZip });
+          // Get zip code coordinates from zip_codes table
+          const zipMeta = await sql`SELECT * FROM zip_codes WHERE code = ${searchZip}`;
           
-          if (fetchRes.data?.status === 'imported') {
-            toast.success(`Added ${fetchRes.data.count} properties for ${searchZip}!`);
-            // Re-run the search now that we have data
-            setIsFetching(false);
-            setLoading(false);
-            return handleSearch(searchZip);
-          } else if (fetchRes.data?.error) {
-            setError(fetchRes.data.message || fetchRes.data.error);
+          if (!zipMeta[0]) {
+            setError(`Zip code ${searchZip} not found`);
             setProperties([]);
             setStats(null);
             return;
           }
+          
+          const { city, state, county, latitude, longitude } = zipMeta[0];
+          const centerLat = parseFloat(latitude);
+          const centerLng = parseFloat(longitude);
+          
+          // Generate properties in-memory (no DB storage)
+          const generatedProps = generatePropertiesInMemory(searchZip, city, state, centerLat, centerLng);
+          
+          setProperties(generatedProps);
+          setMapCenter([centerLat, centerLng]);
+          setMapZoom(14);
+          setSearchId(prev => prev + 1);
+          
+          setStats({
+            total: generatedProps.length,
+            shown: generatedProps.length,
+            mapped: generatedProps.length,
+            avgScore: null,
+            isGenerated: true
+          });
+          
+          toast.success(`Generated ${generatedProps.length} properties for ${searchZip}`);
+          return;
+          
         } catch (fetchErr) {
-          console.error('Fetch error:', fetchErr);
+          console.error('Generation error:', fetchErr);
           setError(`Could not generate data for zip code ${searchZip}`);
           setProperties([]);
           setStats(null);
