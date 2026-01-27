@@ -73,7 +73,20 @@ export default function RoleSelect() {
         }
     };
 
-    // No auto-redirect so users can switch roles if they land here
+    // Auto-redirect if user already has a role
+    React.useEffect(() => {
+        if (user?.app_role) {
+            if (user.app_role === 'manager') {
+                navigate(createPageUrl('Home'), { replace: true });
+            } else {
+                navigate(createPageUrl('RepHome'), { replace: true });
+            }
+        }
+    }, [user, navigate]);
+
+    if (user?.app_role) {
+        return <div className="min-h-screen bg-black flex items-center justify-center text-white">Redirecting...</div>;
+    }
 
     return (
         <div className="min-h-screen bg-black flex flex-col items-center justify-center p-6">
