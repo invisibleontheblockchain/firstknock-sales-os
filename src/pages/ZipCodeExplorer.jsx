@@ -133,12 +133,12 @@ export default function ZipCodeExplorer() {
         `;
         totalCountRes = await sql`SELECT COUNT(*) as count FROM properties WHERE postal_code = ${searchZip}`;
       } else {
-        // Default to zip_code
+        // Default to zip_code - add small random offset to spread points around zip centroid
         results = await sql`
           SELECT 
             p.*, 
-            COALESCE(p.latitude, z.latitude) as latitude,
-            COALESCE(p.longitude, z.longitude) as longitude
+            COALESCE(p.latitude, z.latitude) + (random() - 0.5) * 0.015 as latitude,
+            COALESCE(p.longitude, z.longitude) + (random() - 0.5) * 0.015 as longitude
           FROM properties p
           LEFT JOIN zip_codes z ON p.zip_code = z.code
           WHERE p.zip_code = ${searchZip} 

@@ -1,4 +1,5 @@
 import AdminTeam from './pages/AdminTeam';
+import DatabaseDiagnostic from './pages/DatabaseDiagnostic';
 import Home from './pages/Home';
 import List from './pages/List';
 import RepHome from './pages/RepHome';
@@ -8,12 +9,12 @@ import SignIn from './pages/SignIn';
 import Sync from './pages/Sync';
 import Tutorial from './pages/Tutorial';
 import ZipCodeExplorer from './pages/ZipCodeExplorer';
-import DatabaseDiagnostic from './pages/DatabaseDiagnostic';
 import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
     "AdminTeam": AdminTeam,
+    "DatabaseDiagnostic": DatabaseDiagnostic,
     "Home": Home,
     "List": List,
     "RepHome": RepHome,
@@ -23,7 +24,6 @@ export const PAGES = {
     "Sync": Sync,
     "Tutorial": Tutorial,
     "ZipCodeExplorer": ZipCodeExplorer,
-    "DatabaseDiagnostic": DatabaseDiagnostic,
 }
 
 export const pagesConfig = {
