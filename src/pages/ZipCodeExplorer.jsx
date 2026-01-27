@@ -354,22 +354,56 @@ export default function ZipCodeExplorer() {
                 </div>
                 <div>
                     {generatedRoutes.map((route, idx) => (
-                        <div 
-                            key={idx}
-                            onClick={() => setActiveRoute(route)}
-                            className={`p-4 border-b cursor-pointer hover:bg-gray-50 transition-colors ${activeRoute === route ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
-                        >
-                            <div className="flex justify-between items-start mb-1">
-                                <span className="font-bold text-sm" style={{ color: ROUTE_COLORS[idx % ROUTE_COLORS.length] }}>
-                                    {route.name}
-                                </span>
-                                <Badge variant="outline" className="text-xs">{route.houseCount}</Badge>
+                        <React.Fragment key={idx}>
+                            <div 
+                                onClick={() => setActiveRoute(route)}
+                                className={`p-4 border-b cursor-pointer hover:bg-gray-50 transition-colors ${activeRoute === route ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
+                            >
+                                <div className="flex justify-between items-start mb-1">
+                                    <span className="font-bold text-sm" style={{ color: ROUTE_COLORS[idx % ROUTE_COLORS.length] }}>
+                                        {route.name}
+                                    </span>
+                                    <Badge variant="outline" className="text-xs">{route.houseCount}</Badge>
+                                </div>
+                                <div className="flex justify-between text-xs text-gray-500">
+                                    <span>{route.totalDistance} mi</span>
+                                    <span>Score: {route.competitivenessScore}</span>
+                                </div>
                             </div>
-                            <div className="flex justify-between text-xs text-gray-500">
-                                <span>{route.totalDistance} mi</span>
-                                <span>Score: {route.competitivenessScore}</span>
-                            </div>
-                        </div>
+                            
+                            {/* Expanded Property List */}
+                            {activeRoute === route && (
+                                <div className="bg-gray-50 border-b overflow-x-auto">
+                                    <table className="w-full text-xs text-left">
+                                        <thead className="bg-gray-100 text-gray-500 uppercase font-medium border-b">
+                                            <tr>
+                                                <th className="px-3 py-2 w-8">#</th>
+                                                <th className="px-3 py-2">Address</th>
+                                                <th className="px-3 py-2">Status</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200">
+                                            {route.properties.map((p, pIdx) => (
+                                                <tr key={pIdx} className="hover:bg-blue-50/50">
+                                                    <td className="px-3 py-2 font-medium text-gray-500">{pIdx + 1}</td>
+                                                    <td className="px-3 py-2">
+                                                        <div className="font-medium text-gray-900 truncate max-w-[140px]" title={p.address || p.full_address}>
+                                                            {p.address || p.full_address}
+                                                        </div>
+                                                        <div className="text-gray-500">{p.city}</div>
+                                                    </td>
+                                                    <td className="px-3 py-2">
+                                                        <Badge variant="secondary" className="text-[10px] h-5 px-1">
+                                                            {p.effective_status || p.original_status || 'ELIGIBLE'}
+                                                        </Badge>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </React.Fragment>
                     ))}
                 </div>
             </div>
@@ -416,46 +450,48 @@ export default function ZipCodeExplorer() {
             )}
 
             {/* Generated Routes */}
-            {generatedRoutes.map((route, rIdx) => {
-                const color = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
-                const isActive = activeRoute === route;
-                
-                return (
-                    <React.Fragment key={rIdx}>
-                        {/* Route Path (only if active) */}
-                        {isActive && (
-                            <Polyline 
-                                positions={route.properties.map(p => [p.lat, p.lng])}
-                                pathOptions={{ color: color, weight: 3, opacity: 0.8, dashArray: '5, 10' }}
-                            />
-                        )}
+            <LayerGroup>
+                {generatedRoutes.map((route, rIdx) => {
+                    const color = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
+                    const isActive = activeRoute === route;
+                    
+                    return (
+                        <React.Fragment key={rIdx}>
+                            {/* Route Path (only if active) */}
+                            {isActive && (
+                                <Polyline 
+                                    positions={route.properties.map(p => [p.lat, p.lng])}
+                                    pathOptions={{ color: color, weight: 3, opacity: 0.8, dashArray: '5, 10' }}
+                                />
+                            )}
 
-                        {/* Route Points */}
-                        {route.properties.map((p, pIdx) => (
-                            <CircleMarker
-                                key={`${rIdx}-${pIdx}`}
-                                center={[p.lat, p.lng]}
-                                radius={isActive ? 8 : 5}
-                                eventHandlers={{
-                                    click: () => setActiveRoute(route)
-                                }}
-                                pathOptions={{ 
-                                    fillColor: color, 
-                                    fillOpacity: isActive ? 0.9 : 0.6, 
-                                    color: 'white', 
-                                    weight: 1 
-                                }}
-                            >
-                                {isActive && (
-                                    <Tooltip permanent direction="center" className="bg-transparent border-0 shadow-none text-white font-bold text-[10px]">
-                                        {pIdx + 1}
-                                    </Tooltip>
-                                )}
-                            </CircleMarker>
-                        ))}
-                    </React.Fragment>
-                );
-            })}
+                            {/* Route Points */}
+                            {route.properties.map((p, pIdx) => (
+                                <CircleMarker
+                                    key={`${rIdx}-${pIdx}`}
+                                    center={[p.lat, p.lng]}
+                                    radius={isActive ? 8 : 5}
+                                    eventHandlers={{
+                                        click: () => setActiveRoute(route)
+                                    }}
+                                    pathOptions={{ 
+                                        fillColor: color, 
+                                        fillOpacity: isActive ? 0.9 : 0.6, 
+                                        color: 'white', 
+                                        weight: 1 
+                                    }}
+                                >
+                                    {isActive && (
+                                        <Tooltip permanent direction="center" className="bg-transparent border-0 shadow-none text-white font-bold text-[10px]">
+                                            {pIdx + 1}
+                                        </Tooltip>
+                                    )}
+                                </CircleMarker>
+                            ))}
+                        </React.Fragment>
+                    );
+                })}
+            </LayerGroup>
             </MapContainer>
         </div>
       </div>
