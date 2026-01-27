@@ -252,9 +252,9 @@ export default function AdminTeam() {
                     <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
                         <Dialog open={isCodeManagerOpen} onOpenChange={setIsCodeManagerOpen}>
                             <DialogTrigger asChild>
-                                <Button className="h-10 bg-[#1F1F1F] border border-gray-700 text-white hover:bg-[#333] hover:text-yellow-500 hover:border-yellow-500/50 transition-all">
-                                    <Key className="w-4 h-4 mr-2" />
-                                    Access Codes
+                                <Button className="h-9 bg-[#1F1F1F] border border-gray-700 text-white hover:bg-[#333] text-xs whitespace-nowrap">
+                                    <Key className="w-4 h-4 mr-1" />
+                                    Codes
                                 </Button>
                             </DialogTrigger>
                             <DialogContent className="bg-[#1F1F1F] border-gray-800 text-white">
