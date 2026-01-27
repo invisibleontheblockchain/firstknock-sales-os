@@ -29,15 +29,12 @@ Deno.serve(async (req) => {
       c.toLowerCase().includes('lng') || c.toLowerCase().includes('lon')
     );
     
-    // 4. If a zip code was provided, count records
+    // 4. If a zip code was provided, count records using raw queries
     let zipCounts = {};
     if (zipCode && zipColumns.length > 0) {
       for (const col of zipColumns) {
-        const countResult = await sql`
-          SELECT COUNT(*) as count 
-          FROM properties 
-          WHERE ${sql(col)} = ${zipCode}
-        `;
+        // Use raw query since dynamic column names are tricky
+        const countResult = await sql(`SELECT COUNT(*) as count FROM properties WHERE "${col}" = '${zipCode}'`);
         zipCounts[col] = parseInt(countResult[0].count);
       }
     }
@@ -46,14 +43,14 @@ Deno.serve(async (req) => {
     let sampleZips = [];
     if (zipColumns.length > 0) {
       const zipCol = zipColumns[0];
-      const samples = await sql`
-        SELECT ${sql(zipCol)} as zip, COUNT(*) as count 
+      const samples = await sql(`
+        SELECT "${zipCol}" as zip, COUNT(*) as count 
         FROM properties 
-        WHERE ${sql(zipCol)} IS NOT NULL
-        GROUP BY ${sql(zipCol)}
+        WHERE "${zipCol}" IS NOT NULL
+        GROUP BY "${zipCol}"
         ORDER BY count DESC
         LIMIT 10
-      `;
+      `);
       sampleZips = samples;
     }
     
