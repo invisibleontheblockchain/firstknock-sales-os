@@ -194,62 +194,62 @@ export default function AdminTeam() {
     }
 
     return (
-        <div className="h-full overflow-auto bg-black text-white p-6 pb-20">
-            <div className="max-w-6xl mx-auto space-y-8">
+        <div className="h-full overflow-auto bg-black text-white p-4 md:p-6 pb-24">
+            <div className="max-w-6xl mx-auto space-y-6">
                 
-                {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-                    <div>
-                        <h1 className="text-4xl font-extrabold flex items-center gap-3 tracking-tight">
-                            <Users className="w-10 h-10 text-yellow-500" />
-                            Team Command
-                        </h1>
-                        <p className="text-gray-400 mt-2 font-medium">Manage your elite sales force and territories.</p>
-                        
-                        {/* Team Stats Summary */}
-                        <div className="flex gap-6 mt-6">
-                            <div>
-                                <p className="text-2xl font-bold text-white">{teamTotals.doorsKnocked.toLocaleString()}</p>
-                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                                    <Home className="w-3 h-3" /> Total Doors
-                                </p>
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold text-white">{teamTotals.sales.toLocaleString()}</p>
-                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                                    <DollarSign className="w-3 h-3 text-green-500" /> Total Sales
-                                </p>
-                            </div>
-                            <div>
-                                <p className="text-2xl font-bold text-white">{routes.length}</p>
-                                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
-                                    <Map className="w-3 h-3 text-blue-500" /> Active Routes
-                                </p>
-                            </div>
+                {/* Header - Mobile Optimized */}
+                <div className="space-y-4">
+                    {/* Title */}
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <Users className="w-7 h-7 md:w-10 md:h-10 text-yellow-500" />
+                            <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight">Team</h1>
                         </div>
+                        <Button 
+                            onClick={() => setIsAddRepOpen(true)}
+                            size="sm"
+                            className="h-9 bg-yellow-500 text-black font-bold hover:bg-yellow-400 md:hidden"
+                        >
+                            <UserPlus className="w-4 h-4" />
+                        </Button>
                     </div>
                     
-                    <div className="flex flex-col gap-3">
-                        <div className="flex gap-2 items-center bg-[#1F1F1F] p-2 rounded-lg border border-gray-700">
-                            <Input 
-                                placeholder="Enter Zip Code..." 
-                                value={zipSearch}
-                                onChange={(e) => setZipSearch(e.target.value)}
-                                className="h-8 w-40 bg-black border-gray-600 text-sm"
-                                onKeyDown={(e) => e.key === 'Enter' && handleZipSearch()}
-                            />
-                            <Button 
-                                onClick={handleZipSearch}
-                                size="sm"
-                                className="h-8 bg-blue-600 hover:bg-blue-500 text-white"
-                            >
-                                <Sparkles className="w-3 h-3 mr-1" />
-                                Generate
-                            </Button>
+                    {/* Team Stats - Compact on Mobile */}
+                    <div className="grid grid-cols-3 gap-2 bg-[#111] rounded-xl p-3 border border-gray-800">
+                        <div className="text-center">
+                            <p className="text-xl md:text-2xl font-bold text-white">{teamTotals.doorsKnocked.toLocaleString()}</p>
+                            <p className="text-[9px] md:text-[10px] font-bold text-gray-500 uppercase">Doors</p>
+                        </div>
+                        <div className="text-center border-x border-gray-800">
+                            <p className="text-xl md:text-2xl font-bold text-green-400">{teamTotals.sales.toLocaleString()}</p>
+                            <p className="text-[9px] md:text-[10px] font-bold text-gray-500 uppercase">Sales</p>
+                        </div>
+                        <div className="text-center">
+                            <p className="text-xl md:text-2xl font-bold text-blue-400">{routes.length}</p>
+                            <p className="text-[9px] md:text-[10px] font-bold text-gray-500 uppercase">Routes</p>
                         </div>
                     </div>
 
-                    <div className="flex gap-3 flex-wrap">
+                    {/* Zip Search - Full Width on Mobile */}
+                    <div className="flex gap-2 items-center bg-[#1F1F1F] p-2 rounded-lg border border-gray-700">
+                        <Input 
+                            placeholder="Enter Zip Code..." 
+                            value={zipSearch}
+                            onChange={(e) => setZipSearch(e.target.value)}
+                            className="h-10 flex-1 bg-black border-gray-600 text-base"
+                            onKeyDown={(e) => e.key === 'Enter' && handleZipSearch()}
+                        />
+                        <Button 
+                            onClick={handleZipSearch}
+                            className="h-10 bg-blue-600 hover:bg-blue-500 text-white px-4"
+                        >
+                            <Sparkles className="w-4 h-4 mr-1" />
+                            <span className="hidden sm:inline">Generate</span>
+                        </Button>
+                    </div>
+
+                    {/* Action Buttons - Scrollable on Mobile */}
+                    <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
                         <Dialog open={isCodeManagerOpen} onOpenChange={setIsCodeManagerOpen}>
                             <DialogTrigger asChild>
                                 <Button className="h-10 bg-[#1F1F1F] border border-gray-700 text-white hover:bg-[#333] hover:text-yellow-500 hover:border-yellow-500/50 transition-all">
