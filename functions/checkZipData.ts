@@ -82,6 +82,7 @@ Deno.serve(async (req) => {
     }
     
     return Response.json({
+      totalRecords: parseInt(totalCount[0].total),
       allColumns: columns,
       zipColumns,
       latColumns,
