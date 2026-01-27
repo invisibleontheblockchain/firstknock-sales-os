@@ -60,35 +60,19 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                 </div>
             </div>
 
-            {/* Metrics Grid */}
+            {/* Metrics Grid - Compact */}
             <div className="grid grid-cols-3 divide-x divide-gray-800 border-b border-gray-800 bg-[#0F0F0F]">
-                <div className="p-4 text-center group/metric hover:bg-white/5 transition-colors">
-                    <div className="flex items-center justify-center gap-2 text-gray-500 mb-1 group-hover/metric:text-yellow-500 transition-colors">
-                        <Home className="w-4 h-4" />
-                    </div>
-                    <p className="text-2xl font-bold text-white">{metrics.doorsKnocked}</p>
-                    <p className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Knocked</p>
+                <div className="p-2 md:p-3 text-center">
+                    <p className="text-lg md:text-xl font-bold text-white">{metrics.doorsKnocked}</p>
+                    <p className="text-[9px] font-bold text-gray-600 uppercase">Knocked</p>
                 </div>
-                <div className="p-4 text-center group/metric hover:bg-white/5 transition-colors">
-                    <div className="flex items-center justify-center gap-2 text-gray-500 mb-1 group-hover/metric:text-blue-500 transition-colors">
-                        <MessageSquare className="w-4 h-4" />
-                    </div>
-                    <p className="text-2xl font-bold text-white">{metrics.talkedTo}</p>
-                    <p className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Talked To</p>
+                <div className="p-2 md:p-3 text-center">
+                    <p className="text-lg md:text-xl font-bold text-white">{metrics.talkedTo}</p>
+                    <p className="text-[9px] font-bold text-gray-600 uppercase">Talked</p>
                 </div>
-                <div className="p-4 text-center group/metric hover:bg-white/5 transition-colors sm:hidden">
-                    <div className="flex items-center justify-center gap-2 text-gray-500 mb-1 group-hover/metric:text-green-500 transition-colors">
-                        <DollarSign className="w-4 h-4" />
-                    </div>
-                    <p className="text-2xl font-bold text-white">{metrics.sales}</p>
-                    <p className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Sales</p>
-                </div>
-                 <div className="p-4 text-center group/metric hover:bg-white/5 transition-colors hidden sm:block">
-                    <div className="flex items-center justify-center gap-2 text-gray-500 mb-1 group-hover/metric:text-purple-500 transition-colors">
-                        <Map className="w-4 h-4" />
-                    </div>
-                    <p className="text-2xl font-bold text-white">{routes.length}</p>
-                    <p className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">Routes</p>
+                <div className="p-2 md:p-3 text-center">
+                    <p className="text-lg md:text-xl font-bold text-blue-400">{routes.length}</p>
+                    <p className="text-[9px] font-bold text-gray-600 uppercase">Routes</p>
                 </div>
             </div>
 
