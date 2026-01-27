@@ -3,6 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useNavigate } from 'react-router-dom';
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -20,13 +21,23 @@ const BRAND = {
 };
 
 export default function AdminTeam() {
+    const navigate = useNavigate();
     const queryClient = useQueryClient();
     const [isAddRepOpen, setIsAddRepOpen] = useState(false);
     const [isRouteManagerOpen, setIsRouteManagerOpen] = useState(false);
     const [isCodeManagerOpen, setIsCodeManagerOpen] = useState(false);
     const [routeSearch, setRouteSearch] = useState('');
+    const [zipSearch, setZipSearch] = useState('');
     const [newRep, setNewRep] = useState({ name: '', email: '', phone: '', role: 'rep' });
     const [newCode, setNewCode] = useState({ code: '', role: 'manager', label: '' });
+
+    const handleZipSearch = () => {
+        if (zipSearch && zipSearch.length >= 5) {
+            navigate(createPageUrl('ZipCodeExplorer') + `?zip=${zipSearch}`);
+        } else {
+            toast.error("Please enter a valid zip code");
+        }
+    };
 
     // --- Queries ---
     const { data: teamMembers = [], isLoading: teamLoading } = useQuery({
@@ -218,6 +229,26 @@ export default function AdminTeam() {
                         </div>
                     </div>
                     
+                    <div className="flex flex-col gap-3">
+                        <div className="flex gap-2 items-center bg-[#1F1F1F] p-2 rounded-lg border border-gray-700">
+                            <Input 
+                                placeholder="Enter Zip Code..." 
+                                value={zipSearch}
+                                onChange={(e) => setZipSearch(e.target.value)}
+                                className="h-8 w-40 bg-black border-gray-600 text-sm"
+                                onKeyDown={(e) => e.key === 'Enter' && handleZipSearch()}
+                            />
+                            <Button 
+                                onClick={handleZipSearch}
+                                size="sm"
+                                className="h-8 bg-blue-600 hover:bg-blue-500 text-white"
+                            >
+                                <Sparkles className="w-3 h-3 mr-1" />
+                                Generate
+                            </Button>
+                        </div>
+                    </div>
+
                     <div className="flex gap-3 flex-wrap">
                         <Dialog open={isCodeManagerOpen} onOpenChange={setIsCodeManagerOpen}>
                             <DialogTrigger asChild>
@@ -317,12 +348,7 @@ export default function AdminTeam() {
                             </DialogContent>
                         </Dialog>
 
-                        <Link to={createPageUrl('ZipCodeExplorer')}>
-                            <Button className="h-10 bg-[#1F1F1F] border border-gray-700 text-white hover:bg-[#333] hover:text-blue-400 hover:border-blue-500/50 transition-all">
-                                <Sparkles className="w-4 h-4 mr-2 text-blue-400" />
-                                Route Generator
-                            </Button>
-                        </Link>
+
 
                         <Dialog open={isRouteManagerOpen} onOpenChange={setIsRouteManagerOpen}>
                             <DialogTrigger asChild>

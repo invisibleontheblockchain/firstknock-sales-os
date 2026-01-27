@@ -39,6 +39,18 @@ export default function ZipCodeExplorer() {
   const navigate = useNavigate();
   const [zipCode, setZipCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const [autoSearchTriggered, setAutoSearchTriggered] = useState(false);
+
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const zipParam = params.get('zip');
+    if (zipParam && !autoSearchTriggered) {
+      setZipCode(zipParam);
+      setAutoSearchTriggered(true);
+      // Trigger search after a short delay to ensure state update
+      setTimeout(() => handleSearch(zipParam), 100);
+    }
+  }, []);
   const [properties, setProperties] = useState([]);
   const [mapCenter, setMapCenter] = useState([39.8283, -98.5795]); // Center of US
   const [mapZoom, setMapZoom] = useState(4);
@@ -76,8 +88,10 @@ export default function ZipCodeExplorer() {
     checkSchema();
   }, []);
 
-  const handleSearch = async () => {
-    if (!zipCode || zipCode.length < 5) {
+  const handleSearch = async (zipOverride = null) => {
+    const searchZip = zipOverride || zipCode;
+    
+    if (!searchZip || searchZip.length < 5) {
       setError('Please enter a valid 5-digit zip code');
       return;
     }
@@ -102,10 +116,10 @@ export default function ZipCodeExplorer() {
             COALESCE(p.longitude, z.longitude) as longitude
           FROM properties p
           LEFT JOIN zip_codes z ON p.zip = z.code
-          WHERE p.zip = ${zipCode} 
+          WHERE p.zip = ${searchZip} 
           LIMIT 1000
         `;
-        totalCountRes = await sql`SELECT COUNT(*) as count FROM properties WHERE zip = ${zipCode}`;
+        totalCountRes = await sql`SELECT COUNT(*) as count FROM properties WHERE zip = ${searchZip}`;
       } else if (col === 'postal_code') {
         results = await sql`
           SELECT 
@@ -114,10 +128,10 @@ export default function ZipCodeExplorer() {
             COALESCE(p.longitude, z.longitude) as longitude
           FROM properties p
           LEFT JOIN zip_codes z ON p.postal_code = z.code
-          WHERE p.postal_code = ${zipCode} 
+          WHERE p.postal_code = ${searchZip} 
           LIMIT 1000
         `;
-        totalCountRes = await sql`SELECT COUNT(*) as count FROM properties WHERE postal_code = ${zipCode}`;
+        totalCountRes = await sql`SELECT COUNT(*) as count FROM properties WHERE postal_code = ${searchZip}`;
       } else {
         // Default to zip_code
         results = await sql`
@@ -127,14 +141,14 @@ export default function ZipCodeExplorer() {
             COALESCE(p.longitude, z.longitude) as longitude
           FROM properties p
           LEFT JOIN zip_codes z ON p.zip_code = z.code
-          WHERE p.zip_code = ${zipCode} 
+          WHERE p.zip_code = ${searchZip} 
           LIMIT 1000
         `;
-        totalCountRes = await sql`SELECT COUNT(*) as count FROM properties WHERE zip_code = ${zipCode}`;
+        totalCountRes = await sql`SELECT COUNT(*) as count FROM properties WHERE zip_code = ${searchZip}`;
       }
       
       if (results.length === 0) {
-        setError(`No properties found in zip code ${zipCode}`);
+        setError(`No properties found in zip code ${searchZip}`);
         setProperties([]);
         setStats(null);
         return;
