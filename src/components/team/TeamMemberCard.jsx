@@ -7,6 +7,8 @@ import {
     Home, MessageSquare, DollarSign, ChevronRight 
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '../../utils';
 
 const BRAND = {
     gold: '#FFD700',
