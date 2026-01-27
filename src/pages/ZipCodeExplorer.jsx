@@ -169,6 +169,8 @@ export default function ZipCodeExplorer() {
     checkSchema();
   }, []);
 
+  const [isFetching, setIsFetching] = useState(false);
+
   const handleSearch = async (zipOverride = null) => {
     const searchZip = zipOverride || zipCode;
     
@@ -228,11 +230,35 @@ export default function ZipCodeExplorer() {
         totalCountRes = await sql`SELECT COUNT(*) as count FROM properties WHERE zip_code = ${searchZip}`;
       }
       
+      // If no results, try to fetch/generate properties for this zip
       if (results.length === 0) {
-        setError(`No properties found in zip code ${searchZip}`);
-        setProperties([]);
-        setStats(null);
-        return;
+        setIsFetching(true);
+        toast.info(`No data for ${searchZip}. Generating properties...`);
+        
+        try {
+          const fetchRes = await base44.functions.invoke('fetchZipProperties', { zip_code: searchZip });
+          
+          if (fetchRes.data?.status === 'imported') {
+            toast.success(`Added ${fetchRes.data.count} properties for ${searchZip}!`);
+            // Re-run the search now that we have data
+            setIsFetching(false);
+            setLoading(false);
+            return handleSearch(searchZip);
+          } else if (fetchRes.data?.error) {
+            setError(fetchRes.data.message || fetchRes.data.error);
+            setProperties([]);
+            setStats(null);
+            return;
+          }
+        } catch (fetchErr) {
+          console.error('Fetch error:', fetchErr);
+          setError(`Could not generate data for zip code ${searchZip}`);
+          setProperties([]);
+          setStats(null);
+          return;
+        } finally {
+          setIsFetching(false);
+        }
       }
       
       // Map properties to standard format expected by optimizer
