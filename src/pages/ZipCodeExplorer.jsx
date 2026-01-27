@@ -44,13 +44,94 @@ export default function ZipCodeExplorer() {
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const zipParam = params.get('zip');
-    if (zipParam && !autoSearchTriggered) {
+    const routeIdParam = params.get('routeId');
+    
+    if (routeIdParam && !autoSearchTriggered) {
+      setAutoSearchTriggered(true);
+      loadSavedRoute(routeIdParam);
+    } else if (zipParam && !autoSearchTriggered) {
       setZipCode(zipParam);
       setAutoSearchTriggered(true);
-      // Trigger search after a short delay to ensure state update
       setTimeout(() => handleSearch(zipParam), 100);
     }
   }, []);
+
+  const loadSavedRoute = async (routeId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const route = await base44.entities.SavedRoute.get(routeId);
+      if (!route) {
+        setError('Route not found');
+        setLoading(false);
+        return;
+      }
+
+      // Get properties for this route from Neon DB
+      const sql = getConnection();
+      const hashes = route.property_hashes || [];
+      
+      if (hashes.length === 0) {
+        setError('Route has no properties');
+        setLoading(false);
+        return;
+      }
+
+      // Query properties by their hashes/IDs
+      const results = await sql`
+        SELECT 
+          p.*, 
+          COALESCE(p.latitude, z.latitude) + (random() - 0.5) * 0.015 as latitude,
+          COALESCE(p.longitude, z.longitude) + (random() - 0.5) * 0.015 as longitude
+        FROM properties p
+        LEFT JOIN zip_codes z ON p.zip_code = z.code
+        WHERE p.address_hash = ANY(${hashes}) OR p.id::text = ANY(${hashes})
+        LIMIT 500
+      `;
+
+      const mappedProps = results.map(p => ({
+        ...p,
+        lat: parseFloat(p.latitude),
+        lng: parseFloat(p.longitude),
+        address_hash: p.address_hash || p.id,
+        effective_status: 'ELIGIBLE'
+      })).filter(p => !isNaN(p.lat) && !isNaN(p.lng));
+
+      setProperties(mappedProps);
+
+      if (mappedProps.length > 0) {
+        const avgLat = mappedProps.reduce((sum, p) => sum + p.lat, 0) / mappedProps.length;
+        const avgLng = mappedProps.reduce((sum, p) => sum + p.lng, 0) / mappedProps.length;
+        setMapCenter([avgLat, avgLng]);
+        setMapZoom(14);
+        setSearchId(prev => prev + 1);
+
+        // Create single route object for display
+        const loadedRoute = {
+          name: route.name,
+          properties: mappedProps,
+          houseCount: mappedProps.length,
+          totalDistance: route.metrics?.distance || 0,
+          competitivenessScore: route.metrics?.score || 0
+        };
+        setGeneratedRoutes([loadedRoute]);
+        setActiveRoute(loadedRoute);
+      }
+
+      setStats({
+        total: hashes.length,
+        shown: results.length,
+        mapped: mappedProps.length,
+        avgScore: null
+      });
+
+    } catch (err) {
+      console.error(err);
+      setError(`Error loading route: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
   const [properties, setProperties] = useState([]);
   const [mapCenter, setMapCenter] = useState([39.8283, -98.5795]); // Center of US
   const [mapZoom, setMapZoom] = useState(4);
