@@ -76,23 +76,14 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                 </div>
             </div>
 
-            {/* Routes Section */}
-            <div className="p-4 bg-[#0A0A0A]">
-                <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                        <Map className="w-3 h-3" /> Active Territory
-                    </h4>
-                    <span className="text-[10px] bg-gray-800 text-gray-300 px-2 py-1 rounded-full">
-                        {activeRoutes.length} Active
-                    </span>
-                </div>
-
+            {/* Routes Section - Compact */}
+            <div className="p-3 bg-[#0A0A0A]">
                 {routes.length === 0 ? (
-                    <div className="text-center py-6 border border-dashed border-gray-800 rounded-xl bg-gray-900/20">
-                        <p className="text-sm text-gray-500 italic mb-3">No territory assigned</p>
+                    <div className="text-center py-4 border border-dashed border-gray-800 rounded-lg bg-gray-900/20">
+                        <p className="text-xs text-gray-500 mb-2">No routes assigned</p>
                         <Select onValueChange={(routeId) => onAssignRoute(routeId, member.id)}>
-                            <SelectTrigger className="w-40 mx-auto h-8 text-xs bg-yellow-500/10 border-yellow-500/50 text-yellow-500 hover:bg-yellow-500 hover:text-black transition-all">
-                                <SelectValue placeholder="Assign Route" />
+                            <SelectTrigger className="w-32 mx-auto h-7 text-[10px] bg-yellow-500/10 border-yellow-500/50 text-yellow-500">
+                                <SelectValue placeholder="Assign" />
                             </SelectTrigger>
                             <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
                                 {allRoutes.filter(r => !r.assigned_to).map(r => (
@@ -102,44 +93,28 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                         </Select>
                     </div>
                 ) : (
-                    <div className="space-y-2">
-                        {routes.slice(0, 3).map(route => (
+                    <div className="space-y-1.5">
+                        {routes.slice(0, 2).map(route => (
                             <Link 
                                 key={route.id} 
                                 to={createPageUrl('ZipCodeExplorer') + `?routeId=${route.id}`}
-                                className="flex items-center justify-between bg-[#151515] p-3 rounded-lg border border-gray-800 hover:border-yellow-500/50 hover:bg-[#1a1a1a] transition-colors cursor-pointer"
+                                className="flex items-center justify-between bg-[#151515] p-2 rounded-lg border border-gray-800 hover:border-yellow-500/50 transition-colors"
                             >
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-2 h-2 rounded-full ${route.status === 'COMPLETED' ? 'bg-green-500' : 'bg-blue-500 animate-pulse'}`} />
-                                    <div>
-                                        <p className="text-xs font-bold text-white">{route.name}</p>
-                                        <p className="text-[10px] text-gray-500">
-                                            {route.metrics?.house_count || 0} homes • {route.metrics?.score || 0} pts
-                                        </p>
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${route.status === 'COMPLETED' ? 'bg-green-500' : 'bg-blue-500 animate-pulse'}`} />
+                                    <div className="min-w-0">
+                                        <p className="text-[11px] font-bold text-white truncate">{route.name}</p>
+                                        <p className="text-[9px] text-gray-500">{route.metrics?.house_count || 0} homes</p>
                                     </div>
                                 </div>
-                                <Badge variant="secondary" className="text-[10px] h-5 bg-gray-800 text-gray-300">
-                                    {route.status}
-                                </Badge>
+                                <ChevronRight className="w-4 h-4 text-gray-600 flex-shrink-0" />
                             </Link>
                         ))}
-                        {routes.length > 3 && (
-                            <button className="w-full py-2 text-[10px] text-gray-500 hover:text-white transition-colors flex items-center justify-center gap-1">
-                                View {routes.length - 3} more <ChevronRight className="w-3 h-3" />
-                            </button>
+                        {routes.length > 2 && (
+                            <p className="text-[10px] text-center text-gray-500 py-1">
+                                +{routes.length - 2} more routes
+                            </p>
                         )}
-                        <div className="pt-2">
-                             <Select onValueChange={(routeId) => onAssignRoute(routeId, member.id)}>
-                                <SelectTrigger className="w-full h-8 text-xs bg-[#151515] border-gray-800 text-gray-400 hover:text-white hover:border-gray-600 transition-all">
-                                    <SelectValue placeholder="+ Assign Another Route" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
-                                    {allRoutes.filter(r => !r.assigned_to).map(r => (
-                                        <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
                     </div>
                 )}
             </div>
