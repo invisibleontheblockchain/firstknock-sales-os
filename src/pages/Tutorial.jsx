@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { 
     Map, Upload, Users, List, Navigation, CheckCircle, 
     ChevronRight, ChevronDown, MapPin, Filter, Route,
-    FileSpreadsheet, Zap, Target, Clock, Smartphone
+    FileSpreadsheet, Zap, Target, Clock, Smartphone, Key, Rocket, Share2
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+import { base44 } from '@/api/base44Client';
+import { useQuery } from "@tanstack/react-query";
 
 const BRAND = {
     gold: '#FFD700',
@@ -55,6 +57,9 @@ function Step({ number, title, description }) {
 }
 
 export default function Tutorial() {
+    const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me().catch(() => null) });
+    const isManager = user?.app_role === 'manager';
+
     return (
         <div className="min-h-full bg-[#0A0A0A] p-4 pb-24 overflow-y-auto">
             <div className="max-w-2xl mx-auto">
@@ -63,22 +68,78 @@ export default function Tutorial() {
                     <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: BRAND.gold }}>
                         <Navigation className="w-8 h-8" style={{ color: BRAND.voidBlack }} />
                     </div>
-                    <h1 className="text-2xl font-bold text-white mb-2">FirstKnock Tutorial</h1>
-                    <p className="text-gray-400">Learn how to use the app in 5 minutes</p>
+                    <h1 className="text-2xl font-bold text-white mb-2">FirstKnock Help</h1>
+                    <p className="text-gray-400">{isManager ? 'Manager Guide' : 'Rep Guide'} • Learn the app in 5 minutes</p>
                 </div>
 
-                {/* Quick Start */}
-                <div className="p-4 rounded-xl mb-6" style={{ background: `${BRAND.gold}15`, border: `1px solid ${BRAND.gold}40` }}>
-                    <h3 className="font-bold mb-3 flex items-center gap-2" style={{ color: BRAND.gold }}>
-                        <Zap className="w-5 h-5" /> Quick Start
-                    </h3>
-                    <ol className="text-sm text-gray-300 space-y-2">
-                        <li>1. <strong>Upload your data</strong> on the Setup page (CSV with addresses)</li>
-                        <li>2. <strong>Set your territory</strong> by selecting zip codes</li>
-                        <li>3. <strong>Generate routes</strong> on the Map page</li>
-                        <li>4. <strong>Start knocking!</strong> Use the checklist to log results</li>
-                    </ol>
-                </div>
+                {/* Quick Start - Different for Manager vs Rep */}
+                {isManager ? (
+                    <div className="p-4 rounded-xl mb-6" style={{ background: `${BRAND.gold}15`, border: `1px solid ${BRAND.gold}40` }}>
+                        <h3 className="font-bold mb-3 flex items-center gap-2" style={{ color: BRAND.gold }}>
+                            <Rocket className="w-5 h-5" /> Manager Quick Start
+                        </h3>
+                        <ol className="text-sm text-gray-300 space-y-2">
+                            <li>1. <strong>Add your reps</strong> on the Team page - share their join code!</li>
+                            <li>2. <strong>Generate routes</strong> by entering a zip code in Route Generator</li>
+                            <li>3. <strong>Assign routes</strong> to your reps from the Team page</li>
+                            <li>4. <strong>Track progress</strong> - see who's knocking and their results</li>
+                        </ol>
+                    </div>
+                ) : (
+                    <div className="p-4 rounded-xl mb-6" style={{ background: `${BRAND.gold}15`, border: `1px solid ${BRAND.gold}40` }}>
+                        <h3 className="font-bold mb-3 flex items-center gap-2" style={{ color: BRAND.gold }}>
+                            <Zap className="w-5 h-5" /> Rep Quick Start
+                        </h3>
+                        <ol className="text-sm text-gray-300 space-y-2">
+                            <li>1. <strong>Check your route</strong> - your manager assigns routes to you</li>
+                            <li>2. <strong>Tap a house</strong> to see details and log your result</li>
+                            <li>3. <strong>Mark outcomes</strong> - Sold, Callback, No Answer, Not Interested</li>
+                            <li>4. <strong>Keep knocking!</strong> Your progress saves automatically</li>
+                        </ol>
+                    </div>
+                )}
+
+                {/* Team Code Section - Manager Only */}
+                {isManager && (
+                    <TutorialSection icon={Key} title="Team Codes & Adding Reps" defaultOpen={true}>
+                        <div className="space-y-4">
+                            <div className="p-3 rounded-lg bg-green-900/20 border border-green-900/50">
+                                <p className="text-sm text-green-300">
+                                    <strong>How Team Codes Work:</strong> When you created your account, a 4-digit team code was generated. Share this with your reps!
+                                </p>
+                            </div>
+                            
+                            <Step 
+                                number="1" 
+                                title="Find Your Team Code" 
+                                description="Go to Team page → tap 'Codes' button. You'll see your active codes there."
+                            />
+                            <Step 
+                                number="2" 
+                                title="Share with Your Reps" 
+                                description="Text or tell your reps the 4-digit code. They enter it when they first open the app."
+                            />
+                            <Step 
+                                number="3" 
+                                title="Reps Auto-Join Your Team" 
+                                description="Once they enter the code, they appear on your Team page and you can assign routes to them."
+                            />
+                            
+                            <div className="p-3 rounded-lg bg-blue-900/20 border border-blue-900/50 mt-4">
+                                <p className="text-xs text-blue-300">
+                                    <strong>Pro Tip:</strong> Create different codes for different teams or campaigns. You can deactivate codes anytime.
+                                </p>
+                            </div>
+                        </div>
+                        <div className="mt-4">
+                            <Link to={createPageUrl('AdminTeam')}>
+                                <Button className="w-full" style={{ background: BRAND.gold, color: BRAND.voidBlack }}>
+                                    <Users className="w-4 h-4 mr-2" /> Go to Team
+                                </Button>
+                            </Link>
+                        </div>
+                    </TutorialSection>
+                )}
 
                 {/* Tutorial Sections */}
                 <TutorialSection icon={Upload} title="1. Setup & Data Upload" defaultOpen={true}>
@@ -182,23 +243,60 @@ export default function Tutorial() {
                     />
                 </TutorialSection>
 
-                <TutorialSection icon={Users} title="5. Team Management (Admin)">
-                    <Step 
-                        number="1" 
-                        title="Add Team Members" 
-                        description="Go to the Team page and tap 'Add Rep' to add sales reps."
-                    />
-                    <Step 
-                        number="2" 
-                        title="Assign Routes" 
-                        description="Routes can be assigned to specific team members. Each rep sees only their assigned routes."
-                    />
-                    <Step 
-                        number="3" 
-                        title="Track Progress" 
-                        description="View completion stats, houses knocked, and performance metrics for each rep."
-                    />
-                </TutorialSection>
+                {isManager && (
+                    <TutorialSection icon={Users} title="5. Team Management">
+                        <Step 
+                            number="1" 
+                            title="Share Your Team Code" 
+                            description="Go to Team → Codes. Share the 4-digit code with your reps. They enter it when signing up."
+                        />
+                        <Step 
+                            number="2" 
+                            title="Generate Routes" 
+                            description="Enter a zip code in the Team page search bar, then generate optimized routes for that area."
+                        />
+                        <Step 
+                            number="3" 
+                            title="Assign Routes to Reps" 
+                            description="Each rep can be assigned multiple routes. They only see their own routes in the app."
+                        />
+                        <Step 
+                            number="4" 
+                            title="Track Progress" 
+                            description="See real-time stats: doors knocked, sales, conversion rates for each rep."
+                        />
+                        <div className="p-3 rounded-lg bg-yellow-900/20 border border-yellow-900/50 mt-4">
+                            <p className="text-xs text-yellow-300">
+                                <strong>Scaling Your Team:</strong> Use the filters in Route Generator to control houses per route. Start with 50 houses/route for new reps, increase to 100+ for experienced ones.
+                            </p>
+                        </div>
+                    </TutorialSection>
+                )}
+
+                {!isManager && (
+                    <TutorialSection icon={Share2} title="5. Joining a Team">
+                        <Step 
+                            number="1" 
+                            title="Get Your Code" 
+                            description="Your manager will give you a 4-digit team code."
+                        />
+                        <Step 
+                            number="2" 
+                            title="Enter the Code" 
+                            description="On the welcome screen, enter the code and tap JOIN."
+                        />
+                        <Step 
+                            number="3" 
+                            title="See Your Routes" 
+                            description="Once joined, you'll see routes assigned to you by your manager."
+                        />
+                        <div className="p-3 rounded-lg bg-blue-900/20 border border-blue-900/50 mt-4">
+                            <p className="text-xs text-blue-300">
+                                <strong>No code yet?</strong> Ask your manager for the team code. They can find it on their Team → Codes page.
+                            </p>
+                        </div>
+                    </TutorialSection>
+                )}
 
                 <TutorialSection icon={Target} title="6. Understanding Scores">
                     <div className="space-y-3 text-sm">
@@ -250,9 +348,24 @@ export default function Tutorial() {
                     </div>
                 </div>
 
+                {/* Why FirstKnock */}
+                <div className="p-4 rounded-xl border border-[#333] bg-[#151515] mb-6">
+                    <h3 className="font-bold text-white mb-3 flex items-center gap-2">
+                        <Rocket className="w-5 h-5" style={{ color: BRAND.gold }} />
+                        Why FirstKnock?
+                    </h3>
+                    <ul className="text-sm text-gray-400 space-y-2">
+                        <li>✓ <strong className="text-white">Optimized Routes</strong> - AI-generated routes save hours of planning</li>
+                        <li>✓ <strong className="text-white">Real-Time Tracking</strong> - Managers see live progress</li>
+                        <li>✓ <strong className="text-white">No More Spreadsheets</strong> - All data in one place</li>
+                        <li>✓ <strong className="text-white">Team Sync</strong> - Everyone stays on the same page</li>
+                        <li>✓ <strong className="text-white">GPS Verification</strong> - Proof of visits for accountability</li>
+                    </ul>
+                </div>
+
                 {/* Help */}
                 <div className="text-center text-gray-500 text-sm">
-                    <p>Need more help? Contact your team admin.</p>
+                    <p>Need more help? Contact your team admin or email support.</p>
                 </div>
             </div>
         </div>
