@@ -147,6 +147,16 @@ export default function ZipCodeExplorer() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [activeRoute, setActiveRoute] = useState(null);
+  
+  // Route Filters
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    housesPerRoute: 50,
+    maxRoutes: 10,
+    minPrice: 0,
+    maxPrice: 2000000,
+    soldWithinYears: 5
+  });
 
   React.useEffect(() => {
     // Check which zip column exists on mount
