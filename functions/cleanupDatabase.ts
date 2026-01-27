@@ -10,11 +10,12 @@ Deno.serve(async (req) => {
     
     const tableSizes = await sql`
       SELECT 
-        relname as table_name,
-        pg_size_pretty(pg_total_relation_size(relid)) as total_size,
-        n_live_tup as row_count
-      FROM pg_catalog.pg_statio_user_tables
-      ORDER BY pg_total_relation_size(relid) DESC
+        schemaname,
+        tablename as table_name,
+        pg_size_pretty(pg_total_relation_size(schemaname || '.' || tablename)) as total_size
+      FROM pg_tables
+      WHERE schemaname = 'public'
+      ORDER BY pg_total_relation_size(schemaname || '.' || tablename) DESC
     `;
 
     const dbSize = await sql`SELECT pg_size_pretty(pg_database_size(current_database())) as size`;
