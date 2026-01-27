@@ -112,8 +112,8 @@ export default function ZipCodeExplorer() {
         results = await sql`
           SELECT 
             p.*, 
-            COALESCE(p.latitude, z.latitude) as latitude,
-            COALESCE(p.longitude, z.longitude) as longitude
+            COALESCE(p.latitude, z.latitude) + (random() - 0.5) * 0.015 as latitude,
+            COALESCE(p.longitude, z.longitude) + (random() - 0.5) * 0.015 as longitude
           FROM properties p
           LEFT JOIN zip_codes z ON p.zip = z.code
           WHERE p.zip = ${searchZip} 
@@ -124,8 +124,8 @@ export default function ZipCodeExplorer() {
         results = await sql`
           SELECT 
             p.*, 
-            COALESCE(p.latitude, z.latitude) as latitude,
-            COALESCE(p.longitude, z.longitude) as longitude
+            COALESCE(p.latitude, z.latitude) + (random() - 0.5) * 0.015 as latitude,
+            COALESCE(p.longitude, z.longitude) + (random() - 0.5) * 0.015 as longitude
           FROM properties p
           LEFT JOIN zip_codes z ON p.postal_code = z.code
           WHERE p.postal_code = ${searchZip} 
