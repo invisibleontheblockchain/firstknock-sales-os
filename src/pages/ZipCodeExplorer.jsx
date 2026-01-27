@@ -507,6 +507,11 @@ export default function ZipCodeExplorer() {
                       ({stats.total - stats.mapped} properties missing coordinates)
                   </span>
               )}
+              {stats.isGenerated && (
+                <Badge className="bg-yellow-100 text-yellow-800 text-base px-3 py-1">
+                  ⚡ Live Generated
+                </Badge>
+              )}
               {stats.avgScore && (
                 <Badge className="bg-green-100 text-green-800 text-base px-3 py-1">
                   Avg Score: {stats.avgScore}
