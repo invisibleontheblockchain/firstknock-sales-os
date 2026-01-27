@@ -57,6 +57,9 @@ Deno.serve(async (req) => {
     // 6. Sample record to see actual data
     const sampleRecord = await sql`SELECT * FROM properties LIMIT 1`;
     
+    // Get total record count
+    const totalCount = await sql`SELECT COUNT(*) as total FROM properties`;
+    
     // 7. Check how many records have lat/lng
     const coordStats = await sql`
       SELECT 
