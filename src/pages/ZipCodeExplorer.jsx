@@ -595,6 +595,137 @@ export default function ZipCodeExplorer() {
             <p className="text-red-600 text-sm font-medium bg-red-50 p-2 rounded border border-red-100">{error}</p>
           </div>
         )}
+        
+        {/* Filters Panel */}
+        {showFilters && properties.length > 0 && (
+          <div className="max-w-7xl mx-auto w-full bg-gray-50 border rounded-lg p-4 space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              {/* Houses Per Route */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-600 uppercase">Houses/Route</label>
+                <Select 
+                  value={filters.housesPerRoute.toString()} 
+                  onValueChange={(v) => setFilters({...filters, housesPerRoute: parseInt(v)})}
+                >
+                  <SelectTrigger className="h-9 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="25">25 houses</SelectItem>
+                    <SelectItem value="50">50 houses</SelectItem>
+                    <SelectItem value="75">75 houses</SelectItem>
+                    <SelectItem value="100">100 houses</SelectItem>
+                    <SelectItem value="150">150 houses</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              {/* Max Routes */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-600 uppercase">Max Routes</label>
+                <Select 
+                  value={filters.maxRoutes.toString()} 
+                  onValueChange={(v) => setFilters({...filters, maxRoutes: parseInt(v)})}
+                >
+                  <SelectTrigger className="h-9 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 route</SelectItem>
+                    <SelectItem value="2">2 routes</SelectItem>
+                    <SelectItem value="3">3 routes</SelectItem>
+                    <SelectItem value="5">5 routes</SelectItem>
+                    <SelectItem value="10">10 routes</SelectItem>
+                    <SelectItem value="20">20 routes</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              {/* Min Price */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-600 uppercase">Min Price</label>
+                <Select 
+                  value={filters.minPrice.toString()} 
+                  onValueChange={(v) => setFilters({...filters, minPrice: parseInt(v)})}
+                >
+                  <SelectTrigger className="h-9 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">Any</SelectItem>
+                    <SelectItem value="100000">$100K+</SelectItem>
+                    <SelectItem value="200000">$200K+</SelectItem>
+                    <SelectItem value="300000">$300K+</SelectItem>
+                    <SelectItem value="500000">$500K+</SelectItem>
+                    <SelectItem value="750000">$750K+</SelectItem>
+                    <SelectItem value="1000000">$1M+</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              {/* Max Price */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-600 uppercase">Max Price</label>
+                <Select 
+                  value={filters.maxPrice.toString()} 
+                  onValueChange={(v) => setFilters({...filters, maxPrice: parseInt(v)})}
+                >
+                  <SelectTrigger className="h-9 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="200000">$200K</SelectItem>
+                    <SelectItem value="300000">$300K</SelectItem>
+                    <SelectItem value="500000">$500K</SelectItem>
+                    <SelectItem value="750000">$750K</SelectItem>
+                    <SelectItem value="1000000">$1M</SelectItem>
+                    <SelectItem value="2000000">$2M</SelectItem>
+                    <SelectItem value="99999999">No Limit</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              {/* Sold Within Years */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-600 uppercase">Sold Within</label>
+                <Select 
+                  value={filters.soldWithinYears.toString()} 
+                  onValueChange={(v) => setFilters({...filters, soldWithinYears: parseInt(v)})}
+                >
+                  <SelectTrigger className="h-9 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 year</SelectItem>
+                    <SelectItem value="2">2 years</SelectItem>
+                    <SelectItem value="3">3 years</SelectItem>
+                    <SelectItem value="5">5 years</SelectItem>
+                    <SelectItem value="10">10 years</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            
+            <div className="flex items-center justify-between pt-2 border-t">
+              <p className="text-xs text-gray-500">
+                {properties.length} total properties • Adjust filters then click "Generate Routes"
+              </p>
+              <Button 
+                size="sm" 
+                variant="ghost"
+                onClick={() => setFilters({
+                  housesPerRoute: 50,
+                  maxRoutes: 10,
+                  minPrice: 0,
+                  maxPrice: 2000000,
+                  soldWithinYears: 5
+                })}
+              >
+                Reset Filters
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
       
       {/* Map */}
