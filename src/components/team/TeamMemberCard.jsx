@@ -28,35 +28,34 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
         : '0.0';
 
     return (
-        <div className="bg-[#111] border border-gray-800 rounded-2xl overflow-hidden hover:border-yellow-500/30 transition-all duration-300 shadow-xl group">
-            {/* Header / Profile */}
-            <div className="p-5 border-b border-gray-800 bg-gradient-to-r from-[#151515] to-[#0A0A0A]">
-                <div className="flex justify-between items-start">
-                    <div className="flex gap-4">
-                        <div className="relative">
-                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center text-black font-bold text-xl shadow-lg shadow-yellow-500/20">
+        <div className="bg-[#111] border border-gray-800 rounded-xl overflow-hidden hover:border-yellow-500/30 transition-all duration-300 shadow-lg group">
+            {/* Header / Profile - Compact */}
+            <div className="p-3 md:p-4 border-b border-gray-800 bg-gradient-to-r from-[#151515] to-[#0A0A0A]">
+                <div className="flex justify-between items-center">
+                    <div className="flex gap-3 items-center min-w-0">
+                        <div className="relative flex-shrink-0">
+                            <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center text-black font-bold text-base md:text-lg">
                                 {member.name?.[0]?.toUpperCase() || '?'}
                             </div>
-                            <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 border-2 border-[#151515] rounded-full" />
+                            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-[#151515] rounded-full" />
                         </div>
                         
-                        <div>
-                            <h3 className="font-bold text-xl text-white tracking-tight">{member.name}</h3>
-                            <p className="text-sm text-gray-500 font-medium mb-1">{member.email}</p>
-                            <div className="flex gap-2">
-                                <Badge variant="outline" className="bg-white/5 border-white/10 text-xs font-medium text-gray-300">
+                        <div className="min-w-0">
+                            <h3 className="font-bold text-base md:text-lg text-white tracking-tight truncate">{member.name}</h3>
+                            <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="bg-white/5 border-white/10 text-[10px] font-medium text-gray-400 h-5">
                                     {member.role?.toUpperCase()}
                                 </Badge>
-                                <Badge className="bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20 text-xs border border-yellow-500/20">
-                                    {conversionRate}% CONV
+                                <Badge className="bg-yellow-500/10 text-yellow-500 text-[10px] border border-yellow-500/20 h-5">
+                                    {conversionRate}%
                                 </Badge>
                             </div>
                         </div>
                     </div>
 
-                    <div className="text-right hidden sm:block">
-                        <p className="text-3xl font-bold text-white tracking-tighter">{metrics.sales}</p>
-                        <p className="text-[10px] text-gray-500 font-bold tracking-widest uppercase">TOTAL SALES</p>
+                    <div className="text-right flex-shrink-0">
+                        <p className="text-2xl md:text-3xl font-bold text-white tracking-tighter">{metrics.sales}</p>
+                        <p className="text-[9px] text-gray-500 font-bold uppercase">Sales</p>
                     </div>
                 </div>
             </div>
