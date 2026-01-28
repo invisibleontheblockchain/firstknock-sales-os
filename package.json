@@ -2,6 +2,13 @@
   "name": "base44-app",
   "private": true,
   "version": "1.0.0",
+  "contributors": [
+    {
+      "name": "Danny",
+      "email": "Daannyyrod@gmail.com",
+      "url": "https://github.com/daannyyrod"
+    }
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",

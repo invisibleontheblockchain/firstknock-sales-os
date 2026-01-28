@@ -133,5 +133,9 @@ firstknock-sales-os/
 │   │   └── index.ts    # Server Entry Point
 ├── android/            # Android Capacitor Project
 ├── ios/                # iOS Capacitor Project
-└── public/             # Static Assets
-```
+
+## 👥 Team
+
+- **Danny** ([@daannyyrod](https://github.com/daannyyrod)) - *Contributor*
+- **Avion** - *Lead Developer*
+
