@@ -3,6 +3,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { propertiesRoutes } from './routes/properties.js';
 import { routesRoutes } from './routes/routes.js';
+import { authPlugin } from './middleware/auth.js';
 
 const fastify = Fastify({
     logger: true,
@@ -29,6 +30,7 @@ fastify.get('/health', async () => {
 // Register route modules
 fastify.register(propertiesRoutes);
 fastify.register(routesRoutes);
+fastify.register(authPlugin);
 
 // Start server
 const start = async () => {

@@ -11,8 +11,9 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
             android:label="@string/title_activity_main"
-            android:theme="@style/AppTheme.NoActionBarLaunch"
+        android:theme="@style/AppTheme.NoActionBarLaunch"
             android:launchMode="singleTask"
+            android:usesCleartextTraffic="true"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
