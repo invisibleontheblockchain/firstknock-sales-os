@@ -51,6 +51,19 @@ export default function Layout({ children }) {
         return null;
     }
 
+    const [isOnline, setIsOnline] = React.useState(navigator.onLine);
+
+    React.useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+
     const queryClient = useQueryClient();
     const { data: user, isLoading } = useQuery({
         queryKey: ['user'],
@@ -152,7 +165,13 @@ export default function Layout({ children }) {
                     </button>
 
                     {/* Status Indicator */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
+                        {!isOnline && (
+                            <div className="hidden sm:flex items-center gap-1 bg-red-900/50 px-2 py-1 rounded text-[10px] text-red-200 border border-red-800">
+                                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                                OFFLINE
+                            </div>
+                        )}
                         <button
                             onClick={async () => {
                                 try {
@@ -164,11 +183,14 @@ export default function Layout({ children }) {
                                 }
                                 queryClient.clear();
                             }}
-                            className="text-xs text-slate-400 hover:text-white mr-2"
+                            className="text-xs text-slate-400 hover:text-white"
                         >
                             LOGOUT
                         </button>
-                        <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                        <span 
+                            className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} 
+                            title={isOnline ? "System Online" : "Offline Mode Active"}
+                        />
                     </div>
                 </div>
             </header>

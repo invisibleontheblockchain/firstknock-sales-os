@@ -250,9 +250,20 @@ export default function Tutorial() {
                     </div>
                 </div>
 
-                {/* Help */}
-                <div className="text-center text-gray-500 text-sm">
-                    <p>Need more help? Contact your team admin.</p>
+                {/* Legal & Support */}
+                <div className="mt-8 pt-8 border-t border-[#333]">
+                    <h3 className="text-xl font-bold text-white mb-4">Legal & Support</h3>
+                    <div className="flex flex-col gap-3 items-start">
+                        <Link to={createPageUrl('Terms')} className="text-gray-400 hover:text-white flex items-center gap-2">
+                            <FileSpreadsheet className="w-4 h-4" /> Terms of Service & EULA
+                        </Link>
+                        <Link to={createPageUrl('DeleteAccount')} className="text-red-500 hover:text-red-400 flex items-center gap-2">
+                            <Zap className="w-4 h-4" /> Delete Account
+                        </Link>
+                    </div>
+                    <div className="text-center text-gray-500 text-sm mt-8">
+                        <p>Need more help? Contact your team admin or email support@firstknock.app</p>
+                    </div>
                 </div>
             </div>
         </div>
