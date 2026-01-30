@@ -64,6 +64,15 @@ function LocationMarker() {
     ) : null;
 }
 
+// Component to capture map instance for external control
+function MapRefHandler({ mapRef }) {
+    const map = useMap();
+    useEffect(() => {
+        if (mapRef) mapRef.current = map;
+    }, [map, mapRef]);
+    return null;
+}
+
 function MapController({ fitBounds, onZoomChange, onMoveEnd }) {
     const map = useMap();
     
