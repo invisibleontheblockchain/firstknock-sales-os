@@ -59,6 +59,8 @@ import ZipCodeExplorer from './pages/ZipCodeExplorer';
 import Tutorial from './pages/Tutorial';
 import RoleSelect from './pages/RoleSelect';
 import Roadmap from './pages/Roadmap';
+import DeleteAccount from './pages/DeleteAccount';
+import Terms from './pages/Terms';
 import __Layout from './Layout.jsx';
 
 
@@ -75,6 +77,8 @@ export const PAGES = {
     "Tutorial": Tutorial,
     "RoleSelect": RoleSelect,
     "Roadmap": Roadmap,
+    "DeleteAccount": DeleteAccount,
+    "Terms": Terms,
 }
 
 export const pagesConfig = {
