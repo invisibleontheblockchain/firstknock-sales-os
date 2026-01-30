@@ -483,20 +483,17 @@ export default function Home() {
         <div className="h-full relative" style={{ background: BRAND.voidBlack }}>
             {/* Map */}
             <MapContainer
-                ref={mapRef}
                 center={center}
                 zoom={15}
                 style={{ height: '100%', width: '100%' }}
                 zoomControl={false}
-                onMoveEnd={(e) => {
-                    // Optional: Track center for dynamic start location
-                }}
             >
                 <TileLayer
                     url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
                     attribution='&copy; CARTO'
                 />
                 <LocationMarker />
+                <DarkRoomManager />
                 <MapController 
                     fitBounds={fitBounds} 
                     onZoomChange={setZoomLevel} 
