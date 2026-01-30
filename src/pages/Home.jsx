@@ -116,78 +116,68 @@ export default function Home() {
     const [darkRoomClusters, setDarkRoomClusters] = useState([]);
     const [darkRoomCount, setDarkRoomCount] = useState(0);
     const [isLoadingDarkRoom, setIsLoadingDarkRoom] = useState(false);
-    const mapRef = useRef(null);
+    // mapRef removed - we use useMap in child component
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
-    // Dark Room Data Fetching with Debounce & Clustering
+    // Dark Room Manager Component
+    const DarkRoomManager = () => {
+        const map = useMap();
+        
+        useEffect(() => {
+            let debounceTimer = null;
+            
+            const fetchDarkRoomData = async () => {
+                const bounds = map.getBounds();
+                const zoom = map.getZoom();
+                
+                setIsLoadingDarkRoom(true);
+                
+                try {
+                    const data = await darkRoom.fetchPropertiesInViewport(bounds, zoom);
+                    
+                    // Separate clusters from individual properties
+                    const clusters = data.filter(d => d.isCluster);
+                    const properties = data.filter(d => !d.isCluster);
+                    
+                    setDarkRoomClusters(clusters);
+                    setDarkRoomProperties(properties);
+                    
+                } catch (e) {
+                    console.error("Failed to fetch Dark Room stream:", e);
+                } finally {
+                    setIsLoadingDarkRoom(false);
+                }
+            };
+
+            const debouncedFetch = () => {
+                if (debounceTimer) clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(fetchDarkRoomData, 300);
+            };
+
+            map.on('moveend', debouncedFetch);
+            map.on('zoomend', debouncedFetch);
+            
+            // Initial fetch
+            fetchDarkRoomData();
+
+            return () => {
+                map.off('moveend', debouncedFetch);
+                map.off('zoomend', debouncedFetch);
+                if (debounceTimer) clearTimeout(debounceTimer);
+            };
+        }, [map]);
+
+        return null;
+    };
+
+    // Connection check on mount
     useEffect(() => {
-        if (!mapRef.current) return;
-        
-        let debounceTimer = null;
-        
-        const fetchDarkRoomData = async () => {
-            const map = mapRef.current;
-            if (!map) return;
-            
-            const bounds = map.getBounds();
-            const zoom = map.getZoom();
-            
-            setIsLoadingDarkRoom(true);
-            
-            try {
-                const data = await darkRoom.fetchPropertiesInViewport(bounds, zoom);
-                
-                // Separate clusters from individual properties
-                const clusters = data.filter(d => d.isCluster);
-                const properties = data.filter(d => !d.isCluster);
-                
-                setDarkRoomClusters(clusters);
-                setDarkRoomProperties(properties);
-                
-            } catch (e) {
-                console.error("Failed to fetch Dark Room stream:", e);
-            } finally {
-                setIsLoadingDarkRoom(false);
-            }
-        };
-
-        // Debounced fetch to prevent hammering the DB
-        const debouncedFetch = () => {
-            if (debounceTimer) clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(fetchDarkRoomData, 300);
-        };
-
-        const map = mapRef.current;
-        map.on('moveend', debouncedFetch);
-        map.on('zoomend', debouncedFetch);
-        
-        // Initial fetch
-        fetchDarkRoomData();
-        
-        // Test connection and get total count on mount
         darkRoom.testConnection().then(result => {
-            console.log('[Home] Dark Room connection test:', result);
             if (result.connected) {
                 setDarkRoomCount(result.totalProperties);
-                // Run data quality report
-                darkRoom.getDataQualityReport().then(report => {
-                    console.log('[Home] 📊 DATA QUALITY REPORT:', report);
-                });
-                // Run geographic distribution report
-                darkRoom.getGeographicDistribution().then(report => {
-                    console.log('[Home] 🗺️ GEOGRAPHIC DISTRIBUTION:', report);
-                });
-            } else {
-                console.error('[Home] Dark Room connection failed:', result.message);
             }
         });
-
-        return () => {
-            map.off('moveend', debouncedFetch);
-            map.off('zoomend', debouncedFetch);
-            if (debounceTimer) clearTimeout(debounceTimer);
-        };
-    }, [mapRef.current]);
+    }, []);
 
     // Fetch Properties - support both user-specific and fallback for mobile auth
     const { data: userProperties = [], isLoading: propsLoading } = useQuery({
