@@ -379,64 +379,7 @@ export default function ZipCodeExplorer() {
     }
   };
 
-  // Generate properties in-memory without storing to DB
-  const generatePropertiesInMemory = (zip, city, state, centerLat, centerLng, countOverride = null) => {
-    const streetNames = [
-      'Main St', 'Oak Ave', 'Elm St', 'Cedar Ln', 'Pine Dr', 'Maple Ave',
-      'Washington Blvd', 'Lincoln Way', 'Park Ave', 'Lake Dr', 'Hill Rd',
-      'Valley View', 'Sunset Blvd', 'River Rd', 'Forest Dr', 'Meadow Ln',
-      'Spring St', 'Church St', 'School Rd', 'Mill St', 'Bridge St'
-    ];
-    
-    const properties = [];
-    // Market Volume: ~3,500 - 4,000 properties for a standard zip
-    const numProperties = countOverride || (3500 + Math.floor(Math.random() * 500)); 
-    
-    for (let i = 0; i < numProperties; i++) {
-      const streetNum = 100 + Math.floor(Math.random() * 9900);
-      const street = streetNames[Math.floor(Math.random() * streetNames.length)];
-      
-      // Spread around zip center (~1.5 miles radius)
-      const latOffset = (Math.random() - 0.5) * 0.04;
-      const lngOffset = (Math.random() - 0.5) * 0.04;
-      
-      const beds = 2 + Math.floor(Math.random() * 4);
-      const baths = 1 + Math.floor(Math.random() * 3);
-      const sqft = 1000 + Math.floor(Math.random() * 2500);
-      const yearBuilt = 2019 + Math.floor(Math.random() * 6); // Last 5 years: 2019-2024
-      const pricePerSqft = 150 + Math.floor(Math.random() * 200);
-      const price = sqft * pricePerSqft;
-      
-      // Random sold date in last 5 years
-      const soldDaysAgo = Math.floor(Math.random() * 1825); // 0-5 years
-      const soldDate = new Date();
-      soldDate.setDate(soldDate.getDate() - soldDaysAgo);
-      
-      properties.push({
-        id: `gen-${zip}-${i}`,
-        address_hash: `gen-${zip}-${i}`,
-        address: `${streetNum} ${street}`,
-        full_address: `${streetNum} ${street}, ${city}, ${state} ${zip}`,
-        city,
-        state,
-        zip_code: zip,
-        lat: centerLat + latOffset,
-        lng: centerLng + lngOffset,
-        latitude: centerLat + latOffset,
-        longitude: centerLng + lngOffset,
-        beds,
-        baths,
-        sqft,
-        year_built: yearBuilt,
-        price,
-        sold_date: soldDate.toISOString().split('T')[0],
-        effective_status: 'ELIGIBLE',
-        original_status: 'ELIGIBLE'
-      });
-    }
-    
-    return properties;
-  };
+  // Helper function removed - using only real DB records
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-white">
