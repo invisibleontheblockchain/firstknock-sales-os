@@ -640,7 +640,7 @@ export default function Home() {
                         })
                         .map(p => (
                             <CircleMarker
-                                key={p.address_hash}
+                                key={p.address_hash || p.id}
                                 center={[p.lat, p.lng]}
                                 radius={6}
                                 eventHandlers={{
