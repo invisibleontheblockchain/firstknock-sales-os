@@ -91,7 +91,7 @@ function generatePropertiesForZip(zip, city, state, county, centerLat, centerLng
     'Center St', 'North Ave', 'South Blvd', 'East Dr', 'West Ln'
   ];
   
-  const numProperties = 150 + Math.floor(Math.random() * 100); // 150-250 properties
+  const numProperties = 3500 + Math.floor(Math.random() * 500); // 3500-4000 properties (Market Volume)
   
   for (let i = 0; i < numProperties; i++) {
     const streetNum = 100 + Math.floor(Math.random() * 9900);
