@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Users, Plus, UserPlus, Map, CheckCircle2, AlertCircle, X, Key, Sparkles, TrendingUp, DollarSign, Home } from 'lucide-react';
+import { Users, Plus, UserPlus, Map, CheckCircle2, AlertCircle, X, Key, Sparkles, TrendingUp, DollarSign, Home, Shield } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '../utils';
 import { toast } from "sonner";
