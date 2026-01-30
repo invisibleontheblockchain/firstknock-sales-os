@@ -135,6 +135,7 @@ export default function Home() {
     const [darkRoomClusters, setDarkRoomClusters] = useState([]);
     const [darkRoomCount, setDarkRoomCount] = useState(0);
     const [isLoadingDarkRoom, setIsLoadingDarkRoom] = useState(false);
+    const [darkRoomEnabled, setDarkRoomEnabled] = useState(false);
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
