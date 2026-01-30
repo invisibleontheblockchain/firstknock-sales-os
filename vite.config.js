@@ -15,8 +15,5 @@ export default defineConfig({
       visualEditAgent: true
     }),
     react(),
-  ],
-  server: {
-    host: true
-  }
+  ]
 });

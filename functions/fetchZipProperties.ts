@@ -48,23 +48,19 @@ Deno.serve(async (req) => {
     // This ensures the app works immediately while you can later integrate real APIs
     const properties = generatePropertiesForZip(zip_code, city, state, county, parseFloat(latitude), parseFloat(longitude));
     
-    // Insert into database (Batch Insert Optimization)
-    // This allows scaling to millions of records by reducing network roundtrips
+    // Insert into database
     if (properties.length > 0) {
-      const BATCH_SIZE = 500;
-      for (let i = 0; i < properties.length; i += BATCH_SIZE) {
-        const batch = properties.slice(i, i + BATCH_SIZE);
-        
+      for (const prop of properties) {
         await sql`
           INSERT INTO properties (
             address, city, state, zip_code, county, 
             latitude, longitude, 
             beds, baths, sqft, year_built, price
-          ) VALUES ${sql(batch.map(p => [
-            p.address, city, state, zip_code, county,
-            p.latitude, p.longitude,
-            p.beds, p.baths, p.sqft, p.year_built, p.price
-          ]))}
+          ) VALUES (
+            ${prop.address}, ${city}, ${state}, ${zip_code}, ${county},
+            ${prop.latitude}, ${prop.longitude},
+            ${prop.beds}, ${prop.baths}, ${prop.sqft}, ${prop.year_built}, ${prop.price}
+          )
         `;
       }
     }

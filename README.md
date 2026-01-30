@@ -1,141 +1,39 @@
-# FirstKnock Sales OS (Ghosteam v5)
+**Welcome to your Base44 project** 
 
-## 📖 Overview
+**About**
 
-**FirstKnock Sales OS** is a comprehensive property canvassing and route management platform designed for real estate professionals. It allows users to visualize property data on interactive maps, filter targets by specific criteria (such as zip codes), and optimize canvassing routes for efficiency.
+View and Edit  your app on [Base44.com](http://Base44.com) 
 
-**Goal:** To provide a reliable, "Sales Operating System" that streamlines the process of identifying leads and managing field operations.
+This project contains everything you need to run your app locally.
 
----
+**Edit the code in your local development environment**
 
-## 🏗️ Architecture
+Any change pushed to the repo will also be reflected in the Base44 Builder.
 
-The application follows a modern **Client-Server architecture**, utilizing a robust frontend for visualization and a dedicated backend for data processing and storage.
+**Prerequisites:** 
 
-### High-Level Diagram
-
-```mermaid
-graph TD
-    Client[Client <br/> React/Vite/Capacitor] <-->|REST API| Backend[Backend Server <br/> Node.js/Fastify]
-    Backend <-->|Drizzle ORM| DB[(Database <br/> Neon / Postgres)]
-    Backend <-->|SDK| Auth[Clerk Auth]
-    Client <-->|SDK| Maps[Leaflet / Map Tiles]
-```
-
-### Components
-
-#### 1. Frontend (Client)
-A responsive web and mobile application built with **React** and **Vite**.
-- **UI Framework:** TailwindCSS combined with Shadcn UI (Radix Primitives) for a premium, accessible design.
-- **State Management:** TanStack Query for efficient server-state management.
-- **Mobile Native:** Wrapped with **Capacitor** to deploy as native Android and iOS apps.
-- **Mapping:** Integrated **Leaflet** maps for property visualization and route plotting.
-
-#### 2. Backend (Server)
-A high-performance API server built with **Node.js** and **Fastify**.
-- **Language:** TypeScript for type safety and maintainability.
-- **API:** RESTful endpoints for properties (`/api/properties`), routes (`/api/routes`), and zip codes.
-- **Authentication:** Middleware utilizing **Clerk** to secure endpoints and manage user sessions.
-
-#### 3. Database
-A serverless Postgres database powered by **Neon**, managed via **Drizzle ORM**.
-- **Key Tables:**
-    - `properties`: Stores comprehensive property details (address, specs, sold date, smart score).
-    - `saved_routes`: Persists user-created canvassing routes with performance metrics.
-    - `zip_codes`: Geographic reference data.
-
----
-
-## 🚀 Key Features
-
-- **📍 Interactive Map Interface:** Visualize properties across specific regions with dynamic clustering and filtering.
-- **🔍 Smart Filtering:** Search and filter properties by Zip Code to target specific territories.
-- **🛣️ Route Optimization:** Create, save, and manage canvassing routes. The system calculates metrics like distance and property density.
-- **📱 Cross-Platform:** Runs seamlessly in the browser and as a native mobile app on iOS and Android.
-- **🔐 Secure Authentication:** Enterprise-grade authentication provided by Clerk.
-
----
-
-## 🛠️ Getting Started
-
-### Prerequisites
-- **Node.js** (v18+ recommended)
-- **Git**
-
-### Installation
-
-1. **Clone the Repository**
-   ```bash
-   git clone <repository_url>
-   cd ghosteam-v5/firstknock-sales-os
-   ```
-
-2. **Install Frontend Dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Install Backend Dependencies**
-   ```bash
-   cd backend
-   npm install
-   cd ..
-   ```
-
-### Configuration
-
-Create an `.env` file in both the root directory and the `backend` directory based on the `.env.example` (if provided) or the required keys below.
-
-**Root `.env` (Frontend):**
-```env
-VITE_BASE44_APP_ID=<your_app_id>
-VITE_BASE44_APP_BASE_URL=http://localhost:3000
-VITE_CLERK_PUBLISHABLE_KEY=<your_clerk_key>
-```
-
-**Backend `.env`:**
-```env
-DATABASE_URL=<your_neon_db_url>
-CLERK_SECRET_KEY=<your_clerk_secret>
-PORT=3000
-```
-
-### Running Locally
-
-1. **Start the Backend Server**
-   ```bash
-   cd backend
-   npm run dev
-   ```
-   *Server will run on http://localhost:3000*
-
-2. **Start the Frontend Application** (in a new terminal)
-   ```bash
-   npm run dev
-   ```
-   *App will run on http://localhost:5173*
-
----
-
-## 📁 Project Structure
+1. Clone the repository using the project's Git URL 
+2. Navigate to the project directory
+3. Install dependencies: `npm install`
+4. Create an `.env.local` file and set the right environment variables
 
 ```
-firstknock-sales-os/
-├── src/                # Frontend Source Code
-│   ├── components/     # Reusable UI Components
-│   ├── pages/          # Application Pages/Routes
-│   ├── lib/            # Utilities & Helpers
-│   └── App.jsx         # Main App Entry Point
-├── backend/            # Backend Source Code
-│   ├── src/
-│   │   ├── db/         # Database Schema & Client
-│   │   ├── routes/     # API Route Definitions
-│   │   └── index.ts    # Server Entry Point
-├── android/            # Android Capacitor Project
-├── ios/                # iOS Capacitor Project
+VITE_BASE44_APP_ID=your_app_id
+VITE_BASE44_APP_BASE_URL=your_backend_url
 
-## 👥 Team
+e.g.
+VITE_BASE44_APP_ID=cbef744a8545c389ef439ea6
+VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
+```
 
-- **Danny** ([@daannyyrod](https://github.com/daannyyrod)) - *Contributor*
-- **Avion** - *Lead Developer*
+Run the app: `npm run dev`
 
+**Publish your changes**
+
+Open [Base44.com](http://Base44.com) and click on Publish.
+
+**Docs & Support**
+
+Documentation: [https://docs.base44.com/Integrations/Using-GitHub](https://docs.base44.com/Integrations/Using-GitHub)
+
+Support: [https://app.base44.com/support](https://app.base44.com/support)

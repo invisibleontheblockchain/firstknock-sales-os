@@ -30,10 +30,7 @@ const AuthenticatedApp = () => {
   }
 
   // Handle authentication errors
-  // Handle authentication errors
-  const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname === '172.29.80.1';
-
-  if (authError && !isLocal) {
+  if (authError) {
     if (authError.type === 'user_not_registered') {
       return <UserNotRegisteredError />;
     } else if (authError.type === 'auth_required') {
