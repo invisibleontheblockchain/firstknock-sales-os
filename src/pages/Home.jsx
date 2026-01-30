@@ -508,9 +508,9 @@ export default function Home() {
                         const isAssignedToMe = route.assigned_to === user?.id || route.assigned_to_name === user?.email; 
                         const baseColor = isAssignedToMe ? BRAND.gold : (route.assigned_to ? '#3b82f6' : '#666');
 
-                        return route.properties.map(p => (
+                        return route.properties.map((p, idx) => (
                             <CircleMarker
-                                key={`saved-${route.id}-${p.address_hash}`}
+                                key={`saved-${route.id}-${p.address_hash || 'no-hash'}-${idx}`}
                                 center={[p.lat, p.lng]}
                                 radius={4}
                                 eventHandlers={{
