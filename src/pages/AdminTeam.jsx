@@ -250,6 +250,12 @@ export default function AdminTeam() {
 
                     {/* Action Buttons - Scrollable on Mobile */}
                     <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
+                        <Link to={createPageUrl('Roadmap')}>
+                            <Button className="h-9 bg-[#1F1F1F] border border-gray-700 text-white hover:bg-[#333] text-xs whitespace-nowrap">
+                                <Shield className="w-4 h-4 mr-1" />
+                                Audit
+                            </Button>
+                        </Link>
                         <Dialog open={isCodeManagerOpen} onOpenChange={setIsCodeManagerOpen}>
                             <DialogTrigger asChild>
                                 <Button className="h-9 bg-[#1F1F1F] border border-gray-700 text-white hover:bg-[#333] text-xs whitespace-nowrap">
