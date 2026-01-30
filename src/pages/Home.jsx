@@ -139,29 +139,31 @@ export default function Home() {
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
-    // Dark Room Manager Component
+    // Dark Room Manager Component - only active when enabled
     const DarkRoomManager = () => {
         const map = useMap();
-        
+
         useEffect(() => {
+            if (!darkRoomEnabled) return;
+
             let debounceTimer = null;
-            
+
             const fetchDarkRoomData = async () => {
                 const bounds = map.getBounds();
                 const zoom = map.getZoom();
-                
+
                 setIsLoadingDarkRoom(true);
-                
+
                 try {
                     const data = await darkRoom.fetchPropertiesInViewport(bounds, zoom);
-                    
+
                     // Separate clusters from individual properties
                     const clusters = data.filter(d => d.isCluster);
                     const properties = data.filter(d => !d.isCluster);
-                    
+
                     setDarkRoomClusters(clusters);
                     setDarkRoomProperties(properties);
-                    
+
                 } catch (e) {
                     console.error("Failed to fetch Dark Room stream:", e);
                 } finally {
@@ -176,7 +178,7 @@ export default function Home() {
 
             map.on('moveend', debouncedFetch);
             map.on('zoomend', debouncedFetch);
-            
+
             // Initial fetch
             fetchDarkRoomData();
 
@@ -185,7 +187,7 @@ export default function Home() {
                 map.off('zoomend', debouncedFetch);
                 if (debounceTimer) clearTimeout(debounceTimer);
             };
-        }, [map]);
+        }, [map, darkRoomEnabled]);
 
         return null;
     };
