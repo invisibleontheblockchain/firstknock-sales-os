@@ -64,15 +64,17 @@ export default function AdminTeam() {
         }
     });
 
-    // Fetch Logs for Metrics
-    const { data: logs = [] } = useQuery({
-        queryKey: ['teamLogs'],
+    // Fetch Metrics from Backend (Optimized)
+    const { data: metricsData, isLoading: metricsLoading } = useQuery({
+        queryKey: ['teamMetrics'],
         queryFn: async () => {
-            // Fetch recent logs to aggregate metrics
-            const res = await base44.entities.InteractionLog.list('-created_date', 5000);
-            return Array.isArray(res) ? res : (res?.items || []);
+            const res = await base44.functions.invoke('getTeamMetrics');
+            return res.data;
         }
     });
+
+    const metricsByRep = metricsData?.metricsByRep || {};
+    const teamTotals = metricsData?.teamTotals || { doorsKnocked: 0, talkedTo: 0, sales: 0 };
 
     // --- Mutations ---
     const createRepMutation = useMutation({
@@ -127,45 +129,8 @@ export default function AdminTeam() {
         return grouped;
     }, [routes, teamMembers]);
 
-    // Aggregate Metrics by Rep Email
-    const metricsByRep = useMemo(() => {
-        const metrics = {};
-        
-        // Initialize for all members
-        teamMembers.forEach(m => {
-            metrics[m.email] = {
-                doorsKnocked: 0,
-                talkedTo: 0,
-                sales: 0
-            };
-        });
-
-        logs.forEach(log => {
-            const email = log.created_by;
-            if (!metrics[email]) return; // Skip if not current team member (or old rep)
-
-            metrics[email].doorsKnocked++;
-            
-            if (log.parsed_status !== 'NO_ANSWER' && log.parsed_status !== 'ELIGIBLE') {
-                metrics[email].talkedTo++;
-            }
-
-            if (log.parsed_status === 'SOLD' || log.parsed_status === 'QUALIFIED') {
-                metrics[email].sales++;
-            }
-        });
-
-        return metrics;
-    }, [logs, teamMembers]);
-
-    // Total Team Metrics
-    const teamTotals = useMemo(() => {
-        return Object.values(metricsByRep).reduce((acc, curr) => ({
-            doorsKnocked: acc.doorsKnocked + curr.doorsKnocked,
-            talkedTo: acc.talkedTo + curr.talkedTo,
-            sales: acc.sales + curr.sales
-        }), { doorsKnocked: 0, talkedTo: 0, sales: 0 });
-    }, [metricsByRep]);
+    // Metrics are now handled by the backend function and fetched via useQuery
+    // No client-side aggregation needed to improve performance
 
     // --- Handlers ---
     const handleAddRep = () => {
@@ -214,14 +179,22 @@ export default function AdminTeam() {
                         </Button>
                     </div>
                     
-                    {/* Team Stats - Compact on Mobile */}
+                    {/* Team Stats - Optimized with Loading State */}
                     <div className="grid grid-cols-3 gap-2 bg-[#111] rounded-xl p-3 border border-gray-800">
                         <div className="text-center">
-                            <p className="text-xl md:text-2xl font-bold text-white">{teamTotals.doorsKnocked.toLocaleString()}</p>
+                            {metricsLoading ? (
+                                <div className="h-8 w-16 bg-gray-800 animate-pulse mx-auto rounded mb-1" />
+                            ) : (
+                                <p className="text-xl md:text-2xl font-bold text-white">{teamTotals.doorsKnocked.toLocaleString()}</p>
+                            )}
                             <p className="text-[9px] md:text-[10px] font-bold text-gray-500 uppercase">Doors</p>
                         </div>
                         <div className="text-center border-x border-gray-800">
-                            <p className="text-xl md:text-2xl font-bold text-green-400">{teamTotals.sales.toLocaleString()}</p>
+                            {metricsLoading ? (
+                                <div className="h-8 w-16 bg-gray-800 animate-pulse mx-auto rounded mb-1" />
+                            ) : (
+                                <p className="text-xl md:text-2xl font-bold text-green-400">{teamTotals.sales.toLocaleString()}</p>
+                            )}
                             <p className="text-[9px] md:text-[10px] font-bold text-gray-500 uppercase">Sales</p>
                         </div>
                         <div className="text-center">
