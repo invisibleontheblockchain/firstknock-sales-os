@@ -534,9 +534,9 @@ export default function Home() {
                 <LayerGroup>
                     {!activeRoute && routes.length > 0 && routes.map((route, rIdx) => {
                         const routeColor = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
-                        return route.properties.map(p => (
+                        return route.properties.map((p, idx) => (
                             <CircleMarker
-                                key={`generated-${route.id}-${p.address_hash}`}
+                                key={`generated-${route.id}-${p.address_hash || 'no-hash'}-${idx}`}
                                 center={[p.lat, p.lng]}
                                 radius={6}
                                 eventHandlers={{
