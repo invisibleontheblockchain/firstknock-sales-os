@@ -44,6 +44,14 @@ class ErrorBoundary extends React.Component {
     }
   }
 
+import { ClerkProvider } from '@clerk/clerk-react';
+
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
+
+if (!PUBLISHABLE_KEY) {
+  throw new Error("Missing Publishable Key")
+}
+
 export default function Layout({ children }) {
     // Handle /login 404 by redirecting to home
     if (typeof window !== 'undefined' && window.location.pathname === '/login') {
@@ -106,7 +114,8 @@ export default function Layout({ children }) {
     // }
 
     return (
-        <div className="flex flex-col h-screen font-sans overflow-hidden" style={{ background: '#0A0A0A', color: '#E5E5E5' }}>
+      <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
+      <div className="flex flex-col h-screen font-sans overflow-hidden" style={{ background: '#0A0A0A', color: '#E5E5E5' }}>
             {/* Brand Theme + Map Styles */}
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
@@ -234,9 +243,10 @@ export default function Layout({ children }) {
                     </div>
                 )}
             </nav>
-        </div>
-    );
-}
+            </div>
+            </ClerkProvider>
+            );
+            }
 
 function NavItem({ icon: Icon, label, to, active }) {
     return (
