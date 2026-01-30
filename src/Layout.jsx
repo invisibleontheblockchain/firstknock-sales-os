@@ -46,10 +46,10 @@ class ErrorBoundary extends React.Component {
 
 import { ClerkProvider } from '@clerk/clerk-react';
 
-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
+const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "pk_test_Y3VkZGx5LXRpZ2VyLTQyLmNsZXJrLmFjY291bnRzLmRldiQ";
 
 if (!PUBLISHABLE_KEY) {
-  throw new Error("Missing Publishable Key")
+  console.error("Missing VITE_CLERK_PUBLISHABLE_KEY");
 }
 
 export default function Layout({ children }) {
