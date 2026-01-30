@@ -212,7 +212,7 @@ export default function ZipCodeExplorer() {
           FROM properties p
           LEFT JOIN zip_codes z ON p.zip = z.code
           WHERE p.zip = ${searchZip} 
-          LIMIT 1000
+          LIMIT 5000
         `;
         totalCountRes = await sql`SELECT COUNT(*) as count FROM properties WHERE zip = ${searchZip}`;
       } else if (col === 'postal_code') {
@@ -224,7 +224,7 @@ export default function ZipCodeExplorer() {
           FROM properties p
           LEFT JOIN zip_codes z ON p.postal_code = z.code
           WHERE p.postal_code = ${searchZip} 
-          LIMIT 1000
+          LIMIT 5000
         `;
         totalCountRes = await sql`SELECT COUNT(*) as count FROM properties WHERE postal_code = ${searchZip}`;
       } else {
@@ -237,7 +237,7 @@ export default function ZipCodeExplorer() {
           FROM properties p
           LEFT JOIN zip_codes z ON p.zip_code = z.code
           WHERE p.zip_code = ${searchZip} 
-          LIMIT 1000
+          LIMIT 5000
         `;
         totalCountRes = await sql`SELECT COUNT(*) as count FROM properties WHERE zip_code = ${searchZip}`;
       }
