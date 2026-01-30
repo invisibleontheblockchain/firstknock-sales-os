@@ -251,34 +251,11 @@ export default function ZipCodeExplorer() {
         effective_status: 'ELIGIBLE'
       })).filter(p => !isNaN(p.lat) && !isNaN(p.lng));
 
-      // Market Volume augmentation: If low count, generate synthetic data to fill the gap
-      // This ensures 29412 (and others) show realistic volume (~3500-4000)
-      if (mappedProps.length < 2000) {
-        setIsFetching(true);
-        try {
-          const zipMeta = await sql`SELECT * FROM zip_codes WHERE code = ${searchZip}`;
-          
-          if (zipMeta[0]) {
-            const { city, state, latitude, longitude } = zipMeta[0];
-            const centerLat = parseFloat(latitude);
-            const centerLng = parseFloat(longitude);
-            
-            // Generate enough to reach ~3500
-            const targetTotal = 3500 + Math.floor(Math.random() * 500);
-            const needed = targetTotal - mappedProps.length;
-            
-            if (needed > 0) {
-                toast.info(`Augmenting data with ${needed} records to match market volume...`);
-                // Use a modified generator that accepts count
-                const syntheticProps = generatePropertiesInMemory(searchZip, city, state, centerLat, centerLng, needed);
-                mappedProps = [...mappedProps, ...syntheticProps];
-            }
-          }
-        } catch (e) {
-            console.warn("Augmentation failed", e);
-        } finally {
-            setIsFetching(false);
-        }
+      // Only use real records from database
+      if (mappedProps.length === 0) {
+        toast.info(`No properties found for ${searchZip} in database.`);
+      } else if (mappedProps.length < 500) {
+        toast.warning(`Low data volume: ${mappedProps.length} records found. (Expected market volume: ~3,500)`);
       }
 
       setProperties(mappedProps);

@@ -47,38 +47,38 @@
  *
  * The mainPage value must match a key in the PAGES object exactly.
  */
+import AdminTeam from './pages/AdminTeam';
 import DatabaseDiagnostic from './pages/DatabaseDiagnostic';
+import DeleteAccount from './pages/DeleteAccount';
 import Home from './pages/Home';
 import List from './pages/List';
 import RepHome from './pages/RepHome';
+import Roadmap from './pages/Roadmap';
+import RoleSelect from './pages/RoleSelect';
 import Setup from './pages/Setup';
 import SignIn from './pages/SignIn';
 import Sync from './pages/Sync';
-import AdminTeam from './pages/AdminTeam';
-import ZipCodeExplorer from './pages/ZipCodeExplorer';
-import Tutorial from './pages/Tutorial';
-import RoleSelect from './pages/RoleSelect';
-import Roadmap from './pages/Roadmap';
-import DeleteAccount from './pages/DeleteAccount';
 import Terms from './pages/Terms';
+import Tutorial from './pages/Tutorial';
+import ZipCodeExplorer from './pages/ZipCodeExplorer';
 import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
+    "AdminTeam": AdminTeam,
     "DatabaseDiagnostic": DatabaseDiagnostic,
+    "DeleteAccount": DeleteAccount,
     "Home": Home,
     "List": List,
     "RepHome": RepHome,
+    "Roadmap": Roadmap,
+    "RoleSelect": RoleSelect,
     "Setup": Setup,
     "SignIn": SignIn,
     "Sync": Sync,
-    "AdminTeam": AdminTeam,
-    "ZipCodeExplorer": ZipCodeExplorer,
-    "Tutorial": Tutorial,
-    "RoleSelect": RoleSelect,
-    "Roadmap": Roadmap,
-    "DeleteAccount": DeleteAccount,
     "Terms": Terms,
+    "Tutorial": Tutorial,
+    "ZipCodeExplorer": ZipCodeExplorer,
 }
 
 export const pagesConfig = {
