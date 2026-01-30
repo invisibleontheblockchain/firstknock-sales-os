@@ -413,7 +413,7 @@ export default function ZipCodeExplorer() {
     
     const properties = [];
     // Market Volume: ~3,500 - 4,000 properties for a standard zip
-    const numProperties = 3500 + Math.floor(Math.random() * 500); 
+    const numProperties = countOverride || (3500 + Math.floor(Math.random() * 500)); 
     
     for (let i = 0; i < numProperties; i++) {
       const streetNum = 100 + Math.floor(Math.random() * 9900);
