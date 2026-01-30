@@ -90,11 +90,21 @@ function MapController({ fitBounds, onZoomChange, onMoveEnd }) {
         };
     }, [map, onZoomChange, onMoveEnd]);
 
+    // Use a ref to prevent aggressive re-fitting on data updates
+    const lastBoundsRef = useRef(null);
+
     useEffect(() => {
         if (fitBounds?.length > 0) {
             try {
+                // Only fit bounds if they have significantly changed (e.g. new route selected)
+                // or if it's the very first load
                 const bounds = L.latLngBounds(fitBounds);
-                if (bounds.isValid()) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
+                const boundsKey = JSON.stringify(fitBounds.slice(0, 1)); // Simple check on first point to detect route switch
+
+                if (bounds.isValid() && lastBoundsRef.current !== boundsKey) {
+                    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
+                    lastBoundsRef.current = boundsKey;
+                }
             } catch (e) { }
         }
     }, [fitBounds, map]);

@@ -112,6 +112,30 @@ export default function AdminTeam() {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inviteCodes'] })
     });
 
+    // Backup Handler
+    const handleBackup = async () => {
+        try {
+            toast.info("Preparing backup...");
+            const response = await base44.functions.invoke('backupData');
+            
+            // Create blob and download
+            const blob = new Blob([JSON.stringify(response.data, null, 2)], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `firstknock_backup_${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            
+            toast.success("Backup downloaded successfully");
+        } catch (e) {
+            console.error(e);
+            toast.error("Backup failed: " + e.message);
+        }
+    };
+
     // --- Derived State ---
     const routesByRep = useMemo(() => {
         const grouped = { unassigned: [] };
@@ -256,6 +280,13 @@ export default function AdminTeam() {
                                 Audit
                             </Button>
                         </Link>
+                        <Button 
+                            onClick={handleBackup}
+                            className="h-9 bg-[#1F1F1F] border border-gray-700 text-white hover:bg-[#333] text-xs whitespace-nowrap"
+                        >
+                            <DollarSign className="w-4 h-4 mr-1" />
+                            Backup
+                        </Button>
                         <Dialog open={isCodeManagerOpen} onOpenChange={setIsCodeManagerOpen}>
                             <DialogTrigger asChild>
                                 <Button className="h-9 bg-[#1F1F1F] border border-gray-700 text-white hover:bg-[#333] text-xs whitespace-nowrap">
@@ -477,25 +508,81 @@ export default function AdminTeam() {
                     </div>
                 </div>
 
-                {/* Unassigned Routes Section */}
-                {routesByRep.unassigned.length > 0 && (
-                    <div className="bg-[#1a0f0f] border border-red-900/30 rounded-xl p-4">
-                        <div className="flex items-center gap-2 mb-3 text-red-400">
-                            <AlertCircle className="w-4 h-4" />
-                            <h3 className="font-bold text-sm">Unassigned ({routesByRep.unassigned.length})</h3>
+                {/* 1. TEAM ROSTER (Priority Display) */}
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                            <Users className="w-5 h-5 text-blue-500" />
+                            Active Roster
+                        </h2>
+                        <span className="text-xs text-gray-500 font-mono">{teamMembers.length} ACTIVE</span>
+                    </div>
+
+                    {teamMembers.length === 0 ? (
+                        <div className="text-center py-12 border-2 border-dashed border-gray-800 rounded-xl bg-[#0F0F0F]">
+                            <Users className="w-12 h-12 text-gray-700 mx-auto mb-3" />
+                            <h3 className="text-lg font-bold text-gray-400">No Team Members</h3>
+                            <p className="text-gray-600 text-sm mb-4">Add your first rep to get started.</p>
+                            <Button 
+                                onClick={() => setIsAddRepOpen(true)}
+                                className="bg-yellow-500 text-black font-bold"
+                            >
+                                Add First Rep
+                            </Button>
                         </div>
+                    ) : (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                            {teamMembers.map(member => {
+                                const memberRoutes = routesByRep[member.id] || [];
+                                const memberMetrics = metricsByRep[member.email] || { doorsKnocked: 0, talkedTo: 0, sales: 0 };
+                                
+                                return (
+                                    <TeamMemberCard 
+                                        key={member.id}
+                                        member={member} 
+                                        routes={memberRoutes} 
+                                        metrics={memberMetrics}
+                                        allRoutes={routesByRep.unassigned}
+                                        onAssignRoute={handleAssign}
+                                    />
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+
+                {/* 2. UNASSIGNED ROUTES (Secondary Display) */}
+                {routesByRep.unassigned.length > 0 && (
+                    <div className="space-y-4 pt-6 border-t border-gray-800">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                                <AlertCircle className="w-5 h-5 text-red-500" />
+                                Unassigned Routes
+                            </h2>
+                            <span className="text-xs text-red-400 font-mono">{routesByRep.unassigned.length} PENDING</span>
+                        </div>
+                        
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                             {routesByRep.unassigned.map(route => (
-                                <div key={route.id} className="bg-black/40 border border-gray-800 rounded-lg p-4 flex flex-col gap-3">
-                                    <div>
-                                        <h4 className="font-bold text-white">{route.name}</h4>
-                                        <p className="text-xs text-gray-400 mt-1">
-                                            {route.metrics?.house_count || 0} homes • {route.metrics?.distance || 0} mi
-                                        </p>
+                                <div key={route.id} className="bg-[#111] border border-gray-800 rounded-lg p-4 flex flex-col gap-3 hover:border-gray-700 transition-colors">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <h4 className="font-bold text-white text-sm">{route.name}</h4>
+                                            <div className="flex items-center gap-2 mt-1">
+                                                <Badge variant="secondary" className="bg-gray-800 text-gray-400 text-[10px]">
+                                                    {route.metrics?.house_count || 0} homes
+                                                </Badge>
+                                                <Badge variant="secondary" className="bg-gray-800 text-gray-400 text-[10px]">
+                                                    {route.metrics?.distance || 0} mi
+                                                </Badge>
+                                            </div>
+                                        </div>
+                                        <Badge className="bg-red-900/30 text-red-400 border-red-900/50">OPEN</Badge>
                                     </div>
-                                    <div className="mt-auto">
+                                    
+                                    <div className="mt-2 pt-3 border-t border-gray-800/50">
                                         <Select onValueChange={(memberId) => handleAssign(route.id, memberId)}>
-                                            <SelectTrigger className="w-full h-9 text-xs bg-[#1F1F1F] border-gray-700">
+                                            <SelectTrigger className="w-full h-8 text-xs bg-[#1F1F1F] border-gray-700 focus:ring-offset-0">
                                                 <SelectValue placeholder="Assign to Rep..." />
                                             </SelectTrigger>
                                             <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
@@ -512,25 +599,6 @@ export default function AdminTeam() {
                         </div>
                     </div>
                 )}
-
-                {/* Team Roster & Assignments Grid */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {teamMembers.map(member => {
-                        const memberRoutes = routesByRep[member.id] || [];
-                        const memberMetrics = metricsByRep[member.email] || { doorsKnocked: 0, talkedTo: 0, sales: 0 };
-                        
-                        return (
-                            <TeamMemberCard 
-                                key={member.id}
-                                member={member} 
-                                routes={memberRoutes} 
-                                metrics={memberMetrics}
-                                allRoutes={routesByRep.unassigned}
-                                onAssignRoute={handleAssign}
-                            />
-                        );
-                    })}
-                </div>
 
                 {teamMembers.length === 0 && (
                     <div className="text-center py-12 border-2 border-dashed border-gray-800 rounded-xl">
