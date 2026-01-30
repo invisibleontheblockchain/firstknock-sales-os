@@ -168,6 +168,18 @@ export default function Tutorial() {
                 </TutorialSection>
 
                 <TutorialSection icon={Map} title="2. Using the Map">
+                    <div className="p-3 mb-4 rounded-lg bg-blue-900/20 border border-blue-900/50">
+                        <h4 className="font-bold text-blue-300 mb-2 flex items-center gap-2">
+                            <Navigation className="w-4 h-4" /> How to Load a Route
+                        </h4>
+                        <ol className="text-sm text-gray-300 space-y-2 list-decimal pl-4">
+                            <li>Go to the <strong>Routes Panel</strong> on the left side of the map (desktop) or via the Routes button (mobile).</li>
+                            <li>Tap any route name to <strong>Load it</strong> onto the map.</li>
+                            <li>The map will automatically zoom to fit the selected route.</li>
+                            <li>Tap <strong>"Re-center Map"</strong> if you get lost or pan away.</li>
+                        </ol>
+                    </div>
+
                     <Step 
                         number="1" 
                         title="View Your Properties" 
