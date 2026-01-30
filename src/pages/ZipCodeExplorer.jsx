@@ -403,7 +403,7 @@ export default function ZipCodeExplorer() {
   };
 
   // Generate properties in-memory without storing to DB
-  const generatePropertiesInMemory = (zip, city, state, centerLat, centerLng) => {
+  const generatePropertiesInMemory = (zip, city, state, centerLat, centerLng, countOverride = null) => {
     const streetNames = [
       'Main St', 'Oak Ave', 'Elm St', 'Cedar Ln', 'Pine Dr', 'Maple Ave',
       'Washington Blvd', 'Lincoln Way', 'Park Ave', 'Lake Dr', 'Hill Rd',
