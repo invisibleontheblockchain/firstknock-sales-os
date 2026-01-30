@@ -192,14 +192,14 @@ export default function Home() {
         return null;
     };
 
-    // Connection check on mount
-    useEffect(() => {
-        darkRoom.testConnection().then(result => {
-            if (result.connected) {
-                setDarkRoomCount(result.totalProperties);
-            }
-        });
-    }, []);
+    // Connection check disabled by default - Dark Room is opt-in
+    // useEffect(() => {
+    //     darkRoom.testConnection().then(result => {
+    //         if (result.connected) {
+    //             setDarkRoomCount(result.totalProperties);
+    //         }
+    //     });
+    // }, []);
 
     // Fetch Properties - support both user-specific and fallback for mobile auth
     const { data: userProperties = [], isLoading: propsLoading } = useQuery({
