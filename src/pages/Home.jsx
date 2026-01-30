@@ -497,6 +497,7 @@ export default function Home() {
                 style={{ height: '100%', width: '100%' }}
                 zoomControl={false}
             >
+                <MapRefHandler mapRef={mapRef} />
                 <TileLayer
                     url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
                     attribution='&copy; CARTO'
