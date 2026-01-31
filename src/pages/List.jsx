@@ -410,7 +410,7 @@ export default function ListPage() {
                             ))
                         )}
                     </>
-                ) : (
+                ) : view === 'properties' ? (
                     <>
                         {filteredProperties.length === 0 ? (
                             <div className="text-center py-10" style={{ color: '#888' }}>
