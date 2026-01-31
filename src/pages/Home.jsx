@@ -209,9 +209,8 @@ export default function Home() {
                     const bounds = map.getBounds();
                     const zoom = map.getZoom();
 
-                setIsLoadingDarkRoom(true);
+                    setIsLoadingDarkRoom(true);
 
-                try {
                     const data = await darkRoom.fetchPropertiesInViewport(bounds, zoom);
 
                     // Separate clusters from individual properties
@@ -220,7 +219,6 @@ export default function Home() {
 
                     setDarkRoomClusters(clusters);
                     setDarkRoomProperties(properties);
-
                 } catch (e) {
                     console.error("Failed to fetch Dark Room stream:", e);
                 } finally {
