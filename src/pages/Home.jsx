@@ -226,7 +226,8 @@ export default function Home() {
             if (!user?.email) return [];
             
             try {
-                const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 1000);
+                // Increased limit to 5000 to accommodate larger datasets/zip codes
+                const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 5000);
                 return Array.isArray(result) ? result : (result?.items || []);
             } catch (e) {
                 console.log('[Home] Error fetching properties:', e);
@@ -300,11 +301,11 @@ export default function Home() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
             queryClient.invalidateQueries({ queryKey: ['localRoutes'] }); // Ensure local readers update
-            alert("Route saved to My Routes!");
+            alert("Route saved successfully!");
         }
     });
 
-    const handleSaveRoute = (route) => {
+    const handleSaveRoute = (route, assignedRepId = null, assignedRepName = null) => {
         createRouteMutation.mutate({
             name: route.name,
             property_hashes: route.properties.map(p => p.address_hash),
@@ -314,13 +315,41 @@ export default function Home() {
                 score: route.competitivenessScore
             },
             status: 'ACTIVE',
-            start_location: startLocation
+            start_location: startLocation,
+            assigned_to: assignedRepId,
+            assigned_to_name: assignedRepName
         });
     };
 
+    // Smart Assign Logic
+    const getRecommendedRep = useCallback((routeIndex) => {
+        if (teamMembers.length === 0) return null;
+
+        // Calculate simplified score for each rep based on logs
+        const scoredReps = teamMembers.map(rep => {
+            const repLogs = logs.filter(l => l.created_by === rep.email);
+            const sales = repLogs.filter(l => ['SOLD', 'QUALIFIED'].includes(l.parsed_status)).length;
+            const knocks = Math.max(repLogs.length, 1);
+            const conversionRate = (sales / knocks) * 100;
+            
+            // Basic score: Conversion Rate (70%) + Activity (30%)
+            // We want to give more routes to high converters
+            const activityScore = Math.min(knocks, 100); // Cap at 100 for normalization
+            const score = (conversionRate * 0.7) + (activityScore * 0.3);
+            
+            return { ...rep, performanceScore: score };
+        }).sort((a, b) => b.performanceScore - a.performanceScore);
+
+        // Round robin distribution weighted by performance? 
+        // For now, just cycle through the sorted list (Best rep gets Route 1, 2nd best Route 2, etc.)
+        // This ensures top routes go to top reps
+        const rep = scoredReps[routeIndex % scoredReps.length];
+        return rep;
+    }, [teamMembers, logs]);
+
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs', user?.email],
-        queryFn: () => user ? base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 1000) : [],
+        queryFn: () => user ? base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 5000) : [],
         enabled: !!user
     });
     const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
@@ -999,16 +1028,41 @@ export default function Home() {
                                                 <span>{route.streetCount || '?'} streets</span>
                                                 <span>{route.totalDistance} mi</span>
                                             </div>
-                                            <Button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleSaveRoute(route);
-                                                }}
-                                                size="sm"
-                                                className="mt-3 w-full h-8 text-[10px] font-bold bg-[#333] hover:bg-yellow-500 hover:text-black text-white transition-all"
-                                            >
-                                                SAVE TO MY ROUTES
-                                            </Button>
+                                            
+                                            {/* Smart Assign Recommendation */}
+                                            {(() => {
+                                                const recommendedRep = getRecommendedRep(filteredRoutes.indexOf(route));
+                                                return (
+                                                    <div className="mt-3 flex gap-2">
+                                                        <Button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleSaveRoute(route, recommendedRep?.id, recommendedRep?.name);
+                                                            }}
+                                                            size="sm"
+                                                            className="flex-1 h-8 text-[10px] font-bold bg-[#333] hover:bg-green-600 text-white transition-all border border-gray-700"
+                                                        >
+                                                            {recommendedRep ? (
+                                                                <>
+                                                                    <User className="w-3 h-3 mr-1 text-yellow-500" />
+                                                                    ASSIGN: {recommendedRep.name.split(' ')[0].toUpperCase()}
+                                                                </>
+                                                            ) : 'SAVE & ASSIGN'}
+                                                        </Button>
+                                                        <Button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleSaveRoute(route);
+                                                            }}
+                                                            size="sm"
+                                                            className="h-8 w-8 p-0 bg-black hover:bg-gray-800 border border-gray-700 text-gray-400"
+                                                            title="Save Unassigned"
+                                                        >
+                                                            <Shield className="w-3 h-3" />
+                                                        </Button>
+                                                    </div>
+                                                );
+                                            })()}
                                         </button>
                                     ))}
                                 </div>
