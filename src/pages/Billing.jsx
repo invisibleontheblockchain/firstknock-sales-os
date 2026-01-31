@@ -57,6 +57,12 @@ export default function Billing() {
     });
 
     const handleSubscribe = async (priceId) => {
+        // Check if running in iframe (preview mode)
+        if (window.self !== window.top) {
+            alert("Stripe Checkout cannot run in this preview window due to security restrictions.\n\nPlease open your app in a new tab (click the 'Open App' button in the top right) to test payments.");
+            return;
+        }
+
         try {
             setLoadingPriceId(priceId);
             const res = await base44.functions.invoke('createCheckoutSession', {
