@@ -130,6 +130,11 @@ async function run() {
                 sqft: d.Sqft || d.SQFT,
                 year_built: d.YearBuilt || d.YEAR_BUILT
             };
+            // --- 🛡️ FILTER LOGIC ---
+            if (FILTER_ZIPS.length > 0 && !FILTER_ZIPS.includes(mapped.zip_code)) return;
+            if (STATE_FILTER && mapped.state !== STATE_FILTER) return;
+            if (mapped.smart_score < MIN_SCORE) return;
+
             if(mapped.address && mapped.lat) rows.push(mapped);
         })
         .on('end', () => upload(rows));
