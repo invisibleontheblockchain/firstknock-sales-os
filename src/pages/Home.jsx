@@ -454,21 +454,24 @@ export default function Home() {
                 const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
 
                 // Pass logs for street cooldown filtering
-                // IMPORTANT: Use availableProperties (excluding saved routes)
                 const generated = generateOptimizedRoutes(
                     availableProperties,
                     housesPerRoute,
                     start,
                     logs,
-                    { streetCooldownDays, useStreetSweep: true }
+                    { 
+                        streetCooldownDays, 
+                        useStreetSweep: true,
+                        minimizeTurns: true // Enabled by default for smoother routes
+                    }
                 );
 
-                // Extract cooldown info if available
                 if (generated._cooldownInfo) {
                     setCooldownInfo(generated._cooldownInfo);
                 }
 
                 setRoutes(generated);
+                setShowRoutePanel(true); // Auto-open results
             } catch (e) {
                 console.error(e);
             }
@@ -1053,8 +1056,8 @@ export default function Home() {
                     >
                         <div className="p-5 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
                             <h2 className="flex items-center gap-2 font-bold tracking-wide" style={{ color: BRAND.gold }}>
-                                <BarChart3 className="w-5 h-5" />
-                                ROUTE FILTERS
+                                {mode === 'generate' ? <Navigation className="w-5 h-5" /> : <BarChart3 className="w-5 h-5" />}
+                                {mode === 'generate' ? 'BUILDER SETTINGS' : 'ROUTE FILTERS'}
                             </h2>
                             <button onClick={() => setShowCompare(false)} className="p-4 -mr-2 hover:bg-[#333] rounded-full transition-colors">
                                 <X className="w-6 h-6" style={{ color: BRAND.offWhite }} />
@@ -1062,130 +1065,135 @@ export default function Home() {
                         </div>
 
                         <div className="p-5 space-y-6 overflow-y-auto h-[calc(100%-70px)]">
-                            <div>
-                                <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                    FILTER BY REP
-                                </label>
-                                <select
-                                    value={repFilter}
-                                    onChange={(e) => setRepFilter(e.target.value)}
-                                    className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
-                                >
-                                    <option value="all">All Reps</option>
-                                    {uniqueReps.map(rep => (
-                                        <option key={rep} value={rep}>{rep}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div>
-                                <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                    STARTING LOCATION
-                                </label>
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        placeholder="Enter start address..."
-                                        value={startAddressInput}
-                                        onChange={(e) => setStartAddressInput(e.target.value)}
-                                        className="flex-1 px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
-                                    />
-                                    <Button
-                                        onClick={() => {
-                                            // Mock geocoding for now or just store address
-                                            // In real app, we'd geocode. Here we might just use map center if empty
-                                            if (mapRef.current) {
-                                                const c = mapRef.current.getCenter();
-                                                setStartLocation({ lat: c.lat, lng: c.lng, address: startAddressInput || "Map Center" });
-                                            }
-                                        }}
-                                        size="icon"
-                                        className="bg-[#1F1F1F] hover:bg-[#333]"
+                            
+                            {/* --- ANALYZE MODE CONTROLS --- */}
+                            {mode === 'analyze' && (
+                                <div>
+                                    <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                        FILTER BY REP
+                                    </label>
+                                    <select
+                                        value={repFilter}
+                                        onChange={(e) => setRepFilter(e.target.value)}
+                                        className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
                                     >
-                                        <MapPin className="w-4 h-4" />
-                                    </Button>
+                                        <option value="all">All Reps</option>
+                                        {uniqueReps.map(rep => (
+                                            <option key={rep} value={rep}>{rep}</option>
+                                        ))}
+                                    </select>
                                 </div>
-                                {startLocation && <p className="text-[10px] text-green-500 mt-1">✓ Set: {startLocation.address}</p>}
-                            </div>
+                            )}
 
-                            <div>
-                                <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                    HOUSES PER ROUTE
-                                </label>
-                                <div className="flex gap-2">
-                                    {ROUTE_SIZE_OPTIONS.map(size => (
-                                        <button
-                                            key={size}
-                                            onClick={() => setHousesPerRoute(size)}
-                                            className="flex-1 py-3 rounded-lg text-sm font-bold tracking-wide transition-all"
-                                            style={{
-                                                background: housesPerRoute === size ? BRAND.gold : BRAND.charcoal,
-                                                color: housesPerRoute === size ? BRAND.voidBlack : BRAND.offWhite
-                                            }}
+                            {/* --- GENERATE MODE CONTROLS --- */}
+                            {mode === 'generate' && (
+                                <>
+                                    <div>
+                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                            STARTING LOCATION
+                                        </label>
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                placeholder="Enter start address..."
+                                                value={startAddressInput}
+                                                onChange={(e) => setStartAddressInput(e.target.value)}
+                                                className="flex-1 px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
+                                            />
+                                            <Button
+                                                onClick={() => {
+                                                    if (mapRef.current) {
+                                                        const c = mapRef.current.getCenter();
+                                                        setStartLocation({ lat: c.lat, lng: c.lng, address: startAddressInput || "Map Center" });
+                                                    }
+                                                }}
+                                                size="icon"
+                                                className="bg-[#1F1F1F] hover:bg-[#333]"
+                                            >
+                                                <MapPin className="w-4 h-4" />
+                                            </Button>
+                                        </div>
+                                        {startLocation && <p className="text-[10px] text-green-500 mt-1">✓ Set: {startLocation.address}</p>}
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                            HOUSES PER ROUTE
+                                        </label>
+                                        <div className="flex gap-2">
+                                            {ROUTE_SIZE_OPTIONS.map(size => (
+                                                <button
+                                                    key={size}
+                                                    onClick={() => setHousesPerRoute(size)}
+                                                    className="flex-1 py-3 rounded-lg text-sm font-bold tracking-wide transition-all"
+                                                    style={{
+                                                        background: housesPerRoute === size ? BRAND.gold : BRAND.charcoal,
+                                                        color: housesPerRoute === size ? BRAND.voidBlack : BRAND.offWhite
+                                                    }}
+                                                >
+                                                    {size}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Advanced Logic Toggles */}
+                                    <div className="bg-[#151515] p-3 rounded-lg space-y-3 border border-[#333]">
+                                        <p className="text-[10px] font-bold text-gray-500 uppercase">ADVANCED OPTIMIZATION</p>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-xs text-gray-300">Minimize Turns (Straighter Paths)</span>
+                                            <input type="checkbox" className="accent-yellow-500" defaultChecked />
+                                        </div>
+                                        <div className="flex items-center justify-between opacity-50">
+                                            <span className="text-xs text-gray-300">School Zone Avoidance (Time)</span>
+                                            <input type="checkbox" className="accent-yellow-500" disabled />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        <Button
+                                            onClick={generateRoutes}
+                                            disabled={routesGenerating}
+                                            className="flex-1 h-12 font-bold tracking-wide"
+                                            style={{ background: BRAND.gold, color: BRAND.voidBlack }}
                                         >
-                                            {size}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
+                                            {routesGenerating ? (
+                                                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> BUILDING...</>
+                                            ) : (
+                                                <><Navigation className="w-4 h-4 mr-2" /> GENERATE NEW</>
+                                            )}
+                                        </Button>
+                                    </div>
 
-                            <div className="flex gap-2">
-                                <Button
-                                    onClick={generateRoutes}
-                                    disabled={routesGenerating}
-                                    className="flex-1 h-12 font-bold tracking-wide"
-                                    style={{ background: BRAND.gold, color: BRAND.voidBlack }}
-                                >
-                                    {routesGenerating ? (
-                                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> GENERATING...</>
-                                    ) : (
-                                        <><Navigation className="w-4 h-4 mr-2" /> GENERATE</>
-                                    )}
-                                </Button>
-                                <Button
-                                    onClick={() => setShowAllProperties(!showAllProperties)}
-                                    className="w-12 h-12"
-                                    style={{ background: showAllProperties ? BRAND.gold : BRAND.charcoal, color: showAllProperties ? BRAND.voidBlack : BRAND.gold }}
-                                >
-                                    <List className="w-5 h-5" />
-                                </Button>
-                            </div>
+                                    <div>
+                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                            MIN SCORE: {minScore}
+                                        </label>
+                                        <Slider
+                                            value={[minScore]}
+                                            onValueChange={([v]) => setMinScore(v)}
+                                            min={0}
+                                            max={200}
+                                            step={10}
+                                            className="w-full"
+                                        />
+                                    </div>
 
-                            <div>
-                                <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                    MIN SCORE: {minScore}
-                                </label>
-                                <Slider
-                                    value={[minScore]}
-                                    onValueChange={([v]) => setMinScore(v)}
-                                    min={0}
-                                    max={200}
-                                    step={10}
-                                    className="w-full"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                    STREET COOLDOWN: {streetCooldownDays} DAYS
-                                </label>
-                                <p className="text-[10px] text-gray-500 mb-2">
-                                    Skip streets with "No Answer" in the last X days
-                                </p>
-                                <Slider
-                                    value={[streetCooldownDays]}
-                                    onValueChange={([v]) => setStreetCooldownDays(v)}
-                                    min={7}
-                                    max={90}
-                                    step={7}
-                                    className="w-full"
-                                />
-                                <div className="flex justify-between text-[10px] text-gray-500 mt-1">
-                                    <span>1 week</span>
-                                    <span>1 month</span>
-                                    <span>3 months</span>
-                                </div>
-                            </div>
+                                    <div>
+                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                            STREET COOLDOWN: {streetCooldownDays} DAYS
+                                        </label>
+                                        <Slider
+                                            value={[streetCooldownDays]}
+                                            onValueChange={([v]) => setStreetCooldownDays(v)}
+                                            min={7}
+                                            max={90}
+                                            step={7}
+                                            className="w-full"
+                                        />
+                                    </div>
+                                </>
+                            )}
 
                             <div>
                                 <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
