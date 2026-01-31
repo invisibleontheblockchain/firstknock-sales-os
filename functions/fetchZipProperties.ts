@@ -6,21 +6,17 @@ const sql = neon(connectionString);
 
 Deno.serve(async (req) => {
   try {
-    const { zip_code } = await req.json();
+    const { zip_code, force_sync } = await req.json();
     const base44 = createClientFromRequest(req);
     
     if (!zip_code || zip_code.length !== 5) {
       return Response.json({ error: 'Valid 5-digit zip code required' }, { status: 400 });
     }
 
-    // Check if we already have data for this zip using SDK
-    // Use service role to check globally (or user scope if preferred, but usually we want to know if *anyone* has it? 
-    // Actually MasterProperty is usually user-scoped or team-scoped.
-    // If we use base44 (user scope), we check if *this user* has data.
-    // If they don't, we generate it.
-    const existing = await base44.entities.MasterProperty.filter({ zip_code }, '-created_date', 1);
+    // Check existing count
+    const existing = await base44.entities.MasterProperty.filter({ zip_code }, '-created_date', 5000);
     
-    if (existing.length > 0) {
+    if (existing.length > 0 && !force_sync) {
       return Response.json({ 
         status: 'exists',
         count: existing.length,
@@ -54,8 +50,22 @@ Deno.serve(async (req) => {
         });
     }
 
+    // Differential Sync: Filter out properties we already have
+    const existingHashes = new Set(existing.map(p => p.address_hash));
+    const newRecords = neonProperties.filter(p => !existingHashes.has(p.id));
+    
+    console.log(`Syncing: ${newRecords.length} new records (skipped ${neonProperties.length - newRecords.length} duplicates)`);
+
+    if (newRecords.length === 0) {
+         return Response.json({
+            status: 'synced',
+            count: 0,
+            message: `All ${neonProperties.length} properties are already in the app.`
+        });
+    }
+
     // Map to MasterProperty schema
-    const properties = neonProperties.map(p => {
+    const properties = newRecords.map(p => {
         // Parse address for house number / street name
         // Simple regex to split first number from rest
         const addressMatch = (p.address || "").match(/^(\d+)\s+(.*)$/);

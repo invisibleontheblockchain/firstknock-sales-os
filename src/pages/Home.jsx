@@ -17,7 +17,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
 import { Slider } from "@/components/ui/slider";
-import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, Filter, MapPin, User, Shield, Layers, Flame, Home as HomeIcon, Calendar, DollarSign, Ruler, ArrowRight } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, Filter, MapPin, User, Shield, Layers, Flame, Home as HomeIcon, Calendar, DollarSign, Ruler, ArrowRight, RefreshCw } from 'lucide-react';
+import { toast } from "sonner";
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from 'date-fns';
@@ -1287,16 +1288,40 @@ export default function Home() {
                                             FILTER BY ZIP CODES
                                         </label>
                                         <input
-                                            type="text"
-                                            placeholder="e.g. 90210, 90001 (Optional)"
-                                            value={zipCodeFilter}
-                                            onChange={(e) => setZipCodeFilter(e.target.value)}
-                                            className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
-                                        />
-                                        <p className="text-[10px] text-gray-500 mt-1">
-                                            Separate multiple zips with commas. Leave empty to use all visible.
-                                        </p>
-                                    </div>
+                                                type="text"
+                                                placeholder="e.g. 90210, 90001 (Optional)"
+                                                value={zipCodeFilter}
+                                                onChange={(e) => setZipCodeFilter(e.target.value)}
+                                                className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
+                                            />
+                                            <div className="flex justify-between items-center mt-1">
+                                                <p className="text-[10px] text-gray-500">
+                                                    Separate multiple zips with commas.
+                                                </p>
+                                                {zipCodeFilter.length === 5 && (
+                                                    <button 
+                                                        onClick={async () => {
+                                                            if (!confirm(`Force sync properties for ${zipCodeFilter} from database?`)) return;
+                                                            try {
+                                                                const toastId = toast.loading("Syncing...");
+                                                                const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zipCodeFilter, force_sync: true });
+                                                                if (res.data.count > 0) {
+                                                                    toast.success(`Synced ${res.data.count} new properties!`, { id: toastId });
+                                                                    window.location.reload(); // Simple reload to fetch new props
+                                                                } else {
+                                                                    toast.info(res.data.message || "Up to date", { id: toastId });
+                                                                }
+                                                            } catch (e) {
+                                                                toast.error("Sync failed", { id: toastId });
+                                                            }
+                                                        }}
+                                                        className="text-[10px] font-bold text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                                                    >
+                                                        <RefreshCw className="w-3 h-3" /> Force Sync
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
 
                                     <div>
                                         <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
