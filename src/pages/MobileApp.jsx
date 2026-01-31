@@ -13,8 +13,8 @@ export default function MobileApp() {
     }, []);
 
     return (
-        <div className="min-h-screen bg-black text-white p-6 pb-24">
-            <div className="max-w-md mx-auto space-y-8">
+        <div className="h-full overflow-y-auto bg-black text-white p-4 pb-24">
+            <div className="max-w-md mx-auto space-y-6 w-full">
                 
                 <div className="text-center space-y-4 pt-8">
                     <div className="w-16 h-16 bg-yellow-500 rounded-2xl mx-auto flex items-center justify-center shadow-[0_0_30px_rgba(255,215,0,0.3)]">

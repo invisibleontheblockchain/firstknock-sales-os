@@ -233,8 +233,8 @@ export default function AdminTeam() {
     }
 
     return (
-        <div className="h-full overflow-auto bg-black text-white p-4 md:p-6 pb-24">
-            <div className="max-w-6xl mx-auto space-y-6">
+        <div className="h-full overflow-y-auto bg-black text-white p-3 md:p-6 pb-24">
+            <div className="max-w-6xl mx-auto space-y-6 w-full overflow-hidden">
                 
                 {/* Header - Mobile Optimized */}
                 <div className="space-y-4">
