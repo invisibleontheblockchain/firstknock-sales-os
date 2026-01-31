@@ -1114,7 +1114,30 @@ export default function Home() {
                                                 <MapPin className="w-4 h-4" />
                                             </Button>
                                         </div>
-                                        {startLocation && <p className="text-[10px] text-green-500 mt-1">✓ Set: {startLocation.address}</p>}
+                                        {startLocation ? (
+                                            <div className="flex justify-between items-center mt-1">
+                                                <p className="text-[10px] text-green-500">✓ Set: {startLocation.address}</p>
+                                                <button onClick={() => { setStartLocation(null); setStartAddressInput(""); }} className="text-[10px] text-red-400 hover:text-white">Clear</button>
+                                            </div>
+                                        ) : (
+                                            <p className="text-[10px] text-gray-500 mt-1 italic">Optional (Defaults to map center)</p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                            FILTER BY ZIP CODES
+                                        </label>
+                                        <input
+                                            type="text"
+                                            placeholder="e.g. 90210, 90001 (Optional)"
+                                            value={zipCodeFilter}
+                                            onChange={(e) => setZipCodeFilter(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
+                                        />
+                                        <p className="text-[10px] text-gray-500 mt-1">
+                                            Separate multiple zips with commas. Leave empty to use all visible.
+                                        </p>
                                     </div>
 
                                     <div>
