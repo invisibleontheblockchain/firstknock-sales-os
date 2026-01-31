@@ -12,24 +12,14 @@ Deno.serve(async (req) => {
     const dbSize = await sql`SELECT pg_size_pretty(pg_database_size(current_database())) as size`;
 
     if (action === 'cleanup') {
-      // Delete random records to free up space
-      await sql`
-        DELETE FROM properties 
-        WHERE id IN (
-          SELECT id FROM properties 
-          ORDER BY random() 
-          LIMIT ${limit}
-        )
-      `;
+      // Use zip_code filter if provided in payload (req.json was parsed above but we need to extract zip)
+      // Note: The destructuring at the top was simplistic. Let's re-parse or use the object.
+      // Wait, we can't re-read stream. We need to check if 'limit' or other params were passed.
+      // The current code extracts { action, limit }. Let's add zip_code/state support.
+      // We need to modify line 8 in next step, but here let's just implement the logic assuming we can get the params.
       
-      const countAfter = await sql`SELECT COUNT(*) as count FROM properties`;
-      
-      return Response.json({
-        success: true,
-        deleted: parseInt(countBefore[0].count) - parseInt(countAfter[0].count),
-        remaining: parseInt(countAfter[0].count),
-        previous_size: dbSize[0]?.size
-      });
+      // ACTUALLY, I should modify the parsing line first.
+      // Let's abort this specific find_replace and do a larger one on the whole file to support specific filters.
     }
 
     if (action === 'delete_all') {
