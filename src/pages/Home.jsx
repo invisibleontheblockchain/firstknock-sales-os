@@ -138,6 +138,7 @@ export default function Home() {
     const [darkRoomCount, setDarkRoomCount] = useState(0);
     const [isLoadingDarkRoom, setIsLoadingDarkRoom] = useState(false);
     const [darkRoomEnabled, setDarkRoomEnabled] = useState(false);
+    const [fetchedProperties, setFetchedProperties] = useState([]); // Dynamic fetch storage
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
@@ -253,7 +254,7 @@ export default function Home() {
     const properties = useMemo(() => {
         // Merge Dark Room properties with User/Local properties
         // Dark Room properties are mapped to have similar structure
-        const combined = [...userProperties, ...localProperties, ...darkRoomProperties];
+        const combined = [...userProperties, ...localProperties, ...darkRoomProperties, ...fetchedProperties];
         const seen = new Set();
         return combined.filter(p => {
             // Use id as fallback for address_hash if missing (Dark Room props might rely on ID)
