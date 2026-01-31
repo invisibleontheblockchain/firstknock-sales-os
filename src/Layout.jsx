@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Map, List, Upload, Navigation, LogIn, Users, HelpCircle, Sparkles } from 'lucide-react';
+import { Map, List, Upload, Navigation, LogIn, Users, HelpCircle, Sparkles, Smartphone } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -189,13 +189,20 @@ export default function Layout({ children }) {
                         >
                             LOGOUT
                         </button>
+                        <Link 
+                            to={createPageUrl('MobileApp')}
+                            className="flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors"
+                            title="Get Mobile App"
+                        >
+                            <Smartphone className="w-4 h-4 text-yellow-500" />
+                        </Link>
                         <span 
                             className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} 
                             title={isOnline ? "System Online" : "Offline Mode Active"}
                         />
-                    </div>
-                </div>
-            </header>
+                        </div>
+                        </div>
+                        </header>
 
             {/* Main Content Area */}
             <main className="flex-1 relative overflow-hidden">

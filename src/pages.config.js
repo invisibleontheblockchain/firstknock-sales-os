@@ -62,6 +62,7 @@ import Terms from './pages/Terms';
 import Tutorial from './pages/Tutorial';
 import ZipCodeExplorer from './pages/ZipCodeExplorer';
 import Billing from './pages/Billing';
+import MobileApp from './pages/MobileApp';
 import __Layout from './Layout.jsx';
 
 
@@ -81,6 +82,7 @@ export const PAGES = {
     "Tutorial": Tutorial,
     "ZipCodeExplorer": ZipCodeExplorer,
     "Billing": Billing,
+    "MobileApp": MobileApp,
 }
 
 export const pagesConfig = {
