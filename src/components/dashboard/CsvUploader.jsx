@@ -232,13 +232,14 @@ export default function CsvUploader() {
             }
             if (!streetName) streetName = 'Unknown Street';
 
-            let addressHash = normalizedRow.addresshash || normalizedRow.id || normalizedRow.hash || row["MLS#"];
+            let addressHash = normalizedRow.addresshash || normalizedRow.id || normalizedRow.hash || row["MLS#"] || normalizedRow["mls#"];
             if (!addressHash) {
                 addressHash = btoa(`${streetName}-${houseNumber}-${lat}-${lng}`).replace(/[^a-zA-Z0-9]/g, '').substring(0, 16);
             }
 
             let importedStatus = normalizeStatus(normalizedRow.status || normalizedRow.originalstatus || row.Status);
 
+            // Robust field mapping for Redfin/Zillow formats
             entities.push({
                 address_hash: String(addressHash),
                 house_number: houseNumber,
@@ -246,15 +247,15 @@ export default function CsvUploader() {
                 full_address: fullAddress,
                 lat: lat,
                 lng: lng,
-                original_status: importedStatus, // Set initial status
+                original_status: importedStatus,
                 beds: parseFloat(normalizedRow.beds || 0),
                 baths: parseFloat(normalizedRow.baths || 0),
-                sqft: parseFloat(normalizedRow.sqft || normalizedRow.squarefeet || 0),
-                year_built: parseInt(normalizedRow.yearbuilt || 0),
+                sqft: parseFloat(normalizedRow.sqft || normalizedRow.squarefeet || normalizedRow["squarefeet"] || 0),
+                year_built: parseInt(normalizedRow.yearbuilt || normalizedRow["yearbuilt"] || 0),
                 price: parseFloat(normalizedRow.price || 0),
                 city: normalizedRow.city || null,
-                state: normalizedRow.state || null,
-                zip_code: normalizedRow.zipcode || normalizedRow.postalcode || null,
+                state: normalizedRow.state || normalizedRow["stateorprovince"] || null,
+                zip_code: normalizedRow.zipcode || normalizedRow.postalcode || normalizedRow["ziporpostalcode"] || null,
                 created_by: userEmail
             });
         });
