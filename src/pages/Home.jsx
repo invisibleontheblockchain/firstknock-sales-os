@@ -24,6 +24,7 @@ import { format } from 'date-fns';
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
 import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../components/logic/heatmapLogic';
 import RouteChecklist from '../components/routes/RouteChecklist';
+import RouteCommandPanel from '../components/routes/RouteCommandPanel';
 import NearbyHotLeads from '../components/nearby/NearbyHotLeads';
 import KnockTimeBanner from '../components/timing/KnockTimeBanner';
 import { darkRoom, DarkRoomClient } from '@/components/logic/neonClient';
