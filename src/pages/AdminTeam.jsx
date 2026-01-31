@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import TeamMemberCard from "@/components/team/TeamMemberCard";
 import RepPerformanceDetail from "@/components/team/RepPerformanceDetail";
 import RouteInsights from "@/components/insights/RouteInsights";
+import TeamLeaderboard from "@/components/team/TeamLeaderboard";
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -525,17 +526,28 @@ export default function AdminTeam() {
                         Territory Intelligence
                     </h2>
                     <RouteInsights />
-                </div>
-
-                {/* 2. TEAM ROSTER (Priority Display) */}
-                <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                        <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                            <Users className="w-5 h-5 text-blue-500" />
-                            Active Roster
-                        </h2>
-                        <span className="text-xs text-gray-500 font-mono">{teamMembers.length} ACTIVE</span>
                     </div>
+
+                    {/* 2. LEADERBOARD & ROSTER */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Leaderboard Column */}
+                    <div className="lg:col-span-1">
+                         <TeamLeaderboard 
+                            members={teamMembers} 
+                            logs={logs} 
+                            routes={Object.values(routesByRep).flat()} 
+                        />
+                    </div>
+
+                    {/* Roster Column */}
+                    <div className="lg:col-span-2 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                                <Users className="w-5 h-5 text-blue-500" />
+                                Active Roster
+                            </h2>
+                            <span className="text-xs text-gray-500 font-mono">{teamMembers.length} ACTIVE</span>
+                        </div>
 
                     {selectedRep ? (
                         <div className="animate-in slide-in-from-right duration-300">
@@ -561,7 +573,7 @@ export default function AdminTeam() {
                                     </Button>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     {teamMembers.map(member => {
                                         const memberRoutes = routesByRep[member.id] || [];
                                         const memberMetrics = metricsByRep[member.email] || { doorsKnocked: 0, talkedTo: 0, sales: 0 };
@@ -574,8 +586,6 @@ export default function AdminTeam() {
                                                     metrics={memberMetrics}
                                                     allRoutes={routesByRep.unassigned}
                                                     onAssignRoute={(rId, mId) => {
-                                                        // Prevent card click
-                                                        // handleAssign logic handles it
                                                         handleAssign(rId, mId);
                                                     }}
                                                 />

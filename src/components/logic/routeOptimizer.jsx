@@ -24,47 +24,66 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
 }
 
 /**
- * Score a property based on multiple factors
- * Higher score = better target
+ * Advanced Property Scoring Engine 3.0
+ * Factors: Equity, Recent Sales (Activity), Property Type, Contact Frequency
  */
-export function scoreProperty(property) {
+export function scoreProperty(property, logs = [], neighborhoodStats = {}) {
     let score = 100; // Base score
 
     // 1. Status Scoring
     if (property.effective_status === 'ELIGIBLE') score += 50;
-    if (property.effective_status === 'CALLBACK') score += 30;
+    if (property.effective_status === 'CALLBACK') score += 40; // Bumped up
     if (property.effective_status === 'NO_ANSWER') score += 20;
-    if (property.effective_status === 'QUALIFIED') score += 70;
-    if (property.effective_status === 'SOLD' || property.effective_status === 'HARD_NO') score = 0; // Don't route to these
+    if (property.effective_status === 'QUALIFIED') score += 80;
+    if (property.effective_status === 'SOLD' || property.effective_status === 'HARD_NO') return 0;
 
-    // 2. Tenure Scoring (Version 2.0)
-    // Prioritize homeowners with 5+ years tenure (equity, stability) over brand new buyers
-    if (property.sold_date) {
+    // 2. Estimated Equity & Tenure
+    if (property.sold_date && property.price) {
         const soldDate = new Date(property.sold_date);
         const now = new Date();
         const yearsOwned = (now - soldDate) / (1000 * 60 * 60 * 24 * 365);
 
-        if (yearsOwned < 2) {
-            score -= 50; // Penalty: New homeowner (low probability)
-        } else if (yearsOwned >= 5) {
-            score += 50; // Bonus: Gold Zone (5+ years tenure)
-        } else {
-            score += 10; // Neutral: 2-5 years
-        }
+        // Simple Equity Proxy: 3% appreciation per year + down payment
+        // (Just a heuristic score, not financial advice)
+        const appreciationFactor = 1 + (0.03 * yearsOwned);
+        const estValue = property.price * appreciationFactor;
+        const loanAmortization = Math.min(1, yearsOwned / 30); // Rough loan payoff
+        const estEquity = estValue * (0.2 + (0.8 * loanAmortization)); // Assuming 20% down
+
+        if (estEquity > 200000) score += 60; // High equity = High potential
+        else if (estEquity > 100000) score += 30;
+
+        if (yearsOwned < 1) score -= 30; // Brand new, likely no money or overwhelmed
+        else if (yearsOwned > 7) score += 40; // 7+ years is prime move/upgrade/solar time
     }
 
-    // 3. Price/Value Scoring
-    // "How expensive the house is"
-    if (property.price) {
-        if (property.price > 1000000) score += 40;
-        else if (property.price > 750000) score += 30;
-        else if (property.price > 500000) score += 20;
+    // 3. Property Type
+    if (property.property_type) {
+        const type = property.property_type.toLowerCase();
+        if (type.includes('single')) score += 20;
+        else if (type.includes('condo') || type.includes('town')) score -= 10; // HOA barriers
+        else if (type.includes('multi')) score += 10;
     }
 
-    // Ghost leads get lower priority
-    if (property.is_ghost) score = score * 0.5;
+    // 4. Neighborhood Heat (Recent Sales Activity)
+    // If neighborhoodStats has data for this street/zip
+    if (neighborhoodStats && property.zip_code) {
+        const zipHeat = neighborhoodStats[property.zip_code] || 0;
+        // Boost if area is hot (lots of recent sales = active market)
+        score += Math.min(zipHeat * 5, 50); 
+    }
 
-    return score;
+    // 5. Contact Frequency (Burnout Protection)
+    if (logs && logs.length > 0) {
+        const myLogs = logs.filter(l => l.address_hash === (property.address_hash || property.id));
+        if (myLogs.length > 3) score -= 50; // Too many touches, diminished return
+        if (myLogs.length === 1 && myLogs[0].parsed_status === 'NO_ANSWER') score += 10; // Worth trying again
+    }
+
+    // 6. High Value
+    if (property.price > 1000000) score += 30;
+
+    return Math.max(0, Math.round(score));
 }
 
 /**
@@ -132,6 +151,47 @@ function calculateBearing(lat1, lng1, lat2, lng2) {
         Math.sin(lat1) * Math.cos(lat2) * Math.cos(lng2 - lng1);
     const brng = Math.atan2(y, x) * 180 / Math.PI;
     return (brng + 360) % 360;
+}
+
+/**
+ * Nearest Neighbor TSP approximation for route ordering
+/**
+ * 2-opt Optimization to uncross paths and reduce total distance
+ */
+function apply2Opt(route) {
+    let improved = true;
+    const maxIterations = 50; // Cap iterations for performance
+    let iterations = 0;
+
+    while (improved && iterations < maxIterations) {
+        improved = false;
+        iterations++;
+        
+        for (let i = 0; i < route.length - 2; i++) {
+            for (let j = i + 2; j < route.length - 1; j++) { // j starts at i+2 to ensure we don't swap adjacent edges
+                const p1 = route[i];
+                const p2 = route[i+1];
+                const p3 = route[j];
+                const p4 = route[j+1];
+
+                // Current distance: p1->p2 + p3->p4
+                const currentDist = calculateDistance(p1.lat, p1.lng, p2.lat, p2.lng) + 
+                                    calculateDistance(p3.lat, p3.lng, p4.lat, p4.lng);
+                
+                // New distance if swapped: p1->p3 + p2->p4 (reversing the segment p2...p3)
+                const newDist = calculateDistance(p1.lat, p1.lng, p3.lat, p3.lng) + 
+                                calculateDistance(p2.lat, p2.lng, p4.lat, p4.lng);
+
+                if (newDist < currentDist) {
+                    // Reverse the segment from i+1 to j
+                    const segment = route.slice(i+1, j+1).reverse();
+                    route.splice(i+1, segment.length, ...segment);
+                    improved = true;
+                }
+            }
+        }
+    }
+    return route;
 }
 
 /**
@@ -247,10 +307,18 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 
     if (eligible.length === 0) return [];
 
+    // Pre-calculate Neighborhood Heat (Recent Sales count per zip)
+    const neighborhoodStats = eligible.reduce((acc, p) => {
+        if (p.zip_code && (p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED')) {
+            acc[p.zip_code] = (acc[p.zip_code] || 0) + 1;
+        }
+        return acc;
+    }, {});
+
     // Score all properties
     const scored = eligible.map(p => ({
         ...p,
-        score: scoreProperty(p)
+        score: scoreProperty(p, allLogs, neighborhoodStats)
     }));
 
     // Calculate number of routes
@@ -276,6 +344,8 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
                 startLocation?.lng,
                 minimizeTurns
             );
+            // Apply 2-opt post-optimization for smoother paths
+            orderedProps = apply2Opt(orderedProps);
         }
 
         // Metrics
