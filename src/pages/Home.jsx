@@ -658,11 +658,14 @@ export default function Home() {
                     ))}
                 </LayerGroup>
 
-                {/* USER PROPERTIES PIN LAYER */}
+                {/* USER PROPERTIES PIN LAYER - Visible in Generate Mode or Explicit Show */}
                 <LayerGroup>
-                    {viewMode === 'pins' && zoomLevel >= 13 && !activeRoute && routes.length === 0 && hydratedSavedRoutes.length === 0 && showAllProperties && effectiveProperties
-                        .filter(p => !p.is_dark_room) // Exclude dark room from this layer
+                    {viewMode === 'pins' && zoomLevel >= 13 && !activeRoute && (mode === 'generate' || showAllProperties) && effectiveProperties
+                        .filter(p => !p.is_dark_room)
                         .filter(p => {
+                            // In Generate mode, hide properties already in saved routes (unless filtering explicitly)
+                            if (mode === 'generate' && assignedHashes.has(p.address_hash)) return false;
+                            
                             if (quickFilter === 'all') return true;
                             if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
                             if (quickFilter === 'sold') return p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED';
@@ -673,17 +676,12 @@ export default function Home() {
                             <CircleMarker
                                 key={p.address_hash || p.id}
                                 center={[p.lat, p.lng]}
-                                radius={6}
-                                eventHandlers={{
-                                    click: (e) => {
-                                        L.DomEvent.stopPropagation(e);
-                                        setSelectedProperty(p);
-                                    }
-                                }}
+                                radius={5}
+                                eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
                                 pathOptions={{
                                     fillColor: STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER,
-                                    fillOpacity: 0.9,
-                                    color: '#333',
+                                    fillOpacity: mode === 'generate' ? 0.9 : 0.5,
+                                    color: '#000',
                                     weight: 1
                                 }}
                             />
