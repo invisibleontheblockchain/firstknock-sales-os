@@ -472,72 +472,125 @@ export default function Home() {
         return generateStateClusters(effectiveProperties);
     }, [effectiveProperties, zoomLevel, activeRoute]);
 
-    const generateRoutes = useCallback(() => {
-        if (availableProperties.length === 0) {
-            setRoutes([]);
-            return;
-        }
+    const generateRoutes = useCallback(async () => {
         setRoutesGenerating(true);
-        setTimeout(() => {
-            try {
-                // Use current map center as start location if not set
-                const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
-                const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
-
-                // Filter by Zip Codes if set
-                let filteredProps = availableProperties;
-                if (zipCodeFilter && zipCodeFilter.trim()) {
-                    const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
-                    if (targetZips.length > 0) {
-                        filteredProps = availableProperties.filter(p => {
-                            const pZip = String(p.zip_code || '').trim().slice(0, 5);
-                            return targetZips.includes(pZip);
-                        });
-                    }
-                }
-
-                if (filteredProps.length === 0) {
-                    alert("No properties found in the selected zip codes.");
-                    setRoutesGenerating(false);
-                    return;
-                }
-
-                // Close Builder Settings Panel immediately
-                setShowCompare(false);
-
-                // Auto-center map on filtered properties
-                if (mapRef.current && filteredProps.length > 0) {
-                    const bounds = L.latLngBounds(filteredProps.map(p => [p.lat, p.lng]));
-                    if (bounds.isValid()) {
-                        mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
-                    }
-                }
-
-                // Pass logs for street cooldown filtering
-                const generated = generateOptimizedRoutes(
-                    filteredProps,
-                    housesPerRoute,
-                    start,
-                    logs,
-                    { 
-                        streetCooldownDays, 
-                        useStreetSweep: true,
-                        minimizeTurns: true // Enabled by default for smoother routes
-                    }
+        
+        try {
+            // 1. DYNAMIC DATA FETCHING (if zip code is set)
+            let dynamicProps = [];
+            if (zipCodeFilter && zipCodeFilter.trim()) {
+                const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
+                
+                // Check if we need to fetch (simple check: do we have enough data for these zips?)
+                // We'll just fetch to be safe and merge.
+                // Note: Parallel fetch for multiple zips
+                const fetchPromises = targetZips.map(zip => 
+                    base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000)
+                        .then(res => Array.isArray(res) ? res : (res?.items || []))
+                        .catch(err => {
+                            console.warn(`Failed to fetch zip ${zip}`, err);
+                            return [];
+                        })
                 );
-
-                if (generated._cooldownInfo) {
-                    setCooldownInfo(generated._cooldownInfo);
+                
+                const results = await Promise.all(fetchPromises);
+                const flattened = results.flat();
+                
+                if (flattened.length > 0) {
+                    console.log(`[Generate] Fetched ${flattened.length} properties from backend for zips: ${targetZips.join(', ')}`);
+                    dynamicProps = flattened;
+                    // Update state to show on map (will trigger re-render eventually, but we use local var for now)
+                    setFetchedProperties(prev => {
+                        // Dedup with existing fetched
+                        const existingIds = new Set(prev.map(p => p.id));
+                        const newUnique = flattened.filter(p => !existingIds.has(p.id));
+                        return [...prev, ...newUnique];
+                    });
                 }
-
-                setRoutes(generated);
-                setShowRoutePanel(true); // Auto-open results
-            } catch (e) {
-                console.error(e);
             }
+
+            // 2. PREPARE DATA FOR ROUTING
+            // Combine current available (memoized) with newly fetched dynamic props
+            // Need to apply same processing (dedup, assigned filtering) to dynamicProps
+            const assignedSet = assignedHashes; // closed over from render
+            
+            // Convert dynamicProps to effective format (add lat/lng parse if needed, though filter returns entities)
+            const processedDynamic = dynamicProps.map(p => {
+                const propLogs = logs.filter(l => (p.address_hash && l.address_hash === p.address_hash));
+                return {
+                    ...p,
+                    address_hash: p.address_hash || p.id,
+                    lat: parseFloat(p.lat),
+                    lng: parseFloat(p.lng),
+                    effective_status: determineEffectiveStatus(p, propLogs)
+                };
+            }).filter(p => !assignedSet.has(p.address_hash) && p.lat && p.lng);
+
+            // Merge with existing availableProperties, deduping by address_hash
+            const combinedMap = new Map();
+            availableProperties.forEach(p => combinedMap.set(p.address_hash, p));
+            processedDynamic.forEach(p => combinedMap.set(p.address_hash, p));
+            
+            let workingSet = Array.from(combinedMap.values());
+
+            // 3. FILTERING
+            if (zipCodeFilter && zipCodeFilter.trim()) {
+                const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
+                if (targetZips.length > 0) {
+                    workingSet = workingSet.filter(p => {
+                        const pZip = String(p.zip_code || '').trim().slice(0, 5);
+                        return targetZips.includes(pZip);
+                    });
+                }
+            }
+
+            if (workingSet.length === 0) {
+                alert("No properties found in the selected zip codes (checked local and database).");
+                setRoutesGenerating(false);
+                return;
+            }
+
+            // 4. UI UPDATES (Close Panel & Move Map)
+            setShowCompare(false);
+            
+            if (mapRef.current && workingSet.length > 0) {
+                const bounds = L.latLngBounds(workingSet.map(p => [p.lat, p.lng]));
+                if (bounds.isValid()) {
+                    mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+                }
+            }
+
+            // 5. GENERATE ROUTES
+            // Use current map center as start location if not set
+            const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
+            const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
+
+            const generated = generateOptimizedRoutes(
+                workingSet,
+                housesPerRoute,
+                start,
+                logs,
+                { 
+                    streetCooldownDays, 
+                    useStreetSweep: true,
+                    minimizeTurns: true
+                }
+            );
+
+            if (generated._cooldownInfo) {
+                setCooldownInfo(generated._cooldownInfo);
+            }
+
+            setRoutes(generated);
+            setShowRoutePanel(true);
+
+        } catch (e) {
+            console.error("Route generation error:", e);
+            alert("An error occurred while generating routes.");
+        } finally {
             setRoutesGenerating(false);
-        }, 100);
-    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays]);
+        }
+    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes]);
 
     // Filter and sort routes
     const filteredRoutes = useMemo(() => {
