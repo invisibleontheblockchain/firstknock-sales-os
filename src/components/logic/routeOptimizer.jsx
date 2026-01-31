@@ -273,7 +273,8 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
             orderedProps = optimizeRouteOrder(
                 clusterProps,
                 startLocation?.lat,
-                startLocation?.lng
+                startLocation?.lng,
+                minimizeTurns
             );
         }
 
