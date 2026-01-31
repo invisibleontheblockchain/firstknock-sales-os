@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Map, List, Upload, Navigation, LogIn, Users, HelpCircle } from 'lucide-react';
+import { Map, List, Upload, Navigation, LogIn, Users, HelpCircle, Sparkles } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -257,9 +257,15 @@ export default function Layout({ children }) {
                             to={createPageUrl('Tutorial')}
                             active={window.location.pathname.endsWith('Tutorial')}
                         />
-                    </div>
-                )}
-            </nav>
+                        <NavItem
+                            icon={Sparkles}
+                            label="Plans"
+                            to={createPageUrl('Billing')}
+                            active={window.location.pathname.endsWith('Billing')}
+                        />
+                        </div>
+                        )}
+                        </nav>
         </div>
     );
 }
