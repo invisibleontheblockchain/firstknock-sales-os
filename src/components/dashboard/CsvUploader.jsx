@@ -10,7 +10,8 @@ import { Label } from "@/components/ui/label";
 export default function CsvUploader() {
     const [isUploading, setIsUploading] = useState(false);
     const [uploadStatus, setUploadStatus] = useState(null);
-    const [importMode, setImportMode] = useState('create'); // 'create' or 'history'
+    const [importMode, setImportMode] = useState('create'); // 'create', 'history', or 'analyze'
+    const [analysisReport, setAnalysisReport] = useState(null);
     
     const queryClient = useQueryClient();
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
@@ -94,10 +95,106 @@ export default function CsvUploader() {
         }
         if (!userEmail) userEmail = 'unknown@user.local';
 
-        if (importMode === 'history') {
+        if (importMode === 'analyze') {
+            await processCoverageAnalysis(data);
+        } else if (importMode === 'history') {
             await processHistoryImport(data, userEmail);
         } else {
             await processPropertyImport(data, userEmail);
+        }
+    };
+
+    const processCoverageAnalysis = async (data) => {
+        setIsUploading(true);
+        try {
+            const stats = {
+                totalRows: data.length,
+                states: new Set(),
+                counties: new Set(),
+                years: {},
+                salesByYear: {}
+            };
+
+            const stateCounts = {};
+
+            data.forEach(row => {
+                // Normalize keys
+                const r = {};
+                Object.keys(row).forEach(k => r[k.toLowerCase().trim().replace(/[\s_-]+/g, '')] = row[k]);
+
+                // Extract State
+                const state = r.state || r.stateorprovince || r.st;
+                if (state) {
+                    stats.states.add(state);
+                    stateCounts[state] = (stateCounts[state] || 0) + 1;
+                }
+
+                // Extract County (if available) - Composite key state-county
+                const county = r.county || r.countyname;
+                if (county && state) {
+                    stats.counties.add(`${state}-${county}`);
+                } else if (r.zip || r.zipcode) {
+                    // Fallback: Count unique zips as proxy for coverage spread
+                    stats.counties.add(`zip-${r.zip || r.zipcode}`); 
+                }
+
+                // Sales Year
+                const soldDate = r.solddate || r.datesold || r.lastsolddate;
+                if (soldDate) {
+                    const year = new Date(soldDate).getFullYear();
+                    if (year && !isNaN(year)) {
+                        stats.salesByYear[year] = (stats.salesByYear[year] || 0) + 1;
+                    }
+                }
+            });
+
+            const topStates = Object.entries(stateCounts)
+                .sort((a,b) => b[1] - a[1])
+                .slice(0, 5)
+                .map(([s, c]) => `${s} (${c})`)
+                .join(', ');
+
+            const report = (
+                <div className="space-y-2 text-xs">
+                    <div className="p-3 bg-black/40 rounded border border-blue-900/50">
+                        <h4 className="font-bold text-blue-400 mb-2">Coverage Report</h4>
+                        <div className="grid grid-cols-2 gap-2">
+                            <div>Total Rows: <span className="text-white font-bold">{stats.totalRows.toLocaleString()}</span></div>
+                            <div>States Found: <span className="text-white font-bold">{stats.states.size}</span></div>
+                            <div>Counties/Areas: <span className="text-white font-bold">{stats.counties.size}</span></div>
+                        </div>
+                        <div className="mt-2 text-gray-400">Top States: {topStates || 'None detected'}</div>
+                    </div>
+                    
+                    {Object.keys(stats.salesByYear).length > 0 && (
+                        <div className="p-3 bg-black/40 rounded border border-green-900/50">
+                            <h4 className="font-bold text-green-400 mb-2">Sales by Year</h4>
+                            <div className="grid grid-cols-3 gap-2">
+                                {Object.entries(stats.salesByYear)
+                                    .filter(([y]) => y >= new Date().getFullYear() - 5) // Last 5 years +
+                                    .sort(([a], [b]) => b - a)
+                                    .map(([year, count]) => (
+                                        <div key={year}>{year}: <span className="text-white">{count.toLocaleString()}</span></div>
+                                    ))}
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="p-2 text-[10px] text-gray-500 italic">
+                        * Note: There are ~3,143 counties in the US.
+                        {stats.counties.size < 3000 ? " This file does not appear to cover every county." : " Coverage looks comprehensive."}
+                    </div>
+                </div>
+            );
+
+            setAnalysisReport(report);
+            setUploadStatus({ success: true, message: "Analysis Complete" });
+
+        } catch (e) {
+            console.error(e);
+            setUploadStatus({ success: false, message: "Analysis Failed: " + e.message });
+        } finally {
+            setIsUploading(false);
         }
     };
 
@@ -329,13 +426,24 @@ export default function CsvUploader() {
                     <History className="w-4 h-4" />
                     UPDATE HISTORY
                 </button>
-            </div>
+                <button
+                    onClick={() => setImportMode('analyze')}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-md text-xs font-bold transition-all ${
+                        importMode === 'analyze' ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'
+                    }`}
+                >
+                    <AlertCircle className="w-4 h-4" />
+                    VERIFY COVERAGE
+                </button>
+                </div>
 
-            <div className="text-xs text-gray-400 px-1">
+                <div className="text-xs text-gray-400 px-1">
                 {importMode === 'create' 
                     ? "Upload a new list of properties to build routes." 
-                    : "Upload a list with statuses (Sold, Not Interested, etc) to update history and exclude from future routes."}
-            </div>
+                    : importMode === 'analyze' 
+                    ? "Scan a file to verify state/county coverage and sales history without importing."
+                    : "Upload a list with statuses (Sold, Not Interested, etc) to update history."}
+                </div>
 
             <input
                 type="file"
@@ -365,8 +473,22 @@ export default function CsvUploader() {
                 }`}>
                     {uploadStatus.success === false ? <AlertCircle className="w-4 h-4 shrink-0" /> : null}
                     {uploadStatus.message}
-                </div>
-            )}
-        </div>
-    );
-}
+                    </div>
+                    )}
+
+                    {analysisReport && (
+                    <div className="animate-in fade-in slide-in-from-top-2">
+                    {analysisReport}
+                    <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={() => setAnalysisReport(null)}
+                        className="mt-2 text-xs text-gray-500 hover:text-white w-full"
+                    >
+                        Clear Report
+                    </Button>
+                    </div>
+                    )}
+                    </div>
+                    );
+                    }
