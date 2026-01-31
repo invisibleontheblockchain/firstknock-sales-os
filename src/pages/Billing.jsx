@@ -38,7 +38,6 @@ const PLANS = [
         features: [
             'Max 20 Users',
             'Command Center Auto-Dispatch',
-            'Dark Room Intelligence (2k/mo)',
             'AI Route Optimization',
             'Team Leaderboard & Metrics',
             'Priority Support'
@@ -54,7 +53,7 @@ const PLANS = [
         description: 'Maximum power for large fleets.',
         features: [
             'Best for 20+ Users',
-            'Unlimited Dark Room Data',
+            'Advanced Analytics',
             'Custom API Access',
             'Dedicated Success Manager',
             'White-Label Options',
@@ -111,8 +110,8 @@ export default function Billing() {
     };
 
     return (
-        <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-900 via-black to-black text-white p-6">
-            <div className="max-w-6xl mx-auto space-y-8">
+        <div className="min-h-screen bg-black text-white p-4 sm:p-6 lg:p-8">
+            <div className="max-w-7xl mx-auto space-y-10">
                 
                 {/* Header */}
                 <div className="text-center space-y-4">
@@ -121,39 +120,32 @@ export default function Billing() {
                         Unlock advanced logistics, dark room intelligence, and auto-dispatch capabilities.
                     </p>
 
-                    {/* Seat Selector */}
-                    <div className="bg-[#111] border border-gray-800 rounded-xl p-4 max-w-xs mx-auto flex flex-col items-center gap-3">
-                        <label className="text-sm font-bold text-gray-400 uppercase tracking-wider">How big is your team?</label>
-                        <div className="flex items-center gap-4">
-                            <Button 
-                                variant="outline" 
-                                size="icon"
+                    {/* Seat Selector - Compact */}
+                    <div className="bg-[#111]/80 backdrop-blur border border-gray-800 rounded-full px-6 py-2 mx-auto flex items-center justify-between gap-6 max-w-fit shadow-xl">
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">TEAM SIZE:</span>
+                        
+                        <div className="flex items-center gap-3">
+                            <button 
                                 onClick={() => setSeats(Math.max(1, seats - 1))}
-                                className="h-10 w-10 rounded-full border-gray-700 hover:bg-gray-800"
+                                className="w-6 h-6 rounded-full bg-gray-800 hover:bg-gray-700 text-white flex items-center justify-center transition-colors font-bold"
                             >
                                 -
-                            </Button>
-                            <div className="flex flex-col items-center w-16">
-                                <span className="text-3xl font-extrabold text-yellow-500">{seats}</span>
-                            </div>
-                            <Button 
-                                variant="outline" 
-                                size="icon"
+                            </button>
+                            <span className="text-xl font-extrabold text-yellow-500 w-8 text-center">{seats}</span>
+                            <button 
                                 onClick={() => setSeats(seats + 1)}
-                                className="h-10 w-10 rounded-full border-gray-700 hover:bg-gray-800"
+                                className="w-6 h-6 rounded-full bg-gray-800 hover:bg-gray-700 text-white flex items-center justify-center transition-colors font-bold"
                             >
                                 +
-                            </Button>
+                            </button>
                         </div>
-                        <p className="text-xs text-gray-500">
-                            {seats === 1 ? 'Solo User' : `${seats} Team Members`}
-                        </p>
+
+                        <div className="h-6 w-px bg-gray-700 mx-2 hidden sm:block"></div>
                         
-                        {/* Plan Indicator */}
-                        <div className="mt-1">
-                            {seats <= 5 && <span className="text-[10px] bg-white text-black px-2 py-0.5 rounded font-bold">HUSTLER ELIGIBLE</span>}
-                            {seats > 5 && seats <= 20 && <span className="text-[10px] bg-yellow-500 text-black px-2 py-0.5 rounded font-bold">GROWTH TIER</span>}
-                            {seats > 20 && <span className="text-[10px] bg-blue-500 text-white px-2 py-0.5 rounded font-bold">ENTERPRISE SCALE</span>}
+                        <div className="hidden sm:block">
+                            {seats <= 5 && <span className="text-[10px] text-white font-bold">HUSTLER</span>}
+                            {seats > 5 && seats <= 20 && <span className="text-[10px] text-yellow-500 font-bold">GROWTH</span>}
+                            {seats > 20 && <span className="text-[10px] text-blue-400 font-bold">ENTERPRISE</span>}
                         </div>
                     </div>
 
@@ -167,7 +159,7 @@ export default function Billing() {
                 </div>
 
                 {/* Plans Grid */}
-                <div className="grid md:grid-cols-3 gap-4 lg:gap-8 items-start">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6 items-stretch">
                     {PLANS.map(plan => (
                         <div 
                             key={plan.id}
