@@ -18,21 +18,21 @@ function TutorialSection({ icon: Icon, title, children, defaultOpen = false }) {
     const [isOpen, setIsOpen] = useState(defaultOpen);
     
     return (
-        <div className="border border-[#333] rounded-xl overflow-hidden mb-4">
+        <div className="bg-[#111] border border-gray-800 rounded-xl overflow-hidden transition-all duration-200 hover:border-gray-700">
             <button
                 onClick={() => setIsOpen(!isOpen)}
-                className="w-full p-4 flex items-center justify-between bg-[#151515] hover:bg-[#1a1a1a] transition-colors"
+                className="w-full p-5 flex items-center justify-between bg-gradient-to-r from-[#151515] to-[#0A0A0A] hover:from-[#1a1a1a] hover:to-[#111] transition-all"
             >
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: `${BRAND.gold}20` }}>
-                        <Icon className="w-5 h-5" style={{ color: BRAND.gold }} />
+                <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20">
+                        <Icon className="w-5 h-5 text-yellow-500" />
                     </div>
-                    <span className="font-bold text-white">{title}</span>
+                    <span className="font-bold text-white text-lg">{title}</span>
                 </div>
                 {isOpen ? <ChevronDown className="w-5 h-5 text-gray-400" /> : <ChevronRight className="w-5 h-5 text-gray-400" />}
             </button>
             {isOpen && (
-                <div className="p-4 bg-[#0A0A0A] border-t border-[#333]">
+                <div className="p-5 bg-black/50 border-t border-gray-800 animate-in slide-in-from-top-2">
                     {children}
                 </div>
             )}
@@ -56,28 +56,42 @@ function Step({ number, title, description }) {
 
 export default function Tutorial() {
     return (
-        <div className="min-h-full bg-[#0A0A0A] p-4 pb-24 overflow-y-auto">
-            <div className="max-w-2xl mx-auto">
+        <div className="min-h-screen bg-black text-white p-4 sm:p-6 lg:p-8 overflow-y-auto">
+            <div className="max-w-3xl mx-auto space-y-8 pb-24">
                 {/* Header */}
-                <div className="text-center mb-8 pt-4">
-                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: BRAND.gold }}>
-                        <Navigation className="w-8 h-8" style={{ color: BRAND.voidBlack }} />
+                <div className="text-center space-y-4">
+                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto bg-yellow-500 shadow-[0_0_30px_rgba(255,215,0,0.3)]">
+                        <Navigation className="w-8 h-8 text-black" />
                     </div>
-                    <h1 className="text-2xl font-bold text-white mb-2">FirstKnock Tutorial</h1>
-                    <p className="text-gray-400">Learn how to use the app in 5 minutes</p>
+                    <div>
+                        <h1 className="text-3xl font-extrabold tracking-tight">Help Center</h1>
+                        <p className="text-gray-400 mt-2">Master your territory in minutes.</p>
+                    </div>
                 </div>
 
-                {/* Quick Start */}
-                <div className="p-4 rounded-xl mb-6" style={{ background: `${BRAND.gold}15`, border: `1px solid ${BRAND.gold}40` }}>
-                    <h3 className="font-bold mb-3 flex items-center gap-2" style={{ color: BRAND.gold }}>
-                        <Zap className="w-5 h-5" /> Quick Start
+                {/* Quick Start Card */}
+                <div className="bg-gradient-to-br from-yellow-500/10 to-transparent border border-yellow-500/30 rounded-2xl p-6 shadow-lg backdrop-blur-sm">
+                    <h3 className="font-bold text-yellow-500 mb-4 flex items-center gap-2 text-lg">
+                        <Zap className="w-5 h-5" /> Quick Start Guide
                     </h3>
-                    <ol className="text-sm text-gray-300 space-y-2">
-                        <li>1. <strong>Upload your data</strong> on the Setup page (CSV with addresses)</li>
-                        <li>2. <strong>Set your territory</strong> by selecting zip codes</li>
-                        <li>3. <strong>Generate routes</strong> on the Map page</li>
-                        <li>4. <strong>Start knocking!</strong> Use the checklist to log results</li>
-                    </ol>
+                    <div className="grid sm:grid-cols-2 gap-4">
+                        <div className="flex gap-3 items-start p-3 bg-black/40 rounded-lg border border-yellow-500/10">
+                            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500 text-black flex items-center justify-center font-bold text-xs">1</span>
+                            <p className="text-sm text-gray-300"><strong>Upload Data:</strong> Go to Setup and import your CSV address list.</p>
+                        </div>
+                        <div className="flex gap-3 items-start p-3 bg-black/40 rounded-lg border border-yellow-500/10">
+                            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500 text-black flex items-center justify-center font-bold text-xs">2</span>
+                            <p className="text-sm text-gray-300"><strong>Set Territory:</strong> Filter zip codes to focus your area.</p>
+                        </div>
+                        <div className="flex gap-3 items-start p-3 bg-black/40 rounded-lg border border-yellow-500/10">
+                            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500 text-black flex items-center justify-center font-bold text-xs">3</span>
+                            <p className="text-sm text-gray-300"><strong>Build Routes:</strong> Use the Map page to generate walking paths.</p>
+                        </div>
+                        <div className="flex gap-3 items-start p-3 bg-black/40 rounded-lg border border-yellow-500/10">
+                            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500 text-black flex items-center justify-center font-bold text-xs">4</span>
+                            <p className="text-sm text-gray-300"><strong>Knock & Log:</strong> Track results and sales in real-time.</p>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Tutorial Sections */}
