@@ -501,6 +501,9 @@ export default function Home() {
                     return;
                 }
 
+                // Close Builder Settings Panel immediately
+                setShowCompare(false);
+
                 // Auto-center map on filtered properties
                 if (mapRef.current && filteredProps.length > 0) {
                     const bounds = L.latLngBounds(filteredProps.map(p => [p.lat, p.lng]));
