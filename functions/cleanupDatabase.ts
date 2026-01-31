@@ -37,6 +37,11 @@ Deno.serve(async (req) => {
         return Response.json({ success: true, message: "All properties deleted" });
     }
 
+    if (action === 'vacuum') {
+        await sql`VACUUM properties`; // Standard vacuum
+        return Response.json({ success: true, message: "Vacuum complete" });
+    }
+
     const tableSizes = await sql`
       SELECT 
         schemaname,
