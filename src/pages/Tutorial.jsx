@@ -56,7 +56,7 @@ function Step({ number, title, description }) {
 
 export default function Tutorial() {
     return (
-        <div className="min-h-screen bg-black text-white p-4 sm:p-6 lg:p-8 overflow-y-auto">
+        <div className="h-full overflow-y-auto bg-black text-white p-4 sm:p-6 lg:p-8">
             <div className="max-w-3xl mx-auto space-y-8 pb-24">
                 {/* Header */}
                 <div className="text-center space-y-4">

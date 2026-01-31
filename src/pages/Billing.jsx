@@ -110,14 +110,14 @@ export default function Billing() {
     };
 
     return (
-        <div className="min-h-screen bg-black text-white p-4 sm:p-6 lg:p-8">
+        <div className="h-full overflow-y-auto bg-black text-white p-4 sm:p-6 lg:p-8">
             <div className="max-w-7xl mx-auto space-y-10">
                 
                 {/* Header */}
                 <div className="text-center space-y-4">
                     <h1 className="text-4xl font-extrabold tracking-tight">Upgrade Your Arsenal</h1>
                     <p className="text-gray-400 max-w-lg mx-auto">
-                        Unlock advanced logistics, dark room intelligence, and auto-dispatch capabilities.
+                        Unlock advanced logistics and auto-dispatch capabilities.
                     </p>
 
                     {/* Seat Selector - Compact */}
