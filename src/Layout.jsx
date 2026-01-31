@@ -201,6 +201,7 @@ export default function Layout({ children }) {
                 <ErrorBoundary>
                     {children}
                 </ErrorBoundary>
+                <AiAssistant />
             </main>
 
             {/* Bottom Navigation - Different for Rep vs Manager */}
