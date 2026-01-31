@@ -501,6 +501,14 @@ export default function Home() {
                     return;
                 }
 
+                // Auto-center map on filtered properties
+                if (mapRef.current && filteredProps.length > 0) {
+                    const bounds = L.latLngBounds(filteredProps.map(p => [p.lat, p.lng]));
+                    if (bounds.isValid()) {
+                        mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+                    }
+                }
+
                 // Pass logs for street cooldown filtering
                 const generated = generateOptimizedRoutes(
                     filteredProps,
@@ -716,6 +724,13 @@ export default function Home() {
                         .filter(p => {
                             // In Generate mode, hide properties already in saved routes (unless filtering explicitly)
                             if (mode === 'generate' && assignedHashes.has(p.address_hash)) return false;
+
+                            // Visual Filter: Only show requested Zips in Generate Mode
+                            if (mode === 'generate' && zipCodeFilter && zipCodeFilter.trim()) {
+                                const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
+                                const pZip = String(p.zip_code || '').trim().slice(0, 5);
+                                if (targetZips.length > 0 && !targetZips.includes(pZip)) return false;
+                            }
                             
                             if (quickFilter === 'all') return true;
                             if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
