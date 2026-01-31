@@ -83,15 +83,27 @@ function MapController({ fitBounds, onZoomChange, onMoveEnd }) {
     
     // Track zoom & move
     useEffect(() => {
-        const handleZoom = () => onZoomChange(map.getZoom());
-        const handleMove = () => onMoveEnd(map.getBounds());
+        if (!map) return;
+        
+        const handleZoom = () => {
+            try {
+                if (map && map.getZoom) onZoomChange(map.getZoom());
+            } catch (e) { /* Map destroyed */ }
+        };
+        const handleMove = () => {
+            try {
+                if (map && map.getBounds) onMoveEnd(map.getBounds());
+            } catch (e) { /* Map destroyed */ }
+        };
         
         map.on('zoomend', handleZoom);
         map.on('moveend', handleMove);
         
         return () => {
-            map.off('zoomend', handleZoom);
-            map.off('moveend', handleMove);
+            try {
+                map.off('zoomend', handleZoom);
+                map.off('moveend', handleMove);
+            } catch (e) { /* Map already destroyed */ }
         };
     }, [map, onZoomChange, onMoveEnd]);
 
@@ -226,8 +238,10 @@ export default function Home() {
             fetchDarkRoomData();
 
             return () => {
-                map.off('moveend', debouncedFetch);
-                map.off('zoomend', debouncedFetch);
+                try {
+                    map.off('moveend', debouncedFetch);
+                    map.off('zoomend', debouncedFetch);
+                } catch (e) { /* Map destroyed */ }
                 if (debounceTimer) clearTimeout(debounceTimer);
             };
         }, [map, darkRoomEnabled]);
