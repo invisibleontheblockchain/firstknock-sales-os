@@ -93,6 +93,11 @@ const API_URL = process.env.API_URL || '${window.location.origin}/functions/inge
 // Security: Prefer Environment Variable, fallback to manual entry
 const SECRET_KEY = process.env.PIPELINE_SECRET || 'YOUR_PIPELINE_SECRET'; 
 
+// --- 🔧 FILTERS (Edit these to save space!) ---
+const FILTER_ZIPS = [];    // Example: ['75001', '75002'] - Leave empty to import ALL
+const STATE_FILTER = '';   // Example: 'TX' - Leave empty for all states
+const MIN_SCORE = 0;       // Example: 50 - Only import high quality leads
+
 async function run() {
     const file = process.argv[2];
     if(!file) {
