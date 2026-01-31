@@ -251,9 +251,11 @@ export default function Home() {
             if (!user?.email) return [];
             
             try {
-                // Increased limit to 5000 to accommodate larger datasets/zip codes
-                const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 5000);
-                return Array.isArray(result) ? result : (result?.items || []);
+                // Increased limit to 10000 to accommodate larger datasets/zip codes
+                const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 10000);
+                const items = Array.isArray(result) ? result : (result?.items || []);
+                console.log(`[Home] Fetched ${items.length} properties for user ${user.email}`);
+                return items;
             } catch (e) {
                 console.log('[Home] Error fetching properties:', e);
                 return [];

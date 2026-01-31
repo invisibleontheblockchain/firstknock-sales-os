@@ -8,6 +8,7 @@ Deno.serve(async (req) => {
   try {
     const { zip_code, force_sync } = await req.json();
     const base44 = createClientFromRequest(req);
+    const user = await base44.auth.me();
     
     if (!zip_code || zip_code.length !== 5) {
       return Response.json({ error: 'Valid 5-digit zip code required' }, { status: 400 });
@@ -90,14 +91,15 @@ Deno.serve(async (req) => {
             beds: parseInt(p.beds) || 0,
             baths: parseFloat(p.baths) || 0,
             sqft: parseInt(p.sqft) || 0,
-            lot_size: 0, // Not in query currently
+            lot_size: 0,
             year_built: parseInt(p.year_built) || 0,
             price: parseFloat(p.price) || 0,
-            sold_date: null, // Add if needed
+            sold_date: null,
             sale_type: 'Market',
             property_type: p.property_type || 'Single Family',
             mls_id: null,
-            url: null
+            url: null,
+            created_by: user ? user.email : undefined // EXPLICITLY set owner to current user
         };
     });
     
