@@ -206,14 +206,25 @@ export default function CsvUploader() {
             const normalizedRow = {};
             Object.keys(row).forEach(key => normalizedRow[normalizeKey(key)] = row[key]);
 
-            const lat = parseFloat(normalizedRow.lat || normalizedRow.latitude || row.Lat || row.LATITUDE || 0);
-            const lng = parseFloat(normalizedRow.lng || normalizedRow.longitude || row.Lng || row.LONGITUDE || 0);
+            // Enhanced coordinate detection (Supports Redfin/Zillow/Standard)
+            const lat = parseFloat(
+                normalizedRow.lat || normalizedRow.latitude || 
+                row.Lat || row.LATITUDE || row.Latitude ||
+                row["LATITUDE"] || 
+                0
+            );
+            const lng = parseFloat(
+                normalizedRow.lng || normalizedRow.longitude || 
+                row.Lng || row.LONGITUDE || row.Longitude ||
+                row["LONGITUDE"] ||
+                0
+            );
 
             if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
-                if (errorCount === 0) {
-                    console.warn("Import Validation Failed for Row:", row);
+                if (errorCount < 3) {
+                    console.warn("Skipping Invalid Row (No Coords):", row);
                     console.warn("Normalized Keys:", Object.keys(normalizedRow));
-                    console.warn("Reason: Missing or invalid Latitude/Longitude");
+                    console.warn("Parsed Lat/Lng:", lat, lng);
                 }
                 errorCount++;
                 return;
@@ -261,8 +272,8 @@ export default function CsvUploader() {
         });
 
         if (entities.length === 0) {
-            const msg = `No valid rows found. \n\nRequirement: Properties must have 'lat' and 'lng' (or 'latitude'/'longitude') columns to be placed on the map.\n\nCheck the browser console for details on the first rejected row.`;
-            setUploadStatus({ success: false, message: `No valid rows with coordinates found.` });
+            const msg = `No valid rows found in ${data.length} items. \n\nRequirement: Properties must have 'lat' and 'lng' columns.\n\nCheck the browser console (F12) for debugging details.`;
+            setUploadStatus({ success: false, message: `No valid rows. See console.` });
             alert(msg);
             setIsUploading(false);
             return;
