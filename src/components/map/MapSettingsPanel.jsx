@@ -1,0 +1,160 @@
+import React from 'react';
+import { Button } from "@/components/ui/button";
+import { X, Sun, Moon, Palette } from 'lucide-react';
+
+const BRAND = {
+    voidBlack: '#0A0A0A',
+    gold: '#FFD700',
+    charcoal: '#1F1F1F',
+    offWhite: '#E5E5E5'
+};
+
+const REP_COLOR_OPTIONS = [
+    '#FFD700', // Gold
+    '#ef4444', // Red
+    '#22c55e', // Green
+    '#3b82f6', // Blue
+    '#ec4899', // Pink
+    '#f97316', // Orange
+    '#8b5cf6', // Purple
+    '#06b6d4', // Cyan
+    '#eab308', // Yellow
+    '#14b8a6', // Teal
+];
+
+export default function MapSettingsPanel({ 
+    mapTheme, 
+    setMapTheme, 
+    teamMembers, 
+    repColors, 
+    onUpdateRepColor,
+    onClose 
+}) {
+    return (
+        <div className="fixed inset-0 z-[2000]">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+            <div
+                className="absolute top-0 right-0 bottom-0 w-full max-w-sm overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] backdrop-blur-xl shadow-2xl animate-in slide-in-from-right duration-300"
+                style={{ background: 'rgba(10, 10, 10, 0.95)', borderLeft: '1px solid rgba(255, 255, 255, 0.1)' }}
+            >
+                <div className="p-5 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
+                    <h2 className="flex items-center gap-2 font-bold tracking-wide" style={{ color: BRAND.gold }}>
+                        <Palette className="w-5 h-5" />
+                        MAP SETTINGS
+                    </h2>
+                    <button onClick={onClose} className="p-2 hover:bg-[#333] rounded-full transition-colors">
+                        <X className="w-5 h-5" style={{ color: BRAND.offWhite }} />
+                    </button>
+                </div>
+
+                <div className="p-5 space-y-6 overflow-y-auto h-[calc(100%-70px)]">
+                    
+                    {/* Map Theme Toggle */}
+                    <div>
+                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                            MAP THEME
+                        </label>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setMapTheme('dark')}
+                                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold transition-all ${
+                                    mapTheme === 'dark' 
+                                        ? 'bg-yellow-500 text-black shadow-lg' 
+                                        : 'bg-[#1F1F1F] text-gray-400 hover:text-white border border-gray-700'
+                                }`}
+                            >
+                                <Moon className="w-4 h-4" />
+                                DARK
+                            </button>
+                            <button
+                                onClick={() => setMapTheme('light')}
+                                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold transition-all ${
+                                    mapTheme === 'light' 
+                                        ? 'bg-yellow-500 text-black shadow-lg' 
+                                        : 'bg-[#1F1F1F] text-gray-400 hover:text-white border border-gray-700'
+                                }`}
+                            >
+                                <Sun className="w-4 h-4" />
+                                LIGHT
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Rep Color Assignments */}
+                    <div>
+                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                            TEAM PIN COLORS
+                        </label>
+                        <p className="text-[10px] text-gray-500 mb-4">
+                            Assign colors to each rep. These colors appear on the map for their routes.
+                        </p>
+                        
+                        <div className="space-y-3">
+                            {teamMembers.map(member => {
+                                const currentColor = repColors[member.id] || '#FFD700';
+                                return (
+                                    <div key={member.id} className="bg-[#1A1A1A] rounded-lg p-3 border border-gray-800">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <div 
+                                                    className="w-4 h-4 rounded-full border-2 border-white/20"
+                                                    style={{ background: currentColor }}
+                                                />
+                                                <span className="text-sm font-bold text-white">{member.name}</span>
+                                            </div>
+                                            <span className="text-[10px] text-gray-500 uppercase">{member.role}</span>
+                                        </div>
+                                        
+                                        <div className="flex flex-wrap gap-1.5">
+                                            {REP_COLOR_OPTIONS.map(color => (
+                                                <button
+                                                    key={color}
+                                                    onClick={() => onUpdateRepColor(member.id, color)}
+                                                    className={`w-7 h-7 rounded-full transition-all ${
+                                                        currentColor === color 
+                                                            ? 'ring-2 ring-white ring-offset-2 ring-offset-black scale-110' 
+                                                            : 'hover:scale-110'
+                                                    }`}
+                                                    style={{ background: color }}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+
+                            {teamMembers.length === 0 && (
+                                <p className="text-sm text-gray-500 italic text-center py-4">
+                                    No team members yet. Add reps in the Team page.
+                                </p>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Legend Preview */}
+                    <div>
+                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                            MAP LEGEND PREVIEW
+                        </label>
+                        <div className="bg-black/40 rounded-lg p-3 border border-gray-800 space-y-2">
+                            {teamMembers.map(member => (
+                                <div key={member.id} className="flex items-center gap-2 text-xs">
+                                    <span 
+                                        className="w-3 h-3 rounded-full"
+                                        style={{ background: repColors[member.id] || '#FFD700' }}
+                                    />
+                                    <span className="text-white">{member.name}</span>
+                                </div>
+                            ))}
+                            <div className="flex items-center gap-2 text-xs opacity-50 pt-1 border-t border-gray-800">
+                                <span className="w-3 h-3 rounded-full bg-[#666]" />
+                                <span className="text-white">Unassigned Routes</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    );
+}

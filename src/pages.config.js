@@ -50,6 +50,7 @@
 import AdminTeam from './pages/AdminTeam';
 import DatabaseDiagnostic from './pages/DatabaseDiagnostic';
 import DeleteAccount from './pages/DeleteAccount';
+import Home from './pages/Home';
 import List from './pages/List';
 import RepHome from './pages/RepHome';
 import Roadmap from './pages/Roadmap';
@@ -60,7 +61,6 @@ import Sync from './pages/Sync';
 import Terms from './pages/Terms';
 import Tutorial from './pages/Tutorial';
 import ZipCodeExplorer from './pages/ZipCodeExplorer';
-import Home from './pages/Home';
 import __Layout from './Layout.jsx';
 
 
@@ -68,6 +68,7 @@ export const PAGES = {
     "AdminTeam": AdminTeam,
     "DatabaseDiagnostic": DatabaseDiagnostic,
     "DeleteAccount": DeleteAccount,
+    "Home": Home,
     "List": List,
     "RepHome": RepHome,
     "Roadmap": Roadmap,
@@ -78,7 +79,6 @@ export const PAGES = {
     "Terms": Terms,
     "Tutorial": Tutorial,
     "ZipCodeExplorer": ZipCodeExplorer,
-    "Home": Home,
 }
 
 export const pagesConfig = {

@@ -28,7 +28,8 @@ import NearbyHotLeads from '../components/nearby/NearbyHotLeads';
 import KnockTimeBanner from '../components/timing/KnockTimeBanner';
 import { darkRoom, DarkRoomClient } from '@/components/logic/neonClient';
 import CommandCenterDashboard from '../components/dashboard/CommandCenterDashboard';
-import { LayoutDashboard } from 'lucide-react';
+import MapSettingsPanel from '../components/map/MapSettingsPanel';
+import { LayoutDashboard, Settings } from 'lucide-react';
 
 // Brand Colors
 const BRAND = {
@@ -136,6 +137,8 @@ export default function Home() {
     const [showTimingPanel, setShowTimingPanel] = useState(false);
     const [selectedProperty, setSelectedProperty] = useState(null);
     const [zoomLevel, setZoomLevel] = useState(15);
+    const [mapTheme, setMapTheme] = useState('dark'); // 'dark' or 'light'
+    const [showMapSettings, setShowMapSettings] = useState(false);
     const [darkRoomProperties, setDarkRoomProperties] = useState([]);
     const [darkRoomClusters, setDarkRoomClusters] = useState([]);
     const [darkRoomCount, setDarkRoomCount] = useState(0);
