@@ -199,13 +199,15 @@ export default function Home() {
         const map = useMap();
 
         useEffect(() => {
-            if (!darkRoomEnabled) return;
+            if (!darkRoomEnabled || !map) return;
 
             let debounceTimer = null;
 
             const fetchDarkRoomData = async () => {
-                const bounds = map.getBounds();
-                const zoom = map.getZoom();
+                try {
+                    if (!map || !map.getBounds) return;
+                    const bounds = map.getBounds();
+                    const zoom = map.getZoom();
 
                 setIsLoadingDarkRoom(true);
 
