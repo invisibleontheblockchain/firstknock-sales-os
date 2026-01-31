@@ -1181,9 +1181,15 @@ export default function Home() {
                                                         Target: {zipCodeFilter || 'Current View'} • {housesPerRoute} Homes/Route
                                                     </p>
                                                 </div>
-                                                <Badge variant="outline" className="text-yellow-500 border-yellow-500/30 bg-yellow-500/10">
-                                                    Success
-                                                </Badge>
+                                                {/* AUTO DISPATCH BUTTON */}
+                                                <Button 
+                                                    onClick={handleAutoAssignAll}
+                                                    size="sm"
+                                                    className="bg-green-600 hover:bg-green-500 text-white border-none font-bold text-[10px] h-7 px-3 animate-in fade-in"
+                                                >
+                                                    <User className="w-3 h-3 mr-1" />
+                                                    AUTO-DISPATCH ALL
+                                                </Button>
                                             </div>
 
                                             <div className="grid grid-cols-4 gap-2 mb-4">
