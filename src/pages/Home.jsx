@@ -27,6 +27,8 @@ import RouteChecklist from '../components/routes/RouteChecklist';
 import NearbyHotLeads from '../components/nearby/NearbyHotLeads';
 import KnockTimeBanner from '../components/timing/KnockTimeBanner';
 import { darkRoom, DarkRoomClient } from '@/components/logic/neonClient';
+import CommandCenterDashboard from '../components/dashboard/CommandCenterDashboard';
+import { LayoutDashboard } from 'lucide-react';
 
 // Brand Colors
 const BRAND = {
