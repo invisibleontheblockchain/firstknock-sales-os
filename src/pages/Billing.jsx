@@ -20,7 +20,7 @@ const PLANS = [
         priceId: 'price_1SvkEWEuXj1jcxU8SnED0qrs',
         description: 'For solo reps & small teams.',
         features: [
-            'Best for 1-5 Users',
+            'Max 5 Users',
             'Live GPS Tracking',
             'Basic Territory Management',
             'Manual Route Building',
@@ -36,7 +36,7 @@ const PLANS = [
         priceId: 'price_1SvkEWEuXj1jcxU8RGN3pB3i',
         description: 'For scaling sales organizations.',
         features: [
-            'Best for 5-20 Users',
+            'Max 20 Users',
             'Command Center Auto-Dispatch',
             'Dark Room Intelligence (2k/mo)',
             'AI Route Optimization',
@@ -103,6 +103,13 @@ export default function Billing() {
 
     const isSubscribed = user?.subscription_status === 'active';
 
+    // Helper to determine if a plan is allowed for the current seat count
+    const isPlanAllowed = (planId) => {
+        if (planId === 'hustler' && seats > 5) return false;
+        if (planId === 'growth' && seats > 20) return false;
+        return true;
+    };
+
     return (
         <div className="min-h-screen bg-black text-white p-6">
             <div className="max-w-4xl mx-auto space-y-12">
@@ -126,7 +133,9 @@ export default function Billing() {
                             >
                                 -
                             </Button>
-                            <span className="text-3xl font-extrabold w-12 text-center text-yellow-500">{seats}</span>
+                            <div className="flex flex-col items-center w-16">
+                                <span className="text-3xl font-extrabold text-yellow-500">{seats}</span>
+                            </div>
                             <Button 
                                 variant="outline" 
                                 size="icon"
@@ -139,6 +148,13 @@ export default function Billing() {
                         <p className="text-xs text-gray-500">
                             {seats === 1 ? 'Solo User' : `${seats} Team Members`}
                         </p>
+                        
+                        {/* Plan Indicator */}
+                        <div className="mt-1">
+                            {seats <= 5 && <span className="text-[10px] bg-white text-black px-2 py-0.5 rounded font-bold">HUSTLER ELIGIBLE</span>}
+                            {seats > 5 && seats <= 20 && <span className="text-[10px] bg-yellow-500 text-black px-2 py-0.5 rounded font-bold">GROWTH TIER</span>}
+                            {seats > 20 && <span className="text-[10px] bg-blue-500 text-white px-2 py-0.5 rounded font-bold">ENTERPRISE SCALE</span>}
+                        </div>
                     </div>
 
                     {isSubscribed && (
@@ -195,14 +211,19 @@ export default function Billing() {
 
                             <Button
                                 onClick={() => handleSubscribe(plan.priceId)}
-                                disabled={loadingPriceId !== null || isSubscribed}
+                                disabled={loadingPriceId !== null || isSubscribed || !isPlanAllowed(plan.id)}
                                 className={`w-full h-12 font-bold tracking-wide transition-all ${
-                                    plan.recommended
-                                        ? 'bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg hover:shadow-yellow-500/20'
-                                        : 'bg-white text-black hover:bg-gray-200'
+                                    !isPlanAllowed(plan.id)
+                                        ? 'bg-gray-800 text-gray-500 cursor-not-allowed opacity-50'
+                                        : plan.recommended
+                                            ? 'bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg hover:shadow-yellow-500/20'
+                                            : 'bg-white text-black hover:bg-gray-200'
                                 }`}
                             >
-                                {loadingPriceId === plan.priceId ? 'PREPARING...' : isSubscribed ? 'CURRENT PLAN' : `CHOOSE ${plan.name}`}
+                                {loadingPriceId === plan.priceId ? 'PREPARING...' 
+                                 : isSubscribed ? 'CURRENT PLAN' 
+                                 : !isPlanAllowed(plan.id) ? `MAX ${plan.id === 'hustler' ? 5 : 20} USERS`
+                                 : `CHOOSE ${plan.name}`}
                             </Button>
                         </div>
                     ))}
