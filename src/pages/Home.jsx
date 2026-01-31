@@ -1180,256 +1180,29 @@ export default function Home() {
                 </div>
             </div>
 
-            {/* Routes Panel - using Dialog-style overlay */}
+            {/* Routes Panel - Refactored Command Panel */}
             {showRoutePanel && (
-                <div className="fixed inset-0 z-[2000]">
-                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowRoutePanel(false)} />
-                    <div
-                        className="fixed bottom-0 left-0 right-0 h-[70vh] rounded-t-3xl overflow-hidden flex flex-col z-[3000] pb-safe backdrop-blur-xl shadow-2xl animate-in slide-in-from-bottom duration-300"
-                        style={{ background: 'rgba(10, 10, 10, 0.9)', borderTop: '1px solid rgba(255, 255, 255, 0.1)', boxShadow: '0 -10px 40px rgba(0,0,0,0.5)' }}
-                    >
-                        <div className="p-5 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
-                            <div>
-                                <h2 className="flex items-center gap-2 text-lg font-bold tracking-wide" style={{ color: BRAND.gold }}>
-                                <Navigation className="w-5 h-5" />
-                                ROUTES & CAMPAIGNS
-                                </h2>
-                                <p className="text-xs mt-1" style={{ color: '#888' }}>
-                                    {filteredRoutes.length} New Opportunities • {hydratedSavedRoutes.length} Active
-                                </p>
-                                </div>
-                                <button onClick={() => setShowRoutePanel(false)} className="p-2">
-                                <X className="w-5 h-5" style={{ color: BRAND.offWhite }} />
-                                </button>
-                                </div>
-
-                                {/* TABS / SECTIONS */}
-                                <div className="flex-1 overflow-y-auto bg-[#0A0A0A] overscroll-contain pb-20">
-                                {/* Generated Routes (Priority Display) */}
-                                {routes.length > 0 && (
-                                <div className="p-4 space-y-3">
-
-                                    {/* GENERATION REPORT SUMMARY */}
-                                    {genStats && (
-                                        <div className="bg-[#1A1A1A] rounded-xl p-4 border border-[#333] mb-5 shadow-lg relative overflow-hidden">
-                                            {/* Decorator */}
-                                            <div className="absolute top-0 right-0 w-20 h-20 bg-yellow-500/5 rounded-full blur-2xl pointer-events-none"></div>
-
-                                            <div className="flex justify-between items-start mb-4">
-                                                <div>
-                                                    <h3 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
-                                                        <BarChart3 className="w-4 h-4 text-yellow-500" />
-                                                        GENERATION REPORT
-                                                    </h3>
-                                                    <p className="text-[10px] text-gray-500 mt-1 font-medium">
-                                                        Target: {zipCodeFilter || 'Current View'} • {housesPerRoute} Homes/Route
-                                                    </p>
-                                                </div>
-                                                {/* AUTO DISPATCH BUTTON */}
-                                                <Button 
-                                                    onClick={handleAutoAssignAll}
-                                                    size="sm"
-                                                    className="bg-green-600 hover:bg-green-500 text-white border-none font-bold text-[10px] h-7 px-3 animate-in fade-in"
-                                                >
-                                                    <User className="w-3 h-3 mr-1" />
-                                                    AUTO-DISPATCH ALL
-                                                </Button>
-                                            </div>
-
-                                            <div className="grid grid-cols-4 gap-2 mb-4">
-                                                <div className="bg-black/40 p-2 rounded-lg border border-white/5">
-                                                    <p className="text-lg font-bold text-white">{genStats.totalHouses}</p>
-                                                    <p className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Doors</p>
-                                                </div>
-                                                <div className="bg-black/40 p-2 rounded-lg border border-white/5">
-                                                    <p className="text-lg font-bold text-yellow-500">{genStats.routeCount}</p>
-                                                    <p className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Routes</p>
-                                                </div>
-                                                <div className="bg-black/40 p-2 rounded-lg border border-white/5">
-                                                    <p className="text-lg font-bold text-white">{genStats.avgScore}</p>
-                                                    <p className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Avg Score</p>
-                                                </div>
-                                                <div className="bg-black/40 p-2 rounded-lg border border-white/5">
-                                                    <p className="text-lg font-bold text-white">{genStats.totalDist}</p>
-                                                    <p className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Miles</p>
-                                                </div>
-                                            </div>
-
-                                            <div className="flex items-center gap-2 text-[10px] text-gray-400 bg-black/20 p-2 rounded-lg border border-dashed border-gray-800">
-                                                <Flame className="w-3 h-3 text-orange-500" />
-                                                <span>
-                                                    <span className="text-white font-bold">{genStats.highPotentialCount}</span> routes identified as High Potential (Score 100+)
-                                                </span>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <div className="flex items-center gap-2 mb-2 px-1">
-                                        <Badge className="bg-yellow-500 text-black font-bold h-5 text-[10px]">NEW</Badge>
-                                        <span className="text-xs font-bold text-gray-400">ROUTE LIST</span>
-                                    </div>
-
-                                    {/* Scoring Legend */}
-                                    <div className="px-4 py-3 rounded-lg text-[10px] space-y-1 mb-4" style={{ color: '#888', background: '#151515', border: '1px solid #333' }}>
-                                        <p className="font-bold text-gray-400 mb-1">SCORING CRITERIA:</p>
-                                        <div className="grid grid-cols-2 gap-x-2 gap-y-1">
-                                            <div><span style={{ color: BRAND.gold }}>+200</span> Sold &lt; 7 days</div>
-                                            <div><span style={{ color: BRAND.gold }}>+180</span> Sold &lt; 30 days</div>
-                                            <div><span style={{ color: '#22c55e' }}>+40</span> High Value</div>
-                                            <div><span style={{ color: '#ef4444' }}>Excl.</span> Cooldown ({streetCooldownDays}d)</div>
-                                        </div>
-                                    </div>
-
-                                    {filteredRoutes.map((route) => (
-                                        <button
-                                            key={route.id}
-                                            onClick={() => { setActiveRoute(route); setPreviewRoute(null); setShowRoutePanel(false); }}
-                                            className="w-full p-4 rounded-xl border transition-all text-left group"
-                                            style={{
-                                                background: activeRoute?.id === route.id ? `${BRAND.gold}20` : BRAND.charcoal,
-                                                borderColor: activeRoute?.id === route.id ? BRAND.gold : '#333'
-                                            }}
-                                        >
-                                            <div className="flex items-center justify-between mb-2">
-                                                <span className="font-bold group-hover:text-yellow-400 transition-colors" style={{ color: BRAND.offWhite }}>{route.name}</span>
-                                                <Badge style={{
-                                                    background: route.competitivenessScore >= 150 ? '#22c55e' : route.competitivenessScore >= 100 ? '#eab308' : '#666',
-                                                    color: '#000'
-                                                }}>
-                                                    {route.competitivenessScore}
-                                                </Badge>
-                                            </div>
-                                            <div className="flex gap-4 text-xs" style={{ color: '#888' }}>
-                                                <span>{route.houseCount} houses</span>
-                                                <span>{route.streetCount || '?'} streets</span>
-                                                <span>{route.totalDistance} mi</span>
-                                            </div>
-                                            
-                                            {/* Uber-Style Assign Recommendation */}
-                                            {(() => {
-                                                const center = route.properties[0];
-                                                const recommendations = getRepRecommendations(center);
-                                                const bestMatch = recommendations[0];
-                                                
-                                                return (
-                                                    <div className="mt-3 flex flex-col gap-2">
-                                                        {/* Primary Action: Assign Best Match */}
-                                                        <div className="flex gap-2">
-                                                            <Button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleSaveRoute(route, bestMatch?.id, bestMatch?.name);
-                                                                }}
-                                                                size="sm"
-                                                                className="flex-1 h-8 text-[10px] font-bold bg-[#333] hover:bg-green-600 text-white transition-all border border-gray-700 relative overflow-hidden group/btn"
-                                                            >
-                                                                {bestMatch ? (
-                                                                    <div className="flex items-center justify-between w-full px-1">
-                                                                        <div className="flex items-center">
-                                                                            <span className={`w-2 h-2 rounded-full mr-2 ${bestMatch.isAvailable ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`} />
-                                                                            <span>DISPATCH: {bestMatch.name.split(' ')[0].toUpperCase()}</span>
-                                                                        </div>
-                                                                        <span className="text-[9px] opacity-70 bg-black/30 px-1 rounded">
-                                                                            {bestMatch.matchScore}% MATCH
-                                                                        </span>
-                                                                    </div>
-                                                                ) : 'SAVE UNASSIGNED'}
-                                                                {/* Hover Effect Details */}
-                                                                {bestMatch && (
-                                                                    <div className="absolute inset-0 bg-green-600 transform translate-y-full group-hover/btn:translate-y-0 transition-transform flex items-center justify-center gap-2">
-                                                                        <span>CONFIRM ASSIGNMENT</span>
-                                                                        <ArrowRight className="w-3 h-3" />
-                                                                    </div>
-                                                                )}
-                                                            </Button>
-                                                            <Button
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleSaveRoute(route);
-                                                                }}
-                                                                size="sm"
-                                                                className="h-8 w-8 p-0 bg-black hover:bg-gray-800 border border-gray-700 text-gray-400"
-                                                                title="Save Unassigned"
-                                                            >
-                                                                <Shield className="w-3 h-3" />
-                                                            </Button>
-                                                        </div>
-
-                                                        {/* Secondary Info: Why this rep? */}
-                                                        {bestMatch && (
-                                                            <div className="flex items-center justify-between text-[9px] text-gray-500 px-1">
-                                                                <span className="flex items-center gap-1">
-                                                                    <MapPin className="w-3 h-3" />
-                                                                    {bestMatch.distance ? `${bestMatch.distance}mi away` : 'N/A'}
-                                                                </span>
-                                                                <span className="flex items-center gap-1">
-                                                                    <BarChart3 className="w-3 h-3" />
-                                                                    Perf: {bestMatch.performanceScore}
-                                                                </span>
-                                                                {bestMatch.activeRoutesCount > 0 && (
-                                                                    <span className="text-yellow-500 font-bold">
-                                                                        {bestMatch.activeRoutesCount} Active
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })()}
-                                        </button>
-                                    ))}
-                                </div>
-                                )}
-
-                                {/* Saved Routes (Secondary Display) */}
-                                {hydratedSavedRoutes.length > 0 && (
-                                <div className="p-4 pt-0 space-y-3">
-                                    <div className="flex items-center gap-2 mb-2 mt-4 pt-4 border-t border-[#333]">
-                                        <Badge variant="outline" className="text-gray-400 border-gray-600">ACTIVE</Badge>
-                                        <span className="text-xs font-bold text-gray-400">SAVED CAMPAIGNS</span>
-                                    </div>
-                                    {hydratedSavedRoutes.map((route) => {
-                                        const isAssignedToMe = route.assigned_to === user?.id || route.assigned_to_name === user?.email;
-                                        return (
-                                            <button
-                                                key={route.id}
-                                                onClick={() => { setActiveRoute(route); setPreviewRoute(null); setShowRoutePanel(false); }}
-                                                className="w-full p-4 rounded-xl border transition-all text-left opacity-75 hover:opacity-100"
-                                                style={{
-                                                    background: activeRoute?.id === route.id ? `${BRAND.gold}20` : '#151515',
-                                                    borderColor: isAssignedToMe ? BRAND.gold : (route.assigned_to ? '#3b82f6' : '#333')
-                                                }}
-                                            >
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <div>
-                                                        <span className="font-bold block" style={{ color: BRAND.offWhite }}>{route.name}</span>
-                                                        {route.assigned_to_name && (
-                                                            <span className="text-[10px] font-bold flex items-center gap-1 mt-1" style={{ color: isAssignedToMe ? BRAND.gold : '#3b82f6' }}>
-                                                                {isAssignedToMe ? <User className="w-3 h-3" /> : <Shield className="w-3 h-3" />}
-                                                                {route.assigned_to_name}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <Badge style={{
-                                                        background: route.status === 'COMPLETED' ? '#22c55e' :
-                                                            route.status === 'IN_PROGRESS' ? '#3b82f6' : '#333',
-                                                        color: '#fff'
-                                                    }}>
-                                                        {route.status}
-                                                    </Badge>
-                                                </div>
-                                                <div className="flex gap-4 text-xs" style={{ color: '#888' }}>
-                                                    <span>{route.houseCount} houses</span>
-                                                    <span>{route.metrics?.score || 0} score</span>
-                                                </div>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                                )}
-                                </div>
-                    </div>
-                </div>
+                <RouteCommandPanel
+                    generatedRoutes={routes}
+                    savedRoutes={hydratedSavedRoutes}
+                    filteredRoutes={filteredRoutes}
+                    genStats={genStats}
+                    repColors={repColors}
+                    teamMembers={teamMembers}
+                    getRepRecommendations={getRepRecommendations}
+                    onSelectRoute={(route) => {
+                        setActiveRoute(route);
+                        setPreviewRoute(null);
+                        setShowRoutePanel(false);
+                    }}
+                    onSaveRoute={handleSaveRoute}
+                    onAutoAssignAll={handleAutoAssignAll}
+                    onClose={() => setShowRoutePanel(false)}
+                    activeRouteId={activeRoute?.id}
+                    streetCooldownDays={streetCooldownDays}
+                    zipCodeFilter={zipCodeFilter}
+                    housesPerRoute={housesPerRoute}
+                />
             )}
 
             {/* Filter Panel */}
