@@ -4,8 +4,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
     Loader2, MapPin, Navigation, CheckCircle2, Circle, Clock, 
     ChevronRight, Phone, AlertTriangle, User, Home, Calendar, ArrowRight,
-    Search, Filter, X
+    Search, Filter, X, Camera, WifiOff
 } from 'lucide-react';
+import localforage from 'localforage';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +37,21 @@ export default function RepHome() {
     const [selectedProperty, setSelectedProperty] = useState(null);
     const [filterStatus, setFilterStatus] = useState('todo'); // 'todo', 'done', 'all'
     const [searchQuery, setSearchQuery] = useState('');
+    const [uploading, setUploading] = useState(false);
+    const [isOffline, setIsOffline] = useState(!navigator.onLine);
+    
+    // Offline Listener
+    React.useEffect(() => {
+        const handleOnline = () => setIsOffline(false);
+        const handleOffline = () => setIsOffline(true);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me().catch(() => null) });
 
     // 0. Fetch Team Member Profile (to link Auth User -> Team Member ID)
@@ -69,15 +85,23 @@ export default function RepHome() {
                 const allRoutes = Array.isArray(res) ? res : (res?.items || []);
                 
                 // Filter for routes assigned to me (by Team ID) OR created by me if I'm a rep
-                return allRoutes.filter(r => 
+                const myRoutes = allRoutes.filter(r => 
                     (teamMember && r.assigned_to === teamMember.id) || // Match TeamMember ID (Primary)
                     r.assigned_to === user.id || // Match Auth ID (Fallback)
                     r.assigned_to_name === user.email || // Match Email (Legacy)
                     (r.status === 'ACTIVE' && r.created_by === user.email) // Creator
                 );
+                
+                // Cache routes for offline
+                if (myRoutes.length > 0) {
+                    localforage.setItem('cached_routes', myRoutes);
+                }
+                return myRoutes;
             } catch (e) {
                 console.error("Error fetching routes", e);
-                return [];
+                // Try fallback
+                const cached = await localforage.getItem('cached_routes');
+                return cached || [];
             }
         },
         enabled: !!user
@@ -102,10 +126,18 @@ export default function RepHome() {
                 const res = await base44.entities.MasterProperty.filter({ 
                     address_hash: activeRoute.property_hashes 
                 }, '-created_date', 1000);
-                return Array.isArray(res) ? res : (res?.items || []);
+                const items = Array.isArray(res) ? res : (res?.items || []);
+                
+                // Cache properties for offline
+                if (items.length > 0) {
+                    localforage.setItem(`cached_props_${activeRoute.id}`, items);
+                }
+                return items;
             } catch (e) {
                 console.error("Error fetching properties", e);
-                return [];
+                // Try fallback
+                const cached = await localforage.getItem(`cached_props_${activeRoute.id}`);
+                return cached || [];
             }
         },
         enabled: !!activeRoute
@@ -209,15 +241,87 @@ export default function RepHome() {
 
     // --- RENDER HELPERS ---
 
-    const handleLog = (status) => {
+    const handleLog = (status, imageUrl = null) => {
         if (!selectedProperty) return;
+
+        // Haptic feedback
+        if (navigator.vibrate) navigator.vibrate(50);
+
+        // Get Real GPS
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    submitLog(status, position.coords, imageUrl);
+                },
+                (error) => {
+                    console.warn("GPS failed, using property location", error);
+                    // Fallback to property location if GPS fails
+                    submitLog(status, { 
+                        latitude: selectedProperty.lat, 
+                        longitude: selectedProperty.lng,
+                        accuracy: 0
+                    }, imageUrl);
+                },
+                { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+            );
+        } else {
+            submitLog(status, { 
+                latitude: selectedProperty.lat, 
+                longitude: selectedProperty.lng,
+                accuracy: 0
+            }, imageUrl);
+        }
+    };
+
+    const submitLog = (status, coords, imageUrl) => {
         createLogMutation.mutate({
             address_hash: selectedProperty.address_hash,
             raw_input_text: `Marked as ${status}`,
             parsed_status: status,
-            gps_proof_lat: selectedProperty.lat,
-            gps_proof_lng: selectedProperty.lng
+            gps_proof_lat: coords.latitude,
+            gps_proof_lng: coords.longitude,
+            gps_accuracy: coords.accuracy,
+            image_url: imageUrl
         });
+    };
+
+    const handlePhotoUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        setUploading(true);
+        try {
+            // Haptic
+            if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
+            
+            const { file_url } = await base44.integrations.Core.UploadFile({ file });
+            // Auto-log as visited with photo? Or just attach? 
+            // For now, let's just log it as a generic visit/note or re-log current status if needed.
+            // Actually, usually photo is part of the outcome. 
+            // Let's assume taking a photo is a "Door Knocked" proof.
+            // We'll pass it to the log function.
+            // For this UI, let's just toast it and pass it to the next status click?
+            // Better: Auto-log as "ELIGIBLE" (Proof) or just save state?
+            // Let's immediately log it as a "Callback" or "Interaction" with the photo?
+            // OR: Just store it in state to attach to next button press?
+            // Let's store in a ref or state? No, let's just trigger a log "Note" with photo.
+            // Wait, the requirement is "Camera Integration".
+            // Let's modify handleLog to accept image.
+            
+            // For simplicity in this UI: Taking a photo logs it as "CALLBACK" (common use case) or we can add a specific "PHOTO" action?
+            // Let's add the photo to the next status tap.
+            // Actually, let's just immediately log it with the current effective status or 'CALLBACK' default.
+            
+            // Let's KEEP IT SIMPLE: Button takes photo -> Uploads -> Logs as "Proof of Visit" (CALLBACK)
+            handleLog('CALLBACK', file_url);
+            toast.success("Photo saved!");
+            
+        } catch (error) {
+            console.error(error);
+            toast.error("Upload failed");
+        } finally {
+            setUploading(false);
+        }
     };
 
     return (
@@ -225,18 +329,25 @@ export default function RepHome() {
             {/* 1. Header Area */}
             <div className="sticky top-0 z-30 bg-black/80 backdrop-blur-md border-b border-gray-800 px-4 py-3">
                 <div className="flex justify-between items-center mb-3">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-yellow-500 flex items-center justify-center text-black font-bold text-lg">
-                            {user?.full_name?.[0] || user?.email?.[0] || 'U'}
-                        </div>
-                        <div>
-                            <p className="font-bold leading-none">{user?.full_name || 'Rep'}</p>
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-yellow-500 flex items-center justify-center text-black font-bold text-lg">
+                        {user?.full_name?.[0] || user?.email?.[0] || 'U'}
+                    </div>
+                    <div>
+                        <p className="font-bold leading-none">{user?.full_name || 'Rep'}</p>
+                        {isOffline ? (
+                            <div className="flex items-center gap-1 text-xs text-red-500 mt-1 font-bold">
+                                <WifiOff className="w-3 h-3" />
+                                OFFLINE MODE
+                            </div>
+                        ) : (
                             <div className="flex items-center gap-1 text-xs text-green-500 mt-1">
                                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                                 ON DUTY
                             </div>
-                        </div>
+                        )}
                     </div>
+                </div>
                     <Badge variant="outline" className="border-yellow-500/50 text-yellow-500">
                         {knockWindow.emoji} {knockWindow.label}
                     </Badge>
@@ -433,6 +544,32 @@ export default function RepHome() {
                                     <Home className="w-4 h-4 mr-2" />
                                     NO ANSWER
                                 </Button>
+                            </div>
+
+                            {/* Camera Action */}
+                            <div className="relative">
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    onChange={handlePhotoUpload}
+                                    className="hidden"
+                                    id="camera-input"
+                                    disabled={uploading}
+                                />
+                                <label 
+                                    htmlFor="camera-input"
+                                    className={`flex items-center justify-center w-full h-12 rounded-md font-bold text-sm cursor-pointer transition-colors ${
+                                        uploading ? 'bg-gray-800 text-gray-500' : 'bg-blue-600 hover:bg-blue-700 text-white'
+                                    }`}
+                                >
+                                    {uploading ? (
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    ) : (
+                                        <Camera className="w-4 h-4 mr-2" />
+                                    )}
+                                    {uploading ? 'Uploading Proof...' : 'Take Photo Proof'}
+                                </label>
                             </div>
 
                             {/* Property Data Grid */}
