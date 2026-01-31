@@ -6,6 +6,7 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import AiAssistant from '@/components/help/AiAssistant';
+import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 
 class ErrorBoundary extends React.Component {
     constructor(props) {
@@ -202,6 +203,7 @@ export default function Layout({ children }) {
                     {children}
                 </ErrorBoundary>
                 <AiAssistant />
+                <OnboardingWizard user={user} />
             </main>
 
             {/* Bottom Navigation - Different for Rep vs Manager */}
