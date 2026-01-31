@@ -1650,6 +1650,17 @@ export default function Home() {
             )}
 
             {/* Property Details Drawer */}
+            {/* Command Center Dashboard Overlay */}
+            {showDashboard && (
+                <CommandCenterDashboard
+                    properties={effectiveProperties}
+                    logs={logs}
+                    routes={savedRoutes}
+                    teamMembers={teamMembers}
+                    onClose={() => setShowDashboard(false)}
+                />
+            )}
+
             {selectedProperty && (
                 <div className="fixed inset-0 z-[3000] flex flex-col justify-end sm:justify-center sm:items-center">
                     <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setSelectedProperty(null)} />
