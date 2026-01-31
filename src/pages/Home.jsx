@@ -1330,18 +1330,6 @@ export default function Home() {
                                                             </div>
                                                         )}
                                                     </div>
-                                                        <Button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleSaveRoute(route);
-                                                            }}
-                                                            size="sm"
-                                                            className="h-8 w-8 p-0 bg-black hover:bg-gray-800 border border-gray-700 text-gray-400"
-                                                            title="Save Unassigned"
-                                                        >
-                                                            <Shield className="w-3 h-3" />
-                                                        </Button>
-                                                    </div>
                                                 );
                                             })()}
                                         </button>
