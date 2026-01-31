@@ -1,0 +1,495 @@
+import React, { useState, useMemo } from 'react';
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { 
+    Navigation, X, BarChart3, User, Shield, MapPin, 
+    ArrowRight, Flame, Plus, Clock, CheckCircle2, 
+    AlertCircle, ChevronRight, Zap
+} from 'lucide-react';
+
+const BRAND = {
+    voidBlack: '#0A0A0A',
+    gold: '#FFD700',
+    charcoal: '#1F1F1F',
+    offWhite: '#E5E5E5'
+};
+
+export default function RouteCommandPanel({
+    generatedRoutes = [],
+    savedRoutes = [],
+    filteredRoutes = [],
+    genStats,
+    repColors = {},
+    teamMembers = [],
+    getRepRecommendations,
+    onSelectRoute,
+    onSaveRoute,
+    onAutoAssignAll,
+    onClose,
+    activeRouteId,
+    streetCooldownDays = 30,
+    zipCodeFilter = '',
+    housesPerRoute = 50
+}) {
+    const [activeTab, setActiveTab] = useState(generatedRoutes.length > 0 ? 'new' : 'active');
+
+    // Group saved routes by status
+    const routesByStatus = useMemo(() => {
+        const groups = {
+            IN_PROGRESS: [],
+            ACTIVE: [],
+            PENDING: [],
+            COMPLETED: []
+        };
+        savedRoutes.forEach(r => {
+            const status = r.status || 'PENDING';
+            if (groups[status]) groups[status].push(r);
+            else groups.PENDING.push(r);
+        });
+        return groups;
+    }, [savedRoutes]);
+
+    // Group saved routes by rep
+    const routesByRep = useMemo(() => {
+        const groups = { unassigned: [] };
+        teamMembers.forEach(m => groups[m.id] = { member: m, routes: [] });
+        
+        savedRoutes.forEach(r => {
+            if (r.assigned_to && groups[r.assigned_to]) {
+                groups[r.assigned_to].routes.push(r);
+            } else {
+                groups.unassigned.push(r);
+            }
+        });
+        return groups;
+    }, [savedRoutes, teamMembers]);
+
+    return (
+        <div className="fixed inset-0 z-[2000]">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+            <div
+                className="fixed bottom-0 left-0 right-0 h-[75vh] rounded-t-3xl overflow-hidden flex flex-col z-[3000] pb-safe backdrop-blur-xl shadow-2xl animate-in slide-in-from-bottom duration-300"
+                style={{ background: 'rgba(10, 10, 10, 0.95)', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}
+            >
+                {/* Header */}
+                <div className="p-4 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
+                    <div>
+                        <h2 className="flex items-center gap-2 text-lg font-bold tracking-wide" style={{ color: BRAND.gold }}>
+                            <Navigation className="w-5 h-5" />
+                            ROUTE COMMAND
+                        </h2>
+                        <p className="text-[10px] mt-1" style={{ color: '#666' }}>
+                            {generatedRoutes.length > 0 && <span className="text-yellow-500 font-bold mr-2">{generatedRoutes.length} New</span>}
+                            {savedRoutes.length} Active Campaigns
+                        </p>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-lg transition-colors">
+                        <X className="w-5 h-5" style={{ color: BRAND.offWhite }} />
+                    </button>
+                </div>
+
+                {/* Tab Navigation */}
+                <div className="flex border-b px-4" style={{ borderColor: BRAND.charcoal }}>
+                    <button
+                        onClick={() => setActiveTab('new')}
+                        className={`flex-1 py-3 text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-2 ${
+                            activeTab === 'new' 
+                                ? 'border-yellow-500 text-yellow-500' 
+                                : 'border-transparent text-gray-500 hover:text-white'
+                        }`}
+                    >
+                        <Zap className="w-4 h-4" />
+                        NEW ROUTES
+                        {generatedRoutes.length > 0 && (
+                            <Badge className="bg-yellow-500 text-black text-[9px] h-4 px-1.5">{generatedRoutes.length}</Badge>
+                        )}
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('active')}
+                        className={`flex-1 py-3 text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-2 ${
+                            activeTab === 'active' 
+                                ? 'border-blue-500 text-blue-500' 
+                                : 'border-transparent text-gray-500 hover:text-white'
+                        }`}
+                    >
+                        <Clock className="w-4 h-4" />
+                        ACTIVE
+                        <Badge className="bg-blue-600 text-white text-[9px] h-4 px-1.5">
+                            {routesByStatus.IN_PROGRESS.length + routesByStatus.ACTIVE.length}
+                        </Badge>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('team')}
+                        className={`flex-1 py-3 text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-2 ${
+                            activeTab === 'team' 
+                                ? 'border-green-500 text-green-500' 
+                                : 'border-transparent text-gray-500 hover:text-white'
+                        }`}
+                    >
+                        <User className="w-4 h-4" />
+                        BY REP
+                    </button>
+                </div>
+
+                {/* Content */}
+                <ScrollArea className="flex-1">
+                    <div className="p-4 space-y-4">
+                        
+                        {/* NEW ROUTES TAB */}
+                        {activeTab === 'new' && (
+                            <>
+                                {generatedRoutes.length === 0 ? (
+                                    <div className="text-center py-12">
+                                        <div className="w-16 h-16 rounded-full bg-[#1A1A1A] flex items-center justify-center mx-auto mb-4">
+                                            <Plus className="w-8 h-8 text-gray-600" />
+                                        </div>
+                                        <h3 className="text-lg font-bold text-gray-400 mb-2">No New Routes</h3>
+                                        <p className="text-xs text-gray-600 max-w-xs mx-auto">
+                                            Switch to "Build Routes" mode and generate new routes from available properties.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <>
+                                        {/* Generation Summary */}
+                                        {genStats && (
+                                            <div className="bg-gradient-to-br from-[#1A1A1A] to-[#0F0F0F] rounded-xl p-4 border border-yellow-900/30 relative overflow-hidden">
+                                                <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-3xl pointer-events-none" />
+                                                
+                                                <div className="flex justify-between items-start mb-4">
+                                                    <div>
+                                                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                                                            <BarChart3 className="w-4 h-4 text-yellow-500" />
+                                                            GENERATION SUMMARY
+                                                        </h3>
+                                                        <p className="text-[10px] text-gray-500 mt-1">
+                                                            {zipCodeFilter || 'All Areas'} • {housesPerRoute} homes/route
+                                                        </p>
+                                                    </div>
+                                                    <Button 
+                                                        onClick={onAutoAssignAll}
+                                                        size="sm"
+                                                        className="bg-green-600 hover:bg-green-500 text-white font-bold text-[10px] h-8 px-3"
+                                                    >
+                                                        <User className="w-3 h-3 mr-1" />
+                                                        AUTO-DISPATCH ALL
+                                                    </Button>
+                                                </div>
+
+                                                <div className="grid grid-cols-4 gap-2">
+                                                    <StatBox label="Doors" value={genStats.totalHouses} />
+                                                    <StatBox label="Routes" value={genStats.routeCount} highlight />
+                                                    <StatBox label="Avg Score" value={genStats.avgScore} />
+                                                    <StatBox label="Miles" value={genStats.totalDist} />
+                                                </div>
+
+                                                {genStats.highPotentialCount > 0 && (
+                                                    <div className="flex items-center gap-2 text-[10px] text-gray-400 bg-black/30 p-2 rounded-lg mt-3">
+                                                        <Flame className="w-3 h-3 text-orange-500" />
+                                                        <span className="text-white font-bold">{genStats.highPotentialCount}</span> high potential routes (100+ score)
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Route List */}
+                                        <div className="space-y-2">
+                                            {filteredRoutes.map((route) => (
+                                                <NewRouteCard 
+                                                    key={route.id}
+                                                    route={route}
+                                                    isActive={activeRouteId === route.id}
+                                                    recommendation={getRepRecommendations?.(route.properties[0])?.[0]}
+                                                    onSelect={() => onSelectRoute(route)}
+                                                    onSave={(repId, repName) => onSaveRoute(route, repId, repName)}
+                                                />
+                                            ))}
+                                        </div>
+                                    </>
+                                )}
+                            </>
+                        )}
+
+                        {/* ACTIVE ROUTES TAB */}
+                        {activeTab === 'active' && (
+                            <>
+                                {/* In Progress */}
+                                {routesByStatus.IN_PROGRESS.length > 0 && (
+                                    <RouteSection 
+                                        title="In Progress"
+                                        icon={<Clock className="w-4 h-4 text-blue-500" />}
+                                        routes={routesByStatus.IN_PROGRESS}
+                                        repColors={repColors}
+                                        onSelectRoute={onSelectRoute}
+                                        activeRouteId={activeRouteId}
+                                    />
+                                )}
+
+                                {/* Active/Queued */}
+                                {routesByStatus.ACTIVE.length > 0 && (
+                                    <RouteSection 
+                                        title="Queued"
+                                        icon={<Navigation className="w-4 h-4 text-yellow-500" />}
+                                        routes={routesByStatus.ACTIVE}
+                                        repColors={repColors}
+                                        onSelectRoute={onSelectRoute}
+                                        activeRouteId={activeRouteId}
+                                    />
+                                )}
+
+                                {/* Pending Assignment */}
+                                {routesByStatus.PENDING.length > 0 && (
+                                    <RouteSection 
+                                        title="Pending Assignment"
+                                        icon={<AlertCircle className="w-4 h-4 text-orange-500" />}
+                                        routes={routesByStatus.PENDING}
+                                        repColors={repColors}
+                                        onSelectRoute={onSelectRoute}
+                                        activeRouteId={activeRouteId}
+                                    />
+                                )}
+
+                                {/* Completed */}
+                                {routesByStatus.COMPLETED.length > 0 && (
+                                    <RouteSection 
+                                        title="Completed"
+                                        icon={<CheckCircle2 className="w-4 h-4 text-green-500" />}
+                                        routes={routesByStatus.COMPLETED}
+                                        repColors={repColors}
+                                        onSelectRoute={onSelectRoute}
+                                        activeRouteId={activeRouteId}
+                                        collapsed
+                                    />
+                                )}
+
+                                {savedRoutes.length === 0 && (
+                                    <div className="text-center py-12">
+                                        <div className="w-16 h-16 rounded-full bg-[#1A1A1A] flex items-center justify-center mx-auto mb-4">
+                                            <Navigation className="w-8 h-8 text-gray-600" />
+                                        </div>
+                                        <h3 className="text-lg font-bold text-gray-400 mb-2">No Active Routes</h3>
+                                        <p className="text-xs text-gray-600">Generate and save routes to see them here.</p>
+                                    </div>
+                                )}
+                            </>
+                        )}
+
+                        {/* BY REP TAB */}
+                        {activeTab === 'team' && (
+                            <>
+                                {teamMembers.map(member => {
+                                    const memberData = routesByRep[member.id];
+                                    if (!memberData || memberData.routes.length === 0) return null;
+                                    
+                                    return (
+                                        <div key={member.id} className="space-y-2">
+                                            <div className="flex items-center gap-2 px-1">
+                                                <span 
+                                                    className="w-3 h-3 rounded-full"
+                                                    style={{ background: repColors[member.id] || '#666' }}
+                                                />
+                                                <span className="text-sm font-bold text-white">{member.name}</span>
+                                                <Badge className="bg-white/10 text-white text-[9px]">
+                                                    {memberData.routes.length} routes
+                                                </Badge>
+                                            </div>
+                                            {memberData.routes.map(route => (
+                                                <SavedRouteCard
+                                                    key={route.id}
+                                                    route={route}
+                                                    repColor={repColors[member.id]}
+                                                    isActive={activeRouteId === route.id}
+                                                    onSelect={() => onSelectRoute(route)}
+                                                />
+                                            ))}
+                                        </div>
+                                    );
+                                })}
+
+                                {/* Unassigned */}
+                                {routesByRep.unassigned.length > 0 && (
+                                    <div className="space-y-2 pt-4 border-t border-gray-800">
+                                        <div className="flex items-center gap-2 px-1">
+                                            <span className="w-3 h-3 rounded-full bg-gray-600" />
+                                            <span className="text-sm font-bold text-gray-400">Unassigned</span>
+                                            <Badge className="bg-red-900/30 text-red-400 text-[9px]">
+                                                {routesByRep.unassigned.length}
+                                            </Badge>
+                                        </div>
+                                        {routesByRep.unassigned.map(route => (
+                                            <SavedRouteCard
+                                                key={route.id}
+                                                route={route}
+                                                repColor="#666"
+                                                isActive={activeRouteId === route.id}
+                                                onSelect={() => onSelectRoute(route)}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+
+                                {teamMembers.length === 0 && (
+                                    <div className="text-center py-12">
+                                        <User className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                                        <h3 className="text-lg font-bold text-gray-400 mb-2">No Team Members</h3>
+                                        <p className="text-xs text-gray-600">Add team members in the Team page.</p>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+                </ScrollArea>
+            </div>
+        </div>
+    );
+}
+
+// Sub-components
+function StatBox({ label, value, highlight = false }) {
+    return (
+        <div className="bg-black/40 p-2 rounded-lg border border-white/5 text-center">
+            <p className={`text-lg font-bold ${highlight ? 'text-yellow-500' : 'text-white'}`}>{value}</p>
+            <p className="text-[9px] text-gray-500 uppercase font-bold">{label}</p>
+        </div>
+    );
+}
+
+function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRouteId, collapsed = false }) {
+    const [isExpanded, setIsExpanded] = useState(!collapsed);
+    
+    return (
+        <div className="space-y-2">
+            <button 
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="flex items-center gap-2 px-1 w-full text-left"
+            >
+                {icon}
+                <span className="text-xs font-bold text-gray-400 uppercase">{title}</span>
+                <Badge className="bg-white/10 text-white text-[9px]">{routes.length}</Badge>
+                <ChevronRight className={`w-4 h-4 text-gray-600 ml-auto transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+            </button>
+            
+            {isExpanded && routes.map(route => (
+                <SavedRouteCard
+                    key={route.id}
+                    route={route}
+                    repColor={route.assigned_to ? repColors[route.assigned_to] : '#666'}
+                    isActive={activeRouteId === route.id}
+                    onSelect={() => onSelectRoute(route)}
+                />
+            ))}
+        </div>
+    );
+}
+
+function NewRouteCard({ route, isActive, recommendation, onSelect, onSave }) {
+    return (
+        <div
+            className="p-4 rounded-xl border transition-all"
+            style={{
+                background: isActive ? `${BRAND.gold}15` : BRAND.charcoal,
+                borderColor: isActive ? BRAND.gold : '#333'
+            }}
+        >
+            <button onClick={onSelect} className="w-full text-left">
+                <div className="flex items-center justify-between mb-2">
+                    <span className="font-bold text-white">{route.name}</span>
+                    <Badge style={{
+                        background: route.competitivenessScore >= 150 ? '#22c55e' : 
+                                   route.competitivenessScore >= 100 ? '#eab308' : '#666',
+                        color: '#000'
+                    }}>
+                        {route.competitivenessScore}
+                    </Badge>
+                </div>
+                <div className="flex gap-3 text-xs text-gray-500">
+                    <span>{route.houseCount} doors</span>
+                    <span>{route.streetCount || '?'} streets</span>
+                    <span>{route.totalDistance} mi</span>
+                </div>
+            </button>
+
+            {/* Assignment Actions */}
+            <div className="mt-3 flex gap-2">
+                <Button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onSave(recommendation?.id, recommendation?.name);
+                    }}
+                    size="sm"
+                    className="flex-1 h-8 text-[10px] font-bold bg-[#252525] hover:bg-green-600 text-white transition-all border border-gray-700"
+                >
+                    {recommendation ? (
+                        <div className="flex items-center justify-between w-full">
+                            <div className="flex items-center">
+                                <span className={`w-2 h-2 rounded-full mr-2 ${recommendation.isAvailable ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                                <span>DISPATCH: {recommendation.name?.split(' ')[0]?.toUpperCase()}</span>
+                            </div>
+                            <span className="text-[9px] opacity-60">{recommendation.matchScore}%</span>
+                        </div>
+                    ) : 'SAVE ROUTE'}
+                </Button>
+                <Button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onSave(null, null);
+                    }}
+                    size="sm"
+                    className="h-8 w-8 p-0 bg-black hover:bg-gray-800 border border-gray-700 text-gray-400"
+                    title="Save Unassigned"
+                >
+                    <Shield className="w-3 h-3" />
+                </Button>
+            </div>
+
+            {/* Rep Info */}
+            {recommendation && (
+                <div className="flex items-center justify-between text-[9px] text-gray-500 mt-2 px-1">
+                    <span className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        {recommendation.distance ? `${recommendation.distance}mi` : 'N/A'}
+                    </span>
+                    <span>Perf: {recommendation.performanceScore}</span>
+                    {recommendation.activeRoutesCount > 0 && (
+                        <span className="text-yellow-500">{recommendation.activeRoutesCount} active</span>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function SavedRouteCard({ route, repColor, isActive, onSelect }) {
+    return (
+        <button
+            onClick={onSelect}
+            className="w-full p-3 rounded-xl border transition-all text-left hover:border-gray-600"
+            style={{
+                background: isActive ? `${BRAND.gold}15` : '#151515',
+                borderColor: isActive ? BRAND.gold : '#222',
+                borderLeftWidth: '3px',
+                borderLeftColor: repColor
+            }}
+        >
+            <div className="flex items-center justify-between">
+                <div>
+                    <span className="font-bold text-sm text-white block">{route.name}</span>
+                    {route.assigned_to_name && (
+                        <span className="text-[10px] text-gray-500">{route.assigned_to_name}</span>
+                    )}
+                </div>
+                <Badge style={{
+                    background: route.status === 'COMPLETED' ? '#22c55e' :
+                               route.status === 'IN_PROGRESS' ? '#3b82f6' : '#333',
+                    color: '#fff'
+                }}>
+                    {route.status}
+                </Badge>
+            </div>
+            <div className="flex gap-3 text-[10px] text-gray-600 mt-1">
+                <span>{route.houseCount || route.metrics?.house_count} doors</span>
+                <span>{route.competitivenessScore || route.metrics?.score || 0} score</span>
+            </div>
+        </button>
+    );
+}
