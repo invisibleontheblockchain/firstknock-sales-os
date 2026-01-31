@@ -106,10 +106,18 @@ export default function Setup() {
                     >
                         National Feeds
                     </button>
+                    <button
+                        onClick={() => setActiveTab('pipeline')}
+                        className={`flex-1 py-2 text-sm font-bold rounded-md transition-colors ${activeTab === 'pipeline' ? 'bg-[#222] text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                        Pipeline
+                    </button>
                 </div>
 
                 <div className="space-y-4">
-                    {activeTab === 'upload' ? (
+                    {activeTab === 'pipeline' ? (
+                        <IngestionTools />
+                    ) : activeTab === 'upload' ? (
                         <>
                             <div className="p-4 rounded-xl bg-[#0A0A0A] border border-[#222]">
                                 <h3 className="text-base font-bold text-white mb-1">Upload New List</h3>
