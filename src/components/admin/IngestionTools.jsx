@@ -89,7 +89,7 @@ const fs = require('fs');
 const axios = require('axios');
 const csv = require('csv-parser');
 
-const API_URL = '${window.location.origin}/functions/ingestProperties';
+const API_URL = process.env.API_URL || '${window.location.origin}/functions/ingestProperties';
 // Security: Prefer Environment Variable, fallback to manual entry
 const SECRET_KEY = process.env.PIPELINE_SECRET || 'YOUR_PIPELINE_SECRET'; 
 
@@ -99,8 +99,15 @@ async function run() {
         console.log('❌ Usage: node ingest.js <file.csv>');
         return;
     }
+
+    if (API_URL.includes('localhost')) {
+        console.warn('\\n⚠️  WARNING: API_URL is targeting localhost. For Base44, you should target the cloud URL.');
+        console.warn('   If this fails, set API_URL environment variable to your deployed app URL.');
+        console.warn('   Example: export API_URL="https://your-app.base44.app/functions/ingestProperties"\\n');
+    }
     
     console.log(\`🤖 FirstKnock Agent Initialized\`);
+    console.log(\`🎯 Target: \${API_URL}\`);
     console.log(\`📂 Reading \${file}...\`);
     
     const rows = [];
