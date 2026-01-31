@@ -965,6 +965,17 @@ export default function Home() {
             {/* Top Stats Bar */}
             <div className="absolute top-4 left-4 right-4 z-[1000] flex flex-col gap-2 pointer-events-none">
                 <div className="flex items-start gap-2 overflow-hidden">
+                    {/* DASHBOARD TOGGLE */}
+                    <div className="pointer-events-auto shrink-0">
+                        <Button
+                            onClick={() => setShowDashboard(true)}
+                            size="icon"
+                            className="bg-black/90 hover:bg-black border border-gray-800 shadow-xl h-[42px] w-[42px] rounded-lg"
+                        >
+                            <LayoutDashboard className="w-5 h-5 text-yellow-500" />
+                        </Button>
+                    </div>
+
                     {/* MODE TOGGLE */}
                     <div className="pointer-events-auto bg-black/90 backdrop-blur rounded-lg p-1 border border-gray-800 flex gap-1 shadow-xl shrink-0">
                         <button
