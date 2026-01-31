@@ -1,6 +1,6 @@
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
-const connectionString = 'postgresql://neondb_owner:npg_jsLScDO6w9mf@ep-fragrant-bush-ahixbnax-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require';
+const connectionString = Deno.env.get("DATABASE_URL");
 const sql = neon(connectionString);
 
 Deno.serve(async (req) => {
