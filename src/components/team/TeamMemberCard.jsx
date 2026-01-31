@@ -30,7 +30,10 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
     return (
         <div className="bg-[#111] border border-gray-800 rounded-xl overflow-hidden hover:border-yellow-500/30 transition-all duration-300 shadow-lg group">
             {/* Header / Profile - Compact */}
-            <div className="p-3 md:p-4 border-b border-gray-800 bg-gradient-to-r from-[#151515] to-[#0A0A0A]">
+            <div className="p-3 md:p-4 border-b border-gray-800 bg-gradient-to-r from-[#151515] to-[#0A0A0A] relative">
+                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Badge variant="secondary" className="text-[10px]">Click for Details</Badge>
+                </div>
                 <div className="flex justify-between items-center">
                     <div className="flex gap-3 items-center min-w-0">
                         <div className="relative flex-shrink-0">
@@ -82,16 +85,18 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                 {routes.length === 0 ? (
                     <div className="text-center py-4 border border-dashed border-gray-800 rounded-lg bg-gray-900/20">
                         <p className="text-xs text-gray-500 mb-2">No routes assigned</p>
-                        <Select onValueChange={(routeId) => onAssignRoute(routeId, member.id)}>
-                            <SelectTrigger className="w-32 mx-auto h-7 text-[10px] bg-yellow-500/10 border-yellow-500/50 text-yellow-500">
-                                <SelectValue placeholder="Assign" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
-                                {allRoutes.filter(r => !r.assigned_to).map(r => (
-                                    <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <div onClick={e => e.stopPropagation()}>
+                            <Select onValueChange={(routeId) => onAssignRoute(routeId, member.id)}>
+                                <SelectTrigger className="w-32 mx-auto h-7 text-[10px] bg-yellow-500/10 border-yellow-500/50 text-yellow-500">
+                                    <SelectValue placeholder="Assign" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
+                                    {allRoutes.filter(r => !r.assigned_to).map(r => (
+                                        <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
                 ) : (
                     <div className="space-y-1.5">

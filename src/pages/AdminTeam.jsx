@@ -12,6 +12,8 @@ import { Link } from 'react-router-dom';
 import { createPageUrl } from '../utils';
 import { toast } from "sonner";
 import TeamMemberCard from "@/components/team/TeamMemberCard";
+import RepPerformanceDetail from "@/components/team/RepPerformanceDetail";
+import RouteInsights from "@/components/insights/RouteInsights";
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -30,6 +32,7 @@ export default function AdminTeam() {
     const [zipSearch, setZipSearch] = useState('');
     const [newRep, setNewRep] = useState({ name: '', email: '', phone: '', role: 'rep' });
     const [newCode, setNewCode] = useState({ code: '', role: 'manager', label: '' });
+    const [selectedRep, setSelectedRep] = useState(null); // For detailed view
 
     const handleZipSearch = () => {
         if (zipSearch && zipSearch.length >= 5) {
@@ -190,6 +193,17 @@ export default function AdminTeam() {
             sales: acc.sales + curr.sales
         }), { doorsKnocked: 0, talkedTo: 0, sales: 0 });
     }, [metricsByRep]);
+
+    const teamAverage = useMemo(() => {
+        const activeReps = Object.keys(metricsByRep).length || 1;
+        const avgKnocks = teamTotals.doorsKnocked / activeReps;
+        const avgSales = teamTotals.sales / activeReps;
+        return {
+            knocks: avgKnocks,
+            sales: avgSales,
+            conversion: teamTotals.doorsKnocked > 0 ? (teamTotals.sales / teamTotals.doorsKnocked * 100) : 0
+        };
+    }, [teamTotals, metricsByRep]);
 
     // --- Handlers ---
     const handleAddRep = () => {
@@ -504,7 +518,16 @@ export default function AdminTeam() {
                     </div>
                 </div>
 
-                {/* 1. TEAM ROSTER (Priority Display) */}
+                {/* 1. TERRITORY INTELLIGENCE */}
+                <div className="space-y-4">
+                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                        <Sparkles className="w-5 h-5 text-purple-500" />
+                        Territory Intelligence
+                    </h2>
+                    <RouteInsights />
+                </div>
+
+                {/* 2. TEAM ROSTER (Priority Display) */}
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
                         <h2 className="text-lg font-bold text-white flex items-center gap-2">
@@ -514,36 +537,54 @@ export default function AdminTeam() {
                         <span className="text-xs text-gray-500 font-mono">{teamMembers.length} ACTIVE</span>
                     </div>
 
-                    {teamMembers.length === 0 ? (
-                        <div className="text-center py-12 border-2 border-dashed border-gray-800 rounded-xl bg-[#0F0F0F]">
-                            <Users className="w-12 h-12 text-gray-700 mx-auto mb-3" />
-                            <h3 className="text-lg font-bold text-gray-400">No Team Members</h3>
-                            <p className="text-gray-600 text-sm mb-4">Add your first rep to get started.</p>
-                            <Button 
-                                onClick={() => setIsAddRepOpen(true)}
-                                className="bg-yellow-500 text-black font-bold"
-                            >
-                                Add First Rep
-                            </Button>
+                    {selectedRep ? (
+                        <div className="animate-in slide-in-from-right duration-300">
+                            <RepPerformanceDetail 
+                                member={selectedRep}
+                                logs={logs}
+                                teamAverage={teamAverage}
+                                onClose={() => setSelectedRep(null)}
+                            />
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-                            {teamMembers.map(member => {
-                                const memberRoutes = routesByRep[member.id] || [];
-                                const memberMetrics = metricsByRep[member.email] || { doorsKnocked: 0, talkedTo: 0, sales: 0 };
-                                
-                                return (
-                                    <TeamMemberCard 
-                                        key={member.id}
-                                        member={member} 
-                                        routes={memberRoutes} 
-                                        metrics={memberMetrics}
-                                        allRoutes={routesByRep.unassigned}
-                                        onAssignRoute={handleAssign}
-                                    />
-                                );
-                            })}
-                        </div>
+                        <>
+                            {teamMembers.length === 0 ? (
+                                <div className="text-center py-12 border-2 border-dashed border-gray-800 rounded-xl bg-[#0F0F0F]">
+                                    <Users className="w-12 h-12 text-gray-700 mx-auto mb-3" />
+                                    <h3 className="text-lg font-bold text-gray-400">No Team Members</h3>
+                                    <p className="text-gray-600 text-sm mb-4">Add your first rep to get started.</p>
+                                    <Button 
+                                        onClick={() => setIsAddRepOpen(true)}
+                                        className="bg-yellow-500 text-black font-bold"
+                                    >
+                                        Add First Rep
+                                    </Button>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+                                    {teamMembers.map(member => {
+                                        const memberRoutes = routesByRep[member.id] || [];
+                                        const memberMetrics = metricsByRep[member.email] || { doorsKnocked: 0, talkedTo: 0, sales: 0 };
+
+                                        return (
+                                            <div key={member.id} onClick={() => setSelectedRep(member)} className="cursor-pointer">
+                                                <TeamMemberCard 
+                                                    member={member} 
+                                                    routes={memberRoutes} 
+                                                    metrics={memberMetrics}
+                                                    allRoutes={routesByRep.unassigned}
+                                                    onAssignRoute={(rId, mId) => {
+                                                        // Prevent card click
+                                                        // handleAssign logic handles it
+                                                        handleAssign(rId, mId);
+                                                    }}
+                                                />
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
 

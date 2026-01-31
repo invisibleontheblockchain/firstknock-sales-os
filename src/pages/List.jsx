@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
 import { Loader2, MapPin, Search, Navigation, Info, X } from 'lucide-react';
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,10 @@ import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
+import KanbanView from '@/components/list/KanbanView';
+import TableView from '@/components/list/TableView';
+import { Checkbox } from "@/components/ui/checkbox";
+import { toast } from "sonner";
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -24,10 +28,13 @@ const ROUTE_SIZE_OPTIONS = [25, 50, 75, 100];
 
 export default function ListPage() {
     const [searchTerm, setSearchTerm] = useState("");
-    const [view, setView] = useState('routes'); // 'routes' or 'properties'
+    const [view, setView] = useState('routes'); // 'routes', 'properties', 'kanban', 'table'
     const [repFilter, setRepFilter] = useState('all');
     const [selectedSize, setSelectedSize] = useState(50);
     const [selectedRouteDetails, setSelectedRouteDetails] = useState(null); // Route object to show details for
+    const [selectedIds, setSelectedIds] = useState([]); // For bulk actions
+    const queryClient = useQueryClient();
+    
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
     // Fetch Team for assigning in list
@@ -97,10 +104,46 @@ export default function ListPage() {
             });
     }, [properties, logs]);
 
-    const filteredProperties = effectiveProperties.filter(p =>
-        p.full_address?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.street_name?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredProperties = useMemo(() => {
+        return effectiveProperties.filter(p =>
+            p.full_address?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            p.street_name?.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [effectiveProperties, searchTerm]);
+
+    // Bulk Actions Handlers
+    const createLogMutation = useMutation({
+        mutationFn: (logData) => base44.entities.InteractionLog.create(logData),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['interactionLogs'] }),
+    });
+
+    const handleBulkStatusChange = async (newStatus) => {
+        if (selectedIds.length === 0) return;
+        const promises = selectedIds.map(id => {
+            const prop = effectiveProperties.find(p => (p.address_hash || p.id) === id);
+            if (!prop) return null;
+            return createLogMutation.mutateAsync({
+                address_hash: prop.address_hash,
+                raw_input_text: `Bulk update to ${newStatus}`,
+                parsed_status: newStatus,
+                gps_proof_lat: prop.lat,
+                gps_proof_lng: prop.lng
+            });
+        });
+        await Promise.all(promises);
+        setSelectedIds([]);
+        toast.success(`Updated ${selectedIds.length} properties`);
+    };
+
+    const handleKanbanStatusChange = (property, newStatus) => {
+        createLogMutation.mutate({
+            address_hash: property.address_hash,
+            raw_input_text: `Kanban move to ${newStatus}`,
+            parsed_status: newStatus,
+            gps_proof_lat: property.lat,
+            gps_proof_lng: property.lng
+        });
+    };
 
     // Generate routes for selected size
     const [routes, setRoutes] = useState([]);
@@ -146,9 +189,53 @@ export default function ListPage() {
                         }}
                     >
                         <MapPin className="w-4 h-4 inline mr-2" />
-                        PROPERTIES
+                        LIST
+                    </button>
+                    <button
+                        onClick={() => setView('kanban')}
+                        className="flex-1 py-3 rounded-lg font-bold tracking-wide transition-all"
+                        style={{
+                            background: view === 'kanban' ? BRAND.gold : BRAND.charcoal,
+                            color: view === 'kanban' ? BRAND.voidBlack : BRAND.offWhite
+                        }}
+                    >
+                        KANBAN
+                    </button>
+                    <button
+                        onClick={() => setView('table')}
+                        className="flex-1 py-3 rounded-lg font-bold tracking-wide transition-all"
+                        style={{
+                            background: view === 'table' ? BRAND.gold : BRAND.charcoal,
+                            color: view === 'table' ? BRAND.voidBlack : BRAND.offWhite
+                        }}
+                    >
+                        TABLE
                     </button>
                 </div>
+
+                {(view === 'properties' || view === 'table') && (
+                    <div className="flex gap-2 mb-2">
+                        {selectedIds.length > 0 && (
+                            <div className="flex items-center gap-2 bg-yellow-500/10 px-3 py-1 rounded-md border border-yellow-500/30">
+                                <span className="text-xs font-bold text-yellow-500">{selectedIds.length} Selected</span>
+                                <Button 
+                                    size="sm" 
+                                    className="h-6 text-[10px] bg-yellow-500 text-black hover:bg-yellow-400"
+                                    onClick={() => handleBulkStatusChange('ELIGIBLE')}
+                                >
+                                    Reset
+                                </Button>
+                                <Button 
+                                    size="sm" 
+                                    className="h-6 text-[10px] bg-red-500 text-white hover:bg-red-600"
+                                    onClick={() => handleBulkStatusChange('HARD_NO')}
+                                >
+                                    Reject
+                                </Button>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {view === 'routes' && (
                     <div className="space-y-3">
@@ -166,7 +253,7 @@ export default function ListPage() {
                     </div>
                 )}
 
-                {view === 'properties' && (
+                {view !== 'routes' && (
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4" style={{ color: '#666' }} />
                         <Input
@@ -355,7 +442,27 @@ export default function ListPage() {
                             ))
                         )}
                     </>
-                )}
+                ) : view === 'kanban' ? (
+                    <div className="h-full overflow-hidden">
+                        <KanbanView 
+                            properties={filteredProperties} 
+                            onStatusChange={handleKanbanStatusChange} 
+                        />
+                    </div>
+                ) : view === 'table' ? (
+                    <TableView 
+                        properties={filteredProperties}
+                        selectedIds={selectedIds}
+                        onSelect={(id) => {
+                            if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter(i => i !== id));
+                            else setSelectedIds([...selectedIds, id]);
+                        }}
+                        onSelectAll={(checked) => {
+                            if (checked) setSelectedIds(filteredProperties.map(p => p.address_hash || p.id));
+                            else setSelectedIds([]);
+                        }}
+                    />
+                ) : null}
             </div>
         </div>
     );
