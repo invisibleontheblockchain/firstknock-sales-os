@@ -1,9 +1,16 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
+import { createHash } from 'node:crypto';
 
 // Connection string for Neon DB (Dark Room)
 // TODO: Move to strict secrets management in production
 const CONNECTION_STRING = 'postgresql://neondb_owner:npg_jsLScDO6w9mf@ep-fragrant-bush-ahixbnax-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require';
+
+// Helper to generate deterministic ID
+function generatePropertyId(address, zip, city) {
+    const raw = `${address?.trim().toUpperCase()}|${city?.trim().toUpperCase()}|${zip?.trim()}`;
+    return createHash('sha256').update(raw).digest('hex');
+}
 
 Deno.serve(async (req) => {
     // Only allow POST requests
@@ -59,11 +66,16 @@ Deno.serve(async (req) => {
                     if (isNaN(lat) || isNaN(lng)) throw new Error('Invalid coordinates');
 
                     // Map fields to Schema
-                    // Using ON CONFLICT to support idempotent re-runs (Upsert)
-                    // Assuming 'address' + 'zip_code' is unique enough, or we should use a unique hash if provided
-                    
+                    // Generate deterministic ID for deduplication
+                    const propertyId = generatePropertyId(
+                        p.address || p.PropertyAddress, 
+                        p.zip_code || p.Zip,
+                        p.city || p.City
+                    );
+
                     await sql`
                         INSERT INTO properties (
+                            id,
                             address, 
                             city, 
                             state, 
@@ -80,6 +92,7 @@ Deno.serve(async (req) => {
                             property_type,
                             mls_id
                         ) VALUES (
+                            ${propertyId},
                             ${p.address || p.PropertyAddress}, 
                             ${p.city || p.City}, 
                             ${p.state || p.State}, 
@@ -100,7 +113,8 @@ Deno.serve(async (req) => {
                             smart_score = EXCLUDED.smart_score,
                             price = EXCLUDED.price,
                             sold_date = EXCLUDED.sold_date,
-                            owner_name = EXCLUDED.owner_name
+                            owner_name = EXCLUDED.owner_name,
+                            location = EXCLUDED.location
                     `;
                     successCount++;
                 } catch (err) {
