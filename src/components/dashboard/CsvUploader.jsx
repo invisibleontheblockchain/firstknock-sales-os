@@ -35,12 +35,17 @@ export default function CsvUploader() {
         setIsUploading(true);
         setUploadStatus({ success: null, message: 'Parsing file...' });
 
-        // Handle JSON files
-        if (file.name.endsWith('.json')) {
+        // Handle JSON files (Case insensitive)
+        if (file.name.toLowerCase().endsWith('.json')) {
             const reader = new FileReader();
             reader.onload = async (e) => {
                 try {
-                    const jsonData = JSON.parse(e.target.result);
+                    const content = e.target.result;
+                    if (!content || content.trim().length === 0) {
+                         throw new Error("File is empty");
+                    }
+
+                    const jsonData = JSON.parse(content);
                     let dataArray = Array.isArray(jsonData) ? jsonData : [jsonData];
 
                     // Smart Unwrapping: Check for common wrapper keys if it's an object
@@ -51,6 +56,7 @@ export default function CsvUploader() {
                         else if (Array.isArray(jsonData.results)) dataArray = jsonData.results;
                     }
 
+                    console.log(`[CsvUploader] JSON Parsed. Found ${dataArray.length} items.`);
                     await processData(dataArray);
                 } catch (error) {
                     console.error("JSON parse error", error);
