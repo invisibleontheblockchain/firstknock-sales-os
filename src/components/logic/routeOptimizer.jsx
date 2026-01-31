@@ -124,9 +124,21 @@ function kMeansClustering(properties, numClusters) {
 }
 
 /**
- * Nearest Neighbor TSP approximation for route ordering
+ * Calculate bearing between two points
  */
-function optimizeRouteOrder(properties, startLat = null, startLng = null) {
+function calculateBearing(lat1, lng1, lat2, lng2) {
+    const y = Math.sin(lng2 - lng1) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) -
+        Math.sin(lat1) * Math.cos(lat2) * Math.cos(lng2 - lng1);
+    const brng = Math.atan2(y, x) * 180 / Math.PI;
+    return (brng + 360) % 360;
+}
+
+/**
+ * Nearest Neighbor TSP approximation for route ordering
+ * Enhanced with weighted heuristics
+ */
+function optimizeRouteOrder(properties, startLat = null, startLng = null, minimizeTurns = false) {
     if (properties.length === 0) return [];
 
     const unvisited = [...properties];
@@ -137,14 +149,17 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null) {
         ? { lat: startLat, lng: startLng }
         : unvisited.shift();
 
+    let currentBearing = null; // Track current direction of travel
+
     if (startLat && startLng) {
         // Find nearest to start
         let nearestIdx = 0;
-        let minDist = Infinity;
+        let minScore = Infinity;
+        
         unvisited.forEach((prop, idx) => {
             const dist = calculateDistance(current.lat, current.lng, prop.lat, prop.lng);
-            if (dist < minDist) {
-                minDist = dist;
+            if (dist < minScore) {
+                minScore = dist;
                 nearestIdx = idx;
             }
         });
@@ -153,20 +168,40 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null) {
 
     route.push(current);
 
-    // Nearest neighbor
+    // Nearest neighbor loop with heuristics
     while (unvisited.length > 0) {
-        let nearestIdx = 0;
-        let minDist = Infinity;
+        let bestIdx = 0;
+        let bestScore = Infinity;
 
         unvisited.forEach((prop, idx) => {
             const dist = calculateDistance(current.lat, current.lng, prop.lat, prop.lng);
-            if (dist < minDist) {
-                minDist = dist;
-                nearestIdx = idx;
+            let score = dist;
+
+            // Heuristic: Minimize Turns
+            if (minimizeTurns && currentBearing !== null) {
+                const newBearing = calculateBearing(current.lat * Math.PI/180, current.lng * Math.PI/180, prop.lat * Math.PI/180, prop.lng * Math.PI/180);
+                const turnAngle = Math.abs(newBearing - currentBearing);
+                const normalizedTurn = turnAngle > 180 ? 360 - turnAngle : turnAngle;
+                
+                // Penalize sharp turns (e.g., 90-180 degrees)
+                // Add "virtual miles" to the distance for sharp turns
+                if (normalizedTurn > 45) {
+                    score += (normalizedTurn / 180) * 0.5; // Up to 0.5 miles penalty for u-turn
+                }
+            }
+
+            if (score < bestScore) {
+                bestScore = score;
+                bestIdx = idx;
             }
         });
 
-        current = unvisited.splice(nearestIdx, 1)[0];
+        const nextProp = unvisited.splice(bestIdx, 1)[0];
+        
+        // Update bearing
+        currentBearing = calculateBearing(current.lat * Math.PI/180, current.lng * Math.PI/180, nextProp.lat * Math.PI/180, nextProp.lng * Math.PI/180);
+        
+        current = nextProp;
         route.push(current);
     }
 
