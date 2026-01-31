@@ -3,8 +3,7 @@ import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 import { createHash } from 'node:crypto';
 
 // Connection string for Neon DB (Dark Room)
-// TODO: Move to strict secrets management in production
-const CONNECTION_STRING = 'postgresql://neondb_owner:npg_jsLScDO6w9mf@ep-fragrant-bush-ahixbnax-pooler.c-3.us-east-1.aws.neon.tech/neondb?sslmode=require';
+const CONNECTION_STRING = Deno.env.get("DATABASE_URL");
 
 // Helper to generate deterministic ID
 function generatePropertyId(address, zip, city) {
