@@ -21,14 +21,22 @@ Deno.serve(async (req) => {
     try {
         // 1. Authenticate Request
         const base44 = createClientFromRequest(req);
-        const user = await base44.auth.me();
+        
+        // Check for Pipeline Secret (API Key) first
+        const secretHeader = req.headers.get('x-pipeline-secret');
+        const envSecret = Deno.env.get('PIPELINE_SECRET');
+        const isSecretValid = envSecret && secretHeader === envSecret;
 
-        // Strict Admin Check for Data Pipeline
-        if (!user || user.role !== 'admin') {
-            return Response.json({ 
-                error: 'Unauthorized', 
-                message: 'Only admins can ingest data to the Dark Room' 
-            }, { status: 403 });
+        // Fallback to Admin User Session
+        let user = null;
+        if (!isSecretValid) {
+            user = await base44.auth.me();
+            if (!user || user.role !== 'admin') {
+                return Response.json({ 
+                    error: 'Unauthorized', 
+                    message: 'Missing valid x-pipeline-secret header or Admin session' 
+                }, { status: 403 });
+            }
         }
 
         // 2. Parse Payload

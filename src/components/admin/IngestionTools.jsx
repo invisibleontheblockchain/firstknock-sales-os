@@ -52,19 +52,22 @@ CREATE INDEX IF NOT EXISTS idx_props_score ON properties(smart_score DESC);`;
 
     const CLIENT_SCRIPT = `/**
  * CLIENT INGESTION SCRIPT
- * Run locally: node ingest.js data.csv
+ * 1. Install dependencies: npm install axios csv-parser
+ * 2. Set your PIPELINE_SECRET in Base44 Dashboard -> Settings -> Environment Variables
+ * 3. Run: node ingest.js <path_to_csv>
  */
 const fs = require('fs');
-const axios = require('axios'); // npm install axios
-const csv = require('csv-parser'); // npm install csv-parser
+const axios = require('axios');
+const csv = require('csv-parser');
 
 const API_URL = '${window.location.origin}/functions/ingestProperties';
-// Add Auth Header if needed: 'Authorization': 'Bearer ...'
+const SECRET_KEY = 'YOUR_PIPELINE_SECRET'; // <--- REPLACE THIS with the secret you set in Dashboard
 
 async function run() {
     const file = process.argv[2];
     if(!file) return console.log('Usage: node ingest.js <file.csv>');
     
+    console.log(\`Reading \${file}...\`);
     const rows = [];
     fs.createReadStream(file)
         .pipe(csv())
@@ -88,11 +91,32 @@ function mapRow(row) {
 
 async function upload(data) {
     const BATCH = 50;
+    const totalBatches = Math.ceil(data.length / BATCH);
+    
+    console.log(\`Starting upload of \${data.length} records in \${totalBatches} batches...\`);
+
     for(let i=0; i<data.length; i+=BATCH) {
-        console.log(\`Uploading batch \${i}...\`);
-        await axios.post(API_URL, { properties: data.slice(i, i+BATCH) });
+        const batchNum = Math.floor(i/BATCH) + 1;
+        try {
+            const res = await axios.post(API_URL, { 
+                properties: data.slice(i, i+BATCH),
+                source: 'LOCAL_SCRIPT' 
+            }, {
+                headers: { 'x-pipeline-secret': SECRET_KEY }
+            });
+            
+            if(res.data.success) {
+                console.log(\`[Batch \${batchNum}/\${totalBatches}] Success: \${res.data.summary.inserted} inserted\`);
+            } else {
+                console.warn(\`[Batch \${batchNum}] Issues:\`, res.data);
+            }
+        } catch (err) {
+            console.error(\`[Batch \${batchNum}] Failed:\`, err.response?.data || err.message);
+        }
+        // Small delay to prevent rate limiting
+        await new Promise(r => setTimeout(r, 100));
     }
-    console.log('Done!');
+    console.log('Ingestion complete!');
 }
 
 run();`;
