@@ -333,8 +333,8 @@ export default function RepHome() {
                     <div className="w-10 h-10 rounded-full bg-yellow-500 flex items-center justify-center text-black font-bold text-lg">
                         {user?.full_name?.[0] || user?.email?.[0] || 'U'}
                     </div>
-                    <div>
-                        <p className="font-bold leading-none">{user?.full_name || 'Rep'}</p>
+                    <div className="min-w-0 flex-1">
+                        <p className="font-bold leading-none truncate max-w-[120px] sm:max-w-none">{user?.full_name || 'Rep'}</p>
                         {isOffline ? (
                             <div className="flex items-center gap-1 text-xs text-red-500 mt-1 font-bold">
                                 <WifiOff className="w-3 h-3" />

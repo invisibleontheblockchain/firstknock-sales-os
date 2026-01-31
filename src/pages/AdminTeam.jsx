@@ -270,13 +270,13 @@ export default function AdminTeam() {
                     </div>
 
                     {/* Quick Action - Go to Command Center */}
-                    <div className="bg-gradient-to-r from-yellow-900/20 to-black p-4 rounded-xl border border-yellow-900/50 flex items-center justify-between">
+                    <div className="bg-gradient-to-r from-yellow-900/20 to-black p-4 rounded-xl border border-yellow-900/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                         <div>
                             <h3 className="text-yellow-500 font-bold">Territory Command Center</h3>
                             <p className="text-gray-400 text-xs">Analyze routes and generate new territories</p>
                         </div>
-                        <Link to={createPageUrl('Home')}>
-                            <Button className="bg-yellow-500 text-black font-bold hover:bg-yellow-400">
+                        <Link to={createPageUrl('Home')} className="w-full sm:w-auto">
+                            <Button className="bg-yellow-500 text-black font-bold hover:bg-yellow-400 w-full sm:w-auto">
                                 <Map className="w-4 h-4 mr-2" />
                                 Open Map
                             </Button>
