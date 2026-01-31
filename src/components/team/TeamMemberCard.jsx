@@ -46,9 +46,10 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                                 <Badge variant="outline" className="bg-white/5 border-white/10 text-[10px] font-medium text-gray-400 h-5">
                                     {member.role?.toUpperCase()}
                                 </Badge>
-                                <Badge className="bg-yellow-500/10 text-yellow-500 text-[10px] border border-yellow-500/20 h-5">
-                                    {conversionRate}%
-                                </Badge>
+                                <div className="flex items-center gap-1 bg-yellow-500/10 border border-yellow-500/20 rounded-full px-2 h-5">
+                                    <TrendingUp className="w-3 h-3 text-yellow-500" />
+                                    <span className="text-[10px] font-bold text-yellow-500">{conversionRate}% Close Rate</span>
+                                </div>
                             </div>
                         </div>
                     </div>
