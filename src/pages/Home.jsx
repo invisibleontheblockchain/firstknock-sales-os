@@ -735,45 +735,36 @@ export default function Home() {
             {/* Top Stats Bar */}
             <div className="absolute top-4 left-4 right-4 z-[1000] flex flex-col gap-2 pointer-events-none">
                 <div className="flex items-start gap-2 overflow-hidden">
-                    {/* Scrollable Stats Row */}
-                    <div className="pointer-events-auto flex-1 overflow-x-auto no-scrollbar pb-1">
-                        <div className="flex gap-2 whitespace-nowrap">
-                            <div className="rounded-lg px-3 py-2 border shrink-0" style={{ background: `${BRAND.voidBlack}ee`, borderColor: BRAND.charcoal }}>
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: BRAND.gold, boxShadow: `0 0 8px ${BRAND.gold}` }} />
-                                            <span className="text-sm font-bold tracking-wide" style={{ color: BRAND.offWhite }}>
-                                                {effectiveProperties.length.toLocaleString()}
-                                            </span>
-                                            {darkRoomCount > 0 && (
-                                                <span className="text-[10px] text-gray-500">
-                                                    + {(darkRoomCount / 1000).toFixed(0)}k Dark Room
-                                                </span>
-                                            )}
-                                            {isLoadingDarkRoom && (
-                                                <Loader2 className="w-3 h-3 animate-spin text-yellow-500" />
-                                            )}
-                                        </div>
-                                    </div>
-                            
-                            <div className="shrink-0">
-                                <KnockTimeBanner 
-                                    expanded={showTimingPanel} 
-                                    onToggle={() => setShowTimingPanel(!showTimingPanel)} 
-                                />
-                            </div>
-
-
-                        </div>
+                    {/* MODE TOGGLE */}
+                    <div className="pointer-events-auto bg-black/90 backdrop-blur rounded-lg p-1 border border-gray-800 flex gap-1 shadow-xl shrink-0">
+                        <button
+                            onClick={() => setMode('analyze')}
+                            className={`px-3 py-2 rounded-md text-[10px] font-bold transition-all ${mode === 'analyze' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                        >
+                            COMMAND CENTER
+                        </button>
+                        <button
+                            onClick={() => setMode('generate')}
+                            className={`px-3 py-2 rounded-md text-[10px] font-bold transition-all ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                        >
+                            BUILD ROUTES
+                        </button>
                     </div>
+
+                    <div className="pointer-events-auto flex-1" />
 
                     <div className="pointer-events-auto shrink-0">
                         <Button
                             onClick={() => setShowCompare(true)}
                             size="icon"
                             className="rounded-lg h-10 w-10 font-bold tracking-wide shadow-lg"
-                            style={{ background: BRAND.charcoal, color: BRAND.gold, border: `1px solid ${BRAND.gold}40` }}
+                            style={{ 
+                                background: mode === 'generate' ? BRAND.gold : BRAND.charcoal, 
+                                color: mode === 'generate' ? BRAND.voidBlack : BRAND.gold, 
+                                border: `1px solid ${BRAND.gold}40` 
+                            }}
                         >
-                            <BarChart3 className="w-5 h-5" />
+                            {mode === 'generate' ? <Navigation className="w-5 h-5" /> : <Filter className="w-5 h-5" />}
                         </Button>
                     </div>
                 </div>
