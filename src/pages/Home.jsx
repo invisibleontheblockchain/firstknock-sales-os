@@ -128,6 +128,7 @@ export default function Home() {
     const [startAddressInput, setStartAddressInput] = useState("");
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
+    const [mode, setMode] = useState('analyze'); // 'analyze' or 'generate'
     const [showTimingPanel, setShowTimingPanel] = useState(false);
     const [selectedProperty, setSelectedProperty] = useState(null);
     const [zoomLevel, setZoomLevel] = useState(15);
@@ -539,58 +540,48 @@ export default function Home() {
                     onMoveEnd={() => {}}
                 />
 
-
-
-                {/* Display Saved Routes (Command Center View) */}
+                {/* --- ANALYZE MODE: Existing Routes --- */}
                 <LayerGroup>
-                    {!activeRoute && zoomLevel >= 8 && hydratedSavedRoutes.map((route) => {
-                        // Color by Assigned Rep
-                        const repColor = route.assigned_to ? (repColors[route.assigned_to] || '#3b82f6') : '#666'; // Default Blue or Gray
+                    {mode === 'analyze' && !activeRoute && zoomLevel >= 8 && hydratedSavedRoutes.map((route) => {
+                        const repColor = route.assigned_to ? (repColors[route.assigned_to] || '#3b82f6') : '#666'; 
                         const isUnassigned = !route.assigned_to;
-                        
                         return route.properties.map((p, idx) => (
                             <CircleMarker
                                 key={`saved-${route.id}-${p.address_hash || 'no-hash'}-${idx}`}
                                 center={[p.lat, p.lng]}
                                 radius={4}
-                                eventHandlers={{
-                                    click: (e) => {
-                                        L.DomEvent.stopPropagation(e);
-                                        setActiveRoute(route);
-                                    }
-                                }}
-                                pathOptions={{
-                                    fillColor: repColor,
-                                    fillOpacity: isUnassigned ? 0.3 : 0.8,
-                                    color: repColor,
-                                    weight: 1
-                                }}
+                                eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
+                                pathOptions={{ fillColor: repColor, fillOpacity: isUnassigned ? 0.3 : 0.8, color: repColor, weight: 1 }}
                             />
                         ));
                     })}
                 </LayerGroup>
 
-                {/* Display Generated Routes */}
+                {/* --- GENERATE MODE: Existing Routes (Dimmed) --- */}
                 <LayerGroup>
-                    {!activeRoute && routes.length > 0 && routes.map((route, rIdx) => {
+                    {mode === 'generate' && !activeRoute && zoomLevel >= 8 && hydratedSavedRoutes.map((route) => {
+                        return route.properties.map((p, idx) => (
+                            <CircleMarker
+                                key={`saved-dim-${route.id}-${idx}`}
+                                center={[p.lat, p.lng]}
+                                radius={2}
+                                pathOptions={{ fillColor: '#333', fillOpacity: 0.2, color: '#333', weight: 0 }}
+                            />
+                        ));
+                    })}
+                </LayerGroup>
+
+                {/* --- GENERATE MODE: New Routes --- */}
+                <LayerGroup>
+                    {mode === 'generate' && !activeRoute && routes.length > 0 && routes.map((route, rIdx) => {
                         const routeColor = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
                         return route.properties.map((p, idx) => (
                             <CircleMarker
-                                key={`generated-${route.id}-${p.address_hash || 'no-hash'}-${idx}`}
+                                key={`generated-${route.id}-${idx}`}
                                 center={[p.lat, p.lng]}
                                 radius={6}
-                                eventHandlers={{
-                                    click: (e) => {
-                                        L.DomEvent.stopPropagation(e);
-                                        setActiveRoute(route);
-                                    }
-                                }}
-                                pathOptions={{
-                                    fillColor: routeColor,
-                                    fillOpacity: 0.7,
-                                    color: routeColor,
-                                    weight: 1
-                                }}
+                                eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
+                                pathOptions={{ fillColor: routeColor, fillOpacity: 0.7, color: routeColor, weight: 1 }}
                             />
                         ));
                     })}
