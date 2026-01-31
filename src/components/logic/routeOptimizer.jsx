@@ -220,7 +220,10 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null, minimi
 export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLocation = null, allLogs = [], options = {}) {
     const {
         streetCooldownDays = COOLDOWN_CONFIG.STREET_COOLDOWN_DAYS,
-        useStreetSweep = true
+        useStreetSweep = true,
+        minimizeTurns = false,
+        preferMajorRoads = false,
+        avoidSchoolZones = false
     } = options;
 
     // Filter out properties on streets that are on cooldown
