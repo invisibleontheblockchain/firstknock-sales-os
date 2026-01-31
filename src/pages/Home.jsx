@@ -154,15 +154,31 @@ export default function Home() {
         queryFn: () => base44.entities.TeamMember.list('-created_date', 100).then(res => Array.isArray(res) ? res : (res?.items || []))
     });
 
-    // Generate Rep Colors Map
+    // Generate Rep Colors Map - Use stored colors from TeamMember entity
+    const [localRepColors, setLocalRepColors] = useState({});
+    
     const repColors = useMemo(() => {
         const colors = {};
-        const PALETTE = ['#FFD700', '#22c55e', '#3b82f6', '#ec4899', '#f97316', '#8b5cf6', '#06b6d4', '#eab308'];
+        const PALETTE = ['#FFD700', '#ef4444', '#22c55e', '#3b82f6', '#ec4899', '#f97316', '#8b5cf6', '#06b6d4', '#eab308', '#14b8a6'];
         teamMembers.forEach((m, idx) => {
-            colors[m.id] = m.color || PALETTE[idx % PALETTE.length];
+            // Priority: local override -> stored color -> palette fallback
+            colors[m.id] = localRepColors[m.id] || m.color || PALETTE[idx % PALETTE.length];
         });
         return colors;
-    }, [teamMembers]);
+    }, [teamMembers, localRepColors]);
+
+    // Update rep color in database
+    const handleUpdateRepColor = async (memberId, color) => {
+        // Optimistic local update
+        setLocalRepColors(prev => ({ ...prev, [memberId]: color }));
+        // Persist to database
+        try {
+            await base44.entities.TeamMember.update(memberId, { color });
+            queryClient.invalidateQueries({ queryKey: ['teamMembers'] });
+        } catch (e) {
+            console.error('Failed to update rep color:', e);
+        }
+    };
 
     // Dark Room Manager Component - only active when enabled
     const DarkRoomManager = () => {
