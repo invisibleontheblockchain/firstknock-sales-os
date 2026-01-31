@@ -620,6 +620,19 @@ export default function Home() {
         return filtered;
     }, [routes, sortBy, minScore]);
 
+    // Generation Stats for Command Center
+    const genStats = useMemo(() => {
+        if (routes.length === 0) return null;
+        const totalHouses = routes.reduce((acc, r) => acc + r.houseCount, 0);
+        const totalDist = routes.reduce((acc, r) => acc + r.totalDistance, 0).toFixed(1);
+        const avgScore = Math.round(routes.reduce((acc, r) => acc + r.competitivenessScore, 0) / routes.length);
+
+        // Identify "High Potential" (score > 100)
+        const highPotentialCount = routes.filter(r => r.competitivenessScore >= 100).length;
+
+        return { totalHouses, totalDist, avgScore, routeCount: routes.length, highPotentialCount };
+    }, [routes]);
+
     const fitBounds = useMemo(() => {
         if (activeRoute?.properties?.length > 0) return activeRoute.properties.map(p => [p.lat, p.lng]);
         if (availableProperties.length > 0) return availableProperties.slice(0, 1000).map(p => [p.lat, p.lng]);
@@ -1079,9 +1092,59 @@ export default function Home() {
                                 {/* Generated Routes (Priority Display) */}
                                 {routes.length > 0 && (
                                 <div className="p-4 space-y-3">
-                                    <div className="flex items-center gap-2 mb-2">
-                                        <Badge className="bg-yellow-500 text-black font-bold">NEW</Badge>
-                                        <span className="text-xs font-bold text-gray-400">OPTIMIZED ROUTES (UNASSIGNED)</span>
+
+                                    {/* GENERATION REPORT SUMMARY */}
+                                    {genStats && (
+                                        <div className="bg-[#1A1A1A] rounded-xl p-4 border border-[#333] mb-5 shadow-lg relative overflow-hidden">
+                                            {/* Decorator */}
+                                            <div className="absolute top-0 right-0 w-20 h-20 bg-yellow-500/5 rounded-full blur-2xl pointer-events-none"></div>
+
+                                            <div className="flex justify-between items-start mb-4">
+                                                <div>
+                                                    <h3 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
+                                                        <BarChart3 className="w-4 h-4 text-yellow-500" />
+                                                        GENERATION REPORT
+                                                    </h3>
+                                                    <p className="text-[10px] text-gray-500 mt-1 font-medium">
+                                                        Target: {zipCodeFilter || 'Current View'} • {housesPerRoute} Homes/Route
+                                                    </p>
+                                                </div>
+                                                <Badge variant="outline" className="text-yellow-500 border-yellow-500/30 bg-yellow-500/10">
+                                                    Success
+                                                </Badge>
+                                            </div>
+
+                                            <div className="grid grid-cols-4 gap-2 mb-4">
+                                                <div className="bg-black/40 p-2 rounded-lg border border-white/5">
+                                                    <p className="text-lg font-bold text-white">{genStats.totalHouses}</p>
+                                                    <p className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Doors</p>
+                                                </div>
+                                                <div className="bg-black/40 p-2 rounded-lg border border-white/5">
+                                                    <p className="text-lg font-bold text-yellow-500">{genStats.routeCount}</p>
+                                                    <p className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Routes</p>
+                                                </div>
+                                                <div className="bg-black/40 p-2 rounded-lg border border-white/5">
+                                                    <p className="text-lg font-bold text-white">{genStats.avgScore}</p>
+                                                    <p className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Avg Score</p>
+                                                </div>
+                                                <div className="bg-black/40 p-2 rounded-lg border border-white/5">
+                                                    <p className="text-lg font-bold text-white">{genStats.totalDist}</p>
+                                                    <p className="text-[9px] text-gray-500 uppercase font-bold tracking-wider">Miles</p>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-2 text-[10px] text-gray-400 bg-black/20 p-2 rounded-lg border border-dashed border-gray-800">
+                                                <Flame className="w-3 h-3 text-orange-500" />
+                                                <span>
+                                                    <span className="text-white font-bold">{genStats.highPotentialCount}</span> routes identified as High Potential (Score 100+)
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="flex items-center gap-2 mb-2 px-1">
+                                        <Badge className="bg-yellow-500 text-black font-bold h-5 text-[10px]">NEW</Badge>
+                                        <span className="text-xs font-bold text-gray-400">ROUTE LIST</span>
                                     </div>
 
                                     {/* Scoring Legend */}
