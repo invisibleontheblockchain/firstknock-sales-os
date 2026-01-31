@@ -1680,15 +1680,27 @@ export default function Home() {
 
             {/* Property Details Drawer */}
             {/* Command Center Dashboard Overlay */}
-            {showDashboard && (
-                <CommandCenterDashboard
-                    properties={effectiveProperties}
-                    logs={logs}
-                    routes={savedRoutes}
-                    teamMembers={teamMembers}
-                    onClose={() => setShowDashboard(false)}
-                />
-            )}
+                              {showDashboard && (
+                                  <CommandCenterDashboard
+                                      properties={effectiveProperties}
+                                      logs={logs}
+                                      routes={savedRoutes}
+                                      teamMembers={teamMembers}
+                                      onClose={() => setShowDashboard(false)}
+                                  />
+                              )}
+
+                              {/* Map Settings Panel */}
+                              {showMapSettings && (
+                                  <MapSettingsPanel
+                                      mapTheme={mapTheme}
+                                      setMapTheme={setMapTheme}
+                                      teamMembers={teamMembers}
+                                      repColors={repColors}
+                                      onUpdateRepColor={handleUpdateRepColor}
+                                      onClose={() => setShowMapSettings(false)}
+                                  />
+                              )}
 
             {selectedProperty && (
                 <div className="fixed inset-0 z-[3000] flex flex-col justify-end sm:justify-center sm:items-center">
