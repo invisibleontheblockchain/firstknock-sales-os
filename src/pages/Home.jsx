@@ -1261,26 +1261,75 @@ export default function Home() {
                                                 <span>{route.totalDistance} mi</span>
                                             </div>
                                             
-                                            {/* Smart Assign Recommendation */}
+                                            {/* Uber-Style Assign Recommendation */}
                                             {(() => {
-                                                const recommendedRep = getRecommendedRep(filteredRoutes.indexOf(route));
+                                                const center = route.properties[0];
+                                                const recommendations = getRepRecommendations(center);
+                                                const bestMatch = recommendations[0];
+                                                
                                                 return (
-                                                    <div className="mt-3 flex gap-2">
-                                                        <Button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleSaveRoute(route, recommendedRep?.id, recommendedRep?.name);
-                                                            }}
-                                                            size="sm"
-                                                            className="flex-1 h-8 text-[10px] font-bold bg-[#333] hover:bg-green-600 text-white transition-all border border-gray-700"
-                                                        >
-                                                            {recommendedRep ? (
-                                                                <>
-                                                                    <User className="w-3 h-3 mr-1 text-yellow-500" />
-                                                                    ASSIGN: {recommendedRep.name.split(' ')[0].toUpperCase()}
-                                                                </>
-                                                            ) : 'SAVE & ASSIGN'}
-                                                        </Button>
+                                                    <div className="mt-3 flex flex-col gap-2">
+                                                        {/* Primary Action: Assign Best Match */}
+                                                        <div className="flex gap-2">
+                                                            <Button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleSaveRoute(route, bestMatch?.id, bestMatch?.name);
+                                                                }}
+                                                                size="sm"
+                                                                className="flex-1 h-8 text-[10px] font-bold bg-[#333] hover:bg-green-600 text-white transition-all border border-gray-700 relative overflow-hidden group/btn"
+                                                            >
+                                                                {bestMatch ? (
+                                                                    <div className="flex items-center justify-between w-full px-1">
+                                                                        <div className="flex items-center">
+                                                                            <span className={`w-2 h-2 rounded-full mr-2 ${bestMatch.isAvailable ? 'bg-green-500 animate-pulse' : 'bg-yellow-500'}`} />
+                                                                            <span>DISPATCH: {bestMatch.name.split(' ')[0].toUpperCase()}</span>
+                                                                        </div>
+                                                                        <span className="text-[9px] opacity-70 bg-black/30 px-1 rounded">
+                                                                            {bestMatch.matchScore}% MATCH
+                                                                        </span>
+                                                                    </div>
+                                                                ) : 'SAVE UNASSIGNED'}
+                                                                {/* Hover Effect Details */}
+                                                                {bestMatch && (
+                                                                    <div className="absolute inset-0 bg-green-600 transform translate-y-full group-hover/btn:translate-y-0 transition-transform flex items-center justify-center gap-2">
+                                                                        <span>CONFIRM ASSIGNMENT</span>
+                                                                        <ArrowRight className="w-3 h-3" />
+                                                                    </div>
+                                                                )}
+                                                            </Button>
+                                                            <Button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleSaveRoute(route);
+                                                                }}
+                                                                size="sm"
+                                                                className="h-8 w-8 p-0 bg-black hover:bg-gray-800 border border-gray-700 text-gray-400"
+                                                                title="Save Unassigned"
+                                                            >
+                                                                <Shield className="w-3 h-3" />
+                                                            </Button>
+                                                        </div>
+
+                                                        {/* Secondary Info: Why this rep? */}
+                                                        {bestMatch && (
+                                                            <div className="flex items-center justify-between text-[9px] text-gray-500 px-1">
+                                                                <span className="flex items-center gap-1">
+                                                                    <MapPin className="w-3 h-3" />
+                                                                    {bestMatch.distance ? `${bestMatch.distance}mi away` : 'N/A'}
+                                                                </span>
+                                                                <span className="flex items-center gap-1">
+                                                                    <BarChart3 className="w-3 h-3" />
+                                                                    Perf: {bestMatch.performanceScore}
+                                                                </span>
+                                                                {bestMatch.activeRoutesCount > 0 && (
+                                                                    <span className="text-yellow-500 font-bold">
+                                                                        {bestMatch.activeRoutesCount} Active
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                         <Button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
