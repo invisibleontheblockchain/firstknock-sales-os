@@ -132,6 +132,7 @@ export default function Home() {
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
     const [mode, setMode] = useState('analyze'); // 'analyze' or 'generate'
+    const [showDashboard, setShowDashboard] = useState(false);
     const [showTimingPanel, setShowTimingPanel] = useState(false);
     const [selectedProperty, setSelectedProperty] = useState(null);
     const [zoomLevel, setZoomLevel] = useState(15);
