@@ -18,7 +18,7 @@ const STATUS_OPTIONS = [
     { id: 'SOLD', label: 'SOLD', icon: Check, color: '#22c55e', textColor: '#fff' },
     { id: 'NO_ANSWER', label: 'NO ANSWER', icon: Home, color: '#3b82f6', textColor: '#fff' },
     { id: 'CALLBACK', label: 'CALLBACK', icon: Phone, color: '#FFFFFF', textColor: '#000' },
-    { id: 'HARD_NO', label: 'NOT INTERESTED', icon: Ban, color: '#8B5CF6', textColor: '#fff' },
+    { id: 'HARD_NO', label: 'REJECTIONS', icon: Ban, color: '#8B5CF6', textColor: '#fff' },
 ];
 
 const STATUS_COLORS = {
