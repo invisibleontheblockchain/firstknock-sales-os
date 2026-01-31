@@ -329,31 +329,103 @@ export default function Home() {
     });
     const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
 
-    // Smart Assign Logic
-    const getRecommendedRep = useCallback((routeIndex) => {
-        if (teamMembers.length === 0) return null;
+    // --- UBER-STYLE DISPATCH LOGIC ---
+    // Helper: Haversine Distance (Miles)
+    const calcDist = (lat1, lng1, lat2, lng2) => {
+        if (!lat1 || !lng1 || !lat2 || !lng2) return 9999;
+        const R = 3959; // Miles
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLng = (lng2 - lng1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+                Math.sin(dLng/2) * Math.sin(dLng/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        return R * c;
+    };
 
-        // Calculate simplified score for each rep based on logs
-        const scoredReps = teamMembers.map(rep => {
+    // Calculate Availability & Match Score
+    const getRepRecommendations = useCallback((routeCenter) => {
+        if (teamMembers.length === 0) return [];
+
+        // 1. Identify "Busy" Reps (Have Active Route)
+        // Using savedRoutes to determine if someone has an 'IN_PROGRESS' or 'ACTIVE' route recently assigned
+        // For simplicity, we assume if they have > 0 active routes, they are "Busy" but can be queued
+        const busyMap = {};
+        savedRoutes.forEach(r => {
+            if (r.status === 'IN_PROGRESS' || r.status === 'ACTIVE') {
+                if (r.assigned_to) busyMap[r.assigned_to] = (busyMap[r.assigned_to] || 0) + 1;
+            }
+        });
+
+        // 2. Determine Rep Location (Last Log)
+        const repLocations = {};
+        teamMembers.forEach(rep => {
+            const repLogs = logs.filter(l => l.created_by === rep.email).sort((a,b) => new Date(b.created_date) - new Date(a.created_date));
+            if (repLogs.length > 0) {
+                repLocations[rep.id] = { lat: repLogs[0].gps_proof_lat, lng: repLogs[0].gps_proof_lng, lastActive: repLogs[0].created_date };
+            }
+        });
+
+        return teamMembers.map(rep => {
+            // A. Availability Score (30%)
+            const activeRoutesCount = busyMap[rep.id] || 0;
+            const isAvailable = activeRoutesCount === 0;
+            const availabilityScore = isAvailable ? 100 : Math.max(0, 100 - (activeRoutesCount * 50));
+
+            // B. Distance Score (30%)
+            let distance = 9999;
+            if (repLocations[rep.id] && routeCenter) {
+                distance = calcDist(repLocations[rep.id].lat, repLocations[rep.id].lng, routeCenter.lat, routeCenter.lng);
+            }
+            // Score: < 2 miles = 100, > 20 miles = 0
+            const distanceScore = Math.max(0, 100 - (distance * 5));
+
+            // C. Performance Score (40%) - From Logs
             const repLogs = logs.filter(l => l.created_by === rep.email);
             const sales = repLogs.filter(l => ['SOLD', 'QUALIFIED'].includes(l.parsed_status)).length;
             const knocks = Math.max(repLogs.length, 1);
-            const conversionRate = (sales / knocks) * 100;
-            
-            // Basic score: Conversion Rate (70%) + Activity (30%)
-            // We want to give more routes to high converters
-            const activityScore = Math.min(knocks, 100); // Cap at 100 for normalization
-            const score = (conversionRate * 0.7) + (activityScore * 0.3);
-            
-            return { ...rep, performanceScore: score };
-        }).sort((a, b) => b.performanceScore - a.performanceScore);
+            const conversionRate = (sales / knocks) * 100; // 0-100 theoretically, likely 0-20
+            const performanceScore = Math.min(conversionRate * 5, 100); // Scale up so 20% conv = 100 score
 
-        // Round robin distribution weighted by performance? 
-        // For now, just cycle through the sorted list (Best rep gets Route 1, 2nd best Route 2, etc.)
-        // This ensures top routes go to top reps
-        const rep = scoredReps[routeIndex % scoredReps.length];
-        return rep;
-    }, [teamMembers, logs]);
+            // Total Weighted Match Score
+            const totalScore = (availabilityScore * 0.3) + (distanceScore * 0.3) + (performanceScore * 0.4);
+
+            return {
+                ...rep,
+                matchScore: Math.round(totalScore),
+                distance: distance === 9999 ? null : distance.toFixed(1),
+                isAvailable,
+                performanceScore: Math.round(performanceScore),
+                activeRoutesCount
+            };
+        }).sort((a, b) => b.matchScore - a.matchScore);
+    }, [teamMembers, logs, savedRoutes]);
+
+    const handleAutoAssignAll = async () => {
+        if (!confirm("This will automatically assign the best available rep to each generated route based on location, availability, and performance. Continue?")) return;
+        
+        // Track assignments to load balance locally during loop
+        const tempBusyCounts = {}; 
+        
+        for (const route of routes) {
+            // Recalculate best match for this route considering new assignments
+            const center = route.properties[0]; // Approx center
+            const recommendations = getRepRecommendations(center);
+            
+            // Adjust scores based on temp assignments in this batch
+            const bestRep = recommendations.map(r => {
+                const addedLoad = tempBusyCounts[r.id] || 0;
+                return { ...r, matchScore: r.matchScore - (addedLoad * 30) }; // Penalty for multiple assignments in one batch
+            }).sort((a,b) => b.matchScore - a.matchScore)[0];
+
+            if (bestRep) {
+                // Trigger save
+                handleSaveRoute(route, bestRep.id, bestRep.name);
+                tempBusyCounts[bestRep.id] = (tempBusyCounts[bestRep.id] || 0) + 1;
+            }
+        }
+        setShowRoutePanel(false);
+    };
 
     const createLogMutation = useMutation({
         mutationFn: (logData) => base44.entities.InteractionLog.create(logData),
