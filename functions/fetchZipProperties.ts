@@ -28,40 +28,71 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Get zip code metadata for coordinates from raw SQL table
-    const zipMeta = await sql`
-      SELECT * FROM zip_codes WHERE code = ${zip_code}
-    `;
+    // Query Neon for real properties in this zip
+    console.log(`Querying Neon for zip: ${zip_code}`);
     
-    // Fallback if zip not in DB: use a default location or error
-    let centerLat = 32.7765; // Default (Charlestonish)
-    let centerLng = -79.9311;
-    let city = 'Unknown';
-    let state = 'SC';
-    let county = 'Unknown';
+    // Using latitude/longitude columns if available, otherwise would need ST_X/ST_Y from location
+    // We assume latitude/longitude exist based on checkZipData output
+    const neonProperties = await sql`
+        SELECT 
+            id, address, city, state, zip_code, 
+            latitude, longitude, 
+            beds, baths, sqft, year_built, price, 
+            status, property_type
+        FROM properties 
+        WHERE zip_code = ${zip_code}
+        LIMIT 2500
+    `;
 
-    if (zipMeta[0]) {
-       centerLat = parseFloat(zipMeta[0].latitude);
-       centerLng = parseFloat(zipMeta[0].longitude);
-       city = zipMeta[0].city;
-       state = zipMeta[0].state;
-       county = zipMeta[0].county;
-    } else {
-        // Try to fetch from external API if possible? Or just proceed with defaults if it's 29412
-        if (zip_code === '29412') {
-            centerLat = 32.7247;
-            centerLng = -79.9678;
-            city = 'Charleston';
-            county = 'Charleston';
-        }
+    console.log(`Found ${neonProperties.length} records in Neon`);
+
+    if (neonProperties.length === 0) {
+        return Response.json({
+            status: 'empty',
+            count: 0,
+            message: `No properties found in Neon for zip ${zip_code}. Please ingest data first.`
+        });
     }
 
-    const properties = generatePropertiesForZip(zip_code, city, state, county, centerLat, centerLng);
+    // Map to MasterProperty schema
+    const properties = neonProperties.map(p => {
+        // Parse address for house number / street name
+        // Simple regex to split first number from rest
+        const addressMatch = (p.address || "").match(/^(\d+)\s+(.*)$/);
+        const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
+        const street_name = addressMatch ? addressMatch[2] : (p.address || "Unknown");
+
+        // Map Status
+        let original_status = 'ELIGIBLE';
+        if (p.status && p.status.toLowerCase().includes('sold')) original_status = 'SOLD';
+        
+        return {
+            address_hash: p.id, // Use Neon ID as hash
+            house_number,
+            street_name,
+            full_address: p.address,
+            city: p.city,
+            state: p.state,
+            zip_code: p.zip_code,
+            lat: parseFloat(p.latitude),
+            lng: parseFloat(p.longitude),
+            original_status,
+            beds: parseInt(p.beds) || 0,
+            baths: parseFloat(p.baths) || 0,
+            sqft: parseInt(p.sqft) || 0,
+            lot_size: 0, // Not in query currently
+            year_built: parseInt(p.year_built) || 0,
+            price: parseFloat(p.price) || 0,
+            sold_date: null, // Add if needed
+            sale_type: 'Market',
+            property_type: p.property_type || 'Single Family',
+            mls_id: null,
+            url: null
+        };
+    });
     
     // Insert into MasterProperty using SDK
     let successCount = 0;
-    // Batch create is better but SDK create takes one? SDK has bulkCreate?
-    // Instruction says: base44.entities.Todo.bulkCreate([...])
     
     // Chunking to be safe
     const CHUNK_SIZE = 50;
@@ -87,10 +118,8 @@ Deno.serve(async (req) => {
     return Response.json({
       status: 'imported',
       zip_code,
-      city,
-      state,
       count: successCount,
-      message: `Successfully imported ${successCount} properties for ${zip_code}`
+      message: `Successfully imported ${successCount} properties from Neon for ${zip_code}`
     });
 
   } catch (error) {
@@ -98,69 +127,3 @@ Deno.serve(async (req) => {
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
-
-// Generate realistic property data for a zip code
-function generatePropertiesForZip(zip, city, state, county, centerLat, centerLng) {
-  const properties = [];
-  const streetNames = [
-    'Main St', 'Oak Ave', 'Elm St', 'Cedar Ln', 'Pine Dr', 'Maple Ave',
-    'Washington Blvd', 'Lincoln Way', 'Park Ave', 'Lake Dr', 'Hill Rd',
-    'Valley View', 'Sunset Blvd', 'River Rd', 'Forest Dr', 'Meadow Ln',
-    'Spring St', 'Church St', 'School Rd', 'Mill St', 'Bridge St',
-    'Center St', 'North Ave', 'South Blvd', 'East Dr', 'West Ln'
-  ];
-  
-  const numProperties = 100; // Small batch for now to avoid timeout/space issues
-  
-  for (let i = 0; i < numProperties; i++) {
-    const streetNum = 100 + Math.floor(Math.random() * 9900);
-    const street = streetNames[Math.floor(Math.random() * streetNames.length)];
-    const fullAddress = `${streetNum} ${street}`;
-    
-    // Spread properties around the zip center (roughly 0.02 degrees = ~1.4 miles)
-    const latOffset = (Math.random() - 0.5) * 0.04;
-    const lngOffset = (Math.random() - 0.5) * 0.04;
-    
-    const beds = 2 + Math.floor(Math.random() * 4); // 2-5 beds
-    const baths = 1 + Math.floor(Math.random() * 3); // 1-3 baths
-    const sqft = 1000 + Math.floor(Math.random() * 2500); // 1000-3500 sqft
-    const yearBuilt = 1950 + Math.floor(Math.random() * 74); // 1950-2024
-    const pricePerSqft = 150 + Math.floor(Math.random() * 200); // $150-350/sqft
-    const price = sqft * pricePerSqft;
-    
-    const lat = centerLat + latOffset;
-    const lng = centerLng + lngOffset;
-
-    // Generate address_hash
-    // Simple hash: base64 of address+lat+lng
-    const hashString = `${fullAddress}-${lat.toFixed(5)}-${lng.toFixed(5)}`;
-    // btoa available in Deno
-    const address_hash = btoa(hashString).replace(/=/g, '').slice(0, 20); // truncate for safety
-
-    properties.push({
-      address_hash,
-      house_number: streetNum,
-      street_name: street,
-      full_address: fullAddress,
-      city,
-      state,
-      zip_code: zip,
-      lat,
-      lng,
-      original_status: 'ELIGIBLE',
-      beds,
-      baths,
-      sqft,
-      lot_size: sqft * 4,
-      year_built: yearBuilt,
-      price,
-      sold_date: null,
-      sale_type: 'Market',
-      property_type: 'Single Family',
-      mls_id: `MLS-${Math.floor(Math.random()*1000000)}`,
-      url: `https://example.com/${address_hash}`
-    });
-  }
-  
-  return properties;
-}
