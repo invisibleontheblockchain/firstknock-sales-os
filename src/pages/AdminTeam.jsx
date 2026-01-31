@@ -254,22 +254,18 @@ export default function AdminTeam() {
                         </div>
                     </div>
 
-                    {/* Zip Search - Full Width on Mobile */}
-                    <div className="flex gap-2 items-center bg-[#1F1F1F] p-2 rounded-lg border border-gray-700">
-                        <Input 
-                            placeholder="Enter Zip Code..." 
-                            value={zipSearch}
-                            onChange={(e) => setZipSearch(e.target.value)}
-                            className="h-10 flex-1 bg-black border-gray-600 text-base"
-                            onKeyDown={(e) => e.key === 'Enter' && handleZipSearch()}
-                        />
-                        <Button 
-                            onClick={handleZipSearch}
-                            className="h-10 bg-blue-600 hover:bg-blue-500 text-white px-4"
-                        >
-                            <Sparkles className="w-4 h-4 mr-1" />
-                            <span className="hidden sm:inline">Generate</span>
-                        </Button>
+                    {/* Quick Action - Go to Command Center */}
+                    <div className="bg-gradient-to-r from-yellow-900/20 to-black p-4 rounded-xl border border-yellow-900/50 flex items-center justify-between">
+                        <div>
+                            <h3 className="text-yellow-500 font-bold">Territory Command Center</h3>
+                            <p className="text-gray-400 text-xs">Analyze routes and generate new territories</p>
+                        </div>
+                        <Link to={createPageUrl('Home')}>
+                            <Button className="bg-yellow-500 text-black font-bold hover:bg-yellow-400">
+                                <Map className="w-4 h-4 mr-2" />
+                                Open Map
+                            </Button>
+                        </Link>
                     </div>
 
                     {/* Action Buttons - Scrollable on Mobile */}

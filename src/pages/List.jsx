@@ -30,6 +30,12 @@ export default function ListPage() {
     const [selectedRouteDetails, setSelectedRouteDetails] = useState(null); // Route object to show details for
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
+    // Fetch Team for assigning in list
+    const { data: teamMembers = [] } = useQuery({
+        queryKey: ['teamMembers'],
+        queryFn: () => base44.entities.TeamMember.list('-created_date', 100).then(res => Array.isArray(res) ? res : (res?.items || []))
+    });
+
     const { data: properties = [], isLoading: propsLoading } = useQuery({
         queryKey: ['masterProperties', user?.email],
         queryFn: () => user ? base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 1000) : [],
@@ -285,25 +291,33 @@ export default function ListPage() {
                                         </Badge>
                                     </div>
 
-                                    <div className="flex gap-2">
-                                        <Link
-                                            to={`${createPageUrl('Home')}?savedRoute=${route.id}`}
-                                            className="flex-1"
-                                        >
+                                    <div className="flex gap-2 items-center mt-4 pt-3 border-t border-[#333]">
+                                        <div className="flex-1">
+                                            <p className="text-[10px] text-gray-500 uppercase mb-1">ASSIGNED TO</p>
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-6 h-6 rounded-full bg-gray-700 flex items-center justify-center text-xs text-white">
+                                                    {route.assigned_to_name ? route.assigned_to_name[0] : '?'}
+                                                </div>
+                                                <span className="text-sm text-gray-300">
+                                                    {route.assigned_to_name || 'Unassigned'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="flex gap-2">
+                                            <Link to={`${createPageUrl('Home')}?savedRoute=${route.id}`}>
+                                                <Button size="sm" className="bg-[#333] hover:bg-white hover:text-black">
+                                                    <MapPin className="w-4 h-4" />
+                                                </Button>
+                                            </Link>
                                             <Button
-                                                className="w-full h-10 font-bold tracking-wide"
-                                                style={{ background: BRAND.gold, color: BRAND.voidBlack }}
+                                                onClick={() => setSelectedRouteDetails(route)}
+                                                size="sm"
+                                                className="bg-yellow-500 text-black hover:bg-yellow-400 font-bold"
                                             >
-                                                <Navigation className="w-4 h-4 mr-2" />
-                                                LOAD ROUTE
+                                                View Details
                                             </Button>
-                                        </Link>
-                                        <Button
-                                            onClick={() => setSelectedRouteDetails(route)}
-                                            className="h-10 px-3 bg-[#333] hover:bg-[#444] text-white border border-[#444]"
-                                        >
-                                            <Info className="w-4 h-4" />
-                                        </Button>
+                                        </div>
                                     </div>
                                 </Card>
                             ))

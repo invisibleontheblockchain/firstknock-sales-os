@@ -139,6 +139,22 @@ export default function Home() {
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
+    // Fetch Team Members for Analysis & Coloring
+    const { data: teamMembers = [] } = useQuery({
+        queryKey: ['teamMembers'],
+        queryFn: () => base44.entities.TeamMember.list('-created_date', 100).then(res => Array.isArray(res) ? res : (res?.items || []))
+    });
+
+    // Generate Rep Colors Map
+    const repColors = useMemo(() => {
+        const colors = {};
+        const PALETTE = ['#FFD700', '#22c55e', '#3b82f6', '#ec4899', '#f97316', '#8b5cf6', '#06b6d4', '#eab308'];
+        teamMembers.forEach((m, idx) => {
+            colors[m.id] = m.color || PALETTE[idx % PALETTE.length];
+        });
+        return colors;
+    }, [teamMembers]);
+
     // Dark Room Manager Component - only active when enabled
     const DarkRoomManager = () => {
         const map = useMap();
@@ -525,12 +541,13 @@ export default function Home() {
 
 
 
-                {/* Display Saved Routes */}
+                {/* Display Saved Routes (Command Center View) */}
                 <LayerGroup>
                     {!activeRoute && zoomLevel >= 8 && hydratedSavedRoutes.map((route) => {
-                        const isAssignedToMe = route.assigned_to === user?.id || route.assigned_to_name === user?.email; 
-                        const baseColor = isAssignedToMe ? BRAND.gold : (route.assigned_to ? '#3b82f6' : '#666');
-
+                        // Color by Assigned Rep
+                        const repColor = route.assigned_to ? (repColors[route.assigned_to] || '#3b82f6') : '#666'; // Default Blue or Gray
+                        const isUnassigned = !route.assigned_to;
+                        
                         return route.properties.map((p, idx) => (
                             <CircleMarker
                                 key={`saved-${route.id}-${p.address_hash || 'no-hash'}-${idx}`}
@@ -543,9 +560,9 @@ export default function Home() {
                                     }
                                 }}
                                 pathOptions={{
-                                    fillColor: baseColor,
-                                    fillOpacity: 0.6,
-                                    color: baseColor,
+                                    fillColor: repColor,
+                                    fillOpacity: isUnassigned ? 0.3 : 0.8,
+                                    color: repColor,
                                     weight: 1
                                 }}
                             />
@@ -822,6 +839,35 @@ export default function Home() {
                 )}
             </div>
 
+            {/* Team Analysis Legend (Top Right) */}
+            {!activeRoute && (
+                <div className="absolute top-20 right-4 z-[900] pointer-events-auto bg-black/80 backdrop-blur-md border border-gray-800 rounded-xl p-3 max-w-[200px] animate-in slide-in-from-right">
+                    <p className="text-[10px] font-bold text-gray-400 mb-2 uppercase">Team Analysis</p>
+                    <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                        {teamMembers.map(member => {
+                            const memberRoutes = hydratedSavedRoutes.filter(r => r.assigned_to === member.id);
+                            if (memberRoutes.length === 0) return null;
+                            return (
+                                <div key={member.id} className="flex items-center justify-between text-xs">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-2 h-2 rounded-full" style={{ background: repColors[member.id] }} />
+                                        <span className="text-white truncate max-w-[80px]">{member.name}</span>
+                                    </div>
+                                    <span className="text-gray-500">{memberRoutes.length} Rts</span>
+                                </div>
+                            );
+                        })}
+                        <div className="flex items-center justify-between text-xs opacity-50">
+                            <div className="flex items-center gap-2">
+                                <span className="w-2 h-2 rounded-full bg-[#666]" />
+                                <span className="text-white">Unassigned</span>
+                            </div>
+                            <span className="text-gray-500">{hydratedSavedRoutes.filter(r => !r.assigned_to).length}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Bottom Action Bar */}
             <div className="absolute bottom-6 left-4 right-4 z-[1000] pointer-events-none">
                 <div className="flex items-end gap-2">
@@ -832,7 +878,7 @@ export default function Home() {
                             style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
                         >
                             <Navigation className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-                            ROUTES
+                            COMMAND CENTER
                             {routesGenerating && <Loader2 className="w-3 h-3 ml-2 animate-spin" />}
                             {!routesGenerating && (hydratedSavedRoutes.length > 0 || routes.length > 0) && (
                                 <Badge className="ml-2 h-5 min-w-[20px] px-1" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
