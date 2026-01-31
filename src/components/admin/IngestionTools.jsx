@@ -3,14 +3,40 @@ import { Button } from "@/components/ui/button";
 import { Check, Copy, Terminal, Database } from "lucide-react";
 import { toast } from "sonner";
 
+import { base44 } from '@/api/base44Client';
+import { Loader2 } from 'lucide-react';
+
 export default function IngestionTools() {
     const [copied, setCopied] = useState(null);
+    const [testing, setTesting] = useState(false);
 
     const copyToClipboard = (text, id) => {
         navigator.clipboard.writeText(text);
         setCopied(id);
         toast.success("Copied to clipboard");
         setTimeout(() => setCopied(null), 2000);
+    };
+
+    const testConnection = async () => {
+        setTesting(true);
+        try {
+            // We use the SDK to call the function, which handles the auth cookie for admin session
+            const res = await base44.functions.invoke('ingestProperties', {}, 'GET');
+            const data = res.data;
+            
+            if (data.status === 'online') {
+                toast.success(`Connected! Table exists. Row count: ${data.details.count}`);
+            } else if (data.status === 'connected_no_table') {
+                toast.warning("Connected to Neon, but table 'properties' is missing. Run the SQL Schema below!");
+            } else {
+                toast.error(`Connection Error: ${data.message}`);
+            }
+        } catch (e) {
+            toast.error("Failed to connect. Check DATABASE_URL secret.");
+            console.error(e);
+        } finally {
+            setTesting(false);
+        }
     };
 
     const SQL_SCHEMA = `-- 1. Enable PostGIS
@@ -123,6 +149,17 @@ run();`;
 
     return (
         <div className="space-y-6">
+            <div className="flex gap-4">
+                <Button 
+                    onClick={testConnection} 
+                    disabled={testing}
+                    className={`flex-1 font-bold ${testing ? 'bg-gray-800' : 'bg-green-600 hover:bg-green-700'}`}
+                >
+                    {testing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
+                    {testing ? "Testing Connection..." : "Test Neon Connection"}
+                </Button>
+            </div>
+
             <div className="p-4 rounded-xl bg-[#0A0A0A] border border-[#222]">
                 <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">

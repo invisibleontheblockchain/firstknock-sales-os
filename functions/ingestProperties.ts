@@ -12,31 +12,50 @@ function generatePropertyId(address, zip, city) {
 }
 
 Deno.serve(async (req) => {
-    // Only allow POST requests
-    if (req.method !== 'POST') {
-        return new Response('Method Not Allowed', { status: 405 });
-    }
-
     try {
-        // 1. Authenticate Request
         const base44 = createClientFromRequest(req);
-        
-        // Check for Pipeline Secret (API Key) first
         const secretHeader = req.headers.get('x-pipeline-secret');
         const envSecret = Deno.env.get('PIPELINE_SECRET');
         const isSecretValid = envSecret && secretHeader === envSecret;
 
-        // Fallback to Admin User Session
-        let user = null;
+        // Auth Check (Secret or Admin)
         if (!isSecretValid) {
-            user = await base44.auth.me();
+            const user = await base44.auth.me();
             if (!user || user.role !== 'admin') {
-                return Response.json({ 
-                    error: 'Unauthorized', 
-                    message: 'Missing valid x-pipeline-secret header or Admin session' 
-                }, { status: 403 });
+                return Response.json({ error: 'Unauthorized' }, { status: 403 });
             }
         }
+
+        // HEALTH CHECK (GET)
+        if (req.method === 'GET') {
+            try {
+                const sql = neon(CONNECTION_STRING);
+                // Simple check + table existence check
+                const [result] = await sql`
+                    SELECT 
+                        count(*) as count,
+                        EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'properties') as table_exists
+                    FROM properties`;
+                
+                return Response.json({ 
+                    status: 'online', 
+                    message: 'Connected to Neon',
+                    details: result
+                });
+            } catch (e) {
+                // If table doesn't exist, it might throw, so we catch specifically
+                if (e.message.includes('relation "properties" does not exist')) {
+                     return Response.json({ 
+                        status: 'connected_no_table', 
+                        message: 'Connected, but "properties" table missing. Run SQL Schema.' 
+                    });
+                }
+                return Response.json({ status: 'error', message: e.message }, { status: 500 });
+            }
+        }
+
+        // INGESTION (POST)
+        if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
 
         // 2. Parse Payload
         const payload = await req.json();
