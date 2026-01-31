@@ -126,6 +126,7 @@ export default function Home() {
     const [previewRoute, setPreviewRoute] = useState(null);
     const [startLocation, setStartLocation] = useState(null); // { lat, lng, address }
     const [startAddressInput, setStartAddressInput] = useState("");
+    const [zipCodeFilter, setZipCodeFilter] = useState(''); // Comma separated string
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
     const [mode, setMode] = useState('analyze'); // 'analyze' or 'generate'
