@@ -342,7 +342,7 @@ export default function Home() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
             queryClient.invalidateQueries({ queryKey: ['localRoutes'] }); // Ensure local readers update
-            alert("Route saved successfully!");
+            toast.success("Route saved successfully!", { duration: 2000 });
         }
     });
 
@@ -1315,26 +1315,44 @@ export default function Home() {
                                                     Separate multiple zips with commas.
                                                 </p>
                                                 {zipCodeFilter.length === 5 && (
-                                                    <button 
-                                                        onClick={async () => {
-                                                            if (!confirm(`Force sync properties for ${zipCodeFilter} from database?`)) return;
-                                                            try {
-                                                                const toastId = toast.loading("Syncing...");
-                                                                const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zipCodeFilter, force_sync: true });
-                                                                if (res.data.count > 0) {
-                                                                    toast.success(`Synced ${res.data.count} new properties!`, { id: toastId });
-                                                                    window.location.reload(); // Simple reload to fetch new props
-                                                                } else {
-                                                                    toast.info(res.data.message || "Up to date", { id: toastId });
+                                                    <div className="flex gap-3">
+                                                        <button 
+                                                            onClick={async () => {
+                                                                if (!confirm(`Force sync properties for ${zipCodeFilter} from database?`)) return;
+                                                                try {
+                                                                    const toastId = toast.loading("Syncing...");
+                                                                    const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zipCodeFilter, force_sync: true });
+                                                                    if (res.data.count > 0) {
+                                                                        toast.success(`Synced ${res.data.count} new properties!`, { id: toastId });
+                                                                        window.location.reload(); // Simple reload to fetch new props
+                                                                    } else {
+                                                                        toast.info(res.data.message || "Up to date", { id: toastId });
+                                                                    }
+                                                                } catch (e) {
+                                                                    toast.error("Sync failed", { id: toastId });
                                                                 }
-                                                            } catch (e) {
-                                                                toast.error("Sync failed", { id: toastId });
-                                                            }
-                                                        }}
-                                                        className="text-[10px] font-bold text-blue-400 hover:text-blue-300 flex items-center gap-1"
-                                                    >
-                                                        <RefreshCw className="w-3 h-3" /> Force Sync
-                                                    </button>
+                                                            }}
+                                                            className="text-[10px] font-bold text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                                                        >
+                                                            <RefreshCw className="w-3 h-3" /> Force Sync
+                                                        </button>
+                                                        <button 
+                                                            onClick={async () => {
+                                                                if (!confirm(`DANGER: Are you sure you want to DELETE ALL properties in zip ${zipCodeFilter}? This cannot be undone.`)) return;
+                                                                try {
+                                                                    const toastId = toast.loading("Deleting area data...");
+                                                                    const res = await base44.functions.invoke('cleanupDatabase', { action: 'cleanup', zip_code: zipCodeFilter });
+                                                                    toast.success(`Deleted ${res.data.deleted} properties in ${zipCodeFilter}`, { id: toastId });
+                                                                    setTimeout(() => window.location.reload(), 1500);
+                                                                } catch (e) {
+                                                                    toast.error("Deletion failed", { id: toastId });
+                                                                }
+                                                            }}
+                                                            className="text-[10px] font-bold text-red-500 hover:text-red-400 flex items-center gap-1"
+                                                        >
+                                                            <X className="w-3 h-3" /> Clear Area
+                                                        </button>
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>

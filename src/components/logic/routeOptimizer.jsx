@@ -325,11 +325,44 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
     const numRoutes = Math.ceil(scored.length / housesPerRoute);
 
     // Cluster properties
-    const clustered = kMeansClustering(scored, numRoutes);
+    // OPTIMIZATION: If multiple zip codes are present, cluster by Zip Code first to respect boundaries
+    let clustered = [];
+    
+    // Group by Zip Code if we have enough properties and variance
+    const uniqueZips = [...new Set(scored.map(p => p.zip_code).filter(Boolean))];
+    const useZipClustering = uniqueZips.length > 1;
+
+    if (useZipClustering) {
+        let routeOffset = 0;
+        uniqueZips.forEach(zip => {
+            const zipProps = scored.filter(p => p.zip_code === zip);
+            // Determine routes needed for this zip
+            const zipRoutesCount = Math.max(1, Math.ceil(zipProps.length / housesPerRoute));
+            
+            // Sub-cluster this zip
+            const zipClustered = kMeansClustering(zipProps, zipRoutesCount);
+            
+            // Apply global cluster IDs
+            zipClustered.forEach(p => {
+                p.cluster = p.cluster + routeOffset;
+            });
+            
+            clustered = [...clustered, ...zipClustered];
+            routeOffset += zipRoutesCount;
+        });
+    } else {
+        // Standard K-Means for single area
+        clustered = kMeansClustering(scored, numRoutes);
+    }
 
     // Generate routes
     const routes = [];
-    for (let i = 0; i < numRoutes; i++) {
+    const totalClusters = useZipClustering ? Math.ceil(scored.length / housesPerRoute) + uniqueZips.length : numRoutes; // Approximate upper bound for loop
+
+    // We iterate through all unique cluster IDs found
+    const clusterIds = [...new Set(clustered.map(p => p.cluster))];
+
+    for (const i of clusterIds) {
         const clusterProps = clustered.filter(p => p.cluster === i);
         if (clusterProps.length === 0) continue;
 
