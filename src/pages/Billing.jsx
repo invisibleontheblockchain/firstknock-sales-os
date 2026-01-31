@@ -45,6 +45,23 @@ const PLANS = [
         ],
         color: '#FFD700',
         recommended: true
+    },
+    {
+        id: 'enterprise',
+        name: 'ENTERPRISE',
+        price: '$299',
+        priceId: '', // TODO: Add Stripe Price ID
+        description: 'Maximum power for large fleets.',
+        features: [
+            'Up to 100 Users',
+            'Unlimited Dark Room Data',
+            'Custom API Access',
+            'Dedicated Success Manager',
+            'White-Label Options',
+            'SLA & 24/7 Support'
+        ],
+        color: '#3b82f6',
+        recommended: false
     }
 ];
 
@@ -104,11 +121,11 @@ export default function Billing() {
                 </div>
 
                 {/* Plans Grid */}
-                <div className="grid md:grid-cols-2 gap-8 items-start">
+                <div className="grid md:grid-cols-3 gap-6 items-start">
                     {PLANS.map(plan => (
                         <div 
                             key={plan.id}
-                            className={`relative rounded-2xl p-8 border transition-all duration-300 ${
+                            className={`relative rounded-2xl p-6 border transition-all duration-300 ${
                                 plan.recommended 
                                     ? 'bg-[#111] border-yellow-500 shadow-[0_0_30px_rgba(255,215,0,0.1)] scale-105 z-10' 
                                     : 'bg-black border-gray-800 hover:border-gray-700'
