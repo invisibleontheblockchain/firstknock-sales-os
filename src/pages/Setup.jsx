@@ -5,6 +5,7 @@ import { Upload, Download, Database } from 'lucide-react';
 import CsvUploader from '../components/dashboard/CsvUploader';
 import DataMarketplace from '../components/dashboard/DataMarketplace';
 import TerritoryFilter from '../components/setup/TerritoryFilter';
+import IngestionTools from '../components/admin/IngestionTools';
 import { createPageUrl } from '@/utils';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
