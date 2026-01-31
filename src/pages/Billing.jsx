@@ -127,7 +127,7 @@ export default function Billing() {
                                 </h3>
                                 <div className="flex items-baseline gap-1">
                                     <span className="text-4xl font-extrabold text-white">{plan.price}</span>
-                                    <span className="text-gray-500 text-sm">/user/mo</span>
+                                    <span className="text-gray-500 text-sm">/mo</span>
                                 </div>
                                 <p className="text-sm text-gray-400 h-10">{plan.description}</p>
                             </div>

@@ -48,10 +48,12 @@
  * The mainPage value must match a key in the PAGES object exactly.
  */
 import AdminTeam from './pages/AdminTeam';
+import Billing from './pages/Billing';
 import DatabaseDiagnostic from './pages/DatabaseDiagnostic';
 import DeleteAccount from './pages/DeleteAccount';
 import Home from './pages/Home';
 import List from './pages/List';
+import MobileApp from './pages/MobileApp';
 import RepHome from './pages/RepHome';
 import Roadmap from './pages/Roadmap';
 import RoleSelect from './pages/RoleSelect';
@@ -61,17 +63,17 @@ import Sync from './pages/Sync';
 import Terms from './pages/Terms';
 import Tutorial from './pages/Tutorial';
 import ZipCodeExplorer from './pages/ZipCodeExplorer';
-import Billing from './pages/Billing';
-import MobileApp from './pages/MobileApp';
 import __Layout from './Layout.jsx';
 
 
 export const PAGES = {
     "AdminTeam": AdminTeam,
+    "Billing": Billing,
     "DatabaseDiagnostic": DatabaseDiagnostic,
     "DeleteAccount": DeleteAccount,
     "Home": Home,
     "List": List,
+    "MobileApp": MobileApp,
     "RepHome": RepHome,
     "Roadmap": Roadmap,
     "RoleSelect": RoleSelect,
@@ -81,8 +83,6 @@ export const PAGES = {
     "Terms": Terms,
     "Tutorial": Tutorial,
     "ZipCodeExplorer": ZipCodeExplorer,
-    "Billing": Billing,
-    "MobileApp": MobileApp,
 }
 
 export const pagesConfig = {
