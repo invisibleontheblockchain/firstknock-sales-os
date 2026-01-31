@@ -20,7 +20,7 @@ const PLANS = [
         priceId: 'price_1SvkEWEuXj1jcxU8SnED0qrs',
         description: 'For solo reps & small teams.',
         features: [
-            'Up to 5 Users',
+            'Best for 1-5 Users',
             'Live GPS Tracking',
             'Basic Territory Management',
             'Manual Route Building',
@@ -36,7 +36,7 @@ const PLANS = [
         priceId: 'price_1SvkEWEuXj1jcxU8RGN3pB3i',
         description: 'For scaling sales organizations.',
         features: [
-            'Up to 20 Users',
+            'Best for 5-20 Users',
             'Command Center Auto-Dispatch',
             'Dark Room Intelligence (2k/mo)',
             'AI Route Optimization',
@@ -53,7 +53,7 @@ const PLANS = [
         priceId: '', // TODO: Add Stripe Price ID
         description: 'Maximum power for large fleets.',
         features: [
-            'Up to 100 Users',
+            'Best for 20+ Users',
             'Unlimited Dark Room Data',
             'Custom API Access',
             'Dedicated Success Manager',
@@ -67,6 +67,7 @@ const PLANS = [
 
 export default function Billing() {
     const [loadingPriceId, setLoadingPriceId] = useState(null);
+    const [seats, setSeats] = useState(1);
 
     const { data: user } = useQuery({
         queryKey: ['user'],
@@ -84,6 +85,7 @@ export default function Billing() {
             setLoadingPriceId(priceId);
             const res = await base44.functions.invoke('createCheckoutSession', {
                 priceId,
+                quantity: seats,
                 successUrl: window.location.origin + '/Billing?success=true',
                 cancelUrl: window.location.origin + '/Billing?canceled=true'
             });
@@ -111,6 +113,34 @@ export default function Billing() {
                     <p className="text-gray-400 max-w-lg mx-auto">
                         Unlock advanced logistics, dark room intelligence, and auto-dispatch capabilities.
                     </p>
+
+                    {/* Seat Selector */}
+                    <div className="bg-[#111] border border-gray-800 rounded-xl p-4 max-w-xs mx-auto flex flex-col items-center gap-3">
+                        <label className="text-sm font-bold text-gray-400 uppercase tracking-wider">How big is your team?</label>
+                        <div className="flex items-center gap-4">
+                            <Button 
+                                variant="outline" 
+                                size="icon"
+                                onClick={() => setSeats(Math.max(1, seats - 1))}
+                                className="h-10 w-10 rounded-full border-gray-700 hover:bg-gray-800"
+                            >
+                                -
+                            </Button>
+                            <span className="text-3xl font-extrabold w-12 text-center text-yellow-500">{seats}</span>
+                            <Button 
+                                variant="outline" 
+                                size="icon"
+                                onClick={() => setSeats(seats + 1)}
+                                className="h-10 w-10 rounded-full border-gray-700 hover:bg-gray-800"
+                            >
+                                +
+                            </Button>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                            {seats === 1 ? 'Solo User' : `${seats} Team Members`}
+                        </p>
+                    </div>
+
                     {isSubscribed && (
                         <div className="inline-block bg-green-900/30 border border-green-500/50 rounded-full px-4 py-1">
                             <span className="text-green-400 text-sm font-bold flex items-center gap-2">
@@ -144,7 +174,10 @@ export default function Billing() {
                                 </h3>
                                 <div className="flex items-baseline gap-1">
                                     <span className="text-4xl font-extrabold text-white">{plan.price}</span>
-                                    <span className="text-gray-500 text-sm">/mo</span>
+                                    <span className="text-gray-500 text-sm">/user/mo</span>
+                                </div>
+                                <div className="text-xs text-gray-500 font-medium mt-1">
+                                    Total: <span className="text-gray-300">${parseInt(plan.price.replace('$','')) * seats}</span> /mo
                                 </div>
                                 <p className="text-sm text-gray-400 h-10">{plan.description}</p>
                             </div>

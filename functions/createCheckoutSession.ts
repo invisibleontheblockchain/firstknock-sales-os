@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { priceId, successUrl, cancelUrl } = await req.json();
+        const { priceId, quantity = 1, successUrl, cancelUrl } = await req.json();
 
         if (!priceId) {
             return Response.json({ error: 'Price ID is required' }, { status: 400 });
@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
             line_items: [
                 {
                     price: priceId,
-                    quantity: 1,
+                    quantity: quantity,
                 },
             ],
             success_url: successUrl,
