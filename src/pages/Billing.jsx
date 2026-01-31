@@ -111,8 +111,8 @@ export default function Billing() {
     };
 
     return (
-        <div className="min-h-screen bg-black text-white p-6">
-            <div className="max-w-4xl mx-auto space-y-12">
+        <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-900 via-black to-black text-white p-6">
+            <div className="max-w-6xl mx-auto space-y-8">
                 
                 {/* Header */}
                 <div className="text-center space-y-4">
@@ -167,14 +167,14 @@ export default function Billing() {
                 </div>
 
                 {/* Plans Grid */}
-                <div className="grid md:grid-cols-3 gap-6 items-start">
+                <div className="grid md:grid-cols-3 gap-4 lg:gap-8 items-start">
                     {PLANS.map(plan => (
                         <div 
                             key={plan.id}
-                            className={`relative rounded-2xl p-6 border transition-all duration-300 ${
+                            className={`relative rounded-2xl p-6 border transition-all duration-300 flex flex-col h-full ${
                                 plan.recommended 
-                                    ? 'bg-[#111] border-yellow-500 shadow-[0_0_30px_rgba(255,215,0,0.1)] scale-105 z-10' 
-                                    : 'bg-black border-gray-800 hover:border-gray-700'
+                                    ? 'bg-gray-900/80 backdrop-blur-sm border-yellow-500 shadow-[0_0_40px_rgba(255,215,0,0.15)] scale-105 z-10' 
+                                    : 'bg-black/50 backdrop-blur-sm border-gray-800 hover:border-gray-600 hover:bg-gray-900/50'
                             }`}
                         >
                             {plan.recommended && (
@@ -198,9 +198,9 @@ export default function Billing() {
                                 <p className="text-sm text-gray-400 h-10">{plan.description}</p>
                             </div>
 
-                            <ul className="space-y-4 mb-8">
+                            <ul className="space-y-3 mb-8 flex-1">
                                 {plan.features.map((feature, i) => (
-                                    <li key={i} className="flex items-center gap-3 text-sm text-gray-300">
+                                    <li key={i} className="flex items-start gap-3 text-sm text-gray-300">
                                         <div className={`rounded-full p-1 ${plan.recommended ? 'bg-yellow-500/20 text-yellow-500' : 'bg-gray-800 text-gray-400'}`}>
                                             <Check className="w-3 h-3" />
                                         </div>
