@@ -321,6 +321,13 @@ export default function Home() {
         });
     };
 
+    const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
+        queryKey: ['interactionLogs', user?.email],
+        queryFn: () => user ? base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 5000) : [],
+        enabled: !!user
+    });
+    const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
+
     // Smart Assign Logic
     const getRecommendedRep = useCallback((routeIndex) => {
         if (teamMembers.length === 0) return null;
@@ -346,13 +353,6 @@ export default function Home() {
         const rep = scoredReps[routeIndex % scoredReps.length];
         return rep;
     }, [teamMembers, logs]);
-
-    const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
-        queryKey: ['interactionLogs', user?.email],
-        queryFn: () => user ? base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 5000) : [],
-        enabled: !!user
-    });
-    const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
 
     const createLogMutation = useMutation({
         mutationFn: (logData) => base44.entities.InteractionLog.create(logData),
