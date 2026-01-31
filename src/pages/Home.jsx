@@ -494,7 +494,26 @@ export default function Home() {
                 );
                 
                 const results = await Promise.all(fetchPromises);
-                const flattened = results.flat();
+                let flattened = results.flat();
+
+                // If no properties found, try to generate/import them via backend
+                if (flattened.length === 0) {
+                    console.log(`[Generate] No properties found for ${targetZips.join(', ')}. Attempting generation...`);
+                    // Try one by one or parallel? Parallel.
+                    const generatePromises = targetZips.map(zip => 
+                        base44.functions.invoke('fetchZipProperties', { zip_code: zip })
+                            .catch(err => {
+                                console.warn(`Failed to generate zip ${zip}`, err);
+                                return null;
+                            })
+                    );
+                    
+                    await Promise.all(generatePromises);
+                    
+                    // Re-fetch after generation
+                    const retryResults = await Promise.all(fetchPromises);
+                    flattened = retryResults.flat();
+                }
                 
                 if (flattened.length > 0) {
                     console.log(`[Generate] Fetched ${flattened.length} properties from backend for zips: ${targetZips.join(', ')}`);
