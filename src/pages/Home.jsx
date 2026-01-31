@@ -454,9 +454,27 @@ export default function Home() {
                 const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
                 const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
 
+                // Filter by Zip Codes if set
+                let filteredProps = availableProperties;
+                if (zipCodeFilter && zipCodeFilter.trim()) {
+                    const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
+                    if (targetZips.length > 0) {
+                        filteredProps = availableProperties.filter(p => {
+                            const pZip = String(p.zip_code || '').trim().slice(0, 5);
+                            return targetZips.includes(pZip);
+                        });
+                    }
+                }
+
+                if (filteredProps.length === 0) {
+                    alert("No properties found in the selected zip codes.");
+                    setRoutesGenerating(false);
+                    return;
+                }
+
                 // Pass logs for street cooldown filtering
                 const generated = generateOptimizedRoutes(
-                    availableProperties,
+                    filteredProps,
                     housesPerRoute,
                     start,
                     logs,
