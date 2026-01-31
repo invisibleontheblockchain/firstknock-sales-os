@@ -597,6 +597,7 @@ export default function AdminTeam() {
                         </>
                     )}
                 </div>
+                </div>
 
                 {/* 2. UNASSIGNED ROUTES (Secondary Display) */}
                 {routesByRep.unassigned.length > 0 && (
@@ -647,19 +648,7 @@ export default function AdminTeam() {
                     </div>
                 )}
 
-                {teamMembers.length === 0 && (
-                    <div className="text-center py-12 border-2 border-dashed border-gray-800 rounded-xl">
-                        <Users className="w-12 h-12 text-gray-700 mx-auto mb-3" />
-                        <h3 className="text-lg font-bold text-gray-400">No Team Members</h3>
-                        <p className="text-gray-600 text-sm mb-4">Add your first rep to get started.</p>
-                        <Button 
-                            onClick={() => setIsAddRepOpen(true)}
-                            className="bg-yellow-500 text-black font-bold"
-                        >
-                            Add First Rep
-                        </Button>
-                    </div>
-                )}
+
             </div>
         </div>
     );
