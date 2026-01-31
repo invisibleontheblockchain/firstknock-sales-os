@@ -41,7 +41,16 @@ export default function CsvUploader() {
             reader.onload = async (e) => {
                 try {
                     const jsonData = JSON.parse(e.target.result);
-                    const dataArray = Array.isArray(jsonData) ? jsonData : [jsonData];
+                    let dataArray = Array.isArray(jsonData) ? jsonData : [jsonData];
+
+                    // Smart Unwrapping: Check for common wrapper keys if it's an object
+                    if (!Array.isArray(jsonData) && jsonData) {
+                        if (Array.isArray(jsonData.properties)) dataArray = jsonData.properties;
+                        else if (Array.isArray(jsonData.data)) dataArray = jsonData.data;
+                        else if (Array.isArray(jsonData.items)) dataArray = jsonData.items;
+                        else if (Array.isArray(jsonData.results)) dataArray = jsonData.results;
+                    }
+
                     await processData(dataArray);
                 } catch (error) {
                     console.error("JSON parse error", error);
@@ -201,6 +210,11 @@ export default function CsvUploader() {
             const lng = parseFloat(normalizedRow.lng || normalizedRow.longitude || row.Lng || row.LONGITUDE || 0);
 
             if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) {
+                if (errorCount === 0) {
+                    console.warn("Import Validation Failed for Row:", row);
+                    console.warn("Normalized Keys:", Object.keys(normalizedRow));
+                    console.warn("Reason: Missing or invalid Latitude/Longitude");
+                }
                 errorCount++;
                 return;
             }
@@ -246,8 +260,9 @@ export default function CsvUploader() {
         });
 
         if (entities.length === 0) {
-            setUploadStatus({ success: false, message: `No valid rows found.` });
-            alert(`No valid rows found. Check your CSV columns.`);
+            const msg = `No valid rows found. \n\nRequirement: Properties must have 'lat' and 'lng' (or 'latitude'/'longitude') columns to be placed on the map.\n\nCheck the browser console for details on the first rejected row.`;
+            setUploadStatus({ success: false, message: `No valid rows with coordinates found.` });
+            alert(msg);
             setIsUploading(false);
             return;
         }
