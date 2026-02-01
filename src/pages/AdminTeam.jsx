@@ -254,17 +254,17 @@ export default function AdminTeam() {
                     </div>
                     
                     {/* Team Stats - Compact on Mobile */}
-                    <div className="grid grid-cols-3 gap-2 bg-[#111] rounded-xl p-3 border border-gray-800">
-                        <div className="text-center">
-                            <p className="text-xl md:text-2xl font-bold text-white">{teamTotals.doorsKnocked.toLocaleString()}</p>
+                    <div className="grid grid-cols-3 gap-1 bg-[#111] rounded-xl p-2 border border-gray-800">
+                        <div className="text-center px-1">
+                            <p className="text-lg sm:text-xl md:text-2xl font-bold text-white truncate">{teamTotals.doorsKnocked.toLocaleString()}</p>
                             <p className="text-[9px] md:text-[10px] font-bold text-gray-500 uppercase">Doors</p>
                         </div>
-                        <div className="text-center border-x border-gray-800">
-                            <p className="text-xl md:text-2xl font-bold text-green-400">{teamTotals.sales.toLocaleString()}</p>
+                        <div className="text-center border-x border-gray-800 px-1">
+                            <p className="text-lg sm:text-xl md:text-2xl font-bold text-green-400 truncate">{teamTotals.sales.toLocaleString()}</p>
                             <p className="text-[9px] md:text-[10px] font-bold text-gray-500 uppercase">Sales</p>
                         </div>
-                        <div className="text-center">
-                            <p className="text-xl md:text-2xl font-bold text-blue-400">{routes.length}</p>
+                        <div className="text-center px-1">
+                            <p className="text-lg sm:text-xl md:text-2xl font-bold text-blue-400 truncate">{routes.length}</p>
                             <p className="text-[9px] md:text-[10px] font-bold text-gray-500 uppercase">Routes</p>
                         </div>
                     </div>

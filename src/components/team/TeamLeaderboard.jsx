@@ -81,9 +81,9 @@ export default function TeamLeaderboard({ members, logs, routes }) {
                 <Avatar className="h-8 w-8 border border-gray-700">
                     <AvatarFallback style={{ backgroundColor: rep.color }}>{rep.name[0]}</AvatarFallback>
                 </Avatar>
-                <div>
-                    <p className="text-sm font-bold text-white">{rep.name}</p>
-                    <p className="text-[10px] text-gray-500">{rep.role}</p>
+                <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-white truncate">{rep.name}</p>
+                    <p className="text-[10px] text-gray-500 truncate">{rep.role}</p>
                 </div>
             </div>
             <div className="text-right">
