@@ -4,6 +4,42 @@ import Stripe from 'npm:stripe@14.14.0';
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const endpointSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
 
+// Helper to manage invite codes
+async function syncInviteCode(base44, userId, totalSeats) {
+    try {
+        // Find existing code for this user
+        // Note: Filtering logic depends on SDK capabilities. 
+        // If filter returns array:
+        const existingCodes = await base44.asServiceRole.entities.InviteCode.filter({ linked_user_id: userId });
+        const items = Array.isArray(existingCodes) ? existingCodes : (existingCodes?.items || []);
+        
+        if (items.length > 0) {
+            // Update existing
+            const code = items[0];
+            await base44.asServiceRole.entities.InviteCode.update(code.id, {
+                max_uses: totalSeats,
+                // Ensure it's active
+                is_active: true
+            });
+            console.log(`Updated invite code ${code.code} max_uses to ${totalSeats}`);
+        } else {
+            // Create new
+            const randomCode = Math.floor(100000 + Math.random() * 900000).toString();
+            await base44.asServiceRole.entities.InviteCode.create({
+                code: randomCode,
+                role: 'rep',
+                label: 'Team Invite Code',
+                max_uses: totalSeats,
+                linked_user_id: userId,
+                is_active: true
+            });
+            console.log(`Created new invite code ${randomCode} for user ${userId} with ${totalSeats} seats`);
+        }
+    } catch (e) {
+        console.error("Error syncing invite code:", e);
+    }
+}
+
 Deno.serve(async (req) => {
     try {
         const signature = req.headers.get('stripe-signature');
@@ -15,14 +51,12 @@ Deno.serve(async (req) => {
         let event;
 
         try {
-             // ASYNC verification is required in Deno
              event = await stripe.webhooks.constructEventAsync(body, signature, endpointSecret);
         } catch (err) {
             console.error(`Webhook signature verification failed: ${err.message}`);
             return Response.json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
         }
 
-        // Initialize Base44 client (Service Role for admin updates)
         const base44 = createClientFromRequest(req);
         
         switch (event.type) {
@@ -31,51 +65,69 @@ Deno.serve(async (req) => {
                 const userId = session.metadata.base44_user_id;
                 
                 if (userId) {
-                    // Update user's subscription status
-                    // Note: In a real app, you might want to fetch subscription details to get the end date
+                    // Get quantity (seats) from session if available, or fetch subscription
+                    let quantity = 1;
+                    // For subscription mode, session doesn't always have quantity directly in the root object easily accessible 
+                    // without expanding line_items, but usually line_items are not expanded in webhook payload.
+                    // However, we can fetch the subscription.
+                    if (session.subscription) {
+                        const sub = await stripe.subscriptions.retrieve(session.subscription);
+                        if (sub.items && sub.items.data.length > 0) {
+                            quantity = sub.items.data[0].quantity;
+                        }
+                    }
+
                     await base44.asServiceRole.entities.User.update(userId, {
                         stripe_customer_id: session.customer,
-                        subscription_status: 'active'
-                        // You could also store subscription ID here if you added it to schema
+                        subscription_status: 'active',
+                        total_seats: quantity
                     });
+
+                    // Sync Invite Code
+                    await syncInviteCode(base44, userId, quantity);
                 }
                 break;
             }
-            case 'customer.subscription.updated':
-            case 'customer.subscription.deleted': {
+            case 'customer.subscription.updated': {
                 const subscription = event.data.object;
-                const customerId = subscription.customer;
-                
-                // Find user by stripe_customer_id
-                // Note: Since we can't easily filter by custom user fields with service role in some versions,
-                // rely on metadata if possible, or assume 1:1 mapping if your DB supports it.
-                // Best practice: Store user_id in subscription metadata during checkout if possible, 
-                // or search users. For now, we'll try to find the user.
-                
-                // Fetch user by customer ID (requires scanning or index, here we assume we can list/filter)
-                // Limitation: If we can't filter Users by stripe_customer_id easily, this part might be tricky.
-                // BUT, we stored it. Let's try to filter.
-                
-                // NOTE: User entity filtering via API might be restricted. 
-                // Fallback: If we can't find user, we log it.
-                
-                // Status mapping
+                const userId = subscription.metadata?.base44_user_id;
                 const status = subscription.status;
+                const quantity = subscription.items.data[0].quantity;
                 const planId = subscription.items.data[0].price.id;
                 const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
 
-                // To update the correct user, we need their ID. 
-                // Ideally we'd look them up by stripe_customer_id.
-                // const users = await base44.asServiceRole.entities.User.filter({ stripe_customer_id: customerId });
-                // if (users.items.length > 0) {
-                //     await base44.asServiceRole.entities.User.update(users.items[0].id, {
-                //         subscription_status: status,
-                //         subscription_plan_id: planId,
-                //         subscription_period_end: periodEnd
-                //     });
-                // }
-                
-                console.log(`Subscription ${subscription.id} updated to ${status}`);
+                if (userId) {
+                     await base44.asServiceRole.entities.User.update(userId, {
+                        subscription_status: status,
+                        subscription_plan_id: planId,
+                        subscription_period_end: periodEnd,
+                        total_seats: quantity
+                    });
+
+                    if (status === 'active' || status === 'trialing') {
+                        await syncInviteCode(base44, userId, quantity);
+                    }
+                } else {
+                    // Fallback: Try to find user by stripe_customer_id if needed
+                    // But we relied on metadata propagation.
+                    console.log(`No userId in subscription metadata for ${subscription.id}`);
+                }
+                break;
+            }
+            case 'customer.subscription.deleted': {
+                const subscription = event.data.object;
+                const userId = subscription.metadata?.base44_user_id;
+                if (userId) {
+                    await base44.asServiceRole.entities.User.update(userId, {
+                        subscription_status: 'canceled'
+                    });
+                    // Disable invite code?
+                    const existingCodes = await base44.asServiceRole.entities.InviteCode.filter({ linked_user_id: userId });
+                    const items = Array.isArray(existingCodes) ? existingCodes : (existingCodes?.items || []);
+                    if(items.length > 0) {
+                        await base44.asServiceRole.entities.InviteCode.update(items[0].id, { is_active: false });
+                    }
+                }
                 break;
             }
         }

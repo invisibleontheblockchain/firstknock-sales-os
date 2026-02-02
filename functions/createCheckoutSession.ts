@@ -47,6 +47,11 @@ Deno.serve(async (req) => {
                     quantity: quantity,
                 },
             ],
+            subscription_data: {
+                metadata: {
+                    base44_user_id: user.id
+                }
+            },
             success_url: successUrl,
             cancel_url: cancelUrl,
             metadata: {
