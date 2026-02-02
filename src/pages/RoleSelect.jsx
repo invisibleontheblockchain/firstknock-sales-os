@@ -8,12 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
 export default function RoleSelect() {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const [inviteCode, setInviteCode] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [showRepCodeDialog, setShowRepCodeDialog] = useState(false);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
     const updateUserMutation = useMutation({
@@ -22,31 +24,16 @@ export default function RoleSelect() {
     });
 
     const selectRole = async (role) => {
+        if (role === 'rep') {
+            setShowRepCodeDialog(true);
+            return;
+        }
+
+        // Manager flow
         setIsLoading(true);
         try {
             await updateUserMutation.mutateAsync({ app_role: role });
-            
-            // Create default team member record if it doesn't exist
-            if (role === 'rep') {
-                const existingMembers = await base44.entities.TeamMember.filter({ email: user.email }, '-created_date', 1);
-                const memberExists = existingMembers?.items?.length > 0 || (Array.isArray(existingMembers) && existingMembers.length > 0);
-
-                if (!memberExists) {
-                    await base44.entities.TeamMember.create({
-                        name: user.full_name || user.email.split('@')[0],
-                        email: user.email,
-                        role: 'rep',
-                        status: 'active',
-                        color: '#' + Math.floor(Math.random()*16777215).toString(16)
-                    });
-                }
-            }
-
-            if (role === 'manager') {
-                navigate(createPageUrl('Home'));
-            } else {
-                navigate(createPageUrl('RepHome'));
-            }
+            navigate(createPageUrl('Home'));
         } catch (error) {
             console.error(error);
             toast.error("Failed to set role");
@@ -95,6 +82,7 @@ export default function RoleSelect() {
             toast.error("Failed to verify code");
         } finally {
             setIsLoading(false);
+            setShowRepCodeDialog(false);
         }
     };
 
@@ -231,6 +219,41 @@ export default function RoleSelect() {
             <div className="py-6 text-center text-xs text-gray-600">
                 <p>Protected by FirstKnock Security</p>
             </div>
+
+            <Dialog open={showRepCodeDialog} onOpenChange={setShowRepCodeDialog}>
+                <DialogContent className="bg-[#111] border-gray-800 text-white">
+                    <DialogHeader>
+                        <DialogTitle>Enter Team Code</DialogTitle>
+                        <DialogDescription>
+                            You must enter a valid team code to join as a sales rep.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                         <div className="bg-[#151515] p-1 rounded-2xl border border-gray-800 flex items-center">
+                            <div className="pl-4 text-gray-500">
+                                <Key className="w-5 h-5" />
+                            </div>
+                            <Input
+                                value={inviteCode}
+                                onChange={(e) => setInviteCode(e.target.value)}
+                                placeholder="Enter Team PIN..."
+                                className="bg-transparent border-0 text-white placeholder:text-gray-600 focus-visible:ring-0 h-14 text-base"
+                                type="text"
+                                autoFocus
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                         <Button 
+                            onClick={handleCodeSubmit}
+                            disabled={!inviteCode || isLoading}
+                            className="w-full bg-yellow-500 text-black font-bold hover:bg-yellow-400"
+                        >
+                            {isLoading ? 'Verifying...' : 'Join Team'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }

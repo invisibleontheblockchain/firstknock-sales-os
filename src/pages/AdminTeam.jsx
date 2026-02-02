@@ -190,9 +190,20 @@ export default function AdminTeam() {
             toast.error("Name and Email are required");
             return;
         }
-        if (user?.total_seats && teamMembers.length >= user.total_seats) {
-             toast.error("Seat limit reached. Please upgrade your plan.");
-             if(confirm("You have reached your seat limit ("+user.total_seats+"). Go to Billing to add more seats?")) {
+        
+        // Free Plan Check (If no active subscription, limit to 1 seat - just the manager)
+        const isActiveSub = user?.subscription_status === 'active';
+        // If paid, use total_seats (defaults to 1 if not set but active? shouldn't happen). If free, max 1.
+        const effectiveLimit = isActiveSub ? (user.total_seats || 1) : 1;
+        
+        if (teamMembers.length >= effectiveLimit) {
+             const message = isActiveSub 
+                ? `You have reached your seat limit (${effectiveLimit}). Upgrade to add more users.`
+                : "Free plan limit reached. Upgrade to add team members.";
+                
+             toast.error(message);
+             
+             if(confirm(`${message} Go to Billing?`)) {
                  navigate(createPageUrl('Billing'));
              }
              return;

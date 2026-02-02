@@ -123,7 +123,7 @@ export default function Layout({ children }) {
     // }
 
     return (
-        <div className="flex flex-col h-screen font-sans overflow-hidden" style={{ background: '#0A0A0A', color: '#E5E5E5' }}>
+        <div className="flex flex-col h-[100dvh] font-sans overflow-hidden" style={{ background: '#0A0A0A', color: '#E5E5E5' }}>
             {/* Brand Theme + Map Styles */}
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
@@ -218,7 +218,7 @@ export default function Layout({ children }) {
             </main>
 
             {/* Bottom Navigation - Different for Rep vs Manager */}
-            <nav className="bg-black border-t border-slate-800 z-20 safe-area-bottom">
+            <nav className="bg-black border-t border-slate-800 z-20 safe-area-bottom shrink-0">
                 {user.app_role === 'rep' ? (
                     // Rep Navigation - Simple
                     <div className="flex justify-around items-center h-16 max-w-full mx-auto">
