@@ -150,7 +150,7 @@ export default function Billing() {
 
     return (
         <div className="h-full overflow-y-auto bg-black text-white p-4 sm:p-6 lg:p-8">
-            <div className="max-w-7xl mx-auto space-y-10">
+            <div className="max-w-6xl mx-auto space-y-10">
                 
                 {/* Header */}
                 <div className="text-center space-y-4">
@@ -252,7 +252,7 @@ export default function Billing() {
                                 <div className="text-xs text-gray-500 font-medium mt-1">
                                     Total: <span className="text-gray-300">${parseInt(plan.price.replace('$','')) * seats}</span> /mo
                                 </div>
-                                <p className="text-sm text-gray-400 h-10">{plan.description}</p>
+                                <p className="text-sm text-gray-400 min-h-[3rem]">{plan.description}</p>
                             </div>
 
                             <ul className="space-y-3 mb-8 flex-1">

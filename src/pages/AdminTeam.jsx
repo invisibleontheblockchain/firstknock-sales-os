@@ -218,14 +218,6 @@ export default function AdminTeam() {
                         <p className="text-gray-400 text-sm mt-1">Manage your team, routes, and performance.</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                         <Link to={createPageUrl('Roadmap')}>
-                            <Button variant="outline" className="h-9 border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800">
-                                <Activity className="w-4 h-4 mr-2" /> Audit
-                            </Button>
-                        </Link>
-                        <Button onClick={handleBackup} variant="outline" className="h-9 border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800">
-                            <DollarSign className="w-4 h-4 mr-2" /> Backup
-                        </Button>
                         <Dialog open={isAddRepOpen} onOpenChange={setIsAddRepOpen}>
                             <DialogTrigger asChild>
                                 <Button className="h-9 bg-yellow-500 text-black font-bold hover:bg-yellow-400">
