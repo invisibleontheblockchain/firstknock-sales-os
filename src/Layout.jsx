@@ -84,9 +84,11 @@ export default function Layout({ children }) {
     if (!user) {
         return (
             <div className="flex h-screen flex-col items-center justify-center bg-black text-white p-6 text-center space-y-6">
-                <div className="w-20 h-20 bg-yellow-500 rounded-2xl flex items-center justify-center mb-4 shadow-[0_0_30px_rgba(255,215,0,0.3)]">
-                    <Navigation className="w-10 h-10 text-black" />
-                </div>
+                <img 
+                    src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/4207f4197_ChatGPTImageFeb2202612_56_42AM.png" 
+                    alt="FirstKnock Logo" 
+                    className="w-24 h-24 rounded-2xl mb-4 shadow-[0_0_30px_rgba(255,215,0,0.3)] object-cover"
+                />
                 <h1 className="text-3xl font-bold tracking-tight">FirstKnock</h1>
                 <p className="text-gray-400 max-w-xs">
                     Your personal door-to-door sales territory manager. Login to access your secure data.
@@ -147,9 +149,11 @@ export default function Layout({ children }) {
             <header className="bg-black border-b border-slate-800 px-4 pt-[env(safe-area-inset-top)] pb-3 z-20 shadow-md">
                 <div className="flex justify-between items-center max-w-7xl mx-auto w-full pt-3">
                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-yellow-500 rounded-lg flex items-center justify-center">
-                            <span className="text-black font-bold text-sm">FK</span>
-                        </div>
+                        <img 
+                            src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/4207f4197_ChatGPTImageFeb2202612_56_42AM.png" 
+                            alt="FK" 
+                            className="w-8 h-8 rounded-lg object-cover"
+                        />
                         <h1 className="text-lg font-bold tracking-tight text-white">FirstKnock</h1>
                     </div>
                     
