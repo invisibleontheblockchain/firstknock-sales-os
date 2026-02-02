@@ -102,6 +102,21 @@ export default function Billing() {
 
     const isSubscribed = user?.subscription_status === 'active';
 
+    const handleManageSubscription = async () => {
+        try {
+            const res = await base44.functions.invoke('createPortalSession', {
+                returnUrl: window.location.href
+            });
+            if (res.data.url) {
+                window.location.href = res.data.url;
+            } else {
+                toast.error("Failed to load subscription portal");
+            }
+        } catch (error) {
+            toast.error("Error opening portal: " + error.message);
+        }
+    };
+
     // Helper to determine if a plan is allowed for the current seat count
     const isPlanAllowed = (planId) => {
         if (planId === 'hustler' && seats > 5) return false;
@@ -150,10 +165,19 @@ export default function Billing() {
                     </div>
 
                     {isSubscribed && (
-                        <div className="inline-block bg-green-900/30 border border-green-500/50 rounded-full px-4 py-1">
-                            <span className="text-green-400 text-sm font-bold flex items-center gap-2">
-                                <Check className="w-4 h-4" /> ACTIVE SUBSCRIPTION
-                            </span>
+                        <div className="flex flex-col items-center gap-4">
+                            <div className="inline-block bg-green-900/30 border border-green-500/50 rounded-full px-4 py-1">
+                                <span className="text-green-400 text-sm font-bold flex items-center gap-2">
+                                    <Check className="w-4 h-4" /> ACTIVE SUBSCRIPTION
+                                </span>
+                            </div>
+                            <Button 
+                                onClick={handleManageSubscription}
+                                variant="outline" 
+                                className="border-gray-700 hover:bg-gray-800 text-gray-300"
+                            >
+                                Manage Subscription / Cancel
+                            </Button>
                         </div>
                     )}
                 </div>
