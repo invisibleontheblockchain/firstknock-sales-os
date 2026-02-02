@@ -69,6 +69,11 @@ export default function AdminTeam() {
         }
     });
 
+    const { data: user } = useQuery({
+        queryKey: ['user'],
+        queryFn: () => base44.auth.me()
+    });
+
     // --- Mutations ---
     const createRepMutation = useMutation({
         mutationFn: (data) => base44.entities.TeamMember.create({ ...data, status: 'active', color: '#FFD700' }),
@@ -185,6 +190,14 @@ export default function AdminTeam() {
             toast.error("Name and Email are required");
             return;
         }
+        if (user?.total_seats && teamMembers.length >= user.total_seats) {
+             toast.error("Seat limit reached. Please upgrade your plan.");
+             if(confirm("You have reached your seat limit ("+user.total_seats+"). Go to Billing to add more seats?")) {
+                 navigate(createPageUrl('Billing'));
+             }
+             return;
+        }
+
         createRepMutation.mutate({
             ...newRep,
             email: newRep.email.trim().toLowerCase()
@@ -286,12 +299,15 @@ export default function AdminTeam() {
                         <span className="text-2xl font-extrabold text-white tracking-tight">{teamTotals.sales.toLocaleString()}</span>
                     </div>
 
-                    <div className="p-4 flex flex-col items-center justify-center hover:bg-white/5 transition-colors group">
+                    <div className="p-4 flex flex-col items-center justify-center hover:bg-white/5 transition-colors group cursor-pointer" onClick={() => navigate(createPageUrl('Billing'))}>
                         <div className="flex items-center gap-2 mb-1 text-blue-500 group-hover:scale-110 transition-transform">
                             <Users size={16} />
-                            <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Active Reps</span>
+                            <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Seats Usage</span>
                         </div>
-                        <span className="text-2xl font-extrabold text-white tracking-tight">{teamMembers.length}</span>
+                        <div className="flex items-baseline gap-1">
+                            <span className="text-2xl font-extrabold text-white tracking-tight">{teamMembers.length}</span>
+                            <span className="text-sm font-bold text-gray-500">/ {user?.total_seats || 1}</span>
+                        </div>
                     </div>
 
                     <div className="p-4 flex flex-col items-center justify-center hover:bg-white/5 transition-colors group">
@@ -486,16 +502,50 @@ export default function AdminTeam() {
                     {/* ACCESS TAB */}
                     <TabsContent value="access" className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl mx-auto">
                         <Card className="bg-[#111] border-gray-800">
-                            <CardHeader className="border-b border-gray-800">
-                                <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
-                                    <Key className="w-5 h-5 text-yellow-500" />
-                                    Access Codes
-                                </CardTitle>
-                                <CardDescription className="text-gray-400">Manage invite codes for new team members.</CardDescription>
+                            <CardHeader className="border-b border-gray-800 flex flex-row items-center justify-between">
+                                <div>
+                                    <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
+                                        <Key className="w-5 h-5 text-yellow-500" />
+                                        Team Access
+                                    </CardTitle>
+                                    <CardDescription className="text-gray-400">Manage invite codes for your team.</CardDescription>
+                                </div>
+                                <Button onClick={() => navigate(createPageUrl('Billing'))} variant="outline" size="sm" className="border-yellow-500 text-yellow-500 hover:bg-yellow-500/10">
+                                    Manage Seats ({teamMembers.length}/{user?.total_seats || 1})
+                                </Button>
                             </CardHeader>
                             <CardContent className="p-6 space-y-8">
+                                
+                                {/* PRIMARY TEAM CODE */}
+                                {inviteCodes.filter(c => c.linked_user_id === user?.id).map(code => (
+                                    <div key={code.id} className="bg-gradient-to-r from-yellow-900/20 to-black p-6 rounded-xl border border-yellow-500/30 flex items-center justify-between relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 p-2 opacity-10">
+                                            <Sparkles className="w-24 h-24 text-yellow-500" />
+                                        </div>
+                                        <div>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <Badge className="bg-yellow-500 text-black font-bold hover:bg-yellow-400">PRIMARY TEAM CODE</Badge>
+                                                <span className="text-xs text-gray-400">Auto-managed by subscription</span>
+                                            </div>
+                                            <div className="text-4xl font-mono font-bold text-white tracking-wider my-2">{code.code}</div>
+                                            <p className="text-sm text-gray-400">
+                                                Used by {teamMembers.length} reps (Max {code.max_uses})
+                                            </p>
+                                        </div>
+                                        <Button 
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(code.code);
+                                                toast.success("Code copied!");
+                                            }}
+                                            className="bg-yellow-500 text-black font-bold hover:bg-yellow-400 z-10"
+                                        >
+                                            Copy Code
+                                        </Button>
+                                    </div>
+                                ))}
+
                                 <div className="bg-black/40 p-5 rounded-xl border border-gray-800 space-y-4">
-                                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Generate New Code</h3>
+                                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Generate Custom Code</h3>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                         <div className="relative">
                                             <Input 
