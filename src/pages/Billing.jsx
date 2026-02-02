@@ -17,7 +17,7 @@ const PLANS = [
         id: 'hustler',
         name: 'HUSTLER',
         price: '$49',
-        priceId: 'price_1SvkEWEuXj1jcxU8SnED0qrs',
+        priceId: 'price_1SwDXY2MvSNi6E8hZb5nSRDw',
         description: 'For solo reps & small teams.',
         features: [
             'Max 5 Users',
@@ -33,7 +33,7 @@ const PLANS = [
         id: 'growth',
         name: 'GROWTH',
         price: '$99',
-        priceId: 'price_1SvkEWEuXj1jcxU8RGN3pB3i',
+        priceId: 'price_1SwDXY2MvSNi6E8hfhtK7rBc',
         description: 'For scaling sales organizations.',
         features: [
             'Max 20 Users',
@@ -49,7 +49,7 @@ const PLANS = [
         id: 'enterprise',
         name: 'ENTERPRISE',
         price: '$299',
-        priceId: '', // TODO: Add Stripe Price ID
+        priceId: 'price_1SwDXY2MvSNi6E8hbaKcsk0d',
         description: 'Maximum power for large fleets.',
         features: [
             'Best for 20+ Users',
