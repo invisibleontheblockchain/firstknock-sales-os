@@ -66,9 +66,10 @@ const PLANS = [
 
 export default function Billing() {
     const [loadingPriceId, setLoadingPriceId] = useState(null);
+    const [updatingSeats, setUpdatingSeats] = useState(false);
     const [seats, setSeats] = useState(1);
 
-    const { data: user } = useQuery({
+    const { data: user, refetch: refetchUser } = useQuery({
         queryKey: ['user'],
         queryFn: () => base44.auth.me()
     });
@@ -115,6 +116,28 @@ export default function Billing() {
             }
         } catch (error) {
             toast.error("Error opening portal: " + error.message);
+        }
+    };
+
+    const handleUpdateSeats = async () => {
+        if(!confirm(`Update subscription to ${seats} seats? You will be charged immediately for any added seats.`)) return;
+        
+        try {
+            setUpdatingSeats(true);
+            const res = await base44.functions.invoke('updateSubscriptionSeats', {
+                quantity: seats
+            });
+            
+            if (res.data.success) {
+                toast.success(`Updated to ${seats} seats successfully!`);
+            } else {
+                throw new Error(res.data.error || "Update failed");
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error("Failed to update seats: " + error.message);
+        } finally {
+            setUpdatingSeats(false);
         }
     };
 
@@ -166,18 +189,35 @@ export default function Billing() {
                     </div>
 
                     {isSubscribed && (
-                        <div className="flex flex-col items-center gap-4">
+                        <div className="flex flex-col items-center gap-4 mt-4">
                             <div className="inline-block bg-green-900/30 border border-green-500/50 rounded-full px-4 py-1">
                                 <span className="text-green-400 text-sm font-bold flex items-center gap-2">
                                     <Check className="w-4 h-4" /> ACTIVE SUBSCRIPTION
                                 </span>
                             </div>
+                            
+                            <div className="bg-[#111] border border-gray-800 rounded-xl p-4 flex flex-col items-center gap-3 w-full max-w-sm">
+                                <p className="text-xs text-gray-400 font-bold uppercase">Manage Seats</p>
+                                <div className="flex items-center gap-4">
+                                     {/* Re-use seat selector state */}
+                                     <span className="text-white text-sm">Target: <span className="text-yellow-500 font-bold">{seats} Seats</span></span>
+                                     <Button 
+                                        onClick={handleUpdateSeats} 
+                                        disabled={updatingSeats}
+                                        size="sm"
+                                        className="bg-yellow-500 text-black hover:bg-yellow-400 font-bold"
+                                    >
+                                        {updatingSeats ? 'Updating...' : 'Update Quantity'}
+                                    </Button>
+                                </div>
+                            </div>
+
                             <Button 
                                 onClick={handleManageSubscription}
                                 variant="outline" 
-                                className="border-gray-700 hover:bg-gray-800 text-gray-300"
+                                className="border-gray-700 hover:bg-gray-800 text-gray-300 text-xs h-8"
                             >
-                                Manage Subscription / Cancel
+                                Billing Portal / Cancel
                             </Button>
                         </div>
                     )}

@@ -1139,7 +1139,7 @@ export default function Home() {
             {/* Bottom Action Bar */}
             <div className="absolute bottom-6 left-4 right-4 z-[1000] pointer-events-none">
                 <div className="flex items-end gap-2">
-                    <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar pb-1 pointer-events-auto">
+                    <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar pb-1 pointer-events-auto pr-20">
                         <Button
                             onClick={() => setShowRoutePanel(true)}
                             className="rounded-full flex-1 px-4 h-12 sm:h-14 text-xs sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap min-w-[100px]"
@@ -1168,9 +1168,13 @@ export default function Home() {
                         )}
                     </div>
 
-                    <div className="flex flex-col gap-2 shrink-0 pointer-events-auto">
+                    <div className="flex flex-col gap-2 shrink-0 pointer-events-auto pb-20 sm:pb-0">
                          <Button
-                            onClick={() => setViewMode(viewMode === 'pins' ? 'heatmap' : 'pins')}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setViewMode(prev => prev === 'pins' ? 'heatmap' : 'pins');
+                                toast.info(viewMode === 'pins' ? "Heatmap Enabled" : "Showing Pins");
+                            }}
                             size="icon"
                             className="rounded-full w-14 h-14 shadow-2xl backdrop-blur-md transition-all duration-300"
                             style={{ 
@@ -1182,9 +1186,13 @@ export default function Home() {
                             {viewMode === 'heatmap' ? <Flame className="w-6 h-6 animate-pulse" /> : <Layers className="w-6 h-6" />}
                         </Button>
                         <Button
-                            onClick={() => {
+                            onClick={(e) => {
+                                e.stopPropagation();
                                 if (mapRef.current) {
                                     mapRef.current.locate({ setView: true, maxZoom: 16 });
+                                    toast.success("Locating...");
+                                } else {
+                                    toast.error("Map not ready");
                                 }
                             }}
                             size="icon"
