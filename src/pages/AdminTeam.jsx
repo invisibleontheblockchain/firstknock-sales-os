@@ -7,7 +7,9 @@ import { useNavigate } from 'react-router-dom';
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Users, Plus, UserPlus, Map, CheckCircle2, AlertCircle, X, Key, Sparkles, TrendingUp, DollarSign, Home, Shield } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Users, Plus, UserPlus, Map, CheckCircle2, AlertCircle, X, Key, Sparkles, TrendingUp, DollarSign, Home, Shield, Activity, BarChart3, Lock, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '../utils';
 import { toast } from "sonner";
@@ -27,21 +29,11 @@ export default function AdminTeam() {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const [isAddRepOpen, setIsAddRepOpen] = useState(false);
-    const [isRouteManagerOpen, setIsRouteManagerOpen] = useState(false);
-    const [isCodeManagerOpen, setIsCodeManagerOpen] = useState(false);
     const [routeSearch, setRouteSearch] = useState('');
-    const [zipSearch, setZipSearch] = useState('');
     const [newRep, setNewRep] = useState({ name: '', email: '', phone: '', role: 'rep' });
     const [newCode, setNewCode] = useState({ code: '', role: 'manager', label: '' });
-    const [selectedRep, setSelectedRep] = useState(null); // For detailed view
-
-    const handleZipSearch = () => {
-        if (zipSearch && zipSearch.length >= 5) {
-            navigate(createPageUrl('ZipCodeExplorer') + `?zip=${zipSearch}`);
-        } else {
-            toast.error("Please enter a valid zip code");
-        }
-    };
+    const [selectedRep, setSelectedRep] = useState(null); 
+    const [activeTab, setActiveTab] = useState("overview");
 
     // --- Queries ---
     const { data: teamMembers = [], isLoading: teamLoading } = useQuery({
@@ -68,11 +60,9 @@ export default function AdminTeam() {
         }
     });
 
-    // Fetch Logs for Metrics
     const { data: logs = [] } = useQuery({
         queryKey: ['teamLogs'],
         queryFn: async () => {
-            // Fetch recent logs to aggregate metrics
             const res = await base44.entities.InteractionLog.list('-created_date', 5000);
             return Array.isArray(res) ? res : (res?.items || []);
         }
@@ -94,7 +84,7 @@ export default function AdminTeam() {
             base44.entities.SavedRoute.update(routeId, {
                 assigned_to: memberId,
                 assigned_to_name: memberName,
-                status: 'ACTIVE' // Activate route on assignment
+                status: 'ACTIVE' 
             }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['allRoutes'] });
@@ -121,8 +111,6 @@ export default function AdminTeam() {
         try {
             toast.info("Preparing backup...");
             const response = await base44.functions.invoke('backupData');
-            
-            // Create blob and download
             const blob = new Blob([JSON.stringify(response.data, null, 2)], { type: 'application/json' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -132,7 +120,6 @@ export default function AdminTeam() {
             a.click();
             document.body.removeChild(a);
             window.URL.revokeObjectURL(url);
-            
             toast.success("Backup downloaded successfully");
         } catch (e) {
             console.error(e);
@@ -144,7 +131,6 @@ export default function AdminTeam() {
     const routesByRep = useMemo(() => {
         const grouped = { unassigned: [] };
         teamMembers.forEach(m => grouped[m.id] = []);
-        
         routes.forEach(r => {
             if (r.assigned_to && grouped[r.assigned_to]) {
                 grouped[r.assigned_to].push(r);
@@ -155,38 +141,25 @@ export default function AdminTeam() {
         return grouped;
     }, [routes, teamMembers]);
 
-    // Aggregate Metrics by Rep Email
     const metricsByRep = useMemo(() => {
         const metrics = {};
-        
-        // Initialize for all members
         teamMembers.forEach(m => {
-            metrics[m.email] = {
-                doorsKnocked: 0,
-                talkedTo: 0,
-                sales: 0
-            };
+            metrics[m.email] = { doorsKnocked: 0, talkedTo: 0, sales: 0 };
         });
-
         logs.forEach(log => {
             const email = log.created_by;
-            if (!metrics[email]) return; // Skip if not current team member (or old rep)
-
+            if (!metrics[email]) return;
             metrics[email].doorsKnocked++;
-            
             if (log.parsed_status !== 'NO_ANSWER' && log.parsed_status !== 'ELIGIBLE') {
                 metrics[email].talkedTo++;
             }
-
             if (log.parsed_status === 'SOLD' || log.parsed_status === 'QUALIFIED') {
                 metrics[email].sales++;
             }
         });
-
         return metrics;
     }, [logs, teamMembers]);
 
-    // Total Team Metrics
     const teamTotals = useMemo(() => {
         return Object.values(metricsByRep).reduce((acc, curr) => ({
             doorsKnocked: acc.doorsKnocked + curr.doorsKnocked,
@@ -197,22 +170,18 @@ export default function AdminTeam() {
 
     const teamAverage = useMemo(() => {
         const activeReps = Object.keys(metricsByRep).length || 1;
-        const avgKnocks = teamTotals.doorsKnocked / activeReps;
-        const avgSales = teamTotals.sales / activeReps;
         return {
-            knocks: avgKnocks,
-            sales: avgSales,
+            knocks: teamTotals.doorsKnocked / activeReps,
+            sales: teamTotals.sales / activeReps,
             conversion: teamTotals.doorsKnocked > 0 ? (teamTotals.sales / teamTotals.doorsKnocked * 100) : 0
         };
     }, [teamTotals, metricsByRep]);
 
-    // --- Handlers ---
     const handleAddRep = () => {
         if (!newRep.name || !newRep.email) {
             toast.error("Name and Email are required");
             return;
         }
-        // Normalize email to ensure better matching
         createRepMutation.mutate({
             ...newRep,
             email: newRep.email.trim().toLowerCase()
@@ -233,422 +202,421 @@ export default function AdminTeam() {
     }
 
     return (
-        <div className="h-full overflow-y-auto bg-black text-white p-3 md:p-6 pb-24">
-            <div className="max-w-6xl mx-auto space-y-6 w-full overflow-hidden">
+        <div className="h-full overflow-y-auto bg-black text-white p-4 md:p-6 pb-24">
+            <div className="max-w-7xl mx-auto space-y-8">
                 
-                {/* Header - Mobile Optimized */}
-                <div className="space-y-4">
-                    {/* Title */}
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <Users className="w-7 h-7 md:w-10 md:h-10 text-yellow-500" />
-                            <h1 className="text-2xl md:text-4xl font-extrabold tracking-tight">Team</h1>
-                        </div>
-                        <Button 
-                            onClick={() => setIsAddRepOpen(true)}
-                            size="sm"
-                            className="h-9 bg-yellow-500 text-black font-bold hover:bg-yellow-400 md:hidden"
-                        >
-                            <UserPlus className="w-4 h-4" />
-                        </Button>
+                {/* Header Section */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                    <div>
+                        <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
+                            <Shield className="w-8 h-8 text-yellow-500" />
+                            Command Center
+                        </h1>
+                        <p className="text-gray-400 text-sm mt-1">Manage your team, routes, and performance.</p>
                     </div>
-                    
-                    {/* Team Stats - Compact on Mobile */}
-                    <div className="grid grid-cols-3 gap-1 bg-[#111] rounded-xl p-2 border border-gray-800">
-                        <div className="text-center px-1">
-                            <p className="text-lg sm:text-xl md:text-2xl font-bold text-white truncate">{teamTotals.doorsKnocked.toLocaleString()}</p>
-                            <p className="text-[9px] md:text-[10px] font-bold text-gray-500 uppercase">Doors</p>
-                        </div>
-                        <div className="text-center border-x border-gray-800 px-1">
-                            <p className="text-lg sm:text-xl md:text-2xl font-bold text-green-400 truncate">{teamTotals.sales.toLocaleString()}</p>
-                            <p className="text-[9px] md:text-[10px] font-bold text-gray-500 uppercase">Sales</p>
-                        </div>
-                        <div className="text-center px-1">
-                            <p className="text-lg sm:text-xl md:text-2xl font-bold text-blue-400 truncate">{routes.length}</p>
-                            <p className="text-[9px] md:text-[10px] font-bold text-gray-500 uppercase">Routes</p>
-                        </div>
-                    </div>
-
-                    {/* Quick Action - Go to Command Center */}
-                    <div className="bg-gradient-to-r from-yellow-900/20 to-black p-4 rounded-xl border border-yellow-900/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                        <div>
-                            <h3 className="text-yellow-500 font-bold">Territory Command Center</h3>
-                            <p className="text-gray-400 text-xs">Analyze routes and generate new territories</p>
-                        </div>
-                        <Link to={createPageUrl('Home')} className="w-full sm:w-auto">
-                            <Button className="bg-yellow-500 text-black font-bold hover:bg-yellow-400 w-full sm:w-auto">
-                                <Map className="w-4 h-4 mr-2" />
-                                Open Map
+                    <div className="flex flex-wrap gap-2">
+                         <Link to={createPageUrl('Roadmap')}>
+                            <Button variant="outline" className="h-9 border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800">
+                                <Activity className="w-4 h-4 mr-2" /> Audit
                             </Button>
                         </Link>
-                    </div>
-
-                    {/* Action Buttons - Scrollable on Mobile */}
-                    <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
-                        <Link to={createPageUrl('Roadmap')}>
-                            <Button className="h-9 bg-[#1F1F1F] border border-gray-700 text-white hover:bg-[#333] text-xs whitespace-nowrap">
-                                <Shield className="w-4 h-4 mr-1" />
-                                Audit
-                            </Button>
-                        </Link>
-                        <Button 
-                            onClick={handleBackup}
-                            className="h-9 bg-[#1F1F1F] border border-gray-700 text-white hover:bg-[#333] text-xs whitespace-nowrap"
-                        >
-                            <DollarSign className="w-4 h-4 mr-1" />
-                            Backup
+                        <Button onClick={handleBackup} variant="outline" className="h-9 border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800">
+                            <DollarSign className="w-4 h-4 mr-2" /> Backup
                         </Button>
-                        <Dialog open={isCodeManagerOpen} onOpenChange={setIsCodeManagerOpen}>
-                            <DialogTrigger asChild>
-                                <Button className="h-9 bg-[#1F1F1F] border border-gray-700 text-white hover:bg-[#333] text-xs whitespace-nowrap">
-                                    <Key className="w-4 h-4 mr-1" />
-                                    Codes
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent className="bg-[#1F1F1F] border-gray-800 text-white">
-                                <DialogHeader>
-                                    <DialogTitle>Access Codes</DialogTitle>
-                                </DialogHeader>
-                                <div className="space-y-6">
-                                    <div className="space-y-3 p-4 bg-black/40 rounded-lg border border-gray-800">
-                                        <h4 className="text-xs font-bold text-gray-500 uppercase">Create New Code</h4>
-                                        <div className="grid grid-cols-2 gap-2">
-                                            <div className="relative">
-                                                <Input 
-                                                    placeholder="Code" 
-                                                    value={newCode.code}
-                                                    onChange={(e) => setNewCode({...newCode, code: e.target.value})}
-                                                    className="h-10 bg-black border-gray-700 pr-8"
-                                                />
-                                                <button 
-                                                    onClick={() => setNewCode({...newCode, code: Math.floor(1000 + Math.random() * 9000).toString()})}
-                                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-yellow-500 hover:text-yellow-400"
-                                                    title="Generate Random PIN"
-                                                >
-                                                    <Sparkles className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                            <Input 
-                                                placeholder="Label (e.g. Managers)" 
-                                                value={newCode.label}
-                                                onChange={(e) => setNewCode({...newCode, label: e.target.value})}
-                                                className="h-10 bg-black border-gray-700"
-                                            />
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <Select 
-                                                value={newCode.role} 
-                                                onValueChange={(v) => {
-                                                    // Auto-generate code if empty when role is selected
-                                                    const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
-                                                    setNewCode({
-                                                        ...newCode, 
-                                                        role: v, 
-                                                        code: newCode.code || randomCode
-                                                    });
-                                                }}
-                                            >
-                                                <SelectTrigger className="h-10 bg-black border-gray-700 flex-1">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
-                                                    <SelectItem value="rep">Sales Rep</SelectItem>
-                                                    <SelectItem value="manager">Manager</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                            <Button 
-                                                onClick={() => createCodeMutation.mutate(newCode)}
-                                                disabled={!newCode.code}
-                                                className="h-10 bg-green-600 hover:bg-green-700 font-bold"
-                                            >
-                                                Create
-                                            </Button>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <h4 className="text-xs font-bold text-gray-500 uppercase">Active Codes</h4>
-                                        {inviteCodes.length === 0 ? (
-                                            <p className="text-sm text-gray-500 italic">No active codes</p>
-                                        ) : (
-                                            inviteCodes.map(code => (
-                                                <div key={code.id} className="flex items-center justify-between p-3 bg-black/20 rounded border border-gray-800">
-                                                    <div>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="font-mono font-bold text-yellow-500 text-lg">{code.code}</span>
-                                                            <Badge variant="outline" className="text-[10px] border-gray-700">{code.role}</Badge>
-                                                        </div>
-                                                        <p className="text-xs text-gray-400">{code.label}</p>
-                                                    </div>
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="sm"
-                                                        onClick={() => deleteCodeMutation.mutate(code.id)}
-                                                        className="text-red-500 hover:bg-red-900/20 h-8 w-8 p-0"
-                                                    >
-                                                        <X className="w-4 h-4" />
-                                                    </Button>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
-                                </div>
-                            </DialogContent>
-                        </Dialog>
-
-
-
-                        <Dialog open={isRouteManagerOpen} onOpenChange={setIsRouteManagerOpen}>
-                            <DialogTrigger asChild>
-                                <Button className="h-9 bg-[#1F1F1F] border border-gray-700 text-white hover:bg-[#333] text-xs whitespace-nowrap">
-                                    <Map className="w-4 h-4 mr-1" />
-                                    Routes
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent className="bg-[#1F1F1F] border-gray-800 text-white max-w-4xl max-h-[80vh] flex flex-col">
-                                <DialogHeader>
-                                    <DialogTitle>Route Registry</DialogTitle>
-                                </DialogHeader>
-                                <div className="p-4 space-y-4 flex-1 overflow-hidden flex flex-col">
-                                    <Input 
-                                        placeholder="Search routes..." 
-                                        value={routeSearch}
-                                        onChange={(e) => setRouteSearch(e.target.value)}
-                                        className="h-10 bg-black border-gray-700"
-                                    />
-                                    <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-                                        {routes
-                                            .filter(r => r.name.toLowerCase().includes(routeSearch.toLowerCase()))
-                                            .map(route => (
-                                            <div key={route.id} className="flex items-center justify-between p-3 bg-black/40 rounded border border-gray-800">
-                                                <div>
-                                                    <p className="font-bold text-white">{route.name}</p>
-                                                    <p className="text-xs text-gray-400">
-                                                        {route.metrics?.house_count || 0} homes • {route.status}
-                                                    </p>
-                                                </div>
-                                                <div className="flex items-center gap-3">
-                                                    {route.assigned_to_name && (
-                                                        <Badge variant="outline" className="text-xs border-gray-600">
-                                                            Assigned: {route.assigned_to_name}
-                                                        </Badge>
-                                                    )}
-                                                    <Select onValueChange={(memberId) => handleAssign(route.id, memberId)}>
-                                                        <SelectTrigger className="w-[180px] h-9 text-xs bg-[#1F1F1F] border-gray-700">
-                                                            <SelectValue placeholder="Reassign..." />
-                                                        </SelectTrigger>
-                                                        <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
-                                                            {teamMembers.map(m => (
-                                                                <SelectItem key={m.id} value={m.id}>
-                                                                    {m.name}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </DialogContent>
-                        </Dialog>
-
                         <Dialog open={isAddRepOpen} onOpenChange={setIsAddRepOpen}>
                             <DialogTrigger asChild>
-                                <Button className="h-9 bg-yellow-500 text-black font-bold hover:bg-yellow-400 text-xs whitespace-nowrap hidden md:flex">
-                                    <UserPlus className="w-4 h-4 mr-1" />
-                                    Add Rep
+                                <Button className="h-9 bg-yellow-500 text-black font-bold hover:bg-yellow-400">
+                                    <UserPlus className="w-4 h-4 mr-2" /> Add Rep
                                 </Button>
                             </DialogTrigger>
-                        <DialogContent className="bg-[#1F1F1F] border-gray-800 text-white">
-                            <DialogHeader>
-                                <DialogTitle>Add Team Member</DialogTitle>
-                            </DialogHeader>
-                            <div className="space-y-4 py-4">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-gray-400">FULL NAME</label>
-                                    <Input 
-                                        value={newRep.name}
-                                        onChange={(e) => setNewRep({...newRep, name: e.target.value})}
-                                        className="h-10 bg-black border-gray-700"
-                                        placeholder="John Doe"
-                                    />
+                            <DialogContent className="bg-[#111] border-gray-800 text-white">
+                                <DialogHeader>
+                                    <DialogTitle>Add New Team Member</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4 py-4">
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-gray-500">FULL NAME</label>
+                                        <Input 
+                                            value={newRep.name}
+                                            onChange={(e) => setNewRep({...newRep, name: e.target.value})}
+                                            className="bg-black border-gray-700"
+                                            placeholder="Ex: John Doe"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-gray-500">EMAIL</label>
+                                        <Input 
+                                            value={newRep.email}
+                                            onChange={(e) => setNewRep({...newRep, email: e.target.value})}
+                                            className="bg-black border-gray-700"
+                                            placeholder="john@example.com"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-gray-500">ROLE</label>
+                                        <Select value={newRep.role} onValueChange={(v) => setNewRep({...newRep, role: v})}>
+                                            <SelectTrigger className="bg-black border-gray-700">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent className="bg-[#111] border-gray-800 text-white">
+                                                <SelectItem value="rep">Sales Rep</SelectItem>
+                                                <SelectItem value="manager">Manager</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <Button onClick={handleAddRep} className="w-full bg-yellow-500 text-black font-bold mt-2">
+                                        Create Account
+                                    </Button>
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-gray-400">EMAIL</label>
-                                    <Input 
-                                        value={newRep.email}
-                                        onChange={(e) => setNewRep({...newRep, email: e.target.value})}
-                                        className="h-10 bg-black border-gray-700"
-                                        placeholder="john@example.com"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-gray-400">PHONE</label>
-                                    <Input 
-                                        value={newRep.phone}
-                                        onChange={(e) => setNewRep({...newRep, phone: e.target.value})}
-                                        className="h-10 bg-black border-gray-700"
-                                        placeholder="(555) 123-4567"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-gray-400">ROLE</label>
-                                    <Select 
-                                        value={newRep.role} 
-                                        onValueChange={(v) => setNewRep({...newRep, role: v})}
-                                    >
-                                        <SelectTrigger className="h-10 bg-black border-gray-700">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
-                                            <SelectItem value="rep">Sales Rep</SelectItem>
-                                            <SelectItem value="manager">Manager</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <Button 
-                                    onClick={handleAddRep}
-                                    className="w-full h-10 bg-yellow-500 text-black font-bold mt-4"
-                                >
-                                    Create Member
-                                </Button>
-                            </div>
-                        </DialogContent>
-                    </Dialog>
+                            </DialogContent>
+                        </Dialog>
                     </div>
                 </div>
 
-                {/* 1. TERRITORY INTELLIGENCE */}
-                <div className="space-y-4">
-                    <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-purple-500" />
-                        Territory Intelligence
-                    </h2>
-                    <RouteInsights />
-                    </div>
+                {/* KPI Stats Cards */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <Card className="bg-[#111] border-gray-800 hover:border-yellow-500/30 transition-all">
+                        <CardContent className="p-5">
+                            <div className="flex justify-between items-start mb-2">
+                                <div className="p-2 bg-yellow-500/10 rounded-lg">
+                                    <TrendingUp className="w-5 h-5 text-yellow-500" />
+                                </div>
+                                <span className="text-[10px] font-bold text-green-500 bg-green-900/20 px-2 py-0.5 rounded-full">LIVE</span>
+                            </div>
+                            <div className="space-y-1">
+                                <h3 className="text-2xl font-extrabold text-white">{teamTotals.doorsKnocked.toLocaleString()}</h3>
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Total Knocks</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-[#111] border-gray-800 hover:border-green-500/30 transition-all">
+                         <CardContent className="p-5">
+                            <div className="flex justify-between items-start mb-2">
+                                <div className="p-2 bg-green-500/10 rounded-lg">
+                                    <DollarSign className="w-5 h-5 text-green-500" />
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <h3 className="text-2xl font-extrabold text-white">{teamTotals.sales.toLocaleString()}</h3>
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Total Sales</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-[#111] border-gray-800 hover:border-blue-500/30 transition-all">
+                         <CardContent className="p-5">
+                            <div className="flex justify-between items-start mb-2">
+                                <div className="p-2 bg-blue-500/10 rounded-lg">
+                                    <Users className="w-5 h-5 text-blue-500" />
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <h3 className="text-2xl font-extrabold text-white">{teamMembers.length}</h3>
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Active Reps</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                    <Card className="bg-[#111] border-gray-800 hover:border-purple-500/30 transition-all">
+                         <CardContent className="p-5">
+                            <div className="flex justify-between items-start mb-2">
+                                <div className="p-2 bg-purple-500/10 rounded-lg">
+                                    <Map className="w-5 h-5 text-purple-500" />
+                                </div>
+                                {routesByRep.unassigned.length > 0 && (
+                                    <span className="text-[10px] font-bold text-red-400 bg-red-900/20 px-2 py-0.5 rounded-full animate-pulse">
+                                        {routesByRep.unassigned.length} OPEN
+                                    </span>
+                                )}
+                            </div>
+                            <div className="space-y-1">
+                                <h3 className="text-2xl font-extrabold text-white">{routes.length}</h3>
+                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Total Routes</p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
 
-                    {/* 2. LEADERBOARD & ROSTER */}
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* Leaderboard Column */}
-                    <div className="lg:col-span-1">
-                         <TeamLeaderboard 
-                            members={teamMembers} 
-                            logs={logs} 
-                            routes={Object.values(routesByRep).flat()} 
-                        />
-                    </div>
+                {/* Main Content Tabs */}
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+                    <TabsList className="bg-[#111] border border-gray-800 p-1 h-12 w-full md:w-auto">
+                        <TabsTrigger value="overview" className="h-full px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Overview</TabsTrigger>
+                        <TabsTrigger value="roster" className="h-full px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Roster</TabsTrigger>
+                        <TabsTrigger value="logistics" className="h-full px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Routes</TabsTrigger>
+                        <TabsTrigger value="access" className="h-full px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Codes</TabsTrigger>
+                    </TabsList>
 
-                    {/* Roster Column */}
-                    <div className="lg:col-span-2 space-y-4">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                                <Users className="w-5 h-5 text-blue-500" />
-                                Active Roster
-                            </h2>
-                            <span className="text-xs text-gray-500 font-mono">{teamMembers.length} ACTIVE</span>
+                    {/* OVERVIEW TAB */}
+                    <TabsContent value="overview" className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* Intelligence Column */}
+                            <div className="lg:col-span-2 space-y-6">
+                                <Card className="bg-[#111] border-gray-800">
+                                    <CardHeader className="pb-3 border-b border-gray-800">
+                                        <CardTitle className="text-sm font-bold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                                            <Sparkles className="w-4 h-4 text-yellow-500" />
+                                            Territory Insights
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="p-0">
+                                        <RouteInsights />
+                                    </CardContent>
+                                </Card>
+
+                                {routesByRep.unassigned.length > 0 && (
+                                    <Card className="bg-[#111] border-red-900/30">
+                                        <CardHeader className="pb-3 border-b border-gray-800">
+                                            <div className="flex justify-between items-center">
+                                                <CardTitle className="text-sm font-bold text-red-400 uppercase tracking-wide flex items-center gap-2">
+                                                    <AlertCircle className="w-4 h-4" />
+                                                    Unassigned Routes
+                                                </CardTitle>
+                                                <Button variant="link" onClick={() => setActiveTab('logistics')} className="text-xs text-red-400 p-0 h-auto">
+                                                    View All &rarr;
+                                                </Button>
+                                            </div>
+                                        </CardHeader>
+                                        <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            {routesByRep.unassigned.slice(0, 4).map(route => (
+                                                <div key={route.id} className="flex items-center justify-between p-3 bg-black/40 rounded border border-gray-800/50">
+                                                    <div>
+                                                        <p className="font-bold text-sm text-white">{route.name}</p>
+                                                        <p className="text-[10px] text-gray-500">{route.metrics?.house_count || 0} homes</p>
+                                                    </div>
+                                                    <Button 
+                                                        size="sm" 
+                                                        variant="ghost"
+                                                        onClick={() => setActiveTab('logistics')}
+                                                        className="text-yellow-500 text-xs h-7"
+                                                    >
+                                                        Assign
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                        </CardContent>
+                                    </Card>
+                                )}
+                            </div>
+
+                            {/* Leaderboard Column */}
+                            <div>
+                                <TeamLeaderboard 
+                                    members={teamMembers} 
+                                    logs={logs} 
+                                    routes={Object.values(routesByRep).flat()} 
+                                />
+                            </div>
                         </div>
+                    </TabsContent>
 
-                    {selectedRep ? (
-                        <div className="animate-in slide-in-from-right duration-300">
-                            <RepPerformanceDetail 
+                    {/* ROSTER TAB */}
+                    <TabsContent value="roster" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {selectedRep ? (
+                             <RepPerformanceDetail 
                                 member={selectedRep}
                                 logs={logs}
                                 teamAverage={teamAverage}
                                 onClose={() => setSelectedRep(null)}
                             />
-                        </div>
-                    ) : (
-                        <>
-                            {teamMembers.length === 0 ? (
-                                <div className="text-center py-12 border-2 border-dashed border-gray-800 rounded-xl bg-[#0F0F0F]">
-                                    <Users className="w-12 h-12 text-gray-700 mx-auto mb-3" />
-                                    <h3 className="text-lg font-bold text-gray-400">No Team Members</h3>
-                                    <p className="text-gray-600 text-sm mb-4">Add your first rep to get started.</p>
-                                    <Button 
-                                        onClick={() => setIsAddRepOpen(true)}
-                                        className="bg-yellow-500 text-black font-bold"
-                                    >
-                                        Add First Rep
-                                    </Button>
-                                </div>
-                            ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {teamMembers.map(member => {
-                                        const memberRoutes = routesByRep[member.id] || [];
-                                        const memberMetrics = metricsByRep[member.email] || { doorsKnocked: 0, talkedTo: 0, sales: 0 };
-
-                                        return (
-                                            <div key={member.id} onClick={() => setSelectedRep(member)} className="cursor-pointer">
-                                                <TeamMemberCard 
-                                                    member={member} 
-                                                    routes={memberRoutes} 
-                                                    metrics={memberMetrics}
-                                                    allRoutes={routesByRep.unassigned}
-                                                    onAssignRoute={(rId, mId) => {
-                                                        handleAssign(rId, mId);
-                                                    }}
-                                                />
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </>
-                    )}
-                </div>
-                </div>
-
-                {/* 2. UNASSIGNED ROUTES (Secondary Display) */}
-                {routesByRep.unassigned.length > 0 && (
-                    <div className="space-y-4 pt-6 border-t border-gray-800">
-                        <div className="flex items-center justify-between">
-                            <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                                <AlertCircle className="w-5 h-5 text-red-500" />
-                                Unassigned Routes
-                            </h2>
-                            <span className="text-xs text-red-400 font-mono">{routesByRep.unassigned.length} PENDING</span>
-                        </div>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                            {routesByRep.unassigned.map(route => (
-                                <div key={route.id} className="bg-[#111] border border-gray-800 rounded-lg p-4 flex flex-col gap-3 hover:border-gray-700 transition-colors">
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <h4 className="font-bold text-white text-sm">{route.name}</h4>
-                                            <div className="flex items-center gap-2 mt-1">
-                                                <Badge variant="secondary" className="bg-gray-800 text-gray-400 text-[10px]">
-                                                    {route.metrics?.house_count || 0} homes
-                                                </Badge>
-                                                <Badge variant="secondary" className="bg-gray-800 text-gray-400 text-[10px]">
-                                                    {route.metrics?.distance || 0} mi
-                                                </Badge>
-                                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {teamMembers.map(member => {
+                                    const memberRoutes = routesByRep[member.id] || [];
+                                    const memberMetrics = metricsByRep[member.email] || { doorsKnocked: 0, talkedTo: 0, sales: 0 };
+                                    return (
+                                        <div key={member.id} onClick={() => setSelectedRep(member)} className="cursor-pointer hover:scale-[1.02] transition-transform duration-200">
+                                            <TeamMemberCard 
+                                                member={member} 
+                                                routes={memberRoutes} 
+                                                metrics={memberMetrics}
+                                                allRoutes={routesByRep.unassigned}
+                                                onAssignRoute={(rId, mId) => handleAssign(rId, mId)}
+                                            />
                                         </div>
-                                        <Badge className="bg-red-900/30 text-red-400 border-red-900/50">OPEN</Badge>
+                                    );
+                                })}
+                                {/* Add New Card */}
+                                <button 
+                                    onClick={() => setIsAddRepOpen(true)}
+                                    className="flex flex-col items-center justify-center p-8 bg-[#111] border-2 border-dashed border-gray-800 rounded-xl hover:border-yellow-500/50 hover:bg-yellow-500/5 transition-all group h-full min-h-[200px]"
+                                >
+                                    <div className="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center mb-4 group-hover:bg-yellow-500 group-hover:text-black transition-colors">
+                                        <Plus className="w-6 h-6" />
                                     </div>
-                                    
-                                    <div className="mt-2 pt-3 border-t border-gray-800/50">
-                                        <Select onValueChange={(memberId) => handleAssign(route.id, memberId)}>
-                                            <SelectTrigger className="w-full h-8 text-xs bg-[#1F1F1F] border-gray-700 focus:ring-offset-0">
-                                                <SelectValue placeholder="Assign to Rep..." />
+                                    <p className="font-bold text-gray-400 group-hover:text-white">Add Team Member</p>
+                                </button>
+                            </div>
+                        )}
+                    </TabsContent>
+
+                    {/* LOGISTICS TAB */}
+                    <TabsContent value="logistics" className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <Card className="bg-[#111] border-gray-800">
+                            <CardHeader className="border-b border-gray-800 flex flex-row items-center justify-between">
+                                <div>
+                                    <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
+                                        <Map className="w-5 h-5 text-blue-500" />
+                                        Route Registry
+                                    </CardTitle>
+                                    <CardDescription className="text-gray-400">Manage and assign all territory routes.</CardDescription>
+                                </div>
+                                <div className="relative w-64">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                                    <Input 
+                                        placeholder="Search routes..." 
+                                        value={routeSearch}
+                                        onChange={(e) => setRouteSearch(e.target.value)}
+                                        className="bg-black border-gray-700 pl-9"
+                                    />
+                                </div>
+                            </CardHeader>
+                            <CardContent className="p-0">
+                                <div className="divide-y divide-gray-800 max-h-[600px] overflow-y-auto">
+                                    {routes
+                                        .filter(r => r.name.toLowerCase().includes(routeSearch.toLowerCase()))
+                                        .map(route => (
+                                            <div key={route.id} className="p-4 flex items-center justify-between hover:bg-white/5 transition-colors">
+                                                <div className="flex items-center gap-4">
+                                                    <div className={`w-2 h-12 rounded-full ${route.assigned_to ? 'bg-green-500' : 'bg-red-500'}`} />
+                                                    <div>
+                                                        <h4 className="font-bold text-white text-base">{route.name}</h4>
+                                                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                                                            <span className="flex items-center gap-1"><Home className="w-3 h-3" /> {route.metrics?.house_count || 0}</span>
+                                                            <span className="flex items-center gap-1"><Map className="w-3 h-3" /> {route.metrics?.distance || 0} mi</span>
+                                                            <Badge variant="outline" className={`border-0 text-[10px] px-2 ${route.status === 'COMPLETED' ? 'bg-green-900/30 text-green-400' : 'bg-gray-800'}`}>
+                                                                {route.status}
+                                                            </Badge>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-4">
+                                                     {route.assigned_to_name ? (
+                                                        <div className="text-right hidden sm:block">
+                                                            <p className="text-[10px] text-gray-500 uppercase font-bold">Assigned To</p>
+                                                            <p className="text-sm font-bold text-white">{route.assigned_to_name}</p>
+                                                        </div>
+                                                    ) : (
+                                                        <Badge className="bg-red-900/20 text-red-400 hover:bg-red-900/30 border-0">UNASSIGNED</Badge>
+                                                    )}
+                                                    
+                                                    <Select onValueChange={(memberId) => handleAssign(route.id, memberId)}>
+                                                        <SelectTrigger className="w-[160px] h-9 text-xs bg-[#000] border-gray-700">
+                                                            <SelectValue placeholder="Assign / Reassign" />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
+                                                            {teamMembers.map(m => (
+                                                                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    {/* ACCESS TAB */}
+                    <TabsContent value="access" className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl mx-auto">
+                        <Card className="bg-[#111] border-gray-800">
+                            <CardHeader className="border-b border-gray-800">
+                                <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
+                                    <Key className="w-5 h-5 text-yellow-500" />
+                                    Access Codes
+                                </CardTitle>
+                                <CardDescription className="text-gray-400">Manage invite codes for new team members.</CardDescription>
+                            </CardHeader>
+                            <CardContent className="p-6 space-y-8">
+                                <div className="bg-black/40 p-5 rounded-xl border border-gray-800 space-y-4">
+                                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Generate New Code</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="relative">
+                                            <Input 
+                                                placeholder="Code (Auto or Custom)" 
+                                                value={newCode.code}
+                                                onChange={(e) => setNewCode({...newCode, code: e.target.value})}
+                                                className="bg-black border-gray-700"
+                                            />
+                                            <button 
+                                                onClick={() => setNewCode({...newCode, code: Math.floor(1000 + Math.random() * 9000).toString()})}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-yellow-500 hover:text-white"
+                                            >
+                                                <Sparkles className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                        <Input 
+                                            placeholder="Label (e.g. Sales Team)" 
+                                            value={newCode.label}
+                                            onChange={(e) => setNewCode({...newCode, label: e.target.value})}
+                                            className="bg-black border-gray-700"
+                                        />
+                                    </div>
+                                    <div className="flex gap-4">
+                                        <Select 
+                                            value={newCode.role} 
+                                            onValueChange={(v) => {
+                                                const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
+                                                setNewCode({
+                                                    ...newCode, 
+                                                    role: v, 
+                                                    code: newCode.code || randomCode
+                                                });
+                                            }}
+                                        >
+                                            <SelectTrigger className="bg-black border-gray-700 flex-1">
+                                                <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
-                                                {teamMembers.map(m => (
-                                                    <SelectItem key={m.id} value={m.id}>
-                                                        {m.name}
-                                                    </SelectItem>
-                                                ))}
+                                                <SelectItem value="rep">Sales Rep</SelectItem>
+                                                <SelectItem value="manager">Manager</SelectItem>
                                             </SelectContent>
                                         </Select>
+                                        <Button 
+                                            onClick={() => createCodeMutation.mutate(newCode)}
+                                            disabled={!newCode.code}
+                                            className="bg-green-600 hover:bg-green-700 font-bold px-8"
+                                        >
+                                            Create Code
+                                        </Button>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
 
-
+                                <div className="space-y-3">
+                                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Active Invites</h3>
+                                    {inviteCodes.length === 0 ? (
+                                        <div className="text-center p-8 bg-black/20 rounded-xl border border-dashed border-gray-800">
+                                            <Lock className="w-8 h-8 text-gray-700 mx-auto mb-2" />
+                                            <p className="text-sm text-gray-500">No active codes found</p>
+                                        </div>
+                                    ) : (
+                                        <div className="grid gap-2">
+                                            {inviteCodes.map(code => (
+                                                <div key={code.id} className="flex items-center justify-between p-4 bg-[#0A0A0A] rounded-lg border border-gray-800 hover:border-gray-700 transition-colors">
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="w-12 h-12 rounded-lg bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20">
+                                                            <span className="font-mono font-bold text-yellow-500 text-lg">{code.code}</span>
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-bold text-white text-sm">{code.label || 'Unlabeled Code'}</p>
+                                                            <Badge variant="outline" className="text-[10px] border-gray-700 text-gray-400 mt-1">{code.role.toUpperCase()}</Badge>
+                                                        </div>
+                                                    </div>
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        size="icon"
+                                                        onClick={() => deleteCodeMutation.mutate(code.id)}
+                                                        className="text-red-500 hover:text-red-400 hover:bg-red-900/20"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+                </Tabs>
             </div>
         </div>
     );
