@@ -38,8 +38,7 @@ Deno.serve(async (req) => {
             await base44.auth.updateMe({ stripe_customer_id: customerId });
         }
 
-        const session = await stripe.checkout.sessions.create({
-            customer: customerId,
+        const sessionConfig = {
             mode: 'subscription',
             payment_method_types: ['card'],
             line_items: [
@@ -54,7 +53,37 @@ Deno.serve(async (req) => {
                 base44_app_id: Deno.env.get("BASE44_APP_ID"),
                 base44_user_id: user.id
             }
-        });
+        };
+
+        let session;
+        try {
+            session = await stripe.checkout.sessions.create({
+                ...sessionConfig,
+                customer: customerId,
+            });
+        } catch (error) {
+             // Handle stale customer ID (e.g. from Test Mode vs Live Mode switch)
+             if (error.raw?.code === 'resource_missing' && error.raw?.param === 'customer') {
+                 console.log('Stripe customer invalid/missing in this env. Creating new one...');
+                 
+                 const newCustomer = await stripe.customers.create({
+                    email: user.email,
+                    name: user.full_name,
+                    metadata: { base44_user_id: user.id }
+                 });
+                 
+                 // Update DB with valid customer ID
+                 await base44.auth.updateMe({ stripe_customer_id: newCustomer.id });
+                 
+                 // Retry with new customer
+                 session = await stripe.checkout.sessions.create({
+                    ...sessionConfig,
+                    customer: newCustomer.id,
+                 });
+             } else {
+                 throw error;
+             }
+        }
 
         return Response.json({ url: session.url });
     } catch (error) {

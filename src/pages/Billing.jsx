@@ -95,6 +95,7 @@ export default function Billing() {
                 throw new Error(res.data.error || 'Failed to start checkout');
             }
         } catch (error) {
+            console.error("Checkout failed:", error);
             toast.error("Checkout failed: " + error.message);
             setLoadingPriceId(null);
         }
