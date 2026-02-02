@@ -17,6 +17,7 @@ import TeamMemberCard from "@/components/team/TeamMemberCard";
 import RepPerformanceDetail from "@/components/team/RepPerformanceDetail";
 import RouteInsights from "@/components/insights/RouteInsights";
 import TeamLeaderboard from "@/components/team/TeamLeaderboard";
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip, Legend } from 'recharts';
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -177,6 +178,30 @@ export default function AdminTeam() {
         };
     }, [teamTotals, metricsByRep]);
 
+    // Chart Data
+    const routeStats = useMemo(() => [
+        { name: 'Active', value: routes.filter(r => r.status === 'ACTIVE' || r.status === 'IN_PROGRESS').length, color: '#22c55e' },
+        { name: 'Unassigned', value: routes.filter(r => !r.assigned_to).length, color: '#ef4444' },
+        { name: 'Completed', value: routes.filter(r => r.status === 'COMPLETED').length, color: '#3b82f6' },
+    ].filter(i => i.value > 0), [routes]);
+
+    const leadStats = useMemo(() => {
+        const counts = { SOLD: 0, NO: 0, CALLBACK: 0, OTHER: 0 };
+        logs.forEach(l => {
+            const s = l.parsed_status;
+            if (s === 'SOLD' || s === 'QUALIFIED') counts.SOLD++;
+            else if (s === 'HARD_NO') counts.NO++;
+            else if (s === 'CALLBACK') counts.CALLBACK++;
+            else counts.OTHER++;
+        });
+        return [
+            { name: 'Sold', value: counts.SOLD, color: '#22c55e' },
+            { name: 'Callback', value: counts.CALLBACK, color: '#eab308' },
+            { name: 'No', value: counts.NO, color: '#ef4444' },
+            { name: 'Other', value: counts.OTHER, color: '#6b7280' }
+        ].filter(i => i.value > 0);
+    }, [logs]);
+
     const handleAddRep = () => {
         if (!newRep.name || !newRep.email) {
             toast.error("Name and Email are required");
@@ -273,64 +298,94 @@ export default function AdminTeam() {
                     </div>
                 </div>
 
-                {/* KPI Stats Cards */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                    <Card className="bg-[#111] border-gray-800 hover:border-yellow-500/30 transition-all">
-                        <CardContent className="p-5">
-                            <div className="flex justify-between items-start mb-2">
-                                <div className="p-2 bg-yellow-500/10 rounded-lg">
-                                    <TrendingUp className="w-5 h-5 text-yellow-500" />
-                                </div>
-                                <span className="text-[10px] font-bold text-green-500 bg-green-900/20 px-2 py-0.5 rounded-full">LIVE</span>
-                            </div>
-                            <div className="space-y-1">
-                                <h3 className="text-2xl font-extrabold text-white">{teamTotals.doorsKnocked.toLocaleString()}</h3>
-                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Total Knocks</p>
-                            </div>
-                        </CardContent>
-                    </Card>
-                    <Card className="bg-[#111] border-gray-800 hover:border-green-500/30 transition-all">
-                         <CardContent className="p-5">
-                            <div className="flex justify-between items-start mb-2">
-                                <div className="p-2 bg-green-500/10 rounded-lg">
-                                    <DollarSign className="w-5 h-5 text-green-500" />
+                {/* KPI Stats & Visuals Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    {/* Compact Metrics Column */}
+                    <div className="lg:col-span-1 grid grid-cols-2 lg:grid-cols-1 gap-3">
+                        <div className="bg-[#111] border border-gray-800 rounded-lg p-3 flex items-center justify-between hover:border-yellow-500/30 transition-colors">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-yellow-500/10 rounded-lg text-yellow-500"><TrendingUp size={16} /></div>
+                                <div>
+                                    <p className="text-[10px] text-gray-500 uppercase font-bold">Total Knocks</p>
+                                    <p className="text-lg font-bold text-white">{teamTotals.doorsKnocked.toLocaleString()}</p>
                                 </div>
                             </div>
-                            <div className="space-y-1">
-                                <h3 className="text-2xl font-extrabold text-white">{teamTotals.sales.toLocaleString()}</h3>
-                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Total Sales</p>
-                            </div>
-                        </CardContent>
-                    </Card>
-                    <Card className="bg-[#111] border-gray-800 hover:border-blue-500/30 transition-all">
-                         <CardContent className="p-5">
-                            <div className="flex justify-between items-start mb-2">
-                                <div className="p-2 bg-blue-500/10 rounded-lg">
-                                    <Users className="w-5 h-5 text-blue-500" />
+                        </div>
+                        <div className="bg-[#111] border border-gray-800 rounded-lg p-3 flex items-center justify-between hover:border-green-500/30 transition-colors">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-green-500/10 rounded-lg text-green-500"><DollarSign size={16} /></div>
+                                <div>
+                                    <p className="text-[10px] text-gray-500 uppercase font-bold">Total Sales</p>
+                                    <p className="text-lg font-bold text-white">{teamTotals.sales.toLocaleString()}</p>
                                 </div>
                             </div>
-                            <div className="space-y-1">
-                                <h3 className="text-2xl font-extrabold text-white">{teamMembers.length}</h3>
-                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Active Reps</p>
-                            </div>
-                        </CardContent>
-                    </Card>
-                    <Card className="bg-[#111] border-gray-800 hover:border-purple-500/30 transition-all">
-                         <CardContent className="p-5">
-                            <div className="flex justify-between items-start mb-2">
-                                <div className="p-2 bg-purple-500/10 rounded-lg">
-                                    <Map className="w-5 h-5 text-purple-500" />
+                        </div>
+                        <div className="bg-[#111] border border-gray-800 rounded-lg p-3 flex items-center justify-between hover:border-blue-500/30 transition-colors">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500"><Users size={16} /></div>
+                                <div>
+                                    <p className="text-[10px] text-gray-500 uppercase font-bold">Active Reps</p>
+                                    <p className="text-lg font-bold text-white">{teamMembers.length}</p>
                                 </div>
-                                {routesByRep.unassigned.length > 0 && (
-                                    <span className="text-[10px] font-bold text-red-400 bg-red-900/20 px-2 py-0.5 rounded-full animate-pulse">
-                                        {routesByRep.unassigned.length} OPEN
-                                    </span>
-                                )}
                             </div>
-                            <div className="space-y-1">
-                                <h3 className="text-2xl font-extrabold text-white">{routes.length}</h3>
-                                <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Total Routes</p>
+                        </div>
+                        <div className="bg-[#111] border border-gray-800 rounded-lg p-3 flex items-center justify-between hover:border-purple-500/30 transition-colors">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-purple-500/10 rounded-lg text-purple-500"><Map size={16} /></div>
+                                <div>
+                                    <p className="text-[10px] text-gray-500 uppercase font-bold">Total Routes</p>
+                                    <p className="text-lg font-bold text-white">{routes.length}</p>
+                                </div>
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Charts Column */}
+                    <Card className="lg:col-span-2 bg-[#111] border-gray-800">
+                        <CardHeader className="pb-2 border-b border-gray-800">
+                            <CardTitle className="text-sm font-bold text-gray-400 uppercase flex items-center gap-2">
+                                <Activity className="w-4 h-4 text-yellow-500" />
+                                Performance Visuals
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="p-4 flex flex-col sm:flex-row gap-6 items-center justify-center h-[240px]">
+                            {routeStats.length > 0 || leadStats.length > 0 ? (
+                                <>
+                                    <div className="flex-1 w-full h-full relative flex flex-col items-center">
+                                        <h4 className="text-[10px] font-bold text-gray-500 uppercase mb-2">Route Status</h4>
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <PieChart>
+                                                <Pie data={routeStats} innerRadius={45} outerRadius={65} paddingAngle={4} dataKey="value" stroke="none">
+                                                    {routeStats.map((entry, index) => (
+                                                        <Cell key={`cell-${index}`} fill={entry.color} />
+                                                    ))}
+                                                </Pie>
+                                                <RechartsTooltip contentStyle={{backgroundColor: '#000', border: '1px solid #333', borderRadius: '8px', fontSize: '12px'}} itemStyle={{color: '#fff'}} />
+                                                <Legend iconSize={8} wrapperStyle={{fontSize: '10px'}} />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                    <div className="w-px h-32 bg-gray-800 hidden sm:block" />
+                                    <div className="flex-1 w-full h-full relative flex flex-col items-center">
+                                        <h4 className="text-[10px] font-bold text-gray-500 uppercase mb-2">Lead Outcomes</h4>
+                                        <ResponsiveContainer width="100%" height="100%">
+                                            <PieChart>
+                                                <Pie data={leadStats} innerRadius={45} outerRadius={65} paddingAngle={4} dataKey="value" stroke="none">
+                                                    {leadStats.map((entry, index) => (
+                                                        <Cell key={`cell-${index}`} fill={entry.color} />
+                                                    ))}
+                                                </Pie>
+                                                <RechartsTooltip contentStyle={{backgroundColor: '#000', border: '1px solid #333', borderRadius: '8px', fontSize: '12px'}} itemStyle={{color: '#fff'}} />
+                                                <Legend iconSize={8} wrapperStyle={{fontSize: '10px'}} />
+                                            </PieChart>
+                                        </ResponsiveContainer>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="text-center text-gray-500">
+                                    <p className="text-sm">Not enough data to visualize</p>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                 </div>
