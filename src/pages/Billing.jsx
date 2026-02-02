@@ -228,7 +228,7 @@ export default function Billing() {
                     {PLANS.map(plan => (
                         <div 
                             key={plan.id}
-                            className={`relative rounded-2xl p-6 border transition-all duration-300 flex flex-col h-full ${
+                            className={`relative rounded-2xl p-5 border transition-all duration-300 flex flex-col h-full ${
                                 plan.recommended 
                                     ? 'bg-gray-900/80 backdrop-blur-sm border-yellow-500 shadow-[0_0_40px_rgba(255,215,0,0.15)] scale-105 z-10' 
                                     : 'bg-black/50 backdrop-blur-sm border-gray-800 hover:border-gray-600 hover:bg-gray-900/50'
@@ -241,12 +241,12 @@ export default function Billing() {
                                 </div>
                             )}
 
-                            <div className="space-y-4 mb-8">
-                                <h3 className="text-xl font-bold tracking-wide" style={{ color: plan.color }}>
+                            <div className="space-y-2 mb-5">
+                                <h3 className="text-lg font-bold tracking-wide" style={{ color: plan.color }}>
                                     {plan.name}
                                 </h3>
                                 <div className="flex items-baseline gap-1">
-                                    <span className="text-4xl font-extrabold text-white">{plan.price}</span>
+                                    <span className="text-3xl font-extrabold text-white">{plan.price}</span>
                                     <span className="text-gray-500 text-sm">/user/mo</span>
                                 </div>
                                 <div className="text-xs text-gray-500 font-medium mt-1">
@@ -255,7 +255,7 @@ export default function Billing() {
                                 <p className="text-sm text-gray-400 min-h-[3rem]">{plan.description}</p>
                             </div>
 
-                            <ul className="space-y-3 mb-8 flex-1">
+                            <ul className="space-y-2 mb-5 flex-1">
                                 {plan.features.map((feature, i) => (
                                     <li key={i} className="flex items-start gap-3 text-sm text-gray-300">
                                         <div className={`rounded-full p-1 ${plan.recommended ? 'bg-yellow-500/20 text-yellow-500' : 'bg-gray-800 text-gray-400'}`}>
@@ -269,7 +269,7 @@ export default function Billing() {
                             <Button
                                 onClick={() => handleSubscribe(plan.priceId)}
                                 disabled={loadingPriceId !== null || isSubscribed || !isPlanAllowed(plan.id)}
-                                className={`w-full h-12 font-bold tracking-wide transition-all ${
+                                className={`w-full h-10 font-bold tracking-wide transition-all ${
                                     !isPlanAllowed(plan.id)
                                         ? 'bg-gray-800 text-gray-500 cursor-not-allowed opacity-50'
                                         : plan.recommended
