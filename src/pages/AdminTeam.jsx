@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { X, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Users, Plus, UserPlus, Map, CheckCircle2, AlertCircle, X, Key, Sparkles, TrendingUp, DollarSign, Home, Shield, Activity, BarChart3, Lock, Search } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -37,6 +39,7 @@ export default function AdminTeam() {
     const [activeTab, setActiveTab] = useState("overview");
     const [createdCode, setCreatedCode] = useState(null); // For popup
     const [activeTeamCode, setActiveTeamCode] = useState('all'); // 'all' or specific code
+    const [editingZips, setEditingZips] = useState(null); // { memberId, zips: string }
 
     // --- Queries ---
     const { data: user } = useQuery({
@@ -106,6 +109,18 @@ export default function AdminTeam() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['allRoutes'] });
             toast.success("Route assigned");
+        }
+    });
+
+    const updateMemberZipsMutation = useMutation({
+        mutationFn: ({ memberId, zips }) => 
+            base44.entities.TeamMember.update(memberId, {
+                assigned_zip_codes: zips
+            }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['teamMembers'] });
+            setEditingZips(null);
+            toast.success("Territory updated");
         }
     });
 
@@ -509,15 +524,60 @@ export default function AdminTeam() {
                                 {filteredTeamMembers.map(member => {
                                     const memberRoutes = routesByRep[member.id] || [];
                                     const memberMetrics = metricsByRep[member.email] || { doorsKnocked: 0, talkedTo: 0, sales: 0 };
+                                    const isEditing = editingZips?.memberId === member.id;
+                                    
                                     return (
-                                        <div key={member.id} onClick={() => setSelectedRep(member)} className="cursor-pointer hover:scale-[1.02] transition-transform duration-200">
-                                            <TeamMemberCard 
-                                                member={member} 
-                                                routes={memberRoutes} 
-                                                metrics={memberMetrics}
-                                                allRoutes={routesByRep.unassigned}
-                                                onAssignRoute={(rId, mId) => handleAssign(rId, mId)}
-                                            />
+                                        <div key={member.id} className="relative group">
+                                            {/* Zip Code Quick Edit (Overlay on Card) */}
+                                            <div className="absolute top-2 right-2 z-10">
+                                                <Popover open={isEditing} onOpenChange={(open) => {
+                                                    if (open) setEditingZips({ memberId: member.id, zips: (member.assigned_zip_codes || []).join(', ') });
+                                                    else setEditingZips(null);
+                                                }}>
+                                                    <PopoverTrigger asChild>
+                                                        <Button variant="ghost" size="sm" className="h-6 text-[10px] bg-black/50 hover:bg-black/80 text-white backdrop-blur-sm border border-gray-700">
+                                                            {(member.assigned_zip_codes && member.assigned_zip_codes.length > 0) 
+                                                                ? `${member.assigned_zip_codes.length} Zips` 
+                                                                : 'Assign Zips'}
+                                                        </Button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-64 bg-[#1F1F1F] border-gray-700 text-white p-3">
+                                                        <div className="space-y-2">
+                                                            <h4 className="font-bold text-xs uppercase text-gray-400">Assign Territories</h4>
+                                                            <Input 
+                                                                value={editingZips?.zips || ''}
+                                                                onChange={(e) => setEditingZips({...editingZips, zips: e.target.value})}
+                                                                placeholder="e.g. 29412, 29455"
+                                                                className="h-8 text-xs bg-black border-gray-600"
+                                                            />
+                                                            <div className="flex justify-end gap-2">
+                                                                <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditingZips(null); }} className="h-7 text-xs">Cancel</Button>
+                                                                <Button 
+                                                                    size="sm" 
+                                                                    className="h-7 text-xs bg-yellow-500 text-black hover:bg-yellow-400"
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const zips = editingZips.zips.split(',').map(z => z.trim()).filter(z => /^\d{5}$/.test(z));
+                                                                        updateMemberZipsMutation.mutate({ memberId: member.id, zips });
+                                                                    }}
+                                                                >
+                                                                    Save
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    </PopoverContent>
+                                                </Popover>
+                                            </div>
+
+                                            <div onClick={() => setSelectedRep(member)} className="cursor-pointer hover:scale-[1.02] transition-transform duration-200">
+                                                <TeamMemberCard 
+                                                    member={member} 
+                                                    routes={memberRoutes} 
+                                                    metrics={memberMetrics}
+                                                    allRoutes={routesByRep.unassigned}
+                                                    onAssignRoute={(rId, mId) => handleAssign(rId, mId)}
+                                                />
+                                            </div>
                                         </div>
                                     );
                                 })}

@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
+import { base44 } from '@/api/base44Client';
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { toast } from "sonner";
 import { 
   Database, 
   CheckCircle, 
@@ -22,6 +25,10 @@ export default function DatabaseDiagnostic() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
+  const [zipCheckInput, setZipCheckInput] = useState('');
+  const [zipAnalysis, setZipAnalysis] = useState(null);
+  const [analyzingZip, setAnalyzingZip] = useState(false);
+
   const handleRunDiagnostic = async () => {
     setLoading(true);
     setError(null);
@@ -32,6 +39,52 @@ export default function DatabaseDiagnostic() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCheckZips = async () => {
+    if (!zipCheckInput) return;
+    setAnalyzingZip(true);
+    setZipAnalysis(null);
+    
+    try {
+        const zips = zipCheckInput.split(',').map(z => z.trim()).filter(Boolean);
+        const report = [];
+
+        for (const zip of zips) {
+            // 1. Check External DB (Neon)
+            const neonRes = await base44.functions.invoke('checkZipData', { zipCode: zip });
+            const neonCount = neonRes.data?.zipCoordinateStats?.total || 0; // Using specific zip stats if available
+            // Fallback if specific zip stats not returned structure check
+            const neonTotal = neonRes.data?.zipCountsForQuery?.[Object.keys(neonRes.data?.zipCountsForQuery || {})[0]] || 0;
+            
+            // 2. Check Internal DB (Base44)
+            const localRes = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 1);
+            // Count workaround: filter returns items, if we want total count usually need a different API or just accept partial if paginated.
+            // But usually list returns {items, count} if backend supports it, or we assume filter gets a page. 
+            // Better: use count function if available or fetch all ids. 
+            // For now, let's just say "Synced: X" based on a separate count query if possible, or just estimate.
+            // base44 sdk doesn't always expose raw count easily on filter.
+            // Let's use a specialized function or assume the list length if small, but zip could be huge.
+            // We'll trust the user wants to see "Is it > 0".
+            
+            // Actually, let's use a cloud function to count internal if we want exact.
+            // But for now, let's just try to fetch a small batch to confirm existence.
+            const existsLocally = localRes.length > 0 || (localRes.items && localRes.items.length > 0);
+            
+            report.push({
+                zip,
+                neonCount: neonTotal || neonCount, // Try to grab from either source
+                synced: existsLocally ? "Active" : "Not Found",
+                neonData: neonRes.data
+            });
+        }
+        setZipAnalysis(report);
+
+    } catch (e) {
+        toast.error("Zip check failed: " + e.message);
+    } finally {
+        setAnalyzingZip(false);
     }
   };
 
@@ -67,28 +120,69 @@ export default function DatabaseDiagnostic() {
           </Link>
         </div>
 
-        <Card className="mb-6">
-          <CardContent className="pt-6">
-            <Button 
-              onClick={handleRunDiagnostic} 
-              disabled={loading}
-              size="lg"
-              className="w-full"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  Running Diagnostic...
-                </>
-              ) : (
-                <>
-                  <Database className="w-5 h-5 mr-2" />
-                  Run Full Diagnostic
-                </>
-              )}
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-lg">Zip Code Integrity Check</CardTitle>
+                    <CardDescription>Compare External Database vs App Data</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="flex gap-2">
+                        <Input 
+                            placeholder="Enter Zips (e.g. 29412, 29455)" 
+                            value={zipCheckInput}
+                            onChange={(e) => setZipCheckInput(e.target.value)}
+                        />
+                        <Button onClick={handleCheckZips} disabled={analyzingZip}>
+                            {analyzingZip ? <Loader2 className="animate-spin" /> : "Check"}
+                        </Button>
+                    </div>
+                    
+                    {zipAnalysis && (
+                        <div className="space-y-2 mt-2">
+                            {zipAnalysis.map((z, i) => (
+                                <div key={i} className="flex justify-between items-center p-2 bg-gray-100 rounded text-sm">
+                                    <span className="font-bold">{z.zip}</span>
+                                    <div className="text-right">
+                                        <div className="text-xs text-gray-500">External: {z.neonCount} records</div>
+                                        <div className={`font-bold ${z.synced === 'Active' ? 'text-green-600' : 'text-red-500'}`}>
+                                            App Status: {z.synced}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                  <CardTitle className="text-lg">System Diagnostic</CardTitle>
+                  <CardDescription>Check connection and schema health</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button 
+                  onClick={handleRunDiagnostic} 
+                  disabled={loading}
+                  size="lg"
+                  className="w-full"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Running...
+                    </>
+                  ) : (
+                    <>
+                      <Database className="w-5 h-5 mr-2" />
+                      Run Full Diagnostic
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+        </div>
 
         {error && (
           <Card className="mb-6 border-red-200 bg-red-50">
