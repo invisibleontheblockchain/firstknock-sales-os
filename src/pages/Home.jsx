@@ -180,13 +180,20 @@ export default function Home() {
         setIsSettingArea(true);
         try {
             // 1. Update User
-            await base44.auth.updateMe({ working_area: workingAreaInput });
+            // Parse for multiple zips if comma separated
+            const zips = workingAreaInput.split(',').map(z => z.trim()).filter(z => /^\d{5}$/.test(z));
             
-            // 2. Fetch/Ingest Data for this area (assume zip code for now)
-            const isZip = /^\d{5}$/.test(workingAreaInput);
-            if (isZip) {
-                toast.info("Initializing territory data...");
-                await base44.functions.invoke('fetchZipProperties', { zip_code: workingAreaInput });
+            await base44.auth.updateMe({ 
+                working_area: workingAreaInput,
+                territory_zip_codes: zips.length > 0 ? zips : undefined 
+            });
+            
+            // 2. Fetch/Ingest Data for this area
+            if (zips.length > 0) {
+                toast.info(`Initializing territory data for ${zips.length} zips...`);
+                // Fetch in parallel
+                await Promise.all(zips.map(zip => base44.functions.invoke('fetchZipProperties', { zip_code: zip })));
+                
                 setZipCodeFilter(workingAreaInput); // Set filter to this area
                 toast.success("Territory initialized!");
                 setTimeout(() => window.location.reload(), 1500);
@@ -1160,9 +1167,20 @@ export default function Home() {
                             </div>
                             <div className="truncate">
                                 <span className="text-sm font-bold block leading-tight truncate" style={{ color: BRAND.voidBlack }}>{activeRoute.name}</span>
-                                <span className="text-[10px] font-bold opacity-75 block leading-none mt-1 truncate" style={{ color: BRAND.voidBlack }}>
-                                    {activeRoute.assigned_to_name ? activeRoute.assigned_to_name : 'Active Route'}
-                                </span>
+                                <div className="mt-1 flex items-center">
+                                    <select
+                                        value={activeRoute.assigned_to || ""}
+                                        onChange={(e) => handleAssignRoute(activeRoute.id, e.target.value)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="text-[10px] font-bold bg-black/10 border-none rounded px-2 py-0.5 outline-none cursor-pointer hover:bg-black/20 transition-colors"
+                                        style={{ color: BRAND.voidBlack }}
+                                    >
+                                        <option value="">Unassigned</option>
+                                        {teamMembers.map(m => (
+                                            <option key={m.id} value={m.id}>{m.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
                         </div>
                         <button 
