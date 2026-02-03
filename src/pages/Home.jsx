@@ -163,7 +163,45 @@ export default function Home() {
     const [fetchedProperties, setFetchedProperties] = useState([]); // Dynamic fetch storage
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
+    
+    // Working Area Setup
+    const [showWorkingAreaDialog, setShowWorkingAreaDialog] = useState(false);
+    const [workingAreaInput, setWorkingAreaInput] = useState('');
+    const [isSettingArea, setIsSettingArea] = useState(false);
 
+    useEffect(() => {
+        if (user && user.app_role === 'manager' && !user.working_area) {
+            setShowWorkingAreaDialog(true);
+        }
+    }, [user]);
+
+    const handleSaveWorkingArea = async () => {
+        if (!workingAreaInput) return;
+        setIsSettingArea(true);
+        try {
+            // 1. Update User
+            await base44.auth.updateMe({ working_area: workingAreaInput });
+            
+            // 2. Fetch/Ingest Data for this area (assume zip code for now)
+            const isZip = /^\d{5}$/.test(workingAreaInput);
+            if (isZip) {
+                toast.info("Initializing territory data...");
+                await base44.functions.invoke('fetchZipProperties', { zip_code: workingAreaInput });
+                setZipCodeFilter(workingAreaInput); // Set filter to this area
+                toast.success("Territory initialized!");
+                setTimeout(() => window.location.reload(), 1500);
+            } else {
+                 toast.success("Working area set!");
+                 setShowWorkingAreaDialog(false);
+            }
+        } catch (e) {
+            console.error(e);
+            toast.error("Failed to save working area");
+            setIsSettingArea(false);
+        }
+    };
+
+    // Update Rep Color logic...
     // Fetch Team Members for Analysis & Coloring (Filtered by Manager)
     const { data: teamMembers = [] } = useQuery({
         queryKey: ['teamMembers', user?.id],
@@ -198,6 +236,27 @@ export default function Home() {
             queryClient.invalidateQueries({ queryKey: ['teamMembers'] });
         } catch (e) {
             console.error('Failed to update rep color:', e);
+        }
+    };
+
+    const handleAssignRoute = async (routeId, memberId) => {
+        try {
+            const member = teamMembers.find(m => m.id === memberId);
+            await base44.entities.SavedRoute.update(routeId, {
+                assigned_to: memberId,
+                assigned_to_name: member ? member.name : null,
+                status: 'ACTIVE'
+            });
+            queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+            toast.success(`Assigned to ${member ? member.name : 'Unassigned'}`);
+            
+            // Update local state if active
+            if (activeRoute && activeRoute.id === routeId) {
+                setActiveRoute(prev => ({ ...prev, assigned_to: memberId, assigned_to_name: member ? member.name : null }));
+            }
+        } catch (e) {
+            console.error(e);
+            toast.error("Assignment failed");
         }
     };
 
@@ -1553,6 +1612,38 @@ export default function Home() {
                     </div>
                 </div>
             )}
+
+            {/* Working Area Dialog */}
+            <Dialog open={showWorkingAreaDialog} onOpenChange={setShowWorkingAreaDialog}>
+                <DialogContent className="bg-[#111] border-gray-800 text-white">
+                    <DialogHeader>
+                        <DialogTitle>Set Your Working Area</DialogTitle>
+                        <DialogDescription>
+                            Enter the primary Zip Code for your territory. This will be the default view for your map.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <Input
+                            placeholder="e.g. 90210"
+                            value={workingAreaInput}
+                            onChange={(e) => setWorkingAreaInput(e.target.value)}
+                            className="bg-black border-gray-700"
+                        />
+                         <p className="text-[10px] text-gray-500 mt-2">
+                            We will automatically fetch property data for this area.
+                        </p>
+                    </div>
+                    <DialogFooter>
+                        <Button 
+                            onClick={handleSaveWorkingArea}
+                            disabled={!workingAreaInput || isSettingArea}
+                            className="bg-yellow-500 text-black font-bold hover:bg-yellow-400"
+                        >
+                            {isSettingArea ? 'Setting up...' : 'Start Managing'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Property Details Drawer */}
             {/* Command Center Dashboard Overlay */}
