@@ -147,6 +147,7 @@ export default function Home() {
     const [startLocation, setStartLocation] = useState(null); // { lat, lng, address }
     const [startAddressInput, setStartAddressInput] = useState("");
     const [zipCodeFilter, setZipCodeFilter] = useState(''); // Comma separated string
+    const [analyzeZipFilter, setAnalyzeZipFilter] = useState('all'); // Filter for Analyze mode
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
     const [mode, setMode] = useState('analyze'); // 'analyze' or 'generate'
@@ -611,6 +612,12 @@ export default function Home() {
         return Array.from(reps);
     }, [savedRoutes]);
 
+    // Extract unique zips from properties for Analyze filter
+    const uniqueZips = useMemo(() => {
+        const zips = new Set(effectiveProperties.map(p => p.zip_code).filter(Boolean));
+        return Array.from(zips).sort();
+    }, [effectiveProperties]);
+
     // Handle Load Route from URL
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -742,14 +749,19 @@ export default function Home() {
             let workingSet = Array.from(combinedMap.values());
 
             // 3. FILTERING
+            let targetZips = [];
             if (zipCodeFilter && zipCodeFilter.trim()) {
-                const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
-                if (targetZips.length > 0) {
-                    workingSet = workingSet.filter(p => {
-                        const pZip = String(p.zip_code || '').trim().slice(0, 5);
-                        return targetZips.includes(pZip);
-                    });
-                }
+                targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
+            } else if (user?.territory_zip_codes?.length > 0) {
+                // Default to user's territory if no filter provided
+                targetZips = user.territory_zip_codes;
+            }
+
+            if (targetZips.length > 0) {
+                workingSet = workingSet.filter(p => {
+                    const pZip = String(p.zip_code || '').trim().slice(0, 5);
+                    return targetZips.includes(pZip);
+                });
             }
 
             if (workingSet.length === 0) {
@@ -905,37 +917,62 @@ export default function Home() {
 
                 {/* --- ANALYZE MODE: Existing Routes --- */}
                 <LayerGroup>
-                    {mode === 'analyze' && !activeRoute && zoomLevel >= 8 && hydratedSavedRoutes.map((route, routeIdx) => {
+                    {mode === 'analyze' && !activeRoute && zoomLevel >= 8 && hydratedSavedRoutes
+                        .filter(route => {
+                            if (analyzeZipFilter === 'all') return true;
+                            // Check if route has any property in the selected zip
+                            return route.properties.some(p => p.zip_code === analyzeZipFilter);
+                        })
+                        .map((route, routeIdx) => {
                         // If assigned, use Rep Color. If unassigned, use palette color to make it visible.
                         const repColor = route.assigned_to 
                             ? (repColors[route.assigned_to] || '#3b82f6') 
                             : ROUTE_COLORS[routeIdx % ROUTE_COLORS.length];
                             
                         const isUnassigned = !route.assigned_to;
-                        
-                        return route.properties
-                            .filter(p => {
-                                if (quickFilter === 'all') return true;
-                                if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
-                                if (quickFilter === 'sold') return p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED';
-                                if (quickFilter === 'rejected') return p.effective_status === 'HARD_NO';
-                                return true;
-                            })
-                            .map((p, idx) => (
-                            <CircleMarker
-                                key={`saved-${route.id}-${p.address_hash || 'no-hash'}-${idx}`}
-                                center={[p.lat, p.lng]}
-                                radius={4}
-                                eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
-                                pathOptions={{ 
-                                    fillColor: repColor, 
-                                    // Increased opacity for unassigned routes so they are clearly visible
-                                    fillOpacity: isUnassigned ? 0.6 : 0.8, 
-                                    color: repColor, 
-                                    weight: 1 
-                                }}
-                            />
-                        ));
+                        const centerProp = route.properties[Math.floor(route.properties.length / 2)];
+
+                        return (
+                            <React.Fragment key={`saved-group-${route.id}`}>
+                                {/* Rank/Label Marker at Center - VISIBLE IN ANALYZE MODE */}
+                                {centerProp && (
+                                    <CircleMarker
+                                        center={[centerProp.lat, centerProp.lng]}
+                                        radius={14}
+                                        pathOptions={{ fillColor: 'black', fillOpacity: 0.7, color: repColor, weight: 2 }}
+                                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
+                                    >
+                                        <Tooltip permanent direction="center" className="route-number-tooltip">
+                                            <span style={{ color: repColor, fontWeight: '900', fontSize: '10px' }}>#{routeIdx + 1}</span>
+                                        </Tooltip>
+                                    </CircleMarker>
+                                )}
+
+                                {route.properties
+                                    .filter(p => {
+                                        if (quickFilter === 'all') return true;
+                                        if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
+                                        if (quickFilter === 'sold') return p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED';
+                                        if (quickFilter === 'rejected') return p.effective_status === 'HARD_NO';
+                                        return true;
+                                    })
+                                    .map((p, idx) => (
+                                    <CircleMarker
+                                        key={`saved-${route.id}-${p.address_hash || 'no-hash'}-${idx}`}
+                                        center={[p.lat, p.lng]}
+                                        radius={4}
+                                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
+                                        pathOptions={{ 
+                                            fillColor: repColor, 
+                                            // Increased opacity for unassigned routes so they are clearly visible
+                                            fillOpacity: isUnassigned ? 0.6 : 0.8, 
+                                            color: repColor, 
+                                            weight: 1 
+                                        }}
+                                    />
+                                ))}
+                            </React.Fragment>
+                        );
                     })}
                 </LayerGroup>
 
@@ -1392,20 +1429,38 @@ export default function Home() {
                             
                             {/* --- ANALYZE MODE CONTROLS --- */}
                             {mode === 'analyze' && (
-                                <div>
-                                    <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                        FILTER BY REP
-                                    </label>
-                                    <select
-                                        value={repFilter}
-                                        onChange={(e) => setRepFilter(e.target.value)}
-                                        className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
-                                    >
-                                        <option value="all">All Reps</option>
-                                        {uniqueReps.map(rep => (
-                                            <option key={rep} value={rep}>{rep}</option>
-                                        ))}
-                                    </select>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                            FILTER BY REP
+                                        </label>
+                                        <select
+                                            value={repFilter}
+                                            onChange={(e) => setRepFilter(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
+                                        >
+                                            <option value="all">All Reps</option>
+                                            {uniqueReps.map(rep => (
+                                                <option key={rep} value={rep}>{rep}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                            FILTER BY ZIP CODE
+                                        </label>
+                                        <select
+                                            value={analyzeZipFilter}
+                                            onChange={(e) => setAnalyzeZipFilter(e.target.value)}
+                                            className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
+                                        >
+                                            <option value="all">All Zip Codes</option>
+                                            {uniqueZips.map(zip => (
+                                                <option key={zip} value={zip}>{zip}</option>
+                                            ))}
+                                        </select>
+                                    </div>
                                 </div>
                             )}
 
@@ -1551,6 +1606,20 @@ export default function Home() {
                                             ) : (
                                                 <><Navigation className="w-4 h-4 mr-2" /> GENERATE NEW</>
                                             )}
+                                        </Button>
+                                        <Button
+                                            onClick={() => {
+                                                if(confirm("Reset all generated routes and clear temporary data?")) {
+                                                    setRoutes([]);
+                                                    setFetchedProperties([]);
+                                                    toast.success("Builder reset");
+                                                }
+                                            }}
+                                            size="icon"
+                                            className="h-12 w-12 bg-red-900/20 text-red-500 border border-red-900/50 hover:bg-red-900/40"
+                                            title="Reset Builder"
+                                        >
+                                            <RefreshCw className="w-5 h-5" />
                                         </Button>
                                     </div>
 

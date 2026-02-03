@@ -174,12 +174,23 @@ export default function RouteCommandPanel({
                                                         <User className="w-3 h-3 mr-1" />
                                                         AUTO-DISPATCH ALL
                                                     </Button>
+                                                    <Button
+                                                        onClick={() => {
+                                                            if(confirm("Save all generated routes without assigning?")) {
+                                                                generatedRoutes.forEach(r => onSaveRoute(r, null, null));
+                                                            }
+                                                        }}
+                                                        size="sm"
+                                                        className="bg-gray-700 hover:bg-gray-600 text-white font-bold text-[10px] h-8 px-3 ml-2"
+                                                    >
+                                                        SAVE ALL
+                                                    </Button>
                                                 </div>
 
                                                 <div className="grid grid-cols-4 gap-2">
                                                     <StatBox label="Doors" value={genStats.totalHouses} />
                                                     <StatBox label="Routes" value={genStats.routeCount} highlight />
-                                                    <StatBox label="Avg Score" value={genStats.avgScore} />
+                                                    <StatBox label="Avg Score" value={genStats.avgScore} tooltip="Score based on Equity, Sales Activity, and Efficiency. High Score = Better Route." />
                                                     <StatBox label="Miles" value={genStats.totalDist} />
                                                 </div>
 
@@ -346,9 +357,24 @@ export default function RouteCommandPanel({
 }
 
 // Sub-components
-function StatBox({ label, value, highlight = false }) {
+import { HelpCircle } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
+function StatBox({ label, value, highlight = false, tooltip }) {
     return (
-        <div className="bg-black/40 p-2 rounded-lg border border-white/5 text-center">
+        <div className="bg-black/40 p-2 rounded-lg border border-white/5 text-center relative group">
+            {tooltip && (
+                <div className="absolute top-1 right-1 opacity-50 hover:opacity-100 cursor-help">
+                    <TooltipProvider>
+                        <Tooltip>
+                            <TooltipTrigger><HelpCircle className="w-3 h-3 text-gray-500" /></TooltipTrigger>
+                            <TooltipContent className="bg-black border border-gray-800 text-white text-xs max-w-[200px]">
+                                <p>{tooltip}</p>
+                            </TooltipContent>
+                        </Tooltip>
+                    </TooltipProvider>
+                </div>
+            )}
             <p className={`text-lg font-bold ${highlight ? 'text-yellow-500' : 'text-white'}`}>{value}</p>
             <p className="text-[9px] text-gray-500 uppercase font-bold">{label}</p>
         </div>

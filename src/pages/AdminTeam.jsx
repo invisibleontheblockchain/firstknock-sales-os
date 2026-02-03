@@ -255,7 +255,18 @@ export default function AdminTeam() {
                             <Shield className="w-8 h-8 text-yellow-500" />
                             Command Center
                         </h1>
-                        <p className="text-gray-400 text-sm mt-1">Manage your team, routes, and performance.</p>
+                        <div className="flex items-center gap-3 mt-1">
+                            <p className="text-gray-400 text-sm">Manage your team, routes, and performance.</p>
+                            {inviteCodes.filter(c => c.linked_user_id === user?.id).map(code => (
+                                <Badge key={code.id} variant="outline" className="border-yellow-500/50 text-yellow-500 bg-yellow-500/10 gap-1.5 cursor-pointer hover:bg-yellow-500/20 transition-colors" onClick={() => {
+                                    navigator.clipboard.writeText(code.code);
+                                    toast.success("Code copied!");
+                                }}>
+                                    <Key className="w-3 h-3" />
+                                    Team Code: <span className="font-mono font-bold">{code.code}</span>
+                                </Badge>
+                            ))}
+                        </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <Button 
