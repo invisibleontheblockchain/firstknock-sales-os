@@ -913,7 +913,15 @@ export default function Home() {
                             
                         const isUnassigned = !route.assigned_to;
                         
-                        return route.properties.map((p, idx) => (
+                        return route.properties
+                            .filter(p => {
+                                if (quickFilter === 'all') return true;
+                                if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
+                                if (quickFilter === 'sold') return p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED';
+                                if (quickFilter === 'rejected') return p.effective_status === 'HARD_NO';
+                                return true;
+                            })
+                            .map((p, idx) => (
                             <CircleMarker
                                 key={`saved-${route.id}-${p.address_hash || 'no-hash'}-${idx}`}
                                 center={[p.lat, p.lng]}
@@ -1294,25 +1302,15 @@ export default function Home() {
                          <Button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                setViewMode(prev => prev === 'pins' ? 'heatmap' : 'pins');
-                                toast.info(viewMode === 'pins' ? "Heatmap Enabled" : "Showing Pins");
-                            }}
-                            size="icon"
-                            className="rounded-full w-14 h-14 shadow-2xl backdrop-blur-md transition-all duration-300"
-                            style={{ 
-                                background: viewMode === 'heatmap' ? BRAND.gold : 'rgba(31, 31, 31, 0.8)', 
-                                color: viewMode === 'heatmap' ? BRAND.voidBlack : BRAND.gold, 
-                                border: `1px solid ${BRAND.gold}40` 
-                            }}
-                        >
-                            {viewMode === 'heatmap' ? <Flame className="w-6 h-6 animate-pulse" /> : <Layers className="w-6 h-6" />}
-                        </Button>
-                        <Button
-                            onClick={(e) => {
-                                e.stopPropagation();
                                 if (mapRef.current) {
-                                    mapRef.current.locate({ setView: true, maxZoom: 16 });
-                                    toast.success("Locating...");
+                                    if (fitBounds && fitBounds.length > 0) {
+                                        mapRef.current.fitBounds(fitBounds, { padding: [30, 30], maxZoom: 17 });
+                                        toast.success("Centered on Territory");
+                                    } else {
+                                        // Fallback to locate if no bounds
+                                        mapRef.current.locate({ setView: true, maxZoom: 16 });
+                                        toast.success("Locating...");
+                                    }
                                 } else {
                                     toast.error("Map not ready");
                                 }

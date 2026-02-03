@@ -40,6 +40,20 @@ export default function RepHome() {
     const [uploading, setUploading] = useState(false);
     const [isOffline, setIsOffline] = useState(!navigator.onLine);
     
+    // Log State
+    const [logNote, setLogNote] = useState('');
+    const [callbackTime, setCallbackTime] = useState('');
+    const [callbackPhone, setCallbackPhone] = useState('');
+
+    // Reset log state when opening property
+    React.useEffect(() => {
+        if (selectedProperty) {
+            setLogNote('');
+            setCallbackTime('');
+            setCallbackPhone('');
+        }
+    }, [selectedProperty]);
+    
     // Offline Listener
     React.useEffect(() => {
         const handleOnline = () => setIsOffline(false);
@@ -274,14 +288,29 @@ export default function RepHome() {
     };
 
     const submitLog = (status, coords, imageUrl) => {
+        let noteText = `Marked as ${status}`;
+        if (logNote) noteText += ` | Note: ${logNote}`;
+        if (callbackPhone) noteText += ` | Phone: ${callbackPhone}`;
+        if (callbackTime) noteText += ` | Time: ${callbackTime}`;
+
+        // Calculate next eligible date if callback
+        let nextDate = null;
+        if (status === 'CALLBACK' && callbackTime) {
+            const today = new Date();
+            const [hours, minutes] = callbackTime.split(':');
+            today.setHours(parseInt(hours), parseInt(minutes));
+            nextDate = today.toISOString();
+        }
+
         createLogMutation.mutate({
             address_hash: selectedProperty.address_hash,
-            raw_input_text: `Marked as ${status}`,
+            raw_input_text: noteText,
             parsed_status: status,
             gps_proof_lat: coords.latitude,
             gps_proof_lng: coords.longitude,
             gps_accuracy: coords.accuracy,
-            image_url: imageUrl
+            image_url: imageUrl,
+            next_eligible_date: nextDate
         });
     };
 
@@ -512,6 +541,45 @@ export default function RepHome() {
                                     {selectedProperty.house_number} {selectedProperty.street_name}
                                 </h2>
                                 <p className="text-xl text-gray-400">{selectedProperty.city}, {selectedProperty.state}</p>
+                            </div>
+
+                            {/* Interaction Details Input */}
+                            <div className="space-y-3 bg-gray-900/50 p-4 rounded-xl border border-gray-800">
+                                <div className="space-y-2">
+                                    <label className="text-xs font-bold text-gray-500 uppercase">Interaction Note</label>
+                                    <textarea
+                                        value={logNote}
+                                        onChange={(e) => setLogNote(e.target.value)}
+                                        placeholder="Add notes..."
+                                        className="w-full bg-black/50 border border-gray-700 rounded-lg p-3 text-sm text-white resize-none h-24 focus:border-yellow-500 focus:outline-none"
+                                    />
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1">
+                                            <Clock className="w-3 h-3" /> Callback Time
+                                        </label>
+                                        <input
+                                            type="time"
+                                            value={callbackTime}
+                                            onChange={(e) => setCallbackTime(e.target.value)}
+                                            className="w-full bg-black/50 border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-yellow-500 focus:outline-none"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1">
+                                            <Phone className="w-3 h-3" /> Phone #
+                                        </label>
+                                        <input
+                                            type="tel"
+                                            value={callbackPhone}
+                                            onChange={(e) => setCallbackPhone(e.target.value)}
+                                            placeholder="(555) 555-5555"
+                                            className="w-full bg-black/50 border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-yellow-500 focus:outline-none"
+                                        />
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Main Actions */}

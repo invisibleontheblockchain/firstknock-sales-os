@@ -252,6 +252,12 @@ export default function AdminTeam() {
                         <p className="text-gray-400 text-sm mt-1">Manage your team, routes, and performance.</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
+                        <Button 
+                            onClick={() => createCodeMutation.mutate({ code: "0000", max_uses: 5, role: 'rep', label: 'Demo Team' })}
+                            className="h-9 bg-gray-800 text-gray-300 font-bold hover:bg-gray-700 hover:text-white border border-gray-700"
+                        >
+                            <Key className="w-4 h-4 mr-2" /> Create Demo Team
+                        </Button>
                         <Dialog open={isAddRepOpen} onOpenChange={setIsAddRepOpen}>
                             <DialogTrigger asChild>
                                 <Button className="h-9 bg-yellow-500 text-black font-bold hover:bg-yellow-400">
