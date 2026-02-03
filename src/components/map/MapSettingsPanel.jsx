@@ -32,7 +32,9 @@ export default function MapSettingsPanel({
     onUpdateRepColor,
     onClose,
     quickFilter,
-    setQuickFilter
+    setQuickFilter,
+    showRouteDetails,
+    setShowRouteDetails
 }) {
     const STATUS_FILTERS = [
         { id: 'all', label: 'ALL', color: '#E5E5E5' },
@@ -62,6 +64,22 @@ export default function MapSettingsPanel({
                     
                     {/* Status Visibility Filters (Moved from Map) */}
                     <div>
+                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                            MAP DISPLAY
+                        </label>
+                        <div className="flex gap-2 mb-4">
+                            <button
+                                onClick={() => setShowRouteDetails(!showRouteDetails)}
+                                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all border ${
+                                    showRouteDetails
+                                        ? 'bg-yellow-500 text-black border-yellow-500'
+                                        : 'bg-[#1A1A1A] text-gray-400 border-gray-800'
+                                }`}
+                            >
+                                {showRouteDetails ? 'SHOWING PINS' : 'SHOWING RANK'}
+                            </button>
+                        </div>
+
                         <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
                             STATUS VISIBILITY
                         </label>

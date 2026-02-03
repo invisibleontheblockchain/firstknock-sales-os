@@ -156,6 +156,7 @@ export default function Home() {
     const [selectedProperty, setSelectedProperty] = useState(null);
     const [zoomLevel, setZoomLevel] = useState(15);
     const [mapTheme, setMapTheme] = useState('dark'); // 'dark' or 'light'
+    const [showRouteDetails, setShowRouteDetails] = useState(true); // Toggle individual dots vs just rank/number
     const [showMapSettings, setShowMapSettings] = useState(false);
     const [darkRoomProperties, setDarkRoomProperties] = useState([]);
     const [darkRoomClusters, setDarkRoomClusters] = useState([]);
@@ -948,7 +949,7 @@ export default function Home() {
                                     </CircleMarker>
                                 )}
 
-                                {route.properties
+                                {showRouteDetails && route.properties
                                     .filter(p => {
                                         if (quickFilter === 'all') return true;
                                         if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
@@ -1012,7 +1013,7 @@ export default function Home() {
                                     </CircleMarker>
                                 )}
                                 
-                                {route.properties.map((p, idx) => (
+                                {showRouteDetails && route.properties.map((p, idx) => (
                                     <CircleMarker
                                         key={`generated-${route.id}-${idx}`}
                                         center={[p.lat, p.lng]}
@@ -1734,6 +1735,8 @@ export default function Home() {
                                       onClose={() => setShowMapSettings(false)}
                                       quickFilter={quickFilter}
                                       setQuickFilter={setQuickFilter}
+                                      showRouteDetails={showRouteDetails}
+                                      setShowRouteDetails={setShowRouteDetails}
                                   />
                               )}
 

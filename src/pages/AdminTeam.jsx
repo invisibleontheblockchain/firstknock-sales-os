@@ -435,65 +435,64 @@ export default function AdminTeam() {
 
                     {/* OVERVIEW TAB */}
                     <TabsContent value="overview" className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                            {/* Intelligence Column */}
-                            <div className="lg:col-span-2 space-y-6">
-                                <Card className="bg-[#111] border-gray-800">
-                                    <CardHeader className="pb-3 border-b border-gray-800">
-                                        <CardTitle className="text-sm font-bold text-gray-400 uppercase tracking-wide flex items-center gap-2">
-                                            <Sparkles className="w-4 h-4 text-yellow-500" />
-                                            Territory Insights
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="p-0">
-                                        <RouteInsights />
-                                    </CardContent>
-                                </Card>
-
-                                {routesByRep.unassigned.length > 0 && (
-                                    <Card className="bg-[#111] border-red-900/30">
-                                        <CardHeader className="pb-3 border-b border-gray-800">
-                                            <div className="flex justify-between items-center">
-                                                <CardTitle className="text-sm font-bold text-red-400 uppercase tracking-wide flex items-center gap-2">
-                                                    <AlertCircle className="w-4 h-4" />
-                                                    Unassigned Routes
-                                                </CardTitle>
-                                                <Button variant="link" onClick={() => setActiveTab('logistics')} className="text-xs text-red-400 p-0 h-auto">
-                                                    View All &rarr;
-                                                </Button>
-                                            </div>
-                                        </CardHeader>
-                                        <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                            {routesByRep.unassigned.slice(0, 4).map(route => (
-                                                <div key={route.id} className="flex items-center justify-between p-3 bg-black/40 rounded border border-gray-800/50">
-                                                    <div>
-                                                        <p className="font-bold text-sm text-white">{route.name}</p>
-                                                        <p className="text-[10px] text-gray-500">{route.metrics?.house_count || 0} homes</p>
-                                                    </div>
-                                                    <Button 
-                                                        size="sm" 
-                                                        variant="ghost"
-                                                        onClick={() => setActiveTab('logistics')}
-                                                        className="text-yellow-500 text-xs h-7"
-                                                    >
-                                                        Assign
-                                                    </Button>
-                                                </div>
-                                            ))}
-                                        </CardContent>
-                                    </Card>
-                                )}
-                            </div>
-
-                            {/* Leaderboard Column */}
-                            <div>
-                                <TeamLeaderboard 
-                                    members={filteredTeamMembers} 
-                                    logs={logs} 
-                                    routes={Object.values(routesByRep).flat()} 
-                                />
-                            </div>
+                        
+                        {/* 1. Team Leaderboard (Top) */}
+                        <div>
+                            <TeamLeaderboard 
+                                members={filteredTeamMembers} 
+                                logs={logs} 
+                                routes={Object.values(routesByRep).flat()} 
+                            />
                         </div>
+
+                        {/* 2. Unassigned Routes (Middle) */}
+                        {routesByRep.unassigned.length > 0 && (
+                            <Card className="bg-[#111] border-red-900/30">
+                                <CardHeader className="pb-3 border-b border-gray-800">
+                                    <div className="flex justify-between items-center">
+                                        <CardTitle className="text-sm font-bold text-red-400 uppercase tracking-wide flex items-center gap-2">
+                                            <AlertCircle className="w-4 h-4" />
+                                            Unassigned Routes
+                                        </CardTitle>
+                                        <Button variant="link" onClick={() => setActiveTab('logistics')} className="text-xs text-red-400 p-0 h-auto">
+                                            View All &rarr;
+                                        </Button>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                                    {routesByRep.unassigned.slice(0, 8).map(route => (
+                                        <div key={route.id} className="flex items-center justify-between p-3 bg-black/40 rounded border border-gray-800/50">
+                                            <div>
+                                                <p className="font-bold text-sm text-white">{route.name}</p>
+                                                <p className="text-[10px] text-gray-500">{route.metrics?.house_count || 0} homes</p>
+                                            </div>
+                                            <Button 
+                                                size="sm" 
+                                                variant="ghost"
+                                                onClick={() => setActiveTab('logistics')}
+                                                className="text-yellow-500 text-xs h-7"
+                                            >
+                                                Assign
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </CardContent>
+                            </Card>
+                        )}
+
+                        {/* 3. Territory Insights (Bottom) */}
+                        <Card className="bg-[#111] border-gray-800">
+                            <CardHeader className="pb-3 border-b border-gray-800">
+                                <CardTitle className="text-sm font-bold text-gray-400 uppercase tracking-wide flex items-center gap-2">
+                                    <Sparkles className="w-4 h-4 text-yellow-500" />
+                                    Territory Insights
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="p-0">
+                                <RouteInsights />
+                            </CardContent>
+                        </Card>
+
                     </TabsContent>
 
                     {/* ROSTER TAB */}
