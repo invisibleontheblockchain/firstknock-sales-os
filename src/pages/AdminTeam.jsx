@@ -486,6 +486,14 @@ export default function AdminTeam() {
                                                         <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
                                                             <span className="flex items-center gap-1"><Home className="w-3 h-3" /> {route.metrics?.house_count || 0}</span>
                                                             <span className="flex items-center gap-1"><Map className="w-3 h-3" /> {route.metrics?.distance || 0} mi</span>
+                                                            
+                                                            {/* Zip Code Display */}
+                                                            {route.start_location?.address && (
+                                                                <Badge variant="outline" className="border-gray-700 bg-gray-900 text-gray-300 text-[10px] px-2">
+                                                                    {route.start_location.address.match(/\b\d{5}\b/)?.[0] || 'Zip N/A'}
+                                                                </Badge>
+                                                            )}
+
                                                             <Badge variant="outline" className={`border-0 text-[10px] px-2 ${route.status === 'COMPLETED' ? 'bg-green-900/30 text-green-400' : 'bg-gray-800'}`}>
                                                                 {route.status}
                                                             </Badge>
