@@ -28,7 +28,6 @@ import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
 import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../components/logic/heatmapLogic';
 import RouteChecklist from '../components/routes/RouteChecklist';
 import RouteCommandPanel from '../components/routes/RouteCommandPanel';
-import RouteGenerationWizard from '../components/routes/RouteGenerationWizard';
 import NearbyHotLeads from '../components/nearby/NearbyHotLeads';
 import KnockTimeBanner from '../components/timing/KnockTimeBanner';
 import { darkRoom, DarkRoomClient } from '@/components/logic/neonClient';
@@ -648,21 +647,9 @@ export default function Home() {
     // Generate routes with configurable houses per route
     const [routes, setRoutes] = useState([]);
     const [routesGenerating, setRoutesGenerating] = useState(false);
-    const [showWizard, setShowWizard] = useState(false);
 
     const [streetCooldownDays, setStreetCooldownDays] = useState(30);
     const [cooldownInfo, setCooldownInfo] = useState(null);
-
-    // Fetch Saved Plan
-    const { data: territoryPlan } = useQuery({
-        queryKey: ['territoryPlan', user?.id],
-        queryFn: async () => {
-            if (!user?.id) return null;
-            const res = await base44.entities.TerritoryPlan.filter({ created_by: user.email }, '-created_date', 1);
-            return Array.isArray(res) ? res[0] : (res?.items?.[0] || null);
-        },
-        enabled: !!user
-    });
 
     // Heatmap Data (High Zoom)
     const heatmapData = useMemo(() => {
@@ -677,29 +664,18 @@ export default function Home() {
         return generateStateClusters(effectiveProperties);
     }, [effectiveProperties, zoomLevel, activeRoute]);
 
-    // Unified Route Generator (Accepts config from Wizard or uses state)
-    const generateRoutes = useCallback(async (wizardConfig = null) => {
+    const generateRoutes = useCallback(async () => {
         setRoutesGenerating(true);
         
-        // Use provided config or fallback to state
-        const targetZipsStr = wizardConfig ? wizardConfig.zipCodes : zipCodeFilter;
-        const targetHousesPerRoute = wizardConfig ? wizardConfig.housesPerRoute : housesPerRoute;
-        const targetCooldown = wizardConfig ? wizardConfig.streetCooldownDays : streetCooldownDays;
-        
-        // Update state to match wizard
-        if (wizardConfig) {
-            setZipCodeFilter(wizardConfig.zipCodes);
-            setHousesPerRoute(wizardConfig.housesPerRoute);
-            setStreetCooldownDays(wizardConfig.streetCooldownDays);
-        }
-
         try {
             // 1. DYNAMIC DATA FETCHING (if zip code is set)
             let dynamicProps = [];
-            if (targetZipsStr && targetZipsStr.trim()) {
-                const targetZips = targetZipsStr.split(',').map(z => z.trim()).filter(Boolean);
+            if (zipCodeFilter && zipCodeFilter.trim()) {
+                const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
                 
-                // Fetch in parallel
+                // Check if we need to fetch (simple check: do we have enough data for these zips?)
+                // We'll just fetch to be safe and merge.
+                // Note: Parallel fetch for multiple zips
                 const fetchPromises = targetZips.map(zip => 
                     base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000)
                         .then(res => Array.isArray(res) ? res : (res?.items || []))
@@ -715,6 +691,7 @@ export default function Home() {
                 // If no properties found, try to generate/import them via backend
                 if (flattened.length === 0) {
                     console.log(`[Generate] No properties found for ${targetZips.join(', ')}. Attempting generation...`);
+                    // Try one by one or parallel? Parallel.
                     const generatePromises = targetZips.map(zip => 
                         base44.functions.invoke('fetchZipProperties', { zip_code: zip })
                             .catch(err => {
@@ -731,8 +708,11 @@ export default function Home() {
                 }
                 
                 if (flattened.length > 0) {
+                    console.log(`[Generate] Fetched ${flattened.length} properties from backend for zips: ${targetZips.join(', ')}`);
                     dynamicProps = flattened;
+                    // Update state to show on map (will trigger re-render eventually, but we use local var for now)
                     setFetchedProperties(prev => {
+                        // Dedup with existing fetched
                         const existingIds = new Set(prev.map(p => p.id));
                         const newUnique = flattened.filter(p => !existingIds.has(p.id));
                         return [...prev, ...newUnique];
@@ -740,9 +720,12 @@ export default function Home() {
                 }
             }
 
-            // 2. PREPARE DATA
-            const assignedSet = assignedHashes;
+            // 2. PREPARE DATA FOR ROUTING
+            // Combine current available (memoized) with newly fetched dynamic props
+            // Need to apply same processing (dedup, assigned filtering) to dynamicProps
+            const assignedSet = assignedHashes; // closed over from render
             
+            // Convert dynamicProps to effective format (add lat/lng parse if needed, though filter returns entities)
             const processedDynamic = dynamicProps.map(p => {
                 const propLogs = logs.filter(l => (p.address_hash && l.address_hash === p.address_hash));
                 return {
@@ -754,6 +737,7 @@ export default function Home() {
                 };
             }).filter(p => !assignedSet.has(p.address_hash) && p.lat && p.lng);
 
+            // Merge with existing availableProperties, deduping by address_hash
             const combinedMap = new Map();
             availableProperties.forEach(p => combinedMap.set(p.address_hash, p));
             processedDynamic.forEach(p => combinedMap.set(p.address_hash, p));
@@ -761,8 +745,8 @@ export default function Home() {
             let workingSet = Array.from(combinedMap.values());
 
             // 3. FILTERING
-            if (targetZipsStr && targetZipsStr.trim()) {
-                const targetZips = targetZipsStr.split(',').map(z => z.trim()).filter(Boolean);
+            if (zipCodeFilter && zipCodeFilter.trim()) {
+                const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
                 if (targetZips.length > 0) {
                     workingSet = workingSet.filter(p => {
                         const pZip = String(p.zip_code || '').trim().slice(0, 5);
@@ -772,12 +756,14 @@ export default function Home() {
             }
 
             if (workingSet.length === 0) {
-                toast.error("No properties found in this area. Try syncing or checking the zip code.");
+                alert("No properties found in the selected zip codes (checked local and database).");
                 setRoutesGenerating(false);
                 return;
             }
 
-            // 4. UI UPDATES
+            // 4. UI UPDATES (Close Panel & Move Map)
+            setShowCompare(false);
+            
             if (mapRef.current && workingSet.length > 0) {
                 const bounds = L.latLngBounds(workingSet.map(p => [p.lat, p.lng]));
                 if (bounds.isValid()) {
@@ -785,76 +771,37 @@ export default function Home() {
                 }
             }
 
-            // 5. GENERATE
+            // 5. GENERATE ROUTES
+            // Use current map center as start location if not set
             const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
             const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
 
             const generated = generateOptimizedRoutes(
                 workingSet,
-                targetHousesPerRoute,
+                housesPerRoute,
                 start,
                 logs,
                 { 
-                    streetCooldownDays: targetCooldown, 
-                    useStreetSweep: wizardConfig ? wizardConfig.useStreetSweep : true,
-                    minimizeTurns: wizardConfig ? wizardConfig.minimizeTurns : true
+                    streetCooldownDays, 
+                    useStreetSweep: true,
+                    minimizeTurns: true
                 }
             );
 
-            if (generated._cooldownInfo) setCooldownInfo(generated._cooldownInfo);
+            if (generated._cooldownInfo) {
+                setCooldownInfo(generated._cooldownInfo);
+            }
+
             setRoutes(generated);
-            
-            // If wizard is NOT used (legacy button), show panel. If wizard IS used, it stays open.
-            if (!wizardConfig) setShowRoutePanel(true);
+            setShowRoutePanel(true);
 
         } catch (e) {
             console.error("Route generation error:", e);
-            toast.error("Route generation failed.");
+            alert("An error occurred while generating routes.");
         } finally {
             setRoutesGenerating(false);
         }
     }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes]);
-
-    const handleSavePlan = async (config, newRoutes) => {
-        try {
-            // 1. Save Plan
-            await base44.entities.TerritoryPlan.create({
-                name: `${config.zipCodes || 'Area'} Plan - ${new Date().toLocaleDateString()}`,
-                status: 'ACTIVE',
-                strategy_config: config,
-                goal_houses: newRoutes.reduce((acc, r) => acc + r.houseCount, 0),
-                start_date: new Date().toISOString()
-            });
-
-            // 2. Save Routes (Bulk would be better but we iterate for now)
-            toast.info(`Saving ${newRoutes.length} routes...`);
-            const promises = newRoutes.map(route => base44.entities.SavedRoute.create({
-                name: route.name,
-                property_hashes: route.properties.map(p => p.address_hash),
-                metrics: {
-                    distance: route.totalDistance,
-                    house_count: route.houseCount,
-                    score: route.competitivenessScore
-                },
-                status: 'PENDING', // Default to pending assignment
-                manager_id: user.id
-            }));
-            
-            await Promise.all(promises);
-            
-            toast.success("Campaign Saved & Routes Created!");
-            queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
-            queryClient.invalidateQueries({ queryKey: ['territoryPlan'] });
-            
-            setShowWizard(false);
-            setMode('analyze'); // Switch back to map/list view
-            setShowRoutePanel(true); // Open panel to see new routes
-
-        } catch (e) {
-            console.error(e);
-            toast.error("Failed to save plan.");
-        }
-    };
 
     // Filter and sort routes
     const filteredRoutes = useMemo(() => {
@@ -1188,10 +1135,7 @@ export default function Home() {
                             DISPATCH MAP
                         </button>
                         <button
-                            onClick={() => {
-                                setMode('generate');
-                                setShowWizard(true);
-                            }}
+                            onClick={() => setMode('generate')}
                             className={`px-3 py-2 rounded-md text-[10px] font-bold transition-all ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-400 hover:text-white'}`}
                         >
                             ROUTE BUILDER
@@ -1399,28 +1343,6 @@ export default function Home() {
                     housesPerRoute={housesPerRoute}
                 />
             )}
-
-            {/* Route Wizard Overlay */}
-            <RouteGenerationWizard 
-                isOpen={showWizard}
-                onClose={() => {
-                    setShowWizard(false);
-                    // If closing without generating, maybe revert mode?
-                    // setMode('analyze'); 
-                }}
-                onGenerate={generateRoutes}
-                onSave={handleSavePlan}
-                initialConfig={territoryPlan?.strategy_config ? {
-                    zipCodes: user?.working_area || '',
-                    ...territoryPlan.strategy_config
-                } : { 
-                    zipCodes: user?.working_area || '',
-                    housesPerRoute: 50 
-                }}
-                isGenerating={routesGenerating}
-                generatedRoutes={routes}
-                genStats={genStats}
-            />
 
             {/* Filter Panel */}
             {showCompare && (
