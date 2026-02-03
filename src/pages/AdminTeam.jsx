@@ -38,19 +38,25 @@ export default function AdminTeam() {
 
     // --- Queries ---
     const { data: teamMembers = [], isLoading: teamLoading } = useQuery({
-        queryKey: ['teamMembers'],
+        queryKey: ['teamMembers', user?.id],
         queryFn: async () => {
-            const res = await base44.entities.TeamMember.list('-created_date', 100);
+            if (!user?.id) return [];
+            // Filter by manager_id (current user)
+            const res = await base44.entities.TeamMember.filter({ manager_id: user.id }, '-created_date', 100);
             return Array.isArray(res) ? res : (res?.items || []);
-        }
+        },
+        enabled: !!user?.id
     });
 
     const { data: routes = [], isLoading: routesLoading } = useQuery({
-        queryKey: ['allRoutes'],
+        queryKey: ['allRoutes', user?.id],
         queryFn: async () => {
-            const res = await base44.entities.SavedRoute.list('-created_date', 200);
+            if (!user?.id) return [];
+            // Filter by manager_id
+            const res = await base44.entities.SavedRoute.filter({ manager_id: user.id }, '-created_date', 200);
             return Array.isArray(res) ? res : (res?.items || []);
-        }
+        },
+        enabled: !!user?.id
     });
 
     const { data: inviteCodes = [] } = useQuery({
@@ -99,7 +105,7 @@ export default function AdminTeam() {
     });
 
     const createCodeMutation = useMutation({
-        mutationFn: (data) => base44.entities.InviteCode.create(data),
+        mutationFn: (data) => base44.entities.InviteCode.create({ ...data, linked_user_id: user.id }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['inviteCodes'] });
             setNewCode({ code: '', role: 'manager', label: '' });
@@ -211,7 +217,8 @@ export default function AdminTeam() {
 
         createRepMutation.mutate({
             ...newRep,
-            email: newRep.email.trim().toLowerCase()
+            email: newRep.email.trim().toLowerCase(),
+            manager_id: user.id // Assign to current manager
         });
     };
 
@@ -565,6 +572,12 @@ export default function AdminTeam() {
                                                 onChange={(e) => setNewCode({...newCode, code: e.target.value})}
                                                 className="bg-black border-gray-700"
                                             />
+                                            <button 
+                                                onClick={() => setNewCode({...newCode, code: "0000"})}
+                                                className="absolute right-8 top-1/2 -translate-y-1/2 text-xs text-gray-500 hover:text-white mr-2"
+                                            >
+                                                Test Code
+                                            </button>
                                             <button 
                                                 onClick={() => setNewCode({...newCode, code: Math.floor(1000 + Math.random() * 9000).toString()})}
                                                 className="absolute right-3 top-1/2 -translate-y-1/2 text-yellow-500 hover:text-white"

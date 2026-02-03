@@ -62,7 +62,8 @@ export default function RoleSelect() {
                         email: user.email,
                         role: validCode.role,
                         status: 'active',
-                        color: '#' + Math.floor(Math.random()*16777215).toString(16) // Random color
+                        color: '#' + Math.floor(Math.random()*16777215).toString(16), // Random color
+                        manager_id: validCode.linked_user_id || null // Link to manager
                     });
                 }
 
