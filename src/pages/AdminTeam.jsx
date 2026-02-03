@@ -65,11 +65,14 @@ export default function AdminTeam() {
     });
 
     const { data: inviteCodes = [] } = useQuery({
-        queryKey: ['inviteCodes'],
+        queryKey: ['inviteCodes', user?.id],
         queryFn: async () => {
-            const res = await base44.entities.InviteCode.list('-created_date', 50);
+            if (!user?.id) return [];
+            // Only fetch codes linked to this manager
+            const res = await base44.entities.InviteCode.filter({ linked_user_id: user.id }, '-created_date', 50);
             return Array.isArray(res) ? res : (res?.items || []);
-        }
+        },
+        enabled: !!user?.id
     });
 
     const { data: logs = [] } = useQuery({
@@ -105,10 +108,10 @@ export default function AdminTeam() {
     });
 
     const createCodeMutation = useMutation({
-        mutationFn: (data) => base44.entities.InviteCode.create({ ...data, linked_user_id: user.id }),
+        mutationFn: (data) => base44.entities.InviteCode.create({ ...data, linked_user_id: user.id, max_uses: data.max_uses || 50 }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['inviteCodes'] });
-            setNewCode({ code: '', role: 'manager', label: '' });
+            setNewCode({ code: '', role: 'rep', label: '' });
             toast.success("Invite code created");
         }
     });
@@ -573,10 +576,10 @@ export default function AdminTeam() {
                                                 className="bg-black border-gray-700"
                                             />
                                             <button 
-                                                onClick={() => setNewCode({...newCode, code: "0000"})}
+                                                onClick={() => setNewCode({...newCode, code: "0000", max_uses: 5})}
                                                 className="absolute right-8 top-1/2 -translate-y-1/2 text-xs text-gray-500 hover:text-white mr-2"
                                             >
-                                                Test Code
+                                                Test Code (0000)
                                             </button>
                                             <button 
                                                 onClick={() => setNewCode({...newCode, code: Math.floor(1000 + Math.random() * 9000).toString()})}
