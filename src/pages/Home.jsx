@@ -905,16 +905,27 @@ export default function Home() {
 
                 {/* --- ANALYZE MODE: Existing Routes --- */}
                 <LayerGroup>
-                    {mode === 'analyze' && !activeRoute && zoomLevel >= 8 && hydratedSavedRoutes.map((route) => {
-                        const repColor = route.assigned_to ? (repColors[route.assigned_to] || '#3b82f6') : '#666'; 
+                    {mode === 'analyze' && !activeRoute && zoomLevel >= 8 && hydratedSavedRoutes.map((route, routeIdx) => {
+                        // If assigned, use Rep Color. If unassigned, use palette color to make it visible.
+                        const repColor = route.assigned_to 
+                            ? (repColors[route.assigned_to] || '#3b82f6') 
+                            : ROUTE_COLORS[routeIdx % ROUTE_COLORS.length];
+                            
                         const isUnassigned = !route.assigned_to;
+                        
                         return route.properties.map((p, idx) => (
                             <CircleMarker
                                 key={`saved-${route.id}-${p.address_hash || 'no-hash'}-${idx}`}
                                 center={[p.lat, p.lng]}
                                 radius={4}
                                 eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
-                                pathOptions={{ fillColor: repColor, fillOpacity: isUnassigned ? 0.3 : 0.8, color: repColor, weight: 1 }}
+                                pathOptions={{ 
+                                    fillColor: repColor, 
+                                    // Increased opacity for unassigned routes so they are clearly visible
+                                    fillOpacity: isUnassigned ? 0.6 : 0.8, 
+                                    color: repColor, 
+                                    weight: 1 
+                                }}
                             />
                         ));
                     })}
