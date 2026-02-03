@@ -33,6 +33,7 @@ import KnockTimeBanner from '../components/timing/KnockTimeBanner';
 import { darkRoom, DarkRoomClient } from '@/components/logic/neonClient';
 import CommandCenterDashboard from '../components/dashboard/CommandCenterDashboard';
 import MapSettingsPanel from '../components/map/MapSettingsPanel';
+import TerritorySetupWizard from '../components/manager/TerritorySetupWizard';
 import { LayoutDashboard, Settings } from 'lucide-react';
 
 // Brand Colors
@@ -164,50 +165,32 @@ export default function Home() {
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
     
-    // Working Area Setup
-    const [showWorkingAreaDialog, setShowWorkingAreaDialog] = useState(false);
-    const [workingAreaInput, setWorkingAreaInput] = useState('');
-    const [isSettingArea, setIsSettingArea] = useState(false);
+    // Working Area Setup - Replaced by TerritorySetupWizard
+    const [showSetupWizard, setShowSetupWizard] = useState(false);
 
     useEffect(() => {
-        if (user && user.app_role === 'manager' && !user.working_area) {
-            setShowWorkingAreaDialog(true);
-        }
-    }, [user]);
-
-    const handleSaveWorkingArea = async () => {
-        if (!workingAreaInput) return;
-        setIsSettingArea(true);
-        try {
-            // 1. Update User
-            // Parse for multiple zips if comma separated
-            const zips = workingAreaInput.split(',').map(z => z.trim()).filter(z => /^\d{5}$/.test(z));
+        // Trigger wizard if manager hasn't set working area OR if they have no saved routes
+        // This ensures they are walked through the process
+        if (user && user.app_role === 'manager') {
+            const hasRoutes = savedRoutes.length > 0;
+            const hasArea = !!user.working_area;
             
-            await base44.auth.updateMe({ 
-                working_area: workingAreaInput,
-                territory_zip_codes: zips.length > 0 ? zips : undefined 
-            });
-            
-            queryClient.invalidateQueries({ queryKey: ['user'] }); // Immediately update user state
-            setShowWorkingAreaDialog(false); // Close dialog immediately
-
-            // 2. Fetch/Ingest Data for this area
-            if (zips.length > 0) {
-                toast.info(`Initializing territory data for ${zips.length} zips...`);
-                // Fetch in parallel
-                await Promise.all(zips.map(zip => base44.functions.invoke('fetchZipProperties', { zip_code: zip })));
-                
-                setZipCodeFilter(workingAreaInput); // Set filter to this area
-                toast.success("Territory initialized!");
-                setTimeout(() => window.location.reload(), 1500);
-            } else {
-                 toast.success("Working area set!");
+            // If they have area but no routes, we still might want to prompt them, 
+            // but let's be less aggressive if they have area. 
+            // Main trigger: No Area.
+            if (!hasArea) {
+                setShowSetupWizard(true);
             }
-        } catch (e) {
-            console.error(e);
-            toast.error("Failed to save working area");
-            setIsSettingArea(false);
         }
+    }, [user, savedRoutes.length]);
+
+    const handleWizardComplete = () => {
+        setShowSetupWizard(false);
+        // Refresh everything
+        queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+        queryClient.invalidateQueries({ queryKey: ['user'] });
+        queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
+        window.location.reload(); // Cleanest way to ensure map re-centers and loads new data
     };
 
     // Update Rep Color logic...
@@ -1633,37 +1616,13 @@ export default function Home() {
                 </div>
             )}
 
-            {/* Working Area Dialog */}
-            <Dialog open={showWorkingAreaDialog} onOpenChange={setShowWorkingAreaDialog}>
-                <DialogContent className="bg-[#111] border-gray-800 text-white">
-                    <DialogHeader>
-                        <DialogTitle>Set Your Working Area</DialogTitle>
-                        <DialogDescription>
-                            Enter the primary Zip Code for your territory. This will be the default view for your map.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="py-4">
-                        <Input
-                            placeholder="e.g. 90210"
-                            value={workingAreaInput}
-                            onChange={(e) => setWorkingAreaInput(e.target.value)}
-                            className="bg-black border-gray-700"
-                        />
-                         <p className="text-[10px] text-gray-500 mt-2">
-                            We will automatically fetch property data for this area.
-                        </p>
-                    </div>
-                    <DialogFooter>
-                        <Button 
-                            onClick={handleSaveWorkingArea}
-                            disabled={!workingAreaInput || isSettingArea}
-                            className="bg-yellow-500 text-black font-bold hover:bg-yellow-400"
-                        >
-                            {isSettingArea ? 'Setting up...' : 'Start Managing'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            {/* New Territory Setup Wizard */}
+            {showSetupWizard && (
+                <TerritorySetupWizard 
+                    user={user} 
+                    onComplete={handleWizardComplete} 
+                />
+            )}
 
             {/* Property Details Drawer */}
             {/* Command Center Dashboard Overlay */}
