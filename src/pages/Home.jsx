@@ -174,7 +174,7 @@ export default function Home() {
         queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
         queryClient.invalidateQueries({ queryKey: ['user'] });
         queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
-        window.location.reload(); // Cleanest way to ensure map re-centers and loads new data
+        toast.success("Territory setup complete! Loading map...");
     };
 
     // Update Rep Color logic...
@@ -302,22 +302,35 @@ export default function Home() {
 
     // Fetch Properties - support both user-specific and fallback for mobile auth
     const { data: userProperties = [], isLoading: propsLoading } = useQuery({
-        queryKey: ['masterProperties', user?.email],
+        queryKey: ['masterProperties', user?.email, user?.territory_zip_codes],
         queryFn: async () => {
-            if (!user?.email) return [];
+            if (!user) return [];
             
             try {
-                // Increased limit to 10000 to accommodate larger datasets/zip codes
-                const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 10000);
-                const items = Array.isArray(result) ? result : (result?.items || []);
-                console.log(`[Home] Fetched ${items.length} properties for user ${user.email}`);
+                let items = [];
+                // If user has configured territory zip codes, fetch properties for those zips
+                // This ensures we get the data regardless of who created it (e.g. system import)
+                if (user.territory_zip_codes && user.territory_zip_codes.length > 0) {
+                    console.log(`[Home] Fetching properties for zips: ${user.territory_zip_codes.join(', ')}`);
+                    const promises = user.territory_zip_codes.map(zip => 
+                        base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000)
+                    );
+                    const results = await Promise.all(promises);
+                    items = results.flatMap(r => Array.isArray(r) ? r : (r.items || []));
+                } else {
+                    // Fallback to properties created by the user if no territory is defined
+                    const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 10000);
+                    items = Array.isArray(result) ? result : (result?.items || []);
+                }
+                
+                console.log(`[Home] Total fetched properties: ${items.length}`);
                 return items;
             } catch (e) {
                 console.log('[Home] Error fetching properties:', e);
                 return [];
             }
         },
-        enabled: !!user?.email
+        enabled: !!user
     });
 
 
