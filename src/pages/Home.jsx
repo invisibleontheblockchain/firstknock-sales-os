@@ -22,6 +22,8 @@ import { toast } from "sonner";
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from 'date-fns';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
 import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../components/logic/heatmapLogic';
 import RouteChecklist from '../components/routes/RouteChecklist';
@@ -162,10 +164,15 @@ export default function Home() {
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
-    // Fetch Team Members for Analysis & Coloring
+    // Fetch Team Members for Analysis & Coloring (Filtered by Manager)
     const { data: teamMembers = [] } = useQuery({
-        queryKey: ['teamMembers'],
-        queryFn: () => base44.entities.TeamMember.list('-created_date', 100).then(res => Array.isArray(res) ? res : (res?.items || []))
+        queryKey: ['teamMembers', user?.id],
+        queryFn: () => {
+            if (!user?.id) return [];
+            return base44.entities.TeamMember.filter({ manager_id: user.id }, '-created_date', 100)
+                .then(res => Array.isArray(res) ? res : (res?.items || []));
+        },
+        enabled: !!user?.id
     });
 
     // Generate Rep Colors Map - Use stored colors from TeamMember entity
@@ -306,8 +313,12 @@ export default function Home() {
     }, [userProperties, localProperties, darkRoomProperties]);
 
     const { data: savedRoutesRaw = [] } = useQuery({
-        queryKey: ['savedRoutes'],
-        queryFn: () => base44.entities.SavedRoute.list('-created_date', 500)
+        queryKey: ['savedRoutes', user?.id],
+        queryFn: () => {
+            if (!user?.id) return [];
+            return base44.entities.SavedRoute.filter({ manager_id: user.id }, '-created_date', 500);
+        },
+        enabled: !!user?.id
     });
     const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
 
@@ -358,7 +369,8 @@ export default function Home() {
             status: 'ACTIVE',
             start_location: startLocation,
             assigned_to: assignedRepId,
-            assigned_to_name: assignedRepName
+            assigned_to_name: assignedRepName,
+            manager_id: user.id
         });
     };
 
@@ -752,8 +764,31 @@ export default function Home() {
         return null;
     }, [activeRoute, availableProperties, effectiveProperties]);
 
-    const center = availableProperties[0] ? [availableProperties[0].lat, availableProperties[0].lng] : 
-                  (effectiveProperties[0] ? [effectiveProperties[0].lat, effectiveProperties[0].lng] : [34.0522, -118.2437]);
+    // Determine Map Center
+    const [mapCenter, setMapCenter] = useState([34.0522, -118.2437]); // Default LA
+
+    useEffect(() => {
+        const updateCenter = async () => {
+            if (activeRoute?.properties?.length > 0) {
+                 // Active route takes priority
+                 return; 
+            }
+            
+            if (availableProperties[0]) {
+                setMapCenter([availableProperties[0].lat, availableProperties[0].lng]);
+            } else if (user?.working_area) {
+                // Geocode working area if needed (simplified: assume it's set or we just rely on properties)
+                // If working_area is zip, we might need to fetch a coord. 
+                // For now, let's try to search properties in that area first which usually sets availableProperties.
+                
+                // If we have no properties but have a working area zip, we might want to fetch/geocode it.
+                // Using a fallback for now or the first property found.
+            }
+        };
+        updateCenter();
+    }, [activeRoute, availableProperties, user?.working_area]);
+
+    const center = availableProperties[0] ? [availableProperties[0].lat, availableProperties[0].lng] : mapCenter;
 
     const handleLogResult = useCallback((property, status, note = null) => {
         createLogMutation.mutate({
