@@ -435,6 +435,11 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
     // Sort routes by competitiveness
     routes.sort((a, b) => b.competitivenessScore - a.competitivenessScore);
 
+    // Rename routes sequentially based on rank
+    routes.forEach((route, index) => {
+        route.name = `Route ${index + 1}`;
+    });
+
     // Attach cooldown info to result
     if (cooldownInfo) {
         routes._cooldownInfo = cooldownInfo;

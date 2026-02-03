@@ -36,6 +36,7 @@ export default function AdminTeam() {
     const [selectedRep, setSelectedRep] = useState(null); 
     const [activeTab, setActiveTab] = useState("overview");
     const [createdCode, setCreatedCode] = useState(null); // For popup
+    const [activeTeamCode, setActiveTeamCode] = useState('all'); // 'all' or specific code
 
     // --- Queries ---
     const { data: user } = useQuery({
@@ -149,27 +150,41 @@ export default function AdminTeam() {
     };
 
     // --- Derived State ---
+    
+    // Filter Team Members by Active Code
+    const filteredTeamMembers = useMemo(() => {
+        if (activeTeamCode === 'all') return teamMembers;
+        return teamMembers.filter(m => m.invite_code === activeTeamCode);
+    }, [teamMembers, activeTeamCode]);
+
     const routesByRep = useMemo(() => {
         const grouped = { unassigned: [] };
-        teamMembers.forEach(m => grouped[m.id] = []);
+        // Initialize for filtered members only
+        filteredTeamMembers.forEach(m => grouped[m.id] = []);
+        
         routes.forEach(r => {
-            if (r.assigned_to && grouped[r.assigned_to]) {
-                grouped[r.assigned_to].push(r);
+            if (r.assigned_to) {
+                // Only include if assigned rep is in current view
+                if (grouped[r.assigned_to]) {
+                    grouped[r.assigned_to].push(r);
+                }
             } else {
+                // Show unassigned routes regardless of team filter? 
+                // Or maybe filter unassigned? For now show all unassigned.
                 grouped.unassigned.push(r);
             }
         });
         return grouped;
-    }, [routes, teamMembers]);
+    }, [routes, filteredTeamMembers]);
 
     const metricsByRep = useMemo(() => {
         const metrics = {};
-        teamMembers.forEach(m => {
+        filteredTeamMembers.forEach(m => {
             metrics[m.email] = { doorsKnocked: 0, talkedTo: 0, sales: 0 };
         });
         logs.forEach(log => {
             const email = log.created_by;
-            if (!metrics[email]) return;
+            if (!metrics[email]) return; // Skip logs for filtered-out reps
             metrics[email].doorsKnocked++;
             if (log.parsed_status !== 'NO_ANSWER' && log.parsed_status !== 'ELIGIBLE') {
                 metrics[email].talkedTo++;
@@ -179,7 +194,7 @@ export default function AdminTeam() {
             }
         });
         return metrics;
-    }, [logs, teamMembers]);
+    }, [logs, filteredTeamMembers]);
 
     const teamTotals = useMemo(() => {
         return Object.values(metricsByRep).reduce((acc, curr) => ({
@@ -257,15 +272,23 @@ export default function AdminTeam() {
                         </h1>
                         <div className="flex items-center gap-3 mt-1">
                             <p className="text-gray-400 text-sm">Manage your team, routes, and performance.</p>
-                            {inviteCodes.filter(c => c.linked_user_id === user?.id).map(code => (
-                                <Badge key={code.id} variant="outline" className="border-yellow-500/50 text-yellow-500 bg-yellow-500/10 gap-1.5 cursor-pointer hover:bg-yellow-500/20 transition-colors" onClick={() => {
-                                    navigator.clipboard.writeText(code.code);
-                                    toast.success("Code copied!");
-                                }}>
-                                    <Key className="w-3 h-3" />
-                                    Team Code: <span className="font-mono font-bold">{code.code}</span>
-                                </Badge>
-                            ))}
+                            
+                            {/* Team Code Filter Dropdown */}
+                            {inviteCodes.length > 0 && (
+                                <Select value={activeTeamCode} onValueChange={setActiveTeamCode}>
+                                    <SelectTrigger className="h-8 bg-black border-yellow-500/30 text-yellow-500 w-auto min-w-[140px] font-bold text-xs">
+                                        <SelectValue placeholder="All Teams" />
+                                    </SelectTrigger>
+                                    <SelectContent className="bg-[#111] border-gray-800 text-white">
+                                        <SelectItem value="all">All Teams</SelectItem>
+                                        {inviteCodes.filter(c => c.linked_user_id === user?.id).map(code => (
+                                            <SelectItem key={code.id} value={code.code}>
+                                                Team {code.code} {code.label ? `(${code.label})` : ''}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
                         </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -465,7 +488,7 @@ export default function AdminTeam() {
                             {/* Leaderboard Column */}
                             <div>
                                 <TeamLeaderboard 
-                                    members={teamMembers} 
+                                    members={filteredTeamMembers} 
                                     logs={logs} 
                                     routes={Object.values(routesByRep).flat()} 
                                 />
@@ -484,7 +507,7 @@ export default function AdminTeam() {
                             />
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {teamMembers.map(member => {
+                                {filteredTeamMembers.map(member => {
                                     const memberRoutes = routesByRep[member.id] || [];
                                     const memberMetrics = metricsByRep[member.email] || { doorsKnocked: 0, talkedTo: 0, sales: 0 };
                                     return (
@@ -576,7 +599,7 @@ export default function AdminTeam() {
                                                             <SelectValue placeholder="Assign / Reassign" />
                                                         </SelectTrigger>
                                                         <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
-                                                            {teamMembers.map(m => (
+                                                            {filteredTeamMembers.map(m => (
                                                                 <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                                                             ))}
                                                         </SelectContent>

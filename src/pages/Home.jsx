@@ -1267,31 +1267,6 @@ export default function Home() {
                     </div>
                 )}
 
-                {/* Quick Filter Bar */}
-                {!activeRoute && (
-                    <div className="pointer-events-auto flex gap-2 justify-center flex-wrap">
-                        {[
-                            { id: 'all', label: 'ALL', color: BRAND.offWhite },
-                            { id: 'eligible', label: 'NOT VISITED', color: '#6b7280' },
-                            { id: 'sold', label: 'SOLD', color: '#22c55e' },
-                            { id: 'rejected', label: 'UNDECIDED', color: '#8B5CF6' },
-                        ].map(f => (
-                            <button
-                                key={f.id}
-                                onClick={() => setQuickFilter(f.id)}
-                                className="px-3 py-1.5 rounded-full text-[10px] font-bold tracking-wide transition-all flex items-center gap-1.5"
-                                style={{
-                                    background: quickFilter === f.id ? BRAND.gold : `${BRAND.voidBlack}dd`,
-                                    color: quickFilter === f.id ? BRAND.voidBlack : BRAND.offWhite,
-                                    border: `1px solid ${quickFilter === f.id ? BRAND.gold : '#333'}`
-                                }}
-                            >
-                                <span className="w-2 h-2 rounded-full" style={{ background: f.color }} />
-                                {f.label}
-                            </button>
-                        ))}
-                    </div>
-                )}
             </div>
 
             {/* Team Analysis Legend (Top Right) */}
@@ -1757,6 +1732,8 @@ export default function Home() {
                                       repColors={repColors}
                                       onUpdateRepColor={handleUpdateRepColor}
                                       onClose={() => setShowMapSettings(false)}
+                                      quickFilter={quickFilter}
+                                      setQuickFilter={setQuickFilter}
                                   />
                               )}
 

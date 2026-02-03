@@ -22,14 +22,25 @@ const REP_COLOR_OPTIONS = [
     '#14b8a6', // Teal
 ];
 
+import { Eye, EyeOff } from 'lucide-react';
+
 export default function MapSettingsPanel({ 
     mapTheme, 
     setMapTheme, 
     teamMembers, 
     repColors, 
     onUpdateRepColor,
-    onClose 
+    onClose,
+    quickFilter,
+    setQuickFilter
 }) {
+    const STATUS_FILTERS = [
+        { id: 'all', label: 'ALL', color: '#E5E5E5' },
+        { id: 'eligible', label: 'NOT VISITED', color: '#6b7280' },
+        { id: 'sold', label: 'SOLD', color: '#22c55e' },
+        { id: 'rejected', label: 'UNDECIDED', color: '#8B5CF6' },
+    ];
+
     return (
         <div className="fixed inset-0 z-[2000]">
             <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
@@ -49,6 +60,32 @@ export default function MapSettingsPanel({
 
                 <div className="p-5 space-y-6 overflow-y-auto h-[calc(100%-70px)]">
                     
+                    {/* Status Visibility Filters (Moved from Map) */}
+                    <div>
+                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                            STATUS VISIBILITY
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                            {STATUS_FILTERS.map(f => (
+                                <button
+                                    key={f.id}
+                                    onClick={() => setQuickFilter && setQuickFilter(f.id)}
+                                    className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs font-bold transition-all border ${
+                                        quickFilter === f.id 
+                                            ? 'bg-yellow-500/10 border-yellow-500 text-yellow-500' 
+                                            : 'bg-[#1A1A1A] border-gray-800 text-gray-400 hover:border-gray-600'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full" style={{ background: f.color }} />
+                                        {f.label}
+                                    </div>
+                                    {quickFilter === f.id ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3 opacity-50" />}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
                     {/* Map Theme Toggle */}
                     <div>
                         <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
