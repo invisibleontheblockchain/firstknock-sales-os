@@ -37,6 +37,11 @@ export default function AdminTeam() {
     const [activeTab, setActiveTab] = useState("overview");
 
     // --- Queries ---
+    const { data: user } = useQuery({
+        queryKey: ['user'],
+        queryFn: () => base44.auth.me()
+    });
+
     const { data: teamMembers = [], isLoading: teamLoading } = useQuery({
         queryKey: ['teamMembers', user?.id],
         queryFn: async () => {
@@ -73,11 +78,6 @@ export default function AdminTeam() {
             const res = await base44.entities.InteractionLog.list('-created_date', 5000);
             return Array.isArray(res) ? res : (res?.items || []);
         }
-    });
-
-    const { data: user } = useQuery({
-        queryKey: ['user'],
-        queryFn: () => base44.auth.me()
     });
 
     // --- Mutations ---
