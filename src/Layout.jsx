@@ -47,12 +47,6 @@ class ErrorBoundary extends React.Component {
   }
 
 export default function Layout({ children }) {
-    // Handle /login 404 by redirecting to home
-    if (typeof window !== 'undefined' && window.location.pathname === '/login') {
-        window.location.replace('/');
-        return null;
-    }
-
     const [isOnline, setIsOnline] = React.useState(navigator.onLine);
 
     React.useEffect(() => {
