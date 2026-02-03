@@ -168,22 +168,6 @@ export default function Home() {
     // Working Area Setup - Replaced by TerritorySetupWizard
     const [showSetupWizard, setShowSetupWizard] = useState(false);
 
-    useEffect(() => {
-        // Trigger wizard if manager hasn't set working area OR if they have no saved routes
-        // This ensures they are walked through the process
-        if (user && user.app_role === 'manager') {
-            const hasRoutes = savedRoutes.length > 0;
-            const hasArea = !!user.working_area;
-            
-            // If they have area but no routes, we still might want to prompt them, 
-            // but let's be less aggressive if they have area. 
-            // Main trigger: No Area.
-            if (!hasArea) {
-                setShowSetupWizard(true);
-            }
-        }
-    }, [user, savedRoutes.length]);
-
     const handleWizardComplete = () => {
         setShowSetupWizard(false);
         // Refresh everything
@@ -372,6 +356,23 @@ export default function Home() {
         enabled: !!user?.id
     });
     const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
+
+    // Effect for checking setup wizard status - Moved after savedRoutes declaration
+    useEffect(() => {
+        // Trigger wizard if manager hasn't set working area OR if they have no saved routes
+        // This ensures they are walked through the process
+        if (user && user.app_role === 'manager') {
+            const hasRoutes = savedRoutes.length > 0;
+            const hasArea = !!user.working_area;
+            
+            // If they have area but no routes, we still might want to prompt them, 
+            // but let's be less aggressive if they have area. 
+            // Main trigger: No Area.
+            if (!hasArea) {
+                setShowSetupWizard(true);
+            }
+        }
+    }, [user, savedRoutes.length]);
 
     // Identify properties already assigned to saved routes
     const assignedHashes = useMemo(() => {
