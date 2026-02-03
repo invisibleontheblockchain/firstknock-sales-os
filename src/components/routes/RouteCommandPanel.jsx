@@ -194,10 +194,11 @@ export default function RouteCommandPanel({
 
                                         {/* Route List */}
                                         <div className="space-y-2">
-                                            {filteredRoutes.map((route) => (
+                                            {filteredRoutes.map((route, idx) => (
                                                 <NewRouteCard 
                                                     key={route.id}
                                                     route={route}
+                                                    rank={idx + 1}
                                                     isActive={activeRouteId === route.id}
                                                     recommendation={getRepRecommendations?.(route.properties[0])?.[0]}
                                                     onSelect={() => onSelectRoute(route)}
@@ -382,24 +383,36 @@ function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRou
     );
 }
 
-function NewRouteCard({ route, isActive, recommendation, onSelect, onSave }) {
+function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave }) {
     return (
         <div
-            className="p-4 rounded-xl border transition-all"
+            className="p-4 rounded-xl border transition-all relative overflow-hidden"
             style={{
                 background: isActive ? `${BRAND.gold}15` : BRAND.charcoal,
                 borderColor: isActive ? BRAND.gold : '#333'
             }}
         >
-            <button onClick={onSelect} className="w-full text-left">
+            {/* Rank Ribbon */}
+            {rank <= 3 && (
+                <div className={`absolute top-0 left-0 w-12 h-12 flex items-center justify-center rounded-br-2xl text-black font-bold text-lg shadow-lg z-10 ${
+                    rank === 1 ? 'bg-yellow-400' : rank === 2 ? 'bg-gray-300' : 'bg-orange-700'
+                }`}>
+                    #{rank}
+                </div>
+            )}
+            
+            <button onClick={onSelect} className={`w-full text-left ${rank <= 3 ? 'pl-8' : ''}`}>
                 <div className="flex items-center justify-between mb-2">
-                    <span className="font-bold text-white">{route.name}</span>
+                    <span className="font-bold text-white flex items-center gap-2">
+                        {rank > 3 && <span className="text-gray-500 text-xs">#{rank}</span>}
+                        {route.name}
+                    </span>
                     <Badge style={{
                         background: route.competitivenessScore >= 150 ? '#22c55e' : 
                                    route.competitivenessScore >= 100 ? '#eab308' : '#666',
                         color: '#000'
                     }}>
-                        {route.competitivenessScore}
+                        Score: {route.competitivenessScore}
                     </Badge>
                 </div>
                 <div className="flex gap-3 text-xs text-gray-500">

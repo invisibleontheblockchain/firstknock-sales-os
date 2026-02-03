@@ -35,6 +35,7 @@ export default function AdminTeam() {
     const [newCode, setNewCode] = useState({ code: '', role: 'manager', label: '' });
     const [selectedRep, setSelectedRep] = useState(null); 
     const [activeTab, setActiveTab] = useState("overview");
+    const [createdCode, setCreatedCode] = useState(null); // For popup
 
     // --- Queries ---
     const { data: user } = useQuery({
@@ -109,10 +110,11 @@ export default function AdminTeam() {
 
     const createCodeMutation = useMutation({
         mutationFn: (data) => base44.entities.InviteCode.create({ ...data, linked_user_id: user.id, max_uses: data.max_uses || 50 }),
-        onSuccess: () => {
+        onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: ['inviteCodes'] });
             setNewCode({ code: '', role: 'rep', label: '' });
-            toast.success("Invite code created");
+            setCreatedCode(data); // Trigger popup
+            toast.success("Team created successfully!");
         },
         onError: (error) => {
             console.error("Failed to create code:", error);
@@ -265,6 +267,41 @@ export default function AdminTeam() {
                         >
                             <Key className="w-4 h-4 mr-2" /> Create Demo Team
                         </Button>
+
+                        {/* Code Created Success Dialog */}
+                        <Dialog open={!!createdCode} onOpenChange={(open) => !open && setCreatedCode(null)}>
+                            <DialogContent className="bg-[#111] border-gray-800 text-white sm:max-w-md">
+                                <DialogHeader>
+                                    <DialogTitle className="text-center text-2xl font-bold text-yellow-500 flex flex-col items-center gap-2">
+                                        <CheckCircle2 className="w-12 h-12" />
+                                        Team Created!
+                                    </DialogTitle>
+                                </DialogHeader>
+                                <div className="py-6 text-center space-y-4">
+                                    <p className="text-gray-400">Share this code with your reps to join this team.</p>
+                                    <div className="bg-gray-900 border-2 border-dashed border-yellow-500/30 rounded-xl p-6 relative group cursor-pointer hover:bg-gray-800 transition-colors"
+                                         onClick={() => {
+                                             navigator.clipboard.writeText(createdCode?.code);
+                                             toast.success("Copied to clipboard!");
+                                         }}>
+                                        <p className="text-sm text-gray-500 mb-1 uppercase font-bold tracking-widest">Team Code</p>
+                                        <p className="text-5xl font-mono font-bold text-white tracking-widest">{createdCode?.code}</p>
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl">
+                                            <span className="text-white font-bold">Click to Copy</span>
+                                        </div>
+                                    </div>
+                                    <p className="text-sm text-gray-500">
+                                        This code is valid for <strong>{createdCode?.max_uses}</strong> uses.
+                                    </p>
+                                </div>
+                                <div className="flex justify-center">
+                                    <Button onClick={() => setCreatedCode(null)} className="w-full bg-yellow-500 text-black font-bold">
+                                        Done
+                                    </Button>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
+
                         <Dialog open={isAddRepOpen} onOpenChange={setIsAddRepOpen}>
                             <DialogTrigger asChild>
                                 <Button className="h-9 bg-yellow-500 text-black font-bold hover:bg-yellow-400">

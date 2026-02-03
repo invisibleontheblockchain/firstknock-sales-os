@@ -955,17 +955,37 @@ export default function Home() {
 
                 {/* --- GENERATE MODE: New Routes --- */}
                 <LayerGroup>
-                    {mode === 'generate' && !activeRoute && routes.length > 0 && routes.map((route, rIdx) => {
+                    {mode === 'generate' && !activeRoute && filteredRoutes.length > 0 && filteredRoutes.map((route, rIdx) => {
                         const routeColor = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
-                        return route.properties.map((p, idx) => (
-                            <CircleMarker
-                                key={`generated-${route.id}-${idx}`}
-                                center={[p.lat, p.lng]}
-                                radius={6}
-                                eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
-                                pathOptions={{ fillColor: routeColor, fillOpacity: 0.7, color: routeColor, weight: 1 }}
-                            />
-                        ));
+                        const centerProp = route.properties[Math.floor(route.properties.length / 2)];
+                        
+                        return (
+                            <React.Fragment key={`route-group-${route.id}`}>
+                                {/* Rank Marker at Center */}
+                                {centerProp && (
+                                    <CircleMarker
+                                        center={[centerProp.lat, centerProp.lng]}
+                                        radius={16}
+                                        pathOptions={{ fillColor: 'black', fillOpacity: 0.8, color: routeColor, weight: 3 }}
+                                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
+                                    >
+                                        <Tooltip permanent direction="center" className="route-number-tooltip">
+                                            <span style={{ color: routeColor, fontWeight: '900', fontSize: '14px' }}>#{rIdx + 1}</span>
+                                        </Tooltip>
+                                    </CircleMarker>
+                                )}
+                                
+                                {route.properties.map((p, idx) => (
+                                    <CircleMarker
+                                        key={`generated-${route.id}-${idx}`}
+                                        center={[p.lat, p.lng]}
+                                        radius={6}
+                                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
+                                        pathOptions={{ fillColor: routeColor, fillOpacity: 0.6, color: routeColor, weight: 1 }}
+                                    />
+                                ))}
+                            </React.Fragment>
+                        );
                     })}
                 </LayerGroup>
 
