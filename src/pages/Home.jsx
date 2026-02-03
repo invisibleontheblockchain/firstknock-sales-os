@@ -188,6 +188,9 @@ export default function Home() {
                 territory_zip_codes: zips.length > 0 ? zips : undefined 
             });
             
+            queryClient.invalidateQueries({ queryKey: ['user'] }); // Immediately update user state
+            setShowWorkingAreaDialog(false); // Close dialog immediately
+
             // 2. Fetch/Ingest Data for this area
             if (zips.length > 0) {
                 toast.info(`Initializing territory data for ${zips.length} zips...`);
@@ -199,7 +202,6 @@ export default function Home() {
                 setTimeout(() => window.location.reload(), 1500);
             } else {
                  toast.success("Working area set!");
-                 setShowWorkingAreaDialog(false);
             }
         } catch (e) {
             console.error(e);
@@ -1130,13 +1132,13 @@ export default function Home() {
                             onClick={() => setMode('analyze')}
                             className={`px-3 py-2 rounded-md text-[10px] font-bold transition-all ${mode === 'analyze' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
                         >
-                            COMMAND CENTER
+                            DISPATCH MAP
                         </button>
                         <button
                             onClick={() => setMode('generate')}
                             className={`px-3 py-2 rounded-md text-[10px] font-bold transition-all ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-400 hover:text-white'}`}
                         >
-                            BUILD ROUTES
+                            ROUTE BUILDER
                         </button>
                     </div>
 
@@ -1257,8 +1259,8 @@ export default function Home() {
                             className="rounded-full flex-1 px-4 h-12 sm:h-14 text-xs sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap min-w-[100px]"
                             style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
                         >
-                            <Navigation className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-                            COMMAND CENTER
+                            <List className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+                            ROUTE LIST
                             {routesGenerating && <Loader2 className="w-3 h-3 ml-2 animate-spin" />}
                             {!routesGenerating && (hydratedSavedRoutes.length > 0 || routes.length > 0) && (
                                 <Badge className="ml-2 h-5 min-w-[20px] px-1" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>

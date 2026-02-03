@@ -39,8 +39,9 @@ export default function ListPage() {
 
     // Fetch Team for assigning in list
     const { data: teamMembers = [] } = useQuery({
-        queryKey: ['teamMembers'],
-        queryFn: () => base44.entities.TeamMember.list('-created_date', 100).then(res => Array.isArray(res) ? res : (res?.items || []))
+        queryKey: ['teamMembers', user?.id],
+        queryFn: () => user?.id ? base44.entities.TeamMember.filter({ manager_id: user.id }, '-created_date', 100).then(res => Array.isArray(res) ? res : (res?.items || [])) : [],
+        enabled: !!user?.id
     });
 
     const { data: properties = [], isLoading: propsLoading } = useQuery({
@@ -50,8 +51,9 @@ export default function ListPage() {
     });
 
     const { data: savedRoutesRaw = [], isLoading: routesLoading } = useQuery({
-        queryKey: ['savedRoutes'],
-        queryFn: () => base44.entities.SavedRoute.list('-created_date', 200)
+        queryKey: ['savedRoutes', user?.id],
+        queryFn: () => user?.id ? base44.entities.SavedRoute.filter({ manager_id: user.id }, '-created_date', 200) : [],
+        enabled: !!user?.id
     });
 
     const { data: localRoutes = [] } = useQuery({
