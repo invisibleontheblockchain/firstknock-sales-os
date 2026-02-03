@@ -559,6 +559,8 @@ export default function Home() {
         return propsArray
             .filter(p => {
                 if (!p?.lat || !p?.lng || isNaN(p.lat) || isNaN(p.lng)) return false;
+                // Filter out Null Island (0,0) coordinates
+                if (Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001) return false;
                 
                 // Apply territory filter if user has zip codes configured
                 if (territoryZips.length > 0) {
@@ -740,7 +742,11 @@ export default function Home() {
                     lng: parseFloat(p.lng),
                     effective_status: determineEffectiveStatus(p, propLogs)
                 };
-            }).filter(p => !assignedSet.has(p.address_hash) && p.lat && p.lng);
+            }).filter(p => 
+                !assignedSet.has(p.address_hash) && 
+                p.lat && p.lng && 
+                !(Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001)
+            );
 
             // Merge with existing availableProperties, deduping by address_hash
             const combinedMap = new Map();

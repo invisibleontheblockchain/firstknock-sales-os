@@ -287,7 +287,11 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
     } = options;
 
     // Filter out properties on streets that are on cooldown
-    let eligible = properties.filter(p => p && p.lat && p.lng);
+    // Also filter out invalid coordinates (Null Island 0,0)
+    let eligible = properties.filter(p => 
+        p && p.lat && p.lng && 
+        !(Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001)
+    );
 
     // Apply street cooldown filter if logs are provided
     let cooldownInfo = null;

@@ -60,8 +60,13 @@ export default function TerritorySetupWizard({ user, onComplete }) {
             // We use a simplified filter here
             for (const zip of zips) {
                 const res = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000);
-                if (res.items) allProps = [...allProps, ...res.items];
-                else if (Array.isArray(res)) allProps = [...allProps, ...res];
+                let props = [];
+                if (res.items) props = res.items;
+                else if (Array.isArray(res)) props = res;
+                
+                // Filter out bad coordinates immediately
+                props = props.filter(p => p.lat && p.lng && !(Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001));
+                allProps = [...allProps, ...props];
             }
 
             if (allProps.length === 0) {
