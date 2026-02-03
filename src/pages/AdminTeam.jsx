@@ -113,6 +113,10 @@ export default function AdminTeam() {
             queryClient.invalidateQueries({ queryKey: ['inviteCodes'] });
             setNewCode({ code: '', role: 'rep', label: '' });
             toast.success("Invite code created");
+        },
+        onError: (error) => {
+            console.error("Failed to create code:", error);
+            toast.error("Failed to create code. It might already exist.");
         }
     });
 
@@ -253,7 +257,10 @@ export default function AdminTeam() {
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <Button 
-                            onClick={() => createCodeMutation.mutate({ code: "0000", max_uses: 5, role: 'rep', label: 'Demo Team' })}
+                            onClick={() => {
+                                const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
+                                createCodeMutation.mutate({ code: randomCode, max_uses: 5, role: 'rep', label: `Demo Team (${randomCode})` });
+                            }}
                             className="h-9 bg-gray-800 text-gray-300 font-bold hover:bg-gray-700 hover:text-white border border-gray-700"
                         >
                             <Key className="w-4 h-4 mr-2" /> Create Demo Team
