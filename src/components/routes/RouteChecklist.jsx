@@ -78,6 +78,13 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
     const [selectedAction, setSelectedAction] = useState(null); // { propertyId, statusId }
     const [isListening, setIsListening] = useState(false);
 
+    const handleNavigate = (prop) => {
+        const url = prop.full_address 
+            ? `https://maps.apple.com/?daddr=${encodeURIComponent(prop.full_address)}&dirflg=d`
+            : `https://maps.apple.com/?daddr=${prop.lat},${prop.lng}&dirflg=d`;
+        window.open(url, '_blank');
+    };
+
     const handleSelectStatus = (property, statusId) => {
         if (statusId === 'CALLBACK') {
             setSelectedAction({ propertyId: property.address_hash, statusId });
