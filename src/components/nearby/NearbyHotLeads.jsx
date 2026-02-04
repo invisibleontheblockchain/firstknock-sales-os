@@ -35,6 +35,13 @@ export default function NearbyHotLeads({ properties, radiusMiles = 1, maxLeads =
     const [dismissed, setDismissed] = useState(false);
     const [expanded, setExpanded] = useState(false);
 
+    const handleNavigate = (prop) => {
+        const url = prop.full_address 
+            ? `https://maps.apple.com/?daddr=${encodeURIComponent(prop.full_address)}&dirflg=d`
+            : `https://maps.apple.com/?daddr=${prop.lat},${prop.lng}&dirflg=d`;
+        window.open(url, '_blank');
+    };
+
     // Watch user's location
     useEffect(() => {
         if (!navigator.geolocation) return;
@@ -76,7 +83,7 @@ export default function NearbyHotLeads({ properties, radiusMiles = 1, maxLeads =
     const topLead = nearbyLeads[0];
 
     const handleOpenInMaps = (lead) => {
-        openInMaps(lead.lat, lead.lng);
+        handleNavigate(lead);
     };
 
     return (
@@ -124,7 +131,7 @@ export default function NearbyHotLeads({ properties, radiusMiles = 1, maxLeads =
                         <div className="flex items-center gap-2">
                             <Button
                                 size="sm"
-                                onClick={(e) => { e.stopPropagation(); openInMaps(topLead); }}
+                                onClick={(e) => { e.stopPropagation(); handleNavigate(topLead); }}
                                 className="h-9 px-3 font-bold"
                                 style={{ background: BRAND.gold, color: BRAND.voidBlack }}
                             >
@@ -209,7 +216,7 @@ export default function NearbyHotLeads({ properties, radiusMiles = 1, maxLeads =
                                 </div>
                                 <Button
                                     size="sm"
-                                    onClick={() => openInMaps(lead)}
+                                    onClick={() => handleNavigate(lead)}
                                     className="h-8 px-3 text-xs font-bold"
                                     style={{ background: BRAND.gold, color: BRAND.voidBlack }}
                                 >
