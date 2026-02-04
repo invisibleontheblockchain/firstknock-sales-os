@@ -36,8 +36,16 @@ export default function NearbyHotLeads({ properties, radiusMiles = 1, maxLeads =
     const [expanded, setExpanded] = useState(false);
 
     const handleNavigate = (prop) => {
-        const url = prop.full_address 
-            ? `https://maps.apple.com/?daddr=${encodeURIComponent(prop.full_address)}&dirflg=d`
+        let query = "";
+        if (prop.full_address) {
+            query = prop.full_address;
+            if (prop.city) query += `, ${prop.city}`;
+            if (prop.state) query += `, ${prop.state}`;
+            if (prop.zip_code) query += ` ${prop.zip_code}`;
+        }
+
+        const url = query 
+            ? `https://maps.apple.com/?daddr=${encodeURIComponent(query)}&dirflg=d`
             : `https://maps.apple.com/?daddr=${prop.lat},${prop.lng}&dirflg=d`;
         window.open(url, '_blank');
     };

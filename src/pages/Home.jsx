@@ -1865,7 +1865,7 @@ export default function Home() {
                                 {/* Map Link */}
                                 <a 
                                     href={selectedProperty.full_address 
-                                        ? `https://maps.apple.com/?daddr=${encodeURIComponent(selectedProperty.full_address)}&dirflg=d`
+                                        ? `https://maps.apple.com/?daddr=${encodeURIComponent(`${selectedProperty.full_address}${selectedProperty.city ? `, ${selectedProperty.city}` : ''}${selectedProperty.state ? `, ${selectedProperty.state}` : ''}${selectedProperty.zip_code ? ` ${selectedProperty.zip_code}` : ''}`)}&dirflg=d`
                                         : `https://maps.apple.com/?daddr=${selectedProperty.lat},${selectedProperty.lng}&dirflg=d`}
                                     target="_blank"
                                     rel="noreferrer"
