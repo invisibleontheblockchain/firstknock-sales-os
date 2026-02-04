@@ -1864,13 +1864,15 @@ export default function Home() {
 
                                 {/* Map Link */}
                                 <a 
-                                    href={`https://maps.apple.com/?q=${selectedProperty.lat},${selectedProperty.lng}`}
+                                    href={selectedProperty.full_address 
+                                        ? `https://maps.apple.com/?daddr=${encodeURIComponent(selectedProperty.full_address)}&dirflg=d`
+                                        : `https://maps.apple.com/?daddr=${selectedProperty.lat},${selectedProperty.lng}&dirflg=d`}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="block w-full py-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-center font-bold text-sm text-white transition-colors flex items-center justify-center gap-2"
                                 >
                                     <Navigation className="w-4 h-4 text-yellow-500" />
-                                    Open in Maps
+                                    Navigate (Apple Maps)
                                 </a>
                             </div>
                         </ScrollArea>
