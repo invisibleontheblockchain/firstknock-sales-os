@@ -211,7 +211,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                         }) || filteredProperties[0];
 
                         if (nextProp) {
-                            openInMaps(nextProp.lat, nextProp.lng);
+                            handleNavigate(nextProp);
                         }
                     }}
                 >
@@ -350,7 +350,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                                             variant="outline"
                                             className="w-full mt-3 text-xs font-bold tracking-wide"
                                             style={{ borderColor: '#333', color: BRAND.offWhite }}
-                                            onClick={() => openInMaps(prop.lat, prop.lng)}
+                                            onClick={() => handleNavigate(prop)}
                                         >
                                             <MapPin className="w-4 h-4 mr-2" />
                                             OPEN IN APPLE MAPS
