@@ -193,6 +193,15 @@ export default function Layout({ children }) {
                         >
                             LOGOUT
                         </button>
+                        {user?.app_role !== 'rep' && (
+                            <Link 
+                                to={createPageUrl('RepHome')}
+                                className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-yellow-500"
+                                title="Switch to Rep View"
+                            >
+                                REP MODE
+                            </Link>
+                        )}
                         <Link 
                             to={createPageUrl('MobileApp')}
                             className="flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors"

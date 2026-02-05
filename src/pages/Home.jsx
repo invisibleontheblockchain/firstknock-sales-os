@@ -220,17 +220,20 @@ export default function Home() {
     const handleAssignRoute = async (routeId, memberId) => {
         try {
             const member = teamMembers.find(m => m.id === memberId);
+            const isSelf = memberId === user?.id;
+            const assigneeName = isSelf ? (user?.full_name || 'Manager') : (member ? member.name : null);
+
             await base44.entities.SavedRoute.update(routeId, {
                 assigned_to: memberId,
-                assigned_to_name: member ? member.name : null,
+                assigned_to_name: assigneeName,
                 status: 'ACTIVE'
             });
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
-            toast.success(`Assigned to ${member ? member.name : 'Unassigned'}`);
+            toast.success(`Assigned to ${assigneeName || 'Unassigned'}`);
             
             // Update local state if active
             if (activeRoute && activeRoute.id === routeId) {
-                setActiveRoute(prev => ({ ...prev, assigned_to: memberId, assigned_to_name: member ? member.name : null }));
+                setActiveRoute(prev => ({ ...prev, assigned_to: memberId, assigned_to_name: assigneeName }));
             }
         } catch (e) {
             console.error(e);
@@ -1258,6 +1261,7 @@ export default function Home() {
                                         style={{ color: BRAND.voidBlack }}
                                     >
                                         <option value="">Unassigned</option>
+                                        <option value={user?.id}>Me (Manager)</option>
                                         {teamMembers.map(m => (
                                             <option key={m.id} value={m.id}>{m.name}</option>
                                         ))}
