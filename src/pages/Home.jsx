@@ -1257,13 +1257,13 @@ export default function Home() {
                                         value={activeRoute.assigned_to || ""}
                                         onChange={(e) => handleAssignRoute(activeRoute.id, e.target.value)}
                                         onClick={(e) => e.stopPropagation()}
-                                        className="text-[10px] font-bold bg-black/10 border-none rounded px-2 py-0.5 outline-none cursor-pointer hover:bg-black/20 transition-colors"
+                                        className="text-xs font-bold bg-black/10 border-none rounded px-3 py-2 outline-none cursor-pointer hover:bg-black/20 transition-colors h-8"
                                         style={{ color: BRAND.voidBlack }}
                                     >
                                         <option value="">Unassigned</option>
                                         <option value={user?.id}>Me (Manager)</option>
                                         {teamMembers.map(m => (
-                                            <option key={m.id} value={m.id}>{m.name}</option>
+                                            <option key={m.id} value={m.id}>{m.name} ({m.email})</option>
                                         ))}
                                     </select>
                                 </div>

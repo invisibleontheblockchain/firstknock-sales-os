@@ -658,7 +658,7 @@ export default function AdminTeam() {
                                                         </SelectTrigger>
                                                         <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
                                                             {filteredTeamMembers.map(m => (
-                                                                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                                                <SelectItem key={m.id} value={m.id}>{m.name} ({m.email})</SelectItem>
                                                             ))}
                                                         </SelectContent>
                                                     </Select>
