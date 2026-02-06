@@ -1,14 +1,17 @@
 import React from 'react';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { 
     Map, CheckCircle2, AlertCircle, TrendingUp, 
-    Home, MessageSquare, DollarSign, ChevronRight 
+    Home, MessageSquare, DollarSign, ChevronRight, Zap
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '../../utils';
+import { toast } from "sonner";
 
 const BRAND = {
     gold: '#FFD700',
@@ -91,6 +94,21 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
 
             {/* Routes Section - Compact */}
             <div className="p-3 bg-[#0A0A0A]">
+                {/* Auto-Assign Toggle */}
+                <div className="flex items-center justify-between mb-3 px-1">
+                    <div className="flex items-center space-x-2">
+                        <Switch 
+                            id={`auto-assign-${member.id}`} 
+                            checked={member.auto_assign_enabled || false}
+                            onCheckedChange={(c) => toggleAutoAssignMutation.mutate(c)}
+                            className="scale-75 data-[state=checked]:bg-yellow-500"
+                        />
+                        <Label htmlFor={`auto-assign-${member.id}`} className="text-[10px] text-gray-400 flex items-center gap-1 cursor-pointer select-none">
+                            <Zap className="w-3 h-3 text-yellow-500" /> Auto-Assign
+                        </Label>
+                    </div>
+                </div>
+
                 {activeRoutes.length > 0 && (
                     <div className="flex justify-between items-center mb-2 px-1">
                         <span className="text-[10px] font-bold text-gray-500 uppercase">Active Assignments</span>
