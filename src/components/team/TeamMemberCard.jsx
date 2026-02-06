@@ -19,8 +19,17 @@ const BRAND = {
 };
 
 export default function TeamMemberCard({ member, routes, metrics, allRoutes, onAssignRoute, onUnassignAll }) {
+    const queryClient = useQueryClient();
     const completedRoutes = routes.filter(r => r.status === 'COMPLETED');
     const activeRoutes = routes.filter(r => r.status === 'ACTIVE' || r.status === 'IN_PROGRESS');
+
+    const toggleAutoAssignMutation = useMutation({
+        mutationFn: (checked) => base44.entities.TeamMember.update(member.id, { auto_assign_enabled: checked }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['teamMembers'] });
+            toast.success("Auto-assign updated");
+        }
+    });
 
     // Calculate conversion rate
     const conversionRate = metrics.doorsKnocked > 0 

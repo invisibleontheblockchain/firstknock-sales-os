@@ -181,7 +181,21 @@ export default function RepHome() {
         mutationFn: (logData) => base44.entities.InteractionLog.create(logData),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['myLogs'] });
+            queryClient.invalidateQueries({ queryKey: ['routeLogs'] }); // Also invalidate route logs to update progress
             setSelectedProperty(null); // Close detail view on success
+        }
+    });
+
+    // Complete Route Mutation
+    const completeRouteMutation = useMutation({
+        mutationFn: () => base44.entities.SavedRoute.update(activeRoute.id, { 
+            status: 'COMPLETED',
+            // optional: completed_date: new Date().toISOString()
+        }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
+            // Show celebration or something?
+            // The route will disappear from "Active" list, so activeRoute might become null or switch to next
         }
     });
 
@@ -395,7 +409,22 @@ export default function RepHome() {
                 <div className="bg-gray-900 rounded-lg p-3 border border-gray-800">
                     <div className="flex justify-between items-center mb-2">
                         <h3 className="font-bold text-sm text-gray-200">{activeRoute.name}</h3>
-                        <span className="text-xs text-gray-500">{stats.done}/{stats.total} Homes</span>
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500">{stats.done}/{stats.total} Homes</span>
+                            {stats.percent >= 100 && (
+                                <Button 
+                                    size="sm" 
+                                    onClick={() => {
+                                        if(confirm("Mark route as complete? This may auto-assign a new route.")) {
+                                            completeRouteMutation.mutate();
+                                        }
+                                    }}
+                                    className="h-6 text-[10px] bg-green-600 hover:bg-green-700 text-white border-0"
+                                >
+                                    COMPLETE
+                                </Button>
+                            )}
+                        </div>
                     </div>
                     <Progress value={stats.percent} className="h-2 bg-gray-800" indicatorClassName="bg-yellow-500" />
                 </div>
