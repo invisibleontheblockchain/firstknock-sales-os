@@ -66,6 +66,18 @@ export default function RepPerformanceDetail({ member, logs, teamAverage, onClos
         };
     }, [logs, member]);
 
+    // 4. Completed Routes (History)
+    const { data: completedRoutes = [] } = useQuery({
+        queryKey: ['completedRoutes', member.id],
+        queryFn: async () => {
+            const res = await base44.entities.SavedRoute.filter({ 
+                assigned_to: member.id,
+                status: 'COMPLETED'
+            }, '-updated_date', 50);
+            return Array.isArray(res) ? res : (res?.items || []);
+        }
+    });
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
@@ -170,6 +182,32 @@ export default function RepPerformanceDetail({ member, logs, teamAverage, onClos
                                 </li>
                             ))}
                         </ul>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* Completed Routes History */}
+            <Card className="bg-[#111] border-gray-800">
+                <CardHeader>
+                    <CardTitle className="text-sm font-bold text-gray-400 uppercase">Route History ({completedRoutes.length} Completed)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {completedRoutes.length === 0 ? (
+                        <p className="text-sm text-gray-500 italic">No completed routes yet.</p>
+                    ) : (
+                        <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                            {completedRoutes.map(route => (
+                                <div key={route.id} className="flex items-center justify-between p-3 bg-[#151515] rounded border border-gray-800">
+                                    <div>
+                                        <p className="text-sm font-bold text-white">{route.name}</p>
+                                        <p className="text-xs text-gray-500">{new Date(route.updated_date).toLocaleDateString()} • {route.metrics?.house_count} doors</p>
+                                    </div>
+                                    <Badge variant="outline" className="border-green-900 text-green-500 bg-green-900/10">
+                                        COMPLETED
+                                    </Badge>
+                                </div>
+                            ))}
+                        </div>
                     )}
                 </CardContent>
             </Card>

@@ -123,6 +123,30 @@ export default function AdminTeam() {
         }
     });
 
+    const unassignAllRoutesMutation = useMutation({
+        mutationFn: async (memberId) => {
+            // Find all active routes for this member
+            const memberRoutes = routes.filter(r => r.assigned_to === memberId && (r.status === 'ACTIVE' || r.status === 'IN_PROGRESS'));
+            
+            if (memberRoutes.length === 0) return;
+
+            // Update each route to remove assignment
+            const promises = memberRoutes.map(route => 
+                base44.entities.SavedRoute.update(route.id, {
+                    assigned_to: null,
+                    assigned_to_name: null,
+                    status: 'PENDING'
+                })
+            );
+            
+            await Promise.all(promises);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['allRoutes'] });
+            toast.success("All routes unassigned successfully");
+        }
+    });
+
     const createCodeMutation = useMutation({
         mutationFn: (data) => base44.entities.InviteCode.create({ ...data, linked_user_id: user.id, max_uses: data.max_uses || 50 }),
         onSuccess: (data) => {
@@ -575,6 +599,11 @@ export default function AdminTeam() {
                                                     metrics={memberMetrics}
                                                     allRoutes={routesByRep.unassigned}
                                                     onAssignRoute={(rId, mId) => handleAssign(rId, mId)}
+                                                    onUnassignAll={() => {
+                                                        if(confirm(`Unassign all ${memberRoutes.length} routes from ${member.name}?`)) {
+                                                            unassignAllRoutesMutation.mutate(member.id);
+                                                        }
+                                                    }}
                                                 />
                                             </div>
                                         </div>

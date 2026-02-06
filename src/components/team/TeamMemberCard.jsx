@@ -18,8 +18,8 @@ const BRAND = {
     blue: '#3b82f6'
 };
 
-export default function TeamMemberCard({ member, routes, metrics, allRoutes, onAssignRoute }) {
-    const completedRoutes = routes.filter(r => r.status === 'COMPLETED').length;
+export default function TeamMemberCard({ member, routes, metrics, allRoutes, onAssignRoute, onUnassignAll }) {
+    const completedRoutes = routes.filter(r => r.status === 'COMPLETED');
     const activeRoutes = routes.filter(r => r.status === 'ACTIVE' || r.status === 'IN_PROGRESS');
 
     // Calculate conversion rate
@@ -82,9 +82,21 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
 
             {/* Routes Section - Compact */}
             <div className="p-3 bg-[#0A0A0A]">
-                {routes.length === 0 ? (
+                {activeRoutes.length > 0 && (
+                    <div className="flex justify-between items-center mb-2 px-1">
+                        <span className="text-[10px] font-bold text-gray-500 uppercase">Active Assignments</span>
+                        <button 
+                            onClick={(e) => { e.stopPropagation(); onUnassignAll(); }}
+                            className="text-[10px] text-red-500 hover:text-red-400 font-bold"
+                        >
+                            Unassign All
+                        </button>
+                    </div>
+                )}
+
+                {activeRoutes.length === 0 ? (
                     <div className="text-center py-4 border border-dashed border-gray-800 rounded-lg bg-gray-900/20">
-                        <p className="text-xs text-gray-500 mb-2">No routes assigned</p>
+                        <p className="text-xs text-gray-500 mb-2">No active routes</p>
                         <div onClick={e => e.stopPropagation()}>
                             <Select onValueChange={(routeId) => onAssignRoute(routeId, member.id)}>
                                 <SelectTrigger className="w-32 mx-auto h-7 text-[10px] bg-yellow-500/10 border-yellow-500/50 text-yellow-500">
@@ -100,14 +112,14 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                     </div>
                 ) : (
                     <div className="space-y-1.5">
-                        {routes.slice(0, 2).map(route => (
+                        {activeRoutes.slice(0, 3).map(route => (
                             <Link 
                                 key={route.id} 
                                 to={createPageUrl('ZipCodeExplorer') + `?routeId=${route.id}`}
                                 className="flex items-center justify-between bg-[#151515] p-2 rounded-lg border border-gray-800 hover:border-yellow-500/50 transition-colors"
                             >
                                 <div className="flex items-center gap-2 min-w-0">
-                                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${route.status === 'COMPLETED' ? 'bg-green-500' : 'bg-blue-500 animate-pulse'}`} />
+                                    <div className="w-2 h-2 rounded-full flex-shrink-0 bg-blue-500 animate-pulse" />
                                     <div className="min-w-0">
                                         <p className="text-[11px] font-bold text-white truncate">{route.name}</p>
                                         <p className="text-[9px] text-gray-500">{route.metrics?.house_count || 0} homes</p>
@@ -116,9 +128,9 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                                 <ChevronRight className="w-4 h-4 text-gray-600 flex-shrink-0" />
                             </Link>
                         ))}
-                        {routes.length > 2 && (
+                        {activeRoutes.length > 3 && (
                             <p className="text-[10px] text-center text-gray-500 py-1">
-                                +{routes.length - 2} more routes
+                                +{activeRoutes.length - 3} more routes
                             </p>
                         )}
                     </div>
