@@ -95,8 +95,8 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
             {/* Routes Section - Compact */}
             <div className="p-3 bg-[#0A0A0A]">
                 {/* Auto-Assign Toggle */}
-                <div className="flex items-center justify-between mb-3 px-1">
-                    <div className="flex items-center space-x-2">
+                <div className="flex items-center justify-between mb-3 px-1" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center space-x-2" title="Automatically assign a new route when the current one is completed">
                         <Switch 
                             id={`auto-assign-${member.id}`} 
                             checked={member.auto_assign_enabled || false}
