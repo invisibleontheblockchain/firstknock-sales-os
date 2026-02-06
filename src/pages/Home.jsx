@@ -841,8 +841,11 @@ export default function Home() {
 
         // Identify "High Potential" (score > 100)
         const highPotentialCount = routes.filter(r => r.competitivenessScore >= 100).length;
+        
+        // Count excluded if available from generation metadata
+        const excludedCount = routes._cooldownInfo ? routes._cooldownInfo.propertiesExcluded : 0;
 
-        return { totalHouses, totalDist, avgScore, routeCount: routes.length, highPotentialCount };
+        return { totalHouses, totalDist, avgScore, routeCount: routes.length, highPotentialCount, excludedCount };
     }, [routes]);
 
     const fitBounds = useMemo(() => {

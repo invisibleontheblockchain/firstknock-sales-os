@@ -194,6 +194,13 @@ export default function RouteCommandPanel({
                                                     <StatBox label="Miles" value={genStats.totalDist} />
                                                 </div>
 
+                                                {genStats.excludedCount > 0 && (
+                                                    <div className="flex items-center gap-2 text-[10px] text-gray-400 bg-black/30 p-2 rounded-lg mt-3 border border-red-900/30">
+                                                        <Shield className="w-3 h-3 text-red-500" />
+                                                        <span className="text-white font-bold">{genStats.excludedCount}</span> properties excluded (Sold/Hard No/Cooldown) to prevent double dipping.
+                                                    </div>
+                                                )}
+
                                                 {genStats.highPotentialCount > 0 && (
                                                     <div className="flex items-center gap-2 text-[10px] text-gray-400 bg-black/30 p-2 rounded-lg mt-3">
                                                         <Flame className="w-3 h-3 text-orange-500" />
