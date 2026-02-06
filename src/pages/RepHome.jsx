@@ -157,14 +157,23 @@ export default function RepHome() {
         enabled: !!activeRoute
     });
 
-    // 3. Fetch Interaction Logs (for status)
+    // 3. Fetch Interaction Logs (History for this route)
     const { data: logs = [], isLoading: logsLoading } = useQuery({
-        queryKey: ['myLogs', user?.email],
+        queryKey: ['routeLogs', activeRoute?.id],
         queryFn: async () => {
-            if (!user?.email) return [];
-            return await base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 500);
+            if (activeRoute?.property_hashes?.length > 0) {
+                // Fetch logs for the properties in this route (regardless of who created them)
+                return await base44.entities.InteractionLog.filter({ 
+                    address_hash: activeRoute.property_hashes 
+                }, '-created_date', 1000);
+            }
+            // Fallback if no active route properties (shouldn't happen often in this view)
+            if (user?.email) {
+                return await base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 500);
+            }
+            return [];
         },
-        enabled: !!user
+        enabled: !!activeRoute || !!user
     });
 
     // Log Result Mutation

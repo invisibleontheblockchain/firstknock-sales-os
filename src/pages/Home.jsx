@@ -446,7 +446,8 @@ export default function Home() {
 
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs', user?.email],
-        queryFn: () => user ? base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 5000) : [],
+        // Manager sees ALL logs to track team progress
+        queryFn: () => user ? base44.entities.InteractionLog.list('-created_date', 5000) : [],
         enabled: !!user
     });
     const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
