@@ -304,10 +304,9 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         };
     }
 
-    // Also exclude HARD_NO and SOLD from routing
-    eligible = eligible.filter(p =>
-        p.effective_status !== 'HARD_NO' && p.effective_status !== 'SOLD' && p.effective_status !== 'COOLDOWN'
-    );
+    // Double Dip Protection: Exclude Terminal Statuses
+    const terminalStatuses = ['HARD_NO', 'SOLD', 'DO_NOT_KNOCK', 'COOLDOWN'];
+    eligible = eligible.filter(p => !terminalStatuses.includes(p.effective_status));
 
     if (eligible.length === 0) return [];
 

@@ -21,8 +21,11 @@ export const determineEffectiveStatus = (masterProp, logs) => {
         }
     }
 
-    // If no interaction logs, property is ELIGIBLE (not visited yet)
+    // If no interaction logs, check master status first
     if (!logs || logs.length === 0) {
+        if (['SOLD', 'HARD_NO', 'DO_NOT_KNOCK'].includes(masterProp.original_status)) {
+            return masterProp.original_status;
+        }
         return 'ELIGIBLE';
     }
 
