@@ -35,7 +35,7 @@ import CommandCenterDashboard from '../components/dashboard/CommandCenterDashboa
 import MapSettingsPanel from '../components/map/MapSettingsPanel';
 import TerritorySetupWizard from '../components/manager/TerritorySetupWizard';
 import { LayoutDashboard, Settings } from 'lucide-react';
-import { openInMaps } from '@/utils/navigation';
+import { openInMaps } from '../components/logic/navigation';
 
 // Brand Colors
 const BRAND = {

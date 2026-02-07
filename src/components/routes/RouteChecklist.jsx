@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Check, X, Phone, Ban, Clock, ChevronDown, ChevronUp, MapPin, Home, Navigation, Mic, FileText } from 'lucide-react';
 import { getPropertyResultSummary } from '../logic/territoryLogic';
-import { openInMaps } from '@/utils/navigation';
+import { openInMaps } from '../logic/navigation';
 
 // Brand Colors
 const BRAND = {
