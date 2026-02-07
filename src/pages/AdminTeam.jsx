@@ -16,7 +16,7 @@ import { createPageUrl } from '../utils';
 import { toast } from "sonner";
 import TeamMemberCard from "@/components/team/TeamMemberCard";
 import RepPerformanceDetail from "@/components/team/RepPerformanceDetail";
-import RouteInsights from "@/components/insights/RouteInsights";
+import AdvancedRouteAnalytics from "@/components/analytics/AdvancedRouteAnalytics";
 import TeamLeaderboard from "@/components/team/TeamLeaderboard";
 
 
@@ -518,16 +518,14 @@ export default function AdminTeam() {
                             </Card>
                         )}
 
-                        {/* 3. Territory Insights (Bottom) */}
+                        {/* 3. Advanced Analytics (Bottom) */}
                         <Card className="bg-[#111] border-gray-800">
-                            <CardHeader className="pb-3 border-b border-gray-800">
-                                <CardTitle className="text-sm font-bold text-gray-400 uppercase tracking-wide flex items-center gap-2">
-                                    <Sparkles className="w-4 h-4 text-yellow-500" />
-                                    Territory Insights
-                                </CardTitle>
-                            </CardHeader>
-                            <CardContent className="p-0">
-                                <RouteInsights />
+                            <CardContent className="p-6">
+                                <AdvancedRouteAnalytics 
+                                    logs={logs} 
+                                    routes={routes} 
+                                    teamMembers={teamMembers} 
+                                />
                             </CardContent>
                         </Card>
 
