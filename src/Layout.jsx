@@ -1,10 +1,18 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Map, List, Upload, Navigation, LogIn, Users, HelpCircle, Sparkles, Smartphone } from 'lucide-react';
+import { Map, List, Upload, Navigation, LogIn, Users, HelpCircle, Sparkles, Smartphone, Menu, LogOut, RefreshCw, User as UserIcon } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import AiAssistant from '@/components/help/AiAssistant';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 
@@ -156,35 +164,34 @@ export default function Layout({ children }) {
                         />
                         <h1 className="text-lg font-bold tracking-tight text-white">FirstKnock</h1>
                     </div>
-                    
-                    <button 
-                        onClick={() => {
-                            if(confirm("Reset Role?")) {
-                                base44.auth.updateMe({ app_role: null }).then(() => {
-                                    window.location.href = createPageUrl('RoleSelect');
-                                });
-                            }
-                        }}
-                        className="bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded mx-2"
-                    >
-                        RESET ROLE
-                    </button>
 
-                    {/* Status Indicator */}
-                    <div className="flex items-center gap-3">
+                    {/* Desktop Actions */}
+                    <div className="hidden md:flex items-center gap-3">
                         {!isOnline && (
-                            <div className="hidden sm:flex items-center gap-1 bg-red-900/50 px-2 py-1 rounded text-[10px] text-red-200 border border-red-800">
+                            <div className="flex items-center gap-1 bg-red-900/50 px-2 py-1 rounded text-[10px] text-red-200 border border-red-800">
                                 <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                                 OFFLINE
                             </div>
                         )}
+                        
+                        <button 
+                            onClick={() => {
+                                if(confirm("Reset Role?")) {
+                                    base44.auth.updateMe({ app_role: null }).then(() => {
+                                        window.location.href = createPageUrl('RoleSelect');
+                                    });
+                                }
+                            }}
+                            className="bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded mr-2"
+                        >
+                            RESET ROLE
+                        </button>
+
                         <button
                             onClick={async () => {
                                 try {
-                                    // Redirect to home after logout
                                     await base44.auth.logout(window.location.origin);
                                 } catch (e) {
-                                    console.log('Logout error:', e);
                                     window.location.reload();
                                 }
                                 queryClient.clear();
@@ -197,7 +204,6 @@ export default function Layout({ children }) {
                             <Link 
                                 to={createPageUrl('RepHome')}
                                 className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-yellow-500"
-                                title="Switch to Rep View"
                             >
                                 REP MODE
                             </Link>
@@ -205,7 +211,6 @@ export default function Layout({ children }) {
                         <Link 
                             to={createPageUrl('MobileApp')}
                             className="flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors"
-                            title="Get Mobile App"
                         >
                             <Smartphone className="w-4 h-4 text-yellow-500" />
                         </Link>
@@ -213,9 +218,68 @@ export default function Layout({ children }) {
                             className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} 
                             title={isOnline ? "System Online" : "Offline Mode Active"}
                         />
-                        </div>
-                        </div>
-                        </header>
+                    </div>
+
+                    {/* Mobile Actions Menu */}
+                    <div className="md:hidden flex items-center gap-2">
+                        {!isOnline && (
+                            <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse mr-1" title="Offline" />
+                        )}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="text-white hover:bg-slate-800 h-8 w-8">
+                                    <Menu className="w-5 h-5" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56 bg-[#0A0A0A] border-slate-800 text-white shadow-xl">
+                                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                                <DropdownMenuSeparator className="bg-slate-800" />
+                                
+                                {user?.app_role !== 'rep' && (
+                                    <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer">
+                                        <Link to={createPageUrl('RepHome')} className="flex items-center w-full">
+                                            <UserIcon className="mr-2 h-4 w-4" />
+                                            <span>Switch to Rep Mode</span>
+                                        </Link>
+                                    </DropdownMenuItem>
+                                )}
+                                
+                                <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer">
+                                    <Link to={createPageUrl('MobileApp')} className="flex items-center w-full">
+                                        <Smartphone className="mr-2 h-4 w-4" />
+                                        <span>Get Mobile App</span>
+                                    </Link>
+                                </DropdownMenuItem>
+
+                                <DropdownMenuSeparator className="bg-slate-800" />
+
+                                <DropdownMenuItem onClick={() => {
+                                    if(confirm("Reset Role?")) {
+                                        base44.auth.updateMe({ app_role: null }).then(() => {
+                                            window.location.href = createPageUrl('RoleSelect');
+                                        });
+                                    }
+                                }} className="text-red-400 focus:text-red-400 focus:bg-red-900/20 cursor-pointer">
+                                    <RefreshCw className="mr-2 h-4 w-4" />
+                                    <span>Reset Role</span>
+                                </DropdownMenuItem>
+                                
+                                <DropdownMenuItem onClick={async () => {
+                                    try {
+                                        await base44.auth.logout(window.location.origin);
+                                    } catch (e) {
+                                        window.location.reload();
+                                    }
+                                    queryClient.clear();
+                                }} className="focus:bg-slate-800 focus:text-white cursor-pointer">
+                                    <LogOut className="mr-2 h-4 w-4" />
+                                    <span>Logout</span>
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    </div>
+                </div>
+            </header>
 
             {/* Main Content Area */}
             <main className="flex-1 relative overflow-hidden">

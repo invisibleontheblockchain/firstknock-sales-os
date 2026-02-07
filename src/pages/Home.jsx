@@ -1225,54 +1225,54 @@ export default function Home() {
 
             {/* Top Stats Bar */}
             <div className="absolute top-4 left-4 right-4 z-[1000] flex flex-col gap-2 pointer-events-none">
-                <div className="flex flex-wrap sm:flex-nowrap items-start gap-2">
+                <div className="flex flex-nowrap items-center gap-2 overflow-x-auto no-scrollbar pb-1">
                     {/* DASHBOARD & SETTINGS TOGGLES */}
-                    <div className="pointer-events-auto shrink-0 flex gap-2 order-1">
+                    <div className="pointer-events-auto shrink-0 flex gap-2">
                         <Button
                             onClick={() => setShowDashboard(true)}
                             size="icon"
-                            className="bg-black/90 hover:bg-black border border-gray-800 shadow-xl h-[42px] w-[42px] rounded-lg"
+                            className="bg-black/90 hover:bg-black border border-gray-800 shadow-xl h-9 w-9 sm:h-[42px] sm:w-[42px] rounded-lg"
                         >
-                            <LayoutDashboard className="w-5 h-5 text-yellow-500" />
+                            <LayoutDashboard className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500" />
                         </Button>
                         <Button
                             onClick={() => setShowMapSettings(true)}
                             size="icon"
-                            className="bg-black/90 hover:bg-black border border-gray-800 shadow-xl h-[42px] w-[42px] rounded-lg"
+                            className="bg-black/90 hover:bg-black border border-gray-800 shadow-xl h-9 w-9 sm:h-[42px] sm:w-[42px] rounded-lg"
                         >
-                            <Settings className="w-5 h-5 text-gray-400" />
+                            <Settings className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
                         </Button>
                     </div>
 
-                    {/* MODE TOGGLE */}
-                    <div className="pointer-events-auto bg-black/90 backdrop-blur rounded-lg p-1 border border-gray-800 flex gap-1 shadow-xl shrink-0 order-3 sm:order-2 w-full sm:w-auto justify-center sm:mx-auto mt-2 sm:mt-0">
+                    {/* MODE TOGGLE - Compact Single Row */}
+                    <div className="pointer-events-auto bg-black/90 backdrop-blur rounded-lg p-1 border border-gray-800 flex gap-1 shadow-xl shrink-0 mx-auto">
                         <button
                             onClick={() => setMode('analyze')}
-                            className={`flex-1 sm:flex-none px-4 py-3 sm:py-2 rounded-md text-xs sm:text-[10px] font-bold transition-all ${mode === 'analyze' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                            className={`px-2 py-1.5 sm:px-3 sm:py-2 rounded-md text-[9px] sm:text-[10px] font-bold transition-all whitespace-nowrap ${mode === 'analyze' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
                         >
                             DISPATCH MAP
                         </button>
                         <button
                             onClick={() => setMode('generate')}
-                            className={`flex-1 sm:flex-none px-4 py-3 sm:py-2 rounded-md text-xs sm:text-[10px] font-bold transition-all ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                            className={`px-2 py-1.5 sm:px-3 sm:py-2 rounded-md text-[9px] sm:text-[10px] font-bold transition-all whitespace-nowrap ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-400 hover:text-white'}`}
                         >
                             ROUTE BUILDER
                         </button>
                     </div>
 
                     {/* FILTER BUTTON */}
-                    <div className="pointer-events-auto shrink-0 order-2 sm:order-3 ml-auto sm:ml-0">
+                    <div className="pointer-events-auto shrink-0 ml-auto">
                         <Button
                             onClick={() => setShowCompare(true)}
                             size="icon"
-                            className="rounded-lg h-10 w-10 font-bold tracking-wide shadow-lg"
+                            className="rounded-lg h-9 w-9 sm:h-10 sm:w-10 font-bold tracking-wide shadow-lg"
                             style={{ 
                                 background: mode === 'generate' ? BRAND.gold : BRAND.charcoal, 
                                 color: mode === 'generate' ? BRAND.voidBlack : BRAND.gold, 
                                 border: `1px solid ${BRAND.gold}40` 
                             }}
                         >
-                            {mode === 'generate' ? <Navigation className="w-5 h-5" /> : <Filter className="w-5 h-5" />}
+                            {mode === 'generate' ? <Navigation className="w-4 h-4 sm:w-5 sm:h-5" /> : <Filter className="w-4 h-4 sm:w-5 sm:h-5" />}
                         </Button>
                     </div>
                 </div>
