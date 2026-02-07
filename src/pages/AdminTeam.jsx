@@ -299,19 +299,40 @@ export default function AdminTeam() {
 
     return (
         <div className="h-full overflow-y-auto bg-black text-white p-4 md:p-6 pb-24">
-            <div className="max-w-7xl mx-auto space-y-8">
+            <div className="max-w-7xl mx-auto space-y-6 md:space-y-8">
                 
                 {/* Header Section */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div>
-                        <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
-                            <Shield className="w-8 h-8 text-yellow-500" />
-                            Command Center
-                        </h1>
-                        <div className="flex items-center gap-3 mt-1">
+                    <div className="w-full md:w-auto">
+                        <div className="flex items-center justify-between mb-2 md:mb-0">
+                            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
+                                <Shield className="w-6 h-6 md:w-8 md:h-8 text-yellow-500" />
+                                Command Center
+                            </h1>
+                            {/* Mobile Team Filter */}
+                            <div className="md:hidden">
+                                {inviteCodes.length > 0 && (
+                                    <Select value={activeTeamCode} onValueChange={setActiveTeamCode}>
+                                        <SelectTrigger className="h-8 bg-black border-yellow-500/30 text-yellow-500 w-[120px] font-bold text-xs">
+                                            <SelectValue placeholder="All Teams" />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-[#111] border-gray-800 text-white">
+                                            <SelectItem value="all">All Teams</SelectItem>
+                                            {inviteCodes.filter(c => c.linked_user_id === user?.id).map(code => (
+                                                <SelectItem key={code.id} value={code.code}>
+                                                    Team {code.code}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                )}
+                            </div>
+                        </div>
+                        
+                        <div className="hidden md:flex items-center gap-3 mt-1">
                             <p className="text-gray-400 text-sm">Manage your team, routes, and performance.</p>
                             
-                            {/* Team Code Filter Dropdown */}
+                            {/* Desktop Team Code Filter Dropdown */}
                             {inviteCodes.length > 0 && (
                                 <Select value={activeTeamCode} onValueChange={setActiveTeamCode}>
                                     <SelectTrigger className="h-8 bg-black border-yellow-500/30 text-yellow-500 w-auto min-w-[140px] font-bold text-xs">
@@ -329,15 +350,15 @@ export default function AdminTeam() {
                             )}
                         </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex w-full md:w-auto gap-2">
                         <Button 
                             onClick={() => {
                                 const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
                                 createCodeMutation.mutate({ code: randomCode, max_uses: 5, role: 'rep', label: `Demo Team (${randomCode})` });
                             }}
-                            className="h-9 bg-gray-800 text-gray-300 font-bold hover:bg-gray-700 hover:text-white border border-gray-700"
+                            className="flex-1 md:flex-none h-10 md:h-9 bg-gray-800 text-gray-300 font-bold hover:bg-gray-700 hover:text-white border border-gray-700 text-xs md:text-sm"
                         >
-                            <Key className="w-4 h-4 mr-2" /> Create Demo Team
+                            <Key className="w-4 h-4 mr-2" /> Create Demo
                         </Button>
 
                         {/* Code Created Success Dialog */}
@@ -376,7 +397,7 @@ export default function AdminTeam() {
 
                         <Dialog open={isAddRepOpen} onOpenChange={setIsAddRepOpen}>
                             <DialogTrigger asChild>
-                                <Button className="h-9 bg-yellow-500 text-black font-bold hover:bg-yellow-400">
+                                <Button className="flex-1 md:flex-none h-10 md:h-9 bg-yellow-500 text-black font-bold hover:bg-yellow-400 text-xs md:text-sm">
                                     <UserPlus className="w-4 h-4 mr-2" /> Add Rep
                                 </Button>
                             </DialogTrigger>
@@ -426,49 +447,49 @@ export default function AdminTeam() {
 
                 {/* Streamlined Stats Bar */}
                 <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-gray-800 bg-[#111] border border-gray-800 rounded-xl overflow-hidden shadow-lg">
-                    <div className="p-4 flex flex-col items-center justify-center hover:bg-white/5 transition-colors group">
-                        <div className="flex items-center gap-2 mb-1 text-yellow-500 group-hover:scale-110 transition-transform">
-                            <TrendingUp size={16} />
-                            <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Knocks</span>
+                    <div className="p-3 md:p-4 flex flex-col items-center justify-center hover:bg-white/5 transition-colors group">
+                        <div className="flex items-center gap-1 md:gap-2 mb-1 text-yellow-500 group-hover:scale-110 transition-transform">
+                            <TrendingUp className="w-3 h-3 md:w-4 md:h-4" />
+                            <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider opacity-70">Knocks</span>
                         </div>
-                        <span className="text-2xl font-extrabold text-white tracking-tight">{teamTotals.doorsKnocked.toLocaleString()}</span>
+                        <span className="text-xl md:text-2xl font-extrabold text-white tracking-tight">{teamTotals.doorsKnocked.toLocaleString()}</span>
                     </div>
 
-                    <div className="p-4 flex flex-col items-center justify-center hover:bg-white/5 transition-colors group">
-                        <div className="flex items-center gap-2 mb-1 text-green-500 group-hover:scale-110 transition-transform">
-                            <DollarSign size={16} />
-                            <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Sales</span>
+                    <div className="p-3 md:p-4 flex flex-col items-center justify-center hover:bg-white/5 transition-colors group">
+                        <div className="flex items-center gap-1 md:gap-2 mb-1 text-green-500 group-hover:scale-110 transition-transform">
+                            <DollarSign className="w-3 h-3 md:w-4 md:h-4" />
+                            <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider opacity-70">Sales</span>
                         </div>
-                        <span className="text-2xl font-extrabold text-white tracking-tight">{teamTotals.sales.toLocaleString()}</span>
+                        <span className="text-xl md:text-2xl font-extrabold text-white tracking-tight">{teamTotals.sales.toLocaleString()}</span>
                     </div>
 
-                    <div className="p-4 flex flex-col items-center justify-center hover:bg-white/5 transition-colors group cursor-pointer" onClick={() => navigate(createPageUrl('Billing'))}>
-                        <div className="flex items-center gap-2 mb-1 text-blue-500 group-hover:scale-110 transition-transform">
-                            <Users size={16} />
-                            <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Seats Usage</span>
+                    <div className="p-3 md:p-4 flex flex-col items-center justify-center hover:bg-white/5 transition-colors group cursor-pointer" onClick={() => navigate(createPageUrl('Billing'))}>
+                        <div className="flex items-center gap-1 md:gap-2 mb-1 text-blue-500 group-hover:scale-110 transition-transform">
+                            <Users className="w-3 h-3 md:w-4 md:h-4" />
+                            <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider opacity-70">Seats</span>
                         </div>
                         <div className="flex items-baseline gap-1">
-                            <span className="text-2xl font-extrabold text-white tracking-tight">{teamMembers.length}</span>
-                            <span className="text-sm font-bold text-gray-500">/ {user?.total_seats || 1}</span>
+                            <span className="text-xl md:text-2xl font-extrabold text-white tracking-tight">{teamMembers.length}</span>
+                            <span className="text-xs md:text-sm font-bold text-gray-500">/ {user?.total_seats || 1}</span>
                         </div>
                     </div>
 
-                    <div className="p-4 flex flex-col items-center justify-center hover:bg-white/5 transition-colors group">
-                        <div className="flex items-center gap-2 mb-1 text-purple-500 group-hover:scale-110 transition-transform">
-                            <Map size={16} />
-                            <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Total Routes</span>
+                    <div className="p-3 md:p-4 flex flex-col items-center justify-center hover:bg-white/5 transition-colors group">
+                        <div className="flex items-center gap-1 md:gap-2 mb-1 text-purple-500 group-hover:scale-110 transition-transform">
+                            <Map className="w-3 h-3 md:w-4 md:h-4" />
+                            <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider opacity-70">Routes</span>
                         </div>
-                        <span className="text-2xl font-extrabold text-white tracking-tight">{routes.length}</span>
+                        <span className="text-xl md:text-2xl font-extrabold text-white tracking-tight">{routes.length}</span>
                     </div>
                 </div>
 
                 {/* Main Content Tabs */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-                    <TabsList className="bg-[#111] border border-gray-800 p-1 h-12 w-full md:w-auto">
-                        <TabsTrigger value="overview" className="h-full px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Overview</TabsTrigger>
-                        <TabsTrigger value="roster" className="h-full px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Roster</TabsTrigger>
-                        <TabsTrigger value="logistics" className="h-full px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Routes</TabsTrigger>
-                        <TabsTrigger value="access" className="h-full px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Codes</TabsTrigger>
+                    <TabsList className="bg-[#111] border border-gray-800 p-1 h-12 w-full flex overflow-x-auto no-scrollbar justify-start md:justify-start">
+                        <TabsTrigger value="overview" className="flex-1 md:flex-none h-full px-4 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Overview</TabsTrigger>
+                        <TabsTrigger value="roster" className="flex-1 md:flex-none h-full px-4 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Roster</TabsTrigger>
+                        <TabsTrigger value="logistics" className="flex-1 md:flex-none h-full px-4 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Routes</TabsTrigger>
+                        <TabsTrigger value="access" className="flex-1 md:flex-none h-full px-4 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Codes</TabsTrigger>
                     </TabsList>
 
                     {/* OVERVIEW TAB */}

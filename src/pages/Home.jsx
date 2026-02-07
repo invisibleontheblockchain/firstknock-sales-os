@@ -1375,7 +1375,7 @@ export default function Home() {
                         )}
                     </div>
 
-                    <div className="flex flex-col gap-2 shrink-0 pointer-events-auto pb-20 sm:pb-0">
+                    <div className="flex flex-col gap-2 shrink-0 pointer-events-auto">
                          <Button
                             onClick={(e) => {
                                 e.stopPropagation();
