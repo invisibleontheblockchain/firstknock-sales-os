@@ -283,7 +283,8 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         useStreetSweep = true,
         minimizeTurns = false,
         preferMajorRoads = false,
-        avoidSchoolZones = false
+        avoidSchoolZones = false,
+        maxRouteDistance = null // New parameter
     } = options;
 
     // Filter out properties on streets that are on cooldown
@@ -389,10 +390,21 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         let totalScore = 0;
 
         for (let j = 0; j < orderedProps.length - 1; j++) {
-            totalDistance += calculateDistance(
+            const legDist = calculateDistance(
                 orderedProps[j].lat, orderedProps[j].lng,
                 orderedProps[j + 1].lat, orderedProps[j + 1].lng
             );
+            
+            // Basic Max Distance Check - Stop adding if we exceed limit
+            if (maxRouteDistance && (totalDistance + legDist) > maxRouteDistance) {
+                // Remove remaining properties from this route
+                // In a real implementation we might want to put them back in the pool, 
+                // but for now we just truncate to respect the user's hard constraint.
+                orderedProps.splice(j + 1); 
+                break;
+            }
+
+            totalDistance += legDist;
             totalScore += orderedProps[j].score;
         }
         totalScore += orderedProps[orderedProps.length - 1]?.score || 0;

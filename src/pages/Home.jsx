@@ -138,6 +138,7 @@ export default function Home() {
     const [showRoutePanel, setShowRoutePanel] = useState(false);
     const [showCompare, setShowCompare] = useState(false);
     const [housesPerRoute, setHousesPerRoute] = useState(50);
+    const [maxRouteDistance, setMaxRouteDistance] = useState(10); // Default 10 miles
     const ROUTE_SIZE_OPTIONS = [25, 50, 75, 100];
     const [sortBy, setSortBy] = useState('score'); // score, houses, distance
     const [minScore, setMinScore] = useState(0);
@@ -164,8 +165,37 @@ export default function Home() {
     const [isLoadingDarkRoom, setIsLoadingDarkRoom] = useState(false);
     const [darkRoomEnabled, setDarkRoomEnabled] = useState(false);
     const [fetchedProperties, setFetchedProperties] = useState([]); // Dynamic fetch storage
+    const [templateName, setTemplateName] = useState("");
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
+
+    // Fetch Route Templates
+    const { data: routeTemplates = [], refetch: refetchTemplates } = useQuery({
+        queryKey: ['routeTemplates', user?.id],
+        queryFn: () => user ? base44.entities.RouteTemplate.list('-created_date') : [],
+        enabled: !!user
+    });
+
+    const saveTemplateMutation = useMutation({
+        mutationFn: (data) => base44.entities.RouteTemplate.create(data),
+        onSuccess: () => {
+            refetchTemplates();
+            toast.success("Template saved!");
+            setTemplateName("");
+        }
+    });
+
+    const loadTemplate = (template) => {
+        if (!template.config) return;
+        if (template.config.houses_per_route) setHousesPerRoute(template.config.houses_per_route);
+        if (template.config.max_distance) setMaxRouteDistance(template.config.max_distance);
+        if (template.config.min_score) setMinScore(template.config.min_score);
+        if (template.config.street_cooldown_days) setStreetCooldownDays(template.config.street_cooldown_days);
+        if (template.config.zip_code_filter) setZipCodeFilter(template.config.zip_code_filter);
+        if (template.config.start_location) setStartLocation(template.config.start_location);
+        
+        toast.success(`Loaded template: ${template.name}`);
+    };
     
     // Working Area Setup - Replaced by TerritorySetupWizard
     const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -804,7 +834,8 @@ export default function Home() {
                 { 
                     streetCooldownDays, 
                     useStreetSweep: true,
-                    minimizeTurns: true
+                    minimizeTurns: true,
+                    maxRouteDistance: maxRouteDistance > 0 ? maxRouteDistance : null
                 }
             );
 
@@ -1581,6 +1612,71 @@ export default function Home() {
                                         <div className="flex items-center justify-between opacity-50">
                                             <span className="text-xs text-gray-300">School Zone Avoidance (Time)</span>
                                             <input type="checkbox" className="accent-yellow-500" disabled />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                            MAX DISTANCE: {maxRouteDistance} MILES
+                                        </label>
+                                        <Slider
+                                            value={[maxRouteDistance]}
+                                            onValueChange={([v]) => setMaxRouteDistance(v)}
+                                            min={1}
+                                            max={50}
+                                            step={1}
+                                            className="w-full"
+                                        />
+                                        <p className="text-[10px] text-gray-500 mt-1">Routes will be truncated if they exceed this limit.</p>
+                                    </div>
+
+                                    {/* Route Templates */}
+                                    <div className="bg-[#151515] p-3 rounded-lg border border-[#333] space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-[10px] font-bold text-gray-500 uppercase">ROUTE TEMPLATES</p>
+                                            {routeTemplates.length > 0 && (
+                                                <select 
+                                                    className="bg-black text-[10px] text-white border border-gray-700 rounded px-2 py-1 max-w-[120px]"
+                                                    onChange={(e) => {
+                                                        const t = routeTemplates.find(t => t.id === e.target.value);
+                                                        if (t) loadTemplate(t);
+                                                    }}
+                                                    value=""
+                                                >
+                                                    <option value="" disabled>Load Template...</option>
+                                                    {routeTemplates.map(t => (
+                                                        <option key={t.id} value={t.id}>{t.name}</option>
+                                                    ))}
+                                                </select>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input 
+                                                className="flex-1 bg-black border border-gray-700 rounded px-2 text-xs text-white"
+                                                placeholder="Template Name"
+                                                value={templateName}
+                                                onChange={(e) => setTemplateName(e.target.value)}
+                                            />
+                                            <button 
+                                                onClick={() => {
+                                                    if (!templateName) return toast.error("Enter name");
+                                                    saveTemplateMutation.mutate({
+                                                        name: templateName,
+                                                        config: {
+                                                            houses_per_route: housesPerRoute,
+                                                            max_distance: maxRouteDistance,
+                                                            min_score: minScore,
+                                                            street_cooldown_days: streetCooldownDays,
+                                                            zip_code_filter: zipCodeFilter,
+                                                            start_location: startLocation
+                                                        },
+                                                        created_by: user?.email
+                                                    });
+                                                }}
+                                                className="bg-[#333] hover:bg-[#444] text-white text-[10px] font-bold px-3 py-1 rounded"
+                                            >
+                                                SAVE
+                                            </button>
                                         </div>
                                     </div>
 
