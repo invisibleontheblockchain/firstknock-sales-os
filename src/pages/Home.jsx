@@ -1225,44 +1225,43 @@ export default function Home() {
 
             {/* Top Stats Bar */}
             <div className="absolute top-4 left-4 right-4 z-[1000] flex flex-col gap-2 pointer-events-none">
-                <div className="flex items-start gap-2 overflow-hidden">
+                <div className="flex flex-wrap sm:flex-nowrap items-start gap-2">
                     {/* DASHBOARD & SETTINGS TOGGLES */}
-                                              <div className="pointer-events-auto shrink-0 flex gap-2">
-                                                  <Button
-                                                      onClick={() => setShowDashboard(true)}
-                                                      size="icon"
-                                                      className="bg-black/90 hover:bg-black border border-gray-800 shadow-xl h-[42px] w-[42px] rounded-lg"
-                                                  >
-                                                      <LayoutDashboard className="w-5 h-5 text-yellow-500" />
-                                                  </Button>
-                                                  <Button
-                                                      onClick={() => setShowMapSettings(true)}
-                                                      size="icon"
-                                                      className="bg-black/90 hover:bg-black border border-gray-800 shadow-xl h-[42px] w-[42px] rounded-lg"
-                                                  >
-                                                      <Settings className="w-5 h-5 text-gray-400" />
-                                                  </Button>
-                                              </div>
+                    <div className="pointer-events-auto shrink-0 flex gap-2 order-1">
+                        <Button
+                            onClick={() => setShowDashboard(true)}
+                            size="icon"
+                            className="bg-black/90 hover:bg-black border border-gray-800 shadow-xl h-[42px] w-[42px] rounded-lg"
+                        >
+                            <LayoutDashboard className="w-5 h-5 text-yellow-500" />
+                        </Button>
+                        <Button
+                            onClick={() => setShowMapSettings(true)}
+                            size="icon"
+                            className="bg-black/90 hover:bg-black border border-gray-800 shadow-xl h-[42px] w-[42px] rounded-lg"
+                        >
+                            <Settings className="w-5 h-5 text-gray-400" />
+                        </Button>
+                    </div>
 
                     {/* MODE TOGGLE */}
-                    <div className="pointer-events-auto bg-black/90 backdrop-blur rounded-lg p-1 border border-gray-800 flex gap-1 shadow-xl shrink-0">
+                    <div className="pointer-events-auto bg-black/90 backdrop-blur rounded-lg p-1 border border-gray-800 flex gap-1 shadow-xl shrink-0 order-3 sm:order-2 w-full sm:w-auto justify-center sm:mx-auto mt-2 sm:mt-0">
                         <button
                             onClick={() => setMode('analyze')}
-                            className={`px-3 py-2 rounded-md text-[10px] font-bold transition-all ${mode === 'analyze' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                            className={`flex-1 sm:flex-none px-4 py-3 sm:py-2 rounded-md text-xs sm:text-[10px] font-bold transition-all ${mode === 'analyze' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
                         >
                             DISPATCH MAP
                         </button>
                         <button
                             onClick={() => setMode('generate')}
-                            className={`px-3 py-2 rounded-md text-[10px] font-bold transition-all ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                            className={`flex-1 sm:flex-none px-4 py-3 sm:py-2 rounded-md text-xs sm:text-[10px] font-bold transition-all ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-400 hover:text-white'}`}
                         >
                             ROUTE BUILDER
                         </button>
                     </div>
 
-                    <div className="pointer-events-auto flex-1" />
-
-                    <div className="pointer-events-auto shrink-0">
+                    {/* FILTER BUTTON */}
+                    <div className="pointer-events-auto shrink-0 order-2 sm:order-3 ml-auto sm:ml-0">
                         <Button
                             onClick={() => setShowCompare(true)}
                             size="icon"
