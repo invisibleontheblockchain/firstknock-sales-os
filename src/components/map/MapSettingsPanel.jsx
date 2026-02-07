@@ -34,7 +34,9 @@ export default function MapSettingsPanel({
     quickFilter,
     setQuickFilter,
     showRouteDetails,
-    setShowRouteDetails
+    setShowRouteDetails,
+    navigationApp,
+    setNavigationApp
 }) {
     const STATUS_FILTERS = [
         { id: 'all', label: 'ALL', color: '#E5E5E5' },
@@ -101,6 +103,35 @@ export default function MapSettingsPanel({
                                     {quickFilter === f.id ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3 opacity-50" />}
                                 </button>
                             ))}
+                        </div>
+                    </div>
+
+                    {/* Navigation App Preference */}
+                    <div>
+                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                            NAVIGATION APP
+                        </label>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setNavigationApp('apple')}
+                                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-bold transition-all ${
+                                    navigationApp === 'apple' 
+                                        ? 'bg-yellow-500 text-black shadow-lg' 
+                                        : 'bg-[#1F1F1F] text-gray-400 hover:text-white border border-gray-700'
+                                }`}
+                            >
+                                 Apple Maps
+                            </button>
+                            <button
+                                onClick={() => setNavigationApp('google')}
+                                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-bold transition-all ${
+                                    navigationApp === 'google' 
+                                        ? 'bg-yellow-500 text-black shadow-lg' 
+                                        : 'bg-[#1F1F1F] text-gray-400 hover:text-white border border-gray-700'
+                                }`}
+                            >
+                                G Google Maps
+                            </button>
                         </div>
                     </div>
 

@@ -35,6 +35,7 @@ import CommandCenterDashboard from '../components/dashboard/CommandCenterDashboa
 import MapSettingsPanel from '../components/map/MapSettingsPanel';
 import TerritorySetupWizard from '../components/manager/TerritorySetupWizard';
 import { LayoutDashboard, Settings } from 'lucide-react';
+import { openInMaps } from '@/utils/navigation';
 
 // Brand Colors
 const BRAND = {
@@ -159,6 +160,7 @@ export default function Home() {
     const [mapTheme, setMapTheme] = useState('dark'); // 'dark' or 'light'
     const [showRouteDetails, setShowRouteDetails] = useState(true); // Toggle individual dots vs just rank/number
     const [showMapSettings, setShowMapSettings] = useState(false);
+    const [navigationApp, setNavigationApp] = useState('apple'); // Default to Apple Maps
     const [darkRoomProperties, setDarkRoomProperties] = useState([]);
     const [darkRoomClusters, setDarkRoomClusters] = useState([]);
     const [darkRoomCount, setDarkRoomCount] = useState(0);
@@ -168,6 +170,19 @@ export default function Home() {
     const [templateName, setTemplateName] = useState("");
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
+
+    // Load navigation preference from user settings on load
+    useEffect(() => {
+        if (user?.navigation_app) {
+            setNavigationApp(user.navigation_app);
+        }
+    }, [user]);
+
+    // Update user preference when changed
+    const updateNavigationApp = (app) => {
+        setNavigationApp(app);
+        base44.auth.updateMe({ navigation_app: app });
+    };
 
     // Fetch Route Templates
     const { data: routeTemplates = [], refetch: refetchTemplates } = useQuery({
@@ -1808,6 +1823,7 @@ export default function Home() {
                             logs={logs}
                             onLogResult={handleLogResult}
                             onClose={() => setShowChecklist(false)}
+                            navigationApp={navigationApp}
                         />
                     </div>
                 </div>
@@ -1846,6 +1862,8 @@ export default function Home() {
                                       setQuickFilter={setQuickFilter}
                                       showRouteDetails={showRouteDetails}
                                       setShowRouteDetails={setShowRouteDetails}
+                                      navigationApp={navigationApp}
+                                      setNavigationApp={updateNavigationApp}
                                   />
                               )}
 
@@ -1966,17 +1984,22 @@ export default function Home() {
                                 </div>
 
                                 {/* Map Link */}
-                                <a 
-                                    href={selectedProperty.full_address 
-                                        ? `https://maps.apple.com/?daddr=${encodeURIComponent(`${selectedProperty.full_address}${selectedProperty.city ? `, ${selectedProperty.city}` : ''}${selectedProperty.state ? `, ${selectedProperty.state}` : ''}${selectedProperty.zip_code ? ` ${selectedProperty.zip_code}` : ''}`)}&dirflg=d`
-                                        : `https://maps.apple.com/?daddr=${selectedProperty.lat},${selectedProperty.lng}&dirflg=d`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="block w-full py-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-center font-bold text-sm text-white transition-colors flex items-center justify-center gap-2"
+                                <Button 
+                                    onClick={() => {
+                                        let address = "";
+                                        if (selectedProperty.full_address) {
+                                            address = selectedProperty.full_address;
+                                            if (selectedProperty.city) address += `, ${selectedProperty.city}`;
+                                            if (selectedProperty.state) address += `, ${selectedProperty.state}`;
+                                            if (selectedProperty.zip_code) address += ` ${selectedProperty.zip_code}`;
+                                        }
+                                        openInMaps(selectedProperty.lat, selectedProperty.lng, address, navigationApp);
+                                    }}
+                                    className="block w-full py-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-center font-bold text-sm text-white transition-colors flex items-center justify-center gap-2 h-auto"
                                 >
                                     <Navigation className="w-4 h-4 text-yellow-500" />
-                                    Navigate (Apple Maps)
-                                </a>
+                                    Navigate ({navigationApp === 'google' ? 'Google Maps' : 'Apple Maps'})
+                                </Button>
                             </div>
                         </ScrollArea>
                     </div>

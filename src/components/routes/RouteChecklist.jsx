@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Check, X, Phone, Ban, Clock, ChevronDown, ChevronUp, MapPin, Home, Navigation, Mic, FileText } from 'lucide-react';
 import { getPropertyResultSummary } from '../logic/territoryLogic';
-import { openInMaps } from '@/utils';
+import { openInMaps } from '@/utils/navigation';
 
 // Brand Colors
 const BRAND = {
@@ -30,7 +30,7 @@ const STATUS_COLORS = {
     QUALIFIED: '#3b82f6'
 };
 
-export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
+export default function RouteChecklist({ route, logs, onLogResult, onClose, navigationApp = 'apple' }) {
     const [expandedId, setExpandedId] = useState(null);
     const [filter, setFilter] = useState('all');
 
@@ -79,18 +79,15 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
     const [isListening, setIsListening] = useState(false);
 
     const handleNavigate = (prop) => {
-        let query = "";
+        let address = "";
         if (prop.full_address) {
-            query = prop.full_address;
-            if (prop.city) query += `, ${prop.city}`;
-            if (prop.state) query += `, ${prop.state}`;
-            if (prop.zip_code) query += ` ${prop.zip_code}`;
+            address = prop.full_address;
+            if (prop.city) address += `, ${prop.city}`;
+            if (prop.state) address += `, ${prop.state}`;
+            if (prop.zip_code) address += ` ${prop.zip_code}`;
         }
-
-        const url = query 
-            ? `https://maps.apple.com/?daddr=${encodeURIComponent(query)}&dirflg=d`
-            : `https://maps.apple.com/?daddr=${prop.lat},${prop.lng}&dirflg=d`;
-        window.open(url, '_blank');
+        
+        openInMaps(prop.lat, prop.lng, address, navigationApp);
     };
 
     const handleSelectStatus = (property, statusId) => {
@@ -207,12 +204,12 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                     ))}
                 </div>
 
-                {/* Open First Stop in Apple Maps */}
+                {/* Open First Stop in Navigation App */}
                 <Button
                     className="w-full mt-4 h-12 font-bold tracking-wide"
                     style={{ background: BRAND.charcoal, color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}
                     onClick={() => {
-                        // Open Apple Maps to the first pending property
+                        // Open Maps to the first pending property
                         const nextProp = filteredProperties.find(p => {
                             const status = propertyStatuses[p.address_hash];
                             return !status || status === 'ELIGIBLE';
@@ -224,7 +221,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                     }}
                 >
                     <Navigation className="w-4 h-4 mr-2" />
-                    START ROUTE IN APPLE MAPS
+                    START ROUTE ({navigationApp === 'google' ? 'Google Maps' : 'Apple Maps'})
                 </Button>
             </div>
 
@@ -361,7 +358,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose }) {
                                             onClick={() => handleNavigate(prop)}
                                         >
                                             <MapPin className="w-4 h-4 mr-2" />
-                                            OPEN IN APPLE MAPS
+                                            OPEN IN {navigationApp === 'google' ? 'GOOGLE MAPS' : 'APPLE MAPS'}
                                         </Button>
                                     </div>
                                 )}
