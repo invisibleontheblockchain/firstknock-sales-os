@@ -896,10 +896,20 @@ export default function Home() {
 
     const fitBounds = useMemo(() => {
         if (activeRoute?.properties?.length > 0) return activeRoute.properties.map(p => [p.lat, p.lng]);
-        if (availableProperties.length > 0) return availableProperties.slice(0, 1000).map(p => [p.lat, p.lng]);
-        if (effectiveProperties.length > 0) return effectiveProperties.slice(0, 1000).map(p => [p.lat, p.lng]);
         return null;
-    }, [activeRoute, availableProperties, effectiveProperties]);
+    }, [activeRoute]);
+
+    // Initial Fit Effect
+    const hasCenteredRef = useRef(false);
+    useEffect(() => {
+        if (availableProperties.length > 0 && !hasCenteredRef.current && mapRef.current) {
+             const bounds = L.latLngBounds(availableProperties.slice(0, 1000).map(p => [p.lat, p.lng]));
+             if (bounds.isValid()) {
+                 mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+                 hasCenteredRef.current = true;
+             }
+        }
+    }, [availableProperties]);
 
     // Determine Map Center
     const [mapCenter, setMapCenter] = useState([34.0522, -118.2437]); // Default LA
@@ -1320,7 +1330,13 @@ export default function Home() {
                             </div>
                         </div>
                         <button 
-                            onClick={() => setActiveRoute(null)} 
+                            onClick={() => {
+                                setActiveRoute(null);
+                                if (mapRef.current) {
+                                    // Zoom out slightly (1 standard deviation-ish) instead of full reset
+                                    mapRef.current.setZoom(Math.max(13, mapRef.current.getZoom() - 2));
+                                }
+                            }} 
                             className="w-10 h-10 flex items-center justify-center bg-black/10 hover:bg-black/20 active:bg-black/30 rounded-full transition-colors ml-3 shrink-0"
                         >
                             <X className="w-6 h-6" style={{ color: BRAND.voidBlack }} />
