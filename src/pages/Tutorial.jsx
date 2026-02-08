@@ -95,21 +95,21 @@ export default function Tutorial() {
                 </div>
 
                 {/* Tutorial Sections */}
-                <TutorialSection icon={Upload} title="1. Setup & Data Upload" defaultOpen={true}>
+                <TutorialSection icon={Upload} title="1. Setup & Territory" defaultOpen={true}>
                     <Step 
                         number="1" 
-                        title="Go to Setup Page" 
-                        description="Tap the 'Setup' icon in the bottom navigation bar."
+                        title="Launch Setup Wizard" 
+                        description="Use the Setup Wizard (auto-launches for new managers) or go to the Setup page."
                     />
                     <Step 
                         number="2" 
-                        title="Upload Your CSV" 
-                        description="Click 'Upload CSV/JSON' and select your property list file. The file should have columns like: address, city, state, zip, lat, lng."
+                        title="Sync Zip Codes" 
+                        description="Enter your target zip codes. The system will automatically fetch property data, owner names, and equity info."
                     />
                     <Step 
                         number="3" 
-                        title="Set Your Territory" 
-                        description="Use the Territory Filter to select which zip codes you want to work. This prevents the map from loading too much data at once."
+                        title="Define Strategy" 
+                        description="Choose your route size (e.g. 50 homes) and let the AI build optimized walking paths for your team."
                     />
                     <div className="mt-4">
                         <Link to={createPageUrl('Setup')}>
@@ -169,7 +169,7 @@ export default function Tutorial() {
                     <Step 
                         number="4" 
                         title="Navigate" 
-                        description="Tap 'Start Navigation' to open Apple/Google Maps with turn-by-turn directions."
+                        description="Tap 'Start Navigation' to open maps. You can choose between Apple Maps or Google Maps in Settings."
                     />
                     <div className="p-3 rounded-lg bg-blue-900/20 border border-blue-900/50 mt-4">
                         <p className="text-xs text-blue-300">

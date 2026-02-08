@@ -167,6 +167,17 @@ export default function TerritorySetupWizard({ user, onComplete }) {
                                     step === 2 ? 'Strategy' : 'Review'
                                 }
                             </p>
+                            {/* Skip Button */}
+                            <button 
+                                onClick={() => {
+                                    if(confirm("Skip setup? You can always access this later in the Setup page.")) {
+                                        onComplete();
+                                    }
+                                }}
+                                className="text-xs text-gray-500 hover:text-white mr-4 underline"
+                            >
+                                Skip Setup
+                            </button>
                         </div>
                         {/* Progress Dots */}
                         <div className="flex gap-2">
@@ -207,6 +218,10 @@ export default function TerritorySetupWizard({ user, onComplete }) {
                                     />
                                     <p className="text-xs text-gray-500">
                                         We recommend starting with 1-3 zip codes for better performance.
+                                    </p>
+                                    <p className="text-[10px] text-yellow-500/80 italic flex items-center gap-1">
+                                        <AlertCircle className="w-3 h-3" />
+                                        Note: Some zip codes are still being updated with latest property data.
                                     </p>
                                 </div>
 

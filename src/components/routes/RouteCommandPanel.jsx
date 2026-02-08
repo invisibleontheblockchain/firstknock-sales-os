@@ -69,8 +69,8 @@ export default function RouteCommandPanel({
         <div className="fixed inset-0 z-[2000]">
             <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
             <div
-                className="fixed bottom-0 left-0 right-0 h-[75vh] rounded-t-3xl overflow-hidden flex flex-col z-[3000] pb-safe backdrop-blur-xl shadow-2xl animate-in slide-in-from-bottom duration-300"
-                style={{ background: 'rgba(10, 10, 10, 0.95)', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}
+                className="fixed top-0 bottom-0 left-0 w-full max-w-sm overflow-hidden flex flex-col z-[3000] backdrop-blur-xl shadow-2xl animate-in slide-in-from-left duration-300 border-r border-white/10"
+                style={{ background: 'rgba(10, 10, 10, 0.98)' }}
             >
                 {/* Header */}
                 <div className="p-4 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
