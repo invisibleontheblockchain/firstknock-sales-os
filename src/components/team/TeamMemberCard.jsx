@@ -97,19 +97,21 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
             {/* Routes Section - Compact */}
             <div className="p-3 bg-[#0A0A0A]">
                 {/* Auto-Assign Toggle */}
-                <div className="flex items-center justify-between mb-3 px-1" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center space-x-2" title="Automatically assign a new route when the current one is completed">
-                        <Switch 
-                            id={`auto-assign-${member.id}`} 
-                            checked={member.auto_assign_enabled || false}
-                            onCheckedChange={(c) => toggleAutoAssignMutation.mutate(c)}
-                            className="scale-75 data-[state=checked]:bg-yellow-500"
-                        />
-                        <Label htmlFor={`auto-assign-${member.id}`} className="text-[10px] text-gray-400 flex items-center gap-1 cursor-pointer select-none">
-                            <Zap className="w-3 h-3 text-yellow-500" /> Auto-Assign
-                        </Label>
+                {!member.isManagerSelf && (
+                    <div className="flex items-center justify-between mb-3 px-1" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center space-x-2" title="Automatically assign a new route when the current one is completed">
+                            <Switch 
+                                id={`auto-assign-${member.id}`} 
+                                checked={member.auto_assign_enabled || false}
+                                onCheckedChange={(c) => toggleAutoAssignMutation.mutate(c)}
+                                className="scale-75 data-[state=checked]:bg-yellow-500"
+                            />
+                            <Label htmlFor={`auto-assign-${member.id}`} className="text-[10px] text-gray-400 flex items-center gap-1 cursor-pointer select-none">
+                                <Zap className="w-3 h-3 text-yellow-500" /> Auto-Assign
+                            </Label>
+                        </div>
                     </div>
-                </div>
+                )}
 
                 {activeRoutes.length > 0 && (
                     <div className="flex justify-between items-center mb-2 px-1">
