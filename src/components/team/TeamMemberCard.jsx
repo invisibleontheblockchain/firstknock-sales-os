@@ -23,7 +23,7 @@ const BRAND = {
     blue: '#3b82f6'
 };
 
-export default function TeamMemberCard({ member, routes, metrics, allRoutes, onAssignRoute, onUnassignAll }) {
+export default function TeamMemberCard({ member, routes, metrics, allRoutes, onAssignRoute, onUnassignAll, action }) {
     const queryClient = useQueryClient();
     const completedRoutes = routes.filter(r => r.status === 'COMPLETED');
     const activeRoutes = routes.filter(r => r.status === 'ACTIVE' || r.status === 'IN_PROGRESS');
@@ -45,9 +45,6 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
         <div className="bg-[#111] border border-gray-800 rounded-xl overflow-hidden hover:border-yellow-500/30 transition-all duration-300 shadow-lg group">
             {/* Header / Profile - Compact */}
             <div className="p-3 md:p-4 border-b border-gray-800 bg-gradient-to-r from-[#151515] to-[#0A0A0A] relative">
-                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Badge variant="secondary" className="text-[10px]">Click for Details</Badge>
-                </div>
                 <div className="flex justify-between items-center">
                     <div className="flex gap-3 items-center min-w-0">
                         <div className="relative flex-shrink-0">
@@ -96,9 +93,9 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
 
             {/* Routes Section - Compact */}
             <div className="p-3 bg-[#0A0A0A]">
-                {/* Auto-Assign Toggle */}
-                {!member.isManagerSelf && (
-                    <div className="flex items-center justify-between mb-3 px-1" onClick={(e) => e.stopPropagation()}>
+                {/* Controls Row */}
+                <div className="flex items-center justify-between mb-3 px-1" onClick={(e) => e.stopPropagation()}>
+                    {!member.isManagerSelf ? (
                         <div className="flex items-center space-x-2" title="Automatically assign a new route when the current one is completed">
                             <Switch 
                                 id={`auto-assign-${member.id}`} 
@@ -110,8 +107,13 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                                 <Zap className="w-3 h-3 text-yellow-500" /> Auto-Assign
                             </Label>
                         </div>
-                    </div>
-                )}
+                    ) : (
+                        <div /> /* Spacer if no toggle */
+                    )}
+                    
+                    {/* Injected Action (Assign Zips) */}
+                    <div>{action}</div>
+                </div>
 
                 {activeRoutes.length > 0 && (
                     <div className="flex justify-between items-center mb-2 px-1">

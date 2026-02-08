@@ -586,62 +586,60 @@ export default function AdminTeam() {
                                     const memberMetrics = metricsByRep[member.email] || { doorsKnocked: 0, talkedTo: 0, sales: 0 };
                                     const isEditing = editingZips?.memberId === member.id;
                                     
+                                    // Prepare the Assign Zips Action Component
+                                    const AssignZipsAction = member.isManagerSelf ? (
+                                        <Button 
+                                            variant="ghost" 
+                                            size="sm" 
+                                            className="h-6 text-[10px] bg-black/50 hover:bg-black/80 text-white backdrop-blur-sm border border-gray-700"
+                                            onClick={(e) => { e.stopPropagation(); navigate(createPageUrl('Setup')); }}
+                                        >
+                                            {(member.assigned_zip_codes && member.assigned_zip_codes.length > 0) 
+                                                ? `${member.assigned_zip_codes.length} Zips` 
+                                                : 'Manage Zips'}
+                                        </Button>
+                                    ) : (
+                                        <Popover open={isEditing} onOpenChange={(open) => {
+                                            if (open) setEditingZips({ memberId: member.id, zips: (member.assigned_zip_codes || []).join(', ') });
+                                            else setEditingZips(null);
+                                        }}>
+                                            <PopoverTrigger asChild>
+                                                <Button variant="ghost" size="sm" className="h-6 text-[10px] bg-black/50 hover:bg-black/80 text-white backdrop-blur-sm border border-gray-700">
+                                                    {(member.assigned_zip_codes && member.assigned_zip_codes.length > 0) 
+                                                        ? `${member.assigned_zip_codes.length} Zips` 
+                                                        : 'Assign Zips'}
+                                                </Button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-64 bg-[#1F1F1F] border-gray-700 text-white p-3">
+                                                <div className="space-y-2">
+                                                    <h4 className="font-bold text-xs uppercase text-gray-400">Assign Territories</h4>
+                                                    <Input 
+                                                        value={editingZips?.zips || ''}
+                                                        onChange={(e) => setEditingZips({...editingZips, zips: e.target.value})}
+                                                        placeholder="e.g. 29412, 29455"
+                                                        className="h-8 text-xs bg-black border-gray-600"
+                                                    />
+                                                    <div className="flex justify-end gap-2">
+                                                        <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditingZips(null); }} className="h-7 text-xs">Cancel</Button>
+                                                        <Button 
+                                                            size="sm" 
+                                                            className="h-7 text-xs bg-yellow-500 text-black hover:bg-yellow-400"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                const zips = editingZips.zips.split(',').map(z => z.trim()).filter(z => /^\d{5}$/.test(z));
+                                                                updateMemberZipsMutation.mutate({ memberId: member.id, zips });
+                                                            }}
+                                                        >
+                                                            Save
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </PopoverContent>
+                                        </Popover>
+                                    );
+
                                     return (
                                         <div key={member.id} className="relative group">
-                                            {/* Zip Code Quick Edit (Overlay on Card) */}
-                                            <div className="absolute top-2 right-2 z-10">
-                                                {member.isManagerSelf ? (
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="sm" 
-                                                        className="h-6 text-[10px] bg-black/50 hover:bg-black/80 text-white backdrop-blur-sm border border-gray-700"
-                                                        onClick={(e) => { e.stopPropagation(); navigate(createPageUrl('Setup')); }}
-                                                    >
-                                                        {(member.assigned_zip_codes && member.assigned_zip_codes.length > 0) 
-                                                            ? `${member.assigned_zip_codes.length} Zips` 
-                                                            : 'Manage Zips'}
-                                                    </Button>
-                                                ) : (
-                                                    <Popover open={isEditing} onOpenChange={(open) => {
-                                                        if (open) setEditingZips({ memberId: member.id, zips: (member.assigned_zip_codes || []).join(', ') });
-                                                        else setEditingZips(null);
-                                                    }}>
-                                                        <PopoverTrigger asChild>
-                                                            <Button variant="ghost" size="sm" className="h-6 text-[10px] bg-black/50 hover:bg-black/80 text-white backdrop-blur-sm border border-gray-700">
-                                                                {(member.assigned_zip_codes && member.assigned_zip_codes.length > 0) 
-                                                                    ? `${member.assigned_zip_codes.length} Zips` 
-                                                                    : 'Assign Zips'}
-                                                            </Button>
-                                                        </PopoverTrigger>
-                                                        <PopoverContent className="w-64 bg-[#1F1F1F] border-gray-700 text-white p-3">
-                                                            <div className="space-y-2">
-                                                                <h4 className="font-bold text-xs uppercase text-gray-400">Assign Territories</h4>
-                                                                <Input 
-                                                                    value={editingZips?.zips || ''}
-                                                                    onChange={(e) => setEditingZips({...editingZips, zips: e.target.value})}
-                                                                    placeholder="e.g. 29412, 29455"
-                                                                    className="h-8 text-xs bg-black border-gray-600"
-                                                                />
-                                                                <div className="flex justify-end gap-2">
-                                                                    <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); setEditingZips(null); }} className="h-7 text-xs">Cancel</Button>
-                                                                    <Button 
-                                                                        size="sm" 
-                                                                        className="h-7 text-xs bg-yellow-500 text-black hover:bg-yellow-400"
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            const zips = editingZips.zips.split(',').map(z => z.trim()).filter(z => /^\d{5}$/.test(z));
-                                                                            updateMemberZipsMutation.mutate({ memberId: member.id, zips });
-                                                                        }}
-                                                                    >
-                                                                        Save
-                                                                    </Button>
-                                                                </div>
-                                                            </div>
-                                                        </PopoverContent>
-                                                    </Popover>
-                                                )}
-                                            </div>
-
                                             <div onClick={() => setSelectedRep(member)} className="cursor-pointer hover:scale-[1.02] transition-transform duration-200">
                                                 <TeamMemberCard 
                                                     member={member} 
@@ -654,6 +652,7 @@ export default function AdminTeam() {
                                                             unassignAllRoutesMutation.mutate(member.id);
                                                         }
                                                     }}
+                                                    action={AssignZipsAction}
                                                 />
                                             </div>
                                         </div>
