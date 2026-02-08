@@ -1361,15 +1361,16 @@ export default function Home() {
 
             {/* Bottom Action Bar */}
             <div className="absolute bottom-6 left-4 right-4 z-[1000] pointer-events-none">
-                <div className="flex items-end gap-2">
-                    <div className="flex-1 flex gap-2 overflow-x-auto no-scrollbar pb-1 pointer-events-auto pr-20">
+                <div className="flex items-end justify-between gap-2">
+                    {/* Left: Compact Route List Button */}
+                    <div className="pointer-events-auto">
                         <Button
                             onClick={() => setShowRoutePanel(true)}
-                            className="rounded-full flex-1 px-4 h-12 sm:h-14 text-xs sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap min-w-[100px]"
+                            className="rounded-full h-12 px-6 text-xs sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap"
                             style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
                         >
-                            <List className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-                            ROUTE LIST
+                            <List className="w-5 h-5 mr-2" />
+                            ROUTES
                             {routesGenerating && <Loader2 className="w-3 h-3 ml-2 animate-spin" />}
                             {!routesGenerating && (hydratedSavedRoutes.length > 0 || routes.length > 0) && (
                                 <Badge className="ml-2 h-5 min-w-[20px] px-1" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
@@ -1377,21 +1378,25 @@ export default function Home() {
                                 </Badge>
                             )}
                         </Button>
+                    </div>
 
+                    {/* Center: Checklist (if active) */}
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-0 pointer-events-auto">
                         {activeRoute && (
                             <Button
                                 onClick={() => setShowChecklist(true)}
-                                className="rounded-full flex-1 px-4 h-12 sm:h-14 text-xs sm:text-sm font-bold tracking-wide shadow-2xl backdrop-blur-md transition-all duration-300 transform active:scale-95 whitespace-nowrap min-w-[100px]"
-                                style={{ background: 'rgba(31, 31, 31, 0.8)', color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}
+                                className="rounded-full h-12 px-6 text-xs sm:text-sm font-bold tracking-wide shadow-2xl backdrop-blur-md transition-all duration-300 transform active:scale-95 whitespace-nowrap"
+                                style={{ background: 'rgba(31, 31, 31, 0.9)', color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}
                             >
-                                <List className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+                                <List className="w-5 h-5 mr-2" />
                                 CHECKLIST
                                 <ChevronRight className="w-3 h-3 ml-1" />
                             </Button>
                         )}
                     </div>
 
-                    <div className="flex flex-col gap-2 shrink-0 pointer-events-auto">
+                    {/* Right: Locate */}
+                    <div className="pointer-events-auto">
                          <Button
                             onClick={(e) => {
                                 e.stopPropagation();
@@ -1409,7 +1414,7 @@ export default function Home() {
                                 }
                             }}
                             size="icon"
-                            className="rounded-full w-14 h-14 shadow-2xl backdrop-blur-md"
+                            className="rounded-full w-12 h-12 sm:w-14 sm:h-14 shadow-2xl backdrop-blur-md"
                             style={{ background: 'rgba(31, 31, 31, 0.8)', color: BRAND.gold, border: `1px solid ${BRAND.gold}40` }}
                         >
                             <Locate className="w-5 h-5" />
