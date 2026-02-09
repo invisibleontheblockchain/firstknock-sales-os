@@ -334,7 +334,8 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
     
     // Group by Zip Code if we have enough properties and variance
     const uniqueZips = [...new Set(scored.map(p => p.zip_code).filter(Boolean))];
-    const useZipClustering = uniqueZips.length > 1;
+    // Disable zip clustering to prevent tiny routes in sparse zips - prefer pure geographic clustering
+    const useZipClustering = false; 
 
     if (useZipClustering) {
         let routeOffset = 0;
