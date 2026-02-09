@@ -21,7 +21,7 @@ import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, Filter, 
 import { toast } from "sonner";
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { format } from 'date-fns';
+import { format, subMonths, isAfter, parseISO } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
@@ -150,6 +150,7 @@ export default function Home() {
     const [startAddressInput, setStartAddressInput] = useState("");
     const [zipCodeFilter, setZipCodeFilter] = useState(''); // Comma separated string
     const [analyzeZipFilter, setAnalyzeZipFilter] = useState('all'); // Filter for Analyze mode
+    const [soldDateFilter, setSoldDateFilter] = useState(null); // null = All Time, number = months
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
     const [mode, setMode] = useState('analyze'); // 'analyze' or 'generate'
@@ -1183,6 +1184,15 @@ export default function Home() {
                                 if (targetZips.length > 0 && !targetZips.includes(pZip)) return false;
                             }
                             
+                            // Date Filter (Sold Date)
+                            if (soldDateFilter !== null && p.sold_date) {
+                                try {
+                                    const date = parseISO(p.sold_date);
+                                    const cutoff = subMonths(new Date(), soldDateFilter);
+                                    if (!isAfter(date, cutoff)) return false;
+                                } catch (e) { /* invalid date */ }
+                            }
+
                             if (quickFilter === 'all') return true;
                             if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
                             if (quickFilter === 'sold') return p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED';
@@ -1517,6 +1527,43 @@ export default function Home() {
                                                 <option key={zip} value={zip}>{zip}</option>
                                             ))}
                                         </select>
+                                    </div>
+
+                                    <div>
+                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                            SOLD DATE FILTER
+                                        </label>
+                                        <div className="space-y-4">
+                                            <div className="flex justify-between text-[10px] font-bold text-gray-500 uppercase">
+                                                <span>3 Mo</span>
+                                                <span>6 Mo</span>
+                                                <span>1 Yr</span>
+                                                <span>2 Yr</span>
+                                                <span>All</span>
+                                            </div>
+                                            <Slider
+                                                value={[soldDateFilter === null ? 100 : (
+                                                    soldDateFilter <= 3 ? 0 : 
+                                                    soldDateFilter <= 6 ? 25 : 
+                                                    soldDateFilter <= 12 ? 50 : 
+                                                    soldDateFilter <= 24 ? 75 : 100
+                                                )]}
+                                                onValueChange={([v]) => {
+                                                    if (v === 0) setSoldDateFilter(3);
+                                                    else if (v === 25) setSoldDateFilter(6);
+                                                    else if (v === 50) setSoldDateFilter(12);
+                                                    else if (v === 75) setSoldDateFilter(24);
+                                                    else setSoldDateFilter(null);
+                                                }}
+                                                min={0}
+                                                max={100}
+                                                step={25}
+                                                className="w-full"
+                                            />
+                                            <p className="text-center text-xs font-bold text-yellow-500">
+                                                {soldDateFilter ? `Sold within last ${soldDateFilter} months` : 'Showing All Sales History'}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
                             )}
