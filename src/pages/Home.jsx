@@ -821,6 +821,19 @@ export default function Home() {
                 });
             }
 
+            // Apply Sold Date Filter (Match visual map logic)
+            if (soldDateFilter !== null) {
+                workingSet = workingSet.filter(p => {
+                    // If property has no sold date, keep it (it's not an "old sale")
+                    if (!p.sold_date) return true;
+                    try {
+                        const date = parseISO(p.sold_date);
+                        const cutoff = subMonths(new Date(), soldDateFilter);
+                        return isAfter(date, cutoff);
+                    } catch (e) { return true; }
+                });
+            }
+
             if (workingSet.length === 0) {
                 alert("No properties found in the selected zip codes (checked local and database).");
                 setRoutesGenerating(false);
