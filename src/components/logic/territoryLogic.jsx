@@ -23,7 +23,9 @@ export const determineEffectiveStatus = (masterProp, logs) => {
 
     // If no interaction logs, check master status first
     if (!logs || logs.length === 0) {
-        if (['SOLD', 'HARD_NO', 'DO_NOT_KNOCK'].includes(masterProp.original_status)) {
+        // Only exclude if it's a hard rejection. 'SOLD' in master data usually means MLS sold (Owner Occupied), 
+        // which is a valid target, not "We sold it".
+        if (['HARD_NO', 'DO_NOT_KNOCK'].includes(masterProp.original_status)) {
             return masterProp.original_status;
         }
         return 'ELIGIBLE';
