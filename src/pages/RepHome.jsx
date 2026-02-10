@@ -124,18 +124,11 @@ export default function RepHome() {
     // --- Derived State ---
 
     // Get the Active Route (Highest priority or most recent active)
-    const [manualRouteId, setManualRouteId] = useState(null);
-    const [showRouteList, setShowRouteList] = useState(false);
-
     const activeRoute = useMemo(() => {
         if (!routes.length) return null;
-        if (manualRouteId) {
-            const manual = routes.find(r => r.id === manualRouteId);
-            if (manual) return manual;
-        }
         // Prioritize 'IN_PROGRESS' then 'ACTIVE'
         return routes.find(r => r.status === 'IN_PROGRESS') || routes.find(r => r.status === 'ACTIVE') || routes[0];
-    }, [routes, manualRouteId]);
+    }, [routes]);
 
     // 2. Fetch Route Properties (filtered by hash)
     const { data: properties = [], isLoading: propsLoading } = useQuery({
@@ -415,18 +408,7 @@ export default function RepHome() {
                 {/* Route Progress Card */}
                 <div className="bg-gray-900 rounded-lg p-3 border border-gray-800">
                     <div className="flex justify-between items-center mb-2">
-                        <div className="flex items-center gap-2">
-                            <h3 className="font-bold text-sm text-gray-200">{activeRoute.name}</h3>
-                            {routes.length > 1 && (
-                                <Badge 
-                                    variant="outline" 
-                                    className="cursor-pointer hover:bg-yellow-500 hover:text-black border-yellow-500/50 text-yellow-500 text-[9px] h-5 px-1.5"
-                                    onClick={() => setShowRouteList(true)}
-                                >
-                                    SWITCH
-                                </Badge>
-                            )}
-                        </div>
+                        <h3 className="font-bold text-sm text-gray-200">{activeRoute.name}</h3>
                         <div className="flex items-center gap-2">
                             <span className="text-xs text-gray-500">{stats.done}/{stats.total} Homes</span>
                             {stats.percent >= 100 && (
@@ -572,52 +554,6 @@ export default function RepHome() {
                     </div>
                 )}
             </div>
-
-            {/* Route Switching Drawer */}
-            {showRouteList && (
-                <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowRouteList(false)}>
-                    <div className="bg-[#151515] rounded-t-2xl border-t border-gray-800 max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-[#0A0A0A] rounded-t-2xl">
-                            <h3 className="font-bold text-white">Select Route</h3>
-                            <Button variant="ghost" size="icon" onClick={() => setShowRouteList(false)}>
-                                <X className="w-5 h-5 text-gray-500" />
-                            </Button>
-                        </div>
-                        <ScrollArea className="flex-1 p-4">
-                            <div className="space-y-3">
-                                {routes.map(route => {
-                                    const isActive = activeRoute?.id === route.id;
-                                    return (
-                                        <button
-                                            key={route.id}
-                                            onClick={() => {
-                                                setManualRouteId(route.id);
-                                                setShowRouteList(false);
-                                            }}
-                                            className={`w-full p-4 rounded-xl border text-left transition-all ${
-                                                isActive 
-                                                    ? 'bg-yellow-500/10 border-yellow-500' 
-                                                    : 'bg-gray-900 border-gray-800 hover:border-gray-700'
-                                            }`}
-                                        >
-                                            <div className="flex justify-between items-start mb-1">
-                                                <span className={`font-bold ${isActive ? 'text-yellow-500' : 'text-white'}`}>
-                                                    {route.name}
-                                                </span>
-                                                {isActive && <CheckCircle2 className="w-4 h-4 text-yellow-500" />}
-                                            </div>
-                                            <div className="flex gap-3 text-xs text-gray-500">
-                                                <span>{route.metrics?.house_count || 0} doors</span>
-                                                <span>{route.status}</span>
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </ScrollArea>
-                    </div>
-                </div>
-            )}
 
             {/* 3. Property Detail Drawer (Overlay) */}
             {selectedProperty && (
