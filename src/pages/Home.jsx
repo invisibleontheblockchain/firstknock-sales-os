@@ -34,8 +34,10 @@ import { darkRoom, DarkRoomClient } from '@/components/logic/neonClient';
 import CommandCenterDashboard from '../components/dashboard/CommandCenterDashboard';
 import MapSettingsPanel from '../components/map/MapSettingsPanel';
 import TerritorySetupWizard from '../components/manager/TerritorySetupWizard';
-import { LayoutDashboard, Settings } from 'lucide-react';
+import { LayoutDashboard, Settings, Crosshair } from 'lucide-react';
 import { openInMaps } from '../components/logic/navigation';
+import GpsTracker, { GpsMapLayer, GpsHud } from '../components/map/GpsTracker';
+import QuickMarkButtons from '../components/rep/QuickMarkButtons';
 
 // Brand Colors
 const BRAND = {
@@ -169,6 +171,7 @@ export default function Home() {
     const [darkRoomEnabled, setDarkRoomEnabled] = useState(false);
     const [fetchedProperties, setFetchedProperties] = useState([]); // Dynamic fetch storage
     const [templateName, setTemplateName] = useState("");
+    const [gpsTracking, setGpsTracking] = useState(false);
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
@@ -986,12 +989,23 @@ export default function Home() {
             >
                 <MapRefHandler mapRef={mapRef} />
                 <TileLayer
-                                        url={mapTheme === 'light' 
-                                            ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                                            : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                                        }
-                                        attribution='&copy; CARTO'
-                                    />
+                    url={
+                        mapTheme === 'satellite' 
+                            ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                            : mapTheme === 'hybrid'
+                            ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                            : mapTheme === 'light' 
+                            ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                            : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                    }
+                    attribution={mapTheme === 'satellite' || mapTheme === 'hybrid' ? '&copy; Esri' : '&copy; CARTO'}
+                />
+                {mapTheme === 'hybrid' && (
+                    <TileLayer
+                        url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
+                        attribution=""
+                    />
+                )}
                 <LocationMarker />
                 <DarkRoomManager />
                 <MapController 
