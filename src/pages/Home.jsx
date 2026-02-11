@@ -1509,11 +1509,19 @@ export default function Home() {
                                 eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
                                 pathOptions={{
                                     fillColor: STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER,
-                                    fillOpacity: mode === 'generate' ? 0.9 : 0.5,
-                                    color: '#000',
-                                    weight: 1
+                                    fillOpacity: (mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity,
+                                    color: mapSettings.fillStyle === 'outline' ? (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER) : (mapSettings.pinBorderColor || '#000'),
+                                    weight: mapSettings.fillStyle === 'outline' ? 2 : mapSettings.pinBorderWidth
                                 }}
-                            />
+                            >
+                                {mapSettings.showLabels && (
+                                    <Tooltip permanent direction="center" className="route-number-tooltip">
+                                        <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '8px', textShadow: '0 0 3px #000' }}>
+                                            {mapSettings.labelType === 'number' ? p.house_number : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0,1) : (p.street_name || '').split(' ')[0]}
+                                        </span>
+                                    </Tooltip>
+                                )}
+                            </CircleMarker>
                         ))}
                 </LayerGroup>
 
