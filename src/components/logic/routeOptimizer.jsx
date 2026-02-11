@@ -448,6 +448,15 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         }
         totalScore += orderedProps[orderedProps.length - 1]?.score || 0;
 
+        // Add return-to-start distance if enabled
+        if (returnToStart && orderedProps.length > 1) {
+            const returnDist = calculateDistance(
+                orderedProps[orderedProps.length - 1].lat, orderedProps[orderedProps.length - 1].lng,
+                orderedProps[0].lat, orderedProps[0].lng
+            );
+            totalDistance += returnDist;
+        }
+
         const avgScore = totalScore / orderedProps.length;
         const efficiency = orderedProps.length / Math.max(totalDistance, 0.1);
 
