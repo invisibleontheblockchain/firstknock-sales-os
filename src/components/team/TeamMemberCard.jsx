@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { 
     Map, CheckCircle2, AlertCircle, TrendingUp, 
-    Home, MessageSquare, DollarSign, ChevronRight, Zap
+    Home, MessageSquare, DollarSign, ChevronRight, Zap, Trash2
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from 'react-router-dom';
@@ -23,7 +23,7 @@ const BRAND = {
     blue: '#3b82f6'
 };
 
-export default function TeamMemberCard({ member, routes, metrics, allRoutes, onAssignRoute, onUnassignAll, action }) {
+export default function TeamMemberCard({ member, routes, metrics, allRoutes, onAssignRoute, onUnassignAll, onDelete, action }) {
     const queryClient = useQueryClient();
     const completedRoutes = routes.filter(r => r.status === 'COMPLETED');
     const activeRoutes = routes.filter(r => r.status === 'ACTIVE' || r.status === 'IN_PROGRESS');
@@ -68,9 +68,20 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                         </div>
                     </div>
 
-                    <div className="text-right flex-shrink-0">
-                        <p className="text-2xl md:text-3xl font-bold text-white tracking-tighter">{metrics.sales}</p>
-                        <p className="text-[9px] text-gray-500 font-bold uppercase">Sales</p>
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                        <div className="text-right">
+                            <p className="text-2xl md:text-3xl font-bold text-white tracking-tighter">{metrics.sales}</p>
+                            <p className="text-[9px] text-gray-500 font-bold uppercase">Sales</p>
+                        </div>
+                        {!member.isManagerSelf && onDelete && (
+                            <button
+                                onClick={(e) => { e.stopPropagation(); onDelete(member); }}
+                                className="p-2 rounded-lg text-gray-600 hover:text-red-500 hover:bg-red-900/20 transition-colors opacity-0 group-hover:opacity-100"
+                                title="Remove team member"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
