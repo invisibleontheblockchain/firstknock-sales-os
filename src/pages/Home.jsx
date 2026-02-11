@@ -2274,6 +2274,14 @@ export default function Home() {
                                     </div>
                                 </div>
 
+                                {/* Interaction History */}
+                                <div>
+                                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center gap-2">
+                                        <span className="w-4 h-4 text-yellow-500">📋</span> Interaction History
+                                    </h4>
+                                    <PropertyHistory logs={selectedPropertyLogs} />
+                                </div>
+
                                 {/* Quick Mark Buttons */}
                                 <div>
                                     <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Quick Log</h4>
