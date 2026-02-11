@@ -779,6 +779,14 @@ export default function RepHome() {
                                 </label>
                             </div>
 
+                            {/* Interaction History */}
+                            <div className="space-y-3">
+                                <h3 className="font-bold text-yellow-500 text-sm uppercase tracking-wider flex items-center gap-2">
+                                    <History className="w-4 h-4" /> History
+                                </h3>
+                                <PropertyHistory logs={selectedPropertyLogs} />
+                            </div>
+
                             {/* Property Data Grid */}
                             <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
                                 <h3 className="font-bold text-yellow-500 mb-4 text-sm uppercase tracking-wider">Property Intel</h3>
