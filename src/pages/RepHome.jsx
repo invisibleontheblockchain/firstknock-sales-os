@@ -732,6 +732,17 @@ export default function RepHome() {
                                 <p className="text-xl text-gray-400">{selectedProperty.city}, {selectedProperty.state}</p>
                             </div>
 
+                            {/* Open in Maps - Top Priority */}
+                            <a 
+                                href={`https://maps.apple.com/?daddr=${selectedProperty.lat},${selectedProperty.lng}&dirflg=w`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="flex items-center justify-center gap-2 w-full h-12 bg-green-600 hover:bg-green-500 text-white font-bold text-sm rounded-xl transition-colors"
+                            >
+                                <Navigation className="w-5 h-5" />
+                                Open in Maps
+                            </a>
+
                             {/* Interaction Details Input */}
                             <div className="space-y-3 bg-gray-900/50 p-4 rounded-xl border border-gray-800">
                                 <div className="space-y-2">
