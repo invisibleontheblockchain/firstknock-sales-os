@@ -115,149 +115,176 @@ export default function Billing() {
         }
     };
 
-    // Helper to determine if a plan is allowed for the current seat count
-    const isPlanAllowed = (planId) => {
-        if (planId === 'hustler' && seats > 5) return false;
-        if (planId === 'growth' && seats > 20) return false;
-        return true;
-    };
+    const pricePerUser = getPricePerUser(seats);
+    const monthlyTotal = getMonthlyTotal(seats);
+    const savings = seats > 1 ? (BASE_PRICE * seats) - monthlyTotal : 0;
 
     return (
         <div className="h-full overflow-y-auto bg-black text-white p-4 sm:p-6 lg:p-8">
-            <div className="max-w-6xl mx-auto space-y-10">
+            <div className="max-w-2xl mx-auto space-y-8">
                 
                 {/* Header */}
-                <div className="text-center space-y-4">
-                    <h1 className="text-4xl font-extrabold tracking-tight">Upgrade Your Arsenal</h1>
-                    <p className="text-gray-400 max-w-lg mx-auto">
-                        Unlock advanced logistics and auto-dispatch capabilities.
+                <div className="text-center space-y-3">
+                    <h1 className="text-4xl font-extrabold tracking-tight">FirstKnock Pro</h1>
+                    <p className="text-gray-400 max-w-md mx-auto">
+                        One plan. Every feature. The more you grow, the more you save.
                     </p>
+                </div>
 
-                    {/* Seat Selector - Compact */}
-                    <div className="bg-[#111]/80 backdrop-blur border border-gray-800 rounded-full px-6 py-2 mx-auto flex items-center justify-between gap-6 max-w-fit shadow-xl">
-                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider whitespace-nowrap">TEAM SIZE:</span>
+                {isSubscribed && (
+                    <div className="flex flex-col items-center gap-4">
+                        <div className="inline-block bg-green-900/30 border border-green-500/50 rounded-full px-4 py-1">
+                            <span className="text-green-400 text-sm font-bold flex items-center gap-2">
+                                <Check className="w-4 h-4" /> ACTIVE SUBSCRIPTION
+                            </span>
+                        </div>
                         
-                        <div className="flex items-center gap-3">
+                        <div className="bg-[#111] border border-gray-800 rounded-xl p-4 flex flex-col items-center gap-3 w-full max-w-sm">
+                            <p className="text-xs text-gray-400 font-bold uppercase">Manage Seats</p>
+                            <div className="flex items-center gap-4">
+                                 <span className="text-white text-sm">Target: <span className="text-yellow-500 font-bold">{seats} Seats</span></span>
+                                 <Button 
+                                    onClick={handleUpdateSeats} 
+                                    disabled={updatingSeats}
+                                    size="sm"
+                                    className="bg-yellow-500 text-black hover:bg-yellow-400 font-bold"
+                                >
+                                    {updatingSeats ? 'Updating...' : 'Update Quantity'}
+                                </Button>
+                            </div>
+                        </div>
+
+                        <Button 
+                            onClick={handleManageSubscription}
+                            variant="outline" 
+                            className="border-gray-700 hover:bg-gray-800 text-gray-300 text-xs h-8"
+                        >
+                            Billing Portal / Cancel
+                        </Button>
+                    </div>
+                )}
+
+                {/* Main Pricing Card */}
+                <div className="relative rounded-2xl p-6 sm:p-8 border border-yellow-500 bg-gray-900/80 backdrop-blur-sm shadow-[0_0_60px_rgba(255,215,0,0.1)]">
+                    
+                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-yellow-500 text-black text-xs font-bold px-4 py-1 rounded-full flex items-center gap-1 shadow-lg">
+                        <Star className="w-3 h-3 fill-black" />
+                        ALL FEATURES INCLUDED
+                    </div>
+
+                    {/* Price Display */}
+                    <div className="text-center mb-8 mt-2">
+                        <div className="flex items-baseline justify-center gap-2">
+                            <span className="text-5xl font-extrabold text-white">${pricePerUser}</span>
+                            <span className="text-gray-400 text-lg">/user/mo</span>
+                        </div>
+                        {seats > 1 && pricePerUser < BASE_PRICE && (
+                            <div className="flex items-center justify-center gap-2 mt-2">
+                                <span className="text-gray-500 line-through text-sm">${BASE_PRICE}/user</span>
+                                <Badge className="bg-green-900/50 text-green-400 border-green-500/30 text-xs">
+                                    <TrendingDown className="w-3 h-3 mr-1" />
+                                    SAVE ${BASE_PRICE - pricePerUser}/user
+                                </Badge>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Team Size Selector */}
+                    <div className="bg-black/40 rounded-xl p-5 border border-gray-800 mb-6">
+                        <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center gap-2">
+                                <Users className="w-4 h-4 text-yellow-500" />
+                                <span className="text-sm font-bold text-gray-300">TEAM SIZE</span>
+                            </div>
+                            <span className="text-sm text-gray-500">{seats} {seats === 1 ? 'user' : 'users'}</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-4">
                             <button 
                                 onClick={() => setSeats(Math.max(1, seats - 1))}
-                                className="w-6 h-6 rounded-full bg-gray-800 hover:bg-gray-700 text-white flex items-center justify-center transition-colors font-bold"
+                                className="w-10 h-10 rounded-xl bg-gray-800 hover:bg-gray-700 text-white flex items-center justify-center transition-colors font-bold text-lg"
                             >
                                 -
                             </button>
-                            <span className="text-xl font-extrabold text-yellow-500 w-8 text-center">{seats}</span>
+                            <div className="flex-1 relative">
+                                <input
+                                    type="range"
+                                    min="1"
+                                    max="50"
+                                    value={seats}
+                                    onChange={(e) => setSeats(parseInt(e.target.value))}
+                                    className="w-full accent-yellow-500 cursor-pointer"
+                                />
+                                <div className="flex justify-between text-[10px] text-gray-600 mt-1 px-1">
+                                    <span>1</span>
+                                    <span>10</span>
+                                    <span>25</span>
+                                    <span>50</span>
+                                </div>
+                            </div>
                             <button 
-                                onClick={() => setSeats(seats + 1)}
-                                className="w-6 h-6 rounded-full bg-gray-800 hover:bg-gray-700 text-white flex items-center justify-center transition-colors font-bold"
+                                onClick={() => setSeats(Math.min(50, seats + 1))}
+                                className="w-10 h-10 rounded-xl bg-gray-800 hover:bg-gray-700 text-white flex items-center justify-center transition-colors font-bold text-lg"
                             >
                                 +
                             </button>
                         </div>
 
-                        <div className="h-6 w-px bg-gray-700 mx-2 hidden sm:block"></div>
-                        
-                        <div className="hidden sm:block">
-                            {seats <= 5 && <span className="text-[10px] text-white font-bold">HUSTLER</span>}
-                            {seats > 5 && seats <= 20 && <span className="text-[10px] text-yellow-500 font-bold">GROWTH</span>}
-                            {seats > 20 && <span className="text-[10px] text-blue-400 font-bold">ENTERPRISE</span>}
+                        {/* Price Breakdown */}
+                        <div className="mt-4 pt-4 border-t border-gray-800 flex items-center justify-between">
+                            <span className="text-sm text-gray-400">Monthly Total</span>
+                            <div className="text-right">
+                                <span className="text-2xl font-extrabold text-yellow-500">${monthlyTotal}</span>
+                                <span className="text-gray-500 text-sm">/mo</span>
+                                {savings > 0 && (
+                                    <p className="text-xs text-green-400 mt-0.5">Saving ${savings}/mo vs solo pricing</p>
+                                )}
+                            </div>
                         </div>
                     </div>
 
-                    {isSubscribed && (
-                        <div className="flex flex-col items-center gap-4 mt-4">
-                            <div className="inline-block bg-green-900/30 border border-green-500/50 rounded-full px-4 py-1">
-                                <span className="text-green-400 text-sm font-bold flex items-center gap-2">
-                                    <Check className="w-4 h-4" /> ACTIVE SUBSCRIPTION
-                                </span>
-                            </div>
-                            
-                            <div className="bg-[#111] border border-gray-800 rounded-xl p-4 flex flex-col items-center gap-3 w-full max-w-sm">
-                                <p className="text-xs text-gray-400 font-bold uppercase">Manage Seats</p>
-                                <div className="flex items-center gap-4">
-                                     {/* Re-use seat selector state */}
-                                     <span className="text-white text-sm">Target: <span className="text-yellow-500 font-bold">{seats} Seats</span></span>
-                                     <Button 
-                                        onClick={handleUpdateSeats} 
-                                        disabled={updatingSeats}
-                                        size="sm"
-                                        className="bg-yellow-500 text-black hover:bg-yellow-400 font-bold"
-                                    >
-                                        {updatingSeats ? 'Updating...' : 'Update Quantity'}
-                                    </Button>
+                    {/* Features */}
+                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                        {ALL_FEATURES.map((feature, i) => (
+                            <li key={i} className="flex items-center gap-3 text-sm text-gray-300">
+                                <div className="rounded-full p-1 bg-yellow-500/20 text-yellow-500 shrink-0">
+                                    <Check className="w-3 h-3" />
                                 </div>
-                            </div>
+                                {feature}
+                            </li>
+                        ))}
+                    </ul>
 
-                            <Button 
-                                onClick={handleManageSubscription}
-                                variant="outline" 
-                                className="border-gray-700 hover:bg-gray-800 text-gray-300 text-xs h-8"
-                            >
-                                Billing Portal / Cancel
-                            </Button>
-                        </div>
+                    {/* CTA */}
+                    {!isSubscribed && (
+                        <Button
+                            onClick={() => handleSubscribe(PRICE_ID)}
+                            disabled={loadingPriceId !== null}
+                            className="w-full h-12 font-bold text-base tracking-wide bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg hover:shadow-yellow-500/20 transition-all"
+                        >
+                            {loadingPriceId ? 'PREPARING...' : `GET STARTED — $${monthlyTotal}/mo`}
+                        </Button>
                     )}
                 </div>
 
-                {/* Plans Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 lg:gap-6 items-stretch">
-                    {PLANS.map(plan => (
-                        <div 
-                            key={plan.id}
-                            className={`relative rounded-2xl p-5 border transition-all duration-300 flex flex-col h-full ${
-                                plan.recommended 
-                                    ? 'bg-gray-900/80 backdrop-blur-sm border-yellow-500 shadow-[0_0_40px_rgba(255,215,0,0.15)] scale-105 z-10' 
-                                    : 'bg-black/50 backdrop-blur-sm border-gray-800 hover:border-gray-600 hover:bg-gray-900/50'
-                            }`}
-                        >
-                            {plan.recommended && (
-                                <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-yellow-500 text-black text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1 shadow-lg">
-                                    <Star className="w-3 h-3 fill-black" />
-                                    MOST POPULAR
-                                </div>
-                            )}
-
-                            <div className="space-y-2 mb-5">
-                                <h3 className="text-lg font-bold tracking-wide" style={{ color: plan.color }}>
-                                    {plan.name}
-                                </h3>
-                                <div className="flex items-baseline gap-1">
-                                    <span className="text-3xl font-extrabold text-white">{plan.price}</span>
-                                    <span className="text-gray-500 text-sm">/user/mo</span>
-                                </div>
-                                <div className="text-xs text-gray-500 font-medium mt-1">
-                                    Total: <span className="text-gray-300">${parseInt(plan.price.replace('$','')) * seats}</span> /mo
-                                </div>
-                                <p className="text-sm text-gray-400 min-h-[3rem]">{plan.description}</p>
+                {/* Volume Discount Table */}
+                <div className="bg-[#111] border border-gray-800 rounded-xl p-5">
+                    <h3 className="font-bold text-white text-sm mb-4 flex items-center gap-2">
+                        <TrendingDown className="w-4 h-4 text-green-400" />
+                        Volume Discounts
+                    </h3>
+                    <div className="grid grid-cols-4 gap-3 text-center">
+                        {[1, 5, 15, 30].map(n => (
+                            <div key={n} className={`rounded-lg p-3 border ${seats === n ? 'border-yellow-500 bg-yellow-500/5' : 'border-gray-800 bg-black/30'}`}>
+                                <p className="text-xs text-gray-500 mb-1">{n} {n === 1 ? 'user' : 'users'}</p>
+                                <p className="text-lg font-bold text-white">${getPricePerUser(n)}</p>
+                                <p className="text-[10px] text-gray-600">/user/mo</p>
                             </div>
-
-                            <ul className="space-y-2 mb-5 flex-1">
-                                {plan.features.map((feature, i) => (
-                                    <li key={i} className="flex items-start gap-3 text-sm text-gray-300">
-                                        <div className={`rounded-full p-1 ${plan.recommended ? 'bg-yellow-500/20 text-yellow-500' : 'bg-gray-800 text-gray-400'}`}>
-                                            <Check className="w-3 h-3" />
-                                        </div>
-                                        {feature}
-                                    </li>
-                                ))}
-                            </ul>
-
-                            <Button
-                                onClick={() => handleSubscribe(plan.priceId)}
-                                disabled={loadingPriceId !== null || isSubscribed || !isPlanAllowed(plan.id)}
-                                className={`w-full h-10 font-bold tracking-wide transition-all ${
-                                    !isPlanAllowed(plan.id)
-                                        ? 'bg-gray-800 text-gray-500 cursor-not-allowed opacity-50'
-                                        : plan.recommended
-                                            ? 'bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg hover:shadow-yellow-500/20'
-                                            : 'bg-white text-black hover:bg-gray-200'
-                                }`}
-                            >
-                                {loadingPriceId === plan.priceId ? 'PREPARING...' 
-                                 : isSubscribed ? 'CURRENT PLAN' 
-                                 : !isPlanAllowed(plan.id) ? `MAX ${plan.id === 'hustler' ? 5 : 20} USERS`
-                                 : `CHOOSE ${plan.name}`}
-                            </Button>
-                        </div>
-                    ))}
+                        ))}
+                    </div>
+                    <p className="text-[11px] text-gray-600 mt-3 text-center">
+                        Price drops $1/user for each team member added. Minimum $20/user/mo.
+                    </p>
                 </div>
 
                 {/* Enterprise Callout */}
@@ -267,8 +294,8 @@ export default function Billing() {
                             <Shield className="w-6 h-6" />
                         </div>
                         <div>
-                            <h3 className="font-bold text-white">Need Enterprise Power?</h3>
-                            <p className="text-sm text-gray-400">Custom integrations, white-labeling, and unlimited scale.</p>
+                            <h3 className="font-bold text-white">50+ Users?</h3>
+                            <p className="text-sm text-gray-400">Contact us for custom enterprise pricing and white-label options.</p>
                         </div>
                     </div>
                     <Button variant="outline" className="border-gray-700 text-white hover:bg-gray-800">
