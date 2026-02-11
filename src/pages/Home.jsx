@@ -1455,7 +1455,7 @@ export default function Home() {
                             <CircleMarker
                                 key={p.address_hash || p.id}
                                 center={[p.lat, p.lng]}
-                                radius={5}
+                                radius={pinSize}
                                 eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
                                 pathOptions={{
                                     fillColor: STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER,
