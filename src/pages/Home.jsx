@@ -318,6 +318,19 @@ export default function Home() {
     const [fetchedProperties, setFetchedProperties] = useState([]); // Dynamic fetch storage
     const [templateName, setTemplateName] = useState("");
     const [gpsTracking, setGpsTracking] = useState(false);
+    const [routeConfig, setRouteConfig] = useState({
+        walkingPattern: 'street_sweep',
+        minimizeTurns: true,
+        use2Opt: true,
+        returnToStart: false,
+        excludeTerminal: true,
+        includeCallbacks: true,
+        propertyTypes: [],
+        minPrice: null,
+        maxPrice: null,
+        minYearBuilt: null,
+        maxYearBuilt: null,
+    });
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
