@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
     Loader2, MapPin, Navigation, CheckCircle2, Circle, Clock, 
     ChevronRight, Phone, AlertTriangle, User, Home, Calendar, ArrowRight,
-    Search, Filter, X, Camera, WifiOff
+    Search, Filter, X, Camera, WifiOff, History
 } from 'lucide-react';
 import localforage from 'localforage';
 import { Button } from "@/components/ui/button";
@@ -470,9 +470,16 @@ export default function RepHome() {
                 
                 {/* Route Progress Card */}
                 <div className="bg-gray-900 rounded-lg p-3 border border-gray-800">
-                    <div className="flex justify-between items-center mb-2">
-                        <div className="flex items-center gap-2">
-                            <h3 className="font-bold text-sm text-gray-200">{activeRoute.name}</h3>
+                <div className="flex justify-between items-center mb-2">
+                    <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-sm text-gray-200">{activeRoute.name}</h3>
+                        <Badge 
+                            variant="outline" 
+                            className="cursor-pointer hover:bg-blue-500 hover:text-white border-blue-500/50 text-blue-400 text-[9px] h-5 px-1.5"
+                            onClick={() => setShowMap(true)}
+                        >
+                            <MapPin className="w-3 h-3 mr-0.5" /> MAP
+                        </Badge>
                             {routes.length > 1 && (
                                 <Badge 
                                     variant="outline" 
