@@ -1381,13 +1381,18 @@ export default function Home() {
                                         center={[p.lat, p.lng]}
                                         radius={pinSize + 1}
                                         eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
-                                        pathOptions={{ fillColor: routeColor, fillOpacity: 0.6, color: routeColor, weight: 1 }}
+                                        pathOptions={{ 
+                                            fillColor: routeColor, 
+                                            fillOpacity: 0.6 * mapSettings.pinOpacity, 
+                                            color: mapSettings.fillStyle === 'outline' ? routeColor : (mapSettings.pinBorderColor || '#000'), 
+                                            weight: mapSettings.pinBorderWidth 
+                                        }}
                                     />
                                 ))}
                                 {showRouteLines && route.properties.length > 1 && (
                                     <Polyline
                                         positions={route.properties.map(p => [p.lat, p.lng])}
-                                        pathOptions={{ color: routeColor, weight: 2, opacity: 0.5, dashArray: '4,6' }}
+                                        pathOptions={{ color: routeColor, weight: mapSettings.lineWidth, opacity: mapSettings.lineOpacity, dashArray: lineDashArray }}
                                     />
                                 )}
                             </React.Fragment>
