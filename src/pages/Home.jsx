@@ -1207,6 +1207,14 @@ export default function Home() {
         });
     }, [createLogMutation]);
 
+    // Dynamic status colors based on selected color scheme
+    const STATUS_COLORS = useMemo(() => {
+        return COLOR_SCHEME_MAP[mapSettings.colorScheme] || DEFAULT_STATUS_COLORS;
+    }, [mapSettings.colorScheme]);
+
+    // Compute line dash array from settings
+    const lineDashArray = LINE_DASH_MAP[mapSettings.lineStyle] || '4,6';
+
     const isLoading = propsLoading || logsLoading;
 
     if (isLoading) {
