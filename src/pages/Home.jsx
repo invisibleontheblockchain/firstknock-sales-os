@@ -1242,6 +1242,13 @@ export default function Home() {
                         ))}
                 </LayerGroup>
 
+                {/* GPS TRACKER LAYERS */}
+                <GpsTrackerMapLayers 
+                    properties={effectiveProperties}
+                    isTracking={gpsTracking}
+                    onSelectProperty={setSelectedProperty}
+                />
+
                 {/* Preview Route (hover/tap from list) */}
                 {previewRoute && !activeRoute && (
                     <Polyline
@@ -1898,6 +1905,14 @@ export default function Home() {
                     </div>
                 </div>
             )}
+
+            {/* GPS HUD Overlay */}
+            <GpsTrackerHud
+                properties={effectiveProperties}
+                isTracking={gpsTracking}
+                onToggleTracking={() => setGpsTracking(false)}
+                onSelectProperty={setSelectedProperty}
+            />
 
             {/* Nearby Hot Leads Banner */}
             <NearbyHotLeads
