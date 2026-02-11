@@ -1455,9 +1455,28 @@ export default function Home() {
                         )}
                     </div>
 
-                    {/* Right: Locate */}
-                    <div className="pointer-events-auto">
-                         <Button
+                    {/* Right: GPS + Locate */}
+                    <div className="pointer-events-auto flex flex-col gap-2">
+                        {/* GPS Live Tracking Toggle */}
+                        <Button
+                            onClick={() => {
+                                setGpsTracking(!gpsTracking);
+                                if (!gpsTracking && mapRef.current) {
+                                    mapRef.current.locate({ setView: true, maxZoom: 18 });
+                                }
+                            }}
+                            size="icon"
+                            className={`rounded-full w-12 h-12 sm:w-14 sm:h-14 shadow-2xl backdrop-blur-md transition-all ${gpsTracking ? 'ring-2 ring-green-500 ring-offset-2 ring-offset-black' : ''}`}
+                            style={{ 
+                                background: gpsTracking ? 'rgba(34, 197, 94, 0.3)' : 'rgba(31, 31, 31, 0.8)', 
+                                color: gpsTracking ? '#22c55e' : BRAND.gold, 
+                                border: `1px solid ${gpsTracking ? '#22c55e' : BRAND.gold + '40'}` 
+                            }}
+                        >
+                            <Crosshair className="w-5 h-5" />
+                        </Button>
+
+                        <Button
                             onClick={(e) => {
                                 e.stopPropagation();
                                 if (mapRef.current) {
@@ -1465,7 +1484,6 @@ export default function Home() {
                                         mapRef.current.fitBounds(fitBounds, { padding: [30, 30], maxZoom: 17 });
                                         toast.success("Centered on Territory");
                                     } else {
-                                        // Fallback to locate if no bounds
                                         mapRef.current.locate({ setView: true, maxZoom: 16 });
                                         toast.success("Locating...");
                                     }
