@@ -1673,9 +1673,9 @@ export default function Home() {
 
             </div>
 
-            {/* Team Analysis Legend (Top Right) */}
+            {/* Team Analysis Legend (Top Right) - Hidden on mobile */}
             {!activeRoute && (
-                <div className="absolute top-20 right-4 z-[900] pointer-events-auto bg-black/80 backdrop-blur-md border border-gray-800 rounded-xl p-3 max-w-[200px] animate-in slide-in-from-right">
+                <div className="hidden md:block absolute top-20 right-4 z-[900] pointer-events-auto bg-black/80 backdrop-blur-md border border-gray-800 rounded-xl p-3 max-w-[200px] animate-in slide-in-from-right">
                     <p className="text-[10px] font-bold text-gray-400 mb-2 uppercase">Team Analysis</p>
                     <div className="space-y-2 max-h-[200px] overflow-y-auto">
                         {teamMembers.map(member => {
