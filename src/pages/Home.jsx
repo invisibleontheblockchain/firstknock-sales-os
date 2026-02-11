@@ -1273,17 +1273,22 @@ export default function Home() {
                                     <CircleMarker
                                         key={`saved-${route.id}-${p.address_hash || 'no-hash'}-${idx}`}
                                         center={[p.lat, p.lng]}
-                                        radius={4}
+                                        radius={pinSize}
                                         eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
                                         pathOptions={{ 
                                             fillColor: repColor, 
-                                            // Increased opacity for unassigned routes so they are clearly visible
                                             fillOpacity: isUnassigned ? 0.6 : 0.8, 
                                             color: repColor, 
                                             weight: 1 
                                         }}
                                     />
                                 ))}
+                                {showRouteLines && route.properties.length > 1 && (
+                                    <Polyline
+                                        positions={route.properties.map(p => [p.lat, p.lng])}
+                                        pathOptions={{ color: repColor, weight: 2, opacity: 0.4, dashArray: '4,6' }}
+                                    />
+                                )}
                             </React.Fragment>
                         );
                     })}
