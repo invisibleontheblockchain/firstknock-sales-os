@@ -166,6 +166,29 @@ export default function AdminTeam() {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inviteCodes'] })
     });
 
+    const deleteRepMutation = useMutation({
+        mutationFn: async (member) => {
+            // 1. Unassign all routes from this rep
+            const memberRoutes = routes.filter(r => r.assigned_to === member.id);
+            if (memberRoutes.length > 0) {
+                await Promise.all(memberRoutes.map(r =>
+                    base44.entities.SavedRoute.update(r.id, { assigned_to: null, assigned_to_name: null, status: 'PENDING' })
+                ));
+            }
+            // 2. Delete the TeamMember record
+            await base44.entities.TeamMember.delete(member.id);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['teamMembers'] });
+            queryClient.invalidateQueries({ queryKey: ['allRoutes'] });
+            toast.success("Team member removed");
+        },
+        onError: (e) => {
+            console.error(e);
+            toast.error("Failed to remove team member");
+        }
+    });
+
     // Backup Handler
     const handleBackup = async () => {
         try {
@@ -650,6 +673,11 @@ export default function AdminTeam() {
                                                     onUnassignAll={() => {
                                                         if(confirm(`Unassign all ${memberRoutes.length} routes from ${member.name}?`)) {
                                                             unassignAllRoutesMutation.mutate(member.id);
+                                                        }
+                                                    }}
+                                                    onDelete={(m) => {
+                                                        if(confirm(`Remove ${m.name} from your team? Their routes will be unassigned.`)) {
+                                                            deleteRepMutation.mutate(m);
                                                         }
                                                     }}
                                                     action={AssignZipsAction}
