@@ -682,6 +682,18 @@ export default function RepHome() {
                 </div>
             )}
 
+            {/* Live Map View */}
+            {showMap && (
+                <RepMapView
+                    properties={routeProperties}
+                    onSelectProperty={(p) => {
+                        setSelectedProperty(p);
+                        setShowMap(false);
+                    }}
+                    onClose={() => setShowMap(false)}
+                />
+            )}
+
             {/* 3. Property Detail Drawer (Overlay) */}
             {selectedProperty && (
                 <div className="fixed inset-0 z-50 flex flex-col bg-black animate-in slide-in-from-bottom duration-300">
