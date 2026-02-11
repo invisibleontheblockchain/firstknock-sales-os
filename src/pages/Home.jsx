@@ -1060,9 +1060,12 @@ export default function Home() {
                 logs,
                 { 
                     streetCooldownDays, 
-                    useStreetSweep: true,
-                    minimizeTurns: true,
-                    maxRouteDistance: maxRouteDistance > 0 ? maxRouteDistance : null
+                    useStreetSweep: routeConfig.walkingPattern === 'street_sweep',
+                    minimizeTurns: routeConfig.minimizeTurns,
+                    use2Opt: routeConfig.use2Opt,
+                    maxRouteDistance: maxRouteDistance > 0 ? maxRouteDistance : null,
+                    walkingPattern: routeConfig.walkingPattern,
+                    returnToStart: routeConfig.returnToStart,
                 }
             );
 
