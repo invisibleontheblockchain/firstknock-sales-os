@@ -975,7 +975,6 @@ export default function Home() {
             if (zipCodeFilter && zipCodeFilter.trim()) {
                 targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
             } else if (user?.territory_zip_codes?.length > 0) {
-                // Default to user's territory if no filter provided
                 targetZips = user.territory_zip_codes;
             }
 
@@ -986,10 +985,9 @@ export default function Home() {
                 });
             }
 
-            // Apply Sold Date Filter (Match visual map logic)
+            // Apply Sold Date Filter
             if (soldDateFilter !== null) {
                 workingSet = workingSet.filter(p => {
-                    // If property has no sold date, keep it (it's not an "old sale")
                     if (!p.sold_date) return true;
                     try {
                         const date = parseISO(p.sold_date);
@@ -997,6 +995,41 @@ export default function Home() {
                         return isAfter(date, cutoff);
                     } catch (e) { return true; }
                 });
+            }
+
+            // Apply Property Type Filter
+            if (routeConfig.propertyTypes.length > 0) {
+                workingSet = workingSet.filter(p => {
+                    if (!p.property_type) return true;
+                    const pt = p.property_type.toLowerCase();
+                    return routeConfig.propertyTypes.some(t => pt.includes(t.toLowerCase()));
+                });
+            }
+
+            // Apply Price Range Filter
+            if (routeConfig.minPrice) {
+                workingSet = workingSet.filter(p => !p.price || p.price >= routeConfig.minPrice);
+            }
+            if (routeConfig.maxPrice) {
+                workingSet = workingSet.filter(p => !p.price || p.price <= routeConfig.maxPrice);
+            }
+
+            // Apply Year Built Filter
+            if (routeConfig.minYearBuilt) {
+                workingSet = workingSet.filter(p => !p.year_built || p.year_built >= routeConfig.minYearBuilt);
+            }
+            if (routeConfig.maxYearBuilt) {
+                workingSet = workingSet.filter(p => !p.year_built || p.year_built <= routeConfig.maxYearBuilt);
+            }
+
+            // Exclude terminal statuses (configurable)
+            if (!routeConfig.excludeTerminal) {
+                // Don't filter out SOLD/HARD_NO — the optimizer will still do it, but we pass them through
+            }
+
+            // Include/exclude callbacks
+            if (!routeConfig.includeCallbacks) {
+                workingSet = workingSet.filter(p => p.effective_status !== 'CALLBACK');
             }
 
             if (workingSet.length === 0) {
