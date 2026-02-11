@@ -17,6 +17,8 @@ import { format } from 'date-fns';
 import { optimizeRouteForTime, getKnockWindowLabel } from '@/components/logic/knockTimeOptimizer';
 import { determineEffectiveStatus } from '@/components/logic/territoryLogic';
 import QuickMarkButtons from '@/components/rep/QuickMarkButtons';
+import PropertyHistory from '@/components/rep/PropertyHistory';
+import RepMapView from '@/components/rep/RepMapView';
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -45,6 +47,7 @@ export default function RepHome() {
     const [logNote, setLogNote] = useState('');
     const [callbackTime, setCallbackTime] = useState('');
     const [callbackPhone, setCallbackPhone] = useState('');
+    const [showMap, setShowMap] = useState(false);
 
     // Reset log state when opening property
     React.useEffect(() => {
