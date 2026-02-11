@@ -1994,6 +1994,10 @@ export default function Home() {
                                       setShowRouteDetails={setShowRouteDetails}
                                       navigationApp={navigationApp}
                                       setNavigationApp={updateNavigationApp}
+                                      pinSize={pinSize}
+                                      setPinSize={setPinSize}
+                                      showRouteLines={showRouteLines}
+                                      setShowRouteLines={setShowRouteLines}
                                   />
                               )}
 
