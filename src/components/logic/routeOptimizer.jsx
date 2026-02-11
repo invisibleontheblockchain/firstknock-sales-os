@@ -282,9 +282,10 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         streetCooldownDays = COOLDOWN_CONFIG.STREET_COOLDOWN_DAYS,
         useStreetSweep = true,
         minimizeTurns = false,
-        preferMajorRoads = false,
-        avoidSchoolZones = false,
-        maxRouteDistance = null // New parameter
+        use2Opt = true,
+        walkingPattern = 'street_sweep',
+        returnToStart = false,
+        maxRouteDistance = null
     } = options;
 
     // Filter out properties on streets that are on cooldown
