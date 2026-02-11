@@ -1084,7 +1084,7 @@ export default function Home() {
         } finally {
             setRoutesGenerating(false);
         }
-    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes]);
+    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, maxRouteDistance, soldDateFilter]);
 
     // Filter and sort routes
     const filteredRoutes = useMemo(() => {
