@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from "@/components/ui/button";
-import { X, Sun, Moon, Palette, Globe, Mountain } from 'lucide-react';
+import { Slider } from "@/components/ui/slider";
+import { X, Sun, Moon, Palette, Globe, Mountain, Eye, EyeOff, Maximize2, Minimize2, GitBranch } from 'lucide-react';
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -10,19 +11,9 @@ const BRAND = {
 };
 
 const REP_COLOR_OPTIONS = [
-    '#FFD700', // Gold
-    '#ef4444', // Red
-    '#22c55e', // Green
-    '#3b82f6', // Blue
-    '#ec4899', // Pink
-    '#f97316', // Orange
-    '#8b5cf6', // Purple
-    '#06b6d4', // Cyan
-    '#eab308', // Yellow
-    '#14b8a6', // Teal
+    '#FFD700', '#ef4444', '#22c55e', '#3b82f6', '#ec4899',
+    '#f97316', '#8b5cf6', '#06b6d4', '#eab308', '#14b8a6',
 ];
-
-import { Eye, EyeOff } from 'lucide-react';
 
 export default function MapSettingsPanel({ 
     mapTheme, 
@@ -37,8 +28,11 @@ export default function MapSettingsPanel({
     setShowRouteDetails,
     navigationApp,
     setNavigationApp,
-    mapThemeOptions,
-    setMapThemeOption
+    // New display settings
+    pinSize = 5, setPinSize,
+    showRouteLines = false, setShowRouteLines,
+    showStreetLabels = true, setShowStreetLabels,
+    clusterPins = false, setClusterPins,
 }) {
     const STATUS_FILTERS = [
         { id: 'all', label: 'ALL', color: '#E5E5E5' },
