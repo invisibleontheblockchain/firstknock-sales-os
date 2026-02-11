@@ -49,24 +49,48 @@ export default function RoleSelect() {
             const validCode = codes?.items?.[0] || (Array.isArray(codes) ? codes[0] : null);
 
             if (validCode) {
-                // 1. Update User Role
-                await updateUserMutation.mutateAsync({ app_role: validCode.role });
+                // 1. Update User Role AND store the manager link on the user
+                await updateUserMutation.mutateAsync({ 
+                    app_role: validCode.role,
+                    team_manager_id: validCode.linked_user_id || null,
+                    team_invite_code: validCode.code
+                });
 
                 // 2. Create Team Member record if not exists
-                const existingMembers = await base44.entities.TeamMember.filter({ email: user.email }, '-created_date', 1);
-                const memberExists = existingMembers?.items?.length > 0 || (Array.isArray(existingMembers) && existingMembers.length > 0);
+                // Fetch ALL team members and match client-side for robust case-insensitive matching
+                const allMembers = await base44.entities.TeamMember.list('-created_date', 500);
+                const membersList = Array.isArray(allMembers) ? allMembers : (allMembers?.items || []);
+                const memberExists = membersList.some(m => 
+                    m.email?.trim().toLowerCase() === user.email.trim().toLowerCase()
+                );
 
                 if (!memberExists) {
                     await base44.entities.TeamMember.create({
                         name: user.full_name || user.email.split('@')[0],
-                        email: user.email,
+                        email: user.email.trim().toLowerCase(),
                         role: validCode.role,
                         status: 'active',
-                        color: '#' + Math.floor(Math.random()*16777215).toString(16), // Random color
-                        manager_id: validCode.linked_user_id || null, // Link to manager
-                        invite_code: validCode.code // Store the code used
+                        color: '#' + Math.floor(Math.random()*16777215).toString(16),
+                        manager_id: validCode.linked_user_id || null,
+                        invite_code: validCode.code
                     });
+                } else {
+                    // If member record exists but manager_id is wrong/missing, fix it
+                    const existingMember = membersList.find(m => 
+                        m.email?.trim().toLowerCase() === user.email.trim().toLowerCase()
+                    );
+                    if (existingMember && validCode.linked_user_id && existingMember.manager_id !== validCode.linked_user_id) {
+                        await base44.entities.TeamMember.update(existingMember.id, {
+                            manager_id: validCode.linked_user_id,
+                            invite_code: validCode.code
+                        });
+                    }
                 }
+
+                // 3. Increment usage count on the invite code
+                await base44.entities.InviteCode.update(validCode.id, {
+                    used_count: (validCode.used_count || 0) + 1
+                });
 
                 toast.success(`Welcome to the team! You are now a ${validCode.role}.`);
 
