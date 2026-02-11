@@ -1705,33 +1705,30 @@ export default function Home() {
             {/* Bottom Action Bar */}
             <div className="absolute bottom-6 left-4 right-4 z-[1000] pointer-events-none">
                 <div className="flex items-end justify-between gap-2">
-                    {/* Left: Compact Route List Button */}
-                    <div className="pointer-events-auto">
+                    {/* Left: Route + Checklist buttons stacked on mobile */}
+                    <div className="pointer-events-auto flex items-center gap-2">
                         <Button
                             onClick={() => setShowRoutePanel(true)}
-                            className="rounded-full h-12 px-6 text-xs sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap"
+                            className="rounded-full h-10 sm:h-12 px-4 sm:px-6 text-[10px] sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap"
                             style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
                         >
-                            <List className="w-5 h-5 mr-2" />
-                            ROUTES
-                            {routesGenerating && <Loader2 className="w-3 h-3 ml-2 animate-spin" />}
+                            <List className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
+                            ROUT{!activeRoute && 'ES'}
+                            {routesGenerating && <Loader2 className="w-3 h-3 ml-1 animate-spin" />}
                             {!routesGenerating && (hydratedSavedRoutes.length > 0 || routes.length > 0) && (
-                                <Badge className="ml-2 h-5 min-w-[20px] px-1" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
+                                <Badge className="ml-1 sm:ml-2 h-5 min-w-[20px] px-1" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
                                     {hydratedSavedRoutes.length > 0 ? hydratedSavedRoutes.length : routes.length}
                                 </Badge>
                             )}
                         </Button>
-                    </div>
 
-                    {/* Center: Checklist (if active) */}
-                    <div className="absolute left-1/2 -translate-x-1/2 bottom-0 pointer-events-auto">
                         {activeRoute && (
                             <Button
                                 onClick={() => setShowChecklist(true)}
-                                className="rounded-full h-12 px-6 text-xs sm:text-sm font-bold tracking-wide shadow-2xl backdrop-blur-md transition-all duration-300 transform active:scale-95 whitespace-nowrap"
+                                className="rounded-full h-10 sm:h-12 px-4 sm:px-6 text-[10px] sm:text-sm font-bold tracking-wide shadow-2xl backdrop-blur-md transition-all duration-300 transform active:scale-95 whitespace-nowrap"
                                 style={{ background: 'rgba(31, 31, 31, 0.9)', color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}
                             >
-                                <List className="w-5 h-5 mr-2" />
+                                <List className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
                                 CHECKLIST
                                 <ChevronRight className="w-3 h-3 ml-1" />
                             </Button>
@@ -1740,7 +1737,6 @@ export default function Home() {
 
                     {/* Right: GPS + Locate */}
                     <div className="pointer-events-auto flex flex-col gap-2">
-                        {/* GPS Live Tracking Toggle */}
                         <Button
                             onClick={() => {
                                 setGpsTracking(!gpsTracking);
@@ -1749,14 +1745,14 @@ export default function Home() {
                                 }
                             }}
                             size="icon"
-                            className={`rounded-full w-12 h-12 sm:w-14 sm:h-14 shadow-2xl backdrop-blur-md transition-all ${gpsTracking ? 'ring-2 ring-green-500 ring-offset-2 ring-offset-black' : ''}`}
+                            className={`rounded-full w-10 h-10 sm:w-14 sm:h-14 shadow-2xl backdrop-blur-md transition-all ${gpsTracking ? 'ring-2 ring-green-500 ring-offset-2 ring-offset-black' : ''}`}
                             style={{ 
                                 background: gpsTracking ? 'rgba(34, 197, 94, 0.3)' : 'rgba(31, 31, 31, 0.8)', 
                                 color: gpsTracking ? '#22c55e' : BRAND.gold, 
                                 border: `1px solid ${gpsTracking ? '#22c55e' : BRAND.gold + '40'}` 
                             }}
                         >
-                            <Crosshair className="w-5 h-5" />
+                            <Crosshair className="w-4 h-4 sm:w-5 sm:h-5" />
                         </Button>
 
                         <Button
@@ -1775,10 +1771,10 @@ export default function Home() {
                                 }
                             }}
                             size="icon"
-                            className="rounded-full w-12 h-12 sm:w-14 sm:h-14 shadow-2xl backdrop-blur-md"
+                            className="rounded-full w-10 h-10 sm:w-14 sm:h-14 shadow-2xl backdrop-blur-md"
                             style={{ background: 'rgba(31, 31, 31, 0.8)', color: BRAND.gold, border: `1px solid ${BRAND.gold}40` }}
                         >
-                            <Locate className="w-5 h-5" />
+                            <Locate className="w-4 h-4 sm:w-5 sm:h-5" />
                         </Button>
                     </div>
                 </div>
