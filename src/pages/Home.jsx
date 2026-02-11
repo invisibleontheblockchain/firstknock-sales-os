@@ -49,15 +49,30 @@ const BRAND = {
     offWhite: '#E5E5E5'
 };
 
-// Status colors: Gray = not visited, Green = sold, Red = couldn't sell
-const STATUS_COLORS = {
-    ELIGIBLE: '#6b7280',      // Gray - not visited
-    SOLD: '#22c55e',          // Green - sold
-    HARD_NO: '#8B5CF6',       // Purple - couldn't sell
-    CALLBACK: '#eab308',      // Yellow - callback
-    NO_ANSWER: '#6b7280',     // Gray - not visited yet
-    QUALIFIED: '#22c55e',     // Green - qualified/sold
-    OTHER: '#6b7280'          // Gray - default
+// Default Status colors
+const DEFAULT_STATUS_COLORS = {
+    ELIGIBLE: '#6b7280',
+    SOLD: '#22c55e',
+    HARD_NO: '#8B5CF6',
+    CALLBACK: '#eab308',
+    NO_ANSWER: '#6b7280',
+    QUALIFIED: '#22c55e',
+    OTHER: '#6b7280'
+};
+
+const COLOR_SCHEME_MAP = {
+    default: DEFAULT_STATUS_COLORS,
+    neon: { ELIGIBLE: '#00fff7', SOLD: '#39ff14', HARD_NO: '#ff073a', CALLBACK: '#ffed00', NO_ANSWER: '#00fff7', QUALIFIED: '#39ff14', OTHER: '#00fff7' },
+    pastel: { ELIGIBLE: '#a8b8c8', SOLD: '#77dd77', HARD_NO: '#b39ddb', CALLBACK: '#fff176', NO_ANSWER: '#a8b8c8', QUALIFIED: '#77dd77', OTHER: '#a8b8c8' },
+    heatmap: { ELIGIBLE: '#1e3a5f', SOLD: '#ff4500', HARD_NO: '#8b0000', CALLBACK: '#ff8c00', NO_ANSWER: '#1e3a5f', QUALIFIED: '#ff4500', OTHER: '#1e3a5f' },
+    monochrome: { ELIGIBLE: '#555', SOLD: '#fff', HARD_NO: '#888', CALLBACK: '#bbb', NO_ANSWER: '#555', QUALIFIED: '#fff', OTHER: '#555' },
+};
+
+const LINE_DASH_MAP = {
+    solid: null,
+    dashed: '8,6',
+    dotted: '2,4',
+    dashdot: '10,4,2,4',
 };
 
 const ROUTE_COLORS = ['#FFD700', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#f97316', '#a855f7'];
