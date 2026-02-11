@@ -1314,16 +1314,24 @@ export default function Home() {
                                         eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
                                         pathOptions={{ 
                                             fillColor: repColor, 
-                                            fillOpacity: isUnassigned ? 0.6 : 0.8, 
-                                            color: repColor, 
-                                            weight: 1 
+                                            fillOpacity: (isUnassigned ? 0.6 : 0.8) * mapSettings.pinOpacity, 
+                                            color: mapSettings.fillStyle === 'outline' ? repColor : (mapSettings.pinBorderColor || '#000'), 
+                                            weight: mapSettings.fillStyle === 'outline' ? 2 : mapSettings.pinBorderWidth 
                                         }}
-                                    />
+                                    >
+                                        {mapSettings.showLabels && (
+                                            <Tooltip permanent direction="center" className="route-number-tooltip">
+                                                <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '8px', textShadow: '0 0 3px #000' }}>
+                                                    {mapSettings.labelType === 'number' ? p.house_number : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0,1) : (p.street_name || '').split(' ')[0]}
+                                                </span>
+                                            </Tooltip>
+                                        )}
+                                    </CircleMarker>
                                 ))}
                                 {showRouteLines && route.properties.length > 1 && (
                                     <Polyline
                                         positions={route.properties.map(p => [p.lat, p.lng])}
-                                        pathOptions={{ color: repColor, weight: 2, opacity: 0.4, dashArray: '4,6' }}
+                                        pathOptions={{ color: repColor, weight: mapSettings.lineWidth, opacity: mapSettings.lineOpacity, dashArray: lineDashArray }}
                                     />
                                 )}
                             </React.Fragment>
