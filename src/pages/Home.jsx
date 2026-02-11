@@ -2256,6 +2256,19 @@ export default function Home() {
                                     </div>
                                 </div>
 
+                                {/* Quick Mark Buttons */}
+                                <div>
+                                    <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Quick Log</h4>
+                                    <QuickMarkButtons
+                                        size="large"
+                                        onMark={(status) => {
+                                            handleLogResult(selectedProperty, status);
+                                            setSelectedProperty(null);
+                                            toast.success(`Logged as ${status}`);
+                                        }}
+                                    />
+                                </div>
+
                                 {/* Map Link */}
                                 <Button 
                                     onClick={() => {
