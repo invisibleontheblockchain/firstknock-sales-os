@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button } from "@/components/ui/button";
-import { X, Sun, Moon, Palette } from 'lucide-react';
+import { X, Sun, Moon, Palette, Globe, Mountain } from 'lucide-react';
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -36,7 +36,9 @@ export default function MapSettingsPanel({
     showRouteDetails,
     setShowRouteDetails,
     navigationApp,
-    setNavigationApp
+    setNavigationApp,
+    mapThemeOptions,
+    setMapThemeOption
 }) {
     const STATUS_FILTERS = [
         { id: 'all', label: 'ALL', color: '#E5E5E5' },
@@ -138,31 +140,32 @@ export default function MapSettingsPanel({
                     {/* Map Theme Toggle */}
                     <div>
                         <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                            MAP THEME
+                            MAP STYLE
                         </label>
-                        <div className="flex gap-2">
-                            <button
-                                onClick={() => setMapTheme('dark')}
-                                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold transition-all ${
-                                    mapTheme === 'dark' 
-                                        ? 'bg-yellow-500 text-black shadow-lg' 
-                                        : 'bg-[#1F1F1F] text-gray-400 hover:text-white border border-gray-700'
-                                }`}
-                            >
-                                <Moon className="w-4 h-4" />
-                                DARK
-                            </button>
-                            <button
-                                onClick={() => setMapTheme('light')}
-                                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-sm font-bold transition-all ${
-                                    mapTheme === 'light' 
-                                        ? 'bg-yellow-500 text-black shadow-lg' 
-                                        : 'bg-[#1F1F1F] text-gray-400 hover:text-white border border-gray-700'
-                                }`}
-                            >
-                                <Sun className="w-4 h-4" />
-                                LIGHT
-                            </button>
+                        <div className="grid grid-cols-2 gap-2">
+                            {[
+                                { id: 'dark', label: 'DARK', icon: Moon },
+                                { id: 'light', label: 'LIGHT', icon: Sun },
+                                { id: 'satellite', label: 'SATELLITE', icon: Globe },
+                                { id: 'hybrid', label: 'HYBRID', icon: Mountain },
+                            ].map(opt => {
+                                const Icon = opt.icon;
+                                const isActive = mapTheme === opt.id;
+                                return (
+                                    <button
+                                        key={opt.id}
+                                        onClick={() => setMapTheme(opt.id)}
+                                        className={`flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-bold transition-all ${
+                                            isActive
+                                                ? 'bg-yellow-500 text-black shadow-lg'
+                                                : 'bg-[#1F1F1F] text-gray-400 hover:text-white border border-gray-700'
+                                        }`}
+                                    >
+                                        <Icon className="w-4 h-4" />
+                                        {opt.label}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
 
