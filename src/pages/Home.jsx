@@ -746,7 +746,10 @@ export default function Home() {
 
     const createLogMutation = useMutation({
         mutationFn: (logData) => base44.entities.InteractionLog.create(logData),
-        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['interactionLogs'] }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['interactionLogs'] });
+            queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] });
+        },
     });
 
     // Process ALL properties with territory filter
@@ -1098,6 +1101,20 @@ export default function Home() {
     }, [activeRoute, availableProperties, user?.working_area]);
 
     const center = availableProperties[0] ? [availableProperties[0].lat, availableProperties[0].lng] : mapCenter;
+
+    // Fetch full history for selected property (manager view)
+    const { data: selectedPropertyLogs = [] } = useQuery({
+        queryKey: ['selectedPropertyHistory', selectedProperty?.address_hash],
+        queryFn: async () => {
+            if (!selectedProperty?.address_hash) return [];
+            const res = await base44.entities.InteractionLog.filter(
+                { address_hash: selectedProperty.address_hash },
+                '-created_date', 100
+            );
+            return Array.isArray(res) ? res : (res?.items || []);
+        },
+        enabled: !!selectedProperty?.address_hash
+    });
 
     const handleLogResult = useCallback((property, status, note = null) => {
         createLogMutation.mutate({
