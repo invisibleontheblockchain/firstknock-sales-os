@@ -16,6 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { format } from 'date-fns';
 import { optimizeRouteForTime, getKnockWindowLabel } from '@/components/logic/knockTimeOptimizer';
 import { determineEffectiveStatus } from '@/components/logic/territoryLogic';
+import QuickMarkButtons from '@/components/rep/QuickMarkButtons';
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -684,37 +685,11 @@ export default function RepHome() {
                                 </div>
                             </div>
 
-                            {/* Main Actions */}
-                            <div className="grid grid-cols-2 gap-3">
-                                <Button 
-                                    className="h-12 bg-green-600 hover:bg-green-700 font-bold text-xs sm:text-sm"
-                                    onClick={() => handleLog('SOLD')}
-                                >
-                                    <CheckCircle2 className="w-4 h-4 mr-2" />
-                                    SOLD / LEAD
-                                </Button>
-                                <Button 
-                                    className="h-12 bg-purple-600 hover:bg-purple-700 font-bold text-xs sm:text-sm"
-                                    onClick={() => handleLog('HARD_NO')}
-                                >
-                                    <AlertTriangle className="w-4 h-4 mr-2" />
-                                    NOT INTERESTED
-                                </Button>
-                                <Button 
-                                    className="h-12 bg-yellow-600 hover:bg-yellow-700 font-bold text-xs sm:text-sm"
-                                    onClick={() => handleLog('CALLBACK')}
-                                >
-                                    <Clock className="w-4 h-4 mr-2" />
-                                    CALLBACK
-                                </Button>
-                                <Button 
-                                    className="h-12 bg-gray-700 hover:bg-gray-600 font-bold text-xs sm:text-sm"
-                                    onClick={() => handleLog('NO_ANSWER')}
-                                >
-                                    <Home className="w-4 h-4 mr-2" />
-                                    NO ANSWER
-                                </Button>
-                            </div>
+                            {/* Main Actions - Simplified */}
+                            <QuickMarkButtons
+                                size="large"
+                                onMark={(status) => handleLog(status)}
+                            />
 
                             {/* Camera Action */}
                             <div className="relative">
