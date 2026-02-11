@@ -38,6 +38,7 @@ import { LayoutDashboard, Settings, Crosshair } from 'lucide-react';
 import { openInMaps } from '../components/logic/navigation';
 import GpsTracker, { GpsMapLayer, GpsHud } from '../components/map/GpsTracker';
 import QuickMarkButtons from '../components/rep/QuickMarkButtons';
+import PropertyHistory from '../components/rep/PropertyHistory';
 
 // Brand Colors
 const BRAND = {
