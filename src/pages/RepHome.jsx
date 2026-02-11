@@ -150,57 +150,56 @@ export default function RepHome() {
         return routes.find(r => r.status === 'IN_PROGRESS') || routes.find(r => r.status === 'ACTIVE') || routes[0];
     }, [routes, manualRouteId]);
 
-    // 2. Fetch Route Properties - fetch ALL properties then filter client-side by hash
-    // The SDK filter with array values may not return all matches, so we fetch broadly
+    // 2. Fetch Route Properties - batch filter by address_hash
     const { data: properties = [], isLoading: propsLoading } = useQuery({
         queryKey: ['routeProperties', activeRoute?.id],
         queryFn: async () => {
             if (!activeRoute?.property_hashes?.length) return [];
-            const hashSet = new Set(activeRoute.property_hashes);
+            const hashes = activeRoute.property_hashes;
             
             try {
-                // Strategy: fetch by zip codes if available, or fetch all created by user's manager
-                // First, try fetching all properties and filtering client-side
                 let allProps = [];
                 
-                // Try fetching in batches by individual hash (most reliable)
-                // But for large routes this is too many calls. Instead, fetch broadly.
-                
-                // Approach: Fetch all properties (up to 5000) and filter client-side
-                const res = await base44.entities.MasterProperty.list('-created_date', 5000);
-                const items = Array.isArray(res) ? res : (res?.items || []);
-                allProps = items.filter(p => hashSet.has(p.address_hash));
-                
-                console.log(`[RepHome] Route has ${activeRoute.property_hashes.length} hashes, found ${allProps.length} matching properties`);
-                
-                // If we didn't find all, try fetching individually for missing ones
-                if (allProps.length < activeRoute.property_hashes.length) {
-                    const foundHashes = new Set(allProps.map(p => p.address_hash));
-                    const missingHashes = activeRoute.property_hashes.filter(h => !foundHashes.has(h));
-                    
-                    if (missingHashes.length > 0 && missingHashes.length <= 50) {
-                        console.log(`[RepHome] Fetching ${missingHashes.length} missing properties individually`);
-                        const missingResults = await Promise.all(
-                            missingHashes.map(hash => 
-                                base44.entities.MasterProperty.filter({ address_hash: hash }, '-created_date', 1)
-                                    .then(r => (Array.isArray(r) ? r : (r?.items || [])))
-                                    .catch(() => [])
-                            )
-                        );
-                        const extraProps = missingResults.flat();
-                        allProps = [...allProps, ...extraProps];
-                        console.log(`[RepHome] After individual fetch: ${allProps.length} total properties`);
-                    }
+                // Batch fetch in chunks of 20 hashes at a time using filter
+                const BATCH_SIZE = 20;
+                const batches = [];
+                for (let i = 0; i < hashes.length; i += BATCH_SIZE) {
+                    batches.push(hashes.slice(i, i + BATCH_SIZE));
                 }
                 
-                // Cache properties for offline
+                console.log(`[RepHome] Fetching ${hashes.length} properties in ${batches.length} batches`);
+                
+                const results = await Promise.all(
+                    batches.map(batch => 
+                        base44.entities.MasterProperty.filter(
+                            { address_hash: batch }, 
+                            '-created_date', 
+                            batch.length
+                        ).then(r => Array.isArray(r) ? r : (r?.items || []))
+                         .catch(err => {
+                             console.warn('[RepHome] Batch fetch failed, trying individually', err);
+                             // Fallback: fetch individually for this batch
+                             return Promise.all(
+                                 batch.map(hash => 
+                                     base44.entities.MasterProperty.filter({ address_hash: hash }, '-created_date', 1)
+                                         .then(r => Array.isArray(r) ? r : (r?.items || []))
+                                         .catch(() => [])
+                                 )
+                             ).then(results => results.flat());
+                         })
+                    )
+                );
+                
+                allProps = results.flat();
+                console.log(`[RepHome] Found ${allProps.length}/${hashes.length} properties`);
+                
+                // Cache for offline
                 if (allProps.length > 0) {
                     localforage.setItem(`cached_props_${activeRoute.id}`, allProps);
                 }
                 return allProps;
             } catch (e) {
                 console.error("Error fetching properties", e);
-                // Try fallback
                 const cached = await localforage.getItem(`cached_props_${activeRoute.id}`);
                 return cached || [];
             }
