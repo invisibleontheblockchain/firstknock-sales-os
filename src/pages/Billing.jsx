@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Check, Shield, Zap, Star } from 'lucide-react';
+import { Check, Shield, Zap, Star, Users, TrendingDown, ChevronDown } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 
@@ -12,56 +12,30 @@ const BRAND = {
     gray: '#1F1F1F'
 };
 
-const PLANS = [
-    {
-        id: 'hustler',
-        name: 'HUSTLER',
-        price: '$49',
-        priceId: 'price_1SwDXY2MvSNi6E8hZb5nSRDw',
-        description: 'For solo reps & small teams.',
-        features: [
-            'Max 5 Users',
-            'Live GPS Tracking',
-            'Basic Territory Management',
-            'Manual Route Building',
-            'Lead Status Tracking'
-        ],
-        color: 'white',
-        recommended: false
-    },
-    {
-        id: 'growth',
-        name: 'GROWTH',
-        price: '$99',
-        priceId: 'price_1SwDXY2MvSNi6E8hfhtK7rBc',
-        description: 'For scaling sales organizations.',
-        features: [
-            'Max 20 Users',
-            'Command Center Auto-Dispatch',
-            'AI Route Optimization',
-            'Team Leaderboard & Metrics',
-            'Priority Support'
-        ],
-        color: '#FFD700',
-        recommended: true
-    },
-    {
-        id: 'enterprise',
-        name: 'ENTERPRISE',
-        price: '$299',
-        priceId: 'price_1SwDXY2MvSNi6E8hbaKcsk0d',
-        description: 'Maximum power for large fleets.',
-        features: [
-            'Best for 20+ Users',
-            'Advanced Analytics',
-            'Custom API Access',
-            'Dedicated Success Manager',
-            'White-Label Options',
-            'SLA & 24/7 Support'
-        ],
-        color: '#3b82f6',
-        recommended: false
-    }
+// Single plan - $49 base, $1 off per user, min $20/user
+const BASE_PRICE = 49;
+const DISCOUNT_PER_USER = 1;
+const MIN_PRICE_PER_USER = 20;
+const PRICE_ID = 'price_1SwDXY2MvSNi6E8hZb5nSRDw'; // Hustler $49 base
+
+const getPricePerUser = (totalUsers) => {
+    const discount = (totalUsers - 1) * DISCOUNT_PER_USER;
+    return Math.max(MIN_PRICE_PER_USER, BASE_PRICE - discount);
+};
+
+const getMonthlyTotal = (totalUsers) => {
+    return totalUsers * getPricePerUser(totalUsers);
+};
+
+const ALL_FEATURES = [
+    'Unlimited Routes & Territories',
+    'Live GPS Tracking & Proof of Visit',
+    'AI Route Optimization',
+    'Command Center Auto-Dispatch',
+    'Team Leaderboard & Metrics',
+    'Property Intel & History',
+    'Offline Mode Support',
+    'Priority Support'
 ];
 
 export default function Billing() {
