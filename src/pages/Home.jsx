@@ -309,7 +309,9 @@ export default function Home() {
     const [mapTheme, setMapTheme] = useState('dark'); // 'dark' or 'light'
     const [showRouteDetails, setShowRouteDetails] = useState(true); // Toggle individual dots vs just rank/number
     const [showMapSettings, setShowMapSettings] = useState(false);
-    const [navigationApp, setNavigationApp] = useState('apple'); // Default to Apple Maps
+    const [navigationApp, setNavigationApp] = useState('apple');
+    const [pinSize, setPinSize] = useState(5);
+    const [showRouteLines, setShowRouteLines] = useState(false);
     const [darkRoomProperties, setDarkRoomProperties] = useState([]);
     const [darkRoomClusters, setDarkRoomClusters] = useState([]);
     const [darkRoomCount, setDarkRoomCount] = useState(0);
