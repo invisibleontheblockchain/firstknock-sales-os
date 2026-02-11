@@ -372,19 +372,56 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         const clusterProps = clustered.filter(p => p.cluster === i);
         if (clusterProps.length === 0) continue;
 
-        // Use street sweep ordering if enabled
+        // Use walking pattern to determine ordering
         let orderedProps;
-        if (useStreetSweep) {
+        if (walkingPattern === 'street_sweep' || (useStreetSweep && walkingPattern !== 'nearest' && walkingPattern !== 'zigzag' && walkingPattern !== 'cluster')) {
             orderedProps = orderForStreetSweep(clusterProps);
+        } else if (walkingPattern === 'zigzag') {
+            // Zig-zag: sort by street, then alternate odd/even within each street
+            const byStreet = {};
+            clusterProps.forEach(p => {
+                const s = p.street_name || 'unknown';
+                if (!byStreet[s]) byStreet[s] = [];
+                byStreet[s].push(p);
+            });
+            orderedProps = [];
+            Object.values(byStreet).forEach(streetProps => {
+                streetProps.sort((a, b) => a.house_number - b.house_number);
+                // Interleave: take one from start, one from end
+                const result = [];
+                let left = 0, right = streetProps.length - 1;
+                let fromLeft = true;
+                while (left <= right) {
+                    result.push(fromLeft ? streetProps[left++] : streetProps[right--]);
+                    fromLeft = !fromLeft;
+                }
+                orderedProps.push(...result);
+            });
+        } else if (walkingPattern === 'cluster') {
+            // Cluster hop: sort by score descending (hit high-density/high-score pockets first)
+            orderedProps = [...clusterProps].sort((a, b) => (b.score || 0) - (a.score || 0));
+            // Then apply nearest neighbor from top-scored property
+            if (orderedProps.length > 0) {
+                orderedProps = optimizeRouteOrder(orderedProps, orderedProps[0].lat, orderedProps[0].lng, minimizeTurns);
+            }
         } else {
+            // Nearest neighbor (default fallback)
             orderedProps = optimizeRouteOrder(
                 clusterProps,
                 startLocation?.lat,
                 startLocation?.lng,
                 minimizeTurns
             );
-            // Apply 2-opt post-optimization for smoother paths
+        }
+        
+        // Apply 2-opt post-optimization for smoother paths (if enabled)
+        if (use2Opt && walkingPattern !== 'street_sweep') {
             orderedProps = apply2Opt(orderedProps);
+        }
+
+        // Return to start: add first property at the end conceptually (affects distance calc)
+        if (returnToStart && orderedProps.length > 1) {
+            // We don't literally duplicate, but we account for return distance in metrics
         }
 
         // Metrics
