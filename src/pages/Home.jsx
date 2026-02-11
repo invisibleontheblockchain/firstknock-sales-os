@@ -1738,8 +1738,8 @@ export default function Home() {
                 />
             )}
 
-            {/* Filter Panel */}
-            {showCompare && (
+            {/* Filter Panel - ANALYZE MODE */}
+            {showCompare && mode === 'analyze' && (
                 <div className="fixed inset-0 z-[2000]">
                     <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowCompare(false)} />
                     <div
@@ -1748,8 +1748,8 @@ export default function Home() {
                     >
                         <div className="p-5 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
                             <h2 className="flex items-center gap-2 font-bold tracking-wide" style={{ color: BRAND.gold }}>
-                                {mode === 'generate' ? <Navigation className="w-5 h-5" /> : <BarChart3 className="w-5 h-5" />}
-                                {mode === 'generate' ? 'BUILDER SETTINGS' : 'ROUTE FILTERS'}
+                                <BarChart3 className="w-5 h-5" />
+                                ROUTE FILTERS
                             </h2>
                             <button onClick={() => setShowCompare(false)} className="p-4 -mr-2 hover:bg-[#333] rounded-full transition-colors">
                                 <X className="w-6 h-6" style={{ color: BRAND.offWhite }} />
@@ -1757,383 +1757,170 @@ export default function Home() {
                         </div>
 
                         <div className="p-5 space-y-6 overflow-y-auto h-[calc(100%-70px)]">
-                            
-                            {/* --- ANALYZE MODE CONTROLS --- */}
-                            {mode === 'analyze' && (
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                            FILTER BY REP
-                                        </label>
-                                        <select
-                                            value={repFilter}
-                                            onChange={(e) => setRepFilter(e.target.value)}
-                                            className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
-                                        >
-                                            <option value="all">All Reps</option>
-                                            {uniqueReps.map(rep => (
-                                                <option key={rep} value={rep}>{rep}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                            FILTER BY ZIP CODE
-                                        </label>
-                                        <select
-                                            value={analyzeZipFilter}
-                                            onChange={(e) => setAnalyzeZipFilter(e.target.value)}
-                                            className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
-                                        >
-                                            <option value="all">All Zip Codes</option>
-                                            {uniqueZips.map(zip => (
-                                                <option key={zip} value={zip}>{zip}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div>
-                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                            SOLD DATE FILTER
-                                        </label>
-                                        <div className="space-y-4">
-                                            <div className="flex justify-between text-[10px] font-bold text-gray-500 uppercase">
-                                                <span>3 Mo</span>
-                                                <span>6 Mo</span>
-                                                <span>1 Yr</span>
-                                                <span>2 Yr</span>
-                                                <span>All</span>
-                                            </div>
-                                            <Slider
-                                                value={[soldDateFilter === null ? 100 : (
-                                                    soldDateFilter <= 3 ? 0 : 
-                                                    soldDateFilter <= 6 ? 25 : 
-                                                    soldDateFilter <= 12 ? 50 : 
-                                                    soldDateFilter <= 24 ? 75 : 100
-                                                )]}
-                                                onValueChange={([v]) => {
-                                                    if (v === 0) setSoldDateFilter(3);
-                                                    else if (v === 25) setSoldDateFilter(6);
-                                                    else if (v === 50) setSoldDateFilter(12);
-                                                    else if (v === 75) setSoldDateFilter(24);
-                                                    else setSoldDateFilter(null);
-                                                }}
-                                                min={0}
-                                                max={100}
-                                                step={25}
-                                                className="w-full"
-                                            />
-                                            <p className="text-center text-xs font-bold text-yellow-500">
-                                                {soldDateFilter ? `Sold within last ${soldDateFilter} months` : 'Showing All Sales History'}
-                                            </p>
-                                        </div>
-                                    </div>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                        FILTER BY REP
+                                    </label>
+                                    <select
+                                        value={repFilter}
+                                        onChange={(e) => setRepFilter(e.target.value)}
+                                        className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
+                                    >
+                                        <option value="all">All Reps</option>
+                                        {uniqueReps.map(rep => (
+                                            <option key={rep} value={rep}>{rep}</option>
+                                        ))}
+                                    </select>
                                 </div>
-                            )}
 
-                            {/* --- GENERATE MODE CONTROLS --- */}
-                            {mode === 'generate' && (
-                                <>
-                                    <div>
-                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                            STARTING LOCATION
-                                        </label>
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                placeholder="Enter start address..."
-                                                value={startAddressInput}
-                                                onChange={(e) => setStartAddressInput(e.target.value)}
-                                                className="flex-1 px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
-                                            />
-                                            <Button
-                                                onClick={() => {
-                                                    if (mapRef.current) {
-                                                        const c = mapRef.current.getCenter();
-                                                        setStartLocation({ lat: c.lat, lng: c.lng, address: startAddressInput || "Map Center" });
-                                                    }
-                                                }}
-                                                size="icon"
-                                                className="bg-[#1F1F1F] hover:bg-[#333]"
-                                            >
-                                                <MapPin className="w-4 h-4" />
-                                            </Button>
-                                        </div>
-                                        {startLocation ? (
-                                            <div className="flex justify-between items-center mt-1">
-                                                <p className="text-[10px] text-green-500">✓ Set: {startLocation.address}</p>
-                                                <button onClick={() => { setStartLocation(null); setStartAddressInput(""); }} className="text-[10px] text-red-400 hover:text-white">Clear</button>
-                                            </div>
-                                        ) : (
-                                            <p className="text-[10px] text-gray-500 mt-1 italic">Optional (Defaults to map center)</p>
-                                        )}
-                                    </div>
+                                <div>
+                                    <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                        FILTER BY ZIP CODE
+                                    </label>
+                                    <select
+                                        value={analyzeZipFilter}
+                                        onChange={(e) => setAnalyzeZipFilter(e.target.value)}
+                                        className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
+                                    >
+                                        <option value="all">All Zip Codes</option>
+                                        {uniqueZips.map(zip => (
+                                            <option key={zip} value={zip}>{zip}</option>
+                                        ))}
+                                    </select>
+                                </div>
 
-                                    <div>
-                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                            FILTER BY ZIP CODES
-                                        </label>
-                                        <input
-                                                type="text"
-                                                placeholder="e.g. 90210, 90001 (Optional)"
-                                                value={zipCodeFilter}
-                                                onChange={(e) => setZipCodeFilter(e.target.value)}
-                                                className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333]"
-                                            />
-                                            <div className="flex justify-between items-center mt-1">
-                                                <p className="text-[10px] text-gray-500">
-                                                    Separate multiple zips with commas.
-                                                </p>
-                                                {zipCodeFilter.length === 5 && (
-                                                    <div className="flex gap-3">
-                                                        <button 
-                                                            onClick={async () => {
-                                                                if (!confirm(`Force sync properties for ${zipCodeFilter} from database?`)) return;
-                                                                try {
-                                                                    const toastId = toast.loading("Syncing...");
-                                                                    const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zipCodeFilter, force_sync: true });
-                                                                    if (res.data.count > 0) {
-                                                                        toast.success(`Synced ${res.data.count} new properties!`, { id: toastId });
-                                                                        window.location.reload(); // Simple reload to fetch new props
-                                                                    } else {
-                                                                        toast.info(res.data.message || "Up to date", { id: toastId });
-                                                                    }
-                                                                } catch (e) {
-                                                                    toast.error("Sync failed", { id: toastId });
-                                                                }
-                                                            }}
-                                                            className="text-[10px] font-bold text-blue-400 hover:text-blue-300 flex items-center gap-1"
-                                                        >
-                                                            <RefreshCw className="w-3 h-3" /> Force Sync
-                                                        </button>
-                                                        <button 
-                                                            onClick={async () => {
-                                                                if (!confirm(`DANGER: Are you sure you want to DELETE ALL properties in zip ${zipCodeFilter}? This cannot be undone.`)) return;
-                                                                try {
-                                                                    const toastId = toast.loading("Deleting area data...");
-                                                                    const res = await base44.functions.invoke('cleanupDatabase', { action: 'cleanup', zip_code: zipCodeFilter });
-                                                                    toast.success(`Deleted ${res.data.deleted} properties in ${zipCodeFilter}`, { id: toastId });
-                                                                    setTimeout(() => window.location.reload(), 1500);
-                                                                } catch (e) {
-                                                                    toast.error("Deletion failed", { id: toastId });
-                                                                }
-                                                            }}
-                                                            className="text-[10px] font-bold text-red-500 hover:text-red-400 flex items-center gap-1"
-                                                        >
-                                                            <X className="w-3 h-3" /> Clear Area
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
+                                <div>
+                                    <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                        SOLD DATE FILTER
+                                    </label>
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between text-[10px] font-bold text-gray-500 uppercase">
+                                            <span>3 Mo</span>
+                                            <span>6 Mo</span>
+                                            <span>1 Yr</span>
+                                            <span>2 Yr</span>
+                                            <span>All</span>
                                         </div>
-
-                                    <div>
-                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                            HOUSES PER ROUTE
-                                        </label>
-                                        <div className="flex gap-2">
-                                            {ROUTE_SIZE_OPTIONS.map(size => (
-                                                <button
-                                                    key={size}
-                                                    onClick={() => setHousesPerRoute(size)}
-                                                    className="flex-1 py-3 rounded-lg text-sm font-bold tracking-wide transition-all"
-                                                    style={{
-                                                        background: housesPerRoute === size ? BRAND.gold : BRAND.charcoal,
-                                                        color: housesPerRoute === size ? BRAND.voidBlack : BRAND.offWhite
-                                                    }}
-                                                >
-                                                    {size}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Advanced Logic Toggles */}
-                                    <div className="bg-[#151515] p-3 rounded-lg space-y-3 border border-[#333]">
-                                        <p className="text-[10px] font-bold text-gray-500 uppercase">ADVANCED OPTIMIZATION</p>
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-xs text-gray-300">Minimize Turns (Straighter Paths)</span>
-                                            <input type="checkbox" className="accent-yellow-500" defaultChecked />
-                                        </div>
-                                        <div className="flex items-center justify-between opacity-50">
-                                            <span className="text-xs text-gray-300">School Zone Avoidance (Time)</span>
-                                            <input type="checkbox" className="accent-yellow-500" disabled />
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                            MAX DISTANCE: {maxRouteDistance} MILES
-                                        </label>
                                         <Slider
-                                            value={[maxRouteDistance]}
-                                            onValueChange={([v]) => setMaxRouteDistance(v)}
-                                            min={1}
-                                            max={50}
-                                            step={1}
-                                            className="w-full"
-                                        />
-                                        <p className="text-[10px] text-gray-500 mt-1">Routes will be truncated if they exceed this limit.</p>
-                                    </div>
-
-                                    {/* Route Templates */}
-                                    <div className="bg-[#151515] p-3 rounded-lg border border-[#333] space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <p className="text-[10px] font-bold text-gray-500 uppercase">ROUTE TEMPLATES</p>
-                                            {routeTemplates.length > 0 && (
-                                                <select 
-                                                    className="bg-black text-[10px] text-white border border-gray-700 rounded px-2 py-1 max-w-[120px]"
-                                                    onChange={(e) => {
-                                                        const t = routeTemplates.find(t => t.id === e.target.value);
-                                                        if (t) loadTemplate(t);
-                                                    }}
-                                                    value=""
-                                                >
-                                                    <option value="" disabled>Load Template...</option>
-                                                    {routeTemplates.map(t => (
-                                                        <option key={t.id} value={t.id}>{t.name}</option>
-                                                    ))}
-                                                </select>
-                                            )}
-                                        </div>
-                                        <div className="flex gap-2">
-                                            <input 
-                                                className="flex-1 bg-black border border-gray-700 rounded px-2 text-xs text-white"
-                                                placeholder="Template Name"
-                                                value={templateName}
-                                                onChange={(e) => setTemplateName(e.target.value)}
-                                            />
-                                            <button 
-                                                onClick={() => {
-                                                    if (!templateName) return toast.error("Enter name");
-                                                    saveTemplateMutation.mutate({
-                                                        name: templateName,
-                                                        config: {
-                                                            houses_per_route: housesPerRoute,
-                                                            max_distance: maxRouteDistance,
-                                                            min_score: minScore,
-                                                            street_cooldown_days: streetCooldownDays,
-                                                            zip_code_filter: zipCodeFilter,
-                                                            start_location: startLocation
-                                                        },
-                                                        created_by: user?.email
-                                                    });
-                                                }}
-                                                className="bg-[#333] hover:bg-[#444] text-white text-[10px] font-bold px-3 py-1 rounded"
-                                            >
-                                                SAVE
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex gap-2">
-                                        <Button
-                                            onClick={generateRoutes}
-                                            disabled={routesGenerating}
-                                            className="flex-1 h-12 font-bold tracking-wide"
-                                            style={{ background: BRAND.gold, color: BRAND.voidBlack }}
-                                        >
-                                            {routesGenerating ? (
-                                                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> BUILDING...</>
-                                            ) : (
-                                                <><Navigation className="w-4 h-4 mr-2" /> GENERATE NEW</>
-                                            )}
-                                        </Button>
-                                        <Button
-                                            onClick={() => {
-                                                if(confirm("Reset all generated routes and clear temporary data?")) {
-                                                    setRoutes([]);
-                                                    setFetchedProperties([]);
-                                                    toast.success("Builder reset");
-                                                }
+                                            value={[soldDateFilter === null ? 100 : (
+                                                soldDateFilter <= 3 ? 0 : 
+                                                soldDateFilter <= 6 ? 25 : 
+                                                soldDateFilter <= 12 ? 50 : 
+                                                soldDateFilter <= 24 ? 75 : 100
+                                            )]}
+                                            onValueChange={([v]) => {
+                                                if (v === 0) setSoldDateFilter(3);
+                                                else if (v === 25) setSoldDateFilter(6);
+                                                else if (v === 50) setSoldDateFilter(12);
+                                                else if (v === 75) setSoldDateFilter(24);
+                                                else setSoldDateFilter(null);
                                             }}
-                                            size="icon"
-                                            className="h-12 w-12 bg-red-900/20 text-red-500 border border-red-900/50 hover:bg-red-900/40"
-                                            title="Reset Builder"
-                                        >
-                                            <RefreshCw className="w-5 h-5" />
-                                        </Button>
-                                    </div>
-
-                                    <div>
-                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                            MIN SCORE: {minScore}
-                                        </label>
-                                        <Slider
-                                            value={[minScore]}
-                                            onValueChange={([v]) => setMinScore(v)}
                                             min={0}
-                                            max={200}
-                                            step={10}
+                                            max={100}
+                                            step={25}
                                             className="w-full"
                                         />
+                                        <p className="text-center text-xs font-bold text-yellow-500">
+                                            {soldDateFilter ? `Sold within last ${soldDateFilter} months` : 'Showing All Sales History'}
+                                        </p>
                                     </div>
-
-                                    <div>
-                                        <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                            STREET COOLDOWN: {streetCooldownDays} DAYS
-                                        </label>
-                                        <Slider
-                                            value={[streetCooldownDays]}
-                                            onValueChange={([v]) => setStreetCooldownDays(v)}
-                                            min={7}
-                                            max={90}
-                                            step={7}
-                                            className="w-full"
-                                        />
-                                    </div>
-                                </>
-                            )}
-
-                            <div>
-                                <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                    <Filter className="w-3 h-3 inline mr-1" /> SORT BY
-                                </label>
-                                <div className="flex gap-2">
-                                    {[{ id: 'score', label: 'SCORE' }, { id: 'houses', label: 'HOUSES' }, { id: 'distance', label: 'DISTANCE' }].map(opt => (
-                                        <button
-                                            key={opt.id}
-                                            onClick={() => setSortBy(opt.id)}
-                                            className="px-3 py-2 rounded-lg text-xs font-bold tracking-wide transition-all"
-                                            style={{
-                                                background: sortBy === opt.id ? BRAND.gold : BRAND.charcoal,
-                                                color: sortBy === opt.id ? BRAND.voidBlack : BRAND.offWhite
-                                            }}
-                                        >
-                                            {opt.label}
-                                        </button>
-                                    ))}
                                 </div>
-                            </div>
 
-                            <div className="mt-6">
-                                <h3 className="text-xs font-bold tracking-wide mb-3" style={{ color: BRAND.gold }}>
-                                    TOP ROUTES ({filteredRoutes.length})
-                                </h3>
-                                <div className="space-y-2">
-                                    {filteredRoutes.slice(0, 20).map((route, idx) => (
-                                        <div
-                                            key={route.id}
-                                            className="p-3 rounded-lg flex items-center justify-between cursor-pointer transition-all hover:opacity-80"
-                                            style={{ background: BRAND.charcoal, borderLeft: `3px solid ${ROUTE_COLORS[idx % ROUTE_COLORS.length]}` }}
-                                            onClick={() => { setActiveRoute(route); setShowCompare(false); }}
-                                        >
-                                            <div>
-                                                <p className="font-bold text-sm" style={{ color: BRAND.offWhite }}>{route.name}</p>
-                                                <p className="text-xs" style={{ color: '#888' }}>{route.houseCount} • {route.totalDistance}mi</p>
-                                            </div>
-                                            <div className="text-right">
-                                                <p className="font-bold text-lg" style={{ color: BRAND.gold }}>{route.competitivenessScore}</p>
-                                                <p className="text-xs" style={{ color: '#888' }}>score</p>
-                                            </div>
-                                        </div>
-                                    ))}
+                                <div>
+                                    <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
+                                        <Filter className="w-3 h-3 inline mr-1" /> SORT BY
+                                    </label>
+                                    <div className="flex gap-2">
+                                        {[{ id: 'score', label: 'SCORE' }, { id: 'houses', label: 'HOUSES' }, { id: 'distance', label: 'DISTANCE' }].map(opt => (
+                                            <button
+                                                key={opt.id}
+                                                onClick={() => setSortBy(opt.id)}
+                                                className="px-3 py-2 rounded-lg text-xs font-bold tracking-wide transition-all"
+                                                style={{
+                                                    background: sortBy === opt.id ? BRAND.gold : BRAND.charcoal,
+                                                    color: sortBy === opt.id ? BRAND.voidBlack : BRAND.offWhite
+                                                }}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Route Builder Settings - GENERATE MODE */}
+            {showCompare && mode === 'generate' && (
+                <RouteBuilderSettings
+                    housesPerRoute={housesPerRoute} setHousesPerRoute={setHousesPerRoute}
+                    maxRouteDistance={maxRouteDistance} setMaxRouteDistance={setMaxRouteDistance}
+                    streetCooldownDays={streetCooldownDays} setStreetCooldownDays={setStreetCooldownDays}
+                    minScore={minScore} setMinScore={setMinScore}
+                    zipCodeFilter={zipCodeFilter} setZipCodeFilter={setZipCodeFilter}
+                    startLocation={startLocation} setStartLocation={setStartLocation}
+                    startAddressInput={startAddressInput} setStartAddressInput={setStartAddressInput}
+                    sortBy={sortBy} setSortBy={setSortBy}
+                    soldDateFilter={soldDateFilter} setSoldDateFilter={setSoldDateFilter}
+                    routeConfig={routeConfig} setRouteConfig={setRouteConfig}
+                    onGenerate={generateRoutes} routesGenerating={routesGenerating}
+                    onReset={() => {
+                        if(confirm("Reset all generated routes?")) {
+                            setRoutes([]);
+                            setFetchedProperties([]);
+                            toast.success("Builder reset");
+                        }
+                    }}
+                    mapRef={mapRef}
+                    routeTemplates={routeTemplates}
+                    templateName={templateName} setTemplateName={setTemplateName}
+                    onSaveTemplate={() => {
+                        if (!templateName) return toast.error("Enter name");
+                        saveTemplateMutation.mutate({
+                            name: templateName,
+                            config: {
+                                houses_per_route: housesPerRoute,
+                                max_distance: maxRouteDistance,
+                                min_score: minScore,
+                                street_cooldown_days: streetCooldownDays,
+                                zip_code_filter: zipCodeFilter,
+                                start_location: startLocation,
+                                ...routeConfig
+                            },
+                            created_by: user?.email
+                        });
+                    }}
+                    onLoadTemplate={loadTemplate}
+                    filteredRoutes={filteredRoutes}
+                    onSelectRoute={(route) => { setActiveRoute(route); setShowCompare(false); }}
+                    onClose={() => setShowCompare(false)}
+                    onForceSync={async () => {
+                        if (!confirm(`Force sync properties for ${zipCodeFilter}?`)) return;
+                        const toastId = toast.loading("Syncing...");
+                        try {
+                            const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zipCodeFilter, force_sync: true });
+                            if (res.data.count > 0) {
+                                toast.success(`Synced ${res.data.count} new properties!`, { id: toastId });
+                                window.location.reload();
+                            } else {
+                                toast.info(res.data.message || "Up to date", { id: toastId });
+                            }
+                        } catch (e) { toast.error("Sync failed", { id: toastId }); }
+                    }}
+                    onClearArea={async () => {
+                        if (!confirm(`DELETE ALL properties in zip ${zipCodeFilter}?`)) return;
+                        const toastId = toast.loading("Deleting...");
+                        try {
+                            const res = await base44.functions.invoke('cleanupDatabase', { action: 'cleanup', zip_code: zipCodeFilter });
+                            toast.success(`Deleted ${res.data.deleted} properties`, { id: toastId });
+                            setTimeout(() => window.location.reload(), 1500);
+                        } catch (e) { toast.error("Failed", { id: toastId }); }
+                    }}
+                    user={user}
+                />
             )}
 
             {/* GPS HUD Overlay */}
