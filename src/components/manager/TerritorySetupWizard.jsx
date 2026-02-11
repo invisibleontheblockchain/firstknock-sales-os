@@ -12,7 +12,8 @@ import {
     Sparkles, 
     Loader2,
     Save,
-    Map as MapIcon
+    Map as MapIcon,
+    AlertCircle
 } from 'lucide-react';
 import { toast } from "sonner";
 import { generateOptimizedRoutes } from '../logic/routeOptimizer';
