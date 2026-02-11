@@ -213,18 +213,30 @@ export default function RepHome() {
         queryKey: ['routeLogs', activeRoute?.id],
         queryFn: async () => {
             if (activeRoute?.property_hashes?.length > 0) {
-                // Fetch logs for the properties in this route (regardless of who created them)
                 return await base44.entities.InteractionLog.filter({ 
                     address_hash: activeRoute.property_hashes 
                 }, '-created_date', 1000);
             }
-            // Fallback if no active route properties (shouldn't happen often in this view)
             if (user?.email) {
                 return await base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 500);
             }
             return [];
         },
         enabled: !!activeRoute || !!user
+    });
+
+    // Fetch ALL logs for a selected property (for full history view - any rep, any time)
+    const { data: selectedPropertyLogs = [] } = useQuery({
+        queryKey: ['propertyHistory', selectedProperty?.address_hash],
+        queryFn: async () => {
+            if (!selectedProperty?.address_hash) return [];
+            const res = await base44.entities.InteractionLog.filter(
+                { address_hash: selectedProperty.address_hash },
+                '-created_date', 100
+            );
+            return Array.isArray(res) ? res : (res?.items || []);
+        },
+        enabled: !!selectedProperty?.address_hash
     });
 
     // Log Result Mutation
