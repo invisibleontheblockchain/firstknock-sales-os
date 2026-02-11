@@ -88,24 +88,34 @@ export default function RepHome() {
         enabled: !!user?.email
     });
 
-    // 1. Fetch Assigned Routes
+    // 1. Fetch Assigned Routes - scoped to rep's team (manager_id)
     const { data: routes = [], isLoading: routesLoading } = useQuery({
-        queryKey: ['myRoutes', user?.id, teamMember?.id],
+        queryKey: ['myRoutes', user?.id, teamMember?.id, teamMember?.manager_id],
         queryFn: async () => {
             if (!user) return [];
             try {
-                // Fetch all active routes and filter for this user
-                // (In a real backend we'd filter by assigned_to in the query)
-                const res = await base44.entities.SavedRoute.list('-created_date', 50);
-                const allRoutes = Array.isArray(res) ? res : (res?.items || []);
+                let allRoutes = [];
                 
-                // Filter for routes assigned to me (by Team ID) OR created by me if I'm a rep
+                // If we know the rep's manager, fetch only that manager's routes
+                if (teamMember?.manager_id) {
+                    const res = await base44.entities.SavedRoute.filter(
+                        { manager_id: teamMember.manager_id }, 
+                        '-created_date', 200
+                    );
+                    allRoutes = Array.isArray(res) ? res : (res?.items || []);
+                } else {
+                    // Fallback: fetch all and filter client-side
+                    const res = await base44.entities.SavedRoute.list('-created_date', 200);
+                    allRoutes = Array.isArray(res) ? res : (res?.items || []);
+                }
+                
+                // Filter for routes assigned to THIS rep specifically
                 const myRoutes = allRoutes.filter(r => 
                     (teamMember && r.assigned_to === teamMember.id) || // Match TeamMember ID (Primary)
-                    r.assigned_to === user.id || // Match Auth ID (Fallback)
-                    r.assigned_to_name === user.email || // Match Email (Legacy)
-                    (r.status === 'ACTIVE' && r.created_by === user.email) // Creator
+                    r.assigned_to === user.id // Match Auth ID (Fallback)
                 );
+                
+                console.log(`[RepHome] Found ${myRoutes.length} routes assigned to me out of ${allRoutes.length} total (manager: ${teamMember?.manager_id || 'unknown'})`);
                 
                 // Cache routes for offline
                 if (myRoutes.length > 0) {
@@ -114,7 +124,6 @@ export default function RepHome() {
                 return myRoutes;
             } catch (e) {
                 console.error("Error fetching routes", e);
-                // Try fallback
                 const cached = await localforage.getItem('cached_routes');
                 return cached || [];
             }
