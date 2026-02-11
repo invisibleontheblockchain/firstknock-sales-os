@@ -312,6 +312,20 @@ export default function Home() {
     const [navigationApp, setNavigationApp] = useState('apple');
     const [pinSize, setPinSize] = useState(5);
     const [showRouteLines, setShowRouteLines] = useState(false);
+    const [mapSettings, setMapSettings] = useState({
+        pinShape: 'circle',
+        colorScheme: 'default',
+        lineStyle: 'dashed',
+        lineWidth: 2,
+        lineOpacity: 0.5,
+        pinOpacity: 0.85,
+        pinBorderWidth: 1,
+        pinBorderColor: '#000',
+        showLabels: false,
+        labelType: 'number',
+        glowEffect: false,
+        fillStyle: 'solid',
+    });
     const [darkRoomProperties, setDarkRoomProperties] = useState([]);
     const [darkRoomClusters, setDarkRoomClusters] = useState([]);
     const [darkRoomCount, setDarkRoomCount] = useState(0);
