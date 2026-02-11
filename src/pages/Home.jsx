@@ -33,6 +33,7 @@ import KnockTimeBanner from '../components/timing/KnockTimeBanner';
 import { darkRoom, DarkRoomClient } from '@/components/logic/neonClient';
 import CommandCenterDashboard from '../components/dashboard/CommandCenterDashboard';
 import MapSettingsPanel from '../components/map/MapSettingsPanel';
+import RouteBuilderSettings from '../components/map/RouteBuilderSettings';
 import TerritorySetupWizard from '../components/manager/TerritorySetupWizard';
 import { LayoutDashboard, Settings, Crosshair } from 'lucide-react';
 import { openInMaps } from '../components/logic/navigation';
