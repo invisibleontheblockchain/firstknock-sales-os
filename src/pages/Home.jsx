@@ -2023,6 +2023,8 @@ export default function Home() {
                                       setPinSize={setPinSize}
                                       showRouteLines={showRouteLines}
                                       setShowRouteLines={setShowRouteLines}
+                                      mapSettings={mapSettings}
+                                      setMapSettings={setMapSettings}
                                   />
                               )}
 
