@@ -847,18 +847,7 @@ export default function RepHome() {
                                 </div>
                             </div>
 
-                            {/* Map Preview / Link */}
-                            <a 
-                                href={`https://maps.apple.com/?q=${selectedProperty.lat},${selectedProperty.lng}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="block w-full h-32 bg-gray-800 rounded-xl flex items-center justify-center border border-gray-700 hover:border-yellow-500 transition-colors"
-                            >
-                                <div className="text-center">
-                                    <Navigation className="w-8 h-8 text-yellow-500 mx-auto mb-2" />
-                                    <p className="font-bold text-sm">Open in Maps</p>
-                                </div>
-                            </a>
+
                         </div>
                     </ScrollArea>
                 </div>
