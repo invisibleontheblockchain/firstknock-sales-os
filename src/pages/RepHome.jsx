@@ -479,6 +479,19 @@ export default function RepHome() {
                         >
                             <MapPin className="w-3 h-3 mr-0.5" /> MAP
                         </Badge>
+                        <Badge 
+                            variant="outline" 
+                            className="cursor-pointer hover:bg-green-500 hover:text-white border-green-500/50 text-green-400 text-[9px] h-5 px-1.5"
+                            onClick={() => {
+                                if (routeProperties.length > 0) {
+                                    const first = routeProperties[0];
+                                    const waypoints = routeProperties.slice(0, 25).map(p => `${p.lat},${p.lng}`).join('/');
+                                    window.open(`https://maps.apple.com/?daddr=${first.lat},${first.lng}&dirflg=w`, '_blank');
+                                }
+                            }}
+                        >
+                            <Navigation className="w-3 h-3 mr-0.5" /> NAVIGATE
+                        </Badge>
                             {routes.length > 1 && (
                                 <Badge 
                                     variant="outline" 
