@@ -60,23 +60,59 @@ export default function MapSettingsPanel({
 
                 <div className="p-5 space-y-6 overflow-y-auto h-[calc(100%-70px)]">
                     
-                    {/* Status Visibility Filters (Moved from Map) */}
+                    {/* Map Display Options */}
                     <div>
                         <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
                             MAP DISPLAY
                         </label>
-                        <div className="flex gap-2 mb-4">
+                        
+                        {/* Pin Toggle */}
+                        <div className="grid grid-cols-2 gap-2 mb-4">
                             <button
                                 onClick={() => setShowRouteDetails(!showRouteDetails)}
-                                className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all border ${
+                                className={`py-2 rounded-lg text-xs font-bold transition-all border ${
                                     showRouteDetails
                                         ? 'bg-yellow-500 text-black border-yellow-500'
                                         : 'bg-[#1A1A1A] text-gray-400 border-gray-800'
                                 }`}
                             >
-                                {showRouteDetails ? 'SHOWING PINS' : 'SHOWING RANK'}
+                                {showRouteDetails ? 'PINS ON' : 'PINS OFF'}
                             </button>
+                            {setShowRouteLines && (
+                                <button
+                                    onClick={() => setShowRouteLines(!showRouteLines)}
+                                    className={`py-2 rounded-lg text-xs font-bold transition-all border flex items-center justify-center gap-1 ${
+                                        showRouteLines
+                                            ? 'bg-yellow-500 text-black border-yellow-500'
+                                            : 'bg-[#1A1A1A] text-gray-400 border-gray-800'
+                                    }`}
+                                >
+                                    <GitBranch className="w-3 h-3" />
+                                    {showRouteLines ? 'LINES ON' : 'LINES OFF'}
+                                </button>
+                            )}
                         </div>
+                        
+                        {/* Pin Size */}
+                        {setPinSize && (
+                            <div className="mb-4">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-[10px] font-bold text-gray-500 uppercase">Pin Size</span>
+                                    <span className="text-[10px] text-yellow-500 font-bold">{pinSize}px</span>
+                                </div>
+                                <Slider
+                                    value={[pinSize]}
+                                    onValueChange={([v]) => setPinSize(v)}
+                                    min={2}
+                                    max={12}
+                                    step={1}
+                                    className="w-full"
+                                />
+                                <div className="flex justify-between text-[8px] text-gray-600 mt-1">
+                                    <span>Tiny</span><span>Default</span><span>Large</span>
+                                </div>
+                            </div>
+                        )}
 
                         <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
                             STATUS VISIBILITY
