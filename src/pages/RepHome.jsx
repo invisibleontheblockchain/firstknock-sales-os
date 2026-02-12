@@ -245,6 +245,17 @@ export default function RepHome() {
         enabled: !!activeRoute || !!user
     });
 
+    // Fetch ALL logs by this rep for analytics
+    const { data: allMyLogs = [] } = useQuery({
+        queryKey: ['allMyLogs', user?.email],
+        queryFn: async () => {
+            if (!user?.email) return [];
+            const res = await base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 2000);
+            return Array.isArray(res) ? res : (res?.items || []);
+        },
+        enabled: !!user?.email
+    });
+
     // Fetch ALL logs for a selected property (for full history view - any rep, any time)
     const { data: selectedPropertyLogs = [] } = useQuery({
         queryKey: ['propertyHistory', selectedProperty?.address_hash],
