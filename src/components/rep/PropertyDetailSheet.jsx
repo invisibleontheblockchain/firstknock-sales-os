@@ -162,8 +162,8 @@ export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUplo
                         </div>
                     )}
 
-                    {/* History */}
-                    {logs.length > 0 && (
+                    {/* History - all past visits across any rep/route */}
+                    {logs?.length > 0 && (
                         <div className="space-y-2">
                             <p className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">History</p>
                             <PropertyHistory logs={logs} />
