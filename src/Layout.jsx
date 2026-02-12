@@ -293,7 +293,7 @@ export default function Layout({ children }) {
             {/* Bottom Navigation - Different for Rep vs Manager */}
             <nav className="bg-black border-t border-slate-800 z-20 safe-area-bottom shrink-0">
                 {user.app_role === 'rep' ? (
-                    // Rep Navigation - Simple
+                    // Rep Navigation
                     <div className="flex justify-around items-center h-16 max-w-full mx-auto">
                         <NavItem
                             icon={Map}
