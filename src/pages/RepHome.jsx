@@ -109,10 +109,14 @@ export default function RepHome() {
                 // Also match by assigned_to_name as a fallback (case-insensitive)
                 const myName = (user.full_name || '').trim().toLowerCase();
                 const myEmail = (user.email || '').trim().toLowerCase();
+                const isManager = user.app_role === 'manager';
                 
                 const myRoutes = allRoutes.filter(r => {
                     // Match by any known ID
                     if (r.assigned_to && myIds.has(r.assigned_to)) return true;
+                    
+                    // Manager in Rep Mode: also show routes they own (created as manager)
+                    if (isManager && r.manager_id === user.id) return true;
                     
                     // Fallback: match by assigned_to_name (handles cases where assignment was by old/different ID)
                     if (r.assigned_to_name && myName) {
