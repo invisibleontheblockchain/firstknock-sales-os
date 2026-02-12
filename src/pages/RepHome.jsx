@@ -122,40 +122,62 @@ export default function RepHome() {
     const teamMember = teamMemberData?.primary || null;
     const allTeamMemberIds = teamMemberData?.allIds || [];
 
-    // 1. Fetch Assigned Routes - scoped to rep's team (manager_id)
+    // 1. Fetch Assigned Routes - search across ALL possible team member IDs for this rep
     const { data: routes = [], isLoading: routesLoading } = useQuery({
-        queryKey: ['myRoutes', user?.id, teamMember?.id, teamMember?.manager_id],
+        queryKey: ['myRoutes', user?.id, allTeamMemberIds.join(',')],
         queryFn: async () => {
             if (!user) return [];
             try {
-                let allRoutes = [];
+                // Fetch ALL routes (we need to match against multiple possible IDs)
+                const res = await base44.entities.SavedRoute.list('-created_date', 500);
+                const allRoutes = Array.isArray(res) ? res : (res?.items || []);
                 
-                // If we know the rep's manager, fetch only that manager's routes
-                if (teamMember?.manager_id) {
-                    const res = await base44.entities.SavedRoute.filter(
-                        { manager_id: teamMember.manager_id }, 
-                        '-created_date', 200
-                    );
-                    allRoutes = Array.isArray(res) ? res : (res?.items || []);
-                } else {
-                    // Fallback: fetch all and filter client-side
-                    const res = await base44.entities.SavedRoute.list('-created_date', 200);
-                    allRoutes = Array.isArray(res) ? res : (res?.items || []);
-                }
+                // Build a set of all IDs this rep could be assigned under
+                const myIds = new Set([
+                    user.id,                            // Auth user ID (manager may have assigned to this)
+                    ...(allTeamMemberIds || []),         // All TeamMember record IDs (from different invite codes)
+                ]);
                 
-                // Filter for routes assigned to THIS rep specifically
-                const myRoutes = allRoutes.filter(r => 
-                    (teamMember && r.assigned_to === teamMember.id) || // Match TeamMember ID (Primary)
-                    r.assigned_to === user.id // Match Auth ID (Fallback)
+                // Also match by assigned_to_name as a fallback (case-insensitive)
+                const myName = (user.full_name || '').trim().toLowerCase();
+                const myEmail = (user.email || '').trim().toLowerCase();
+                
+                const myRoutes = allRoutes.filter(r => {
+                    // Match by any known ID
+                    if (r.assigned_to && myIds.has(r.assigned_to)) return true;
+                    
+                    // Fallback: match by assigned_to_name (handles cases where assignment was by old/different ID)
+                    if (r.assigned_to_name && myName) {
+                        const routeName = r.assigned_to_name.trim().toLowerCase();
+                        if (routeName === myName) return true;
+                        // Also check partial name match for "Charles Henson" vs "Charlie Henson" etc.
+                        const routeNameParts = routeName.split(' ');
+                        const myNameParts = myName.split(' ');
+                        if (routeNameParts.length > 1 && myNameParts.length > 1) {
+                            // Match last name + first 3 chars of first name
+                            const lastMatch = routeNameParts[routeNameParts.length-1] === myNameParts[myNameParts.length-1];
+                            const firstPartial = routeNameParts[0].slice(0,3) === myNameParts[0].slice(0,3) || 
+                                                 myNameParts[0].startsWith(routeNameParts[0]) || 
+                                                 routeNameParts[0].startsWith(myNameParts[0]);
+                            if (lastMatch && firstPartial) return true;
+                        }
+                    }
+                    
+                    return false;
+                });
+                
+                // Filter to only non-completed, non-archived routes
+                const activeRoutes = myRoutes.filter(r => 
+                    r.status !== 'COMPLETED' && r.status !== 'ARCHIVED'
                 );
                 
-                console.log(`[RepHome] Found ${myRoutes.length} routes assigned to me out of ${allRoutes.length} total (manager: ${teamMember?.manager_id || 'unknown'})`);
+                console.log(`[RepHome] Found ${activeRoutes.length} active routes (${myRoutes.length} total) for IDs: [${[...myIds].join(', ')}], name: "${myName}"`);
                 
                 // Cache routes for offline
-                if (myRoutes.length > 0) {
-                    localforage.setItem('cached_routes', myRoutes);
+                if (activeRoutes.length > 0) {
+                    localforage.setItem('cached_routes', activeRoutes);
                 }
-                return myRoutes;
+                return activeRoutes.length > 0 ? activeRoutes : myRoutes;
             } catch (e) {
                 console.error("Error fetching routes", e);
                 const cached = await localforage.getItem('cached_routes');
