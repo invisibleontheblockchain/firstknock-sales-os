@@ -18,6 +18,18 @@ export default function RoleSelect() {
     const [showRepCodeDialog, setShowRepCodeDialog] = useState(false);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
+    // Check if user already has a TeamMember record (already on a team)
+    const { data: existingTeamMember } = useQuery({
+        queryKey: ['existingTeamMember', user?.email],
+        queryFn: async () => {
+            if (!user?.email) return null;
+            const res = await base44.entities.TeamMember.list('-created_date', 500);
+            const members = Array.isArray(res) ? res : (res?.items || []);
+            return members.find(m => m.email?.trim().toLowerCase() === user.email.trim().toLowerCase()) || null;
+        },
+        enabled: !!user?.email
+    });
+
     const updateUserMutation = useMutation({
         mutationFn: (data) => base44.auth.updateMe(data),
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['user'] })
@@ -25,6 +37,23 @@ export default function RoleSelect() {
 
     const selectRole = async (role) => {
         if (role === 'rep') {
+            // If user already belongs to a team, skip the code dialog
+            if (existingTeamMember) {
+                setIsLoading(true);
+                try {
+                    await updateUserMutation.mutateAsync({ 
+                        app_role: 'rep',
+                        team_manager_id: existingTeamMember.manager_id || null
+                    });
+                    toast.success(`Welcome back! Joining as rep.`);
+                    navigate(createPageUrl('RepHome'));
+                } catch (error) {
+                    console.error(error);
+                    toast.error("Failed to set role");
+                    setIsLoading(false);
+                }
+                return;
+            }
             setShowRepCodeDialog(true);
             return;
         }
