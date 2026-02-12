@@ -7,10 +7,26 @@ import { format } from 'date-fns';
 export default function TeamChat({ user, teamMember, onClose }) {
     const queryClient = useQueryClient();
     const [message, setMessage] = useState('');
+    const [showMembers, setShowMembers] = useState(false);
     const scrollRef = useRef(null);
     
     // Determine channel - use manager_id for team-specific chat
     const channel = teamMember?.manager_id || 'general';
+
+    // Fetch team members in same team
+    const { data: teamMembers = [] } = useQuery({
+        queryKey: ['chatTeamMembers', channel],
+        queryFn: async () => {
+            if (!channel || channel === 'general') return [];
+            const res = await base44.entities.TeamMember.filter(
+                { manager_id: channel },
+                '-created_date',
+                50
+            );
+            return Array.isArray(res) ? res : (res?.items || []);
+        },
+        enabled: !!channel,
+    });
 
     const { data: messages = [], isLoading } = useQuery({
         queryKey: ['teamMessages', channel],
