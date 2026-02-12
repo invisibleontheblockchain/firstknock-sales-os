@@ -1,39 +1,17 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { 
-    Loader2, MapPin, Navigation, CheckCircle2, Circle, Clock, 
-    ChevronRight, Phone, AlertTriangle, User, Home, Calendar, ArrowRight,
-    Search, Filter, X, Camera, WifiOff, History
-} from 'lucide-react';
+import { Loader2, Navigation, CheckCircle2, Search, X } from 'lucide-react';
 import localforage from 'localforage';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { format } from 'date-fns';
 import { optimizeRouteForTime, getKnockWindowLabel } from '@/components/logic/knockTimeOptimizer';
 import { determineEffectiveStatus } from '@/components/logic/territoryLogic';
-import QuickMarkButtons from '@/components/rep/QuickMarkButtons';
-import PropertyHistory from '@/components/rep/PropertyHistory';
 import RepMapView from '@/components/rep/RepMapView';
-
-const BRAND = {
-    voidBlack: '#0A0A0A',
-    gold: '#FFD700',
-    charcoal: '#1F1F1F',
-    offWhite: '#E5E5E5'
-};
-
-const STATUS_CONFIG = {
-    ELIGIBLE: { color: 'bg-gray-500', label: 'Not Visited', icon: Circle },
-    SOLD: { color: 'bg-green-500', label: 'Sold', icon: CheckCircle2 },
-    HARD_NO: { color: 'bg-purple-500', label: 'Hard No', icon: AlertTriangle },
-    CALLBACK: { color: 'bg-yellow-500', label: 'Callback', icon: Clock },
-    NO_ANSWER: { color: 'bg-orange-500', label: 'No Answer', icon: Home },
-};
+import RepHeader from '@/components/rep/RepHeader';
+import PropertyCard from '@/components/rep/PropertyCard';
+import PropertyDetailSheet from '@/components/rep/PropertyDetailSheet';
 
 export default function RepHome() {
     const queryClient = useQueryClient();
