@@ -73,16 +73,44 @@ export default function RepHome() {
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me().catch(() => null) });
 
     // 0. Fetch Team Member Profile (to link Auth User -> Team Member ID)
-    const { data: teamMember } = useQuery({
+    // Also find ALL matching records (by email or name) to handle duplicates from different invite codes
+    const { data: teamMemberData } = useQuery({
         queryKey: ['myTeamMember', user?.email],
         queryFn: async () => {
             if (!user?.email) return null;
             try {
-                // Fetch list and find client-side for robust case-insensitive matching
-                const res = await base44.entities.TeamMember.list('-created_date', 100);
+                const res = await base44.entities.TeamMember.list('-created_date', 500);
                 const members = Array.isArray(res) ? res : (res?.items || []);
-                // Robust match: trim and lowercase
-                return members.find(m => m.email?.trim().toLowerCase() === user.email.trim().toLowerCase()) || null;
+                const emailLower = user.email.trim().toLowerCase();
+                const nameLower = (user.full_name || '').trim().toLowerCase();
+                
+                // Primary: exact email match (could be multiple from different managers)
+                const emailMatches = members.filter(m => m.email?.trim().toLowerCase() === emailLower);
+                
+                // Secondary: also find records where the name matches but email differs
+                // (e.g. manager manually created "Charles Henson" with work email, but rep logs in with personal email)
+                const nameMatches = nameLower ? members.filter(m => {
+                    if (emailMatches.some(em => em.id === m.id)) return false; // skip already matched
+                    const mName = (m.name || '').trim().toLowerCase();
+                    // Match if names are similar (contains or equal)
+                    return mName && (mName === nameLower || nameLower.includes(mName) || mName.includes(nameLower));
+                }) : [];
+                
+                const allMatches = [...emailMatches, ...nameMatches];
+                
+                // The "primary" record is the one whose manager_id matches user.team_manager_id (from invite code),
+                // or the most recently created one
+                const primary = allMatches.find(m => user.team_manager_id && m.manager_id === user.team_manager_id)
+                    || emailMatches[0] 
+                    || allMatches[0] 
+                    || null;
+                
+                // Collect all unique IDs this rep could be known as
+                const allIds = [...new Set(allMatches.map(m => m.id))];
+                
+                console.log(`[RepHome] TeamMember lookup: primary=${primary?.id}, allIds=${allIds.join(',')}, emailMatches=${emailMatches.length}, nameMatches=${nameMatches.length}`);
+                
+                return { primary, allIds, allMatches };
             } catch (e) {
                 console.error("Error fetching team member profile", e);
                 return null;
@@ -90,6 +118,9 @@ export default function RepHome() {
         },
         enabled: !!user?.email
     });
+    
+    const teamMember = teamMemberData?.primary || null;
+    const allTeamMemberIds = teamMemberData?.allIds || [];
 
     // 1. Fetch Assigned Routes - scoped to rep's team (manager_id)
     const { data: routes = [], isLoading: routesLoading } = useQuery({
