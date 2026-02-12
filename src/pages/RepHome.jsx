@@ -16,25 +16,11 @@ import PropertyDetailSheet from '@/components/rep/PropertyDetailSheet';
 export default function RepHome() {
     const queryClient = useQueryClient();
     const [selectedProperty, setSelectedProperty] = useState(null);
-    const [filterStatus, setFilterStatus] = useState('todo'); // 'todo', 'done', 'all'
+    const [filterStatus, setFilterStatus] = useState('todo');
     const [searchQuery, setSearchQuery] = useState('');
     const [uploading, setUploading] = useState(false);
     const [isOffline, setIsOffline] = useState(!navigator.onLine);
-    
-    // Log State
-    const [logNote, setLogNote] = useState('');
-    const [callbackTime, setCallbackTime] = useState('');
-    const [callbackPhone, setCallbackPhone] = useState('');
     const [showMap, setShowMap] = useState(false);
-
-    // Reset log state when opening property
-    React.useEffect(() => {
-        if (selectedProperty) {
-            setLogNote('');
-            setCallbackTime('');
-            setCallbackPhone('');
-        }
-    }, [selectedProperty]);
     
     // Offline Listener
     React.useEffect(() => {
