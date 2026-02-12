@@ -585,6 +585,24 @@ export default function RepHome() {
                     onClose={() => setSelectedProperty(null)}
                 />
             )}
+
+            {/* Analytics */}
+            {showAnalytics && (
+                <RepAnalytics
+                    logs={allMyLogs}
+                    routeProperties={routeProperties}
+                    onClose={() => setShowAnalytics(false)}
+                />
+            )}
+
+            {/* Team Chat */}
+            {showChat && (
+                <TeamChat
+                    user={user}
+                    teamMember={teamMember}
+                    onClose={() => setShowChat(false)}
+                />
+            )}
         </div>
     );
 }
