@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Navigation, CheckCircle2, Search, X } from 'lucide-react';
+import { Loader2, Navigation, CheckCircle2, Search, X, TrendingUp, MessageCircle } from 'lucide-react';
 import localforage from 'localforage';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,8 @@ import RepMapView from '@/components/rep/RepMapView';
 import RepHeader from '@/components/rep/RepHeader';
 import PropertyCard from '@/components/rep/PropertyCard';
 import PropertyDetailSheet from '@/components/rep/PropertyDetailSheet';
+import RepAnalytics from '@/components/rep/RepAnalytics';
+import TeamChat from '@/components/rep/TeamChat';
 
 export default function RepHome() {
     const queryClient = useQueryClient();
