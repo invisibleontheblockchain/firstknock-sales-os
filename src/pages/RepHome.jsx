@@ -371,8 +371,9 @@ export default function RepHome() {
 
     // --- RENDER HELPERS ---
 
-    const handleLog = (status, imageUrl = null) => {
-        if (!selectedProperty) return;
+    const handleLog = (logData) => {
+        if (!selectedProperty && !logData.address_hash) return;
+        const prop = selectedProperty || {};
 
         // Haptic feedback
         if (navigator.vibrate) navigator.vibrate(50);
@@ -381,507 +382,195 @@ export default function RepHome() {
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
                 (position) => {
-                    submitLog(status, position.coords, imageUrl);
+                    createLogMutation.mutate({
+                        ...logData,
+                        gps_proof_lat: position.coords.latitude,
+                        gps_proof_lng: position.coords.longitude,
+                        gps_accuracy: position.coords.accuracy,
+                    });
                 },
-                (error) => {
-                    console.warn("GPS failed, using property location", error);
-                    // Fallback to property location if GPS fails
-                    submitLog(status, { 
-                        latitude: selectedProperty.lat, 
-                        longitude: selectedProperty.lng,
-                        accuracy: 0
-                    }, imageUrl);
+                () => {
+                    createLogMutation.mutate({
+                        ...logData,
+                        gps_proof_lat: prop.lat,
+                        gps_proof_lng: prop.lng,
+                        gps_accuracy: 0
+                    });
                 },
                 { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
             );
         } else {
-            submitLog(status, { 
-                latitude: selectedProperty.lat, 
-                longitude: selectedProperty.lng,
-                accuracy: 0
-            }, imageUrl);
+            createLogMutation.mutate({
+                ...logData,
+                gps_proof_lat: prop.lat,
+                gps_proof_lng: prop.lng,
+                gps_accuracy: 0
+            });
         }
-    };
-
-    const submitLog = (status, coords, imageUrl) => {
-        let noteText = `Marked as ${status}`;
-        if (logNote) noteText += ` | Note: ${logNote}`;
-        if (callbackPhone) noteText += ` | Phone: ${callbackPhone}`;
-        if (callbackTime) noteText += ` | Time: ${callbackTime}`;
-
-        // Calculate next eligible date if callback
-        let nextDate = null;
-        if (status === 'CALLBACK' && callbackTime) {
-            const today = new Date();
-            const [hours, minutes] = callbackTime.split(':');
-            today.setHours(parseInt(hours), parseInt(minutes));
-            nextDate = today.toISOString();
-        }
-
-        createLogMutation.mutate({
-            address_hash: selectedProperty.address_hash,
-            raw_input_text: noteText,
-            parsed_status: status,
-            gps_proof_lat: coords.latitude,
-            gps_proof_lng: coords.longitude,
-            gps_accuracy: coords.accuracy,
-            image_url: imageUrl,
-            next_eligible_date: nextDate
-        });
     };
 
     const handlePhotoUpload = async (e) => {
         const file = e.target.files[0];
-        if (!file) return;
-
+        if (!file || !selectedProperty) return;
         setUploading(true);
         try {
-            // Haptic
             if (navigator.vibrate) navigator.vibrate([50, 50, 50]);
-            
             const { file_url } = await base44.integrations.Core.UploadFile({ file });
-            // Auto-log as visited with photo? Or just attach? 
-            // For now, let's just log it as a generic visit/note or re-log current status if needed.
-            // Actually, usually photo is part of the outcome. 
-            // Let's assume taking a photo is a "Door Knocked" proof.
-            // We'll pass it to the log function.
-            // For this UI, let's just toast it and pass it to the next status click?
-            // Better: Auto-log as "ELIGIBLE" (Proof) or just save state?
-            // Let's immediately log it as a "Callback" or "Interaction" with the photo?
-            // OR: Just store it in state to attach to next button press?
-            // Let's store in a ref or state? No, let's just trigger a log "Note" with photo.
-            // Wait, the requirement is "Camera Integration".
-            // Let's modify handleLog to accept image.
-            
-            // For simplicity in this UI: Taking a photo logs it as "CALLBACK" (common use case) or we can add a specific "PHOTO" action?
-            // Let's add the photo to the next status tap.
-            // Actually, let's just immediately log it with the current effective status or 'CALLBACK' default.
-            
-            // Let's KEEP IT SIMPLE: Button takes photo -> Uploads -> Logs as "Proof of Visit" (CALLBACK)
-            handleLog('CALLBACK', file_url);
-            toast.success("Photo saved!");
-            
+            handleLog({
+                address_hash: selectedProperty.address_hash,
+                raw_input_text: 'Photo proof uploaded',
+                parsed_status: 'CALLBACK',
+                image_url: file_url
+            });
         } catch (error) {
             console.error(error);
-            toast.error("Upload failed");
         } finally {
             setUploading(false);
         }
     };
 
     return (
-        <div className="h-full overflow-y-auto bg-black text-white pb-safe">
-            {/* 1. Header Area */}
-            <div className="sticky top-0 z-30 bg-black/80 backdrop-blur-md border-b border-gray-800 px-4 py-3">
-                <div className="flex justify-between items-center mb-3">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-yellow-500 flex items-center justify-center text-black font-bold text-lg">
-                        {user?.full_name?.[0] || user?.email?.[0] || 'U'}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                        <p className="font-bold leading-none truncate max-w-[120px] sm:max-w-none">{user?.full_name || 'Rep'}</p>
-                        {isOffline ? (
-                            <div className="flex items-center gap-1 text-xs text-red-500 mt-1 font-bold">
-                                <WifiOff className="w-3 h-3" />
-                                OFFLINE MODE
-                            </div>
-                        ) : (
-                            <div className="flex items-center gap-1 text-xs text-green-500 mt-1">
-                                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                                ON DUTY
-                            </div>
-                        )}
-                    </div>
-                </div>
-                    <Badge variant="outline" className="border-yellow-500/50 text-yellow-500">
-                        {knockWindow.emoji} {knockWindow.label}
-                    </Badge>
-                </div>
-                
-                {/* Route Progress Card */}
-                <div className="bg-gray-900 rounded-lg p-3 border border-gray-800">
-                <div className="flex justify-between items-center mb-2">
-                    <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-sm text-gray-200">{activeRoute.name}</h3>
-                        <Badge 
-                            variant="outline" 
-                            className="cursor-pointer hover:bg-blue-500 hover:text-white border-blue-500/50 text-blue-400 text-[9px] h-5 px-1.5"
-                            onClick={() => setShowMap(true)}
+        <div className="h-full flex flex-col bg-black text-white">
+            {/* Compact Header */}
+            <RepHeader 
+                user={user}
+                isOffline={isOffline}
+                activeRoute={activeRoute}
+                stats={stats}
+                knockWindow={knockWindow}
+                routes={routes}
+                onShowMap={() => setShowMap(true)}
+                onShowRouteList={() => setShowRouteList(true)}
+                routeProperties={routeProperties}
+            />
+
+            {/* Filter tabs + search */}
+            <div className="px-4 pt-3 pb-2 space-y-2 bg-black border-b border-gray-800/50">
+                <div className="flex p-0.5 bg-gray-900 rounded-lg">
+                    {[
+                        { id: 'todo', label: `To Do (${routeProperties.length - stats.done})` },
+                        { id: 'done', label: `Done (${stats.done})` },
+                        { id: 'all', label: 'All' },
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setFilterStatus(tab.id)}
+                            className={`flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all ${
+                                filterStatus === tab.id ? 'bg-yellow-500 text-black' : 'text-gray-500'
+                            }`}
                         >
-                            <MapPin className="w-3 h-3 mr-0.5" /> MAP
-                        </Badge>
-                        <Badge 
-                            variant="outline" 
-                            className="cursor-pointer hover:bg-green-500 hover:text-white border-green-500/50 text-green-400 text-[9px] h-5 px-1.5"
-                            onClick={() => {
-                                if (routeProperties.length > 0) {
-                                    const first = routeProperties[0];
-                                    const waypoints = routeProperties.slice(0, 25).map(p => `${p.lat},${p.lng}`).join('/');
-                                    window.open(`https://maps.apple.com/?daddr=${first.lat},${first.lng}&dirflg=w`, '_blank');
-                                }
-                            }}
-                        >
-                            <Navigation className="w-3 h-3 mr-0.5" /> NAVIGATE
-                        </Badge>
-                            {routes.length > 1 && (
-                                <Badge 
-                                    variant="outline" 
-                                    className="cursor-pointer hover:bg-yellow-500 hover:text-black border-yellow-500/50 text-yellow-500 text-[9px] h-5 px-1.5"
-                                    onClick={() => setShowRouteList(true)}
-                                >
-                                    SWITCH
-                                </Badge>
-                            )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-500">{stats.done}/{stats.total} Homes</span>
-                            {stats.percent >= 100 && (
-                                <Button 
-                                    size="sm" 
-                                    onClick={() => {
-                                        if(confirm("Mark route as complete? This may auto-assign a new route.")) {
-                                            completeRouteMutation.mutate();
-                                        }
-                                    }}
-                                    className="h-6 text-[10px] bg-green-600 hover:bg-green-700 text-white border-0"
-                                >
-                                    COMPLETE
-                                </Button>
-                            )}
-                        </div>
-                    </div>
-                    <Progress value={stats.percent} className="h-2 bg-gray-800" indicatorClassName="bg-yellow-500" />
+                            {tab.label}
+                        </button>
+                    ))}
                 </div>
 
-                {/* Filters & Search */}
-                <div className="mt-3 space-y-3">
-                    {/* Search */}
+                {/* Inline search - only show when there are enough properties */}
+                {routeProperties.length > 8 && (
                     <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" />
                         <Input 
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Search address..."
-                            className="h-10 pl-9 bg-gray-900 border-gray-800 text-white placeholder:text-gray-600 focus:border-yellow-500"
+                            placeholder="Search..."
+                            className="h-8 pl-8 text-xs bg-gray-900 border-gray-800 text-white placeholder:text-gray-600 focus:border-yellow-500"
                         />
                         {searchQuery && (
-                            <button 
-                                onClick={() => setSearchQuery('')}
-                                className="absolute right-3 top-1/2 -translate-y-1/2"
-                            >
-                                <X className="w-4 h-4 text-gray-500" />
+                            <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2">
+                                <X className="w-3.5 h-3.5 text-gray-500" />
                             </button>
                         )}
-                    </div>
-
-                    {/* Filter Tabs */}
-                    <div className="flex p-1 bg-gray-900 rounded-lg border border-gray-800">
-                        <button
-                            onClick={() => setFilterStatus('todo')}
-                            className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${
-                                filterStatus === 'todo' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-gray-300'
-                            }`}
-                        >
-                            TO DO ({routeProperties.length - stats.done})
-                        </button>
-                        <button
-                            onClick={() => setFilterStatus('done')}
-                            className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${
-                                filterStatus === 'done' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-gray-300'
-                            }`}
-                        >
-                            DONE ({stats.done})
-                        </button>
-                        <button
-                            onClick={() => setFilterStatus('all')}
-                            className={`flex-1 py-2 text-xs font-bold rounded-md transition-all ${
-                                filterStatus === 'all' ? 'bg-yellow-500 text-black' : 'text-gray-500 hover:text-gray-300'
-                            }`}
-                        >
-                            ALL
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            {/* 2. Main Content - Optimized List */}
-            <div className="px-4 pb-20 space-y-4">
-                <div className="flex items-center justify-between text-xs font-bold text-gray-500 tracking-wider">
-                    <span>
-                        {searchQuery ? 'SEARCH RESULTS' : filterStatus === 'done' ? 'COMPLETED' : 'UP NEXT'} 
-                        {' '}({filteredProperties.length})
-                    </span>
-                    <span>OPTIMIZED BY TIME</span>
-                </div>
-
-                {filteredProperties.length === 0 ? (
-                    <div className="text-center py-20 border border-dashed border-gray-800 rounded-xl bg-gray-900/20">
-                        <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                            {filterStatus === 'done' ? <CheckCircle2 className="w-8 h-8 text-green-500" /> : <Home className="w-8 h-8 text-gray-600" />}
-                        </div>
-                        <p className="text-gray-500 font-medium">
-                            {searchQuery ? 'No matching properties found' : 
-                             filterStatus === 'done' ? 'No completed properties yet' : 
-                             'All caught up! Great work.'}
-                        </p>
-                    </div>
-                ) : (
-                    <div className="space-y-3">
-                        {filteredProperties.map((prop, idx) => {
-                            const isDone = prop.effective_status !== 'ELIGIBLE' && prop.effective_status !== 'CALLBACK';
-                            const statusConfig = STATUS_CONFIG[prop.effective_status] || STATUS_CONFIG.ELIGIBLE;
-                            const StatusIcon = statusConfig.icon;
-
-                            return (
-                                <Card 
-                                    key={prop.address_hash}
-                                    onClick={() => setSelectedProperty(prop)}
-                                    className="bg-[#151515] border-gray-800 hover:border-yellow-500/50 transition-all active:scale-98 cursor-pointer"
-                                >
-                                    <div className="p-4 flex items-center gap-4">
-                                        <div className="flex flex-col items-center justify-center w-12 h-12 bg-gray-800 rounded-xl border border-gray-700">
-                                            <span className="text-lg font-bold text-white">{idx + 1}</span>
-                                        </div>
-                                        
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <h4 className="font-bold text-lg text-white truncate">
-                                                    {prop.house_number} {prop.street_name}
-                                                </h4>
-                                            </div>
-                                            <div className="flex items-center gap-3 text-xs text-gray-400">
-                                                <span>{prop.city}</span>
-                                                {prop.timeScore > 80 && (
-                                                    <span className="text-green-500 font-bold flex items-center gap-1">
-                                                        <Clock className="w-3 h-3" /> BEST TIME
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-
-                                        <ChevronRight className="w-6 h-6 text-gray-600" />
-                                    </div>
-                                    
-                                    {/* Quick Info Footer */}
-                                    {(prop.status || prop.original_status) && (
-                                        <div className="px-4 py-2 bg-gray-900/50 border-t border-gray-800 flex items-center gap-2 text-xs text-gray-500">
-                                            <Badge variant="secondary" className="h-5 text-[10px] bg-gray-800 text-gray-400">
-                                                {prop.original_status}
-                                            </Badge>
-                                            {prop.sqft && <span>{prop.sqft.toLocaleString()} sqft</span>}
-                                        </div>
-                                    )}
-                                </Card>
-                            );
-                        })}
-                        
                     </div>
                 )}
             </div>
 
+            {/* Property List */}
+            <div className="flex-1 overflow-y-auto px-4 py-3 pb-20">
+                {filteredProperties.length === 0 ? (
+                    <div className="text-center py-16">
+                        <div className="w-14 h-14 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-3">
+                            {filterStatus === 'done' ? <CheckCircle2 className="w-7 h-7 text-green-500" /> : <Navigation className="w-7 h-7 text-gray-600" />}
+                        </div>
+                        <p className="text-gray-500 text-sm font-medium">
+                            {searchQuery ? 'No matches' : filterStatus === 'done' ? 'None completed yet' : 'All done! 🎉'}
+                        </p>
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        {filteredProperties.map((prop, idx) => (
+                            <PropertyCard
+                                key={prop.address_hash}
+                                property={prop}
+                                index={idx}
+                                onSelect={setSelectedProperty}
+                            />
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Route Complete button - floating */}
+            {stats.percent >= 100 && (
+                <div className="fixed bottom-20 left-4 right-4 z-30">
+                    <Button 
+                        onClick={() => {
+                            if(confirm("Mark route as complete?")) completeRouteMutation.mutate();
+                        }}
+                        className="w-full h-12 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-2xl"
+                    >
+                        ✅ Mark Route Complete
+                    </Button>
+                </div>
+            )}
+
             {/* Route Switching Drawer */}
             {showRouteList && (
-                <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowRouteList(false)}>
-                    <div className="bg-[#151515] rounded-t-2xl border-t border-gray-800 max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                        <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-[#0A0A0A] rounded-t-2xl">
-                            <h3 className="font-bold text-white">Select Route</h3>
-                            <Button variant="ghost" size="icon" onClick={() => setShowRouteList(false)}>
-                                <X className="w-5 h-5 text-gray-500" />
-                            </Button>
+                <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm" onClick={() => setShowRouteList(false)}>
+                    <div className="bg-[#151515] rounded-t-2xl border-t border-gray-800 max-h-[60vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        <div className="p-4 border-b border-gray-800 flex justify-between items-center">
+                            <h3 className="font-bold text-white">Switch Route</h3>
+                            <button onClick={() => setShowRouteList(false)}><X className="w-5 h-5 text-gray-500" /></button>
                         </div>
-                        <ScrollArea className="flex-1 p-4">
-                            <div className="space-y-3">
-                                {routes.map(route => {
-                                    const isActive = activeRoute?.id === route.id;
-                                    return (
-                                        <button
-                                            key={route.id}
-                                            onClick={() => {
-                                                setManualRouteId(route.id);
-                                                setShowRouteList(false);
-                                            }}
-                                            className={`w-full p-4 rounded-xl border text-left transition-all ${
-                                                isActive 
-                                                    ? 'bg-yellow-500/10 border-yellow-500' 
-                                                    : 'bg-gray-900 border-gray-800 hover:border-gray-700'
-                                            }`}
-                                        >
-                                            <div className="flex justify-between items-start mb-1">
-                                                <span className={`font-bold ${isActive ? 'text-yellow-500' : 'text-white'}`}>
-                                                    {route.name}
-                                                </span>
-                                                {isActive && <CheckCircle2 className="w-4 h-4 text-yellow-500" />}
-                                            </div>
-                                            <div className="flex gap-3 text-xs text-gray-500">
-                                                <span>{route.metrics?.house_count || 0} doors</span>
-                                                <span>{route.status}</span>
-                                            </div>
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </ScrollArea>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                            {routes.map(route => (
+                                <button
+                                    key={route.id}
+                                    onClick={() => { setManualRouteId(route.id); setShowRouteList(false); }}
+                                    className={`w-full p-3 rounded-xl border text-left transition-all ${
+                                        activeRoute?.id === route.id ? 'bg-yellow-500/10 border-yellow-500' : 'bg-gray-900 border-gray-800'
+                                    }`}
+                                >
+                                    <div className="flex justify-between items-center">
+                                        <span className={`font-bold text-sm ${activeRoute?.id === route.id ? 'text-yellow-500' : 'text-white'}`}>
+                                            {route.name}
+                                        </span>
+                                        <span className="text-xs text-gray-500">{route.metrics?.house_count || 0} doors</span>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 </div>
             )}
 
-            {/* Live Map View */}
+            {/* Map View */}
             {showMap && (
                 <RepMapView
                     properties={routeProperties}
-                    onSelectProperty={(p) => {
-                        setSelectedProperty(p);
-                        setShowMap(false);
-                    }}
+                    onSelectProperty={(p) => { setSelectedProperty(p); setShowMap(false); }}
                     onClose={() => setShowMap(false)}
                 />
             )}
 
-            {/* 3. Property Detail Drawer (Overlay) */}
+            {/* Property Detail - Bottom Sheet */}
             {selectedProperty && (
-                <div className="fixed inset-0 z-50 flex flex-col bg-black animate-in slide-in-from-bottom duration-300">
-                    {/* Header */}
-                    <div className="px-4 py-4 border-b border-gray-800 flex items-center justify-between bg-gray-900/50 backdrop-blur">
-                        <Button 
-                            variant="ghost" 
-                            onClick={() => setSelectedProperty(null)}
-                            className="text-gray-400 hover:text-white -ml-2"
-                        >
-                            <ArrowRight className="w-5 h-5 mr-1 rotate-180" /> Back
-                        </Button>
-                        <p className="font-bold text-sm text-gray-400">Property Details</p>
-                        <div className="w-10" /> {/* Spacer */}
-                    </div>
-
-                    <ScrollArea className="flex-1 p-6">
-                        <div className="space-y-8">
-                            {/* Hero Address */}
-                            <div className="text-center">
-                                <h2 className="text-3xl font-bold text-white mb-2">
-                                    {selectedProperty.house_number} {selectedProperty.street_name}
-                                </h2>
-                                <p className="text-xl text-gray-400">{selectedProperty.city}, {selectedProperty.state}</p>
-                            </div>
-
-                            {/* Open in Maps - Top Priority */}
-                            <a 
-                                href={`https://maps.apple.com/?daddr=${selectedProperty.lat},${selectedProperty.lng}&dirflg=w`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="flex items-center justify-center gap-2 w-full h-12 bg-green-600 hover:bg-green-500 text-white font-bold text-sm rounded-xl transition-colors"
-                            >
-                                <Navigation className="w-5 h-5" />
-                                Open in Maps
-                            </a>
-
-                            {/* Interaction Details Input */}
-                            <div className="space-y-3 bg-gray-900/50 p-4 rounded-xl border border-gray-800">
-                                <div className="space-y-2">
-                                    <label className="text-xs font-bold text-gray-500 uppercase">Interaction Note</label>
-                                    <textarea
-                                        value={logNote}
-                                        onChange={(e) => setLogNote(e.target.value)}
-                                        placeholder="Add notes..."
-                                        className="w-full bg-black/50 border border-gray-700 rounded-lg p-3 text-sm text-white resize-none h-24 focus:border-yellow-500 focus:outline-none"
-                                    />
-                                </div>
-                                
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1">
-                                            <Clock className="w-3 h-3" /> Callback Time
-                                        </label>
-                                        <input
-                                            type="time"
-                                            value={callbackTime}
-                                            onChange={(e) => setCallbackTime(e.target.value)}
-                                            className="w-full bg-black/50 border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-yellow-500 focus:outline-none"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-gray-500 uppercase flex items-center gap-1">
-                                            <Phone className="w-3 h-3" /> Phone #
-                                        </label>
-                                        <input
-                                            type="tel"
-                                            value={callbackPhone}
-                                            onChange={(e) => setCallbackPhone(e.target.value)}
-                                            placeholder="(555) 555-5555"
-                                            className="w-full bg-black/50 border border-gray-700 rounded-lg p-2 text-sm text-white focus:border-yellow-500 focus:outline-none"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Main Actions - Simplified */}
-                            <QuickMarkButtons
-                                size="large"
-                                onMark={(status) => handleLog(status)}
-                            />
-
-                            {/* Camera Action */}
-                            <div className="relative">
-                                <input
-                                    type="file"
-                                    accept="image/*"
-                                    capture="environment"
-                                    onChange={handlePhotoUpload}
-                                    className="hidden"
-                                    id="camera-input"
-                                    disabled={uploading}
-                                />
-                                <label 
-                                    htmlFor="camera-input"
-                                    className={`flex items-center justify-center w-full h-12 rounded-md font-bold text-sm cursor-pointer transition-colors ${
-                                        uploading ? 'bg-gray-800 text-gray-500' : 'bg-blue-600 hover:bg-blue-700 text-white'
-                                    }`}
-                                >
-                                    {uploading ? (
-                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                    ) : (
-                                        <Camera className="w-4 h-4 mr-2" />
-                                    )}
-                                    {uploading ? 'Uploading Proof...' : 'Take Photo Proof'}
-                                </label>
-                            </div>
-
-                            {/* Interaction History */}
-                            <div className="space-y-3">
-                                <h3 className="font-bold text-yellow-500 text-sm uppercase tracking-wider flex items-center gap-2">
-                                    <History className="w-4 h-4" /> History
-                                </h3>
-                                <PropertyHistory logs={selectedPropertyLogs} />
-                            </div>
-
-                            {/* Property Data Grid */}
-                            <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-                                <h3 className="font-bold text-yellow-500 mb-4 text-sm uppercase tracking-wider">Property Intel</h3>
-                                <div className="grid grid-cols-2 gap-y-6 gap-x-4">
-                                    <div>
-                                        <p className="text-xs text-gray-500 uppercase">Owner</p>
-                                        <p className="font-medium text-lg">Current Resident</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-gray-500 uppercase">Est. Value</p>
-                                        <p className="font-medium text-lg">${(selectedProperty.price / 1000).toFixed(0)}k</p>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-gray-500 uppercase">Last Sold</p>
-                                        <p className="font-medium text-lg">
-                                            {selectedProperty.sold_date ? format(new Date(selectedProperty.sold_date), 'yyyy') : 'N/A'}
-                                        </p>
-                                    </div>
-                                    <div>
-                                        <p className="text-xs text-gray-500 uppercase">Size</p>
-                                        <p className="font-medium text-lg">{selectedProperty.sqft} sqft</p>
-                                    </div>
-                                </div>
-                            </div>
-
-
-                        </div>
-                    </ScrollArea>
-                </div>
+                <PropertyDetailSheet
+                    property={selectedProperty}
+                    logs={selectedPropertyLogs}
+                    onLog={handleLog}
+                    onPhotoUpload={handlePhotoUpload}
+                    uploading={uploading}
+                    onClose={() => setSelectedProperty(null)}
+                />
             )}
         </div>
     );
