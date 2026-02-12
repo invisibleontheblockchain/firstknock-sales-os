@@ -84,19 +84,66 @@ export default function TeamChat({ user, teamMember, onClose }) {
         <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col" onClick={onClose}>
             <div className="flex-1 flex flex-col max-h-full" onClick={e => e.stopPropagation()}>
                 {/* Header */}
-                <div className="bg-black/95 backdrop-blur px-5 py-4 flex items-center justify-between border-b border-gray-800">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-blue-600/20 flex items-center justify-center">
-                            <Users className="w-5 h-5 text-blue-400" />
+                <div className="bg-black/95 backdrop-blur border-b border-gray-800">
+                    <div className="px-5 py-4 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-full bg-blue-600/20 flex items-center justify-center">
+                                <Users className="w-5 h-5 text-blue-400" />
+                            </div>
+                            <div>
+                                <h2 className="font-bold text-white text-sm">Team Chat</h2>
+                                <p className="text-[10px] text-gray-500">{messages.length} messages</p>
+                            </div>
                         </div>
-                        <div>
-                            <h2 className="font-bold text-white text-sm">Team Chat</h2>
-                            <p className="text-[10px] text-gray-500">{messages.length} messages</p>
+                        <div className="flex items-center gap-2">
+                            {teamMembers.length > 0 && (
+                                <button 
+                                    onClick={() => setShowMembers(!showMembers)}
+                                    className="h-8 px-3 rounded-full bg-gray-800 flex items-center gap-1.5 text-[10px] font-bold text-gray-400 hover:text-white transition-colors"
+                                >
+                                    <Users className="w-3 h-3" />
+                                    {teamMembers.length}
+                                </button>
+                            )}
+                            <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
+                                <X className="w-4 h-4 text-gray-400" />
+                            </button>
                         </div>
                     </div>
-                    <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
-                        <X className="w-4 h-4 text-gray-400" />
-                    </button>
+
+                    {/* Team Members Row */}
+                    {showMembers && teamMembers.length > 0 && (
+                        <div className="px-4 pb-3 flex gap-3 overflow-x-auto no-scrollbar">
+                            {teamMembers.map(m => {
+                                const isOnline = m.status === 'active';
+                                const isCurrentUser = m.email?.toLowerCase() === user?.email?.toLowerCase();
+                                const initials = (m.name || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+                                return (
+                                    <div key={m.id} className="flex flex-col items-center shrink-0 min-w-[52px]">
+                                        <div className="relative">
+                                            <div 
+                                                className={`w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-bold ${
+                                                    isCurrentUser ? 'bg-yellow-500 text-black' : 'bg-gray-800 text-white'
+                                                }`}
+                                                style={m.color ? { borderColor: m.color, borderWidth: 2 } : {}}
+                                            >
+                                                {initials}
+                                            </div>
+                                            {isOnline && (
+                                                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 rounded-full border-2 border-black" />
+                                            )}
+                                        </div>
+                                        <span className="text-[9px] text-gray-500 mt-1 truncate max-w-[52px] text-center">
+                                            {isCurrentUser ? 'You' : (m.name || '').split(' ')[0]}
+                                        </span>
+                                        {m.role === 'manager' && (
+                                            <span className="text-[8px] text-blue-400 font-bold">MGR</span>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                 </div>
 
                 {/* Messages */}
