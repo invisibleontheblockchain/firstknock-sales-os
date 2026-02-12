@@ -23,6 +23,8 @@ export default function RepHome() {
     const [uploading, setUploading] = useState(false);
     const [isOffline, setIsOffline] = useState(!navigator.onLine);
     const [showMap, setShowMap] = useState(false);
+    const [showAnalytics, setShowAnalytics] = useState(false);
+    const [showChat, setShowChat] = useState(false);
     
     // Offline Listener
     React.useEffect(() => {
