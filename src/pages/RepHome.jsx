@@ -509,19 +509,31 @@ export default function RepHome() {
                 )}
             </div>
 
-            {/* Route Complete button - floating */}
-            {stats.percent >= 100 && (
-                <div className="fixed bottom-20 left-4 right-4 z-30">
+            {/* Floating action buttons */}
+            <div className="fixed bottom-20 left-4 right-4 z-30 flex items-center gap-2">
+                {stats.percent >= 100 && (
                     <Button 
                         onClick={() => {
                             if(confirm("Mark route as complete?")) completeRouteMutation.mutate();
                         }}
-                        className="w-full h-12 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-2xl"
+                        className="flex-1 h-11 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-2xl text-xs"
                     >
-                        ✅ Mark Route Complete
+                        ✅ Complete Route
                     </Button>
-                </div>
-            )}
+                )}
+                <button
+                    onClick={() => setShowAnalytics(true)}
+                    className="w-11 h-11 rounded-xl bg-[#151515] border border-gray-800 flex items-center justify-center active:bg-gray-800 shadow-lg"
+                >
+                    <TrendingUp className="w-5 h-5 text-yellow-500" />
+                </button>
+                <button
+                    onClick={() => setShowChat(true)}
+                    className="w-11 h-11 rounded-xl bg-[#151515] border border-gray-800 flex items-center justify-center active:bg-gray-800 shadow-lg"
+                >
+                    <MessageCircle className="w-5 h-5 text-blue-400" />
+                </button>
+            </div>
 
             {/* Route Switching Drawer */}
             {showRouteList && (
