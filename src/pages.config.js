@@ -64,6 +64,7 @@ import Sync from './pages/Sync';
 import Terms from './pages/Terms';
 import Tutorial from './pages/Tutorial';
 import ZipCodeExplorer from './pages/ZipCodeExplorer';
+import Appointments from './pages/Appointments';
 import __Layout from './Layout.jsx';
 
 
@@ -85,6 +86,7 @@ export const PAGES = {
     "Terms": Terms,
     "Tutorial": Tutorial,
     "ZipCodeExplorer": ZipCodeExplorer,
+    "Appointments": Appointments,
 }
 
 export const pagesConfig = {
