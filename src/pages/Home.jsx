@@ -1639,18 +1639,23 @@ export default function Home() {
                             </div>
                             <div className="truncate">
                                 <span className="text-sm font-bold block leading-tight truncate" style={{ color: BRAND.voidBlack }}>{activeRoute.name}</span>
-                                <div className="mt-1 flex items-center">
+                                <div className="mt-1 flex items-center" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
                                     <select
                                         value={activeRoute.assigned_to || ""}
-                                        onChange={(e) => handleAssignRoute(activeRoute.id, e.target.value)}
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="text-xs font-bold bg-black/10 border-none rounded px-3 py-2 outline-none cursor-pointer hover:bg-black/20 transition-colors h-8"
-                                        style={{ color: BRAND.voidBlack }}
+                                        onChange={(e) => {
+                                            e.stopPropagation();
+                                            const val = e.target.value;
+                                            console.log('[Assign] Selected value:', val, 'for route:', activeRoute.id);
+                                            handleAssignRoute(activeRoute.id, val);
+                                        }}
+                                        onPointerDown={(e) => e.stopPropagation()}
+                                        className="text-xs font-bold bg-black/10 border-none rounded px-3 py-2 outline-none cursor-pointer hover:bg-black/20 transition-colors h-8 min-w-[140px] appearance-auto"
+                                        style={{ color: BRAND.voidBlack, WebkitAppearance: 'menulist', fontSize: '14px' }}
                                     >
                                         <option value="">Unassigned</option>
-                                        <option value={user?.id}>Me (Manager)</option>
+                                        <option value={user?.id || 'manager'}>Me (Manager)</option>
                                         {teamMembers.map(m => (
-                                            <option key={m.id} value={m.id}>{m.name} ({m.email})</option>
+                                            <option key={m.id} value={m.id}>{m.name}</option>
                                         ))}
                                     </select>
                                 </div>
