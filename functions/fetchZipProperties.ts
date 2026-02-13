@@ -138,24 +138,27 @@ Deno.serve(async (req) => {
       }
     }
 
-    // --- Update usage counter ---
-    const newUsage = currentUsage + requestCount;
-    try {
-      await base44.auth.updateMe({ rentcast_api_calls_used: newUsage });
-      console.log(`[FetchZip-v4] Updated usage: ${newUsage}/${BETA_API_CALL_LIMIT}`);
-    } catch (e) {
-      console.error(`[FetchZip-v4] Failed to update usage counter:`, e.message);
+    // --- Track this zip as generated (if new) ---
+    if (!alreadyGenerated) {
+      const updatedZips = [...generatedZips, zip];
+      try {
+        await base44.auth.updateMe({ generated_zip_codes: updatedZips });
+        console.log(`[FetchZip-v6] Tracked new zip. Total zips: ${updatedZips.length}/${zipLimit}`);
+      } catch (e) {
+        console.error(`[FetchZip-v6] Failed to update zip tracker:`, e.message);
+      }
     }
 
-    const newRemaining = BETA_API_CALL_LIMIT - newUsage;
+    const newZipsUsed = alreadyGenerated ? zipsUsed : zipsUsed + 1;
+    const newZipsRemaining = zipLimit - newZipsUsed;
 
-    console.log(`[FetchZip-v4] Total fetched: ${allProperties.length} in ${requestCount} API calls`);
+    console.log(`[FetchZip-v6] Total fetched: ${allProperties.length} in ${requestCount} API calls`);
 
     if (allProperties.length === 0) {
       return Response.json({
         status: 'empty', count: 0,
         message: `No single family properties found for zip ${zip}.`,
-        usage: { used: newUsage, limit: BETA_API_CALL_LIMIT, remaining: newRemaining }
+        usage: { zips_used: newZipsUsed, zip_limit: zipLimit, zips_remaining: newZipsRemaining, tier: subTier }
       });
     }
 
