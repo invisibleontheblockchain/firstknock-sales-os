@@ -275,7 +275,11 @@ export default function Billing() {
                     </h3>
                     <div className="grid grid-cols-4 gap-3 text-center">
                         {[1, 5, 15, 30].map(n => (
-                            <div key={n} className={`rounded-lg p-3 border ${seats === n ? 'border-yellow-500 bg-yellow-500/5' : 'border-gray-800 bg-black/30'}`}>
+                            <div 
+                                key={n} 
+                                onClick={() => setSeats(n)}
+                                className={`rounded-lg p-3 border cursor-pointer transition-all hover:border-yellow-500/50 ${seats === n ? 'border-yellow-500 bg-yellow-500/5' : 'border-gray-800 bg-black/30'}`}
+                            >
                                 <p className="text-xs text-gray-500 mb-1">{n} {n === 1 ? 'user' : 'users'}</p>
                                 <p className="text-lg font-bold text-white">${getPricePerUser(n)}</p>
                                 <p className="text-[10px] text-gray-600">/user/mo</p>
