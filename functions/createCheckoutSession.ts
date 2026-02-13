@@ -22,6 +22,17 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Price ID is required' }, { status: 400 });
         }
 
+        // Dynamic pricing: $49 base, -$1 per additional user, min $20/user
+        const BASE_PRICE = 49;
+        const DISCOUNT_PER_USER = 1;
+        const MIN_PRICE_PER_USER = 20;
+        const seats = Math.max(1, Math.min(50, quantity));
+        const discount = (seats - 1) * DISCOUNT_PER_USER;
+        const pricePerUser = Math.max(MIN_PRICE_PER_USER, BASE_PRICE - discount);
+        const unitAmountCents = pricePerUser * 100;
+        
+        console.log(`Dynamic pricing: ${seats} seats × $${pricePerUser}/user = $${seats * pricePerUser}/mo`);
+
         let customerId = user.stripe_customer_id;
 
         // Create Stripe Customer if not exists
