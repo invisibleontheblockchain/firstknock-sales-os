@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Check, Shield, Zap, Star, Users, TrendingDown, ChevronDown } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import BetaUsageMeter from '../components/beta/BetaUsageMeter';
 
 const BRAND = {
     gold: '#FFD700',
