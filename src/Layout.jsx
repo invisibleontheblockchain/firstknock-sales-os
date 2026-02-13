@@ -318,8 +318,8 @@ export default function Layout({ children }) {
                             active={window.location.pathname.endsWith('Home') || window.location.pathname === '/'}
                         />
                         <NavItem
-                            icon={List}
-                            label="List"
+                            icon={TrendingUp}
+                            label="Analytics"
                             to={createPageUrl('List')}
                             active={window.location.pathname.endsWith('List')}
                         />
