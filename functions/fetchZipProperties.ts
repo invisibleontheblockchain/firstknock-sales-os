@@ -61,27 +61,32 @@ Deno.serve(async (req) => {
 
     // Check if already have data (skip API call)
     if (!force_sync) {
-      console.log(`[FetchZip-v4] Checking existing data for ${zip}...`);
+      console.log(`[FetchZip-v5] Checking existing data for ${zip}...`);
       const existing = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000);
       const existingArr = Array.isArray(existing) ? existing : (existing?.items || []);
       if (existingArr.length > 0) {
-        console.log(`[FetchZip-v4] Already have ${existingArr.length} properties for ${zip}`);
+        console.log(`[FetchZip-v5] Already have ${existingArr.length} properties for ${zip}`);
         return Response.json({
           status: 'exists',
           count: existingArr.length,
           message: `Already have ${existingArr.length} properties for ${zip}`,
-          usage: { used: currentUsage, limit: BETA_API_CALL_LIMIT, remaining }
+          usage: { used: currentUsage, limit: userLimit, remaining, tier: subTier }
         });
       }
     }
 
-    // --- BETA LIMIT CHECK ---
+    // --- PER-USER LIMIT CHECK ---
     if (remaining <= 0) {
-      console.warn(`[FetchZip-v4] BETA LIMIT REACHED: ${currentUsage}/${BETA_API_CALL_LIMIT}`);
+      console.warn(`[FetchZip-v5] USER LIMIT REACHED: ${currentUsage}/${userLimit} (tier: ${subTier})`);
+      const upgradeMsg = subTier === 'free' 
+        ? `You've used all ${userLimit} free beta API calls. Subscribe to a plan to unlock more.`
+        : subTier === 'hustler'
+        ? `You've used all ${userLimit} API calls on the Hustler plan. Upgrade to Growth for 200 calls.`
+        : `You've used all ${userLimit} API calls. Contact support or upgrade your plan.`;
       return Response.json({
-        error: 'Beta API limit reached',
-        message: `You've used all ${BETA_API_CALL_LIMIT} API calls in the free beta. Upgrade to continue syncing new zip codes.`,
-        usage: { used: currentUsage, limit: BETA_API_CALL_LIMIT, remaining: 0 }
+        error: 'API limit reached',
+        message: upgradeMsg,
+        usage: { used: currentUsage, limit: userLimit, remaining: 0, tier: subTier }
       }, { status: 429 });
     }
 
