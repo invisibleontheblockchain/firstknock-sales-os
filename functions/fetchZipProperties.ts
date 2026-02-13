@@ -4,13 +4,9 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
 
-// Per-user ZIP LIMITS by subscription tier
-const TIER_ZIP_LIMITS = {
-  free: 1,           // Free beta: 1 zip code only
-  hustler: 10,       // $49/mo HUSTLER plan: 10 zip codes
-  growth: 50,        // $99/mo GROWTH plan: 50 zip codes
-  enterprise: 999    // $299/mo ENTERPRISE plan: unlimited
-};
+// Zip limits: free = 1, paid = 10 per seat
+const FREE_ZIP_LIMIT = 1;
+const ZIPS_PER_SEAT = 10;
 
 Deno.serve(async (req) => {
   try {
@@ -23,13 +19,14 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { zip_code, force_sync = false, check_usage_only = false } = body;
 
-    // --- Determine user's tier and zip limits ---
-    const subTier = (user.subscription_tier || 'free').toLowerCase();
-    const zipLimit = TIER_ZIP_LIMITS[subTier] || TIER_ZIP_LIMITS.free;
+    // --- Determine user's zip limits (scales with seats) ---
+    const isPaid = user.subscription_status === 'active';
+    const totalSeats = user.total_seats || 1;
+    const zipLimit = isPaid ? totalSeats * ZIPS_PER_SEAT : FREE_ZIP_LIMIT;
     const generatedZips = user.generated_zip_codes || [];
     const zipsUsed = generatedZips.length;
     const zipsRemaining = zipLimit - zipsUsed;
-    const isPaid = subTier !== 'free';
+    const subTier = isPaid ? 'pro' : 'free';
 
     // If just checking usage, return stats
     if (check_usage_only) {
@@ -73,9 +70,9 @@ Deno.serve(async (req) => {
     // --- ZIP LIMIT CHECK (only blocks NEW zips, not re-syncing existing ones) ---
     if (!alreadyGenerated && zipsRemaining <= 0) {
       console.warn(`[FetchZip-v6] ZIP LIMIT REACHED: ${zipsUsed}/${zipLimit} (tier: ${subTier})`);
-      const upgradeMsg = subTier === 'free'
-        ? `You've used your 1 free zip code. Subscribe to a plan to unlock more territories.`
-        : `You've reached your ${zipLimit} zip code limit on the ${subTier} plan. Upgrade for more.`;
+      const upgradeMsg = !isPaid
+        ? `You've used your 1 free zip code. Subscribe to unlock more territories.`
+        : `You've reached your ${zipLimit} zip code limit (${totalSeats} seats × ${ZIPS_PER_SEAT} zips). Add more seats for more zips.`;
       return Response.json({
         error: 'Zip code limit reached',
         message: upgradeMsg,

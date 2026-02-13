@@ -1,10 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
-const COMMISSION_RATES = {
-  hustler: 10,
-  growth: 20,
-  enterprise: 50,
-};
+const FLAT_COMMISSION = 10; // $10 per referral, regardless of plan
 
 Deno.serve(async (req) => {
   try {
@@ -86,7 +82,7 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Missing params' }, { status: 400 });
       }
 
-      const commission = COMMISSION_RATES[subscription_tier] || 10;
+      const commission = FLAT_COMMISSION;
 
       // Find the referral record
       const referrals = await base44.asServiceRole.entities.Referral.filter(
