@@ -200,13 +200,13 @@ Deno.serve(async (req) => {
         };
       });
 
-    console.log(`[FetchZip-v4] ${mapped.length} valid properties to import`);
+    console.log(`[FetchZip-v6] ${mapped.length} valid properties to import`);
 
     if (mapped.length === 0) {
       return Response.json({
         status: 'empty', count: 0,
         message: `Properties found but none had valid coordinates.`,
-        usage: { used: newUsage, limit: BETA_API_CALL_LIMIT, remaining: newRemaining }
+        usage: { zips_used: newZipsUsed, zip_limit: zipLimit, zips_remaining: newZipsRemaining, tier: subTier }
       });
     }
 
