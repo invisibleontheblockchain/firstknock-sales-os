@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, BarChart3, Navigation, Users, Target } from 'lucide-react';
+import { Loader2, BarChart3, Navigation, Users } from 'lucide-react';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
+import { useTheme } from '@/components/theme/ThemeProvider';
 
 import OverviewStats from '@/components/analytics/OverviewStats';
 import ActivityChart from '@/components/analytics/ActivityChart';
@@ -10,14 +11,8 @@ import TeamPerformance from '@/components/analytics/TeamPerformance';
 import RouteProgress from '@/components/analytics/RouteProgress';
 import StatusBreakdown from '@/components/analytics/StatusBreakdown';
 
-const BRAND = {
-    voidBlack: '#0A0A0A',
-    gold: '#FFD700',
-    charcoal: '#1F1F1F',
-    offWhite: '#E5E5E5'
-};
-
 export default function ListPage() {
+    const { accent } = useTheme();
     const [activeTab, setActiveTab] = useState('overview');
 
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
@@ -86,25 +81,30 @@ export default function ListPage() {
     ];
 
     return (
-        <div className="h-full flex flex-col" style={{ background: BRAND.voidBlack }}>
+        <div className="h-full flex flex-col" style={{ background: '#0A0A0A' }}>
             {/* Header */}
-            <div className="px-4 pt-4 pb-2 border-b sticky top-0 z-10" style={{ background: BRAND.voidBlack, borderColor: BRAND.charcoal }}>
-                <div className="flex items-center gap-2 mb-3">
-                    <BarChart3 className="w-5 h-5 text-yellow-500" />
-                    <h1 className="text-lg font-bold text-white tracking-wide">ANALYTICS</h1>
+            <div className="px-4 pt-4 pb-3 border-b border-gray-800/40 sticky top-0 z-10" style={{ background: '#0A0A0A' }}>
+                <div className="flex items-center gap-2.5 mb-3">
+                    <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: `${accent}15` }}>
+                        <BarChart3 className="w-4 h-4" style={{ color: accent }} />
+                    </div>
+                    <div>
+                        <h1 className="text-base font-extrabold text-white tracking-tight">Analytics</h1>
+                        <p className="text-[10px] text-gray-500">Performance & territory insights</p>
+                    </div>
                 </div>
-                <div className="flex p-0.5 bg-[#151515] rounded-lg border border-gray-800">
+                <div className="flex p-0.5 bg-black/40 rounded-xl border border-gray-800/50">
                     {tabs.map(tab => {
                         const Icon = tab.icon;
+                        const isActive = activeTab === tab.id;
                         return (
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`flex-1 py-2 rounded-md text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                                    activeTab === tab.id
-                                        ? 'bg-yellow-500 text-black shadow-lg'
-                                        : 'text-gray-500 hover:text-white'
+                                className={`flex-1 py-2 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
+                                    isActive ? 'text-black shadow-md' : 'text-gray-500 hover:text-gray-300'
                                 }`}
+                                style={isActive ? { background: accent } : {}}
                             >
                                 <Icon className="w-3.5 h-3.5" />
                                 {tab.label}
@@ -115,24 +115,20 @@ export default function ListPage() {
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-auto p-4 space-y-4">
+            <div className="flex-1 overflow-auto p-4 space-y-3">
                 {isLoading ? (
-                    <div className="flex justify-center items-center py-20">
-                        <Loader2 className="w-8 h-8 animate-spin text-yellow-500" />
+                    <div className="flex flex-col justify-center items-center py-20 gap-3">
+                        <Loader2 className="w-7 h-7 animate-spin" style={{ color: accent }} />
+                        <span className="text-xs text-gray-500">Loading analytics...</span>
                     </div>
                 ) : (
                     <>
                         {activeTab === 'overview' && (
-                            <>
-                                <OverviewStats
-                                    routes={savedRoutes}
-                                    logs={logs}
-                                    properties={effectiveProperties}
-                                    teamMembers={teamMembers}
-                                />
-                                <ActivityChart logs={logs} days={14} />
+                            <div className="space-y-3">
+                                <OverviewStats routes={savedRoutes} logs={logs} properties={effectiveProperties} teamMembers={teamMembers} />
+                                <ActivityChart logs={logs} />
                                 <StatusBreakdown properties={effectiveProperties} />
-                            </>
+                            </div>
                         )}
 
                         {activeTab === 'routes' && (
@@ -140,11 +136,7 @@ export default function ListPage() {
                         )}
 
                         {activeTab === 'team' && (
-                            <TeamPerformance
-                                teamMembers={teamMembers}
-                                logs={logs}
-                                routes={savedRoutes}
-                            />
+                            <TeamPerformance teamMembers={teamMembers} logs={logs} routes={savedRoutes} />
                         )}
                     </>
                 )}

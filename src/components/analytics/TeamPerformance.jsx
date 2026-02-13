@@ -1,8 +1,16 @@
 import React, { useMemo } from 'react';
-import { Badge } from "@/components/ui/badge";
-import { Trophy, TrendingUp, Target } from 'lucide-react';
+import { Trophy } from 'lucide-react';
+import { useTheme } from '@/components/theme/ThemeProvider';
+
+const MEDAL_STYLES = [
+    'bg-yellow-500 text-black',
+    'bg-gray-400 text-black',
+    'bg-orange-700 text-white',
+];
 
 export default function TeamPerformance({ teamMembers, logs, routes }) {
+    const { accent } = useTheme();
+
     const repStats = useMemo(() => {
         const now = new Date();
         const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -15,7 +23,6 @@ export default function TeamPerformance({ teamMembers, logs, routes }) {
             const sales = memberLogs.filter(l => ['SOLD', 'QUALIFIED'].includes(l.parsed_status));
             const weeklySales = weekLogs.filter(l => ['SOLD', 'QUALIFIED'].includes(l.parsed_status));
             const activeRoutes = routes.filter(r => r.assigned_to === member.id && (r.status === 'ACTIVE' || r.status === 'IN_PROGRESS'));
-            const completedRoutes = routes.filter(r => r.assigned_to === member.id && r.status === 'COMPLETED');
             const convRate = memberLogs.length > 0 ? ((sales.length / memberLogs.length) * 100).toFixed(1) : '0';
 
             return {
@@ -27,61 +34,76 @@ export default function TeamPerformance({ teamMembers, logs, routes }) {
                 weeklySales: weeklySales.length,
                 conversionRate: parseFloat(convRate),
                 activeRoutes: activeRoutes.length,
-                completedRoutes: completedRoutes.length,
             };
         }).sort((a, b) => b.weeklyKnocks - a.weeklyKnocks);
     }, [teamMembers, logs, routes]);
 
     if (repStats.length === 0) {
         return (
-            <div className="bg-[#151515] border border-gray-800 rounded-xl p-6 text-center">
+            <div className="bg-[#111] border border-gray-800/60 rounded-2xl p-8 text-center">
+                <Trophy className="w-8 h-8 text-gray-700 mx-auto mb-3" />
                 <p className="text-gray-500 text-sm">No team members yet</p>
+                <p className="text-[10px] text-gray-600 mt-1">Invite reps to see their stats here</p>
             </div>
         );
     }
 
+    const maxKnocks = repStats.length > 0 ? repStats[0].weeklyKnocks : 1;
+
     return (
-        <div className="bg-[#151515] border border-gray-800 rounded-xl overflow-hidden">
-            <div className="p-4 border-b border-gray-800 flex items-center justify-between">
+        <div className="bg-[#111] border border-gray-800/60 rounded-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-800/50 flex items-center justify-between">
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <Trophy className="w-4 h-4 text-yellow-500" /> Team Leaderboard
+                    <Trophy className="w-4 h-4" style={{ color: accent }} />
+                    Team Leaderboard
                 </h3>
-                <span className="text-[10px] text-gray-500">This week</span>
+                <span className="text-[10px] text-gray-500 bg-gray-800/50 px-2 py-0.5 rounded-full">This week</span>
             </div>
 
-            <div className="divide-y divide-gray-800/50">
+            <div className="divide-y divide-gray-800/30">
                 {repStats.map((rep, idx) => (
-                    <div key={rep.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-800/30 transition-colors">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-                            idx === 0 ? 'bg-yellow-500 text-black' : idx === 1 ? 'bg-gray-300 text-black' : idx === 2 ? 'bg-orange-700 text-white' : 'bg-gray-800 text-gray-400'
-                        }`}>
-                            {idx + 1}
-                        </div>
+                    <div key={rep.id} className="px-5 py-3.5 hover:bg-white/[0.02] transition-colors">
+                        <div className="flex items-center gap-3">
+                            {/* Rank */}
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0 ${
+                                MEDAL_STYLES[idx] || 'bg-gray-800/80 text-gray-500'
+                            }`}>
+                                {idx + 1}
+                            </div>
 
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-white truncate">{rep.name}</p>
-                            <div className="flex items-center gap-3 mt-0.5">
-                                <span className="text-[10px] text-gray-500">{rep.todayKnocks} today</span>
-                                <span className="text-[10px] text-gray-500">{rep.activeRoutes} routes</span>
+                            {/* Name + meta */}
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-bold text-white truncate">{rep.name}</p>
+                                <div className="flex items-center gap-2 mt-0.5 text-[10px] text-gray-500">
+                                    <span>{rep.todayKnocks} today</span>
+                                    <span className="text-gray-700">·</span>
+                                    <span>{rep.activeRoutes} route{rep.activeRoutes !== 1 ? 's' : ''}</span>
+                                </div>
+                            </div>
+
+                            {/* Stats pills */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                                <div className="text-center bg-white/[0.04] rounded-lg px-2.5 py-1.5">
+                                    <p className="text-sm font-extrabold text-white leading-none">{rep.weeklyKnocks}</p>
+                                    <p className="text-[8px] text-gray-600 uppercase mt-0.5">Knocks</p>
+                                </div>
+                                <div className="text-center bg-green-500/[0.06] rounded-lg px-2.5 py-1.5">
+                                    <p className="text-sm font-extrabold text-green-400 leading-none">{rep.weeklySales}</p>
+                                    <p className="text-[8px] text-gray-600 uppercase mt-0.5">Sales</p>
+                                </div>
+                                <div className="text-center bg-yellow-500/[0.06] rounded-lg px-2.5 py-1.5">
+                                    <p className="text-sm font-extrabold leading-none" style={{ color: accent }}>{rep.conversionRate}%</p>
+                                    <p className="text-[8px] text-gray-600 uppercase mt-0.5">Conv</p>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="text-right shrink-0">
-                            <div className="flex items-center gap-2">
-                                <div className="text-center">
-                                    <p className="text-lg font-bold text-white">{rep.weeklyKnocks}</p>
-                                    <p className="text-[9px] text-gray-600">KNOCKS</p>
-                                </div>
-                                <div className="text-center border-l border-gray-800 pl-2">
-                                    <p className="text-lg font-bold text-green-500">{rep.weeklySales}</p>
-                                    <p className="text-[9px] text-gray-600">SALES</p>
-                                </div>
-                                <div className="text-center border-l border-gray-800 pl-2">
-                                    <p className="text-lg font-bold text-yellow-500">{rep.conversionRate}%</p>
-                                    <p className="text-[9px] text-gray-600">CONV</p>
-                                </div>
+                        {/* Activity bar */}
+                        {maxKnocks > 0 && (
+                            <div className="mt-2 ml-10 h-1 bg-gray-800/50 rounded-full overflow-hidden">
+                                <div className="h-full rounded-full transition-all duration-500" style={{ width: `${(rep.weeklyKnocks / maxKnocks) * 100}%`, background: accent }} />
                             </div>
-                        </div>
+                        )}
                     </div>
                 ))}
             </div>

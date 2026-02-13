@@ -54,6 +54,7 @@ import DeleteAccount from './pages/DeleteAccount';
 import Home from './pages/Home';
 import List from './pages/List';
 import MobileApp from './pages/MobileApp';
+import Referrals from './pages/Referrals';
 import RepHome from './pages/RepHome';
 import Roadmap from './pages/Roadmap';
 import RoleSelect from './pages/RoleSelect';
@@ -63,7 +64,6 @@ import Sync from './pages/Sync';
 import Terms from './pages/Terms';
 import Tutorial from './pages/Tutorial';
 import ZipCodeExplorer from './pages/ZipCodeExplorer';
-import Referrals from './pages/Referrals';
 import __Layout from './Layout.jsx';
 
 
@@ -75,6 +75,7 @@ export const PAGES = {
     "Home": Home,
     "List": List,
     "MobileApp": MobileApp,
+    "Referrals": Referrals,
     "RepHome": RepHome,
     "Roadmap": Roadmap,
     "RoleSelect": RoleSelect,
@@ -84,7 +85,6 @@ export const PAGES = {
     "Terms": Terms,
     "Tutorial": Tutorial,
     "ZipCodeExplorer": ZipCodeExplorer,
-    "Referrals": Referrals,
 }
 
 export const pagesConfig = {
