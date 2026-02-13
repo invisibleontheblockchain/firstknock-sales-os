@@ -507,7 +507,7 @@ export default function RepHome() {
                         </p>
                     </div>
                 ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                         {filteredProperties.map((prop, idx) => (
                             <PropertyCard
                                 key={prop.address_hash}
