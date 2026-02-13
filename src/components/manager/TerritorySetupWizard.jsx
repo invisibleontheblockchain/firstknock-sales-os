@@ -8,6 +8,7 @@ import { MapPin, CheckCircle2, ArrowRight, Sparkles, Loader2, Save, AlertCircle 
 import { toast } from "sonner";
 import { generateOptimizedRoutes } from '../logic/routeOptimizer';
 import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
+import BetaUsageMeter from '../beta/BetaUsageMeter';
 
 export default function TerritorySetupWizard({ user, onComplete }) {
     const [step, setStep] = useState(1);
@@ -114,6 +115,7 @@ export default function TerritorySetupWizard({ user, onComplete }) {
                                     <Input value={zipInput} onChange={e => setZipInput(e.target.value)} placeholder="e.g. 90210, 90211" className="h-14 text-lg bg-black border-gray-700 text-white" />
                                     <p className="text-[10px] text-gray-600 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Works with any US zip code.</p>
                                 </div>
+                                <BetaUsageMeter />
                                 <Button onClick={handleSyncTerritory} disabled={loading || !zipInput} className="w-full h-12 font-bold text-base" style={{ background: accent, color: accentTxt }}>
                                     {loading ? <><Loader2 className="animate-spin mr-2 w-5 h-5" /> Syncing...</> : <><MapPin className="w-5 h-5 mr-2" /> Find Properties</>}
                                 </Button>

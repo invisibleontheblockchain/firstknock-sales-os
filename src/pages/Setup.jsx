@@ -6,6 +6,7 @@ import CsvUploader from '../components/dashboard/CsvUploader';
 import DataMarketplace from '../components/dashboard/DataMarketplace';
 import TerritoryFilter from '../components/setup/TerritoryFilter';
 import IngestionTools from '../components/admin/IngestionTools';
+import BetaUsageMeter from '../components/beta/BetaUsageMeter';
 import { createPageUrl } from '@/utils';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
@@ -151,6 +152,8 @@ export default function Setup() {
                     ) : (
                         <DataMarketplace />
                     )}
+
+                    <BetaUsageMeter className="mt-4" />
 
                     <Button
                         onClick={handleContinue}
