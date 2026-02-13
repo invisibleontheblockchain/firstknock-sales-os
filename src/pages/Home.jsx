@@ -1613,19 +1613,19 @@ export default function Home() {
                         </button>
                     </div>
 
-                    {/* FILTER BUTTON */}
+                    {/* FILTER / SETTINGS BUTTON */}
                     <div className="pointer-events-auto shrink-0 ml-auto">
                         <Button
                             onClick={() => setShowCompare(true)}
                             size="icon"
                             className="rounded-lg h-9 w-9 sm:h-10 sm:w-10 font-bold tracking-wide shadow-lg"
                             style={{ 
-                                background: mode === 'generate' ? BRAND.gold : BRAND.charcoal, 
-                                color: mode === 'generate' ? BRAND.voidBlack : BRAND.gold, 
+                                background: mode === 'generate' ? BRAND.charcoal : BRAND.charcoal, 
+                                color: BRAND.gold, 
                                 border: `1px solid ${BRAND.gold}40` 
                             }}
                         >
-                            {mode === 'generate' ? <Navigation className="w-4 h-4 sm:w-5 sm:h-5" /> : <Filter className="w-4 h-4 sm:w-5 sm:h-5" />}
+                            {mode === 'generate' ? <Settings className="w-4 h-4 sm:w-5 sm:h-5" /> : <Filter className="w-4 h-4 sm:w-5 sm:h-5" />}
                         </Button>
                     </div>
                 </div>
