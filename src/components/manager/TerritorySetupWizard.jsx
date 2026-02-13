@@ -49,32 +49,33 @@ export default function TerritorySetupWizard({ user, onComplete }) {
                 territory_zip_codes: zips
             });
 
-            // 2. Fetch Data
+            // 2. Fetch Data from RentCast via backend
             let allProps = [];
-            const fetchPromises = zips.map(zip => 
-                base44.functions.invoke('fetchZipProperties', { zip_code: zip })
-            );
+            for (const zip of zips) {
+                try {
+                    toast.loading(`Syncing ${zip}...`, { id: `sync-${zip}` });
+                    const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zip });
+                    const result = res.data;
+                    toast.success(`${zip}: ${result.count || result.message || 'Done'}`, { id: `sync-${zip}` });
+                } catch (e) {
+                    console.error(`Failed to fetch zip ${zip}:`, e);
+                    toast.error(`Failed to sync ${zip}`, { id: `sync-${zip}` });
+                }
+            }
             
-            await Promise.all(fetchPromises);
-            
-            // Fetch the actual entities to verify count
-            // We use a simplified filter here
+            // Now fetch the imported entities
             for (const zip of zips) {
                 const res = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000);
                 let props = [];
                 if (res.items) props = res.items;
                 else if (Array.isArray(res)) props = res;
                 
-                // Filter out bad coordinates immediately
                 props = props.filter(p => p.lat && p.lng && !(Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001));
                 allProps = [...allProps, ...props];
             }
 
             if (allProps.length === 0) {
-                // Try fallback/mock if empty for demo
-                toast.warning("No properties found in database. Trying generation...");
-                // In a real app we might trigger a deeper scrape. 
-                // For now we assume fetchZipProperties did its job or we just proceed empty
+                toast.error("No properties found for these zip codes. Try a different zip.");
             }
 
             setFetchedProperties(allProps);
