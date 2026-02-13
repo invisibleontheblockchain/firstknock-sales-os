@@ -35,9 +35,10 @@ export default function RepHeader({ user, isOffline, activeRoute, stats, knockWi
                 <div className="flex gap-1.5 shrink-0">
                     <button
                         onClick={onShowMap}
-                        className="w-9 h-9 rounded-lg bg-gray-800 border border-gray-700 flex items-center justify-center active:bg-gray-700"
+                        className="h-9 px-3 rounded-lg bg-yellow-500 flex items-center justify-center gap-1.5 active:bg-yellow-600 shadow-[0_0_12px_rgba(255,215,0,0.3)]"
                     >
-                        <MapPin className="w-4 h-4 text-blue-400" />
+                        <MapPin className="w-4 h-4 text-black" />
+                        <span className="text-[10px] font-bold text-black tracking-wide">MAP</span>
                     </button>
                     <button
                         onClick={() => {
