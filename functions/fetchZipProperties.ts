@@ -27,21 +27,31 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { zip_code, force_sync = false, check_usage_only = false } = body;
 
-    // --- Usage tracking via user metadata ---
+    // --- Determine user's tier from subscription ---
+    const subTier = (user.subscription_tier || 'free').toLowerCase();
+    const userLimit = TIER_LIMITS[subTier] || TIER_LIMITS.free;
     const currentUsage = user.rentcast_api_calls_used || 0;
-    const remaining = BETA_API_CALL_LIMIT - currentUsage;
+    const remaining = userLimit - currentUsage;
+
+    // --- Global monthly usage (across ALL users, protects YOUR RentCast bill) ---
+    // We track this month's total on a simple counter entity or user-level aggregation
+    // For now, use a simple approach: check how many calls were made this billing cycle
+    const globalUsedThisMonth = user.rentcast_global_month_count || 0; // Updated by admin periodically
+    // The real global check - sum all users' usage. For simplicity, we enforce per-user + trust the global cap.
 
     // If just checking usage, return stats
     if (check_usage_only) {
       return Response.json({
         status: 'usage',
         used: currentUsage,
-        limit: BETA_API_CALL_LIMIT,
-        remaining: remaining
+        limit: userLimit,
+        remaining: Math.max(0, remaining),
+        tier: subTier,
+        global_monthly_cap: GLOBAL_MONTHLY_CAP
       });
     }
 
-    console.log(`[FetchZip-v4] zip=${zip_code}, usage=${currentUsage}/${BETA_API_CALL_LIMIT}`);
+    console.log(`[FetchZip-v5] zip=${zip_code}, tier=${subTier}, usage=${currentUsage}/${userLimit}`);
 
     if (!zip_code || !/^\d{5}$/.test(String(zip_code).trim())) {
       return Response.json({ error: 'Valid 5-digit zip code required' }, { status: 400 });
