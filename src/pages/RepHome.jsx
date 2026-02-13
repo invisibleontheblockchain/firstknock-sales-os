@@ -450,43 +450,50 @@ export default function RepHome() {
             />
 
             {/* Filter tabs + search */}
-            <div className="px-4 pt-3 pb-2 space-y-2 bg-black border-b border-gray-800/50">
-                <div className="flex p-0.5 bg-gray-900 rounded-lg">
-                    {[
-                        { id: 'todo', label: `To Do (${routeProperties.length - stats.done})` },
-                        { id: 'done', label: `Done (${stats.done})` },
-                        { id: 'all', label: 'All' },
-                    ].map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setFilterStatus(tab.id)}
-                            className={`flex-1 py-1.5 text-[11px] font-bold rounded-md transition-all ${
-                                filterStatus === tab.id ? 'bg-yellow-500 text-black' : 'text-gray-500'
-                            }`}
-                        >
-                            {tab.label}
-                        </button>
-                    ))}
-                </div>
-
-                {/* Inline search - only show when there are enough properties */}
-                {routeProperties.length > 8 && (
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" />
-                        <Input 
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            placeholder="Search..."
-                            className="h-8 pl-8 text-xs bg-gray-900 border-gray-800 text-white placeholder:text-gray-600 focus:border-yellow-500"
-                        />
-                        {searchQuery && (
-                            <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2">
-                                <X className="w-3.5 h-3.5 text-gray-500" />
+            <div className="px-4 pt-2 pb-2 space-y-2 bg-[#0A0A0A]">
+                <div className="flex items-center gap-2">
+                    <div className="flex gap-1 flex-1">
+                        {[
+                            { id: 'todo', label: `Todo ${routeProperties.length - stats.done}` },
+                            { id: 'done', label: `Done ${stats.done}` },
+                            { id: 'all', label: 'All' },
+                        ].map(tab => (
+                            <button
+                                key={tab.id}
+                                onClick={() => setFilterStatus(tab.id)}
+                                className="px-2.5 py-1.5 rounded-lg text-[10px] font-bold tracking-wide transition-colors"
+                                style={{
+                                    background: filterStatus === tab.id ? '#FFD700' : '#1a1a1a',
+                                    color: filterStatus === tab.id ? '#0A0A0A' : '#888'
+                                }}
+                            >
+                                {tab.label}
                             </button>
-                        )}
+                        ))}
                     </div>
-                )}
+
+                    {/* Inline search */}
+                    {routeProperties.length > 8 && (
+                        <div className="relative w-28">
+                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-700" />
+                            <Input 
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search"
+                                className="h-7 pl-6 pr-6 text-[10px] bg-[#1a1a1a] border-transparent text-white placeholder:text-gray-700 focus:border-yellow-500/30 rounded-lg"
+                            />
+                            {searchQuery && (
+                                <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2">
+                                    <X className="w-3 h-3 text-gray-600" />
+                                </button>
+                            )}
+                        </div>
+                    )}
+                </div>
             </div>
+
+            {/* Divider */}
+            <div className="h-px bg-[#1a1a1a]" />
 
             {/* Property List */}
             <div className="flex-1 overflow-y-auto px-4 py-3 pb-20">
