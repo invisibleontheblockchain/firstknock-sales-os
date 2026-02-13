@@ -54,8 +54,15 @@ Deno.serve(async (req) => {
             payment_method_types: ['card'],
             line_items: [
                 {
-                    price: priceId,
-                    quantity: quantity,
+                    price_data: {
+                        currency: 'usd',
+                        product: 'prod_Tu1aqym2Ek3U9N',
+                        unit_amount: unitAmountCents,
+                        recurring: {
+                            interval: 'month',
+                        },
+                    },
+                    quantity: seats,
                 },
             ],
             subscription_data: {
