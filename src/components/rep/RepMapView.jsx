@@ -122,8 +122,12 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
                 <div className="pointer-events-auto flex gap-2">
                     <Button
                         onClick={() => {
-                            if (position && mapRef.current) {
-                                mapRef.current.setView([position.lat, position.lng], 18, { animate: true });
+                            try {
+                                if (position && mapRef.current) {
+                                    mapRef.current.setView([position.lat, position.lng], 18, { animate: true });
+                                }
+                            } catch (e) {
+                                console.warn('Map setView error', e);
                             }
                         }}
                         size="icon"
