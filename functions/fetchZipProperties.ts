@@ -226,20 +226,19 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`[FetchZip-v4] Done! Imported ${successCount}/${mapped.length}`);
+    console.log(`[FetchZip-v6] Done! Imported ${successCount}/${mapped.length}`);
 
     return Response.json({
       status: 'imported',
       zip_code: zip,
       count: successCount,
       total_found: allProperties.length,
-      api_calls_this_zip: requestCount,
       message: `Imported ${successCount} properties for zip ${zip}`,
-      usage: { used: newUsage, limit: BETA_API_CALL_LIMIT, remaining: newRemaining }
+      usage: { zips_used: newZipsUsed, zip_limit: zipLimit, zips_remaining: newZipsRemaining, tier: subTier }
     });
 
   } catch (error) {
-    console.error('[FetchZip-v4] Error:', error);
+    console.error('[FetchZip-v6] Error:', error);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
