@@ -27,7 +27,11 @@ function haversine(lat1, lng1, lat2, lng2) {
 
 function MapRefCapture({ mapRef }) {
     const map = useMap();
-    useEffect(() => { if (mapRef) mapRef.current = map; }, [map, mapRef]);
+    useEffect(() => {
+        if (mapRef && map) {
+            map.whenReady(() => { mapRef.current = map; });
+        }
+    }, [map, mapRef]);
     return null;
 }
 
