@@ -11,39 +11,46 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { zip_code, force_sync } = await req.json();
+    const body = await req.json();
+    const zip_code = body.zip_code;
+    const force_sync = body.force_sync || false;
 
-    if (!zip_code || !/^\d{5}$/.test(zip_code.trim())) {
+    console.log(`[FetchZip-v2] Called with zip=${zip_code}, force=${force_sync}`);
+
+    if (!zip_code || !/^\d{5}$/.test(String(zip_code).trim())) {
       return Response.json({ error: 'Valid 5-digit zip code required' }, { status: 400 });
     }
 
-    const zip = zip_code.trim();
+    const zip = String(zip_code).trim();
 
-    // 1. Check if we already have data for this zip
+    // 1. Check if we already have data for this zip (skip if force_sync)
     if (!force_sync) {
-      const existing = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 1);
+      console.log(`[FetchZip-v2] Checking existing data for ${zip}...`);
+      const existing = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000);
       const existingArr = Array.isArray(existing) ? existing : (existing?.items || []);
       if (existingArr.length > 0) {
-        // Count total
-        const allExisting = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000);
-        const count = Array.isArray(allExisting) ? allExisting.length : (allExisting?.items?.length || 0);
+        console.log(`[FetchZip-v2] Already have ${existingArr.length} properties for ${zip}`);
         return Response.json({
           status: 'exists',
-          count,
-          message: `Already have ${count} properties for ${zip}`
+          count: existingArr.length,
+          message: `Already have ${existingArr.length} properties for ${zip}`
         });
       }
     }
 
-    // 2. Fetch from RentCast API — recently sold single family homes
-    console.log(`[FetchZip] Fetching from RentCast for zip: ${zip}`);
+    // 2. Fetch from RentCast API
+    if (!RENTCAST_API_KEY) {
+      return Response.json({ error: 'RENTCAST_API_KEY not configured' }, { status: 500 });
+    }
+
+    console.log(`[FetchZip-v2] Fetching from RentCast for zip: ${zip}`);
 
     const allProperties = [];
     let offset = 0;
-    const limit = 500; // Max per request
+    const limit = 500;
     let hasMore = true;
     let requestCount = 0;
-    const MAX_REQUESTS = 4; // Cap at 2000 properties per zip to conserve API credits
+    const MAX_REQUESTS = 4; // Up to 2000 properties per zip
 
     while (hasMore && requestCount < MAX_REQUESTS) {
       const params = new URLSearchParams({
@@ -54,7 +61,7 @@ Deno.serve(async (req) => {
       });
 
       const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
-      console.log(`[FetchZip] Request ${requestCount + 1}: offset=${offset}`);
+      console.log(`[FetchZip-v2] Request ${requestCount + 1}: offset=${offset}`);
 
       const response = await fetch(url, {
         headers: {
@@ -65,25 +72,24 @@ Deno.serve(async (req) => {
 
       if (!response.ok) {
         const errText = await response.text();
-        console.error(`[FetchZip] RentCast error ${response.status}: ${errText}`);
-        
+        console.error(`[FetchZip-v2] RentCast error ${response.status}: ${errText}`);
+
         if (response.status === 401) {
-          return Response.json({ error: 'RentCast API key is invalid or expired. Check your RENTCAST_API_KEY secret.' }, { status: 500 });
+          return Response.json({ error: 'RentCast API key invalid or expired. Update RENTCAST_API_KEY in settings.' }, { status: 500 });
         }
         if (response.status === 429) {
-          console.warn('[FetchZip] Rate limited, stopping pagination');
+          console.warn('[FetchZip-v2] Rate limited');
           break;
         }
-        // For other errors on first request, fail. On subsequent, just stop.
         if (requestCount === 0) {
-          return Response.json({ error: `RentCast API error: ${response.status}` }, { status: 500 });
+          return Response.json({ error: `RentCast API error: ${response.status} - ${errText}` }, { status: 500 });
         }
         break;
       }
 
       const data = await response.json();
       const batch = Array.isArray(data) ? data : [];
-      console.log(`[FetchZip] Got ${batch.length} properties`);
+      console.log(`[FetchZip-v2] Got ${batch.length} properties`);
 
       allProperties.push(...batch);
       requestCount++;
@@ -95,17 +101,17 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`[FetchZip] Total fetched: ${allProperties.length} properties in ${requestCount} requests`);
+    console.log(`[FetchZip-v2] Total fetched: ${allProperties.length} in ${requestCount} API calls`);
 
     if (allProperties.length === 0) {
       return Response.json({
         status: 'empty',
         count: 0,
-        message: `No properties found for zip ${zip}. This zip may not have single family homes in RentCast's database.`
+        message: `No single family properties found for zip ${zip} in RentCast.`
       });
     }
 
-    // 3. If force_sync, get existing hashes to deduplicate
+    // 3. Deduplicate against existing if force_sync
     let existingHashes = new Set();
     if (force_sync) {
       const existingProps = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000);
@@ -113,7 +119,7 @@ Deno.serve(async (req) => {
       existingHashes = new Set(existingArr.map(p => p.address_hash));
     }
 
-    // 4. Map RentCast data to MasterProperty schema
+    // 4. Map to MasterProperty schema
     const mapped = allProperties
       .filter(p => p.latitude && p.longitude && p.addressLine1)
       .filter(p => !existingHashes.has(p.id))
@@ -122,7 +128,6 @@ Deno.serve(async (req) => {
         const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
         const street_name = addressMatch ? addressMatch[2] : (p.addressLine1 || "Unknown");
 
-        // Determine status from sale history
         let original_status = 'ELIGIBLE';
         if (p.lastSaleDate) {
           const saleDate = new Date(p.lastSaleDate);
@@ -158,7 +163,7 @@ Deno.serve(async (req) => {
         };
       });
 
-    console.log(`[FetchZip] Mapped ${mapped.length} valid properties for import`);
+    console.log(`[FetchZip-v2] ${mapped.length} valid properties to import`);
 
     if (mapped.length === 0) {
       return Response.json({
@@ -168,7 +173,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 5. Bulk insert into MasterProperty
+    // 5. Bulk insert
     let successCount = 0;
     const CHUNK_SIZE = 50;
 
@@ -177,20 +182,21 @@ Deno.serve(async (req) => {
       try {
         await base44.entities.MasterProperty.bulkCreate(chunk);
         successCount += chunk.length;
+        console.log(`[FetchZip-v2] Inserted chunk ${Math.floor(i / CHUNK_SIZE) + 1}, total: ${successCount}`);
       } catch (e) {
-        console.error(`[FetchZip] Bulk create failed for chunk ${i}, trying singles:`, e.message);
+        console.error(`[FetchZip-v2] Bulk failed, trying singles:`, e.message);
         for (const prop of chunk) {
           try {
             await base44.entities.MasterProperty.create(prop);
             successCount++;
           } catch (err) {
-            console.error(`[FetchZip] Single create failed:`, err.message);
+            console.error(`[FetchZip-v2] Single failed:`, err.message);
           }
         }
       }
     }
 
-    console.log(`[FetchZip] Successfully imported ${successCount}/${mapped.length} properties`);
+    console.log(`[FetchZip-v2] Done! Imported ${successCount}/${mapped.length}`);
 
     return Response.json({
       status: 'imported',
@@ -201,7 +207,7 @@ Deno.serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('[FetchZip] Error:', error);
+    console.error('[FetchZip-v2] Error:', error);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
