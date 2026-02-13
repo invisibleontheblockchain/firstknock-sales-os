@@ -28,13 +28,13 @@ const getMonthlyTotal = (totalUsers) => {
 };
 
 const ALL_FEATURES = [
-    'Unlimited Routes & Territories',
+    'Up to 10 Zip Code Territories',
+    'Unlimited Routes & Route Builder',
     'Live GPS Tracking & Proof of Visit',
     'AI Route Optimization',
     'Command Center Auto-Dispatch',
     'Team Leaderboard & Metrics',
     'Property Intel & History',
-    'Offline Mode Support',
     'Priority Support'
 ];
 
