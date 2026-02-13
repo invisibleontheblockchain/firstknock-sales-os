@@ -941,22 +941,29 @@ export default function Home() {
                 const results = await Promise.all(fetchPromises);
                 let flattened = results.flat();
 
-                // If no properties found, try to generate/import them via backend
+                // If no properties found, pull from RentCast via backend
                 if (flattened.length === 0) {
-                    console.log(`[Generate] No properties found for ${targetZips.join(', ')}. Attempting generation...`);
-                    // Try one by one or parallel? Parallel.
-                    const generatePromises = targetZips.map(zip => 
-                        base44.functions.invoke('fetchZipProperties', { zip_code: zip })
-                            .catch(err => {
-                                console.warn(`Failed to generate zip ${zip}`, err);
-                                return null;
-                            })
+                    console.log(`[Generate] No properties found for ${targetZips.join(', ')}. Fetching from RentCast...`);
+                    toast.loading("Pulling property data...", { id: 'fetch-zip' });
+                    
+                    for (const zip of targetZips) {
+                        try {
+                            const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zip });
+                            console.log(`[Generate] Fetch result for ${zip}:`, res.data);
+                        } catch (err) {
+                            console.warn(`Failed to fetch zip ${zip}`, err);
+                        }
+                    }
+                    
+                    toast.success("Data synced!", { id: 'fetch-zip' });
+                    
+                    // Re-fetch after import
+                    const retryPromises = targetZips.map(zip => 
+                        base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000)
+                            .then(res => Array.isArray(res) ? res : (res?.items || []))
+                            .catch(() => [])
                     );
-                    
-                    await Promise.all(generatePromises);
-                    
-                    // Re-fetch after generation
-                    const retryResults = await Promise.all(fetchPromises);
+                    const retryResults = await Promise.all(retryPromises);
                     flattened = retryResults.flat();
                 }
                 
