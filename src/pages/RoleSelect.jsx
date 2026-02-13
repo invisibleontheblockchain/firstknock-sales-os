@@ -17,9 +17,27 @@ export default function RoleSelect() {
     const [inviteCode, setInviteCode] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [showRepCodeDialog, setShowRepCodeDialog] = useState(false);
+    const [referralApplied, setReferralApplied] = useState(false);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
     const { accent } = useTheme();
     const accentTxt = contrastText(accent);
+
+    // Auto-apply referral code from URL
+    React.useEffect(() => {
+        if (!user || referralApplied) return;
+        const params = new URLSearchParams(window.location.search);
+        const refCode = params.get('ref');
+        if (refCode && !user.referred_by_code) {
+            base44.functions.invoke('processReferral', { action: 'apply_code', referral_code: refCode })
+                .then(res => {
+                    if (res.data?.success) {
+                        toast.success(`Referred by ${res.data.referrer_name || 'a friend'}!`);
+                    }
+                })
+                .catch(() => {})
+                .finally(() => setReferralApplied(true));
+        }
+    }, [user, referralApplied]);
 
     // Check if user already has a TeamMember record (already on a team)
     const { data: existingTeamMember } = useQuery({
