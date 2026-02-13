@@ -77,8 +77,12 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
     const hasCentered = useRef(false);
     useEffect(() => {
         if (position && mapRef.current && !hasCentered.current) {
-            mapRef.current.setView([position.lat, position.lng], 18);
-            hasCentered.current = true;
+            try {
+                mapRef.current.setView([position.lat, position.lng], 18);
+                hasCentered.current = true;
+            } catch (e) {
+                console.warn('Map not ready yet for setView', e);
+            }
         }
     }, [position]);
 
