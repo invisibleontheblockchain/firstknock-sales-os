@@ -132,6 +132,9 @@ export default function Billing() {
                     </p>
                 </div>
 
+                {/* Current Usage */}
+                <BetaUsageMeter showUpgrade={false} />
+
                 {isSubscribed && (
                     <div className="flex flex-col items-center gap-4">
                         <div className="inline-block bg-green-900/30 border border-green-500/50 rounded-full px-4 py-1">
