@@ -6,8 +6,8 @@ import { MapPin, Lock, Crown } from 'lucide-react';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { createPageUrl } from '@/utils';
 
-const TIER_ZIP_LIMITS = { free: 1, hustler: 10, growth: 50, enterprise: 999 };
-const TIER_LABELS = { free: 'Free Beta', hustler: 'Hustler', growth: 'Growth', enterprise: 'Enterprise' };
+const FREE_ZIP_LIMIT = 1;
+const ZIPS_PER_SEAT = 10;
 
 export default function BetaUsageMeter({ className = '', showUpgrade = true }) {
     const { accent } = useTheme();
@@ -17,9 +17,10 @@ export default function BetaUsageMeter({ className = '', showUpgrade = true }) {
         queryFn: () => base44.auth.me(),
     });
 
-    const tier = (user?.subscription_tier || 'free').toLowerCase();
-    const isPaid = tier !== 'free';
-    const zipLimit = TIER_ZIP_LIMITS[tier] || 1;
+    const isPaid = user?.subscription_status === 'active';
+    const totalSeats = user?.total_seats || 1;
+    const zipLimit = isPaid ? totalSeats * ZIPS_PER_SEAT : FREE_ZIP_LIMIT;
+    const tierLabel = isPaid ? `Pro (${totalSeats} seat${totalSeats !== 1 ? 's' : ''})` : 'Free Beta';
     const generatedZips = user?.generated_zip_codes || [];
     const zipsUsed = generatedZips.length;
     const remaining = Math.max(0, zipLimit - zipsUsed);
@@ -32,7 +33,7 @@ export default function BetaUsageMeter({ className = '', showUpgrade = true }) {
                 <div className="flex items-center gap-2">
                     <MapPin className="w-3.5 h-3.5" style={{ color: isDepleted && !isPaid ? '#EF4444' : accent }} />
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                        {TIER_LABELS[tier]} — Zip Codes
+                        {tierLabel} — Zip Codes
                     </span>
                 </div>
                 <span className={`text-xs font-bold ${isDepleted && !isPaid ? 'text-red-400' : 'text-white'}`}>
@@ -75,7 +76,7 @@ export default function BetaUsageMeter({ className = '', showUpgrade = true }) {
                 <p className="text-[10px] mt-1.5 text-gray-600">
                     {remaining > 0
                         ? `${remaining} zip code${remaining !== 1 ? 's' : ''} remaining on your plan.`
-                        : isPaid ? 'Need more? Upgrade your plan.' : ''
+                        : isPaid ? 'Need more? Add seats for more zips.' : ''
                     }
                 </p>
             )}

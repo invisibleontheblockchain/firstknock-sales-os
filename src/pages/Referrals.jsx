@@ -63,25 +63,15 @@ export default function Referrals() {
                     </p>
                 </div>
 
-                {/* Commission Tiers */}
-                <div className="bg-[#111] border border-gray-800 rounded-xl p-4">
-                    <h3 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center gap-2">
+                {/* Commission Info */}
+                <div className="bg-[#111] border border-gray-800 rounded-xl p-5 text-center">
+                    <h3 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center justify-center gap-2">
                         <DollarSign className="w-3 h-3" /> Commission Per Referral
                     </h3>
-                    <div className="grid grid-cols-3 gap-2">
-                        {[
-                            { tier: 'Hustler', amount: 10 },
-                            { tier: 'Growth', amount: 20 },
-                            { tier: 'Enterprise', amount: 50 },
-                        ].map(t => (
-                            <div key={t.tier} className="text-center p-3 rounded-lg bg-black/50 border border-gray-800">
-                                <p className="text-lg font-bold" style={{ color: accent }}>${t.amount}</p>
-                                <p className="text-[10px] text-gray-500 uppercase">{t.tier}</p>
-                            </div>
-                        ))}
-                    </div>
-                    <p className="text-[10px] text-gray-600 text-center mt-2">
-                        Earned when your referral subscribes to a paid plan
+                    <p className="text-4xl font-extrabold" style={{ color: accent }}>$10</p>
+                    <p className="text-sm text-gray-400 mt-1">for every user who subscribes</p>
+                    <p className="text-[10px] text-gray-600 mt-2">
+                        Flat $10 cash earned when your referral subscribes to any paid plan
                     </p>
                 </div>
 
