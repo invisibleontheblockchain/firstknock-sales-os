@@ -1705,16 +1705,35 @@ export default function Home() {
             {/* Bottom Action Bar */}
             <div className="absolute bottom-6 left-4 right-4 z-[1000] pointer-events-none">
                 <div className="flex items-end justify-between gap-2">
-                    {/* Left: Route + Checklist buttons stacked on mobile */}
+                    {/* Left: Route + Checklist + Generate buttons */}
                     <div className="pointer-events-auto flex items-center gap-2">
+                        {/* GENERATE button - visible in Route Builder mode when no routes generated yet */}
+                        {mode === 'generate' && !activeRoute && (
+                            <Button
+                                onClick={generateRoutes}
+                                disabled={routesGenerating}
+                                className="rounded-full h-10 sm:h-12 px-4 sm:px-6 text-[10px] sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap"
+                                style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
+                            >
+                                {routesGenerating ? (
+                                    <><Loader2 className="w-4 h-4 mr-1 sm:mr-2 animate-spin" /> BUILDING...</>
+                                ) : (
+                                    <><Zap className="w-4 h-4 mr-1 sm:mr-2" /> GENERATE</>
+                                )}
+                            </Button>
+                        )}
+
                         <Button
                             onClick={() => setShowRoutePanel(true)}
-                            className="rounded-full h-10 sm:h-12 px-4 sm:px-6 text-[10px] sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap"
-                            style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
+                            className={`rounded-full h-10 sm:h-12 px-4 sm:px-6 text-[10px] sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap ${mode === 'generate' && !activeRoute ? '' : ''}`}
+                            style={{ 
+                                background: mode === 'generate' && !activeRoute ? 'rgba(31, 31, 31, 0.9)' : 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', 
+                                color: mode === 'generate' && !activeRoute ? BRAND.gold : BRAND.voidBlack,
+                                border: mode === 'generate' && !activeRoute ? `1px solid ${BRAND.gold}` : 'none'
+                            }}
                         >
                             <List className="w-4 h-4 sm:w-5 sm:h-5 mr-1 sm:mr-2" />
                             ROUT{!activeRoute && 'ES'}
-                            {routesGenerating && <Loader2 className="w-3 h-3 ml-1 animate-spin" />}
                             {!routesGenerating && (hydratedSavedRoutes.length > 0 || routes.length > 0) && (
                                 <Badge className="ml-1 sm:ml-2 h-5 min-w-[20px] px-1" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
                                     {hydratedSavedRoutes.length > 0 ? hydratedSavedRoutes.length : routes.length}
