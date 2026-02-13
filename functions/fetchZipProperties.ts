@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
 
       if (!response.ok) {
         const errText = await response.text();
-        console.error(`[FetchZip-v4] RentCast error ${response.status}: ${errText}`);
+        console.error(`[FetchZip-v6] RentCast error ${response.status}: ${errText}`);
         if (response.status === 401) {
           return Response.json({ error: 'RentCast API key invalid or expired.' }, { status: 500 });
         }
