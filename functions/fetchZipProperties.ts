@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
 
       const data = await response.json();
       const batch = Array.isArray(data) ? data : [];
-      console.log(`[FetchZip-v4] Got ${batch.length} properties`);
+      console.log(`[FetchZip-v6] Got ${batch.length} properties`);
 
       allProperties.push(...batch);
       requestCount++;
