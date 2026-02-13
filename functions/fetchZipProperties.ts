@@ -1,9 +1,20 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
-// v4 - Beta test: hard cap at 50 RentCast API calls total
+// v5 - Tiered limits based on subscription + global monthly cap for your protection
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
-const BETA_API_CALL_LIMIT = 50;
+
+// YOUR PROTECTION: Global monthly cap to prevent runaway bills
+// Adjust this based on your RentCast plan (50 free, 1000 foundation, 5000 growth)
+const GLOBAL_MONTHLY_CAP = 50; // Start conservative, increase as you upgrade RentCast
+
+// Per-user limits by subscription tier
+const TIER_LIMITS = {
+  free: 10,        // Free beta testers get 10 API calls total
+  hustler: 50,     // $49/mo HUSTLER plan
+  growth: 200,     // $99/mo GROWTH plan  
+  enterprise: 1000 // $299/mo ENTERPRISE plan (unlimited practically)
+};
 
 Deno.serve(async (req) => {
   try {
