@@ -527,22 +527,22 @@ export default function RepHome() {
                         onClick={() => {
                             if(confirm("Mark route as complete?")) completeRouteMutation.mutate();
                         }}
-                        className="flex-1 h-11 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-2xl text-xs"
+                        className="flex-1 h-10 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-2xl text-xs"
                     >
                         ✅ Complete Route
                     </Button>
                 )}
                 <button
                     onClick={() => setShowAnalytics(true)}
-                    className="w-11 h-11 rounded-xl bg-[#151515] border border-gray-800 flex items-center justify-center active:bg-gray-800 shadow-lg"
+                    className="w-10 h-10 rounded-xl bg-[#111] border border-white/5 flex items-center justify-center active:bg-white/10 shadow-lg"
                 >
-                    <TrendingUp className="w-5 h-5 text-yellow-500" />
+                    <TrendingUp className="w-4 h-4 text-yellow-500" />
                 </button>
                 <button
                     onClick={() => setShowChat(true)}
-                    className="w-11 h-11 rounded-xl bg-[#151515] border border-gray-800 flex items-center justify-center active:bg-gray-800 shadow-lg"
+                    className="w-10 h-10 rounded-xl bg-[#111] border border-white/5 flex items-center justify-center active:bg-white/10 shadow-lg"
                 >
-                    <MessageCircle className="w-5 h-5 text-blue-400" />
+                    <MessageCircle className="w-4 h-4 text-blue-400" />
                 </button>
             </div>
 
