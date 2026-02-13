@@ -326,7 +326,7 @@ export default function Home() {
     const [showMapSettings, setShowMapSettings] = useState(false);
     const [navigationApp, setNavigationApp] = useState('apple');
     const [pinSize, setPinSize] = useState(5);
-    const [showRouteLines, setShowRouteLines] = useState(false);
+    const [showRouteLines, setShowRouteLines] = useState(true);
     const [mapSettings, setMapSettings] = useState({
         pinShape: 'circle',
         colorScheme: 'default',
