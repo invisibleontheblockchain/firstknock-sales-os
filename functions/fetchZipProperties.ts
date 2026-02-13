@@ -1,5 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 
+// v3 - RentCast powered, no Neon dependency
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
 
