@@ -341,11 +341,8 @@ export default function Home() {
         glowEffect: false,
         fillStyle: 'solid',
     });
-    const [darkRoomProperties, setDarkRoomProperties] = useState([]);
-    const [darkRoomClusters, setDarkRoomClusters] = useState([]);
-    const [darkRoomCount, setDarkRoomCount] = useState(0);
-    const [isLoadingDarkRoom, setIsLoadingDarkRoom] = useState(false);
-    const [darkRoomEnabled, setDarkRoomEnabled] = useState(false);
+    const [darkRoomProperties] = useState([]);
+    const [darkRoomClusters] = useState([]);
     const [fetchedProperties, setFetchedProperties] = useState([]); // Dynamic fetch storage
     const [templateName, setTemplateName] = useState("");
     const [gpsTracking, setGpsTracking] = useState(false);
@@ -480,60 +477,8 @@ export default function Home() {
         }
     };
 
-    // Dark Room Manager Component - only active when enabled
-    const DarkRoomManager = () => {
-        const map = useMap();
-
-        useEffect(() => {
-            if (!darkRoomEnabled || !map) return;
-
-            let debounceTimer = null;
-
-            const fetchDarkRoomData = async () => {
-                try {
-                    if (!map || !map.getBounds) return;
-                    const bounds = map.getBounds();
-                    const zoom = map.getZoom();
-
-                    setIsLoadingDarkRoom(true);
-
-                    const data = await darkRoom.fetchPropertiesInViewport(bounds, zoom);
-
-                    // Separate clusters from individual properties
-                    const clusters = data.filter(d => d.isCluster);
-                    const properties = data.filter(d => !d.isCluster);
-
-                    setDarkRoomClusters(clusters);
-                    setDarkRoomProperties(properties);
-                } catch (e) {
-                    console.error("Failed to fetch Dark Room stream:", e);
-                } finally {
-                    setIsLoadingDarkRoom(false);
-                }
-            };
-
-            const debouncedFetch = () => {
-                if (debounceTimer) clearTimeout(debounceTimer);
-                debounceTimer = setTimeout(fetchDarkRoomData, 300);
-            };
-
-            map.on('moveend', debouncedFetch);
-            map.on('zoomend', debouncedFetch);
-
-            // Initial fetch
-            fetchDarkRoomData();
-
-            return () => {
-                try {
-                    map.off('moveend', debouncedFetch);
-                    map.off('zoomend', debouncedFetch);
-                } catch (e) { /* Map destroyed */ }
-                if (debounceTimer) clearTimeout(debounceTimer);
-            };
-        }, [map, darkRoomEnabled]);
-
-        return null;
-    };
+    // Dark Room removed — no-op component
+    const DarkRoomManager = () => null;
 
     // Connection check disabled by default - Dark Room is opt-in
     // useEffect(() => {
