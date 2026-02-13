@@ -1637,48 +1637,41 @@ export default function Home() {
                     </div>
                 </div>
 
-                {/* Active Route Persistent Banner */}
+                {/* Active Route Banner - Compact */}
                 {activeRoute && (
-                    <div className="pointer-events-auto rounded-xl px-4 py-3 flex items-center justify-between shadow-2xl border border-yellow-600/50 animate-in slide-in-from-top-2 mx-1" style={{ background: BRAND.gold }}>
-                        <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-10 h-10 rounded-full bg-black/10 flex items-center justify-center shrink-0">
-                                <Navigation className="w-5 h-5" style={{ color: BRAND.voidBlack }} />
-                            </div>
-                            <div className="truncate">
-                                <span className="text-sm font-bold block leading-tight truncate" style={{ color: BRAND.voidBlack }}>{activeRoute.name}</span>
-                                <div className="mt-1 flex items-center" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
-                                    <select
-                                        value={activeRoute.assigned_to || ""}
-                                        onChange={(e) => {
-                                            e.stopPropagation();
-                                            const val = e.target.value;
-                                            console.log('[Assign] Selected value:', val, 'for route:', activeRoute.id);
-                                            handleAssignRoute(activeRoute.id, val);
-                                        }}
-                                        onPointerDown={(e) => e.stopPropagation()}
-                                        className="text-xs font-bold bg-black/10 border-none rounded px-3 py-2 outline-none cursor-pointer hover:bg-black/20 transition-colors h-8 min-w-[140px] appearance-auto"
-                                        style={{ color: BRAND.voidBlack, WebkitAppearance: 'menulist', fontSize: '14px' }}
-                                    >
-                                        <option value="">Unassigned</option>
-                                        <option value={user?.id || 'manager'}>Me (Manager)</option>
-                                        {teamMembers.map(m => (
-                                            <option key={m.id} value={m.id}>{m.name}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
+                    <div className="pointer-events-auto rounded-full px-1.5 py-1.5 flex items-center gap-2 shadow-2xl border border-yellow-600/40 animate-in slide-in-from-top-2 mx-1 backdrop-blur-md" style={{ background: 'rgba(10,10,10,0.92)' }}>
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: BRAND.gold }}>
+                            <Navigation className="w-4 h-4" style={{ color: BRAND.voidBlack }} />
+                        </div>
+                        <span className="text-sm font-bold truncate max-w-[100px]" style={{ color: BRAND.gold }}>{activeRoute.name}</span>
+                        <div onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
+                            <select
+                                value={activeRoute.assigned_to || ""}
+                                onChange={(e) => {
+                                    e.stopPropagation();
+                                    handleAssignRoute(activeRoute.id, e.target.value);
+                                }}
+                                onPointerDown={(e) => e.stopPropagation()}
+                                className="text-xs font-medium bg-white/10 border border-white/10 rounded-full px-3 py-1.5 outline-none cursor-pointer hover:bg-white/15 transition-colors appearance-auto"
+                                style={{ color: '#ccc', WebkitAppearance: 'menulist', fontSize: '12px' }}
+                            >
+                                <option value="">Unassigned</option>
+                                <option value={user?.id || 'manager'}>Me (Manager)</option>
+                                {teamMembers.map(m => (
+                                    <option key={m.id} value={m.id}>{m.name}</option>
+                                ))}
+                            </select>
                         </div>
                         <button 
                             onClick={() => {
                                 setActiveRoute(null);
                                 if (mapRef.current) {
-                                    // Zoom out slightly (1 standard deviation-ish) instead of full reset
                                     mapRef.current.setZoom(Math.max(13, mapRef.current.getZoom() - 2));
                                 }
                             }} 
-                            className="w-10 h-10 flex items-center justify-center bg-black/10 hover:bg-black/20 active:bg-black/30 rounded-full transition-colors ml-3 shrink-0"
+                            className="w-8 h-8 flex items-center justify-center hover:bg-white/10 active:bg-white/15 rounded-full transition-colors shrink-0"
                         >
-                            <X className="w-6 h-6" style={{ color: BRAND.voidBlack }} />
+                            <X className="w-4 h-4 text-gray-400" />
                         </button>
                     </div>
                 )}
