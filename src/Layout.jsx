@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Map, Upload, Navigation, LogIn, Users, HelpCircle, Sparkles, Smartphone, MoreVertical, LogOut, RefreshCw, User as UserIcon, TrendingUp, Paintbrush, Gift } from 'lucide-react';
+import { Map, Upload, Navigation, LogIn, Users, HelpCircle, Sparkles, Smartphone, MoreVertical, LogOut, RefreshCw, User as UserIcon, TrendingUp, Paintbrush, Gift, Calendar } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -157,8 +157,8 @@ function LayoutInner({ children }) {
                         <NavItem icon={Map} label="Map" to={createPageUrl('Home')} active={window.location.pathname.endsWith('Home') || window.location.pathname === '/'} accent={accent} />
                         <NavItem icon={TrendingUp} label="Analytics" to={createPageUrl('List')} active={window.location.pathname.endsWith('List')} accent={accent} />
                         <NavItem icon={Upload} label="Setup" to={createPageUrl('Setup')} active={window.location.pathname.endsWith('Setup')} accent={accent} />
+                        <NavItem icon={Calendar} label="Appts" to={createPageUrl('Appointments')} active={window.location.pathname.endsWith('Appointments')} accent={accent} />
                         <NavItem icon={Users} label="Team" to={createPageUrl('AdminTeam')} active={window.location.pathname.endsWith('AdminTeam')} accent={accent} />
-                        <NavItem icon={HelpCircle} label="Help" to={createPageUrl('Tutorial')} active={window.location.pathname.endsWith('Tutorial')} accent={accent} />
                         <NavItem icon={Gift} label="Refer" to={createPageUrl('Referrals')} active={window.location.pathname.endsWith('Referrals')} accent={accent} />
                         <NavItem icon={Sparkles} label="Plans" to={createPageUrl('Billing')} active={window.location.pathname.endsWith('Billing')} accent={accent} />
                     </div>
