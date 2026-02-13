@@ -87,15 +87,14 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'RENTCAST_API_KEY not configured' }, { status: 500 });
     }
 
-    console.log(`[FetchZip-v5] Fetching from RentCast for zip: ${zip}`);
+    console.log(`[FetchZip-v6] Fetching from RentCast for zip: ${zip}`);
 
     const allProperties = [];
     let offset = 0;
     const limit = 500;
     let hasMore = true;
     let requestCount = 0;
-    // Cap requests per zip: min of 4 or remaining budget
-    const maxRequestsThisZip = Math.min(4, remaining);
+    const maxRequestsThisZip = 4; // Up to 2000 properties per zip
 
     while (hasMore && requestCount < maxRequestsThisZip) {
       const params = new URLSearchParams({
