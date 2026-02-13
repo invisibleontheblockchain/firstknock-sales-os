@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'RENTCAST_API_KEY not configured' }, { status: 500 });
     }
 
-    console.log(`[FetchZip-v4] Fetching from RentCast for zip: ${zip}`);
+    console.log(`[FetchZip-v5] Fetching from RentCast for zip: ${zip}`);
 
     const allProperties = [];
     let offset = 0;
