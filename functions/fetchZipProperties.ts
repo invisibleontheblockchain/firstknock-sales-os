@@ -219,7 +219,7 @@ Deno.serve(async (req) => {
         await base44.entities.MasterProperty.bulkCreate(chunk);
         successCount += chunk.length;
       } catch (e) {
-        console.error(`[FetchZip-v4] Bulk failed, trying singles:`, e.message);
+        console.error(`[FetchZip-v6] Bulk failed, trying singles:`, e.message);
         for (const prop of chunk) {
           try { await base44.entities.MasterProperty.create(prop); successCount++; } catch {}
         }
