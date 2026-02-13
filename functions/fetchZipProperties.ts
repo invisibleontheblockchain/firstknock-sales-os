@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
       });
 
       const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
-      console.log(`[FetchZip-v4] Request ${requestCount + 1}/${maxRequestsThisZip}: offset=${offset}`);
+      console.log(`[FetchZip-v5] Request ${requestCount + 1}/${maxRequestsThisZip}: offset=${offset}`);
 
       const response = await fetch(url, {
         headers: { 'accept': 'application/json', 'X-Api-Key': RENTCAST_API_KEY }
