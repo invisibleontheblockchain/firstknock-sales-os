@@ -23,31 +23,28 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { zip_code, force_sync = false, check_usage_only = false } = body;
 
-    // --- Determine user's tier from subscription ---
+    // --- Determine user's tier and zip limits ---
     const subTier = (user.subscription_tier || 'free').toLowerCase();
-    const userLimit = TIER_LIMITS[subTier] || TIER_LIMITS.free;
-    const currentUsage = user.rentcast_api_calls_used || 0;
-    const remaining = userLimit - currentUsage;
-
-    // --- Global monthly usage (across ALL users, protects YOUR RentCast bill) ---
-    // We track this month's total on a simple counter entity or user-level aggregation
-    // For now, use a simple approach: check how many calls were made this billing cycle
-    const globalUsedThisMonth = user.rentcast_global_month_count || 0; // Updated by admin periodically
-    // The real global check - sum all users' usage. For simplicity, we enforce per-user + trust the global cap.
+    const zipLimit = TIER_ZIP_LIMITS[subTier] || TIER_ZIP_LIMITS.free;
+    const generatedZips = user.generated_zip_codes || [];
+    const zipsUsed = generatedZips.length;
+    const zipsRemaining = zipLimit - zipsUsed;
+    const isPaid = subTier !== 'free';
 
     // If just checking usage, return stats
     if (check_usage_only) {
       return Response.json({
         status: 'usage',
-        used: currentUsage,
-        limit: userLimit,
-        remaining: Math.max(0, remaining),
+        zips_used: zipsUsed,
+        zip_limit: zipLimit,
+        zips_remaining: Math.max(0, zipsRemaining),
+        generated_zips: generatedZips,
         tier: subTier,
-        global_monthly_cap: GLOBAL_MONTHLY_CAP
+        is_paid: isPaid
       });
     }
 
-    console.log(`[FetchZip-v5] zip=${zip_code}, tier=${subTier}, usage=${currentUsage}/${userLimit}`);
+    console.log(`[FetchZip-v6] zip=${zip_code}, tier=${subTier}, zips=${zipsUsed}/${zipLimit}`);
 
     if (!zip_code || !/^\d{5}$/.test(String(zip_code).trim())) {
       return Response.json({ error: 'Valid 5-digit zip code required' }, { status: 400 });
