@@ -223,7 +223,7 @@ export default function TerritorySetupWizard({ user, onComplete }) {
                                     </p>
                                     <p className="text-[10px] text-yellow-500/80 italic flex items-center gap-1">
                                         <AlertCircle className="w-3 h-3" />
-                                        Note: Some zip codes are still being updated with latest property data.
+                                        Works with any US zip code. Property data pulled live from nationwide database.
                                     </p>
                                 </div>
 
