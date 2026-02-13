@@ -52,34 +52,34 @@ Deno.serve(async (req) => {
 
     const zip = String(zip_code).trim();
 
-    // Check if already have data (skip API call)
+    // Check if this zip was already generated (always allow re-access to existing zips)
+    const alreadyGenerated = generatedZips.includes(zip);
+
     if (!force_sync) {
-      console.log(`[FetchZip-v5] Checking existing data for ${zip}...`);
+      console.log(`[FetchZip-v6] Checking existing data for ${zip}...`);
       const existing = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000);
       const existingArr = Array.isArray(existing) ? existing : (existing?.items || []);
       if (existingArr.length > 0) {
-        console.log(`[FetchZip-v5] Already have ${existingArr.length} properties for ${zip}`);
+        console.log(`[FetchZip-v6] Already have ${existingArr.length} properties for ${zip}`);
         return Response.json({
           status: 'exists',
           count: existingArr.length,
           message: `Already have ${existingArr.length} properties for ${zip}`,
-          usage: { used: currentUsage, limit: userLimit, remaining, tier: subTier }
+          usage: { zips_used: zipsUsed, zip_limit: zipLimit, zips_remaining: Math.max(0, zipsRemaining), tier: subTier }
         });
       }
     }
 
-    // --- PER-USER LIMIT CHECK ---
-    if (remaining <= 0) {
-      console.warn(`[FetchZip-v5] USER LIMIT REACHED: ${currentUsage}/${userLimit} (tier: ${subTier})`);
-      const upgradeMsg = subTier === 'free' 
-        ? `You've used all ${userLimit} free beta API calls. Subscribe to a plan to unlock more.`
-        : subTier === 'hustler'
-        ? `You've used all ${userLimit} API calls on the Hustler plan. Upgrade to Growth for 200 calls.`
-        : `You've used all ${userLimit} API calls. Contact support or upgrade your plan.`;
+    // --- ZIP LIMIT CHECK (only blocks NEW zips, not re-syncing existing ones) ---
+    if (!alreadyGenerated && zipsRemaining <= 0) {
+      console.warn(`[FetchZip-v6] ZIP LIMIT REACHED: ${zipsUsed}/${zipLimit} (tier: ${subTier})`);
+      const upgradeMsg = subTier === 'free'
+        ? `You've used your 1 free zip code. Subscribe to a plan to unlock more territories.`
+        : `You've reached your ${zipLimit} zip code limit on the ${subTier} plan. Upgrade for more.`;
       return Response.json({
-        error: 'API limit reached',
+        error: 'Zip code limit reached',
         message: upgradeMsg,
-        usage: { used: currentUsage, limit: userLimit, remaining: 0, tier: subTier }
+        usage: { zips_used: zipsUsed, zip_limit: zipLimit, zips_remaining: 0, tier: subTier, is_paid: isPaid }
       }, { status: 429 });
     }
 
