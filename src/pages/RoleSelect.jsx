@@ -3,12 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Navigation, Users, Briefcase, ChevronRight, Key, ArrowRight, ShieldCheck, Map } from 'lucide-react';
+import { Navigation, ChevronRight, Key, ArrowRight, ShieldCheck, Map } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
 
 export default function RoleSelect() {
     const navigate = useNavigate();
@@ -17,6 +18,8 @@ export default function RoleSelect() {
     const [isLoading, setIsLoading] = useState(false);
     const [showRepCodeDialog, setShowRepCodeDialog] = useState(false);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
+    const { accent } = useTheme();
+    const accentTxt = contrastText(accent);
 
     // Check if user already has a TeamMember record (already on a team)
     const { data: existingTeamMember } = useQuery({
@@ -155,7 +158,7 @@ export default function RoleSelect() {
     if (user?.app_role) {
         return (
             <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center justify-center text-white space-y-4">
-                <div className="w-12 h-12 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin" />
+                <div className="w-12 h-12 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: accent, borderTopColor: 'transparent' }} />
                 <p className="text-gray-400 font-medium">Loading your workspace...</p>
             </div>
         );
@@ -175,8 +178,8 @@ export default function RoleSelect() {
                     animate={{ opacity: 1, y: 0 }}
                     className="text-center mb-10"
                 >
-                    <div className="w-20 h-20 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-3xl flex items-center justify-center mb-6 shadow-[0_0_40px_rgba(255,215,0,0.2)] mx-auto rotate-3 hover:rotate-6 transition-transform duration-300">
-                        <Navigation className="w-10 h-10 text-black fill-black" />
+                    <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 mx-auto rotate-3 hover:rotate-6 transition-transform duration-300" style={{ background: `linear-gradient(135deg, ${accent}, ${accent}CC)`, boxShadow: `0 0 40px ${accent}30` }}>
+                        <Navigation className="w-10 h-10" style={{ color: accentTxt }} />
                     </div>
                     <h1 className="text-3xl font-extrabold text-white mb-2 tracking-tight">FirstKnock</h1>
                     <p className="text-gray-400 font-medium">Select your path to continue</p>
@@ -192,18 +195,19 @@ export default function RoleSelect() {
                         transition={{ delay: 0.1 }}
                         onClick={() => selectRole('rep')}
                         disabled={isLoading}
-                        className="w-full relative overflow-hidden group rounded-2xl border border-yellow-500/30 bg-[#151515] p-1 transition-all hover:border-yellow-500 hover:shadow-[0_0_30px_rgba(255,215,0,0.15)] disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full relative overflow-hidden group rounded-2xl bg-[#151515] p-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                        style={{ border: `1px solid ${accent}30` }}
                     >
-                        <div className="absolute inset-0 bg-gradient-to-r from-yellow-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: `linear-gradient(to right, ${accent}15, transparent)` }} />
                         <div className="relative flex items-center p-5 gap-5">
-                            <div className="w-14 h-14 rounded-xl bg-yellow-500/10 flex items-center justify-center group-hover:bg-yellow-500 group-hover:text-black transition-colors text-yellow-500">
+                            <div className="w-14 h-14 rounded-xl flex items-center justify-center transition-colors" style={{ background: `${accent}15`, color: accent }}>
                                 <Map className="w-7 h-7" />
                             </div>
                             <div className="flex-1 text-left">
-                                <h3 className="text-lg font-bold text-white group-hover:text-yellow-500 transition-colors">I'm a Sales Rep</h3>
-                                <p className="text-sm text-gray-500 group-hover:text-gray-400">Knock doors, track leads, earn commission</p>
+                                <h3 className="text-lg font-bold text-white transition-colors">I'm a Sales Rep</h3>
+                                <p className="text-sm text-gray-500">Knock doors, track leads, earn commission</p>
                             </div>
-                            <ChevronRight className="w-5 h-5 text-gray-600 group-hover:text-yellow-500 group-hover:translate-x-1 transition-all" />
+                            <ChevronRight className="w-5 h-5 text-gray-600 group-hover:translate-x-1 transition-all" style={{ color: accent }} />
                         </div>
                     </motion.button>
 
@@ -302,7 +306,8 @@ export default function RoleSelect() {
                          <Button 
                             onClick={handleCodeSubmit}
                             disabled={!inviteCode || isLoading}
-                            className="w-full bg-yellow-500 text-black font-bold hover:bg-yellow-400"
+                            className="w-full font-bold"
+                            style={{ background: accent, color: accentTxt }}
                         >
                             {isLoading ? 'Verifying...' : 'Join Team'}
                         </Button>
