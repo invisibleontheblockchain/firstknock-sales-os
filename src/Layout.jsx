@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Map, List, Upload, Navigation, LogIn, Users, HelpCircle, Sparkles, Smartphone, MoreVertical, LogOut, RefreshCw, User as UserIcon, TrendingUp, MessageCircle, Paintbrush } from 'lucide-react';
+import { Map, List, Upload, Navigation, LogIn, Users, HelpCircle, Sparkles, Smartphone, MoreVertical, LogOut, RefreshCw, User as UserIcon, TrendingUp, MessageCircle } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -15,8 +15,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import AiAssistant from '@/components/help/AiAssistant';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
-import { ThemeProvider, useTheme, contrastText } from '@/components/theme/ThemeProvider';
-import ThemeColorPicker from '@/components/theme/ThemeColorPicker';
 
 class ErrorBoundary extends React.Component {
     constructor(props) {
@@ -56,10 +54,7 @@ class ErrorBoundary extends React.Component {
     }
   }
 
-function LayoutInner({ children }) {
-    const { accent } = useTheme();
-    const accentText = contrastText(accent);
-
+export default function Layout({ children }) {
     // Handle /login 404 by redirecting to SignIn
     if (typeof window !== 'undefined' && window.location.pathname === '/login') {
         window.location.replace('/SignIn');
@@ -100,8 +95,7 @@ function LayoutInner({ children }) {
                 <img 
                     src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/4207f4197_ChatGPTImageFeb2202612_56_42AM.png" 
                     alt="FirstKnock Logo" 
-                    className="w-24 h-24 rounded-2xl mb-4 object-cover"
-                    style={{ boxShadow: `0 0 30px ${accent}30` }}
+                    className="w-24 h-24 rounded-2xl mb-4 shadow-[0_0_30px_rgba(255,215,0,0.3)] object-cover"
                 />
                 <h1 className="text-3xl font-bold tracking-tight">FirstKnock</h1>
                 <p className="text-gray-400 max-w-xs">
@@ -109,8 +103,7 @@ function LayoutInner({ children }) {
                 </p>
                 <Button
                     onClick={() => base44.auth.redirectToLogin()}
-                    className="w-full max-w-xs h-12 font-bold text-base"
-                    style={{ background: accent, color: accentText }}
+                    className="w-full max-w-xs h-12 bg-yellow-500 text-black font-bold hover:bg-yellow-400 text-base"
                 >
                     <LogIn className="w-5 h-5 mr-2" />
                     LOGIN / SIGN UP
@@ -136,8 +129,6 @@ function LayoutInner({ children }) {
     //     window.location.href = createPageUrl('RepHome');
     //     return null;
     // }
-
-    const [showThemePicker, setShowThemePicker] = React.useState(false);
 
     return (
         <div className="flex flex-col h-[100dvh] font-sans overflow-hidden" style={{ background: '#0A0A0A', color: '#E5E5E5' }}>
@@ -212,8 +203,7 @@ function LayoutInner({ children }) {
                         {user?.app_role !== 'rep' && (
                             <Link 
                                 to={createPageUrl('RepHome')}
-                                className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold"
-                                style={{ color: accent }}
+                                className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-yellow-500"
                             >
                                 REP MODE
                             </Link>
@@ -222,7 +212,7 @@ function LayoutInner({ children }) {
                             to={createPageUrl('MobileApp')}
                             className="flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors"
                         >
-                            <Smartphone className="w-4 h-4" style={{ color: accent }} />
+                            <Smartphone className="w-4 h-4 text-yellow-500" />
                         </Link>
                         <span 
                             className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} 
@@ -261,11 +251,6 @@ function LayoutInner({ children }) {
                                     </Link>
                                 </DropdownMenuItem>
 
-                                <DropdownMenuItem onClick={() => setShowThemePicker(!showThemePicker)} className="focus:bg-slate-800 focus:text-white cursor-pointer">
-                                    <Paintbrush className="mr-2 h-4 w-4" />
-                                    <span>Theme Color</span>
-                                </DropdownMenuItem>
-
                                 <DropdownMenuSeparator className="bg-slate-800" />
 
                                 <DropdownMenuItem onClick={() => {
@@ -296,14 +281,6 @@ function LayoutInner({ children }) {
                 </div>
             </header>
 
-            {/* Theme Picker Popup */}
-            {showThemePicker && (
-                <div className="absolute top-14 right-4 z-50 bg-[#111] border border-gray-800 rounded-xl p-4 shadow-2xl animate-in slide-in-from-top-2">
-                    <ThemeColorPicker />
-                    <button onClick={() => setShowThemePicker(false)} className="mt-3 text-xs text-gray-500 hover:text-white w-full text-center">Done</button>
-                </div>
-            )}
-
             {/* Main Content Area */}
             <main className="flex-1 relative overflow-hidden">
                 <ErrorBoundary>
@@ -316,38 +293,72 @@ function LayoutInner({ children }) {
             {/* Bottom Navigation - Different for Rep vs Manager */}
             <nav className="bg-black border-t border-slate-800 z-20 safe-area-bottom shrink-0">
                 {user.app_role === 'rep' ? (
+                    // Rep Navigation
                     <div className="flex justify-around items-center h-16 max-w-full mx-auto">
-                        <NavItem icon={Map} label="My Route" to={createPageUrl('RepHome')} active={window.location.pathname.includes('RepHome') || window.location.pathname === '/'} accent={accent} />
-                        <NavItem icon={HelpCircle} label="Help" to={createPageUrl('Tutorial')} active={window.location.pathname.endsWith('Tutorial')} accent={accent} />
+                        <NavItem
+                            icon={Map}
+                            label="My Route"
+                            to={createPageUrl('RepHome')}
+                            active={window.location.pathname.includes('RepHome') || window.location.pathname === '/'}
+                        />
+                        <NavItem
+                            icon={HelpCircle}
+                            label="Help"
+                            to={createPageUrl('Tutorial')}
+                            active={window.location.pathname.endsWith('Tutorial')}
+                        />
                     </div>
                 ) : (
+                    // Manager Navigation - Full
                     <div className="flex justify-around items-center h-16 max-w-full mx-auto">
-                        <NavItem icon={Map} label="Map" to={createPageUrl('Home')} active={window.location.pathname.endsWith('Home') || window.location.pathname === '/'} accent={accent} />
-                        <NavItem icon={TrendingUp} label="Analytics" to={createPageUrl('List')} active={window.location.pathname.endsWith('List')} accent={accent} />
-                        <NavItem icon={Upload} label="Setup" to={createPageUrl('Setup')} active={window.location.pathname.endsWith('Setup')} accent={accent} />
-                        <NavItem icon={Users} label="Team" to={createPageUrl('AdminTeam')} active={window.location.pathname.endsWith('AdminTeam')} accent={accent} />
-                        <NavItem icon={HelpCircle} label="Help" to={createPageUrl('Tutorial')} active={window.location.pathname.endsWith('Tutorial')} accent={accent} />
-                        <NavItem icon={Sparkles} label="Plans" to={createPageUrl('Billing')} active={window.location.pathname.endsWith('Billing')} accent={accent} />
-                    </div>
-                )}
-            </nav>
+                        <NavItem
+                            icon={Map}
+                            label="Map"
+                            to={createPageUrl('Home')}
+                            active={window.location.pathname.endsWith('Home') || window.location.pathname === '/'}
+                        />
+                        <NavItem
+                            icon={TrendingUp}
+                            label="Analytics"
+                            to={createPageUrl('List')}
+                            active={window.location.pathname.endsWith('List')}
+                        />
+                        <NavItem
+                            icon={Upload}
+                            label="Setup"
+                            to={createPageUrl('Setup')}
+                            active={window.location.pathname.endsWith('Setup')}
+                        />
+                        <NavItem
+                            icon={Users}
+                            label="Team"
+                            to={createPageUrl('AdminTeam')}
+                            active={window.location.pathname.endsWith('AdminTeam')}
+                        />
+                        <NavItem
+                            icon={HelpCircle}
+                            label="Help"
+                            to={createPageUrl('Tutorial')}
+                            active={window.location.pathname.endsWith('Tutorial')}
+                        />
+                        <NavItem
+                            icon={Sparkles}
+                            label="Plans"
+                            to={createPageUrl('Billing')}
+                            active={window.location.pathname.endsWith('Billing')}
+                        />
+                        </div>
+                        )}
+                        </nav>
         </div>
     );
 }
 
-function NavItem({ icon: Icon, label, to, active, accent = '#FFD700' }) {
+function NavItem({ icon: Icon, label, to, active }) {
     return (
-        <Link to={to} className="flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors duration-200" style={{ color: active ? accent : '#fff' }}>
-            <Icon className="w-6 h-6" />
+        <Link to={to} className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors duration-200 ${active ? 'text-yellow-400' : 'text-white hover:text-yellow-300'}`}>
+            <Icon className={`w-6 h-6 ${active ? 'fill-current/20' : ''}`} />
             <span className="text-[10px] font-medium">{label}</span>
         </Link>
-    );
-}
-
-export default function Layout({ children }) {
-    return (
-        <ThemeProvider>
-            <LayoutInner>{children}</LayoutInner>
-        </ThemeProvider>
     );
 }
