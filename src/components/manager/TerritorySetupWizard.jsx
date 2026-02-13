@@ -27,12 +27,26 @@ export default function TerritorySetupWizard({ user, onComplete }) {
             const zips = zipInput.split(',').map(z => z.trim()).filter(z => /^\d{5}$/.test(z));
             await base44.auth.updateMe({ working_area: zipInput, territory_zip_codes: zips });
             let allProps = [];
+            let hitLimit = false;
             for (const zip of zips) {
                 try {
                     toast.loading(`Syncing ${zip}...`, { id: `sync-${zip}` });
                     const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zip });
+                    if (res.data?.error) {
+                        toast.error(res.data.message || res.data.error, { id: `sync-${zip}` });
+                        hitLimit = true;
+                        break;
+                    }
                     toast.success(`${zip}: ${res.data?.count || 'Done'}`, { id: `sync-${zip}` });
-                } catch (e) { toast.error(`Failed to sync ${zip}`, { id: `sync-${zip}` }); }
+                } catch (e) {
+                    const errData = e?.response?.data;
+                    if (errData?.error?.includes('limit')) {
+                        toast.error(errData.message || 'Zip code limit reached. Upgrade your plan.', { id: `sync-${zip}` });
+                        hitLimit = true;
+                        break;
+                    }
+                    toast.error(`Failed to sync ${zip}`, { id: `sync-${zip}` });
+                }
             }
             for (const zip of zips) {
                 const res = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000);
