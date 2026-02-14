@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Check, Shield, Zap, Star, Users, TrendingDown, ChevronDown } from 'lucide-react';
+import { Check, Shield, Zap, Star, Users, TrendingDown, ChevronDown, BarChart3 } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 import BetaUsageMeter from '../components/beta/BetaUsageMeter';
 
 const BRAND = {
@@ -309,6 +311,16 @@ export default function Billing() {
                     <Button variant="outline" className="border-gray-700 text-white hover:bg-gray-800">
                         Contact Sales
                     </Button>
+                </div>
+
+                {/* Cost Projections Link */}
+                <div className="text-center">
+                    <Link to={createPageUrl('CostProjections')}>
+                        <Button variant="outline" className="border-gray-700 text-gray-400 hover:text-white hover:bg-gray-800 gap-2">
+                            <BarChart3 className="w-4 h-4" />
+                            View Scaling Metrics (1 → 1M Users)
+                        </Button>
+                    </Link>
                 </div>
 
                 <div className="text-center text-xs text-gray-600">
