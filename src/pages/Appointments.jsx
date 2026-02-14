@@ -1,11 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Calendar, Loader2, Plus, Zap, Filter, ChevronDown } from 'lucide-react';
+import { Calendar, Loader2, Plus, Zap, Filter, ChevronDown, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
 import { format, isToday, isTomorrow, isThisWeek, parseISO } from 'date-fns';
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 
 import AppointmentCard from '@/components/appointments/AppointmentCard';
 import AppointmentDetail from '@/components/appointments/AppointmentDetail';
@@ -126,6 +128,16 @@ export default function Appointments() {
                         </div>
                     </div>
                     <div className="flex gap-2">
+                        <Link to={createPageUrl('AdvancedAnalytics')}>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 text-[10px] font-bold border-gray-700 gap-1"
+                                style={{ color: accent }}
+                            >
+                                <BarChart3 className="w-3 h-3" /> Analytics
+                            </Button>
+                        </Link>
                         <Button
                             onClick={() => setShowAutoSchedule(!showAutoSchedule)}
                             variant="outline"
