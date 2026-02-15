@@ -44,6 +44,10 @@ const BASE44_ENTERPRISE = 199;
 const STRIPE_PERCENT = 2.9;
 const STRIPE_FIXED = 0.30;
 
+// App Store Fees (Apple/Google take 30% on in-app purchases, 15% for small business program)
+const APP_STORE_CUT_PERCENT = 30; // Default 30%
+const MOBILE_REVENUE_PERCENT = 0.40; // Estimated 40% of revenue comes through mobile app stores
+
 // Revenue model
 const BASE_PRICE = 49;
 const DISCOUNT_PER_USER = 1;
@@ -92,6 +96,10 @@ function computeMetrics(users) {
     const monthlyTransactions = payingAccounts; // 1 sub charge per manager/mo
     const stripeFees = monthlyTransactions * (monthlyRevenue / monthlyTransactions * (STRIPE_PERCENT / 100) + STRIPE_FIXED);
 
+    // App Store Fees: 30% cut on mobile-originated revenue
+    const mobileRevenue = monthlyRevenue * MOBILE_REVENUE_PERCENT;
+    const appStoreFees = Math.round(mobileRevenue * (APP_STORE_CUT_PERCENT / 100));
+
     // Database storage estimate
     const propertiesPerZip = 1500; // avg
     const totalProperties = totalZipsNeeded * propertiesPerZip;
@@ -107,7 +115,7 @@ function computeMetrics(users) {
     const infraCost = users <= 100 ? 0 : users <= 1000 ? 50 : users <= 10000 ? 200 : users <= 100000 ? 1000 : 5000;
 
     // Total costs
-    const totalMonthlyCost = rentCastCost + base44Cost + stripeFees + infraCost;
+    const totalMonthlyCost = rentCastCost + base44Cost + stripeFees + appStoreFees + infraCost;
     const totalAnnualCost = totalMonthlyCost * 12;
 
     // Margins
@@ -128,6 +136,7 @@ function computeMetrics(users) {
         rentCastCost,
         base44Cost,
         stripeFees: Math.round(stripeFees),
+        appStoreFees,
         infraCost,
         totalMonthlyCost: Math.round(totalMonthlyCost),
         totalAnnualCost: Math.round(totalAnnualCost),
@@ -197,6 +206,7 @@ export default function CostProjections() {
         'RentCast': m.rentCastCost,
         'Base44': m.base44Cost,
         'Stripe': m.stripeFees,
+        'App Stores': m.appStoreFees,
         'Infra': m.infraCost,
     }));
 
@@ -285,6 +295,7 @@ export default function CostProjections() {
                                         <Row label="RentCast API" value={`$${selected.rentCastCost}/mo`} sub={`${selected.rentCastPlan} — ${selected.monthlyApiCalls} calls`} />
                                         <Row label="Base44 Platform" value={`$${selected.base44Cost}/mo`} />
                                         <Row label="Stripe Fees" value={`$${selected.stripeFees}/mo`} sub={`2.9% + $0.30 × ${selected.payingAccounts} txns`} />
+                                        <Row label="App Store Fees" value={`$${selected.appStoreFees.toLocaleString()}/mo`} sub={`${APP_STORE_CUT_PERCENT}% cut on ${Math.round(MOBILE_REVENUE_PERCENT * 100)}% mobile revenue`} />
                                         <Row label="Infrastructure" value={`$${selected.infraCost}/mo`} sub="Hosting, CDN, monitoring" />
                                         <Row label="Total Monthly" value={`$${selected.totalMonthlyCost.toLocaleString()}`} highlight="red" />
                                         <Row label="Net Profit/Mo" value={`$${selected.monthlyProfit.toLocaleString()}`} highlight={selected.monthlyProfit >= 0 ? 'green' : 'red'} />
@@ -394,6 +405,7 @@ export default function CostProjections() {
                                     <Bar dataKey="RentCast" stackId="a" fill="#f97316" />
                                     <Bar dataKey="Base44" stackId="a" fill="#8b5cf6" />
                                     <Bar dataKey="Stripe" stackId="a" fill="#3b82f6" />
+                                    <Bar dataKey="App Stores" stackId="a" fill="#ec4899" />
                                     <Bar dataKey="Infra" stackId="a" fill="#6b7280" radius={[4, 4, 0, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>
@@ -418,6 +430,7 @@ export default function CostProjections() {
                                             <th className="px-3 py-2 text-orange-400">RentCast</th>
                                             <th className="px-3 py-2 text-purple-400">Base44</th>
                                             <th className="px-3 py-2 text-blue-400">Stripe</th>
+                                            <th className="px-3 py-2 text-pink-400">App Stores</th>
                                             <th className="px-3 py-2 text-gray-400">Infra</th>
                                             <th className="px-3 py-2 text-red-400">Total Cost</th>
                                             <th className="px-3 py-2 text-green-400">Profit/Mo</th>
@@ -442,6 +455,7 @@ export default function CostProjections() {
                                                 <td className="px-3 py-2.5 text-orange-400">${m.rentCastCost.toLocaleString()}</td>
                                                 <td className="px-3 py-2.5 text-purple-400">${m.base44Cost}</td>
                                                 <td className="px-3 py-2.5 text-blue-400">${m.stripeFees.toLocaleString()}</td>
+                                                <td className="px-3 py-2.5 text-pink-400">${m.appStoreFees.toLocaleString()}</td>
                                                 <td className="px-3 py-2.5 text-gray-500">${m.infraCost.toLocaleString()}</td>
                                                 <td className="px-3 py-2.5 text-red-400 font-bold">${m.totalMonthlyCost.toLocaleString()}</td>
                                                 <td className={`px-3 py-2.5 font-bold ${m.monthlyProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -498,6 +512,7 @@ export default function CostProjections() {
                                     <p className="font-bold text-gray-400 mb-1">Costs</p>
                                     <ul className="space-y-1">
                                         <li>• Stripe: {STRIPE_PERCENT}% + ${STRIPE_FIXED}/txn</li>
+                                        <li>• App Stores: {APP_STORE_CUT_PERCENT}% on ~{Math.round(MOBILE_REVENUE_PERCENT * 100)}% of revenue</li>
                                         <li>• RentCast plans scale by usage tier</li>
                                         <li>• Infra costs increase with user count</li>
                                         <li>• 20 interaction logs/user/day assumed</li>
