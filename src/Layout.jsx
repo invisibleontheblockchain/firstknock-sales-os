@@ -50,9 +50,26 @@ function LayoutInner({ children }) {
         window.addEventListener('online', on);
         window.addEventListener('offline', off);
 
-        // App Metadata is now handled in index.html for better PWA support
-        // Keeping title sync just in case
+        // Update App Metadata (Title & Icons) for consistency
         document.title = "FirstKnock Sales OS";
+        
+        // Golden Door Icon for Home Screen
+        const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/f1cade25d_IMG_0918.jpeg";
+        
+        const updateLink = (rel, href) => {
+            // Remove any existing links of this type to ensure ours takes precedence
+            const existing = document.querySelectorAll(`link[rel="${rel}"]`);
+            existing.forEach(e => e.remove());
+
+            const link = document.createElement('link');
+            link.rel = rel;
+            link.href = href;
+            document.head.appendChild(link);
+        };
+        
+        updateLink('icon', LOGO_URL);
+        updateLink('apple-touch-icon', LOGO_URL);
+        updateLink('apple-touch-icon-precomposed', LOGO_URL);
 
         return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
     }, []);
