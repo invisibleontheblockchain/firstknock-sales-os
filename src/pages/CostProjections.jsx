@@ -20,13 +20,13 @@ import { createPageUrl } from '@/utils';
 
 // RentCast API
 const RENTCAST_PLANS = [
-    { name: 'Free Trial', calls: 50, price: 0, maxUsers: 5 },
-    { name: 'Developer', calls: 1000, price: 87, maxUsers: 50 },
-    { name: 'Standard', calls: 5000, price: 247, maxUsers: 250 },
-    { name: 'Professional', calls: 10000, price: 497, maxUsers: 1000 },
-    { name: 'Enterprise', calls: 50000, price: 1497, maxUsers: 10000 },
-    { name: 'Enterprise+', calls: 200000, price: 3997, maxUsers: 100000 },
-    { name: 'Custom', calls: 1000000, price: 9997, maxUsers: 1000000 },
+    { name: 'Developer', calls: 50, price: 0, maxUsers: 5 },
+    { name: 'Foundation', calls: 1000, price: 74, maxUsers: 50 },
+    { name: 'Growth', calls: 5000, price: 199, maxUsers: 250 },
+    { name: 'Scale', calls: 25000, price: 449, maxUsers: 1000 },
+    { name: 'Enterprise', calls: 50000, price: 899, maxUsers: 10000 },
+    { name: 'Enterprise+', calls: 200000, price: 3499, maxUsers: 100000 },
+    { name: 'Custom', calls: 1000000, price: 14999, maxUsers: 1000000 },
 ];
 
 // Average zip codes per user, API calls per zip fetch
