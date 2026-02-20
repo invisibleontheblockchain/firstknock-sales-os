@@ -22,16 +22,9 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Price ID is required' }, { status: 400 });
         }
 
-        // Dynamic pricing: $49 base, -$1 per additional user, min $20/user
-        const BASE_PRICE = 49;
-        const DISCOUNT_PER_USER = 1;
-        const MIN_PRICE_PER_USER = 20;
-        const seats = Math.max(1, Math.min(50, quantity));
-        const discount = (seats - 1) * DISCOUNT_PER_USER;
-        const pricePerUser = Math.max(MIN_PRICE_PER_USER, BASE_PRICE - discount);
-        const unitAmountCents = pricePerUser * 100;
-        
-        console.log(`Dynamic pricing: ${seats} seats × $${pricePerUser}/user = $${seats * pricePerUser}/mo`);
+        // Flat pricing: $49/mo
+        const seats = 1; // Always 1 seat for flat plan
+        console.log(`Flat pricing: $49/mo with 7-day trial`);
 
         let customerId = user.stripe_customer_id;
 
@@ -57,10 +50,8 @@ Deno.serve(async (req) => {
                     price_data: {
                         currency: 'usd',
                         product: 'prod_Tu1aqym2Ek3U9N',
-                        unit_amount: unitAmountCents,
-                        recurring: {
-                            interval: 'month',
-                        },
+                        // unit_amount: unitAmountCents, // Use price ID directly
+                        // recurring: { interval: 'month' },
                     },
                     quantity: seats,
                 },
@@ -68,7 +59,8 @@ Deno.serve(async (req) => {
             subscription_data: {
                 metadata: {
                     base44_user_id: user.id
-                }
+                },
+                trial_period_days: 7
             },
             success_url: successUrl,
             cancel_url: cancelUrl,

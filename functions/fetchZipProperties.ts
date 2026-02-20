@@ -19,10 +19,9 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { zip_code, force_sync = false, check_usage_only = false } = body;
 
-    // --- Determine user's zip limits (scales with seats) ---
-    const isPaid = user.subscription_status === 'active';
-    const totalSeats = user.total_seats || 1;
-    const zipLimit = isPaid ? totalSeats * ZIPS_PER_SEAT : FREE_ZIP_LIMIT;
+    // --- Determine user's zip limits (Flat rate: 1 free, 10 paid) ---
+    const isPaid = user.subscription_status === 'active' || user.subscription_status === 'trialing';
+    const zipLimit = isPaid ? 10 : 1;
     const generatedZips = user.generated_zip_codes || [];
     const zipsUsed = generatedZips.length;
     const zipsRemaining = zipLimit - zipsUsed;
