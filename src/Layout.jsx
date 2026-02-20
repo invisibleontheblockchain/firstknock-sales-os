@@ -54,7 +54,7 @@ function LayoutInner({ children }) {
         document.title = "FirstKnock Sales OS";
         
         // Golden Door Icon for Home Screen
-        const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/f1cade25d_IMG_0918.jpeg";
+        const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/1a36819e1_IMG_0921.jpeg";
         
         const updateLink = (rel, href) => {
             // Remove any existing links of this type to ensure ours takes precedence
