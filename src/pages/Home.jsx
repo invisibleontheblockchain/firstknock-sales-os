@@ -1492,14 +1492,18 @@ export default function Home() {
                     />
                 )}
 
-                {/* Active Route - Simple numbered markers */}
+                {/* Active Route - Mail Carrier Style */}
                 {activeRoute && (
                     <>
+                        <Polyline
+                            positions={activeRoute.properties.map(p => [p.lat, p.lng])}
+                            pathOptions={{ color: BRAND.gold, weight: 4, opacity: 0.8 }}
+                        />
                         {activeRoute.properties.map((p, idx) => (
                             <CircleMarker
                                 key={p.address_hash}
                                 center={[p.lat, p.lng]}
-                                radius={12}
+                                radius={5}
                                 eventHandlers={{
                                     click: (e) => {
                                         L.DomEvent.stopPropagation(e);
@@ -1507,17 +1511,18 @@ export default function Home() {
                                     }
                                 }}
                                 pathOptions={{
-                                    fillColor: idx === 0 ? BRAND.gold : '#333',
+                                    fillColor: idx === 0 ? '#22c55e' : '#f97316',
                                     fillOpacity: 1,
-                                    color: BRAND.gold,
-                                    weight: 2
+                                    color: '#fff',
+                                    weight: 1.5
                                 }}
                             >
-                                <Tooltip permanent direction="center" className="route-number-tooltip">
+                                <Tooltip permanent direction="top" offset={[0, -6]} className="route-number-tooltip">
                                     <span style={{ 
-                                        color: idx === 0 ? '#000' : BRAND.gold, 
+                                        color: '#fff', 
                                         fontWeight: 'bold', 
-                                        fontSize: '10px' 
+                                        fontSize: '11px',
+                                        textShadow: '0 1px 3px #000, 0 0 5px #000' 
                                     }}>
                                         {idx + 1}
                                     </span>
