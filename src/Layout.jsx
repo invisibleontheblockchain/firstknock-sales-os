@@ -52,7 +52,7 @@ function LayoutInner({ children }) {
 
         // Update App Metadata (Title & Icons) for consistency
         document.title = "FirstKnock Sales OS";
-        const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/4207f4197_ChatGPTImageFeb2202612_56_42AM.png";
+        const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/f1cade25d_IMG_0918.jpeg";
         
         const updateLink = (rel, href) => {
             let link = document.querySelector(`link[rel="${rel}"]`);
@@ -85,7 +85,7 @@ function LayoutInner({ children }) {
     if (!user) {
         return (
             <div className="flex h-screen flex-col items-center justify-center bg-black text-white p-6 text-center space-y-6">
-                <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/4207f4197_ChatGPTImageFeb2202612_56_42AM.png" alt="FirstKnock Logo" className="w-24 h-24 rounded-2xl mb-4 object-cover" style={{ boxShadow: `0 0 30px ${accent}30` }} />
+                <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/f1cade25d_IMG_0918.jpeg" alt="FirstKnock Logo" className="w-24 h-24 rounded-2xl mb-4 object-cover" style={{ boxShadow: `0 0 30px ${accent}30` }} />
                 <h1 className="text-3xl font-bold tracking-tight">FirstKnock</h1>
                 <p className="text-gray-400 max-w-xs">Your personal door-to-door sales territory manager.</p>
                 <Button onClick={() => base44.auth.redirectToLogin()} className="w-full max-w-xs h-12 font-bold text-base" style={{ background: accent, color: accentText }}>
@@ -113,7 +113,7 @@ function LayoutInner({ children }) {
             <header className="bg-black border-b border-slate-800 px-4 pt-[env(safe-area-inset-top)] pb-3 z-20 shadow-md">
                 <div className="flex justify-between items-center max-w-7xl mx-auto w-full pt-3">
                     <div className="flex items-center gap-3">
-                        <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/4207f4197_ChatGPTImageFeb2202612_56_42AM.png" alt="FK" className="w-8 h-8 rounded-lg object-cover" />
+                        <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/f1cade25d_IMG_0918.jpeg" alt="FK" className="w-8 h-8 rounded-lg object-cover" />
                         <h1 className="text-lg font-bold tracking-tight text-white">FirstKnock</h1>
                     </div>
 
