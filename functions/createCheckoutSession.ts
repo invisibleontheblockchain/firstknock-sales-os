@@ -16,7 +16,7 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { priceId, quantity = 1, successUrl, cancelUrl } = await req.json();
+        const { priceId, quantity = 1, successUrl, cancelUrl, trialDays = 0 } = await req.json();
 
         if (!priceId) {
             return Response.json({ error: 'Price ID is required' }, { status: 400 });
@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
 
         // Flat pricing: $49/mo
         const seats = 1; // Always 1 seat for flat plan
-        console.log(`Flat pricing: $49/mo with 7-day trial`);
+        console.log(`Flat pricing: $49/mo. Trial days: ${trialDays}`);
 
         let customerId = user.stripe_customer_id;
 
@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
                 metadata: {
                     base44_user_id: user.id
                 },
-                trial_period_days: 7
+                ...(trialDays > 0 ? { trial_period_days: trialDays } : {})
             },
             success_url: successUrl,
             cancel_url: cancelUrl,

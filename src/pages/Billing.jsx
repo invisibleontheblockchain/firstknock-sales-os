@@ -31,7 +31,7 @@ export default function Billing() {
         queryFn: () => base44.auth.me()
     });
 
-    const handleSubscribe = async () => {
+    const handleSubscribe = async (trialDays = 0) => {
         // Check if running in iframe (preview mode)
         if (window.self !== window.top) {
             alert("Stripe Checkout cannot run in this preview window due to security restrictions.\n\nPlease open your app in a new tab (click the 'Open App' button in the top right) to test payments.");
@@ -39,12 +39,13 @@ export default function Billing() {
         }
 
         try {
-            setLoadingPriceId(PRICE_ID);
+            setLoadingPriceId(trialDays > 0 ? 'trial' : 'now');
             const res = await base44.functions.invoke('createCheckoutSession', {
                 priceId: PRICE_ID,
                 quantity: 1,
                 successUrl: window.location.origin + '/Billing?success=true',
-                cancelUrl: window.location.origin + '/Billing?canceled=true'
+                cancelUrl: window.location.origin + '/Billing?canceled=true',
+                trialDays: trialDays
             });
 
             if (res.data.url) {
@@ -155,19 +156,36 @@ export default function Billing() {
 
                     {/* CTA */}
                     {!isSubscribed && (
-                        <Button
-                            onClick={handleSubscribe}
-                            disabled={loadingPriceId !== null}
-                            className="w-full h-14 font-bold text-lg tracking-wide bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg hover:shadow-yellow-500/20 transition-all rounded-xl"
-                        >
-                            <PlayCircle className="w-5 h-5 mr-2" />
-                            {loadingPriceId ? 'PREPARING...' : `START 7-DAY FREE TRIAL`}
-                        </Button>
+                        <div className="flex flex-col gap-3">
+                            <Button
+                                onClick={() => handleSubscribe(7)}
+                                disabled={loadingPriceId !== null}
+                                className="w-full h-14 font-bold text-lg tracking-wide bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg hover:shadow-yellow-500/20 transition-all rounded-xl"
+                            >
+                                <PlayCircle className="w-5 h-5 mr-2" />
+                                {loadingPriceId === 'trial' ? 'PREPARING...' : `START 7-DAY FREE TRIAL`}
+                            </Button>
+                            
+                            <div className="relative flex py-2 items-center">
+                                <div className="flex-grow border-t border-gray-800"></div>
+                                <span className="flex-shrink-0 mx-4 text-xs text-gray-500 font-bold uppercase">or</span>
+                                <div className="flex-grow border-t border-gray-800"></div>
+                            </div>
+
+                            <Button
+                                onClick={() => handleSubscribe(0)}
+                                disabled={loadingPriceId !== null}
+                                variant="outline"
+                                className="w-full h-12 font-bold text-sm tracking-wide border-gray-700 text-white hover:bg-gray-800 rounded-xl"
+                            >
+                                {loadingPriceId === 'now' ? 'PREPARING...' : `SKIP TRIAL & PAY $${FLAT_PRICE} NOW`}
+                            </Button>
+                        </div>
                     )}
                     
                     {!isSubscribed && (
                         <p className="text-center text-xs text-gray-500 mt-4">
-                            You won't be charged today. Cancel anytime during the trial.
+                            Secure payments via Stripe. Cancel anytime.
                         </p>
                     )}
                 </div>
