@@ -169,30 +169,41 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
                         />
                     ))}
 
+                    {/* Route Path (Mail Carrier Style) */}
+                    {properties?.length > 0 && (
+                        <Polyline
+                            positions={properties.map(p => [p.lat, p.lng])}
+                            pathOptions={{ color: BRAND.gold, weight: 4, opacity: 0.8 }}
+                        />
+                    )}
+
                     {/* Property Pins */}
-                    {properties?.map((p) => {
+                    {properties?.map((p, idx) => {
                         const isNearby = nearbyProps.some(n => n.address_hash === p.address_hash);
                         const color = STATUS_COLORS[p.effective_status] || '#6b7280';
                         return (
                             <CircleMarker
                                 key={p.address_hash}
                                 center={[p.lat, p.lng]}
-                                radius={isNearby ? 10 : 6}
+                                radius={isNearby ? 8 : 5}
                                 eventHandlers={{ click: () => onSelectProperty(p) }}
                                 pathOptions={{
-                                    fillColor: color,
-                                    fillOpacity: isNearby ? 0.95 : 0.6,
-                                    color: isNearby ? BRAND.gold : '#000',
+                                    fillColor: idx === 0 ? '#22c55e' : color,
+                                    fillOpacity: 1,
+                                    color: '#fff',
                                     weight: isNearby ? 2 : 1
                                 }}
                             >
-                                {isNearby && (
-                                    <Tooltip direction="right" className="route-number-tooltip">
-                                        <span style={{ color: '#fff', fontSize: '10px', fontWeight: 'bold', textShadow: '0 0 4px #000' }}>
-                                            {p.house_number} {p.street_name?.split(' ').slice(0, 2).join(' ')}
-                                        </span>
-                                    </Tooltip>
-                                )}
+                                <Tooltip permanent direction="top" offset={[0, -5]} className="route-number-tooltip">
+                                    <span style={{ 
+                                        color: '#fff', 
+                                        fontSize: isNearby ? '12px' : '10px', 
+                                        fontWeight: 'bold', 
+                                        textShadow: '0 1px 3px #000, 0 0 5px #000' 
+                                    }}>
+                                        {idx + 1}
+                                    </span>
+                                </Tooltip>
                             </CircleMarker>
                         );
                     })}
