@@ -123,6 +123,7 @@ export default function Tutorial() {
                                 <li className="flex gap-2"><span className="text-white font-bold">Street Sweep:</span> Mailman style. Hits one side of the street, then loops back for the other. Best for density.</li>
                                 <li className="flex gap-2"><span className="text-white font-bold">Nearest Door:</span> Always goes to the physically closest next house. Good for scattered leads.</li>
                                 <li className="flex gap-2"><span className="text-white font-bold">Zig-Zag:</span> Crosses the street back and forth. Best for short streets.</li>
+                                <li className="flex gap-2"><span className="text-white font-bold">Cluster Hop:</span> Prioritizes dense pockets of homes first, then expands outward. Great for efficient knocking.</li>
                             </ul>
                         </div>
                         <div>
