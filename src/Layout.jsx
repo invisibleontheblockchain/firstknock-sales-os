@@ -49,6 +49,25 @@ function LayoutInner({ children }) {
         const off = () => setIsOnline(false);
         window.addEventListener('online', on);
         window.addEventListener('offline', off);
+
+        // Update App Metadata (Title & Icons) for consistency
+        document.title = "FirstKnock Sales OS";
+        const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/4207f4197_ChatGPTImageFeb2202612_56_42AM.png";
+        
+        const updateLink = (rel, href) => {
+            let link = document.querySelector(`link[rel="${rel}"]`);
+            if (!link) {
+                link = document.createElement('link');
+                link.rel = rel;
+                document.head.appendChild(link);
+            }
+            link.href = href;
+            link.removeAttribute('type'); 
+        };
+        
+        updateLink('icon', LOGO_URL);
+        updateLink('apple-touch-icon', LOGO_URL);
+
         return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
     }, []);
 
