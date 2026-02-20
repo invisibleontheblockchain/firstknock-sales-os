@@ -18,15 +18,15 @@ import { createPageUrl } from '@/utils';
 // COST MODEL CONSTANTS
 // ============================================
 
-// RentCast API
+// RentCast API (Updated with overage fees)
 const RENTCAST_PLANS = [
-    { name: 'Developer', calls: 50, price: 0, maxUsers: 5 },
-    { name: 'Foundation', calls: 1000, price: 74, maxUsers: 50 },
-    { name: 'Growth', calls: 5000, price: 199, maxUsers: 250 },
-    { name: 'Scale', calls: 25000, price: 449, maxUsers: 1000 },
-    { name: 'Enterprise', calls: 50000, price: 899, maxUsers: 10000 },
-    { name: 'Enterprise+', calls: 200000, price: 3499, maxUsers: 100000 },
-    { name: 'Custom', calls: 1000000, price: 14999, maxUsers: 1000000 },
+    { name: 'Developer', calls: 50, price: 0, overage: 0.20 },
+    { name: 'Foundation', calls: 1000, price: 74, overage: 0.06 },
+    { name: 'Growth', calls: 5000, price: 199, overage: 0.03 },
+    { name: 'Scale', calls: 25000, price: 449, overage: 0.015 },
+    { name: 'Enterprise', calls: 50000, price: 899, overage: 0.01 },
+    { name: 'Enterprise+', calls: 200000, price: 3499, overage: 0.005 },
+    { name: 'Custom', calls: 1000000, price: 14999, overage: 0.002 },
 ];
 
 // Average zip codes per user, API calls per zip fetch
@@ -61,8 +61,9 @@ const getPricePerUser = (teamSize) => Math.max(MIN_PRICE_PER_USER, BASE_PRICE - 
 // ============================================
 const USER_TIERS = [1, 10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000];
 
-function getRentCastPlan(users) {
-    return RENTCAST_PLANS.find(p => p.maxUsers >= users) || RENTCAST_PLANS[RENTCAST_PLANS.length - 1];
+function getRentCastPlan(apiCalls) {
+    // Find the first plan that covers the API calls, or return the largest plan if none fit
+    return RENTCAST_PLANS.find(p => p.calls >= apiCalls) || RENTCAST_PLANS[RENTCAST_PLANS.length - 1];
 }
 
 function getBase44Cost(users) {
@@ -86,8 +87,14 @@ function computeMetrics(users) {
     const totalZipsNeeded = managers * AVG_ZIPS_PER_USER;
     const newZipsPerMonth = Math.ceil(totalZipsNeeded * (1 - CACHE_HIT_RATE)); // Only 15% need fresh API calls after initial
     const monthlyApiCalls = newZipsPerMonth * API_CALLS_PER_ZIP;
-    const rentCastPlan = getRentCastPlan(users);
-    const rentCastCost = rentCastPlan.price;
+    
+    const rentCastPlan = getRentCastPlan(monthlyApiCalls);
+    let rentCastCost = rentCastPlan.price;
+    
+    // Add overage if applicable
+    if (monthlyApiCalls > rentCastPlan.calls) {
+        rentCastCost += (monthlyApiCalls - rentCastPlan.calls) * rentCastPlan.overage;
+    }
 
     // Base44
     const base44Cost = getBase44Cost(users);
