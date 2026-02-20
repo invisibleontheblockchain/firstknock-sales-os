@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
     Map, Upload, Users, Navigation, ChevronRight, ChevronDown, MapPin, 
-    Route, FileSpreadsheet, Zap, Target, Search, BarChart3, ArrowRight
+    Route, FileSpreadsheet, Zap, Target, Search, BarChart3, ArrowRight, SlidersHorizontal
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Link } from 'react-router-dom';
@@ -112,6 +112,27 @@ export default function Tutorial() {
                     <Step number="3" title="Log Results" description="After each door: Sold, No Answer, Callback, or Hard No. GPS-stamped automatically." accent={accent} />
                     <div className="p-3 rounded-lg bg-blue-900/20 border border-blue-900/50 mt-3">
                         <p className="text-[11px] text-blue-300"><strong>Pro Tip:</strong> GPS coordinates are recorded as proof-of-visit with every log.</p>
+                    </div>
+                </Section>
+
+                <Section icon={SlidersHorizontal} title="Route Builder Settings" accent={accent}>
+                    <div className="space-y-4">
+                        <div>
+                            <h4 className="font-bold text-white text-sm mb-2">Walking Patterns</h4>
+                            <ul className="space-y-2 text-xs text-gray-400">
+                                <li className="flex gap-2"><span className="text-white font-bold">Street Sweep:</span> Mailman style. Hits one side of the street, then loops back for the other. Best for density.</li>
+                                <li className="flex gap-2"><span className="text-white font-bold">Nearest Door:</span> Always goes to the physically closest next house. Good for scattered leads.</li>
+                                <li className="flex gap-2"><span className="text-white font-bold">Zig-Zag:</span> Crosses the street back and forth. Best for short streets.</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-white text-sm mb-2">Optimization Tools</h4>
+                            <ul className="space-y-2 text-xs text-gray-400">
+                                <li className="flex gap-2"><span className="text-white font-bold">Minimize Turns:</span> Tries to keep you on straight paths to avoid disorientation.</li>
+                                <li className="flex gap-2"><span className="text-white font-bold">Path Smoothing (2-Opt):</span> Advanced algorithm that untangles crossing paths to reduce total walking distance.</li>
+                                <li className="flex gap-2"><span className="text-white font-bold">Loop Back:</span> Ensures your route ends close to where you started (your car).</li>
+                            </ul>
+                        </div>
                     </div>
                 </Section>
 
