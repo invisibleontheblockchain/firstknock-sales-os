@@ -1,8 +1,17 @@
 import React from 'react';
-import { WifiOff, MapPin, Navigation, ChevronDown } from 'lucide-react';
+import { WifiOff, MapPin, Navigation, ChevronDown, CheckCircle2, RefreshCw } from 'lucide-react';
+import { useIsMutating } from '@tanstack/react-query';
 
 export default function RepHeader({ user, isOffline, activeRoute, stats, knockWindow, routes, onShowMap, onShowRouteList, routeProperties }) {
     const progressPct = stats.total > 0 ? (stats.done / stats.total) * 100 : 0;
+    const isMutating = useIsMutating();
+    
+    // Sync UI Logic
+    const syncState = isOffline 
+        ? { dot: 'bg-[#FF6B6B]', text: 'text-[#FF6B6B]', label: 'OFFLINE', icon: WifiOff }
+        : isMutating > 0 
+            ? { dot: 'bg-[#FFD93D]', text: 'text-[#FFD93D]', label: 'SYNCING...', icon: RefreshCw }
+            : { dot: 'bg-[#00F5A0]', text: 'text-[#00F5A0]', label: 'SYNCED', icon: CheckCircle2 };
 
     return (
         <div className="sticky top-0 z-30 bg-[#0A0A0F]/95 backdrop-blur-md border-b border-white/5 px-4 pt-4 pb-4 space-y-3">
@@ -21,14 +30,13 @@ export default function RepHeader({ user, isOffline, activeRoute, stats, knockWi
                             </button>
                         )}
                     </div>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                        {isOffline ? (
-                            <span className="flex items-center gap-1 text-[10px] text-red-500 font-bold">
-                                <WifiOff className="w-3 h-3" /> OFFLINE
-                            </span>
-                        ) : (
-                            <span className="text-[10px] text-gray-600">{stats.total} stops • {knockWindow.emoji} {knockWindow.label}</span>
-                        )}
+                    <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[10px] text-[#8888A0]">{stats.total} stops • {knockWindow.emoji} {knockWindow.label}</span>
+                        <div className="w-1 h-1 rounded-full bg-white/10" />
+                        <span className={`flex items-center gap-1 text-[9px] font-bold tracking-wider ${syncState.text}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${syncState.dot} ${isMutating > 0 ? 'animate-pulse' : ''}`} />
+                            {syncState.label}
+                        </span>
                     </div>
                 </div>
 
