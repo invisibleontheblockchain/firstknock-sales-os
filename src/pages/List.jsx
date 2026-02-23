@@ -96,35 +96,50 @@ export default function ListPage() {
             });
     }, [properties, logs]);
 
-    const isLoading = propsLoading || logsLoading || routesLoading;
+    const filteredAppointments = useMemo(() => {
+        let result = appointments;
+        if (dateDays !== null) {
+            const cutoff = startOfDay(subDays(new Date(), dateDays));
+            result = result.filter(a => {
+                if (!a.scheduled_date) return false;
+                return isAfter(new Date(a.scheduled_date), cutoff);
+            });
+        }
+        if (industryFilter !== 'all') {
+            result = result.filter(a => a.industry === industryFilter);
+        }
+        return result;
+    }, [appointments, dateDays, industryFilter]);
+
+    const activeIndustries = useMemo(() => {
+        const set = new Set(appointments.map(a => a.industry).filter(Boolean));
+        return INDUSTRIES.filter(i => set.has(i));
+    }, [appointments]);
+
+    const isLoading = propsLoading || logsLoading || routesLoading || apptsLoading;
 
     const tabs = [
-        { id: 'overview', label: 'Overview', icon: BarChart3 },
+        { id: 'overview', label: 'Advanced Overview', icon: BarChart3 },
         { id: 'routes', label: 'Routes', icon: Navigation },
         { id: 'team', label: 'Team', icon: Users },
     ];
 
     return (
-        <div className="h-full flex flex-col" style={{ background: '#0A0A0A' }}>
+        <div className="h-full flex flex-col" style={{ background: '#0A0A0F' }}>
             {/* Header */}
-            <div className="px-4 pt-4 pb-3 border-b border-gray-800/40 sticky top-0 z-10" style={{ background: '#0A0A0A' }}>
-                <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: `${accent}15` }}>
-                            <BarChart3 className="w-4 h-4" style={{ color: accent }} />
+            <div className="px-4 pt-4 pb-3 border-b border-white/5 sticky top-0 z-20 backdrop-blur-xl bg-black/60 shadow-xl">
+                <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center border shadow-inner" style={{ background: `${accent}20`, borderColor: `${accent}40` }}>
+                            <BarChart3 className="w-5 h-5 drop-shadow-md" style={{ color: accent }} />
                         </div>
                         <div>
-                            <h1 className="text-base font-extrabold text-white tracking-tight">Analytics</h1>
-                            <p className="text-[10px] text-gray-500">Performance & territory insights</p>
+                            <h1 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight drop-shadow-sm">Advanced Analytics</h1>
+                            <p className="text-[10px] text-gray-500 font-medium tracking-wide mt-0.5">Performance & territory insights</p>
                         </div>
                     </div>
-                    <Link to={createPageUrl('AdvancedAnalytics')}>
-                        <Button variant="outline" size="sm" className="h-8 text-[10px] font-bold border-gray-700 gap-1" style={{ color: accent }}>
-                            Appointments &rarr;
-                        </Button>
-                    </Link>
                 </div>
-                <div className="flex p-0.5 bg-black/40 rounded-xl border border-gray-800/50">
+                <div className="flex p-0.5 bg-black/40 rounded-xl border border-white/5 mb-4">
                     {tabs.map(tab => {
                         const Icon = tab.icon;
                         const isActive = activeTab === tab.id;
@@ -133,9 +148,8 @@ export default function ListPage() {
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
                                 className={`flex-1 py-2 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
-                                    isActive ? 'text-black shadow-md' : 'text-gray-500 hover:text-gray-300'
+                                    isActive ? 'bg-white text-black shadow-md' : 'text-[#8888A0] hover:text-white'
                                 }`}
-                                style={isActive ? { background: accent } : {}}
                             >
                                 <Icon className="w-3.5 h-3.5" />
                                 {tab.label}
@@ -143,10 +157,17 @@ export default function ListPage() {
                         );
                     })}
                 </div>
+
+                {activeTab === 'overview' && (
+                    <div className="flex flex-col md:flex-row gap-3 mt-2">
+                        <DateRangeFilter selectedDays={dateDays} onChangeDays={setDateDays} accent={accent} />
+                        <IndustryFilterBar industries={activeIndustries} selected={industryFilter} onSelect={setIndustryFilter} accent={accent} />
+                    </div>
+                )}
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-auto p-4 space-y-3">
+            <div className="flex-1 overflow-auto p-4 md:p-6 space-y-4 relative z-10">
                 {isLoading ? (
                     <div className="flex flex-col justify-center items-center py-20 gap-3">
                         <Loader2 className="w-7 h-7 animate-spin" style={{ color: accent }} />
@@ -155,9 +176,28 @@ export default function ListPage() {
                 ) : (
                     <>
                         {activeTab === 'overview' && (
-                            <div className="space-y-3">
-                                <OverviewStats routes={savedRoutes} logs={logs} properties={effectiveProperties} teamMembers={teamMembers} />
-                                <TimeOfDayEffectiveness logs={logs} />
+                            <div className="space-y-5 max-w-7xl mx-auto">
+                                <KpiSummaryCards appointments={filteredAppointments} teamMembers={teamMembers} />
+                                
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                                    <OverviewStats routes={savedRoutes} logs={logs} properties={effectiveProperties} teamMembers={teamMembers} />
+                                    <TimeOfDayEffectiveness logs={logs} />
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                                    <AppointmentTimeline appointments={filteredAppointments} days={dateDays || 90} />
+                                    <AppointmentForecast appointments={appointments} />
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                                    <ConversionByIndustry appointments={filteredAppointments} />
+                                    <RepSuccessRate appointments={filteredAppointments} teamMembers={teamMembers} />
+                                </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                                    <LeadScoringEffectiveness appointments={filteredAppointments} />
+                                    <RouteEfficiency routes={savedRoutes} appointments={filteredAppointments} logs={logs} />
+                                </div>
                                 <StatusBreakdown properties={effectiveProperties} />
                             </div>
                         )}
