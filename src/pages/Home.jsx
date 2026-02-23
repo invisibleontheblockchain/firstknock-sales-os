@@ -1224,6 +1224,7 @@ export default function Home() {
             >
                 <MapRefHandler mapRef={mapRef} />
                 <TileLayer
+                    key={`basemap-${mapTheme}`}
                     url={
                         mapTheme === 'satellite' 
                             ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
@@ -1237,6 +1238,7 @@ export default function Home() {
                 />
                 {mapTheme === 'hybrid' && (
                     <TileLayer
+                        key={`basemap-labels-${mapTheme}`}
                         url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
                         attribution=""
                     />
