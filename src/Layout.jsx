@@ -185,11 +185,11 @@ function LayoutInner({ children }) {
                     {/* Desktop */}
                     <div className="hidden md:flex items-center gap-3">
                         {!isOnline && <div className="flex items-center gap-1 bg-red-900/50 px-2 py-1 rounded text-[10px] text-red-200 border border-red-800"><div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />OFFLINE</div>}
-                        <button onClick={() => setShowThemePicker(!showThemePicker)} className="flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors"><Paintbrush className="w-4 h-4" style={{ color: accent }} /></button>
+                        <button onClick={() => setShowThemePicker(!showThemePicker)} className="flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]"><Paintbrush className="w-4 h-4" /></button>
                         <button onClick={() => { if(confirm("Reset Role?")) base44.auth.updateMe({ app_role: null }).then(() => { window.location.href = createPageUrl('RoleSelect'); }); }} className="bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded">RESET</button>
                         <button onClick={async () => { try { await base44.auth.logout(window.location.origin); } catch { window.location.reload(); } queryClient.clear(); }} className="text-xs text-slate-400 hover:text-white">LOGOUT</button>
-                        {user?.app_role !== 'rep' && <Link to={createPageUrl('RepHome')} className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold" style={{ color: accent }}>REP MODE</Link>}
-                        <Link to={createPageUrl('MobileApp')} className="flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors"><Smartphone className="w-4 h-4" style={{ color: accent }} /></Link>
+                        {user?.app_role !== 'rep' && <Link to={createPageUrl('RepHome')} className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]">REP MODE</Link>}
+                        <Link to={createPageUrl('MobileApp')} className="flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]"><Smartphone className="w-4 h-4" /></Link>
                         <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
                     </div>
 
