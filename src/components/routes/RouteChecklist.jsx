@@ -219,11 +219,11 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                         return (
                             <div
                                 key={prop.address_hash}
-                                className="rounded-xl overflow-hidden transition-all duration-200"
-                                style={{
-                                    background: isExpanded ? '#181818' : '#111',
-                                    border: `1px solid ${isExpanded ? BRAND.gold + '40' : '#1a1a1a'}`,
-                                }}
+                                className={`group rounded-xl overflow-hidden transition-all duration-300 border ${
+                                    isExpanded 
+                                        ? 'bg-[#181818] border-yellow-500/40 shadow-[0_0_15px_rgba(255,215,0,0.1)]' 
+                                        : 'bg-[#111] border-[#1a1a1a] hover:border-white/20 hover:shadow-[0_0_10px_rgba(255,255,255,0.05)]'
+                                }`}
                             >
                                 {/* Property Row */}
                                 <button
