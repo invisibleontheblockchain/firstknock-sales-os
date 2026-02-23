@@ -97,6 +97,7 @@ function LocationMarker() {
         map.locate().on("locationfound", handleLocationFound);
         return () => {
             map.off("locationfound", handleLocationFound);
+            try { map.stopLocate(); } catch (e) {}
         };
     }, [map]);
     return position ? (
