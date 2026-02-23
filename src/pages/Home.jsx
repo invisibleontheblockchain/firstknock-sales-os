@@ -19,6 +19,15 @@ if (originalGetMapPanePos) {
         return originalGetMapPanePos.call(this);
     };
 }
+
+// Fix leaflet fast-unmount/interaction error
+const originalSetPosition = L.DomUtil.setPosition;
+if (originalSetPosition) {
+    L.DomUtil.setPosition = function (el, point) {
+        if (!el) return;
+        return originalSetPosition.call(this, el, point);
+    };
+}
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
