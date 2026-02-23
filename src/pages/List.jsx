@@ -9,7 +9,7 @@ import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
 
 import OverviewStats from '@/components/analytics/OverviewStats';
-import ActivityChart from '@/components/analytics/ActivityChart';
+import TimeOfDayEffectiveness from '@/components/analytics/TimeOfDayEffectiveness';
 import TeamPerformance from '@/components/analytics/TeamPerformance';
 import RouteProgress from '@/components/analytics/RouteProgress';
 import StatusBreakdown from '@/components/analytics/StatusBreakdown';
@@ -136,7 +136,7 @@ export default function ListPage() {
                         {activeTab === 'overview' && (
                             <div className="space-y-3">
                                 <OverviewStats routes={savedRoutes} logs={logs} properties={effectiveProperties} teamMembers={teamMembers} />
-                                <ActivityChart logs={logs} />
+                                <TimeOfDayEffectiveness logs={logs} />
                                 <StatusBreakdown properties={effectiveProperties} />
                             </div>
                         )}
