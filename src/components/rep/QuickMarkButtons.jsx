@@ -2,10 +2,10 @@ import React from 'react';
 import { Check, X as XIcon, Clock, Home } from 'lucide-react';
 
 const ACTIONS = [
-    { id: 'SOLD', label: 'SOLD', icon: Check, bg: '#22c55e', text: '#fff' },
-    { id: 'HARD_NO', label: 'NO', icon: XIcon, bg: '#8B5CF6', text: '#fff' },
-    { id: 'CALLBACK', label: 'LATER', icon: Clock, bg: '#eab308', text: '#000' },
-    { id: 'NO_ANSWER', label: 'AWAY', icon: Home, bg: '#6b7280', text: '#fff' },
+    { id: 'SOLD', label: 'INTERESTED', icon: Check, bg: 'rgba(0, 245, 160, 0.1)', text: '#00F5A0', border: 'rgba(0, 245, 160, 0.2)' },
+    { id: 'NO_ANSWER', label: 'NOT HOME', icon: Home, bg: 'rgba(136, 136, 160, 0.1)', text: '#8888A0', border: 'rgba(136, 136, 160, 0.2)' },
+    { id: 'CALLBACK', label: 'FOLLOW UP', icon: Clock, bg: 'rgba(255, 217, 61, 0.1)', text: '#FFD93D', border: 'rgba(255, 217, 61, 0.2)' },
+    { id: 'HARD_NO', label: 'NOT INT.', icon: XIcon, bg: 'rgba(255, 107, 107, 0.1)', text: '#FF6B6B', border: 'rgba(255, 107, 107, 0.2)' },
 ];
 
 export default function QuickMarkButtons({ onMark, disabled, size = 'normal' }) {
@@ -22,15 +22,15 @@ export default function QuickMarkButtons({ onMark, disabled, size = 'normal' }) 
                         disabled={disabled}
                         className={`
                             ${isLarge ? 'h-16' : 'h-12'} 
-                            rounded-xl font-bold tracking-wide transition-all 
-                            active:scale-90 disabled:opacity-40
+                            rounded-xl font-bold tracking-wide transition-all duration-200
+                            hover:-translate-y-1 active:scale-95 disabled:opacity-40
                             flex flex-col items-center justify-center gap-1
-                            shadow-lg
+                            backdrop-blur-md
                         `}
-                        style={{ background: a.bg, color: a.text }}
+                        style={{ background: a.bg, color: a.text, border: `1px solid ${a.border}`, boxShadow: `0 4px 15px ${a.bg}` }}
                     >
-                        <Icon className={isLarge ? 'w-6 h-6' : 'w-5 h-5'} />
-                        <span className={isLarge ? 'text-[11px]' : 'text-[9px]'}>{a.label}</span>
+                        <Icon className={isLarge ? 'w-5 h-5' : 'w-4 h-4'} strokeWidth={3} />
+                        <span className={isLarge ? 'text-[10px]' : 'text-[8px]'} style={{ letterSpacing: '0.05em' }}>{a.label}</span>
                     </button>
                 );
             })}
