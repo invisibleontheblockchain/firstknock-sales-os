@@ -89,12 +89,17 @@ export default function RepAnalytics({ logs, routeProperties, onClose }) {
         <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col" onClick={onClose}>
             <div className="flex-1 overflow-y-auto" onClick={e => e.stopPropagation()}>
                 {/* Header */}
-                <div className="sticky top-0 bg-black/95 backdrop-blur px-5 py-4 flex items-center justify-between border-b border-gray-800 z-10">
-                    <h2 className="font-bold text-lg text-white flex items-center gap-2">
-                        <TrendingUp className="w-5 h-5 text-yellow-500" />
-                        My Performance
-                    </h2>
-                    <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
+                <div className="sticky top-0 bg-black/95 backdrop-blur px-5 py-4 flex items-center justify-between border-b border-white/5 z-20 shadow-xl">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-yellow-500/20 to-orange-500/20 flex items-center justify-center border border-yellow-500/20">
+                            <TrendingUp className="w-5 h-5 text-yellow-500" />
+                        </div>
+                        <div>
+                            <h2 className="font-bold text-lg text-white tracking-tight">My Performance</h2>
+                            <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">Analytics Overview</p>
+                        </div>
+                    </div>
+                    <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors">
                         <X className="w-4 h-4 text-gray-400" />
                     </button>
                 </div>
@@ -116,7 +121,7 @@ export default function RepAnalytics({ logs, routeProperties, onClose }) {
                     {/* Today's Stats */}
                     <div>
                         <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">Today</p>
-                        <div className="grid grid-cols-4 gap-2">
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                             <StatCard icon={DoorOpen} label="Knocks" value={analytics.todayKnocks} color="text-blue-400" />
                             <StatCard icon={Trophy} label="Sales" value={analytics.todaySales} color="text-green-400" />
                             <StatCard icon={Clock} label="Callbacks" value={analytics.todayCallbacks} color="text-yellow-400" />
