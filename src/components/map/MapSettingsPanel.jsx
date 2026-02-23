@@ -154,29 +154,6 @@ export default function MapSettingsPanel({
 
                         {/* ═══ PIN APPEARANCE ═══ */}
                         <CollapsibleSection title="Pin Appearance" icon={Circle} defaultOpen={true}>
-                            {/* Pin Shape */}
-                            <div>
-                                <span className="text-[10px] font-bold text-gray-500 uppercase mb-2 block">Pin Shape</span>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {PIN_SHAPES.map(shape => {
-                                        const Icon = shape.icon;
-                                        const active = pinShape === shape.id;
-                                        return (
-                                            <button
-                                                key={shape.id}
-                                                onClick={() => update('pinShape', shape.id)}
-                                                className={`flex flex-col items-center gap-1.5 py-3 rounded-lg text-[10px] font-bold transition-all border ${
-                                                    active ? 'bg-yellow-500/15 border-yellow-500 text-yellow-500' : 'bg-[#1A1A1A] border-gray-800 text-gray-400 hover:border-gray-600'
-                                                }`}
-                                            >
-                                                <Icon className="w-5 h-5" />
-                                                {shape.label}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
                             {/* Pin Size */}
                             {setPinSize && (
                                 <div>
