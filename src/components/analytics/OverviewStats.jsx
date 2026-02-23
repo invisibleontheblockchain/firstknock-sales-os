@@ -42,7 +42,7 @@ function StatCard({ label, value, subValue, icon: Icon, color, trend, featured }
     );
 }
 
-export default function OverviewStats({ routes, logs, properties, teamMembers }) {
+export default function OverviewStats({ routes, logs, properties, teamMembers, viewMode = 'advanced' }) {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const weekAgo = new Date(today.getTime() - 7 * 86400000);
