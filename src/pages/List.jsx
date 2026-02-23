@@ -163,9 +163,9 @@ export default function ListPage() {
                     <div className="flex flex-col md:flex-row gap-3 mt-2">
                         <DateRangeFilter selectedDays={dateDays} onChangeDays={setDateDays} accent={accent} />
                         <IndustryFilterBar industries={activeIndustries} selected={industryFilter} onSelect={setIndustryFilter} accent={accent} />
-                        <div className="flex items-center bg-black rounded-lg border border-gray-800 p-0.5 md:ml-auto shrink-0 w-full md:w-auto mt-1 md:mt-0">
-                            <button onClick={() => setViewMode('essential')} className={`flex-1 md:w-28 py-1.5 rounded-md text-[11px] font-bold transition-all duration-200 ${viewMode === 'essential' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-white'}`}>Essential</button>
-                            <button onClick={() => setViewMode('advanced')} className={`flex-1 md:w-28 py-1.5 rounded-md text-[11px] font-bold transition-all duration-200 ${viewMode === 'advanced' ? 'bg-gray-800 text-white shadow-sm' : 'text-gray-500 hover:text-white'}`}>Advanced</button>
+                        <div className="inline-flex items-center bg-black/50 backdrop-blur-md rounded-lg border border-white/10 p-0.5 shrink-0 self-start md:ml-auto mt-1 md:mt-0 shadow-lg">
+                            <button onClick={() => setViewMode('essential')} className={`px-4 py-1.5 rounded-md text-[10px] uppercase tracking-wider font-bold transition-all duration-200 ${viewMode === 'essential' ? 'bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.2)]' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>Essential</button>
+                            <button onClick={() => setViewMode('advanced')} className={`px-4 py-1.5 rounded-md text-[10px] uppercase tracking-wider font-bold transition-all duration-200 ${viewMode === 'advanced' ? 'bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.2)]' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>Advanced</button>
                         </div>
                     </div>
                 )}
