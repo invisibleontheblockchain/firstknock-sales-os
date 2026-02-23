@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
     X, Sun, Moon, Palette, Globe, Mountain, Eye, EyeOff, 
     GitBranch, Circle, Square, Diamond, Layers, Type, 
-    Droplets, Zap, RotateCcw, ChevronDown, ChevronRight
+    Droplets, Zap, RotateCcw, ChevronDown, ChevronRight, Save
 } from 'lucide-react';
 
 const BRAND = {
