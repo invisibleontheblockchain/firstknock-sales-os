@@ -66,10 +66,10 @@ export default function PropertyCard({ property, index, onSelect }) {
                         e.stopPropagation();
                         window.open(`https://maps.apple.com/?daddr=${property.lat},${property.lng}&dirflg=w`, '_blank');
                     }}
-                    className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all duration-300 group-hover:bg-white/10 group-hover:shadow-[0_0_10px_rgba(255,255,255,0.2)]"
-                    style={{ background: 'rgba(255,255,255,0.05)' }}
+                    className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300 shadow-[0_4px_12px_rgba(255,217,61,0.3)] hover:scale-105 active:scale-95 hover:shadow-[0_6px_16px_rgba(255,217,61,0.5)]"
+                    style={{ background: '#FFD93D' }}
                 >
-                    <Navigation className="w-4 h-4 text-white transition-all duration-300 group-hover:drop-shadow-[0_0_5px_rgba(255,255,255,0.8)]" />
+                    <Navigation className="w-5 h-5 text-black fill-black" strokeWidth={2} />
                 </button>
             )}
         </button>
