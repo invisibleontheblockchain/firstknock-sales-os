@@ -23,8 +23,53 @@ function haversine(lat1, lng1, lat2, lng2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Inner component that uses useMap
-function GpsMapLayer({ position, accuracy, nearbyProperties, onSelectProperty }) {
+function useGpsTracker(properties, isTracking) {
+    const [position, setPosition] = useState(null);
+    const [accuracy, setAccuracy] = useState(50);
+
+    useEffect(() => {
+        if (!isTracking) {
+            setPosition(null);
+            return;
+        }
+
+        let watchId = null;
+        if (navigator.geolocation) {
+            watchId = navigator.geolocation.watchPosition(
+                (pos) => {
+                    setPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+                    setAccuracy(pos.coords.accuracy || 50);
+                },
+                (err) => console.warn('GPS error:', err),
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
+            );
+        }
+
+        return () => {
+            if (watchId !== null) navigator.geolocation.clearWatch(watchId);
+        };
+    }, [isTracking]);
+
+    const nearbyProperties = useMemo(() => {
+        if (!position || !properties?.length) return [];
+        return properties
+            .map(p => {
+                const dist = haversine(position.lat, position.lng, p.lat, p.lng);
+                return { ...p, _dist: dist, _distFt: Math.round(dist * 5280) };
+            })
+            .filter(p => p._dist <= 0.1) // ~500ft
+            .sort((a, b) => a._dist - b._dist)
+            .slice(0, 15);
+    }, [position, properties]);
+
+    return { position, accuracy, nearbyProperties };
+}
+
+function GpsMapLayer({ properties, isTracking, onSelectProperty }) {
+    const { position, accuracy, nearbyProperties } = useGpsTracker(properties, isTracking);
+
+    if (!position) return null;
+
     return (
         <>
             {/* Accuracy circle */}
@@ -76,8 +121,8 @@ function GpsMapLayer({ position, accuracy, nearbyProperties, onSelectProperty })
     );
 }
 
-// HUD overlay component
-function GpsHud({ position, nearbyProperties, isTracking, onToggleTracking, onSelectProperty }) {
+function GpsHud({ properties, isTracking, onToggleTracking, onSelectProperty }) {
+    const { position, nearbyProperties } = useGpsTracker(properties, isTracking);
     const [expanded, setExpanded] = useState(true);
 
     if (!isTracking) return null;
@@ -109,7 +154,7 @@ function GpsHud({ position, nearbyProperties, isTracking, onToggleTracking, onSe
                 </button>
 
                 {/* Nearby List */}
-                {expanded && nearbyProperties.length > 0 && (
+                {expanded && position && nearbyProperties.length > 0 && (
                     <div className="max-h-[180px] overflow-y-auto">
                         {nearbyProperties.slice(0, 8).map((p, i) => (
                             <button
@@ -131,9 +176,16 @@ function GpsHud({ position, nearbyProperties, isTracking, onToggleTracking, onSe
                     </div>
                 )}
 
-                {expanded && nearbyProperties.length === 0 && (
+                {expanded && position && nearbyProperties.length === 0 && (
                     <div className="px-4 py-6 text-center">
                         <p className="text-xs text-gray-500">No properties within 500ft. Keep moving!</p>
+                    </div>
+                )}
+                
+                {expanded && !position && (
+                    <div className="px-4 py-6 text-center flex flex-col items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
+                        <p className="text-xs text-gray-500">Locating GPS...</p>
                     </div>
                 )}
             </div>
@@ -141,48 +193,8 @@ function GpsHud({ position, nearbyProperties, isTracking, onToggleTracking, onSe
     );
 }
 
-// Main export: manages GPS state, renders map layers + HUD
-export default function GpsTracker({ properties, onSelectProperty, isTracking, onToggleTracking }) {
-    const [position, setPosition] = useState(null);
-    const [accuracy, setAccuracy] = useState(50);
-
-    useEffect(() => {
-        if (!isTracking) {
-            setPosition(null);
-            return;
-        }
-
-        let watchId = null;
-        if (navigator.geolocation) {
-            watchId = navigator.geolocation.watchPosition(
-                (pos) => {
-                    setPosition({ lat: pos.coords.latitude, lng: pos.coords.longitude });
-                    setAccuracy(pos.coords.accuracy || 50);
-                },
-                (err) => console.warn('GPS error:', err),
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 2000 }
-            );
-        }
-
-        return () => {
-            if (watchId !== null) navigator.geolocation.clearWatch(watchId);
-        };
-    }, [isTracking]);
-
-    const nearbyProperties = useMemo(() => {
-        if (!position || !properties?.length) return [];
-        return properties
-            .map(p => {
-                const dist = haversine(position.lat, position.lng, p.lat, p.lng);
-                return { ...p, _dist: dist, _distFt: Math.round(dist * 5280) };
-            })
-            .filter(p => p._dist <= 0.1) // ~500ft
-            .sort((a, b) => a._dist - b._dist)
-            .slice(0, 15);
-    }, [position, properties]);
-
-    return { position, accuracy, nearbyProperties, GpsMapLayer, GpsHud };
+export default function GpsTracker() {
+    return null;
 }
 
-// Export sub-components for use in Home page
 export { GpsMapLayer, GpsHud, haversine };
