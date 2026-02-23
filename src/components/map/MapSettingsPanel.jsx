@@ -174,7 +174,7 @@ export default function MapSettingsPanel({
                     </div>
                 </div>
 
-                <ScrollArea className="h-[calc(100%-70px)]">
+                <ScrollArea className="h-[calc(100%-140px)]">
                     <div className="p-4 space-y-3">
 
                         {/* ═══ PIN APPEARANCE ═══ */}
@@ -184,9 +184,9 @@ export default function MapSettingsPanel({
                                 <div>
                                     <div className="flex justify-between items-center mb-2">
                                         <span className="text-[10px] font-bold text-gray-500 uppercase">Pin Size</span>
-                                        <span className="text-[10px] text-yellow-500 font-bold">{pinSize}px</span>
+                                        <span className="text-[10px] text-yellow-500 font-bold">{localPinSize}px</span>
                                     </div>
-                                    <Slider value={[pinSize]} onValueChange={([v]) => setPinSize(v)} min={2} max={14} step={1} className="w-full" />
+                                    <Slider value={[localPinSize]} onValueChange={([v]) => setLocalPinSize(v)} min={2} max={14} step={1} className="w-full" />
                                     <div className="flex justify-between text-[8px] text-gray-600 mt-1">
                                         <span>Tiny</span><span>Default</span><span>Large</span>
                                     </div>
@@ -232,7 +232,7 @@ export default function MapSettingsPanel({
                             {/* Pins On/Off */}
                             <div className="flex items-center justify-between py-1">
                                 <span className="text-xs font-bold text-gray-300">Show Pins</span>
-                                <Switch checked={showRouteDetails} onCheckedChange={setShowRouteDetails} />
+                                <Switch checked={localShowRouteDetails} onCheckedChange={setLocalShowRouteDetails} />
                             </div>
                         </CollapsibleSection>
 
@@ -241,10 +241,10 @@ export default function MapSettingsPanel({
                             {/* Lines On/Off */}
                             <div className="flex items-center justify-between py-1">
                                 <span className="text-xs font-bold text-gray-300">Show Route Lines</span>
-                                <Switch checked={showRouteLines} onCheckedChange={v => setShowRouteLines && setShowRouteLines(v)} />
+                                <Switch checked={localShowRouteLines} onCheckedChange={v => setLocalShowRouteLines(v)} />
                             </div>
 
-                            {showRouteLines && (
+                            {localShowRouteLines && (
                                 <>
                                     {/* Line Style */}
                                     <div>
@@ -369,16 +369,16 @@ export default function MapSettingsPanel({
                                         <span className="text-xs font-bold text-gray-300">Show All Properties</span>
                                         <p className="text-[9px] text-gray-500">Show pins not in any route</p>
                                     </div>
-                                    <Switch checked={showAllProperties} onCheckedChange={setShowAllProperties} />
+                                    <Switch checked={localShowAllProperties} onCheckedChange={setLocalShowAllProperties} />
                                 </div>
                             )}
                             <div className="grid grid-cols-2 gap-2">
                                 {STATUS_FILTERS.map(f => (
                                     <button
                                         key={f.id}
-                                        onClick={() => setQuickFilter && setQuickFilter(f.id)}
+                                        onClick={() => setQuickFilter && setLocalQuickFilter(f.id)}
                                         className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-bold transition-all border ${
-                                            quickFilter === f.id 
+                                            localQuickFilter === f.id 
                                                 ? 'bg-yellow-500/10 border-yellow-500 text-yellow-500' 
                                                 : 'bg-[#1A1A1A] border-gray-800 text-gray-400 hover:border-gray-600'
                                         }`}
@@ -387,7 +387,7 @@ export default function MapSettingsPanel({
                                             <div className="w-2.5 h-2.5 rounded-full" style={{ background: f.color }} />
                                             {f.label}
                                         </div>
-                                        {quickFilter === f.id ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3 opacity-50" />}
+                                        {localQuickFilter === f.id ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3 opacity-50" />}
                                     </button>
                                 ))}
                             </div>
@@ -397,9 +397,9 @@ export default function MapSettingsPanel({
                         <CollapsibleSection title="Navigation App" icon={Zap} defaultOpen={false}>
                             <div className="flex gap-2">
                                 <button
-                                    onClick={() => setNavigationApp('apple')}
+                                    onClick={() => setLocalNavigationApp('apple')}
                                     className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-bold transition-all ${
-                                        navigationApp === 'apple' 
+                                        localNavigationApp === 'apple' 
                                             ? 'bg-yellow-500 text-black shadow-lg' 
                                             : 'bg-[#1F1F1F] text-gray-400 hover:text-white border border-gray-700'
                                     }`}
@@ -407,9 +407,9 @@ export default function MapSettingsPanel({
                                      Apple Maps
                                 </button>
                                 <button
-                                    onClick={() => setNavigationApp('google')}
+                                    onClick={() => setLocalNavigationApp('google')}
                                     className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-bold transition-all ${
-                                        navigationApp === 'google' 
+                                        localNavigationApp === 'google' 
                                             ? 'bg-yellow-500 text-black shadow-lg' 
                                             : 'bg-[#1F1F1F] text-gray-400 hover:text-white border border-gray-700'
                                     }`}
@@ -429,11 +429,11 @@ export default function MapSettingsPanel({
                                     { id: 'hybrid', label: 'HYBRID', icon: Mountain },
                                 ].map(opt => {
                                     const Icon = opt.icon;
-                                    const isActive = mapTheme === opt.id;
+                                    const isActive = localMapTheme === opt.id;
                                     return (
                                         <button
                                             key={opt.id}
-                                            onClick={() => setMapTheme(opt.id)}
+                                            onClick={() => setLocalMapTheme(opt.id)}
                                             className={`flex items-center justify-center gap-2 py-3 rounded-lg text-xs font-bold transition-all ${
                                                 isActive
                                                     ? 'bg-yellow-500 text-black shadow-lg'
@@ -515,6 +515,17 @@ export default function MapSettingsPanel({
 
                     </div>
                 </ScrollArea>
+                
+                {/* Save Footer */}
+                <div className="absolute bottom-0 left-0 w-full p-5 border-t border-gray-800 bg-[#0A0A0A]">
+                    <Button 
+                        onClick={handleSave} 
+                        className="w-full font-bold h-12 bg-yellow-500 hover:bg-yellow-400 text-black shadow-[0_0_20px_rgba(255,215,0,0.3)]"
+                    >
+                        <Save className="w-5 h-5 mr-2" />
+                        Save Settings
+                    </Button>
+                </div>
             </div>
         </div>
     );
