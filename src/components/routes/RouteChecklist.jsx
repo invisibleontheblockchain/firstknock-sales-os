@@ -242,7 +242,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                                     </div>
 
                                     <div className="flex-1 min-w-0">
-                                        <p className={`text-[13px] font-semibold truncate leading-tight ${isDone ? 'line-through opacity-40' : ''}`} style={{ color: BRAND.offWhite }}>
+                                        <p className={`text-[13px] font-semibold truncate leading-tight transition-all duration-300 ${isDone ? 'line-through opacity-40' : 'group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]'}`} style={{ color: BRAND.offWhite }}>
                                             {prop.house_number} {prop.street_name}
                                         </p>
                                         {prop.city && (
