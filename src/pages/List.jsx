@@ -29,6 +29,7 @@ import AppointmentTimeline from '@/components/analytics/AppointmentTimeline';
 export default function ListPage() {
     const { accent } = useTheme();
     const [activeTab, setActiveTab] = useState('overview');
+    const [viewMode, setViewMode] = useState('essential');
     const [dateDays, setDateDays] = useState(30);
     const [industryFilter, setIndustryFilter] = useState('all');
 
