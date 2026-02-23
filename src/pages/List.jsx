@@ -4,6 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2, BarChart3, Navigation, Users } from 'lucide-react';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
 import { useTheme } from '@/components/theme/ThemeProvider';
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
+import { Button } from '@/components/ui/button';
 
 import OverviewStats from '@/components/analytics/OverviewStats';
 import ActivityChart from '@/components/analytics/ActivityChart';
@@ -84,14 +87,21 @@ export default function ListPage() {
         <div className="h-full flex flex-col" style={{ background: '#0A0A0A' }}>
             {/* Header */}
             <div className="px-4 pt-4 pb-3 border-b border-gray-800/40 sticky top-0 z-10" style={{ background: '#0A0A0A' }}>
-                <div className="flex items-center gap-2.5 mb-3">
-                    <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: `${accent}15` }}>
-                        <BarChart3 className="w-4 h-4" style={{ color: accent }} />
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: `${accent}15` }}>
+                            <BarChart3 className="w-4 h-4" style={{ color: accent }} />
+                        </div>
+                        <div>
+                            <h1 className="text-base font-extrabold text-white tracking-tight">Analytics</h1>
+                            <p className="text-[10px] text-gray-500">Performance & territory insights</p>
+                        </div>
                     </div>
-                    <div>
-                        <h1 className="text-base font-extrabold text-white tracking-tight">Analytics</h1>
-                        <p className="text-[10px] text-gray-500">Performance & territory insights</p>
-                    </div>
+                    <Link to={createPageUrl('AdvancedAnalytics')}>
+                        <Button variant="outline" size="sm" className="h-8 text-[10px] font-bold border-gray-700 gap-1" style={{ color: accent }}>
+                            Appointments &rarr;
+                        </Button>
+                    </Link>
                 </div>
                 <div className="flex p-0.5 bg-black/40 rounded-xl border border-gray-800/50">
                     {tabs.map(tab => {

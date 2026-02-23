@@ -16,8 +16,6 @@ import { createPageUrl } from '../utils';
 import { toast } from "sonner";
 import TeamMemberCard from "@/components/team/TeamMemberCard";
 import RepPerformanceDetail from "@/components/team/RepPerformanceDetail";
-import AdvancedRouteAnalytics from "@/components/analytics/AdvancedRouteAnalytics";
-import TeamLeaderboard from "@/components/team/TeamLeaderboard";
 
 
 const BRAND = {
@@ -35,7 +33,7 @@ export default function AdminTeam() {
     const [newRep, setNewRep] = useState({ name: '', email: '', phone: '', role: 'rep' });
     const [newCode, setNewCode] = useState({ code: '', role: 'manager', label: '' });
     const [selectedRep, setSelectedRep] = useState(null); 
-    const [activeTab, setActiveTab] = useState("overview");
+    const [activeTab, setActiveTab] = useState("roster");
     const [createdCode, setCreatedCode] = useState(null); // For popup
     const [activeTeamCode, setActiveTeamCode] = useState('all'); // 'all' or specific code
     const [editingZips, setEditingZips] = useState(null); // { memberId, zips: string }
@@ -527,71 +525,10 @@ export default function AdminTeam() {
                 {/* Main Content Tabs */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
                     <TabsList className="bg-[#111] border border-gray-800 p-1 h-12 w-full flex overflow-x-auto no-scrollbar justify-start md:justify-start">
-                        <TabsTrigger value="overview" className="flex-1 md:flex-none h-full px-4 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Overview</TabsTrigger>
                         <TabsTrigger value="roster" className="flex-1 md:flex-none h-full px-4 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Roster</TabsTrigger>
                         <TabsTrigger value="logistics" className="flex-1 md:flex-none h-full px-4 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Routes</TabsTrigger>
                         <TabsTrigger value="access" className="flex-1 md:flex-none h-full px-4 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Codes</TabsTrigger>
                     </TabsList>
-
-                    {/* OVERVIEW TAB */}
-                    <TabsContent value="overview" className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        
-                        {/* 1. Team Leaderboard (Top) */}
-                        <div>
-                            <TeamLeaderboard 
-                                members={filteredTeamMembers} 
-                                logs={logs} 
-                                routes={Object.values(routesByRep).flat()} 
-                            />
-                        </div>
-
-                        {/* 2. Unassigned Routes (Middle) */}
-                        {routesByRep.unassigned.length > 0 && (
-                            <Card className="bg-[#111] border-red-900/30">
-                                <CardHeader className="pb-3 border-b border-gray-800">
-                                    <div className="flex justify-between items-center">
-                                        <CardTitle className="text-sm font-bold text-red-400 uppercase tracking-wide flex items-center gap-2">
-                                            <AlertCircle className="w-4 h-4" />
-                                            Unassigned Routes
-                                        </CardTitle>
-                                        <Button variant="link" onClick={() => setActiveTab('logistics')} className="text-xs text-red-400 p-0 h-auto">
-                                            View All &rarr;
-                                        </Button>
-                                    </div>
-                                </CardHeader>
-                                <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                                    {routesByRep.unassigned.slice(0, 8).map(route => (
-                                        <div key={route.id} className="flex items-center justify-between p-3 bg-black/40 rounded border border-gray-800/50">
-                                            <div>
-                                                <p className="font-bold text-sm text-white">{route.name}</p>
-                                                <p className="text-[10px] text-gray-500">{route.metrics?.house_count || 0} homes</p>
-                                            </div>
-                                            <Button 
-                                                size="sm" 
-                                                variant="ghost"
-                                                onClick={() => setActiveTab('logistics')}
-                                                className="text-yellow-500 text-xs h-7"
-                                            >
-                                                Assign
-                                            </Button>
-                                        </div>
-                                    ))}
-                                </CardContent>
-                            </Card>
-                        )}
-
-                        {/* 3. Advanced Analytics (Bottom) */}
-                        <Card className="bg-[#111] border-gray-800">
-                            <CardContent className="p-6">
-                                <AdvancedRouteAnalytics 
-                                    logs={logs} 
-                                    routes={routes} 
-                                    teamMembers={teamMembers} 
-                                />
-                            </CardContent>
-                        </Card>
-
-                    </TabsContent>
 
                     {/* ROSTER TAB */}
                     <TabsContent value="roster" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -702,6 +639,45 @@ export default function AdminTeam() {
 
                     {/* LOGISTICS TAB */}
                     <TabsContent value="logistics" className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        {/* Unassigned Routes Summary */}
+                        {routesByRep.unassigned.length > 0 && (
+                            <Card className="bg-[#111] border-red-900/30">
+                                <CardHeader className="pb-3 border-b border-gray-800">
+                                    <div className="flex justify-between items-center">
+                                        <CardTitle className="text-sm font-bold text-red-400 uppercase tracking-wide flex items-center gap-2">
+                                            <AlertCircle className="w-4 h-4" />
+                                            {routesByRep.unassigned.length} Unassigned Routes
+                                        </CardTitle>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                                    {routesByRep.unassigned.slice(0, 8).map(route => (
+                                        <div key={route.id} className="flex items-center justify-between p-3 bg-black/40 rounded border border-gray-800/50">
+                                            <div>
+                                                <p className="font-bold text-sm text-white">{route.name}</p>
+                                                <p className="text-[10px] text-gray-500">{route.metrics?.house_count || 0} homes</p>
+                                            </div>
+                                            <Select onValueChange={(memberId) => handleAssign(route.id, memberId)}>
+                                                <SelectTrigger className="w-[100px] h-7 text-[10px] bg-[#000] border-yellow-500/50 text-yellow-500">
+                                                    <SelectValue placeholder="Assign" />
+                                                </SelectTrigger>
+                                                <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
+                                                    {filteredTeamMembers.map(m => (
+                                                        <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    ))}
+                                    {routesByRep.unassigned.length > 8 && (
+                                        <div className="flex items-center justify-center p-3 text-xs text-gray-500">
+                                            + {routesByRep.unassigned.length - 8} more...
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        )}
+
                         <Card className="bg-[#111] border-gray-800">
                             <CardHeader className="border-b border-gray-800 flex flex-row items-center justify-between">
                                 <div>
