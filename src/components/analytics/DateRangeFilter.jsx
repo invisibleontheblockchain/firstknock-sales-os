@@ -13,16 +13,16 @@ const PRESETS = [
 
 export default function DateRangeFilter({ selectedDays, onChangeDays, accent = '#FFD700' }) {
     return (
-        <div className="flex items-center gap-1.5 bg-black/50 border border-gray-800 rounded-xl p-1">
-            <Calendar className="w-3.5 h-3.5 text-gray-500 ml-2" />
+        <div className="flex items-center gap-1.5 bg-black/60 backdrop-blur-md border border-white/10 rounded-xl p-1 shadow-inner shrink-0">
+            <Calendar className="w-3.5 h-3.5 text-gray-400 ml-2 drop-shadow-md" />
             {PRESETS.map(p => (
                 <Button
                     key={p.label}
                     variant="ghost"
                     size="sm"
                     onClick={() => onChangeDays(p.days)}
-                    className={`h-7 px-2.5 text-[10px] font-bold rounded-lg transition-all ${
-                        selectedDays === p.days ? 'text-black shadow' : 'text-gray-500 hover:text-white'
+                    className={`h-7 px-3 text-[10px] font-bold rounded-lg transition-all duration-300 ${
+                        selectedDays === p.days ? 'text-black shadow-[0_0_10px_rgba(255,215,0,0.3)]' : 'text-gray-400 hover:text-white hover:bg-white/5'
                     }`}
                     style={selectedDays === p.days ? { background: accent } : {}}
                 >
