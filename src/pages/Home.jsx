@@ -338,26 +338,52 @@ export default function Home() {
     const [showTimingPanel, setShowTimingPanel] = useState(false);
     const [selectedProperty, setSelectedProperty] = useState(null);
     const [zoomLevel, setZoomLevel] = useState(15);
-    const [mapTheme, setMapTheme] = useState('dark'); // 'dark' or 'light'
-    const [showRouteDetails, setShowRouteDetails] = useState(true); // Toggle individual dots vs just rank/number
     const [showMapSettings, setShowMapSettings] = useState(false);
     const [navigationApp, setNavigationApp] = useState('apple');
-    const [pinSize, setPinSize] = useState(5);
-    const [showRouteLines, setShowRouteLines] = useState(true);
-    const [mapSettings, setMapSettings] = useState({
-        pinShape: 'circle',
-        colorScheme: 'default',
-        lineStyle: 'dashed',
-        lineWidth: 2,
-        lineOpacity: 0.5,
-        pinOpacity: 0.85,
-        pinBorderWidth: 1,
-        pinBorderColor: '#000',
-        showLabels: false,
-        labelType: 'number',
-        glowEffect: false,
-        fillStyle: 'solid',
+    
+    // Persisted Map Settings
+    const [mapTheme, setMapTheme] = useState(() => localStorage.getItem('fk_mapTheme') || 'dark');
+    const [showRouteDetails, setShowRouteDetails] = useState(() => {
+        const saved = localStorage.getItem('fk_showRouteDetails');
+        return saved ? JSON.parse(saved) : true;
     });
+    const [pinSize, setPinSize] = useState(() => {
+        const saved = localStorage.getItem('fk_pinSize');
+        return saved ? JSON.parse(saved) : 5;
+    });
+    const [showRouteLines, setShowRouteLines] = useState(() => {
+        const saved = localStorage.getItem('fk_showRouteLines');
+        return saved ? JSON.parse(saved) : true;
+    });
+    const [mapSettings, setMapSettings] = useState(() => {
+        const saved = localStorage.getItem('fk_mapSettings');
+        return saved ? JSON.parse(saved) : {
+            pinShape: 'circle',
+            colorScheme: 'default',
+            lineStyle: 'dashed',
+            lineWidth: 2,
+            lineOpacity: 0.5,
+            pinOpacity: 0.85,
+            pinBorderWidth: 1,
+            pinBorderColor: '#000',
+            showLabels: false,
+            labelType: 'number',
+            glowEffect: false,
+            fillStyle: 'solid',
+        };
+    });
+
+    useEffect(() => {
+        try {
+            localStorage.setItem('fk_mapTheme', mapTheme);
+            localStorage.setItem('fk_showRouteDetails', JSON.stringify(showRouteDetails));
+            localStorage.setItem('fk_pinSize', JSON.stringify(pinSize));
+            localStorage.setItem('fk_showRouteLines', JSON.stringify(showRouteLines));
+            localStorage.setItem('fk_mapSettings', JSON.stringify(mapSettings));
+        } catch (e) {
+            // Ignore quota errors in preview if any
+        }
+    }, [mapTheme, showRouteDetails, pinSize, showRouteLines, mapSettings]);
     const [darkRoomProperties] = useState([]);
     const [darkRoomClusters] = useState([]);
     const [fetchedProperties, setFetchedProperties] = useState([]); // Dynamic fetch storage
