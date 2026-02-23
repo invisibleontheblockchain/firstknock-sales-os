@@ -334,14 +334,6 @@ export default function MapSettingsPanel({
                                 </div>
                             )}
 
-                            {/* Glow Effect */}
-                            <div className="flex items-center justify-between py-1">
-                                <div>
-                                    <span className="text-xs font-bold text-gray-300">Glow Effect</span>
-                                    <p className="text-[9px] text-gray-600">Adds glow behind high-value pins</p>
-                                </div>
-                                <Switch checked={glowEffect} onCheckedChange={v => update('glowEffect', v)} />
-                            </div>
                         </CollapsibleSection>
 
                         {/* ═══ STATUS VISIBILITY ═══ */}
