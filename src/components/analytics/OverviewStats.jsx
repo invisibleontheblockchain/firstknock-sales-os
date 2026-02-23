@@ -70,8 +70,10 @@ export default function OverviewStats({ routes, logs, properties, teamMembers, v
     const totalDoors = properties.length;
     const knockedDoors = new Set(logs.map(l => l.address_hash)).size;
 
+    const isEssential = viewMode === 'essential';
+
     return (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <div className={`grid grid-cols-2 ${isEssential ? 'sm:grid-cols-2' : 'sm:grid-cols-4'} gap-3`}>
             <StatCard
                 label="Today"
                 value={todayLogs.length}
@@ -101,34 +103,38 @@ export default function OverviewStats({ routes, logs, properties, teamMembers, v
                 icon={CheckCircle2}
                 color="#22c55e"
             />
-            <StatCard
-                label="Coverage"
-                value={totalDoors > 0 ? `${Math.round((knockedDoors / totalDoors) * 100)}%` : '0%'}
-                subValue={`${knockedDoors} of ${totalDoors}`}
-                icon={MapPin}
-                color="#3b82f6"
-            />
-            <StatCard
-                label="Team"
-                value={teamMembers.length}
-                subValue="reps"
-                icon={Users}
-                color="#8b5cf6"
-            />
-            <StatCard
-                label="Daily Avg"
-                value={thisWeekLogs.length > 0 ? Math.round(thisWeekLogs.length / 7) : 0}
-                subValue="knocks/day"
-                icon={TrendingUp}
-                color="#06b6d4"
-            />
-            <StatCard
-                label="Territory"
-                value={totalDoors.toLocaleString()}
-                subValue="total doors"
-                icon={Target}
-                color="#ec4899"
-            />
+            {!isEssential && (
+                <>
+                    <StatCard
+                        label="Coverage"
+                        value={totalDoors > 0 ? `${Math.round((knockedDoors / totalDoors) * 100)}%` : '0%'}
+                        subValue={`${knockedDoors} of ${totalDoors}`}
+                        icon={MapPin}
+                        color="#3b82f6"
+                    />
+                    <StatCard
+                        label="Team"
+                        value={teamMembers.length}
+                        subValue="reps"
+                        icon={Users}
+                        color="#8b5cf6"
+                    />
+                    <StatCard
+                        label="Daily Avg"
+                        value={thisWeekLogs.length > 0 ? Math.round(thisWeekLogs.length / 7) : 0}
+                        subValue="knocks/day"
+                        icon={TrendingUp}
+                        color="#06b6d4"
+                    />
+                    <StatCard
+                        label="Territory"
+                        value={totalDoors.toLocaleString()}
+                        subValue="total doors"
+                        icon={Target}
+                        color="#ec4899"
+                    />
+                </>
+            )}
         </div>
     );
 }
