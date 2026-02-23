@@ -119,10 +119,24 @@ export default function MapSettingsPanel({
                     <div className="flex items-center gap-2">
                         <button 
                             onClick={() => {
-                                if (setMapSettings) setMapSettings({});
+                                if (setMapSettings) setMapSettings({
+                                    pinShape: 'circle',
+                                    colorScheme: 'default',
+                                    lineStyle: 'dashed',
+                                    lineWidth: 2,
+                                    lineOpacity: 0.5,
+                                    pinOpacity: 0.85,
+                                    pinBorderWidth: 1,
+                                    pinBorderColor: '#000',
+                                    showLabels: false,
+                                    labelType: 'number',
+                                    glowEffect: false,
+                                    fillStyle: 'solid',
+                                });
                                 if (setPinSize) setPinSize(5);
                                 if (setShowRouteLines) setShowRouteLines(false);
                                 if (setShowRouteDetails) setShowRouteDetails(true);
+                                if (setShowAllProperties) setShowAllProperties(false);
                                 if (setMapTheme) setMapTheme('dark');
                             }}
                             className="text-[9px] font-bold text-gray-500 hover:text-yellow-500 flex items-center gap-1 px-2 py-1 rounded bg-gray-900 hover:bg-gray-800 transition-colors"
