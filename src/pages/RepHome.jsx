@@ -462,7 +462,7 @@ export default function RepHome() {
                                 key={tab.id}
                                 onClick={() => setFilterStatus(tab.id)}
                                 className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold tracking-wide transition-all ${
-                                    filterStatus === tab.id ? 'bg-[#6C5CE7] text-white shadow-md' : 'text-[#8888A0] hover:text-white'
+                                    filterStatus === tab.id ? 'bg-white text-black shadow-md' : 'text-[#8888A0] hover:text-white'
                                 }`}
                             >
                                 {tab.label}

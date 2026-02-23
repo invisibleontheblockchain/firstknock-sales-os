@@ -66,12 +66,13 @@ export default function Referrals() {
                 {/* Commission Info */}
                 <div className="bg-[#111] border border-gray-800 rounded-xl p-5 text-center">
                     <h3 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center justify-center gap-2">
-                        <DollarSign className="w-3 h-3" /> Commission Per Referral
+                        <DollarSign className="w-3 h-3" /> Recurring Commission
                     </h3>
-                    <p className="text-4xl font-extrabold" style={{ color: accent }}>$10</p>
-                    <p className="text-sm text-gray-400 mt-1">for every user who subscribes</p>
+                    <p className="text-4xl font-extrabold" style={{ color: accent }}>20%</p>
+                    <p className="text-sm text-gray-400 mt-1">LIFETIME recurring commission</p>
                     <p className="text-[10px] text-gray-600 mt-2">
-                        Flat $10 cash earned when your referral subscribes to any paid plan
+                        Earn 20% of the subscription revenue for as long as your referral remains a paying customer.
+                        Build an army and create passive income!
                     </p>
                 </div>
 

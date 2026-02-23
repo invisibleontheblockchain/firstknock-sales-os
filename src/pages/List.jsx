@@ -2,11 +2,13 @@ import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, BarChart3, Navigation, Users } from 'lucide-react';
+import { subDays, startOfDay, isAfter } from 'date-fns';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Button } from '@/components/ui/button';
+import { INDUSTRIES } from '@/components/appointments/EligibilityScorer';
 
 import OverviewStats from '@/components/analytics/OverviewStats';
 import TimeOfDayEffectiveness from '@/components/analytics/TimeOfDayEffectiveness';
@@ -14,9 +16,21 @@ import TeamPerformance from '@/components/analytics/TeamPerformance';
 import RouteProgress from '@/components/analytics/RouteProgress';
 import StatusBreakdown from '@/components/analytics/StatusBreakdown';
 
+import DateRangeFilter from '@/components/analytics/DateRangeFilter';
+import IndustryFilterBar from '@/components/analytics/IndustryFilterBar';
+import KpiSummaryCards from '@/components/analytics/KpiSummaryCards';
+import ConversionByIndustry from '@/components/analytics/ConversionByIndustry';
+import RepSuccessRate from '@/components/analytics/RepSuccessRate';
+import LeadScoringEffectiveness from '@/components/analytics/LeadScoringEffectiveness';
+import RouteEfficiency from '@/components/analytics/RouteEfficiency';
+import AppointmentForecast from '@/components/analytics/AppointmentForecast';
+import AppointmentTimeline from '@/components/analytics/AppointmentTimeline';
+
 export default function ListPage() {
     const { accent } = useTheme();
     const [activeTab, setActiveTab] = useState('overview');
+    const [dateDays, setDateDays] = useState(30);
+    const [industryFilter, setIndustryFilter] = useState('all');
 
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
@@ -59,6 +73,13 @@ export default function ListPage() {
         enabled: !!user
     });
     const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
+
+    const { data: appointmentsRaw = [], isLoading: apptsLoading } = useQuery({
+        queryKey: ['appointments'],
+        queryFn: () => base44.entities.Appointment.list('-scheduled_date', 5000),
+        enabled: !!user,
+    });
+    const appointments = Array.isArray(appointmentsRaw) ? appointmentsRaw : (appointmentsRaw?.items || []);
 
     const effectiveProperties = useMemo(() => {
         const propsArray = Array.isArray(properties) ? properties : (properties?.items || []);
