@@ -17,31 +17,32 @@ export default function PropertyCard({ property, index, onSelect }) {
     return (
         <button
             onClick={() => onSelect(property)}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all active:scale-[0.98]"
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 active:scale-[0.98] group ${!isDone ? 'hover:bg-[#1A1A24] hover:shadow-[0_0_20px_rgba(255,255,255,0.15)] hover:border-white/30' : ''}`}
             style={{
-                background: isDone ? '#0f0f0f' : '#111',
-                border: `1px solid ${isDone ? '#1a1a1a' : '#1f1f1f'}`,
+                background: isDone ? '#0A0A0F' : '#111',
+                border: `1px solid ${isDone ? '#151515' : '#1F1F1F'}`,
             }}
         >
             {/* Number / Check */}
             <div
-                className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0 transition-all duration-300"
                 style={{
-                    background: isDone ? statusColor : '#FFD700',
-                    color: isDone ? '#fff' : '#000',
+                    background: isDone ? statusColor : '#222',
+                    color: isDone ? '#fff' : '#fff',
+                    border: isDone ? 'none' : '1px solid rgba(255,255,255,0.1)',
                     opacity: isDone ? 0.6 : 1
                 }}
             >
-                {isDone ? <Check className="w-3.5 h-3.5" /> : index + 1}
+                {isDone ? <Check className="w-4 h-4" /> : index + 1}
             </div>
 
             {/* Address */}
             <div className="flex-1 min-w-0 text-left">
-                <p className={`text-[13px] font-semibold truncate leading-tight ${isDone ? 'line-through opacity-40' : 'text-white'}`}>
+                <p className={`text-[14px] font-bold truncate leading-tight transition-all duration-300 ${isDone ? 'line-through opacity-40 text-gray-500' : 'text-gray-200 group-hover:text-white group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]'}`}>
                     {property.house_number} {property.street_name}
                 </p>
                 {property.city && (
-                    <p className="text-[10px] truncate leading-tight mt-0.5 text-gray-600">
+                    <p className="text-[11px] truncate leading-tight mt-1 text-gray-600 transition-colors duration-300 group-hover:text-gray-400">
                         {property.city}, {property.state} {property.zip_code}
                     </p>
                 )}
@@ -52,7 +53,7 @@ export default function PropertyCard({ property, index, onSelect }) {
 
             {/* Status tag */}
             {isDone && (
-                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0"
+                <span className="text-[10px] font-bold px-2 py-1 rounded-full shrink-0"
                     style={{ background: statusColor + '20', color: statusColor }}>
                     {property.effective_status === 'NO_ANSWER' ? 'N/A' : property.effective_status === 'HARD_NO' ? 'NO' : property.effective_status}
                 </span>
@@ -65,10 +66,10 @@ export default function PropertyCard({ property, index, onSelect }) {
                         e.stopPropagation();
                         window.open(`https://maps.apple.com/?daddr=${property.lat},${property.lng}&dirflg=w`, '_blank');
                     }}
-                    className="w-7 h-7 rounded-full flex items-center justify-center shrink-0"
-                    style={{ background: 'rgba(255,215,0,0.1)' }}
+                    className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-all duration-300 group-hover:bg-white/10 group-hover:shadow-[0_0_10px_rgba(255,255,255,0.2)]"
+                    style={{ background: 'rgba(255,255,255,0.05)' }}
                 >
-                    <Navigation className="w-3 h-3 text-yellow-500" />
+                    <Navigation className="w-4 h-4 text-white transition-all duration-300 group-hover:drop-shadow-[0_0_5px_rgba(255,255,255,0.8)]" />
                 </button>
             )}
         </button>
