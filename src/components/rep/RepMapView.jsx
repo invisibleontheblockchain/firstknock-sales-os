@@ -12,6 +12,16 @@ if (originalGetMapPanePos && !L.Map.prototype._getMapPanePos.isPatched) {
     };
     L.Map.prototype._getMapPanePos.isPatched = true;
 }
+
+// Fix leaflet fast-unmount/interaction error
+const originalSetPosition = L.DomUtil.setPosition;
+if (originalSetPosition && !L.DomUtil.setPosition.isPatched) {
+    L.DomUtil.setPosition = function (el, point) {
+        if (!el) return;
+        return originalSetPosition.call(this, el, point);
+    };
+    L.DomUtil.setPosition.isPatched = true;
+}
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Navigation, X, Locate, ChevronUp, ChevronDown } from 'lucide-react';
