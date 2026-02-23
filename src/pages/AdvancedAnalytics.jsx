@@ -85,38 +85,42 @@ export default function AdvancedAnalytics() {
     const isLoading = apptsLoading || routesLoading || logsLoading;
 
     return (
-        <div className="h-full flex flex-col" style={{ background: '#0A0A0A' }}>
+        <div className="h-full flex flex-col relative" style={{ background: '#050505' }}>
+            {/* Ambient Background Glows */}
+            <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/5 blur-[150px] pointer-events-none" />
+            <div className="absolute bottom-0 left-0 w-96 h-96 bg-purple-500/5 blur-[150px] pointer-events-none" />
+
             {/* Header */}
-            <div className="px-4 md:px-6 pt-4 pb-3 border-b border-gray-800/40 sticky top-0 z-10" style={{ background: '#0A0A0A' }}>
-                <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: `${accent}15` }}>
-                            <BarChart3 className="w-4 h-4" style={{ color: accent }} />
+            <div className="px-4 md:px-6 pt-6 pb-4 border-b border-white/5 sticky top-0 z-20 backdrop-blur-xl bg-black/60 shadow-xl">
+                <div className="flex items-center justify-between mb-5">
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center border shadow-inner" style={{ background: `${accent}20`, borderColor: `${accent}40` }}>
+                            <BarChart3 className="w-6 h-6 drop-shadow-md" style={{ color: accent }} />
                         </div>
                         <div>
-                            <h1 className="text-base font-extrabold text-white tracking-tight">Advanced Analytics</h1>
-                            <p className="text-[10px] text-gray-500">
+                            <h1 className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight drop-shadow-sm">Advanced Analytics</h1>
+                            <p className="text-xs text-gray-500 font-medium tracking-wide mt-0.5">
                                 Appointments, leads & route performance •{' '}
-                                <span className="text-white font-bold">{filtered.length}</span> appointments
+                                <span className="text-white font-bold">{filtered.length}</span> appts
                             </p>
                         </div>
                     </div>
                     <Link to={createPageUrl('Appointments')}>
-                        <Button variant="ghost" size="sm" className="text-gray-500 hover:text-white text-xs">
-                            <X className="w-4 h-4 mr-1" /> Back
+                        <Button variant="ghost" size="icon" className="text-gray-400 hover:text-white hover:bg-white/10 rounded-full h-10 w-10">
+                            <X className="w-5 h-5" />
                         </Button>
                     </Link>
                 </div>
 
                 {/* Filters */}
-                <div className="flex flex-col md:flex-row gap-2">
+                <div className="flex flex-col md:flex-row gap-3">
                     <DateRangeFilter selectedDays={dateDays} onChangeDays={setDateDays} accent={accent} />
                     <IndustryFilterBar industries={activeIndustries} selected={industryFilter} onSelect={setIndustryFilter} accent={accent} />
                 </div>
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-auto p-4 md:p-6">
+            <div className="flex-1 overflow-auto p-4 md:p-6 relative z-10">
                 {isLoading ? (
                     <div className="flex flex-col justify-center items-center py-20 gap-3">
                         <Loader2 className="w-7 h-7 animate-spin" style={{ color: accent }} />
