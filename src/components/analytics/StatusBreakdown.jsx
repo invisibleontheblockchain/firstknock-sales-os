@@ -33,29 +33,39 @@ export default function StatusBreakdown({ properties }) {
     const maxVal = data.length > 0 ? data[0].value : 0;
 
     return (
-        <div className="bg-[#111] border border-gray-800/60 rounded-2xl p-5">
-            <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-bold text-white">Status Breakdown</h3>
-                <span className="text-[10px] text-gray-500">{properties.length.toLocaleString()} properties</span>
+        <div className="bg-gradient-to-b from-[#151515] to-[#0A0A0A] border border-white/5 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+            
+            <div className="flex items-center justify-between mb-6 relative z-10">
+                <h3 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight">Status Breakdown</h3>
+                <div className="bg-white/5 border border-white/10 px-3 py-1.5 rounded-lg shadow-inner">
+                    <span className="text-[11px] font-bold text-gray-400 tracking-wide">{properties.length.toLocaleString()} doors</span>
+                </div>
             </div>
-            <div className="space-y-2.5">
+            
+            <div className="space-y-4 relative z-10">
                 {data.map(d => (
                     <div key={d.name} className="group">
-                        <div className="flex items-center justify-between mb-1">
-                            <div className="flex items-center gap-2">
-                                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: d.color }} />
-                                <span className="text-xs text-gray-300 font-medium">{d.name}</span>
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-3">
+                                <div className="relative flex items-center justify-center">
+                                    <div className="w-3 h-3 rounded-full shrink-0 relative z-10 border border-black/50 shadow-sm transition-transform duration-300 group-hover:scale-125" style={{ background: d.color }} />
+                                    <div className="absolute inset-0 w-3 h-3 rounded-full blur-[4px] opacity-50 group-hover:opacity-100 transition-opacity duration-300" style={{ background: d.color }} />
+                                </div>
+                                <span className="text-sm font-bold text-gray-300 group-hover:text-white transition-colors tracking-wide">{d.name}</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-white">{d.value.toLocaleString()}</span>
-                                <span className="text-[10px] text-gray-600 w-10 text-right">{d.pct.toFixed(1)}%</span>
+                            <div className="flex items-center gap-3">
+                                <span className="text-sm font-black text-white drop-shadow-sm">{d.value.toLocaleString()}</span>
+                                <span className="text-[11px] font-bold text-gray-500 w-12 text-right bg-black/40 px-2 py-0.5 rounded-md border border-white/5">{d.pct.toFixed(1)}%</span>
                             </div>
                         </div>
-                        <div className="h-1.5 bg-gray-800/50 rounded-full overflow-hidden">
+                        <div className="h-2 bg-black/60 rounded-full overflow-hidden shadow-inner border border-white/5 relative">
                             <div
-                                className="h-full rounded-full transition-all duration-500"
-                                style={{ width: `${maxVal > 0 ? (d.value / maxVal) * 100 : 0}%`, background: d.color }}
-                            />
+                                className="h-full rounded-full transition-all duration-1000 ease-out relative"
+                                style={{ width: `${maxVal > 0 ? (d.value / maxVal) * 100 : 0}%`, background: `linear-gradient(90deg, ${d.color}aa, ${d.color})` }}
+                            >
+                                <div className="absolute inset-0 bg-white/20 w-1/2 -skew-x-12 animate-[shimmer_2s_infinite]" />
+                            </div>
                         </div>
                     </div>
                 ))}

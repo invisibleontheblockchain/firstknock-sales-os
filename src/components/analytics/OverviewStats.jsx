@@ -7,26 +7,34 @@ function StatCard({ label, value, subValue, icon: Icon, color, trend, featured }
     const cardColor = color || accent;
 
     return (
-        <div className={`relative overflow-hidden rounded-2xl p-4 flex flex-col gap-1.5 transition-all duration-200 ${
+        <div className={`group relative overflow-hidden rounded-2xl p-5 flex flex-col gap-2 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl ${
             featured 
-                ? 'border-2 col-span-2 sm:col-span-1' 
-                : 'border border-gray-800/60'
+                ? 'border border-white/10 col-span-2 sm:col-span-1' 
+                : 'border border-white/5'
         }`} style={{
-            background: featured ? `linear-gradient(135deg, ${cardColor}18, ${cardColor}08)` : '#111',
-            borderColor: featured ? `${cardColor}40` : undefined,
+            background: featured ? `linear-gradient(135deg, ${cardColor}15, #000000)` : 'linear-gradient(180deg, rgba(20,20,20,0.8) 0%, rgba(10,10,10,0.9) 100%)',
+            boxShadow: featured ? `0 0 40px -10px ${cardColor}30` : '0 4px 20px -2px rgba(0,0,0,0.5)',
+            backdropFilter: 'blur(10px)'
         }}>
-            <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-widest">{label}</span>
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: `${cardColor}15` }}>
-                    <Icon className="w-3.5 h-3.5" style={{ color: cardColor }} />
+            {/* Glow effect */}
+            <div className="absolute -top-10 -right-10 w-32 h-32 blur-3xl opacity-20 group-hover:opacity-40 transition-opacity duration-500 rounded-full pointer-events-none" style={{ background: cardColor }} />
+            
+            <div className="flex items-center justify-between relative z-10">
+                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">{label}</span>
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110" style={{ background: `${cardColor}20`, border: `1px solid ${cardColor}30` }}>
+                    <Icon className="w-4 h-4 drop-shadow-md" style={{ color: cardColor }} />
                 </div>
             </div>
-            <p className="text-3xl font-extrabold text-white tracking-tight">{value}</p>
-            <div className="flex items-center gap-2">
-                {subValue && <span className="text-[10px] text-gray-500">{subValue}</span>}
+            
+            <div className="relative z-10 mt-1">
+                <p className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-gray-400 tracking-tight drop-shadow-sm">{value}</p>
+            </div>
+            
+            <div className="flex items-center gap-2 mt-auto relative z-10 pt-1">
+                {subValue && <span className="text-xs text-gray-500 font-medium">{subValue}</span>}
                 {trend !== undefined && trend !== 0 && (
-                    <span className={`text-[10px] font-bold flex items-center gap-0.5 px-1.5 py-0.5 rounded-full ${
-                        trend >= 0 ? 'text-green-400 bg-green-500/10' : 'text-red-400 bg-red-500/10'
+                    <span className={`text-[10px] font-bold flex items-center gap-0.5 px-2 py-0.5 rounded-md backdrop-blur-sm border ${
+                        trend >= 0 ? 'text-green-400 bg-green-500/10 border-green-500/20' : 'text-red-400 bg-red-500/10 border-red-500/20'
                     }`}>
                         {trend >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                         {Math.abs(trend)}%
