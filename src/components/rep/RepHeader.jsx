@@ -8,9 +8,9 @@ export default function RepHeader({ user, isOffline, activeRoute, stats, knockWi
     
     // Sync UI Logic
     const syncState = isOffline 
-        ? { dot: 'bg-[#FF6B6B]', text: 'text-[#FF6B6B]', label: 'OFFLINE', icon: WifiOff }
+        ? { dot: 'bg-[#FF6B6B]', text: 'text-[#FF6B6B]', label: 'OFFLINE (QUEUED)', icon: WifiOff }
         : isMutating > 0 
-            ? { dot: 'bg-[#FFD93D]', text: 'text-[#FFD93D]', label: 'SYNCING...', icon: RefreshCw }
+            ? { dot: 'bg-[#FFD93D]', text: 'text-[#FFD93D]', label: `SYNCING (${isMutating})...`, icon: RefreshCw }
             : { dot: 'bg-[#00F5A0]', text: 'text-[#00F5A0]', label: 'SYNCED', icon: CheckCircle2 };
 
     return (
