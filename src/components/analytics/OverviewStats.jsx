@@ -8,32 +8,32 @@ function StatCard({ label, value, subValue, icon: Icon, color, trend, featured }
 
     return (
         <div 
-            className={`group relative overflow-hidden rounded-2xl p-4 flex flex-col gap-1 transition-all duration-300 hover:scale-[1.02] border ${featured ? 'border-white/20 shadow-[0_0_30px_rgba(255,255,255,0.1)]' : 'border-gray-800 hover:border-gray-600'} bg-[#111]`}
+            className={`group relative overflow-hidden rounded-xl p-3 flex flex-col gap-0.5 transition-all duration-300 hover:scale-[1.02] border ${featured ? 'border-white/20 shadow-[0_0_20px_rgba(255,255,255,0.08)]' : 'border-gray-800 hover:border-gray-600'} bg-[#111]`}
             style={{ 
-                boxShadow: featured ? `0 0 40px ${cardColor}15` : 'none',
+                boxShadow: featured ? `0 0 30px ${cardColor}15` : 'none',
                 borderColor: featured ? `${cardColor}40` : undefined
             }}
         >
-            <div className="absolute -top-10 -right-10 w-32 h-32 blur-3xl opacity-0 group-hover:opacity-20 transition-opacity duration-500 rounded-full pointer-events-none" style={{ background: cardColor }} />
+            <div className="absolute -top-8 -right-8 w-24 h-24 blur-2xl opacity-0 group-hover:opacity-20 transition-opacity duration-500 rounded-full pointer-events-none" style={{ background: cardColor }} />
             
-            <div className="flex items-center justify-between relative z-10 mb-1">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{label}</span>
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center transition-transform duration-300 group-hover:scale-110 group-hover:shadow-[0_0_15px_rgba(255,255,255,0.3)]" style={{ background: `${cardColor}15`, color: cardColor }}>
-                    <Icon className="w-3.5 h-3.5" />
+            <div className="flex items-center justify-between relative z-10 mb-0.5">
+                <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest">{label}</span>
+                <div className="w-6 h-6 rounded-md flex items-center justify-center transition-transform duration-300 group-hover:scale-110 group-hover:shadow-[0_0_10px_rgba(255,255,255,0.2)]" style={{ background: `${cardColor}15`, color: cardColor }}>
+                    <Icon className="w-3 h-3" />
                 </div>
             </div>
             
             <div className="relative z-10">
-                <p className="text-2xl font-black tracking-tight text-white group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] transition-all duration-300">{value}</p>
+                <p className="text-xl font-black tracking-tight text-white group-hover:drop-shadow-[0_0_6px_rgba(255,255,255,0.4)] transition-all duration-300">{value}</p>
             </div>
             
-            <div className="flex items-center justify-between mt-auto relative z-10 pt-1">
-                {subValue && <span className="text-[10px] text-gray-500 font-medium">{subValue}</span>}
+            <div className="flex items-center justify-between mt-auto relative z-10 pt-0.5">
+                {subValue && <span className="text-[9px] text-gray-500 font-medium">{subValue}</span>}
                 {trend !== undefined && trend !== 0 && (
-                    <span className={`text-[9px] font-bold flex items-center gap-0.5 px-1.5 py-0.5 rounded backdrop-blur-sm ${
+                    <span className={`text-[8px] font-bold flex items-center gap-0.5 px-1 py-0.5 rounded backdrop-blur-sm ${
                         trend >= 0 ? 'text-green-400 bg-green-400/10' : 'text-red-400 bg-red-400/10'
                     }`}>
-                        {trend >= 0 ? <TrendingUp className="w-2.5 h-2.5" /> : <TrendingDown className="w-2.5 h-2.5" />}
+                        {trend >= 0 ? <TrendingUp className="w-2 h-2" /> : <TrendingDown className="w-2 h-2" />}
                         {Math.abs(trend)}%
                     </span>
                 )}
@@ -73,7 +73,7 @@ export default function OverviewStats({ routes, logs, properties, teamMembers, v
     const isEssential = viewMode === 'essential';
 
     return (
-        <div className={`grid grid-cols-2 ${isEssential ? 'sm:grid-cols-2' : 'sm:grid-cols-4'} gap-3`}>
+        <div className={`grid grid-cols-2 ${isEssential ? 'sm:grid-cols-2' : 'sm:grid-cols-4'} gap-2`}>
             <StatCard
                 label="Today"
                 value={todayLogs.length}
