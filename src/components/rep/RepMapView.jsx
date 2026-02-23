@@ -6,15 +6,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Navigation, X, Locate, ChevronUp, ChevronDown } from 'lucide-react';
 
-const BRAND = { gold: '#FFD700', voidBlack: '#0A0A0A' };
+const BRAND = { gold: '#FFD93D', voidBlack: '#0A0A0F' };
 
 const STATUS_COLORS = {
-    ELIGIBLE: '#6b7280',
-    SOLD: '#22c55e',
-    HARD_NO: '#8B5CF6',
-    CALLBACK: '#eab308',
-    NO_ANSWER: '#f97316',
-    QUALIFIED: '#22c55e',
+    ELIGIBLE: '#8888A0',
+    SOLD: '#00F5A0',
+    HARD_NO: '#FF6B6B',
+    CALLBACK: '#FFD93D',
+    NO_ANSWER: '#8888A0',
+    QUALIFIED: '#00F5A0',
 };
 
 function haversine(lat1, lng1, lat2, lng2) {

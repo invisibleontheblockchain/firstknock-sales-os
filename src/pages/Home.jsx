@@ -43,21 +43,24 @@ import PropertyHistory from '../components/rep/PropertyHistory';
 
 // Brand Colors
 const BRAND = {
-    voidBlack: '#0A0A0A',
-    gold: '#FFD700',
-    charcoal: '#1F1F1F',
-    offWhite: '#E5E5E5'
+    voidBlack: '#0A0A0F', // Updated to new dark background
+    gold: '#FFD93D',      // Updated Warning/Gold
+    charcoal: '#12121A',  // Surface
+    offWhite: '#F0F0F5',  // Text Primary
+    primary: '#6C5CE7',
+    success: '#00F5A0',
+    danger: '#FF6B6B'
 };
 
-// Default Status colors
+// Default Status colors matching Design System
 const DEFAULT_STATUS_COLORS = {
-    ELIGIBLE: '#6b7280',
-    SOLD: '#22c55e',
-    HARD_NO: '#8B5CF6',
-    CALLBACK: '#eab308',
-    NO_ANSWER: '#6b7280',
-    QUALIFIED: '#22c55e',
-    OTHER: '#6b7280'
+    ELIGIBLE: '#8888A0', // Gray (not knocked)
+    SOLD: '#00F5A0',     // Neon Green (interested/closed)
+    HARD_NO: '#FF6B6B',  // Soft Red (not interested)
+    CALLBACK: '#FFD93D', // Gold (follow-ups)
+    NO_ANSWER: '#8888A0',// Gray
+    QUALIFIED: '#00F5A0',// Neon Green
+    OTHER: '#8888A0'     // Gray
 };
 
 const COLOR_SCHEME_MAP = {
