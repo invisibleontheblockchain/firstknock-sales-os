@@ -2,13 +2,13 @@ import React, { useMemo } from 'react';
 import { useTheme } from '@/components/theme/ThemeProvider';
 
 const STATUS_CONFIG = {
-    ELIGIBLE: { color: '#6b7280', label: 'Eligible' },
-    SOLD: { color: '#22c55e', label: 'Sold' },
-    QUALIFIED: { color: '#10b981', label: 'Qualified' },
-    HARD_NO: { color: '#ef4444', label: 'Hard No' },
-    CALLBACK: { color: '#eab308', label: 'Callback' },
-    NO_ANSWER: { color: '#8b5cf6', label: 'No Answer' },
-    OTHER: { color: '#3b82f6', label: 'Other' },
+    ELIGIBLE: { color: '#8888A0', label: 'Eligible' },
+    SOLD: { color: '#00F5A0', label: 'Sold' },
+    QUALIFIED: { color: '#00D2FF', label: 'Qualified' },
+    HARD_NO: { color: '#FF6B6B', label: 'Not Interested' },
+    CALLBACK: { color: '#FFD93D', label: 'Follow Up' },
+    NO_ANSWER: { color: '#8888A0', label: 'Not Home' },
+    OTHER: { color: '#6C5CE7', label: 'Other' },
 };
 
 export default function StatusBreakdown({ properties }) {

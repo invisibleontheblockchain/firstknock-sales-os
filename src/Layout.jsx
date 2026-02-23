@@ -87,13 +87,38 @@ function LayoutInner({ children }) {
 
     if (!user) {
         return (
-            <div className="flex h-screen flex-col items-center justify-center bg-black text-white p-6 text-center space-y-6">
-                <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/4207f4197_ChatGPTImageFeb2202612_56_42AM.png" alt="FirstKnock Logo" className="w-24 h-24 rounded-2xl mb-4 object-cover" style={{ boxShadow: `0 0 30px ${accent}30` }} />
-                <h1 className="text-3xl font-bold tracking-tight">FirstKnock</h1>
-                <p className="text-gray-400 max-w-xs">Your personal door-to-door sales territory manager.</p>
-                <Button onClick={() => base44.auth.redirectToLogin()} className="w-full max-w-xs h-12 font-bold text-base" style={{ background: accent, color: accentText }}>
-                    <LogIn className="w-5 h-5 mr-2" /> LOGIN / SIGN UP
-                </Button>
+            <div className="flex h-screen flex-col items-center justify-center relative overflow-hidden bg-[#0A0A0F] text-white p-6 text-center">
+                {/* Animated Grid Background */}
+                <div className="absolute inset-0 pointer-events-none" style={{
+                    backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px)',
+                    backgroundSize: '40px 40px',
+                    maskImage: 'linear-gradient(to bottom, transparent, black, transparent)',
+                    WebkitMaskImage: 'linear-gradient(to bottom, transparent, black, transparent)'
+                }}></div>
+                {/* Purple Glow */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-[#6C5CE7]/20 blur-[120px] rounded-full pointer-events-none"></div>
+                
+                <div className="relative z-10 flex flex-col items-center space-y-8 max-w-sm w-full">
+                    <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/4207f4197_ChatGPTImageFeb2202612_56_42AM.png" alt="FirstKnock Logo" className="w-20 h-20 rounded-2xl object-cover shadow-[0_0_40px_rgba(108,92,231,0.5)] border border-white/10" />
+                    
+                    <div className="space-y-3">
+                        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-[#A29BFE]" style={{ textShadow: '0 0 40px rgba(108,92,231,0.3)' }}>FirstKnock</h1>
+                        <p className="text-[#8888A0] text-lg font-medium tracking-wide">The Door-to-Door Sales OS.</p>
+                    </div>
+
+                    <button 
+                        onClick={() => base44.auth.redirectToLogin()} 
+                        className="w-full h-14 rounded-xl flex items-center justify-center gap-3 font-bold text-lg transition-all duration-300 transform hover:-translate-y-1 glass-card"
+                        style={{
+                            background: 'linear-gradient(135deg, rgba(108,92,231,0.2), rgba(0,210,255,0.1))',
+                            boxShadow: '0 8px 32px rgba(108,92,231,0.2)',
+                            border: '1px solid rgba(255,255,255,0.1)'
+                        }}
+                    >
+                        <LogIn className="w-5 h-5 text-[#A29BFE]" /> 
+                        <span className="text-white">Sign In / Sign Up</span>
+                    </button>
+                </div>
             </div>
         );
     }
