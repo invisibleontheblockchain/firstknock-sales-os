@@ -68,6 +68,7 @@ export default function OverviewStats({ routes, logs, properties, teamMembers })
     const sales = logs.filter(l => ['SOLD', 'QUALIFIED'].includes(l.parsed_status));
     const todaySales = sales.filter(l => new Date(l.created_date) >= today);
     const conversionRate = logs.length > 0 ? ((sales.length / logs.length) * 100).toFixed(1) : '0';
+    const knocksPerSale = sales.length > 0 ? Math.round(logs.length / sales.length) : 0;
 
     const totalDoors = properties.length;
     const knockedDoors = new Set(logs.map(l => l.address_hash)).size;
@@ -90,6 +91,13 @@ export default function OverviewStats({ routes, logs, properties, teamMembers })
                 trend={weeklyTrend}
             />
             <StatCard
+                label="Knocks / Sale"
+                value={knocksPerSale || '-'}
+                subValue="doors per deal"
+                icon={Navigation}
+                color="#eab308"
+            />
+            <StatCard
                 label="Conversion"
                 value={`${conversionRate}%`}
                 subValue={`${sales.length}/${logs.length}`}
@@ -102,13 +110,6 @@ export default function OverviewStats({ routes, logs, properties, teamMembers })
                 subValue={`${knockedDoors} of ${totalDoors}`}
                 icon={MapPin}
                 color="#3b82f6"
-            />
-            <StatCard
-                label="Routes"
-                value={activeRoutes.length}
-                subValue={`${completedRoutes.length} done`}
-                icon={Navigation}
-                color="#eab308"
             />
             <StatCard
                 label="Team"
