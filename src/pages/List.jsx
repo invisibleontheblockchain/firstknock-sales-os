@@ -163,6 +163,10 @@ export default function ListPage() {
                     <div className="flex flex-col md:flex-row gap-3 mt-2">
                         <DateRangeFilter selectedDays={dateDays} onChangeDays={setDateDays} accent={accent} />
                         <IndustryFilterBar industries={activeIndustries} selected={industryFilter} onSelect={setIndustryFilter} accent={accent} />
+                        <div className="flex items-center bg-[#111] rounded-lg border border-gray-800 p-1 md:ml-auto shrink-0 w-full md:w-auto">
+                            <button onClick={() => setViewMode('essential')} className={`flex-1 md:flex-none px-4 py-1.5 rounded-md text-[11px] font-bold transition-all ${viewMode === 'essential' ? 'bg-white text-black shadow-md' : 'text-gray-500 hover:text-white'}`}>ESSENTIAL</button>
+                            <button onClick={() => setViewMode('advanced')} className={`flex-1 md:flex-none px-4 py-1.5 rounded-md text-[11px] font-bold transition-all ${viewMode === 'advanced' ? 'bg-white text-black shadow-md' : 'text-gray-500 hover:text-white'}`}>ADVANCED</button>
+                        </div>
                     </div>
                 )}
             </div>
