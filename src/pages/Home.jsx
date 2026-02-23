@@ -10,6 +10,15 @@ L.Icon.Default.mergeOptions({
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
+
+// Fix Leaflet unmount error during scroll wheel zoom
+const originalGetMapPanePos = L.Map.prototype._getMapPanePos;
+if (originalGetMapPanePos) {
+    L.Map.prototype._getMapPanePos = function () {
+        if (!this._mapPane) return L.point(0, 0);
+        return originalGetMapPanePos.call(this);
+    };
+}
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
