@@ -338,6 +338,15 @@ export default function MapSettingsPanel({
 
                         {/* ═══ STATUS VISIBILITY ═══ */}
                         <CollapsibleSection title="Status Filter" icon={Eye} defaultOpen={false}>
+                            {setShowAllProperties && (
+                                <div className="flex items-center justify-between py-2 border-b border-gray-800 mb-3">
+                                    <div>
+                                        <span className="text-xs font-bold text-gray-300">Show All Properties</span>
+                                        <p className="text-[9px] text-gray-500">Show pins not in any route</p>
+                                    </div>
+                                    <Switch checked={showAllProperties} onCheckedChange={setShowAllProperties} />
+                                </div>
+                            )}
                             <div className="grid grid-cols-2 gap-2">
                                 {STATUS_FILTERS.map(f => (
                                     <button
