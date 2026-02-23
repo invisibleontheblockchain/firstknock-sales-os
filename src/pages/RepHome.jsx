@@ -260,6 +260,21 @@ export default function RepHome() {
         enabled: !!user?.email
     });
 
+    // REAL-TIME UPDATES: Prevent double-knocking (Team Mode)
+    React.useEffect(() => {
+        if (!user) return;
+        const unsubscribe = base44.entities.InteractionLog.subscribe((event) => {
+            if (event.type === 'create' && event.data && event.data.created_by !== user.email) {
+                // If another rep knocks a door on our route, update immediately
+                if (activeRoute && activeRoute.property_hashes?.includes(event.data.address_hash)) {
+                    queryClient.invalidateQueries({ queryKey: ['routeLogs'] });
+                    queryClient.invalidateQueries({ queryKey: ['routeProperties'] });
+                }
+            }
+        });
+        return unsubscribe;
+    }, [user, activeRoute, queryClient]);
+
     // Fetch ALL logs for a selected property (for full history view - any rep, any time)
     const { data: selectedPropertyLogs = [] } = useQuery({
         queryKey: ['propertyHistory', selectedProperty?.address_hash],
