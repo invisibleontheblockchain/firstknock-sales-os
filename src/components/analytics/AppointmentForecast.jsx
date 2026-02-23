@@ -82,25 +82,25 @@ export default function AppointmentForecast({ appointments }) {
     const trendColor = trend === 'up' ? 'text-green-400' : trend === 'down' ? 'text-red-400' : 'text-gray-400';
 
     return (
-        <div className="relative bg-gradient-to-b from-[#151515] to-[#0A0A0A] border border-white/5 rounded-3xl p-6 shadow-2xl overflow-hidden">
+        <div className="relative bg-gradient-to-b from-[#151515] to-[#0A0A0A] border border-white/5 rounded-2xl p-5 shadow-2xl overflow-hidden">
             <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
             <div className="absolute -top-24 -right-24 w-64 h-64 bg-yellow-500/10 blur-[100px] rounded-full pointer-events-none" />
             
-            <div className="flex items-center justify-between mb-6 relative z-10">
-                <h3 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-yellow-500/20 border border-yellow-500/40">
-                        <TrendingUp className="w-5 h-5 text-yellow-400 drop-shadow-[0_0_10px_rgba(255,215,0,0.5)]" />
+            <div className="flex items-center justify-between mb-4 relative z-10">
+                <h3 className="text-base font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-yellow-500/20 border border-yellow-500/40">
+                        <TrendingUp className="w-4 h-4 text-yellow-400 drop-shadow-[0_0_10px_rgba(255,215,0,0.5)]" />
                     </div>
                     Volume Forecast
                 </h3>
-                <div className="flex items-center gap-4 bg-black/60 backdrop-blur-md rounded-xl border border-white/10 px-4 py-2 shadow-inner">
-                    <span className="text-xs font-bold text-gray-400">Avg: <span className="text-white drop-shadow-sm">{avgDaily}/day</span></span>
-                    <div className="w-px h-4 bg-white/20" />
-                    <span className={`text-xs font-black drop-shadow-sm ${trendColor}`}>{trendLabel}</span>
+                <div className="flex items-center gap-3 bg-black/60 backdrop-blur-md rounded-lg border border-white/10 px-3 py-1.5 shadow-inner">
+                    <span className="text-[10px] font-bold text-gray-400">Avg: <span className="text-white drop-shadow-sm">{avgDaily}/day</span></span>
+                    <div className="w-px h-3 bg-white/20" />
+                    <span className={`text-[10px] font-black drop-shadow-sm ${trendColor}`}>{trendLabel}</span>
                 </div>
             </div>
             
-            <div className="h-[280px] relative z-10 mt-4">
+            <div className="h-[240px] relative z-10 mt-2">
                 <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={combined} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
                         <defs>

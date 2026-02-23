@@ -59,27 +59,27 @@ export default function LeadScoringEffectiveness({ appointments }) {
     };
 
     return (
-        <div className="relative bg-gradient-to-b from-[#151515] to-[#0A0A0A] border border-white/5 rounded-3xl p-6 shadow-2xl overflow-hidden">
+        <div className="relative bg-gradient-to-b from-[#151515] to-[#0A0A0A] border border-white/5 rounded-2xl p-5 shadow-2xl overflow-hidden">
             <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
             <div className="absolute -top-24 -right-24 w-64 h-64 bg-cyan-500/10 blur-[100px] rounded-full pointer-events-none" />
             
-            <div className="flex items-center justify-between mb-6 relative z-10">
-                <h3 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-cyan-500/20 border border-cyan-500/40">
-                        <Target className="w-5 h-5 text-cyan-400 drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]" />
+            <div className="flex items-center justify-between mb-4 relative z-10">
+                <h3 className="text-base font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-cyan-500/20 border border-cyan-500/40">
+                        <Target className="w-4 h-4 text-cyan-400 drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]" />
                     </div>
                     Score Effectiveness
                 </h3>
             </div>
             
-            <div className="relative z-10 mt-4">
+            <div className="relative z-10 mt-2">
                 {/* Score Bucket Summary */}
-                <div className="grid grid-cols-5 gap-3 mb-6">
+                <div className="grid grid-cols-5 gap-2 mb-4">
                     {bucketData.map(b => (
-                        <div key={b.range} className="group bg-gradient-to-b from-black/60 to-black/40 backdrop-blur-md rounded-xl p-3 text-center border border-white/5 hover:border-cyan-500/30 transition-all shadow-inner">
-                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{b.range}</p>
-                            <p className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-gray-400 mt-1 mb-0.5 group-hover:from-cyan-400 group-hover:to-blue-400 transition-all">{b.convRate}%</p>
-                            <p className="text-[9px] font-bold text-gray-600 uppercase tracking-widest">{b.total} appts</p>
+                        <div key={b.range} className="group bg-gradient-to-b from-black/60 to-black/40 backdrop-blur-md rounded-lg p-2 text-center border border-white/5 hover:border-cyan-500/30 transition-all shadow-inner">
+                            <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">{b.range}</p>
+                            <p className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-gray-400 mt-0.5 mb-0.5 group-hover:from-cyan-400 group-hover:to-blue-400 transition-all">{b.convRate}%</p>
+                            <p className="text-[8px] font-bold text-gray-600 uppercase tracking-widest">{b.total} appts</p>
                         </div>
                     ))}
                 </div>

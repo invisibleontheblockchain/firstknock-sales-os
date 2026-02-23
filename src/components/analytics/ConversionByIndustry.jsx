@@ -46,20 +46,20 @@ export default function ConversionByIndustry({ appointments }) {
     if (data.length === 0) return null;
 
     return (
-        <div className="relative bg-gradient-to-b from-[#151515] to-[#0A0A0A] border border-white/5 rounded-3xl p-6 shadow-2xl overflow-hidden">
+        <div className="relative bg-gradient-to-b from-[#151515] to-[#0A0A0A] border border-white/5 rounded-2xl p-5 shadow-2xl overflow-hidden">
             <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
             <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-emerald-500/10 blur-[100px] rounded-full pointer-events-none" />
             
-            <div className="flex items-center justify-between mb-6 relative z-10">
-                <h3 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight flex items-center gap-3">
-                    <div className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40">
-                        <Briefcase className="w-5 h-5 text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
+            <div className="flex items-center justify-between mb-4 relative z-10">
+                <h3 className="text-base font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/40">
+                        <Briefcase className="w-4 h-4 text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
                     </div>
                     Conversion by Industry
                 </h3>
             </div>
             
-            <div className="h-[280px] relative z-10 mt-4">
+            <div className="h-[240px] relative z-10 mt-2">
                 <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={data} layout="vertical" margin={{ top: 0, right: 20, left: 10, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" horizontal={false} />
