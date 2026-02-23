@@ -130,13 +130,13 @@ export default function ListPage() {
             {/* Header */}
             <div className="px-4 pt-4 pb-3 border-b border-white/5 sticky top-0 z-20 backdrop-blur-xl bg-black/60 shadow-xl">
                 <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl flex items-center justify-center border shadow-inner" style={{ background: `${accent}20`, borderColor: `${accent}40` }}>
-                            <BarChart3 className="w-5 h-5 drop-shadow-md" style={{ color: accent }} />
+                    <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-2xl flex items-center justify-center transition-transform hover:scale-105 duration-300" style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05))`, boxShadow: `0 0 20px rgba(255,255,255,0.1)`, border: '1px solid rgba(255,255,255,0.1)' }}>
+                            <BarChart3 className="w-6 h-6 text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
                         </div>
                         <div>
-                            <h1 className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight drop-shadow-sm">Advanced Analytics</h1>
-                            <p className="text-[10px] text-gray-500 font-medium tracking-wide mt-0.5">Performance & territory insights</p>
+                            <h1 className="text-2xl font-black text-white tracking-tight drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">Analytics</h1>
+                            <p className="text-xs text-gray-400 font-medium tracking-wide mt-0.5">Performance & territory insights</p>
                         </div>
                     </div>
                 </div>
