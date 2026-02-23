@@ -74,12 +74,57 @@ export default function MapSettingsPanel({
     // New deep settings
     mapSettings, setMapSettings,
 }) {
-    // Local state for settings not yet wired to parent — these get passed up via setMapSettings
-    const settings = mapSettings || {};
+    // Local buffering state for settings
+    const [localMapSettings, setLocalMapSettings] = useState(mapSettings || {});
+    const [localPinSize, setLocalPinSize] = useState(pinSize);
+    const [localShowRouteLines, setLocalShowRouteLines] = useState(showRouteLines);
+    const [localShowRouteDetails, setLocalShowRouteDetails] = useState(showRouteDetails);
+    const [localShowAllProperties, setLocalShowAllProperties] = useState(showAllProperties);
+    const [localMapTheme, setLocalMapTheme] = useState(mapTheme);
+    const [localNavigationApp, setLocalNavigationApp] = useState(navigationApp);
+    const [localQuickFilter, setLocalQuickFilter] = useState(quickFilter);
+
     const update = (key, value) => {
-        if (setMapSettings) setMapSettings(prev => ({ ...prev, [key]: value }));
+        setLocalMapSettings(prev => ({ ...prev, [key]: value }));
     };
 
+    const handleSave = () => {
+        if (setMapSettings) setMapSettings(localMapSettings);
+        if (setPinSize) setPinSize(localPinSize);
+        if (setShowRouteLines) setShowRouteLines(localShowRouteLines);
+        if (setShowRouteDetails) setShowRouteDetails(localShowRouteDetails);
+        if (setShowAllProperties) setShowAllProperties(localShowAllProperties);
+        if (setMapTheme) setMapTheme(localMapTheme);
+        if (setNavigationApp) setNavigationApp(localNavigationApp);
+        if (setQuickFilter) setQuickFilter(localQuickFilter);
+        onClose();
+    };
+
+    const handleReset = () => {
+        setLocalMapSettings({
+            pinShape: 'circle',
+            colorScheme: 'default',
+            lineStyle: 'dashed',
+            lineWidth: 2,
+            lineOpacity: 0.5,
+            pinOpacity: 0.85,
+            pinBorderWidth: 1,
+            pinBorderColor: '#000',
+            showLabels: false,
+            labelType: 'number',
+            glowEffect: false,
+            fillStyle: 'solid',
+        });
+        setLocalPinSize(5);
+        setLocalShowRouteLines(false);
+        setLocalShowRouteDetails(true);
+        setLocalShowAllProperties(false);
+        setLocalMapTheme('dark');
+        setLocalNavigationApp('apple');
+        setLocalQuickFilter('all');
+    };
+
+    const settings = localMapSettings;
     const pinShape = settings.pinShape || 'circle';
     const colorScheme = settings.colorScheme || 'default';
     const lineStyle = settings.lineStyle || 'dashed';
@@ -118,27 +163,7 @@ export default function MapSettingsPanel({
                     </h2>
                     <div className="flex items-center gap-2">
                         <button 
-                            onClick={() => {
-                                if (setMapSettings) setMapSettings({
-                                    pinShape: 'circle',
-                                    colorScheme: 'default',
-                                    lineStyle: 'dashed',
-                                    lineWidth: 2,
-                                    lineOpacity: 0.5,
-                                    pinOpacity: 0.85,
-                                    pinBorderWidth: 1,
-                                    pinBorderColor: '#000',
-                                    showLabels: false,
-                                    labelType: 'number',
-                                    glowEffect: false,
-                                    fillStyle: 'solid',
-                                });
-                                if (setPinSize) setPinSize(5);
-                                if (setShowRouteLines) setShowRouteLines(false);
-                                if (setShowRouteDetails) setShowRouteDetails(true);
-                                if (setShowAllProperties) setShowAllProperties(false);
-                                if (setMapTheme) setMapTheme('dark');
-                            }}
+                            onClick={handleReset}
                             className="text-[9px] font-bold text-gray-500 hover:text-yellow-500 flex items-center gap-1 px-2 py-1 rounded bg-gray-900 hover:bg-gray-800 transition-colors"
                         >
                             <RotateCcw className="w-3 h-3" /> RESET
