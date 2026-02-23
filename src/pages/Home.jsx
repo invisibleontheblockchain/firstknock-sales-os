@@ -2060,6 +2060,8 @@ export default function Home() {
                                       setQuickFilter={setQuickFilter}
                                       showRouteDetails={showRouteDetails}
                                       setShowRouteDetails={setShowRouteDetails}
+                                      showAllProperties={showAllProperties}
+                                      setShowAllProperties={setShowAllProperties}
                                       navigationApp={navigationApp}
                                       setNavigationApp={updateNavigationApp}
                                       pinSize={pinSize}
