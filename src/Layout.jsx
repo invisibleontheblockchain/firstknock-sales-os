@@ -102,12 +102,49 @@ function LayoutInner({ children }) {
     if (!user.app_role && !isRoleSelectPage) { window.location.href = createPageUrl('RoleSelect'); return null; }
 
     return (
-        <div className="flex flex-col h-[100dvh] font-sans overflow-hidden" style={{ background: '#0A0A0A', color: '#E5E5E5' }}>
+        <div className="flex flex-col h-[100dvh] font-sans overflow-hidden bg-[#0A0A0F] text-[#F0F0F5]">
             <style>{`
-                @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Inter:wght@400;500;600&display=swap');
-                body { font-family: 'Inter', sans-serif; }
-                h1, h2, h3, h4, h5, h6 { font-family: 'Montserrat', sans-serif; }
-                .leaflet-container { background: #0A0A0A !important; }
+                @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
+                
+                :root {
+                    --bg-primary: #0A0A0F;
+                    --bg-surface: #12121A;
+                    --bg-surface-hover: #1A1A2E;
+                    --primary: #6C5CE7;
+                    --primary-light: #A29BFE;
+                    --secondary: #00D2FF;
+                    --success: #00F5A0;
+                    --warning: #FFD93D;
+                    --danger: #FF6B6B;
+                    --text-primary: #F0F0F5;
+                    --text-secondary: #8888A0;
+                }
+
+                body { font-family: 'Inter', sans-serif; background-color: var(--bg-primary); color: var(--text-primary); }
+                h1, h2, h3, h4, h5, h6 { font-family: 'Outfit', sans-serif; letter-spacing: -0.02em; }
+                .font-mono { font-family: 'JetBrains Mono', monospace; }
+                
+                /* Glassmorphism */
+                .glass-card {
+                    background: rgba(18, 18, 26, 0.8);
+                    backdrop-filter: blur(20px);
+                    -webkit-backdrop-filter: blur(20px);
+                    border: 1px solid rgba(255, 255, 255, 0.05);
+                }
+                
+                .glass-panel {
+                    background: rgba(18, 18, 26, 0.95);
+                    backdrop-filter: blur(10px);
+                    border-top: 1px solid rgba(255, 255, 255, 0.05);
+                }
+
+                /* Scrollbar */
+                ::-webkit-scrollbar { width: 6px; height: 6px; }
+                ::-webkit-scrollbar-track { background: transparent; }
+                ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
+                ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+
+                .leaflet-container { background: #0A0A0F !important; }
                 .route-number-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important; }
                 .route-number-tooltip::before { display: none !important; }
             `}</style>

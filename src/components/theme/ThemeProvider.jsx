@@ -1,27 +1,23 @@
 import React, { createContext, useContext, useState } from 'react';
 
 const THEME_COLORS = [
-    { name: 'Gold', value: '#FFD700' },
-    { name: 'Electric Blue', value: '#3B82F6' },
-    { name: 'Emerald', value: '#10B981' },
-    { name: 'Hot Pink', value: '#EC4899' },
-    { name: 'Violet', value: '#8B5CF6' },
-    { name: 'Orange', value: '#F97316' },
-    { name: 'Cyan', value: '#06B6D4' },
-    { name: 'Red', value: '#EF4444' },
-    { name: 'Lime', value: '#84CC16' },
-    { name: 'Rose', value: '#F43F5E' },
+    { name: 'Royal Purple', value: '#6C5CE7' },
+    { name: 'Electric Cyan', value: '#00D2FF' },
+    { name: 'Neon Green', value: '#00F5A0' },
+    { name: 'Gold', value: '#FFD93D' },
+    { name: 'Hot Pink', value: '#FF0080' },
+    { name: 'Orange', value: '#FF6B6B' },
 ];
 
 const ThemeContext = createContext({
-    accent: '#FFD700',
+    accent: '#6C5CE7',
     setAccent: () => {},
     colors: THEME_COLORS,
 });
 
 export function ThemeProvider({ children }) {
     const [accent, setAccentState] = useState(() => {
-        try { return localStorage.getItem('fk_accent') || '#FFD700'; } catch { return '#FFD700'; }
+        try { return localStorage.getItem('fk_accent') || '#6C5CE7'; } catch { return '#6C5CE7'; }
     });
 
     const setAccent = (color) => {

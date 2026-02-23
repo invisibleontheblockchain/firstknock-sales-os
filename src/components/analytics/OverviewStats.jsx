@@ -4,37 +4,37 @@ import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
 
 function StatCard({ label, value, subValue, icon: Icon, color, trend, featured }) {
     const { accent } = useTheme();
-    const cardColor = color || accent;
+    // Default to primary accent if no color provided
+    const cardColor = color || '#6C5CE7'; 
 
     return (
         <div className={`group relative overflow-hidden rounded-2xl p-5 flex flex-col gap-2 transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl ${
             featured 
-                ? 'border border-white/10 col-span-2 sm:col-span-1' 
-                : 'border border-white/5'
-        }`} style={{
-            background: featured ? `linear-gradient(135deg, ${cardColor}15, #000000)` : 'linear-gradient(180deg, rgba(20,20,20,0.8) 0%, rgba(10,10,10,0.9) 100%)',
-            boxShadow: featured ? `0 0 40px -10px ${cardColor}30` : '0 4px 20px -2px rgba(0,0,0,0.5)',
-            backdropFilter: 'blur(10px)'
+                ? 'col-span-2 sm:col-span-1' 
+                : ''
+        } glass-card`} style={{
+            // Subtle gradient border effect
+            borderImage: featured ? `linear-gradient(135deg, ${cardColor}, #00D2FF) 1` : 'none',
         }}>
             {/* Glow effect */}
-            <div className="absolute -top-10 -right-10 w-32 h-32 blur-3xl opacity-20 group-hover:opacity-40 transition-opacity duration-500 rounded-full pointer-events-none" style={{ background: cardColor }} />
+            <div className="absolute -top-10 -right-10 w-32 h-32 blur-3xl opacity-10 group-hover:opacity-30 transition-opacity duration-500 rounded-full pointer-events-none" style={{ background: cardColor }} />
             
             <div className="flex items-center justify-between relative z-10">
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">{label}</span>
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110" style={{ background: `${cardColor}20`, border: `1px solid ${cardColor}30` }}>
-                    <Icon className="w-4 h-4 drop-shadow-md" style={{ color: cardColor }} />
+                <span className="text-[11px] font-bold text-[#8888A0] uppercase tracking-widest font-sans">{label}</span>
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center transition-transform duration-300 group-hover:scale-110" style={{ background: `${cardColor}15`, border: `1px solid ${cardColor}20` }}>
+                    <Icon className="w-4 h-4" style={{ color: cardColor }} />
                 </div>
             </div>
             
-            <div className="relative z-10 mt-1">
-                <p className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-gray-400 tracking-tight drop-shadow-sm">{value}</p>
+            <div className="relative z-10 mt-2">
+                <p className="text-3xl font-bold tracking-tight font-mono text-transparent bg-clip-text bg-gradient-to-br from-white to-[#A29BFE]">{value}</p>
             </div>
             
             <div className="flex items-center gap-2 mt-auto relative z-10 pt-1">
-                {subValue && <span className="text-xs text-gray-500 font-medium">{subValue}</span>}
+                {subValue && <span className="text-xs text-[#8888A0] font-medium">{subValue}</span>}
                 {trend !== undefined && trend !== 0 && (
-                    <span className={`text-[10px] font-bold flex items-center gap-0.5 px-2 py-0.5 rounded-md backdrop-blur-sm border ${
-                        trend >= 0 ? 'text-green-400 bg-green-500/10 border-green-500/20' : 'text-red-400 bg-red-500/10 border-red-500/20'
+                    <span className={`text-[10px] font-bold flex items-center gap-0.5 px-2 py-0.5 rounded-md backdrop-blur-sm ${
+                        trend >= 0 ? 'text-[#00F5A0] bg-[#00F5A0]/10' : 'text-[#FF6B6B] bg-[#FF6B6B]/10'
                     }`}>
                         {trend >= 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
                         {Math.abs(trend)}%
