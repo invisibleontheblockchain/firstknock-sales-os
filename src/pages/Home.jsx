@@ -55,7 +55,7 @@ import RouteBuilderSettings from '../components/map/RouteBuilderSettings';
 import TerritorySetupWizard from '../components/manager/TerritorySetupWizard';
 import { LayoutDashboard, Settings, Crosshair } from 'lucide-react';
 import { openInMaps } from '../components/logic/navigation';
-import GpsTracker, { GpsMapLayer, GpsHud } from '../components/map/GpsTracker';
+import GpsTracker, { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../components/map/GpsTracker';
 import QuickMarkButtons from '../components/rep/QuickMarkButtons';
 import PropertyHistory from '../components/rep/PropertyHistory';
 import ManagerPropertyDetailSheet from '../components/map/ManagerPropertyDetailSheet';
