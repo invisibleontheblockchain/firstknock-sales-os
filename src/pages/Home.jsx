@@ -1232,7 +1232,7 @@ export default function Home() {
     }, [mapSettings.colorScheme]);
 
     // Compute line dash array from settings
-    const lineDashArray = LINE_DASH_MAP[mapSettings.lineStyle] || '4,6';
+    const lineDashArray = mapSettings.lineStyle === 'solid' ? undefined : (LINE_DASH_MAP[mapSettings.lineStyle] || '8,6');
 
     const isLoading = propsLoading || logsLoading;
 
