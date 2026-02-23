@@ -2,6 +2,16 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+
+// Fix Leaflet unmount error during scroll wheel zoom
+const originalGetMapPanePos = L.Map.prototype._getMapPanePos;
+if (originalGetMapPanePos && !L.Map.prototype._getMapPanePos.isPatched) {
+    L.Map.prototype._getMapPanePos = function () {
+        if (!this._mapPane) return L.point(0, 0);
+        return originalGetMapPanePos.call(this);
+    };
+    L.Map.prototype._getMapPanePos.isPatched = true;
+}
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Navigation, X, Locate, ChevronUp, ChevronDown } from 'lucide-react';
