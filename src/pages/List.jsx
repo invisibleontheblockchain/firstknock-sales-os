@@ -182,28 +182,39 @@ export default function ListPage() {
                     <>
                         {activeTab === 'overview' && (
                             <div className="space-y-5 max-w-7xl mx-auto">
-                                <KpiSummaryCards appointments={filteredAppointments} teamMembers={teamMembers} />
+                                <OverviewStats routes={savedRoutes} logs={logs} properties={effectiveProperties} teamMembers={teamMembers} viewMode={viewMode} />
                                 
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                                    <OverviewStats routes={savedRoutes} logs={logs} properties={effectiveProperties} teamMembers={teamMembers} />
-                                    <TimeOfDayEffectiveness logs={logs} />
-                                </div>
+                                {viewMode === 'advanced' && (
+                                    <KpiSummaryCards appointments={filteredAppointments} teamMembers={teamMembers} />
+                                )}
 
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                                     <AppointmentTimeline appointments={filteredAppointments} days={dateDays || 90} />
-                                    <AppointmentForecast appointments={appointments} />
+                                    {viewMode === 'advanced' ? (
+                                        <TimeOfDayEffectiveness logs={logs} />
+                                    ) : (
+                                        <StatusBreakdown properties={effectiveProperties} />
+                                    )}
                                 </div>
 
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                                    <ConversionByIndustry appointments={filteredAppointments} />
-                                    <RepSuccessRate appointments={filteredAppointments} teamMembers={teamMembers} />
-                                </div>
+                                {viewMode === 'advanced' && (
+                                    <>
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                                            <ConversionByIndustry appointments={filteredAppointments} />
+                                            <RepSuccessRate appointments={filteredAppointments} teamMembers={teamMembers} />
+                                        </div>
 
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                                    <LeadScoringEffectiveness appointments={filteredAppointments} />
-                                    <RouteEfficiency routes={savedRoutes} appointments={filteredAppointments} logs={logs} />
-                                </div>
-                                <StatusBreakdown properties={effectiveProperties} />
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                                            <AppointmentForecast appointments={appointments} />
+                                            <LeadScoringEffectiveness appointments={filteredAppointments} />
+                                        </div>
+
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                                            <RouteEfficiency routes={savedRoutes} appointments={filteredAppointments} logs={logs} />
+                                            <StatusBreakdown properties={effectiveProperties} />
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         )}
 
