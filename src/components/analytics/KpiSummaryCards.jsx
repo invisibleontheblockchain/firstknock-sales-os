@@ -25,20 +25,19 @@ export default function KpiSummaryCards({ appointments, teamMembers }) {
     ];
 
     return (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             {cards.map(c => (
-                <Card key={c.title} className="bg-[#151515] border-gray-800 hover:border-gray-700 transition-colors">
-                    <CardContent className="p-4">
-                        <div className="flex items-center justify-between mb-3">
-                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{c.title}</span>
-                            <div className={`p-1.5 rounded-lg ${c.bg}`}>
-                                <c.icon className={`w-3.5 h-3.5 ${c.color}`} />
-                            </div>
+                <div key={c.title} className="group relative bg-gradient-to-b from-[#1a1a1a] to-[#0A0A0A] border border-white/5 rounded-2xl p-5 overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:border-white/10 shadow-lg">
+                    <div className={`absolute -top-10 -right-10 w-24 h-24 blur-3xl opacity-10 group-hover:opacity-30 transition-opacity duration-500 rounded-full ${c.bg}`} />
+                    <div className="flex items-center justify-between mb-3 relative z-10">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{c.title}</span>
+                        <div className={`p-2 rounded-xl transition-transform duration-300 group-hover:scale-110 border border-white/5 shadow-inner ${c.bg}`}>
+                            <c.icon className={`w-4 h-4 ${c.color} drop-shadow-md`} />
                         </div>
-                        <p className="text-2xl font-bold text-white">{c.value}</p>
-                        {c.sub && <p className="text-[10px] text-gray-600 mt-0.5">{c.sub}</p>}
-                    </CardContent>
-                </Card>
+                    </div>
+                    <p className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-gray-400 tracking-tight drop-shadow-sm relative z-10">{c.value}</p>
+                    {c.sub && <p className="text-xs font-medium text-gray-500 mt-1 relative z-10">{c.sub}</p>}
+                </div>
             ))}
         </div>
     );

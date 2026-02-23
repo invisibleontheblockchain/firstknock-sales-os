@@ -46,25 +46,32 @@ export default function ConversionByIndustry({ appointments }) {
     if (data.length === 0) return null;
 
     return (
-        <Card className="bg-[#151515] border-gray-800">
-            <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-bold text-gray-400 flex items-center gap-2 uppercase">
-                    <Briefcase className="w-3.5 h-3.5" /> Conversion Rate by Industry
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="h-[280px]">
+        <div className="relative bg-gradient-to-b from-[#151515] to-[#0A0A0A] border border-white/5 rounded-3xl p-6 shadow-2xl overflow-hidden">
+            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+            <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-emerald-500/10 blur-[100px] rounded-full pointer-events-none" />
+            
+            <div className="flex items-center justify-between mb-6 relative z-10">
+                <h3 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-emerald-500/20 border border-emerald-500/40">
+                        <Briefcase className="w-5 h-5 text-emerald-400 drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
+                    </div>
+                    Conversion by Industry
+                </h3>
+            </div>
+            
+            <div className="h-[280px] relative z-10 mt-4">
                 <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data} layout="vertical" margin={{ left: 10 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#222" horizontal={false} />
-                        <XAxis type="number" stroke="#555" fontSize={10} tickLine={false} unit="%" domain={[0, 100]} />
-                        <YAxis type="category" dataKey="industry" stroke="#555" fontSize={10} width={85} tickLine={false} />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Bar dataKey="convRate" name="Conv %" radius={[0, 4, 4, 0]} barSize={18}>
-                            {data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    <BarChart data={data} layout="vertical" margin={{ top: 0, right: 20, left: 10, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" horizontal={false} />
+                        <XAxis type="number" stroke="#888" fontSize={11} fontWeight={600} tickLine={false} unit="%" domain={[0, 100]} dx={5} />
+                        <YAxis type="category" dataKey="industry" stroke="#888" fontSize={11} fontWeight={600} width={90} tickLine={false} />
+                        <Tooltip content={<CustomTooltip />} cursor={{ fill: '#ffffff0a' }} />
+                        <Bar dataKey="convRate" name="Conv %" radius={[0, 6, 6, 0]} barSize={24}>
+                            {data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} style={{ filter: 'drop-shadow(0 0 4px rgba(255,255,255,0.2))' }} />)}
                         </Bar>
                     </BarChart>
                 </ResponsiveContainer>
-            </CardContent>
-        </Card>
+            </div>
+        </div>
     );
 }

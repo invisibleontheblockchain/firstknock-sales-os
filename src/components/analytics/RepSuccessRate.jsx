@@ -44,26 +44,33 @@ export default function RepSuccessRate({ appointments, teamMembers }) {
     if (data.length === 0) return null;
 
     return (
-        <Card className="bg-[#151515] border-gray-800">
-            <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-bold text-gray-400 flex items-center gap-2 uppercase">
-                    <Users className="w-3.5 h-3.5" /> Appointment Success by Rep
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="h-[280px]">
+        <div className="relative bg-gradient-to-b from-[#151515] to-[#0A0A0A] border border-white/5 rounded-3xl p-6 shadow-2xl overflow-hidden">
+            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+            <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-purple-500/10 blur-[100px] rounded-full pointer-events-none" />
+            
+            <div className="flex items-center justify-between mb-6 relative z-10">
+                <h3 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-purple-500/20 border border-purple-500/40">
+                        <Users className="w-5 h-5 text-purple-400 drop-shadow-[0_0_10px_rgba(168,85,247,0.5)]" />
+                    </div>
+                    Rep Success Rate
+                </h3>
+            </div>
+            
+            <div className="h-[280px] relative z-10 mt-4">
                 <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
-                        <XAxis dataKey="name" stroke="#555" fontSize={10} tickLine={false} />
-                        <YAxis stroke="#555" fontSize={10} tickLine={false} unit="%" domain={[0, 100]} />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Legend wrapperStyle={{ fontSize: '10px', color: '#888' }} />
-                        <Bar dataKey="successRate" name="Sold %" fill="#22c55e" radius={[4, 4, 0, 0]} barSize={20} />
-                        <Bar dataKey="completionRate" name="Completed %" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={20} />
-                        <Bar dataKey="noShowRate" name="No-Show %" fill="#ef4444" radius={[4, 4, 0, 0]} barSize={20} />
+                    <BarChart data={data} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                        <XAxis dataKey="name" stroke="#888" fontSize={11} fontWeight={600} tickLine={false} dy={10} />
+                        <YAxis stroke="#888" fontSize={11} fontWeight={600} tickLine={false} unit="%" domain={[0, 100]} dx={-5} />
+                        <Tooltip content={<CustomTooltip />} cursor={{ fill: '#ffffff0a' }} />
+                        <Legend wrapperStyle={{ fontSize: '11px', fontWeight: 600, color: '#aaa', paddingTop: '10px' }} />
+                        <Bar dataKey="successRate" name="Sold %" fill="#22c55e" radius={[6, 6, 0, 0]} barSize={24} style={{ filter: 'drop-shadow(0 0 5px rgba(34,197,94,0.3))' }} />
+                        <Bar dataKey="completionRate" name="Completed %" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={24} style={{ filter: 'drop-shadow(0 0 5px rgba(59,130,246,0.3))' }} />
+                        <Bar dataKey="noShowRate" name="No-Show %" fill="#ef4444" radius={[6, 6, 0, 0]} barSize={24} style={{ filter: 'drop-shadow(0 0 5px rgba(239,68,68,0.3))' }} />
                     </BarChart>
                 </ResponsiveContainer>
-            </CardContent>
-        </Card>
+            </div>
+        </div>
     );
 }

@@ -59,20 +59,27 @@ export default function LeadScoringEffectiveness({ appointments }) {
     };
 
     return (
-        <Card className="bg-[#151515] border-gray-800">
-            <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-bold text-gray-400 flex items-center gap-2 uppercase">
-                    <Target className="w-3.5 h-3.5" /> Lead Score vs Outcome
-                </CardTitle>
-            </CardHeader>
-            <CardContent>
+        <div className="relative bg-gradient-to-b from-[#151515] to-[#0A0A0A] border border-white/5 rounded-3xl p-6 shadow-2xl overflow-hidden">
+            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+            <div className="absolute -top-24 -right-24 w-64 h-64 bg-cyan-500/10 blur-[100px] rounded-full pointer-events-none" />
+            
+            <div className="flex items-center justify-between mb-6 relative z-10">
+                <h3 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-cyan-500/20 border border-cyan-500/40">
+                        <Target className="w-5 h-5 text-cyan-400 drop-shadow-[0_0_10px_rgba(34,211,238,0.5)]" />
+                    </div>
+                    Score Effectiveness
+                </h3>
+            </div>
+            
+            <div className="relative z-10 mt-4">
                 {/* Score Bucket Summary */}
-                <div className="grid grid-cols-5 gap-2 mb-4">
+                <div className="grid grid-cols-5 gap-3 mb-6">
                     {bucketData.map(b => (
-                        <div key={b.range} className="bg-black/40 rounded-lg p-2 text-center border border-gray-800">
-                            <p className="text-[10px] text-gray-500 font-bold">{b.range}</p>
-                            <p className="text-sm font-bold text-white">{b.convRate}%</p>
-                            <p className="text-[9px] text-gray-600">{b.total} appts</p>
+                        <div key={b.range} className="group bg-gradient-to-b from-black/60 to-black/40 backdrop-blur-md rounded-xl p-3 text-center border border-white/5 hover:border-cyan-500/30 transition-all shadow-inner">
+                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{b.range}</p>
+                            <p className="text-xl font-black text-transparent bg-clip-text bg-gradient-to-br from-white to-gray-400 mt-1 mb-0.5 group-hover:from-cyan-400 group-hover:to-blue-400 transition-all">{b.convRate}%</p>
+                            <p className="text-[9px] font-bold text-gray-600 uppercase tracking-widest">{b.total} appts</p>
                         </div>
                     ))}
                 </div>
@@ -80,25 +87,26 @@ export default function LeadScoringEffectiveness({ appointments }) {
                 {/* Scatter Plot */}
                 <div className="h-[220px]">
                     <ResponsiveContainer width="100%" height="100%">
-                        <ScatterChart margin={{ left: 0, bottom: 0 }}>
-                            <CartesianGrid strokeDasharray="3 3" stroke="#222" />
-                            <XAxis type="number" dataKey="score" name="Score" stroke="#555" fontSize={10} domain={[0, 100]} label={{ value: 'Eligibility Score', position: 'insideBottom', offset: -3, style: { fontSize: 10, fill: '#666' } }} />
-                            <YAxis type="category" dataKey="outcome" stroke="#555" fontSize={10} width={80} />
-                            <ZAxis range={[40, 40]} />
-                            <Tooltip content={<CustomTooltip />} />
+                        <ScatterChart margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
+                            <XAxis type="number" dataKey="score" name="Score" stroke="#888" fontSize={11} fontWeight={600} domain={[0, 100]} label={{ value: 'Eligibility Score', position: 'insideBottom', offset: -10, style: { fontSize: 11, fontWeight: 600, fill: '#888' } }} />
+                            <YAxis type="category" dataKey="outcome" stroke="#888" fontSize={11} fontWeight={600} width={90} />
+                            <ZAxis range={[60, 60]} />
+                            <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3', stroke: '#fff', strokeOpacity: 0.1 }} />
                             {Object.keys(OUTCOME_COLORS).map(outcome => (
                                 <Scatter
                                     key={outcome}
                                     data={scatterData.filter(d => d.outcome === outcome)}
                                     fill={OUTCOME_COLORS[outcome]}
                                     name={outcome.replace('_', ' ')}
-                                    opacity={0.8}
+                                    opacity={0.9}
+                                    style={{ filter: `drop-shadow(0 0 6px ${OUTCOME_COLORS[outcome]}60)` }}
                                 />
                             ))}
                         </ScatterChart>
                     </ResponsiveContainer>
                 </div>
-            </CardContent>
-        </Card>
+            </div>
+        </div>
     );
 }

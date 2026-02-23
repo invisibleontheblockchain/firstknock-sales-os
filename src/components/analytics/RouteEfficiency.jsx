@@ -61,25 +61,32 @@ export default function RouteEfficiency({ routes, appointments, logs }) {
     if (data.length === 0) return null;
 
     return (
-        <Card className="bg-[#151515] border-gray-800">
-            <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-bold text-gray-400 flex items-center gap-2 uppercase">
-                    <MapPin className="w-3.5 h-3.5" /> Route Efficiency (Activity / Houses)
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="h-[280px]">
+        <div className="relative bg-gradient-to-b from-[#151515] to-[#0A0A0A] border border-white/5 rounded-3xl p-6 shadow-2xl overflow-hidden">
+            <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+            <div className="absolute -bottom-24 -right-24 w-64 h-64 bg-pink-500/10 blur-[100px] rounded-full pointer-events-none" />
+            
+            <div className="flex items-center justify-between mb-6 relative z-10">
+                <h3 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-pink-500/20 border border-pink-500/40">
+                        <MapPin className="w-5 h-5 text-pink-400 drop-shadow-[0_0_10px_rgba(236,72,153,0.5)]" />
+                    </div>
+                    Route Efficiency
+                </h3>
+            </div>
+            
+            <div className="h-[280px] relative z-10 mt-4">
                 <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
-                        <XAxis dataKey="name" stroke="#555" fontSize={9} tickLine={false} angle={-20} textAnchor="end" height={50} />
-                        <YAxis stroke="#555" fontSize={10} tickLine={false} unit="%" domain={[0, 100]} />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Bar dataKey="efficiency" name="Efficiency %" radius={[4, 4, 0, 0]} barSize={22}>
-                            {data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    <BarChart data={data} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                        <XAxis dataKey="name" stroke="#888" fontSize={10} fontWeight={600} tickLine={false} angle={-25} textAnchor="end" height={60} dy={10} />
+                        <YAxis stroke="#888" fontSize={11} fontWeight={600} tickLine={false} unit="%" domain={[0, 100]} dx={-5} />
+                        <Tooltip content={<CustomTooltip />} cursor={{ fill: '#ffffff0a' }} />
+                        <Bar dataKey="efficiency" name="Efficiency %" radius={[6, 6, 0, 0]} barSize={26}>
+                            {data.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} style={{ filter: `drop-shadow(0 0 6px ${COLORS[i % COLORS.length]}40)` }} />)}
                         </Bar>
                     </BarChart>
                 </ResponsiveContainer>
-            </CardContent>
-        </Card>
+            </div>
+        </div>
     );
 }
