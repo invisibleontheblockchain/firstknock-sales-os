@@ -1049,7 +1049,7 @@ export default function Home() {
                  return; 
             }
             
-            if (availableProperties[0]) {
+            if (availableProperties[0] && availableProperties[0].lat) {
                 setMapCenter([availableProperties[0].lat, availableProperties[0].lng]);
             } else if (user?.working_area) {
                 // Geocode working area if needed (simplified: assume it's set or we just rely on properties)
@@ -1063,7 +1063,7 @@ export default function Home() {
         updateCenter();
     }, [activeRoute, availableProperties, user?.working_area]);
 
-    const center = availableProperties[0] ? [availableProperties[0].lat, availableProperties[0].lng] : mapCenter;
+    const center = availableProperties[0] && availableProperties[0].lat ? [availableProperties[0].lat, availableProperties[0].lng] : mapCenter;
 
     // Fetch full history for selected property (manager view)
     const { data: selectedPropertyLogs = [] } = useQuery({
@@ -1227,7 +1227,7 @@ export default function Home() {
                 {/* --- GENERATE MODE: Existing Routes (Dimmed) --- */}
                 <LayerGroup>
                     {mode === 'generate' && !activeRoute && zoomLevel >= 8 && hydratedSavedRoutes.map((route) => {
-                        return route.properties.map((p, idx) => (
+                        return route.properties.filter(p => p && p.lat && p.lng).map((p, idx) => (
                             <CircleMarker
                                 key={`saved-dim-${route.id}-${idx}`}
                                 center={[p.lat, p.lng]}
@@ -1420,7 +1420,7 @@ export default function Home() {
                 {/* Preview Route (hover/tap from list) */}
                 {previewRoute && !activeRoute && (
                     <Polyline
-                        positions={previewRoute.properties.map(p => [p.lat, p.lng])}
+                        positions={previewRoute.properties.filter(p => p && p.lat && p.lng).map(p => [p.lat, p.lng])}
                         pathOptions={{ color: BRAND.gold, weight: 3, opacity: 0.6, dashArray: '5,10' }}
                     />
                 )}
