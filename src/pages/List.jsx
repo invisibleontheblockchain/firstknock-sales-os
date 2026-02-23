@@ -140,7 +140,7 @@ export default function ListPage() {
                         </div>
                     </div>
                 </div>
-                <div className="flex p-0.5 bg-black/40 rounded-xl border border-white/5 mb-4">
+                <div className="flex p-1 bg-[#111] rounded-xl border border-gray-800 mb-4">
                     {tabs.map(tab => {
                         const Icon = tab.icon;
                         const isActive = activeTab === tab.id;
@@ -148,11 +148,11 @@ export default function ListPage() {
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`flex-1 py-2 rounded-lg text-[11px] font-bold transition-all flex items-center justify-center gap-1.5 ${
-                                    isActive ? 'bg-white text-black shadow-md' : 'text-[#8888A0] hover:text-white'
+                                className={`flex-1 py-2 rounded-lg text-[11px] font-bold transition-all duration-300 flex items-center justify-center gap-1.5 ${
+                                    isActive ? 'bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.4)]' : 'text-gray-500 hover:text-white hover:bg-white/5'
                                 }`}
                             >
-                                <Icon className="w-3.5 h-3.5" />
+                                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-black' : ''}`} />
                                 {tab.label}
                             </button>
                         );
