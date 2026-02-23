@@ -109,14 +109,18 @@ function MapController({ fitBounds, onZoomChange, onMoveEnd }) {
         if (!map) return;
         
         const handleZoom = () => {
-            try {
-                if (map && map.getZoom) onZoomChange(map.getZoom());
-            } catch (e) { /* Map destroyed */ }
+            setTimeout(() => {
+                try {
+                    if (map && map.getZoom) onZoomChange(map.getZoom());
+                } catch (e) { /* Map destroyed */ }
+            }, 0);
         };
         const handleMove = () => {
-            try {
-                if (map && map.getBounds) onMoveEnd(map.getBounds());
-            } catch (e) { /* Map destroyed */ }
+            setTimeout(() => {
+                try {
+                    if (map && map.getBounds) onMoveEnd(map.getBounds());
+                } catch (e) { /* Map destroyed */ }
+            }, 0);
         };
         
         map.on('zoomend', handleZoom);
@@ -142,7 +146,7 @@ function MapController({ fitBounds, onZoomChange, onMoveEnd }) {
                 const boundsKey = JSON.stringify(fitBounds.slice(0, 1)); // Simple check on first point to detect route switch
 
                 if (bounds.isValid() && lastBoundsRef.current !== boundsKey) {
-                    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17 });
+                    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17, animate: false });
                     lastBoundsRef.current = boundsKey;
                 }
             } catch (e) { }
@@ -1103,7 +1107,7 @@ export default function Home() {
         if (availableProperties.length > 0 && !hasCenteredRef.current && mapRef.current) {
              const bounds = L.latLngBounds(availableProperties.slice(0, 1000).map(p => [p.lat, p.lng]));
              if (bounds.isValid()) {
-                 mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+                 mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false });
                  hasCenteredRef.current = true;
              }
         }
