@@ -252,9 +252,14 @@ function LayoutInner({ children }) {
     );
 }
 
-function NavItem({ icon: Icon, label, to, active, accent = '#FFD700' }) {
+function NavItem({ icon: Icon, label, to, active }) {
     return (
-        <Link to={to} className="flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors duration-200" style={{ color: active ? accent : '#9CA3AF' }}>
+        <Link 
+            to={to} 
+            className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-all duration-300 ${
+                active ? 'text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.8)]' : 'text-[#9CA3AF] hover:text-gray-300'
+            }`}
+        >
             <Icon className="w-5 h-5" />
             <span className="text-[10px] font-medium">{label}</span>
         </Link>
