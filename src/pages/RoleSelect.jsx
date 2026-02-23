@@ -3,12 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Navigation, ChevronRight, Key, ArrowRight, ShieldCheck, Map } from 'lucide-react';
+import { Navigation, ShieldCheck, Map, ArrowRight } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
 
 export default function RoleSelect() {
@@ -16,7 +15,6 @@ export default function RoleSelect() {
     const queryClient = useQueryClient();
     const [inviteCode, setInviteCode] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [showRepCodeDialog, setShowRepCodeDialog] = useState(false);
     const [referralApplied, setReferralApplied] = useState(false);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
     const { accent } = useTheme();
@@ -57,25 +55,20 @@ export default function RoleSelect() {
     });
 
     const selectRole = async (role) => {
-        if (role === 'rep') {
-            // If user already belongs to a team, skip the code dialog
-            if (existingTeamMember) {
-                setIsLoading(true);
-                try {
-                    await updateUserMutation.mutateAsync({ 
-                        app_role: 'rep',
-                        team_manager_id: existingTeamMember.manager_id || null
-                    });
-                    toast.success(`Welcome back! Joining as rep.`);
-                    navigate(createPageUrl('RepHome'));
-                } catch (error) {
-                    console.error(error);
-                    toast.error("Failed to set role");
-                    setIsLoading(false);
-                }
-                return;
+        if (role === 'rep' && existingTeamMember) {
+            setIsLoading(true);
+            try {
+                await updateUserMutation.mutateAsync({ 
+                    app_role: 'rep',
+                    team_manager_id: existingTeamMember.manager_id || null
+                });
+                toast.success(`Welcome back! Joining as rep.`);
+                navigate(createPageUrl('RepHome'));
+            } catch (error) {
+                console.error(error);
+                toast.error("Failed to set role");
+                setIsLoading(false);
             }
-            setShowRepCodeDialog(true);
             return;
         }
 
@@ -95,7 +88,7 @@ export default function RoleSelect() {
         if (!inviteCode) return;
         setIsLoading(true);
         try {
-            const codes = await base44.entities.InviteCode.filter({ code: inviteCode, is_active: true }, '-created_date', 1);
+            const codes = await base44.entities.InviteCode.filter({ code: inviteCode.toUpperCase(), is_active: true }, '-created_date', 1);
             const validCode = codes?.items?.[0] || (Array.isArray(codes) ? codes[0] : null);
 
             if (validCode) {
@@ -107,7 +100,6 @@ export default function RoleSelect() {
                 });
 
                 // 2. Create Team Member record if not exists
-                // Fetch ALL team members and match client-side for robust case-insensitive matching
                 const allMembers = await base44.entities.TeamMember.list('-created_date', 500);
                 const membersList = Array.isArray(allMembers) ? allMembers : (allMembers?.items || []);
                 const memberExists = membersList.some(m => 
@@ -125,7 +117,6 @@ export default function RoleSelect() {
                         invite_code: validCode.code
                     });
                 } else {
-                    // If member record exists but manager_id is wrong/missing, fix it
                     const existingMember = membersList.find(m => 
                         m.email?.trim().toLowerCase() === user.email.trim().toLowerCase()
                     );
@@ -137,14 +128,13 @@ export default function RoleSelect() {
                     }
                 }
 
-                // 3. Increment usage count on the invite code
+                // 3. Increment usage count
                 await base44.entities.InviteCode.update(validCode.id, {
                     used_count: (validCode.used_count || 0) + 1
                 });
 
                 toast.success(`Welcome to the team! You are now a ${validCode.role}.`);
 
-                // 3. Navigate
                 if (validCode.role === 'manager') {
                     navigate(createPageUrl('Home'));
                 } else {
@@ -158,7 +148,6 @@ export default function RoleSelect() {
             toast.error("Failed to verify code");
         } finally {
             setIsLoading(false);
-            setShowRepCodeDialog(false);
         }
     };
 
@@ -177,7 +166,6 @@ export default function RoleSelect() {
         return (
             <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center justify-center text-white space-y-4">
                 <div className="w-12 h-12 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: accent, borderTopColor: 'transparent' }} />
-                <p className="text-gray-400 font-medium">Loading your workspace...</p>
             </div>
         );
     }
@@ -188,7 +176,7 @@ export default function RoleSelect() {
             <div className="absolute top-0 left-0 w-full h-96 bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none" />
             <div className="absolute bottom-0 right-0 w-64 h-64 bg-blue-500/5 blur-3xl rounded-full pointer-events-none" />
 
-            <div className="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full z-10 py-10">
+            <div className="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full z-10 py-8">
                 
                 {/* Brand Header */}
                 <motion.div 
@@ -196,142 +184,107 @@ export default function RoleSelect() {
                     animate={{ opacity: 1, y: 0 }}
                     className="text-center mb-10"
                 >
-                    <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6 mx-auto rotate-3 hover:rotate-6 transition-transform duration-300" style={{ background: `linear-gradient(135deg, ${accent}, ${accent}CC)`, boxShadow: `0 0 40px ${accent}30` }}>
-                        <Navigation className="w-10 h-10" style={{ color: accentTxt }} />
+                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5 mx-auto rotate-3 hover:rotate-6 transition-transform duration-300" style={{ background: `linear-gradient(135deg, ${accent}, ${accent}CC)`, boxShadow: `0 0 30px ${accent}30` }}>
+                        <Navigation className="w-8 h-8" style={{ color: accentTxt }} />
                     </div>
                     <h1 className="text-3xl font-extrabold text-white mb-2 tracking-tight">FirstKnock</h1>
-                    <p className="text-gray-400 font-medium">Select your path to continue</p>
+                    <p className="text-gray-400 font-medium">How would you like to use FirstKnock?</p>
                 </motion.div>
 
                 {/* Main Options */}
-                <div className="w-full space-y-4">
+                <div className="w-full space-y-5">
                     
-                    {/* Rep Option */}
+                    {/* Returning Rep Option */}
+                    {existingTeamMember && (
+                        <motion.button
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            onClick={() => selectRole('rep')}
+                            disabled={isLoading}
+                            className="w-full relative overflow-hidden group rounded-2xl border border-green-500/30 bg-green-500/10 p-4 transition-all hover:bg-green-500/20 text-left flex items-center gap-4 shadow-[0_0_20px_rgba(34,197,94,0.15)]"
+                        >
+                            <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center text-green-400 shrink-0">
+                                <ArrowRight className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-white mb-0.5">Resume My Route</h3>
+                                <p className="text-xs text-gray-300">You're already on a team. Jump right back in.</p>
+                            </div>
+                        </motion.button>
+                    )}
+
+                    {/* Manager Option */}
                     <motion.button
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: 0.1 }}
-                        onClick={() => selectRole('rep')}
-                        disabled={isLoading}
-                        className="w-full relative overflow-hidden group rounded-2xl bg-[#151515] p-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        style={{ border: `1px solid ${accent}30` }}
-                    >
-                        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: `linear-gradient(to right, ${accent}15, transparent)` }} />
-                        <div className="relative flex items-center p-5 gap-5">
-                            <div className="w-14 h-14 rounded-xl flex items-center justify-center transition-colors" style={{ background: `${accent}15`, color: accent }}>
-                                <Map className="w-7 h-7" />
-                            </div>
-                            <div className="flex-1 text-left">
-                                <h3 className="text-lg font-bold text-white transition-colors">I'm a Sales Rep</h3>
-                                <p className="text-sm text-gray-500">Knock doors, track leads, earn commission</p>
-                            </div>
-                            <ChevronRight className="w-5 h-5 text-gray-600 group-hover:translate-x-1 transition-all" style={{ color: accent }} />
-                        </div>
-                    </motion.button>
-
-                    {/* Manager Option */}
-                    <motion.button
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.2 }}
                         onClick={() => selectRole('manager')}
                         disabled={isLoading}
-                        className="w-full relative overflow-hidden group rounded-2xl border border-gray-800 bg-[#151515] p-1 transition-all hover:border-blue-500 hover:shadow-[0_0_30px_rgba(59,130,246,0.15)] disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full relative overflow-hidden group rounded-2xl border border-gray-800 bg-[#151515] p-5 transition-all hover:border-blue-500/50 hover:bg-[#1A1A24] disabled:opacity-50 text-left"
                     >
-                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                        <div className="relative flex items-center p-5 gap-5">
-                            <div className="w-14 h-14 rounded-xl bg-gray-800 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors text-gray-400">
-                                <ShieldCheck className="w-7 h-7" />
+                        <div className="relative flex items-start gap-4">
+                            <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400 shrink-0 mt-1">
+                                <ShieldCheck className="w-6 h-6" />
                             </div>
-                            <div className="flex-1 text-left">
-                                <h3 className="text-lg font-bold text-white group-hover:text-blue-400 transition-colors">I'm a Manager</h3>
-                                <p className="text-sm text-gray-500 group-hover:text-gray-400">Assign territories, manage team, view analytics</p>
+                            <div>
+                                <h3 className="text-lg font-bold text-white mb-1">Create a Workspace</h3>
+                                <p className="text-sm text-gray-500 leading-relaxed">I am a manager. I want to build territories, generate routes, and invite my team.</p>
                             </div>
-                            <ChevronRight className="w-5 h-5 text-gray-600 group-hover:text-blue-400 group-hover:translate-x-1 transition-all" />
                         </div>
                     </motion.button>
 
                     {/* Divider */}
-                    <div className="relative py-6">
-                        <div className="absolute inset-0 flex items-center">
-                            <div className="w-full border-t border-gray-800"></div>
-                        </div>
-                        <div className="relative flex justify-center">
-                            <span className="px-4 bg-[#0A0A0A] text-xs font-bold text-gray-600 uppercase tracking-widest">
-                                Or Join with Code
-                            </span>
-                        </div>
+                    <div className="flex items-center gap-4 py-1">
+                        <div className="flex-1 h-px bg-gray-800" />
+                        <span className="text-xs font-bold text-gray-600 uppercase tracking-widest">OR</span>
+                        <div className="flex-1 h-px bg-gray-800" />
                     </div>
 
-                    {/* Code Input */}
-                    <motion.div 
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.3 }}
-                        className="bg-[#151515] p-1 rounded-2xl border border-gray-800 flex items-center"
+                    {/* Join Team Option */}
+                    <motion.div
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: 0.2 }}
+                        className="w-full relative overflow-hidden rounded-2xl border border-gray-800 bg-[#151515] p-5 text-left"
+                        style={{ boxShadow: inviteCode ? `0 0 30px ${accent}15` : 'none', borderColor: inviteCode ? `${accent}50` : '' }}
                     >
-                        <div className="pl-4 text-gray-500">
-                            <Key className="w-5 h-5" />
+                        <div className="relative flex flex-col gap-4">
+                            <div className="flex items-start gap-4">
+                                <div className="w-12 h-12 rounded-full flex items-center justify-center transition-colors shrink-0 mt-1" style={{ background: `${accent}15`, color: accent }}>
+                                    <Map className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold text-white mb-1">Join a Team</h3>
+                                    <p className="text-sm text-gray-500 leading-relaxed">I am a sales rep. I have an invite code from my manager.</p>
+                                </div>
+                            </div>
+                            
+                            <div className="mt-1 flex gap-2">
+                                <Input
+                                    value={inviteCode}
+                                    onChange={(e) => setInviteCode(e.target.value)}
+                                    placeholder="Invite Code..."
+                                    className="bg-black border-gray-800 text-white placeholder:text-gray-600 focus-visible:ring-1 focus-visible:ring-white h-12 text-center text-lg tracking-widest font-mono uppercase"
+                                    type="text"
+                                    maxLength={8}
+                                />
+                                <Button 
+                                    onClick={handleCodeSubmit}
+                                    disabled={!inviteCode || isLoading}
+                                    className="h-12 px-6 rounded-xl font-bold transition-all disabled:opacity-50 shadow-lg"
+                                    style={{ background: accent, color: accentTxt }}
+                                >
+                                    {isLoading ? <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : 'Join'}
+                                </Button>
+                            </div>
                         </div>
-                        <Input
-                            value={inviteCode}
-                            onChange={(e) => setInviteCode(e.target.value)}
-                            placeholder="Enter Team PIN..."
-                            className="bg-transparent border-0 text-white placeholder:text-gray-600 focus-visible:ring-0 h-14 text-base"
-                            type="text"
-                        />
-                        <Button 
-                            onClick={handleCodeSubmit}
-                            disabled={!inviteCode || isLoading}
-                            className="m-1 h-12 px-6 rounded-xl bg-gray-800 hover:bg-white hover:text-black font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isLoading ? '...' : <ArrowRight className="w-5 h-5" />}
-                        </Button>
                     </motion.div>
-
                 </div>
             </div>
-
             {/* Footer */}
             <div className="py-6 text-center text-xs text-gray-600">
                 <p>Protected by FirstKnock Security</p>
             </div>
-
-            <Dialog open={showRepCodeDialog} onOpenChange={setShowRepCodeDialog}>
-                <DialogContent className="bg-[#111] border-gray-800 text-white">
-                    <DialogHeader>
-                        <DialogTitle>Enter Team Code</DialogTitle>
-                        <DialogDescription>
-                            You must enter a valid team code to join as a sales rep.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="py-4">
-                         <div className="bg-[#151515] p-1 rounded-2xl border border-gray-800 flex items-center">
-                            <div className="pl-4 text-gray-500">
-                                <Key className="w-5 h-5" />
-                            </div>
-                            <Input
-                                value={inviteCode}
-                                onChange={(e) => setInviteCode(e.target.value)}
-                                placeholder="Enter Team PIN..."
-                                className="bg-transparent border-0 text-white placeholder:text-gray-600 focus-visible:ring-0 h-14 text-base"
-                                type="text"
-                                autoFocus
-                            />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                         <Button 
-                            onClick={handleCodeSubmit}
-                            disabled={!inviteCode || isLoading}
-                            className="w-full font-bold"
-                            style={{ background: accent, color: accentTxt }}
-                        >
-                            {isLoading ? 'Verifying...' : 'Join Team'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
         </div>
     );
 }
