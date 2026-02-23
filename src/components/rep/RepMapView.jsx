@@ -77,6 +77,21 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
     const [accuracy, setAccuracy] = useState(50);
     const [hudExpanded, setHudExpanded] = useState(true);
 
+    const [mapSettings] = useState(() => {
+        try {
+            const saved = localStorage.getItem('fk_mapSettings');
+            return saved ? JSON.parse(saved) : {};
+        } catch(e) { return {}; }
+    });
+
+    const LINE_DASH_MAP = {
+        solid: null,
+        dashed: '8,6',
+        dotted: '2,4',
+        dashdot: '10,4,2,4',
+    };
+    const lineDashArray = mapSettings.lineStyle === 'solid' ? undefined : (LINE_DASH_MAP[mapSettings.lineStyle] || '8,6');
+
     // Live GPS
     useEffect(() => {
         let watchId = null;
