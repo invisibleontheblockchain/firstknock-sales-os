@@ -643,6 +643,21 @@ export default function Home() {
     });
     const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
 
+    // REAL-TIME UPDATES: Listen for interactions from other reps
+    useEffect(() => {
+        if (!user) return;
+        const unsubscribe = base44.entities.InteractionLog.subscribe((event) => {
+            if (event.type === 'create' || event.type === 'update') {
+                // If the log wasn't created by us (to avoid double-updating our own optimistic writes)
+                if (event.data && event.data.created_by !== user.email) {
+                    queryClient.invalidateQueries({ queryKey: ['interactionLogs'] });
+                    toast.info(`New interaction logged nearby!`, { duration: 2000, id: 'realtime-log' });
+                }
+            }
+        });
+        return unsubscribe;
+    }, [user, queryClient]);
+
     // --- UBER-STYLE DISPATCH LOGIC ---
     // Helper: Haversine Distance (Miles)
     const calcDist = (lat1, lng1, lat2, lng2) => {
