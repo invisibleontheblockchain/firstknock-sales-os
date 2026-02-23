@@ -67,6 +67,7 @@ export default function MapSettingsPanel({
     onClose,
     quickFilter, setQuickFilter,
     showRouteDetails, setShowRouteDetails,
+    showAllProperties, setShowAllProperties,
     navigationApp, setNavigationApp,
     pinSize = 5, setPinSize,
     showRouteLines = false, setShowRouteLines,
