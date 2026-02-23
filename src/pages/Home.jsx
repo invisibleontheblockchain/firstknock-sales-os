@@ -1019,7 +1019,11 @@ export default function Home() {
     }, [routes]);
 
     const fitBounds = useMemo(() => {
-        if (activeRoute?.properties?.length > 0) return activeRoute.properties.map(p => [p.lat, p.lng]);
+        if (activeRoute?.properties?.length > 0) {
+            return activeRoute.properties
+                .filter(p => p && p.lat !== undefined && p.lng !== undefined)
+                .map(p => [p.lat, p.lng]);
+        }
         return null;
     }, [activeRoute]);
 
@@ -1165,7 +1169,7 @@ export default function Home() {
                         return (
                             <React.Fragment key={`saved-group-${route.id}`}>
                                 {/* Rank/Label Marker at Center - VISIBLE IN ANALYZE MODE */}
-                                {centerProp && (
+                                {centerProp && centerProp.lat && centerProp.lng && (
                                     <CircleMarker
                                         center={[centerProp.lat, centerProp.lng]}
                                         radius={14}
@@ -1180,6 +1184,7 @@ export default function Home() {
 
                                 {showRouteDetails && route.properties
                                     .filter(p => {
+                                        if (!p || p.lat === undefined || p.lng === undefined) return false;
                                         if (quickFilter === 'all') return true;
                                         if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
                                         if (quickFilter === 'sold') return p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED';
@@ -1242,7 +1247,7 @@ export default function Home() {
                         return (
                             <React.Fragment key={`route-group-${route.id}`}>
                                 {/* Rank Marker at Center */}
-                                {centerProp && (
+                                {centerProp && centerProp.lat && centerProp.lng && (
                                     <CircleMarker
                                         center={[centerProp.lat, centerProp.lng]}
                                         radius={16}
@@ -1255,7 +1260,7 @@ export default function Home() {
                                     </CircleMarker>
                                 )}
                                 
-                                {showRouteDetails && route.properties.map((p, idx) => (
+                                {showRouteDetails && route.properties.filter(p => p && p.lat && p.lng).map((p, idx) => (
                                     <CircleMarker
                                         key={`generated-${route.id}-${idx}`}
                                         center={[p.lat, p.lng]}
@@ -1424,7 +1429,7 @@ export default function Home() {
                 {activeRoute && (
                     <>
                         <Polyline
-                            positions={activeRoute.properties.map(p => [p.lat, p.lng])}
+                            positions={activeRoute.properties.filter(p => p && p.lat && p.lng).map(p => [p.lat, p.lng])}
                             pathOptions={{ 
                                 color: BRAND.gold, 
                                 weight: mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4, 
