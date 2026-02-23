@@ -57,9 +57,9 @@ export default function Referrals() {
                     <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3" style={{ background: `${accent}20` }}>
                         <Gift className="w-7 h-7" style={{ color: accent }} />
                     </div>
-                    <h1 className="text-3xl font-extrabold tracking-tight">Refer & Earn</h1>
-                    <p className="text-gray-400 max-w-sm mx-auto text-sm">
-                        Share FirstKnock with your network. Earn cash for every user who subscribes.
+                    <h1 className="text-3xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-[#A29BFE]">Refer & Earn</h1>
+                    <p className="text-[#8888A0] max-w-sm mx-auto text-sm font-medium">
+                        Share FirstKnock with your network. Build your own organization and earn passive income for life.
                     </p>
                 </div>
 
