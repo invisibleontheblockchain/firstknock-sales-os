@@ -208,7 +208,12 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
                     {properties?.length > 0 && (
                         <Polyline
                             positions={properties.map(p => [p.lat, p.lng])}
-                            pathOptions={{ color: BRAND.gold, weight: 4, opacity: 0.8 }}
+                            pathOptions={{ 
+                                color: BRAND.gold, 
+                                weight: mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4, 
+                                opacity: mapSettings.lineOpacity ? Math.max(0.6, mapSettings.lineOpacity) : 0.8,
+                                dashArray: lineDashArray 
+                            }}
                         />
                     )}
 
