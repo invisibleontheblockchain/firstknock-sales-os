@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Polyline, useMap, Circle, LayerGroup, FeatureGroup, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
@@ -37,7 +38,7 @@ import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, Filter, MapPin, User, Shield, Layers, Flame, Home as HomeIcon, Calendar, DollarSign, Ruler, ArrowRight, RefreshCw, Zap } from 'lucide-react';
 import { toast } from "sonner";
-import { determineEffectiveStatus } from '../components/logic/territoryLogic';
+import { determineEffectiveStatus, isPointInPolygon } from '../components/logic/territoryLogic';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { format, subMonths, isAfter, parseISO } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -59,6 +60,8 @@ import GpsTracker, { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud
 import QuickMarkButtons from '../components/rep/QuickMarkButtons';
 import PropertyHistory from '../components/rep/PropertyHistory';
 import ManagerPropertyDetailSheet from '../components/map/ManagerPropertyDetailSheet';
+import MapDrawTool from '../components/map/MapDrawTool';
+import TerritoryPrompt from '../components/map/TerritoryPrompt';
 
 // Brand Colors
 const BRAND = {
@@ -201,8 +204,11 @@ export default function Home() {
     const [soldDateFilter, setSoldDateFilter] = useState(null); // null = All Time, number = months
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
-    const [mode, setMode] = useState('analyze'); // 'analyze' or 'generate'
+    const [mode, setMode] = useState('generate'); // Default to generate mode
     const [showDashboard, setShowDashboard] = useState(false);
+    const [drawingMode, setDrawingMode] = useState(false);
+    const [drawnPolygon, setDrawnPolygon] = useState(null);
+    const [draftPolygon, setDraftPolygon] = useState([]);
     const [showTimingPanel, setShowTimingPanel] = useState(false);
     const [selectedProperty, setSelectedProperty] = useState(null);
     const [zoomLevel, setZoomLevel] = useState(15);
@@ -228,9 +234,9 @@ export default function Home() {
         return saved ? JSON.parse(saved) : {
             pinShape: 'circle',
             colorScheme: 'default',
-            lineStyle: 'solid',
-            lineWidth: 3,
-            lineOpacity: 0.8,
+            lineStyle: 'dashed',
+            lineWidth: 2,
+            lineOpacity: 0.5,
             pinOpacity: 0.85,
             pinBorderWidth: 1,
             pinBorderColor: '#000',
@@ -304,7 +310,7 @@ export default function Home() {
 
     const loadTemplate = (template) => {
         if (!template.config) return;
-        if (template.config.houses_per_route) setHousesPerRoute(template.config.houses_per_route);
+        if (template.config.houses_per_route) setHousesPerRoute(template.config.houses_per_per_route);
         if (template.config.max_distance) setMaxRouteDistance(template.config.max_distance);
         if (template.config.min_score) setMinScore(template.config.min_score);
         if (template.config.street_cooldown_days) setStreetCooldownDays(template.config.street_cooldown_days);
@@ -894,6 +900,11 @@ export default function Home() {
                 });
             }
 
+            // Apply Polygon Filter (Drawn Area)
+            if (drawnPolygon && drawnPolygon.length > 2) {
+                workingSet = workingSet.filter(p => isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon));
+            }
+
             // Apply Sold Date Filter (STRICT: If filter active, MUST have sold_date within range)
             if (soldDateFilter !== null) {
                 workingSet = workingSet.filter(p => {
@@ -991,7 +1002,7 @@ export default function Home() {
         } finally {
             setRoutesGenerating(false);
         }
-    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, maxRouteDistance, soldDateFilter]);
+    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, maxRouteDistance, soldDateFilter, drawnPolygon]);
 
     // Filter and sort routes
     const filteredRoutes = useMemo(() => {
@@ -1030,29 +1041,14 @@ export default function Home() {
     // Initial Fit Effect
     const hasCenteredRef = useRef(false);
     useEffect(() => {
-        if (!hasCenteredRef.current && mapRef.current) {
-             let pointsToFit = [];
-             
-             // Center on existing saved routes first, so users immediately see their drawn routes
-             if (hydratedSavedRoutes.length > 0) {
-                 hydratedSavedRoutes.forEach(r => {
-                     r.properties.forEach(p => {
-                         if (p.lat && p.lng) pointsToFit.push([p.lat, p.lng]);
-                     });
-                 });
-             } else if (availableProperties.length > 0) {
-                 pointsToFit = availableProperties.slice(0, 1000).map(p => [p.lat, p.lng]);
-             }
-
-             if (pointsToFit.length > 0) {
-                 const bounds = L.latLngBounds(pointsToFit);
-                 if (bounds.isValid()) {
-                     mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false });
-                     hasCenteredRef.current = true;
-                 }
+        if (availableProperties.length > 0 && !hasCenteredRef.current && mapRef.current) {
+             const bounds = L.latLngBounds(availableProperties.slice(0, 1000).map(p => [p.lat, p.lng]));
+             if (bounds.isValid()) {
+                 mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false });
+                 hasCenteredRef.current = true;
              }
         }
-    }, [availableProperties, hydratedSavedRoutes]);
+    }, [availableProperties]);
 
     // Determine Map Center
     const [mapCenter, setMapCenter] = useState([34.0522, -118.2437]); // Default LA
@@ -1162,6 +1158,12 @@ export default function Home() {
                     fitBounds={fitBounds} 
                     onZoomChange={setZoomLevel} 
                     onMoveEnd={() => {}}
+                />
+
+                <MapDrawTool 
+                    active={drawingMode} 
+                    onPointsUpdate={setDraftPolygon} 
+                    drawnPolygon={drawnPolygon} 
                 />
 
                 {/* --- ANALYZE MODE: Existing Routes --- */}
@@ -1385,6 +1387,11 @@ export default function Home() {
                                 const pZip = String(p.zip_code || '').trim().slice(0, 5);
                                 if (targetZips.length > 0 && !targetZips.includes(pZip)) return false;
                             }
+
+                            // Visual Polygon Filter
+                            if (mode === 'generate' && drawnPolygon && drawnPolygon.length > 2) {
+                                if (!isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon)) return false;
+                            }
                             
                             // Date Filter (Sold Date) - STRICT
                             if (soldDateFilter !== null) {
@@ -1581,6 +1588,22 @@ export default function Home() {
                 )}
 
             </div>
+
+            <TerritoryPrompt 
+                mode={mode}
+                activeRoute={activeRoute}
+                routesGenerating={routesGenerating}
+                showCompare={showCompare}
+                showRoutePanel={showRoutePanel}
+                drawingMode={drawingMode}
+                setDrawingMode={setDrawingMode}
+                drawnPolygon={drawnPolygon}
+                setDrawnPolygon={setDrawnPolygon}
+                draftPolygon={draftPolygon}
+                setDraftPolygon={setDraftPolygon}
+                user={user}
+                setZipCodeFilter={setZipCodeFilter}
+            />
 
             {/* Team Analysis Legend (Top Right) - Hidden on mobile */}
             {!activeRoute && (
@@ -1828,6 +1851,7 @@ export default function Home() {
                         if(confirm("Reset all generated routes?")) {
                             setRoutes([]);
                             setFetchedProperties([]);
+                            setDrawnPolygon(null); // Clear polygon on reset
                             toast.success("Builder reset");
                         }
                     }}
