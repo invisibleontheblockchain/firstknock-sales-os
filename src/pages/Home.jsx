@@ -215,21 +215,21 @@ export default function Home() {
     const [navigationApp, setNavigationApp] = useState('apple');
     
     // Persisted Map Settings
-    const [mapTheme, setMapTheme] = useState(() => localStorage.getItem('fk_mapTheme') || 'satellite');
+    const [mapTheme, setMapTheme] = useState(() => localStorage.getItem('fk_mapTheme_v2') || 'satellite');
     const [showRouteDetails, setShowRouteDetails] = useState(() => {
-        const saved = localStorage.getItem('fk_showRouteDetails');
+        const saved = localStorage.getItem('fk_showRouteDetails_v2');
         return saved ? JSON.parse(saved) : true;
     });
     const [pinSize, setPinSize] = useState(() => {
-        const saved = localStorage.getItem('fk_pinSize');
+        const saved = localStorage.getItem('fk_pinSize_v2');
         return saved ? JSON.parse(saved) : 5;
     });
     const [showRouteLines, setShowRouteLines] = useState(() => {
-        const saved = localStorage.getItem('fk_showRouteLines');
+        const saved = localStorage.getItem('fk_showRouteLines_v2');
         return saved ? JSON.parse(saved) : true;
     });
     const [mapSettings, setMapSettings] = useState(() => {
-        const saved = localStorage.getItem('fk_mapSettings');
+        const saved = localStorage.getItem('fk_mapSettings_v2');
         return saved ? JSON.parse(saved) : {
             pinShape: 'circle',
             colorScheme: 'default',
@@ -248,11 +248,11 @@ export default function Home() {
 
     useEffect(() => {
         try {
-            localStorage.setItem('fk_mapTheme', mapTheme);
-            localStorage.setItem('fk_showRouteDetails', JSON.stringify(showRouteDetails));
-            localStorage.setItem('fk_pinSize', JSON.stringify(pinSize));
-            localStorage.setItem('fk_showRouteLines', JSON.stringify(showRouteLines));
-            localStorage.setItem('fk_mapSettings', JSON.stringify(mapSettings));
+            localStorage.setItem('fk_mapTheme_v2', mapTheme);
+            localStorage.setItem('fk_showRouteDetails_v2', JSON.stringify(showRouteDetails));
+            localStorage.setItem('fk_pinSize_v2', JSON.stringify(pinSize));
+            localStorage.setItem('fk_showRouteLines_v2', JSON.stringify(showRouteLines));
+            localStorage.setItem('fk_mapSettings_v2', JSON.stringify(mapSettings));
         } catch (e) {
             // Ignore quota errors in preview if any
         }

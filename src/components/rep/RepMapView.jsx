@@ -79,7 +79,7 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
 
     const [mapSettings] = useState(() => {
         try {
-            const saved = localStorage.getItem('fk_mapSettings');
+            const saved = localStorage.getItem('fk_mapSettings_v2');
             return saved ? JSON.parse(saved) : {};
         } catch(e) { return {}; }
     });
