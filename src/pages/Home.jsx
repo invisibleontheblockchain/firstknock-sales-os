@@ -1767,42 +1767,7 @@ export default function Home() {
                                     </select>
                                 </div>
 
-                                <div>
-                                    <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
-                                        SOLD DATE FILTER
-                                    </label>
-                                    <div className="space-y-4">
-                                        <div className="flex justify-between text-[10px] font-bold text-gray-500 uppercase">
-                                            <span>3 Mo</span>
-                                            <span>6 Mo</span>
-                                            <span>1 Yr</span>
-                                            <span>2 Yr</span>
-                                            <span>All</span>
-                                        </div>
-                                        <Slider
-                                            value={[soldDateFilter === null ? 100 : (
-                                                soldDateFilter <= 3 ? 0 : 
-                                                soldDateFilter <= 6 ? 25 : 
-                                                soldDateFilter <= 12 ? 50 : 
-                                                soldDateFilter <= 24 ? 75 : 100
-                                            )]}
-                                            onValueChange={([v]) => {
-                                                if (v === 0) setSoldDateFilter(3);
-                                                else if (v === 25) setSoldDateFilter(6);
-                                                else if (v === 50) setSoldDateFilter(12);
-                                                else if (v === 75) setSoldDateFilter(24);
-                                                else setSoldDateFilter(null);
-                                            }}
-                                            min={0}
-                                            max={100}
-                                            step={25}
-                                            className="w-full"
-                                        />
-                                        <p className="text-center text-xs font-bold text-yellow-500">
-                                            {soldDateFilter ? `Sold within last ${soldDateFilter} months` : 'Showing All Sales History'}
-                                        </p>
-                                    </div>
-                                </div>
+                                {/* Sold Date Filter moved to Map Settings Panel */}
 
                                 <div>
                                     <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
