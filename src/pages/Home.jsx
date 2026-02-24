@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, CircleMarker, Polyline, useMap, Circle, LayerGroup, FeatureGroup, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
@@ -216,7 +215,7 @@ export default function Home() {
     const [navigationApp, setNavigationApp] = useState('apple');
     
     // Persisted Map Settings
-    const [mapTheme, setMapTheme] = useState(() => localStorage.getItem('fk_mapTheme') || 'dark');
+    const [mapTheme, setMapTheme] = useState(() => localStorage.getItem('fk_mapTheme') || 'satellite');
     const [showRouteDetails, setShowRouteDetails] = useState(() => {
         const saved = localStorage.getItem('fk_showRouteDetails');
         return saved ? JSON.parse(saved) : true;
@@ -234,13 +233,13 @@ export default function Home() {
         return saved ? JSON.parse(saved) : {
             pinShape: 'circle',
             colorScheme: 'default',
-            lineStyle: 'dashed',
-            lineWidth: 2,
-            lineOpacity: 0.5,
+            lineStyle: 'solid',
+            lineWidth: 3,
+            lineOpacity: 0.8,
             pinOpacity: 0.85,
             pinBorderWidth: 1,
             pinBorderColor: '#000',
-            showLabels: false,
+            showLabels: true,
             labelType: 'number',
             glowEffect: false,
             fillStyle: 'solid',
