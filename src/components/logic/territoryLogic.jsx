@@ -258,15 +258,54 @@ export const orderForStreetSweep = (properties) => {
 
     const orderedProperties = [];
 
-    Object.entries(streetGroups).forEach(([streetName, streetProps]) => {
+    // 1. Calculate Street Centroids for sorting
+    const streetCentroids = Object.entries(streetGroups).map(([name, props]) => {
+        const avgLat = props.reduce((sum, p) => sum + (p.lat||0), 0) / props.length;
+        const avgLng = props.reduce((sum, p) => sum + (p.lng||0), 0) / props.length;
+        return { name, lat: avgLat, lng: avgLng };
+    });
+
+    // 2. Sort Streets by Nearest Neighbor (to prevent jumping across map)
+    const sortedStreets = [];
+    if (streetCentroids.length > 0) {
+        // Start with street of the first property (usually closest to cluster center/start)
+        const startStreet = properties[0].street_name || 'Unknown';
+        let currentIdx = streetCentroids.findIndex(s => s.name === startStreet);
+        if (currentIdx === -1) currentIdx = 0;
+
+        const unvisited = [...streetCentroids];
+        let current = unvisited.splice(currentIdx, 1)[0];
+        sortedStreets.push(current.name);
+
+        while (unvisited.length > 0) {
+            let nearestIdx = -1;
+            let minDist = Infinity;
+            unvisited.forEach((s, i) => {
+                // Euclidean distance is fine for local sorting
+                const d = Math.pow(s.lat - current.lat, 2) + Math.pow(s.lng - current.lng, 2);
+                if (d < minDist) {
+                    minDist = d;
+                    nearestIdx = i;
+                }
+            });
+            current = unvisited.splice(nearestIdx, 1)[0];
+            sortedStreets.push(current.name);
+        }
+    }
+
+    // 3. Process each street in order
+    sortedStreets.forEach(streetName => {
+        const streetProps = streetGroups[streetName];
+        
         // Sort by house number
         streetProps.sort((a, b) => (a.house_number || 0) - (b.house_number || 0));
 
         // Separate odd and even
-        const odds = streetProps.filter(p => (p.house_number || 0) % 2 === 1);
+        const odds = streetProps.filter(p => (p.house_number || 0) % 2 !== 0);
         const evens = streetProps.filter(p => (p.house_number || 0) % 2 === 0);
 
         // Walk up odd side (ascending), then back down even side (descending)
+        // This creates a U-shape loop for the street
         odds.forEach(p => orderedProperties.push({ ...p, _sweepSide: 'odd', _streetName: streetName }));
         evens.reverse().forEach(p => orderedProperties.push({ ...p, _sweepSide: 'even', _streetName: streetName }));
     });

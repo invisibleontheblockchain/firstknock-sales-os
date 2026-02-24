@@ -258,7 +258,7 @@ export default function Home() {
     const [templateName, setTemplateName] = useState("");
     const [gpsTracking, setGpsTracking] = useState(false);
     const [routeConfig, setRouteConfig] = useState({
-        walkingPattern: 'street_sweep',
+        walkingPattern: 'nearest',
         minimizeTurns: true,
         use2Opt: true,
         returnToStart: false,
