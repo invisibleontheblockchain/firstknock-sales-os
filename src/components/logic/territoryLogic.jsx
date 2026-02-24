@@ -317,6 +317,23 @@ export const orderForStreetSweep = (properties) => {
  * Get summary of results for a property (for display)
  * Returns the latest result text and status
  */
+export const isPointInPolygon = (point, vs) => {
+    if (!vs || vs.length < 3) return true;
+    let x = point.lng, y = point.lat;
+    
+    let inside = false;
+    for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+        let xi = vs[i].lng, yi = vs[i].lat;
+        let xj = vs[j].lng, yj = vs[j].lat;
+        
+        let intersect = ((yi > y) !== (yj > y))
+            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) inside = !inside;
+    }
+    
+    return inside;
+};
+
 export const getPropertyResultSummary = (logs) => {
     if (!logs || logs.length === 0) {
         return { hasResult: false, latestResult: null, resultText: null, status: 'ELIGIBLE' };
