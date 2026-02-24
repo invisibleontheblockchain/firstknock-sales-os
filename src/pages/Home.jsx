@@ -894,15 +894,15 @@ export default function Home() {
                 });
             }
 
-            // Apply Sold Date Filter
+            // Apply Sold Date Filter (STRICT: If filter active, MUST have sold_date within range)
             if (soldDateFilter !== null) {
                 workingSet = workingSet.filter(p => {
-                    if (!p.sold_date) return true;
+                    if (!p.sold_date) return false;
                     try {
                         const date = parseISO(p.sold_date);
                         const cutoff = subMonths(new Date(), soldDateFilter);
                         return isAfter(date, cutoff);
-                    } catch (e) { return true; }
+                    } catch (e) { return false; }
                 });
             }
 
@@ -1371,13 +1371,14 @@ export default function Home() {
                                 if (targetZips.length > 0 && !targetZips.includes(pZip)) return false;
                             }
                             
-                            // Date Filter (Sold Date)
-                            if (soldDateFilter !== null && p.sold_date) {
+                            // Date Filter (Sold Date) - STRICT
+                            if (soldDateFilter !== null) {
+                                if (!p.sold_date) return false;
                                 try {
                                     const date = parseISO(p.sold_date);
                                     const cutoff = subMonths(new Date(), soldDateFilter);
                                     if (!isAfter(date, cutoff)) return false;
-                                } catch (e) { /* invalid date */ }
+                                } catch (e) { return false; }
                             }
 
                             if (quickFilter === 'all') return true;

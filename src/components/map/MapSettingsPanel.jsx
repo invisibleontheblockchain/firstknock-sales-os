@@ -98,9 +98,22 @@ export default function MapSettingsPanel({
         if (setShowAllProperties) setShowAllProperties(localShowAllProperties);
         if (setMapTheme) setMapTheme(localMapTheme);
         if (setNavigationApp) setNavigationApp(localNavigationApp);
-        if (setQuickFilter) setQuickFilter(localQuickFilter);
-        if (setSoldDateFilter) setSoldDateFilter(localSoldDateFilter);
+        // Filters are live, but save ensuring sync
         onClose();
+    };
+
+    // Live update helpers
+    const setLiveQuickFilter = (val) => {
+        setLocalQuickFilter(val);
+        if (setQuickFilter) setQuickFilter(val);
+    };
+    const setLiveSoldDateFilter = (val) => {
+        setLocalSoldDateFilter(val);
+        if (setSoldDateFilter) setSoldDateFilter(val);
+    };
+    const setLiveShowAllProperties = (val) => {
+        setLocalShowAllProperties(val);
+        if (setShowAllProperties) setShowAllProperties(val);
     };
 
     const handleReset = () => {
@@ -373,14 +386,14 @@ export default function MapSettingsPanel({
                                         <span className="text-xs font-bold text-gray-300">Show All Properties</span>
                                         <p className="text-[9px] text-gray-500">Show pins not in any route</p>
                                     </div>
-                                    <Switch checked={localShowAllProperties} onCheckedChange={setLocalShowAllProperties} />
+                                    <Switch checked={localShowAllProperties} onCheckedChange={setLiveShowAllProperties} />
                                 </div>
                             )}
                             <div className="grid grid-cols-2 gap-2">
                                 {STATUS_FILTERS.map(f => (
                                     <button
                                         key={f.id}
-                                        onClick={() => setQuickFilter && setLocalQuickFilter(f.id)}
+                                        onClick={() => setLiveQuickFilter(f.id)}
                                         className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-bold transition-all border ${
                                             localQuickFilter === f.id 
                                                 ? 'bg-yellow-500/10 border-yellow-500 text-yellow-500' 
@@ -418,11 +431,12 @@ export default function MapSettingsPanel({
                                                 localSoldDateFilter <= 24 ? 75 : 100
                                             )]}
                                             onValueChange={([v]) => {
-                                                if (v === 0) setLocalSoldDateFilter(3);
-                                                else if (v === 25) setLocalSoldDateFilter(6);
-                                                else if (v === 50) setLocalSoldDateFilter(12);
-                                                else if (v === 75) setLocalSoldDateFilter(24);
-                                                else setLocalSoldDateFilter(null);
+                                                let val = null;
+                                                if (v === 0) val = 3;
+                                                else if (v === 25) val = 6;
+                                                else if (v === 50) val = 12;
+                                                else if (v === 75) val = 24;
+                                                setLiveSoldDateFilter(val);
                                             }}
                                             min={0}
                                             max={100}
