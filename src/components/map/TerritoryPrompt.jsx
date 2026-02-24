@@ -96,6 +96,53 @@ export default function TerritoryPrompt({
                  <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[1000] bg-black/90 backdrop-blur-md border border-gray-800 rounded-full px-4 py-2 shadow-2xl flex items-center gap-3 animate-in fade-in">
                      <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
                      <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
+                     <Button
+                         onClick={async () => {
+                             // Calculate bounding box and center
+                             let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
+                             drawnPolygon.forEach(p => {
+                                 if (p.lat < minLat) minLat = p.lat;
+                                 if (p.lat > maxLat) maxLat = p.lat;
+                                 if (p.lng < minLng) minLng = p.lng;
+                                 if (p.lng > maxLng) maxLng = p.lng;
+                             });
+                             const centerLat = (minLat + maxLat) / 2;
+                             const centerLng = (minLng + maxLng) / 2;
+                             
+                             // Calculate rough radius in miles
+                             const R = 3959; // Earth's radius in miles
+                             const dLat = (maxLat - minLat) * Math.PI / 180;
+                             const dLng = (maxLng - minLng) * Math.PI / 180;
+                             const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                                     Math.cos(minLat * Math.PI / 180) * Math.cos(maxLat * Math.PI / 180) * 
+                                     Math.sin(dLng/2) * Math.sin(dLng/2);
+                             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                             const distance = R * c;
+                             const radius = Math.max(0.5, distance / 2); // At least 0.5 miles, up to diagonal/2
+
+                             const toastId = toast.loading("Pulling national data for this area...");
+                             try {
+                                 const res = await window.base44.functions.invoke('fetchAreaProperties', { 
+                                     latitude: centerLat, 
+                                     longitude: centerLng, 
+                                     radius: radius,
+                                     polygon: drawnPolygon
+                                 });
+                                 if (res.data?.error) {
+                                     toast.error(res.data.message || res.data.error, { id: toastId });
+                                 } else {
+                                     toast.success(res.data.message || `Data pulled successfully!`, { id: toastId });
+                                     setTimeout(() => window.location.reload(), 1500);
+                                 }
+                             } catch (e) {
+                                 const msg = e.response?.data?.message || e.message;
+                                 toast.error(`Failed to pull data: ${msg}`, { id: toastId });
+                             }
+                         }}
+                         className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] h-6 px-2 py-0 rounded-md ml-2"
+                     >
+                         Pull Data
+                     </Button>
                      <button 
                          onClick={() => {
                              setDrawnPolygon(null);

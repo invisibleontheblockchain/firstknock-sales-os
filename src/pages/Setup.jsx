@@ -98,7 +98,7 @@ export default function Setup() {
                         onClick={() => setActiveTab('upload')}
                         className={`flex-1 py-2 text-sm font-bold rounded-md transition-colors ${activeTab === 'upload' ? 'bg-[#222] text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
                     >
-                        My Uploads
+                        Data Settings
                     </button>
                     <button
                         onClick={() => setActiveTab('marketplace')}
@@ -111,10 +111,17 @@ export default function Setup() {
                 <div className="space-y-4">
                     {activeTab === 'upload' ? (
                         <>
-                            <div className="p-4 rounded-xl bg-[#0A0A0A] border border-[#222]">
-                                <h3 className="text-base font-bold text-white mb-1">Upload New List</h3>
-                                <p className="text-xs text-gray-500 mb-3">CSV, JSON. Merges with existing records.</p>
-                                <CsvUploader />
+                            <div className="p-4 rounded-xl bg-[#0A0A0A] border border-[#222] flex flex-col items-center justify-center text-center">
+                                <h3 className="text-base font-bold text-white mb-2">Pull Data Directly From Map</h3>
+                                <p className="text-sm text-gray-400 mb-4">
+                                    You no longer need to upload spreadsheets! Simply go to the map, draw your custom territory outline, and hit "Pull Data" to instantly fetch all homes in that area.
+                                </p>
+                                <Button 
+                                    onClick={handleContinue}
+                                    className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold h-10 px-6 rounded-full"
+                                >
+                                    Go Draw Territory
+                                </Button>
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
