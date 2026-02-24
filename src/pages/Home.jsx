@@ -1976,6 +1976,8 @@ export default function Home() {
                                       setShowRouteLines={setShowRouteLines}
                                       mapSettings={mapSettings}
                                       setMapSettings={setMapSettings}
+                                      soldDateFilter={soldDateFilter}
+                                      setSoldDateFilter={setSoldDateFilter}
                                   />
                               )}
 

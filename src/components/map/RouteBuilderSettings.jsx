@@ -290,26 +290,6 @@ export default function RouteBuilderSettings({
                             </div>
                         </div>
 
-                        {/* Sold Date Filter */}
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-gray-500 uppercase">Sold Date Window</label>
-                            <div className="grid grid-cols-5 gap-1.5">
-                                {[
-                                    { v: 3, label: '3 Mo' },
-                                    { v: 6, label: '6 Mo' },
-                                    { v: 12, label: '1 Yr' },
-                                    { v: 24, label: '2 Yr' },
-                                    { v: null, label: 'All' },
-                                ].map(opt => (
-                                    <button key={String(opt.v)} onClick={() => setSoldDateFilter(opt.v)}
-                                        className={`py-2 rounded-lg text-[10px] font-bold transition-all ${
-                                            soldDateFilter === opt.v ? 'bg-yellow-500 text-black' : 'bg-[#1A1A1A] text-gray-400 border border-gray-800'
-                                        }`}
-                                    >{opt.label}</button>
-                                ))}
-                            </div>
-                        </div>
-
                         {/* Property Type Filter */}
                         <div className="space-y-2">
                             <label className="text-[10px] font-bold text-gray-500 uppercase">Property Types</label>

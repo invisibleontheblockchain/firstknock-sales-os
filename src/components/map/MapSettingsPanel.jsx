@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
     X, Sun, Moon, Palette, Globe, Mountain, Eye, EyeOff, 
     GitBranch, Circle, Square, Diamond, Layers, Type, 
-    Droplets, Zap, RotateCcw, ChevronDown, ChevronRight, Save
+    Droplets, Zap, RotateCcw, ChevronDown, ChevronRight, Save, Calendar
 } from 'lucide-react';
 
 const BRAND = {
@@ -73,6 +73,7 @@ export default function MapSettingsPanel({
     showRouteLines = false, setShowRouteLines,
     // New deep settings
     mapSettings, setMapSettings,
+    soldDateFilter, setSoldDateFilter
 }) {
     // Local buffering state for settings
     const [localMapSettings, setLocalMapSettings] = useState(mapSettings || {});
@@ -83,6 +84,7 @@ export default function MapSettingsPanel({
     const [localMapTheme, setLocalMapTheme] = useState(mapTheme);
     const [localNavigationApp, setLocalNavigationApp] = useState(navigationApp);
     const [localQuickFilter, setLocalQuickFilter] = useState(quickFilter);
+    const [localSoldDateFilter, setLocalSoldDateFilter] = useState(soldDateFilter);
 
     const update = (key, value) => {
         setLocalMapSettings(prev => ({ ...prev, [key]: value }));
@@ -97,6 +99,7 @@ export default function MapSettingsPanel({
         if (setMapTheme) setMapTheme(localMapTheme);
         if (setNavigationApp) setNavigationApp(localNavigationApp);
         if (setQuickFilter) setQuickFilter(localQuickFilter);
+        if (setSoldDateFilter) setSoldDateFilter(localSoldDateFilter);
         onClose();
     };
 
@@ -122,6 +125,7 @@ export default function MapSettingsPanel({
         setLocalMapTheme('dark');
         setLocalNavigationApp('apple');
         setLocalQuickFilter('all');
+        setLocalSoldDateFilter(null);
     };
 
     const settings = localMapSettings;
@@ -362,7 +366,7 @@ export default function MapSettingsPanel({
                         </CollapsibleSection>
 
                         {/* ═══ STATUS VISIBILITY ═══ */}
-                        <CollapsibleSection title="Status Filter" icon={Eye} defaultOpen={false}>
+                        <CollapsibleSection title="Status & Date Filters" icon={Eye} defaultOpen={false}>
                             {setShowAllProperties && (
                                 <div className="flex items-center justify-between py-2 border-b border-gray-800 mb-3">
                                     <div>
@@ -391,6 +395,46 @@ export default function MapSettingsPanel({
                                     </button>
                                 ))}
                             </div>
+
+                            {/* Sold Date Filter */}
+                            {setSoldDateFilter && (
+                                <div className="mt-4 pt-3 border-t border-gray-800">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase mb-2 block flex items-center gap-1">
+                                        <Calendar className="w-3 h-3" /> Sold Date Window
+                                    </label>
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between text-[10px] font-bold text-gray-500 uppercase">
+                                            <span>3 Mo</span>
+                                            <span>6 Mo</span>
+                                            <span>1 Yr</span>
+                                            <span>2 Yr</span>
+                                            <span>All</span>
+                                        </div>
+                                        <Slider
+                                            value={[localSoldDateFilter === null ? 100 : (
+                                                localSoldDateFilter <= 3 ? 0 : 
+                                                localSoldDateFilter <= 6 ? 25 : 
+                                                localSoldDateFilter <= 12 ? 50 : 
+                                                localSoldDateFilter <= 24 ? 75 : 100
+                                            )]}
+                                            onValueChange={([v]) => {
+                                                if (v === 0) setLocalSoldDateFilter(3);
+                                                else if (v === 25) setLocalSoldDateFilter(6);
+                                                else if (v === 50) setLocalSoldDateFilter(12);
+                                                else if (v === 75) setLocalSoldDateFilter(24);
+                                                else setLocalSoldDateFilter(null);
+                                            }}
+                                            min={0}
+                                            max={100}
+                                            step={25}
+                                            className="w-full"
+                                        />
+                                        <p className="text-center text-xs font-bold text-yellow-500">
+                                            {localSoldDateFilter ? `Sold within last ${localSoldDateFilter} months` : 'Showing All Sales History'}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
                         </CollapsibleSection>
 
                         {/* ═══ NAVIGATION APP ═══ */}
