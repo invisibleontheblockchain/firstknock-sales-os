@@ -1,5 +1,6 @@
 import React from 'react';
 import { Button } from "@/components/ui/button";
+import { base44 } from '@/api/base44Client';
 import { Map as MapIcon, Pencil, Layers, X, Check, Trash2 } from 'lucide-react';
 import { toast } from "sonner";
 
@@ -122,7 +123,7 @@ export default function TerritoryPrompt({
 
                              const toastId = toast.loading("Pulling national data for this area...");
                              try {
-                                 const res = await window.base44.functions.invoke('fetchAreaProperties', { 
+                                 const res = await base44.functions.invoke('fetchAreaProperties', { 
                                      latitude: centerLat, 
                                      longitude: centerLng, 
                                      radius: radius,
