@@ -228,9 +228,9 @@ export default function Home() {
         return saved ? JSON.parse(saved) : {
             pinShape: 'circle',
             colorScheme: 'default',
-            lineStyle: 'dashed',
-            lineWidth: 2,
-            lineOpacity: 0.5,
+            lineStyle: 'solid',
+            lineWidth: 3,
+            lineOpacity: 0.8,
             pinOpacity: 0.85,
             pinBorderWidth: 1,
             pinBorderColor: '#000',
@@ -1030,14 +1030,29 @@ export default function Home() {
     // Initial Fit Effect
     const hasCenteredRef = useRef(false);
     useEffect(() => {
-        if (availableProperties.length > 0 && !hasCenteredRef.current && mapRef.current) {
-             const bounds = L.latLngBounds(availableProperties.slice(0, 1000).map(p => [p.lat, p.lng]));
-             if (bounds.isValid()) {
-                 mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false });
-                 hasCenteredRef.current = true;
+        if (!hasCenteredRef.current && mapRef.current) {
+             let pointsToFit = [];
+             
+             // Center on existing saved routes first, so users immediately see their drawn routes
+             if (hydratedSavedRoutes.length > 0) {
+                 hydratedSavedRoutes.forEach(r => {
+                     r.properties.forEach(p => {
+                         if (p.lat && p.lng) pointsToFit.push([p.lat, p.lng]);
+                     });
+                 });
+             } else if (availableProperties.length > 0) {
+                 pointsToFit = availableProperties.slice(0, 1000).map(p => [p.lat, p.lng]);
+             }
+
+             if (pointsToFit.length > 0) {
+                 const bounds = L.latLngBounds(pointsToFit);
+                 if (bounds.isValid()) {
+                     mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false });
+                     hasCenteredRef.current = true;
+                 }
              }
         }
-    }, [availableProperties]);
+    }, [availableProperties, hydratedSavedRoutes]);
 
     // Determine Map Center
     const [mapCenter, setMapCenter] = useState([34.0522, -118.2437]); // Default LA
