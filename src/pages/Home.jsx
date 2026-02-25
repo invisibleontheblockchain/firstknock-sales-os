@@ -1722,11 +1722,11 @@ export default function Home() {
                                     <label className="text-xs font-bold tracking-wide mb-3 block" style={{ color: BRAND.offWhite }}>
                                         <Filter className="w-3 h-3 inline mr-1" /> SORT BY
                                     </label>
-                                    <div className="flex gap-2">
-                                        {[{ id: 'score', label: 'SCORE' }, { id: 'houses', label: 'HOUSES' }, { id: 'distance', label: 'DISTANCE' }].map(opt => (
-                                            <button
-                                                key={opt.id}
-                                                onClick={() => setSortBy(opt.id)}
+                                    <div className="flex gap-2 flex-wrap">
+                                       {[{ id: 'score', label: 'SCORE' }, { id: 'houses', label: 'HOUSES' }, { id: 'distance', label: 'DISTANCE' }, { id: 'recent_sale', label: 'RECENT SALE' }].map(opt => (
+                                           <button
+                                               key={opt.id}
+                                               onClick={() => setSortBy(opt.id)}
                                                 className="px-3 py-2 rounded-lg text-xs font-bold tracking-wide transition-all"
                                                 style={{
                                                     background: sortBy === opt.id ? BRAND.gold : BRAND.charcoal,
