@@ -438,9 +438,100 @@ export default function RouteBuilderSettings({
                         </div>
                     </SettingsSection>
 
-                    {/* === TEMPLATES === */}
+                    {/* === QUICK PRESETS === */}
                     <SettingsSection 
-                        title="TEMPLATES" 
+                        title="QUICK PRESETS" 
+                        icon={<Zap className="w-4 h-4" />}
+                        expanded={expandedSection === 'presets'}
+                        onToggle={() => toggleSection('presets')}
+                    >
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase">Optimized Builds</label>
+                            <div className="space-y-2">
+                                {[
+                                    {
+                                        name: '🏃 Speed Blitz',
+                                        desc: 'Max doors in minimum time. Short routes, nearest-door pattern.',
+                                        apply: () => {
+                                            setHousesPerRoute(50);
+                                            setMaxRouteDistance(3);
+                                            setStreetCooldownDays(0);
+                                            setMinScore(0);
+                                            setSoldDateFilter(null);
+                                            setRouteConfig(prev => ({ ...prev, walkingPattern: 'nearest', minimizeTurns: false, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: false, minPrice: null, maxPrice: null, propertyTypes: [] }));
+                                            toast.success("Speed Blitz preset applied");
+                                        }
+                                    },
+                                    {
+                                        name: '🎯 High-Value Targets',
+                                        desc: 'Cherry-pick expensive homes sold in last 6 months. Quality over quantity.',
+                                        apply: () => {
+                                            setHousesPerRoute(25);
+                                            setMaxRouteDistance(10);
+                                            setStreetCooldownDays(30);
+                                            setMinScore(50);
+                                            setSoldDateFilter(6);
+                                            setRouteConfig(prev => ({ ...prev, walkingPattern: 'nearest', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: false, minPrice: 300000, maxPrice: null, propertyTypes: ['Single Family'] }));
+                                            toast.success("High-Value preset applied");
+                                        }
+                                    },
+                                    {
+                                        name: '🔥 New Homeowner Sweep',
+                                        desc: 'Focus on recent sales (past 3 months). Best for solar, roofing, etc.',
+                                        apply: () => {
+                                            setHousesPerRoute(75);
+                                            setMaxRouteDistance(8);
+                                            setStreetCooldownDays(14);
+                                            setMinScore(0);
+                                            setSoldDateFilter(3);
+                                            setSortBy('recent_sale');
+                                            setRouteConfig(prev => ({ ...prev, walkingPattern: 'street_sweep', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
+                                            toast.success("New Homeowner preset applied");
+                                        }
+                                    },
+                                    {
+                                        name: '📬 Full Street Sweep',
+                                        desc: 'Mailman-style coverage. Hit every door on each street systematically.',
+                                        apply: () => {
+                                            setHousesPerRoute(100);
+                                            setMaxRouteDistance(5);
+                                            setStreetCooldownDays(60);
+                                            setMinScore(0);
+                                            setSoldDateFilter(null);
+                                            setRouteConfig(prev => ({ ...prev, walkingPattern: 'street_sweep', minimizeTurns: true, use2Opt: true, returnToStart: true, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
+                                            toast.success("Full Street Sweep preset applied");
+                                        }
+                                    },
+                                    {
+                                        name: '💎 Premium Neighborhoods',
+                                        desc: '$500k+ homes only. Low volume, high conversion potential.',
+                                        apply: () => {
+                                            setHousesPerRoute(20);
+                                            setMaxRouteDistance(15);
+                                            setStreetCooldownDays(30);
+                                            setMinScore(30);
+                                            setSoldDateFilter(12);
+                                            setRouteConfig(prev => ({ ...prev, walkingPattern: 'cluster', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: false, minPrice: 500000, maxPrice: null, propertyTypes: ['Single Family'] }));
+                                            toast.success("Premium preset applied");
+                                        }
+                                    },
+                                ].map(preset => (
+                                    <button
+                                        key={preset.name}
+                                        onClick={preset.apply}
+                                        className="w-full p-3 rounded-lg bg-[#1A1A1A] border border-gray-800 hover:border-yellow-500/50 hover:bg-yellow-500/5 transition-all text-left group"
+                                    >
+                                        <span className="text-sm font-bold text-white group-hover:text-yellow-500 transition-colors">{preset.name}</span>
+                                        <p className="text-[10px] text-gray-500 mt-1 leading-tight">{preset.desc}</p>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </SettingsSection>
+
+                    {/* === SAVED TEMPLATES === */}
+                    <SettingsSection 
+                        title="MY TEMPLATES" 
                         icon={<Shuffle className="w-4 h-4" />}
                         expanded={expandedSection === 'templates'}
                         onToggle={() => toggleSection('templates')}
