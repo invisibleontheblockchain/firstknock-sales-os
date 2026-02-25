@@ -9,10 +9,10 @@ export function LocationMarker({ autoCenter }) {
         const handleLocationFound = (e) => {
             setPosition(e.latlng);
             if (autoCenter) {
-                map.setView(e.latlng, 15);
+                try { if (map._mapPane) map.setView(e.latlng, 15); } catch (e) {}
             }
         };
-        map.locate({ setView: autoCenter, maxZoom: 16 }).on("locationfound", handleLocationFound);
+        try { map.locate({ setView: autoCenter, maxZoom: 16 }).on("locationfound", handleLocationFound); } catch (e) {}
         return () => {
             map.off("locationfound", handleLocationFound);
             try { map.stopLocate(); } catch (e) {}
