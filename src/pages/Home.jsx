@@ -1373,6 +1373,21 @@ export default function Home() {
                     onSelectProperty={setSelectedProperty}
                 />
 
+                {/* User Location Pin from Center on Me */}
+                {userLocation && (
+                    <CircleMarker 
+                        center={[userLocation.lat, userLocation.lng]} 
+                        radius={12} 
+                        pathOptions={{ fillColor: '#3b82f6', fillOpacity: 1, color: '#ffffff', weight: 3 }}
+                    >
+                        <Tooltip permanent direction="right" offset={[12, 0]} className="route-number-tooltip">
+                            <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '11px', textShadow: '0 1px 3px #000, 0 0 5px #000', backgroundColor: 'rgba(59,130,246,0.9)', padding: '3px 8px', borderRadius: '12px' }}>
+                                YOU ARE HERE
+                            </span>
+                        </Tooltip>
+                    </CircleMarker>
+                )}
+
                 {/* Preview Route (hover/tap from list) */}
                 {previewRoute && !activeRoute && (
                     <Polyline
