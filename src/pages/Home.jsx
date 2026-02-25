@@ -918,9 +918,30 @@ export default function Home() {
     // Filter and sort routes
     const filteredRoutes = useMemo(() => {
         let filtered = routes.filter(r => r.competitivenessScore >= minScore);
-        if (sortBy === 'score') filtered.sort((a, b) => b.competitivenessScore - a.competitivenessScore);
-        else if (sortBy === 'houses') filtered.sort((a, b) => b.houseCount - a.houseCount);
-        else if (sortBy === 'distance') filtered.sort((a, b) => a.totalDistance - b.totalDistance);
+        if (sortBy === 'score') {
+            filtered.sort((a, b) => b.competitivenessScore - a.competitivenessScore);
+        } else if (sortBy === 'houses') {
+            filtered.sort((a, b) => b.houseCount - a.houseCount);
+        } else if (sortBy === 'distance') {
+            filtered.sort((a, b) => a.totalDistance - b.totalDistance);
+        } else if (sortBy === 'recent_sale') {
+            // Sort by the presence and recency of sold dates within the route's properties
+            filtered.sort((a, b) => {
+                const getLatestSale = (route) => {
+                    let latest = 0;
+                    route.properties.forEach(p => {
+                        if (p.sold_date) {
+                            try {
+                                const dt = new Date(p.sold_date).getTime();
+                                if (dt > latest) latest = dt;
+                            } catch(e){}
+                        }
+                    });
+                    return latest;
+                };
+                return getLatestSale(b) - getLatestSale(a);
+            });
+        }
         return filtered;
     }, [routes, sortBy, minScore]);
 
