@@ -152,7 +152,7 @@ export default function Home() {
         return saved ? JSON.parse(saved) : true;
     });
     const [mapSettings, setMapSettings] = useState(() => {
-        const saved = localStorage.getItem('fk_mapSettings_v2');
+        const saved = localStorage.getItem('fk_mapSettings_v3');
         return saved ? JSON.parse(saved) : {
             pinShape: 'circle',
             colorScheme: 'default',
@@ -162,7 +162,7 @@ export default function Home() {
             pinOpacity: 0.85,
             pinBorderWidth: 1,
             pinBorderColor: '#000',
-            showLabels: true,
+            showLabels: false,
             labelType: 'number',
             glowEffect: false,
             fillStyle: 'solid',
@@ -175,7 +175,7 @@ export default function Home() {
             localStorage.setItem('fk_showRouteDetails_v2', JSON.stringify(showRouteDetails));
             localStorage.setItem('fk_pinSize_v2', JSON.stringify(pinSize));
             localStorage.setItem('fk_showRouteLines_v2', JSON.stringify(showRouteLines));
-            localStorage.setItem('fk_mapSettings_v2', JSON.stringify(mapSettings));
+            localStorage.setItem('fk_mapSettings_v3', JSON.stringify(mapSettings));
         } catch (e) {
             // Ignore quota errors in preview if any
         }
@@ -1040,6 +1040,7 @@ export default function Home() {
                 style={{ height: '100%', width: '100%' }}
                 zoomControl={false}
                 attributionControl={false}
+                preferCanvas={true}
             >
                 <MapRefHandler mapRef={mapRef} />
                 <TileLayer
