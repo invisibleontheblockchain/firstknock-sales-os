@@ -459,12 +459,12 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave 
             )}
             
             <button onClick={onSelect} className={`w-full text-left ${rank <= 3 ? 'pl-8' : ''}`}>
-                <div className="flex items-center justify-between mb-2 gap-2">
-                    <span className="font-bold text-white flex items-center gap-2">
+                <div className="flex items-center justify-between mb-2 gap-2 min-w-0">
+                    <span className="font-bold text-white flex items-center gap-2 min-w-0 flex-1">
                         {rank > 3 && <span className="text-gray-500 text-xs">#{rank}</span>}
-                        {route.name}
+                        <span className="truncate">{route.name}</span>
                     </span>
-                    <Badge style={{
+                    <Badge className="shrink-0" style={{
                         background: route.competitivenessScore >= 150 ? '#22c55e' : 
                                    route.competitivenessScore >= 100 ? '#eab308' : '#666',
                         color: '#000'
@@ -548,7 +548,7 @@ function SavedRouteCard({ route, repColor, isActive, onSelect }) {
                         <span className="text-[10px] text-gray-500">{route.assigned_to_name}</span>
                     )}
                 </div>
-                <Badge style={{
+                <Badge className="shrink-0" style={{
                     background: route.status === 'COMPLETED' ? '#22c55e' :
                                route.status === 'IN_PROGRESS' ? '#3b82f6' : '#333',
                     color: '#fff'
