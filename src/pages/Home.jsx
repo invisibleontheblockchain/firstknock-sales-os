@@ -578,8 +578,10 @@ export default function Home() {
     // Process ALL properties with territory filter
     const effectiveProperties = useMemo(() => {
         const propsArray = Array.isArray(properties) ? properties : (properties?.items || []);
-        // Combine territory zips and generated zips to ensure user sees what they pull
         const territoryZips = [...(user?.territory_zip_codes || []), ...(user?.generated_zip_codes || [])];
+        const hasActivePolygon = !!(drawnPolygon && drawnPolygon.length > 2);
+        const hasExplicitZipFilter = !!(zipCodeFilter && zipCodeFilter.trim());
+        const applyTerritoryFilter = territoryZips.length > 0 && !hasActivePolygon && !hasExplicitZipFilter;
         
         return propsArray
             .filter(p => {
@@ -587,8 +589,8 @@ export default function Home() {
                 // Filter out Null Island (0,0) coordinates
                 if (Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001) return false;
                 
-                // Apply territory filter if user has zip codes configured
-                if (territoryZips.length > 0) {
+                // Apply territory filter only when appropriate (not when polygon/explicit zips are active)
+                if (applyTerritoryFilter) {
                     const propZip = String(p.zip_code || '').trim().slice(0, 5);
                     if (!territoryZips.includes(propZip)) return false;
                 }
