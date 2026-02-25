@@ -459,6 +459,20 @@ export default function RouteBuilderSettings({
                             <div className="space-y-2">
                                 {[
                                     {
+                                        name: '🏆 FirstKnock Optimized',
+                                        desc: 'The absolute best settings for route efficiency and lead quality based on our metrics.',
+                                        apply: () => {
+                                            setHousesPerRoute(60);
+                                            setMaxRouteDistance(5);
+                                            setStreetCooldownDays(14);
+                                            setMinScore(20);
+                                            setSoldDateFilter(null);
+                                            setSortBy('score');
+                                            setRouteConfig(prev => ({ ...prev, walkingPattern: 'street_sweep', minimizeTurns: true, use2Opt: true, returnToStart: true, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
+                                            toast.success("FirstKnock Optimized preset applied");
+                                        }
+                                    },
+                                    {
                                         name: '🏃 Speed Blitz',
                                         desc: 'Max doors in minimum time. Short routes, nearest-door pattern.',
                                         apply: () => {
