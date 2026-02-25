@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { 
     Navigation, Loader2, MapPin, RefreshCw, X, ChevronDown, ChevronUp,
     Zap, Route, Footprints, Clock, Shield, Flame, Target, Shuffle,
-    ArrowUpDown, GitBranch, ScanLine, Compass
+    ArrowUpDown, GitBranch, ScanLine, Compass, Pencil
 } from 'lucide-react';
 import { toast } from "sonner";
 
@@ -45,6 +45,7 @@ export default function RouteBuilderSettings({
     onClose,
     // Sync functions
     onForceSync, onClearArea,
+    onDraw, // New prop for enabling drawing mode
     // Data
     user
 }) {
@@ -118,7 +119,15 @@ export default function RouteBuilderSettings({
 
                         {/* Zip Code Filter */}
                         <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-gray-500 uppercase">Target Zip Codes</label>
+                            <div className="flex justify-between items-center">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase">Target Zip Codes</label>
+                                <button 
+                                    onClick={onDraw}
+                                    className="text-[10px] font-bold text-yellow-500 hover:text-yellow-400 flex items-center gap-1 bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/30"
+                                >
+                                    <Pencil className="w-3 h-3" /> Draw on Map
+                                </button>
+                            </div>
                             <input
                                 type="text"
                                 placeholder="e.g. 90210, 90001"

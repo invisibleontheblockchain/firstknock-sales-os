@@ -130,8 +130,7 @@ export default function Home() {
     const [mode, setModeRaw] = useState('generate'); // Default to generate mode
     const setMode = (newMode) => {
         setModeRaw(newMode);
-        // Always auto-open the settings panel when switching modes
-        setShowCompare(true);
+        // Logic moved to useEffect to be smarter about when to open
     };
     const [showDashboard, setShowDashboard] = useState(false);
     const [drawingMode, setDrawingMode] = useState(false);
@@ -617,14 +616,18 @@ export default function Home() {
             });
     }, [properties, logs, user?.territory_zip_codes]);
 
-    // Auto-open Route Builder when properties exist on initial load in generate mode
-    const hasAutoOpenedRef = useRef(false);
+    // Smart Auto-Open/Close for Generate Mode
     useEffect(() => {
-        if (!hasAutoOpenedRef.current && mode === 'generate' && effectiveProperties.length > 0 && !activeRoute && !showCompare) {
-            hasAutoOpenedRef.current = true;
-            setShowCompare(true);
+        if (mode === 'generate') {
+            // If we have data (and no active route), open the settings panel automatically
+            // But if we have NO data, ensure settings are closed so user sees the "Zero State" (TerritoryPrompt)
+            if (effectiveProperties.length > 0 && !activeRoute) {
+                setShowCompare(true);
+            } else if (effectiveProperties.length === 0) {
+                setShowCompare(false);
+            }
         }
-    }, [effectiveProperties.length, mode]);
+    }, [mode, effectiveProperties.length === 0]); // Dependency on "has properties" state change
 
     // Filter out properties that are already in saved routes for generation
     const availableProperties = useMemo(() => {
@@ -1797,6 +1800,10 @@ export default function Home() {
             {/* Route Builder Settings - GENERATE MODE */}
             {showCompare && mode === 'generate' && (
                 <RouteBuilderSettings
+                    onDraw={() => {
+                        setShowCompare(false);
+                        setDrawingMode(true);
+                    }}
                     housesPerRoute={housesPerRoute} setHousesPerRoute={setHousesPerRoute}
                     maxRouteDistance={maxRouteDistance} setMaxRouteDistance={setMaxRouteDistance}
                     streetCooldownDays={streetCooldownDays} setStreetCooldownDays={setStreetCooldownDays}
