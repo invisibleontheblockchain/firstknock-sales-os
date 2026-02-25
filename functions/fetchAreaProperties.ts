@@ -70,24 +70,24 @@ Deno.serve(async (req) => {
         const allProperties = [];
         let offset = 0;
         const limit = 500;
-        let hasMore = true;
         let requestCount = 0;
-        const maxRequests = Math.min(20, radius <= 5 ? 6 : radius <= 10 ? 10 : 14); // Scale with area (max ~10k props)
+        let reportedTotal = 0;
 
-        while (hasMore && requestCount < maxRequests) {
+        while (true) {
             const params = new URLSearchParams({
                 latitude: String(latitude),
                 longitude: String(longitude),
-                radius: String(radius), // in miles
+                radius: String(radius),
                 limit: String(limit),
                 offset: String(offset),
+                includeTotalCount: 'true',
             });
 
             const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
             console.log(`[FetchArea] Request ${requestCount + 1}: offset=${offset}`);
 
             const response = await fetch(url, {
-                headers: { 'accept': 'application/json', 'X-Api-Key': RENTCAST_API_KEY }
+                headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY },
             });
 
             if (!response.ok) {
@@ -100,18 +100,21 @@ Deno.serve(async (req) => {
                 break;
             }
 
+            const totalHeader = response.headers.get('X-Total-Count');
+            if (totalHeader) {
+                const n = parseInt(totalHeader, 10);
+                if (!isNaN(n)) reportedTotal = n;
+            }
+
             const data = await response.json();
             const batch = Array.isArray(data) ? data : [];
-            console.log(`[FetchArea] Got ${batch.length} properties`);
+            console.log(`[FetchArea] Got ${batch.length} properties (total so far: ${allProperties.length + batch.length}${reportedTotal ? ` / ${reportedTotal}` : ''})`);
 
             allProperties.push(...batch);
             requestCount++;
-
-            if (batch.length < limit) {
-                hasMore = false;
-            } else {
-                offset += limit;
-            }
+            if (batch.length < limit) break;
+            offset += limit;
+            if (requestCount >= 20) { console.warn('[FetchArea] Reached safety page cap (20).'); break; }
         }
 
         // Increment usage
@@ -251,7 +254,7 @@ Deno.serve(async (req) => {
             status: 'imported',
             count: successCount,
             total_found: allProperties.length,
-            total_returned_by_api: allProperties.length,
+            reported_total: reportedTotal,
             in_polygon_count: filteredProperties.length,
             recent_sales_12mo: recentSales12moCount,
             mapped_count: mapped.length,

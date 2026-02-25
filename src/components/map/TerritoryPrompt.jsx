@@ -123,27 +123,22 @@ export default function TerritoryPrompt({
                      <Button
                          disabled={pulling}
                          onClick={async () => {
-                             // Calculate bounding box and center
-                             let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
-                             drawnPolygon.forEach(p => {
-                                 if (p.lat < minLat) minLat = p.lat;
-                                 if (p.lat > maxLat) maxLat = p.lat;
-                                 if (p.lng < minLng) minLng = p.lng;
-                                 if (p.lng > maxLng) maxLng = p.lng;
-                             });
-                             const centerLat = (minLat + maxLat) / 2;
-                             const centerLng = (minLng + maxLng) / 2;
-                             
-                             // Calculate rough radius in miles
-                             const R = 3959; // Earth's radius in miles
-                             const dLat = (maxLat - minLat) * Math.PI / 180;
-                             const dLng = (maxLng - minLng) * Math.PI / 180;
-                             const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                                     Math.cos(minLat * Math.PI / 180) * Math.cos(maxLat * Math.PI / 180) * 
-                                     Math.sin(dLng/2) * Math.sin(dLng/2);
-                             const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-                             const distance = R * c;
-                             const radius = Math.max(0.5, distance / 2); // At least 0.5 miles, up to diagonal/2
+                             // Compute centroid and coverage radius
+                             const centerLat = drawnPolygon.reduce((s,p)=>s+p.lat,0) / drawnPolygon.length;
+                             const centerLng = drawnPolygon.reduce((s,p)=>s+p.lng,0) / drawnPolygon.length;
+
+                             const R = 3959; // miles
+                             const toRad = (v) => v * Math.PI / 180;
+                             let maxDist = 0;
+                             for (const p of drawnPolygon) {
+                                 const dLat = toRad(p.lat - centerLat);
+                                 const dLng = toRad(p.lng - centerLng);
+                                 const a = Math.sin(dLat/2)**2 + Math.cos(toRad(centerLat)) * Math.cos(toRad(p.lat)) * Math.sin(dLng/2)**2;
+                                 const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                                 const d = R * c;
+                                 if (d > maxDist) maxDist = d;
+                             }
+                             const radius = Math.max(0.5, maxDist * 1.05); // small buffer
                              const areaSqMiles = Math.PI * (radius * radius);
 
                              const maxRadius = 20; // 40 miles across cap
