@@ -443,7 +443,7 @@ function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRou
 function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave }) {
     return (
         <div
-            className="p-4 rounded-xl border transition-all relative overflow-hidden"
+            className="p-4 rounded-xl border transition-all relative overflow-hidden w-full box-border"
             style={{
                 background: isActive ? `${BRAND.gold}15` : BRAND.charcoal,
                 borderColor: isActive ? BRAND.gold : '#333'
@@ -459,7 +459,7 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave 
             )}
             
             <button onClick={onSelect} className={`w-full text-left ${rank <= 3 ? 'pl-8' : ''}`}>
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-2 gap-2">
                     <span className="font-bold text-white flex items-center gap-2">
                         {rank > 3 && <span className="text-gray-500 text-xs">#{rank}</span>}
                         {route.name}
@@ -472,7 +472,7 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave 
                         Score: {route.competitivenessScore}
                     </Badge>
                 </div>
-                <div className="flex gap-3 text-xs text-gray-500">
+                <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
                     <span>{route.houseCount} doors</span>
                     <span>{route.streetCount || '?'} streets</span>
                     <span>{route.totalDistance} mi</span>
@@ -480,7 +480,7 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave 
             </button>
 
             {/* Assignment Actions */}
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex gap-2 min-w-0">
                 <Button
                     onClick={(e) => {
                         e.stopPropagation();
