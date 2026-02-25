@@ -48,7 +48,7 @@ export default function RouteBuilderSettings({
     // Data
     user
 }) {
-    const [expandedSection, setExpandedSection] = useState('core');
+    const [expandedSection, setExpandedSection] = useState('presets');
 
     const toggleSection = (id) => {
         setExpandedSection(expandedSection === id ? null : id);
