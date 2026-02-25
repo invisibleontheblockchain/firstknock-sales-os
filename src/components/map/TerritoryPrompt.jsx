@@ -25,6 +25,14 @@ export default function TerritoryPrompt({
     const [pulling, setPulling] = useState(false);
     const [pullProgress, setPullProgress] = useState('');
 
+    // Auto-open Route Builder Settings when there are already properties loaded
+    const hasProperties = user?.territory_zip_codes?.length > 0;
+    React.useEffect(() => {
+        if (mode === 'generate' && hasProperties && !activeRoute && !routesGenerating && !showCompare && !showRoutePanel && !drawingMode && (!drawnPolygon || drawnPolygon.length === 0)) {
+            setShowCompare(true);
+        }
+    }, [mode, hasProperties, activeRoute, routesGenerating, showCompare, showRoutePanel, drawingMode, drawnPolygon]);
+
     if (mode !== 'generate' || activeRoute || routesGenerating || showCompare || showRoutePanel) return null;
 
     return (
