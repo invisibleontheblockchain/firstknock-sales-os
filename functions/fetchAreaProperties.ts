@@ -39,6 +39,13 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Latitude, longitude, and radius are required' }, { status: 400 });
         }
 
+        if (radius > 15) {
+            return Response.json({ 
+                error: 'Area too large', 
+                message: `The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max 30 miles across) to prevent system overload.` 
+            }, { status: 400 });
+        }
+
         const isPaid = user.subscription_status === 'active' || user.subscription_status === 'trialing';
         const pullLimit = isPaid ? PAID_PULL_LIMIT : FREE_PULL_LIMIT;
         
@@ -201,6 +208,18 @@ Deno.serve(async (req) => {
         }
 
         console.log(`[FetchArea] Done! Imported ${successCount}/${mapped.length}`);
+
+        // Update user's territory zip codes so the frontend loads them
+        const uniqueZips = [...new Set(mapped.map(p => p.zip_code))];
+        if (uniqueZips.length > 0) {
+            const currentZips = user.territory_zip_codes || [];
+            const newZips = [...new Set([...currentZips, ...uniqueZips])];
+            try {
+                await base44.auth.updateMe({ territory_zip_codes: newZips });
+            } catch (e) {
+                console.error(`[FetchArea] Failed to update user zips:`, e.message);
+            }
+        }
 
         return Response.json({
             status: 'imported',

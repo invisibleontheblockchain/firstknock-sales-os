@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { base44 } from '@/api/base44Client';
 import { Map as MapIcon, Pencil, Layers, X, Check, Trash2 } from 'lucide-react';
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function TerritoryPrompt({ 
     mode, 
@@ -20,6 +21,8 @@ export default function TerritoryPrompt({
     user,
     setZipCodeFilter
 }) {
+    const queryClient = useQueryClient();
+
     if (mode !== 'generate' || activeRoute || routesGenerating || showCompare || showRoutePanel) return null;
 
     return (
@@ -119,6 +122,11 @@ export default function TerritoryPrompt({
                              const distance = R * c;
                              const radius = Math.max(0.5, distance / 2); // At least 0.5 miles, up to diagonal/2
 
+                             if (radius > 15) {
+                                 toast.error(`The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory.`);
+                                 return;
+                             }
+
                              const toastId = toast.loading("Pulling national data for this area...");
                              try {
                                  const res = await base44.functions.invoke('fetchAreaProperties', { 
@@ -131,7 +139,9 @@ export default function TerritoryPrompt({
                                      toast.error(res.data.message || res.data.error, { id: toastId });
                                  } else {
                                      toast.success(res.data.message || `Data pulled successfully!`, { id: toastId });
-                                     setTimeout(() => window.location.reload(), 1500);
+                                     // Invalidate queries instead of reloading the page
+                                     queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
+                                     queryClient.invalidateQueries({ queryKey: ['user'] });
                                  }
                              } catch (e) {
                                  const msg = e.response?.data?.message || e.message;
