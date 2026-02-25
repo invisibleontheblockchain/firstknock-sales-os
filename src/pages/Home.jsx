@@ -1059,6 +1059,7 @@ export default function Home() {
         
         setTimeout(() => {
             generateRoutes();
+            setDrawnPolygon(null); // Clear polygon after generation so map isn't locked to it forever
         }, 2000);
     }, [queryClient, generateRoutes]);
 
