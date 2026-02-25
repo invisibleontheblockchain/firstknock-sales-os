@@ -542,10 +542,10 @@ export default function RouteBuilderSettings({
                                 ].map(preset => (
                                     <button
                                     key={preset.name}
-                                    onClick={() => { preset.apply(); setActivePreset(preset.id); }}
-                                    className={`w-full p-3 rounded-lg border transition-all text-left group ${activePreset === preset.id ? 'bg-yellow-500/10 border-yellow-500' : 'bg-[#1A1A1A] border-gray-800 hover:border-yellow-500/50 hover:bg-yellow-500/5'}`}
+                                    onClick={() => { preset.apply(); setActivePreset(preset.name); }}
+                                    className={`w-full p-3 rounded-lg border transition-all text-left group ${activePreset === preset.name ? 'bg-yellow-500/10 border-yellow-500' : 'bg-[#1A1A1A] border-gray-800 hover:border-yellow-500/50 hover:bg-yellow-500/5'}`}
                                     >
-                                        <span className={`text-sm font-bold transition-colors ${activePreset === preset.id ? 'text-yellow-500' : 'text-white group-hover:text-yellow-500'}`}>{preset.name}</span>
+                                        <span className={`text-sm font-bold transition-colors ${activePreset === preset.name ? 'text-yellow-500' : 'text-white group-hover:text-yellow-500'}`}>{preset.name}</span>
                                         <p className="text-[10px] text-gray-500 mt-1 leading-tight">{preset.desc}</p>
                                     </button>
                                 ))}

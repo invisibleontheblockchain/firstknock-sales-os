@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
 import { 
     Navigation, X, BarChart3, User, Shield, MapPin, 
     ArrowRight, Flame, Plus, Clock, CheckCircle2, 
@@ -202,7 +203,7 @@ export default function RouteCommandPanel({
                                                             }
                                                         }}
                                                         size="sm"
-                                                        className="bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-[10px] h-8 px-3 ml-2"
+                                                        className="bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-[10px] h-8 px-3 ml-2" title="Combine all into one optimized mega route"
                                                     >
                                                         MERGE TO ONE
                                                     </Button>
