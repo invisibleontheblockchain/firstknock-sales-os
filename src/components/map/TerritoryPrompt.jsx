@@ -146,15 +146,10 @@ export default function TerritoryPrompt({
                              const radius = Math.max(0.5, distance / 2); // At least 0.5 miles, up to diagonal/2
                              const areaSqMiles = Math.PI * (radius * radius);
 
-                             const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                             const maxRadius = isPaid ? 5 : 1;
+                             const maxRadius = 20; // 40 miles across cap
 
                              if (radius > maxRadius) {
-                                 if (!isPaid && radius <= 5) {
-                                     toast.error(`Free accounts are limited to drawing areas up to 2 miles across. Please subscribe to Pro to draw areas up to 10 miles across.`);
-                                 } else {
-                                     toast.error(`The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max ${maxRadius * 2} miles across) to avoid excessive API usage.`);
-                                 }
+                                 toast.error(`The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max ${maxRadius * 2} miles across).`);
                                  return;
                              }
 

@@ -40,14 +40,12 @@ Deno.serve(async (req) => {
         }
 
         const isPaid = user.subscription_status === 'active' || user.subscription_status === 'trialing';
-        const maxRadius = isPaid ? 5 : 1;
+        const maxRadius = 20; // 40 miles across cap
 
         if (radius > maxRadius) {
             return Response.json({ 
                 error: 'Area too large', 
-                message: !isPaid && radius <= 5 
-                    ? `Free accounts are limited to drawing areas up to 2 miles across. Please subscribe to Pro to draw larger areas.`
-                    : `The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max ${maxRadius * 2} miles across) to prevent system overload and excess API usage.` 
+                message: `The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max ${maxRadius * 2} miles across).` 
             }, { status: 400 });
         }
 
