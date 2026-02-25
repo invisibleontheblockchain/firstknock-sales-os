@@ -142,6 +142,9 @@ export default function TerritoryPrompt({
                                      // Invalidate queries instead of reloading the page
                                      queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
                                      queryClient.invalidateQueries({ queryKey: ['user'] });
+                                     
+                                     // Automatically open settings so they can configure before generating routes
+                                     setShowCompare(true);
                                  }
                              } catch (e) {
                                  const msg = e.response?.data?.message || e.message;
