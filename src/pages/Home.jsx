@@ -1153,19 +1153,7 @@ export default function Home() {
                     })}
                 </LayerGroup>
 
-                {/* --- GENERATE MODE: Existing Routes (Dimmed) --- */}
-                <LayerGroup>
-                    {mode === 'generate' && !activeRoute && zoomLevel >= 8 && hydratedSavedRoutes.map((route) => {
-                        return route.properties.filter(p => p && p.lat && p.lng).map((p, idx) => (
-                            <CircleMarker
-                                key={`saved-dim-${route.id}-${idx}`}
-                                center={[p.lat, p.lng]}
-                                radius={2}
-                                pathOptions={{ fillColor: '#333', fillOpacity: 0.2, color: '#333', weight: 0 }}
-                            />
-                        ));
-                    })}
-                </LayerGroup>
+                {/* GENERATE MODE: Existing Routes (Dimmed) layer removed to reduce map clutter */}
 
                 {/* --- GENERATE MODE: New Routes --- */}
                 <LayerGroup>
@@ -1417,54 +1405,49 @@ export default function Home() {
 
             {/* Top Stats Bar */}
             <div className="absolute top-4 left-4 right-4 z-[1000] flex flex-col gap-2 pointer-events-none">
-                <div className="flex flex-nowrap items-center gap-2 overflow-x-auto no-scrollbar pb-1">
+                <div className="flex flex-nowrap items-center justify-between gap-2 w-full pb-1">
                     {/* DASHBOARD & SETTINGS TOGGLES */}
                     <div className="pointer-events-auto shrink-0 flex gap-2">
                         <Button
                             onClick={() => setShowDashboard(true)}
                             size="icon"
-                            className="bg-black/90 hover:bg-black border border-gray-800 shadow-xl h-9 w-9 sm:h-[42px] sm:w-[42px] rounded-lg"
+                            className="bg-black/80 hover:bg-black backdrop-blur-md border border-gray-800 shadow-xl h-10 w-10 sm:h-11 sm:w-11 rounded-xl"
                         >
-                            <LayoutDashboard className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500" />
+                            <LayoutDashboard className="w-5 h-5 text-yellow-500" />
                         </Button>
                         <Button
                             onClick={() => setShowMapSettings(true)}
                             size="icon"
-                            className="bg-black/90 hover:bg-black border border-gray-800 shadow-xl h-9 w-9 sm:h-[42px] sm:w-[42px] rounded-lg"
+                            className="bg-black/80 hover:bg-black backdrop-blur-md border border-gray-800 shadow-xl h-10 w-10 sm:h-11 sm:w-11 rounded-xl"
                         >
-                            <Settings className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+                            <Settings className="w-5 h-5 text-gray-400" />
                         </Button>
                     </div>
 
-                    {/* MODE TOGGLE - Compact Single Row */}
-                    <div className="pointer-events-auto bg-black/90 backdrop-blur rounded-lg p-1 border border-gray-800 flex gap-1 shadow-xl shrink-0 mx-auto">
+                    {/* MODE TOGGLE - Centered */}
+                    <div className="pointer-events-auto bg-black/80 backdrop-blur-md rounded-xl p-1 border border-gray-800 flex gap-1 shadow-xl shrink-0">
                         <button
                             onClick={() => setMode('analyze')}
-                            className={`px-2 py-1.5 sm:px-3 sm:py-2 rounded-md text-[9px] sm:text-[10px] font-bold transition-all whitespace-nowrap ${mode === 'analyze' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                            className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'analyze' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
                         >
-                            DISPATCH MAP
+                            DISPATCH
                         </button>
                         <button
                             onClick={() => setMode('generate')}
-                            className={`px-2 py-1.5 sm:px-3 sm:py-2 rounded-md text-[9px] sm:text-[10px] font-bold transition-all whitespace-nowrap ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                            className={`px-3 py-2 sm:px-4 sm:py-2.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-400 hover:text-white'}`}
                         >
-                            ROUTE BUILDER
+                            BUILDER
                         </button>
                     </div>
 
                     {/* FILTER / SETTINGS BUTTON */}
-                    <div className="pointer-events-auto shrink-0 ml-auto">
+                    <div className="pointer-events-auto shrink-0">
                         <Button
                             onClick={() => setShowCompare(true)}
                             size="icon"
-                            className="rounded-lg h-9 w-9 sm:h-10 sm:w-10 font-bold tracking-wide shadow-lg"
-                            style={{ 
-                                background: mode === 'generate' ? BRAND.charcoal : BRAND.charcoal, 
-                                color: BRAND.gold, 
-                                border: `1px solid ${BRAND.gold}40` 
-                            }}
+                            className="bg-black/80 hover:bg-black backdrop-blur-md rounded-xl h-10 w-10 sm:h-11 sm:w-11 font-bold shadow-xl border border-yellow-500/40"
                         >
-                            {mode === 'generate' ? <Settings className="w-4 h-4 sm:w-5 sm:h-5" /> : <Filter className="w-4 h-4 sm:w-5 sm:h-5" />}
+                            {mode === 'generate' ? <Settings className="w-5 h-5 text-yellow-500" /> : <Filter className="w-5 h-5 text-yellow-500" />}
                         </Button>
                     </div>
                 </div>
@@ -1557,7 +1540,7 @@ export default function Home() {
             )}
 
             {/* Right side floating buttons - GPS + Locate */}
-            <div className="absolute bottom-24 right-4 z-[1000] pointer-events-auto flex flex-col gap-3 items-end">
+            <div className="absolute bottom-24 right-4 md:bottom-6 md:right-4 z-[1000] pointer-events-auto flex flex-col gap-3 items-end">
                 {/* Center on Me Button (Prominent) */}
                 <Button
                     onClick={(e) => {
@@ -1615,14 +1598,14 @@ export default function Home() {
             </div>
 
             {/* Bottom Action Bar */}
-            <div className="absolute bottom-6 left-4 right-20 z-[1000] pointer-events-none">
-                <div className="pointer-events-auto flex items-center gap-2 flex-wrap">
+            <div className="absolute bottom-6 left-0 right-0 md:left-4 md:right-auto z-[1000] pointer-events-none flex justify-center md:justify-start px-4">
+                <div className="pointer-events-auto flex items-center justify-center gap-2 bg-black/50 backdrop-blur-lg p-2 rounded-full border border-white/10 shadow-2xl">
                     {/* GENERATE button */}
                     {mode === 'generate' && !activeRoute && (
                         <Button
                             onClick={() => setShowCompare(true)}
                             disabled={routesGenerating}
-                            className="rounded-full h-10 px-4 text-[10px] sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap"
+                            className="rounded-full h-10 px-5 text-xs sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap"
                             style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
                         >
                             {routesGenerating ? (
@@ -1635,17 +1618,17 @@ export default function Home() {
 
                     <Button
                         onClick={() => setShowRoutePanel(true)}
-                        className="rounded-full h-10 px-4 text-[10px] sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap"
+                        className="rounded-full h-10 px-5 text-xs sm:text-sm font-bold tracking-wide shadow-lg transition-all duration-300 transform active:scale-95 whitespace-nowrap"
                         style={{ 
                             background: mode === 'generate' && !activeRoute ? 'rgba(31, 31, 31, 0.9)' : 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', 
                             color: mode === 'generate' && !activeRoute ? BRAND.gold : BRAND.voidBlack,
                             border: mode === 'generate' && !activeRoute ? `1px solid ${BRAND.gold}` : 'none'
                         }}
                     >
-                        <List className="w-4 h-4 mr-1" />
+                        <List className="w-4 h-4 mr-2" />
                         ROUTES
                         {!routesGenerating && (hydratedSavedRoutes.length > 0 || routes.length > 0) && (
-                            <Badge className="ml-1.5 h-5 min-w-[20px] px-1" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
+                            <Badge className="ml-2 h-5 min-w-[20px] px-1.5" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
                                 {hydratedSavedRoutes.length > 0 ? hydratedSavedRoutes.length : routes.length}
                             </Badge>
                         )}
@@ -1654,12 +1637,11 @@ export default function Home() {
                     {activeRoute && (
                         <Button
                             onClick={() => setShowChecklist(true)}
-                            className="rounded-full h-10 px-4 text-[10px] sm:text-sm font-bold tracking-wide shadow-2xl backdrop-blur-md transition-all duration-300 transform active:scale-95 whitespace-nowrap"
+                            className="rounded-full h-10 px-5 text-xs sm:text-sm font-bold tracking-wide shadow-lg backdrop-blur-md transition-all duration-300 transform active:scale-95 whitespace-nowrap"
                             style={{ background: 'rgba(31, 31, 31, 0.9)', color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}
                         >
-                            <List className="w-4 h-4 mr-1" />
+                            <List className="w-4 h-4 mr-2" />
                             CHECKLIST
-                            <ChevronRight className="w-3 h-3 ml-1" />
                         </Button>
                     )}
                 </div>
