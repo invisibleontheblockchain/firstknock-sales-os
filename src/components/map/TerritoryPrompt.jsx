@@ -122,7 +122,7 @@ export default function TerritoryPrompt({
                              const distance = R * c;
                              const radius = Math.max(0.5, distance / 2); // At least 0.5 miles, up to diagonal/2
 
-                             if (radius > 15) {
+                             if (radius > 20) {
                                  toast.error(`The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory.`);
                                  return;
                              }

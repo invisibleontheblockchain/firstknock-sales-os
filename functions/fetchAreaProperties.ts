@@ -39,10 +39,10 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Latitude, longitude, and radius are required' }, { status: 400 });
         }
 
-        if (radius > 15) {
+        if (radius > 20) {
             return Response.json({ 
                 error: 'Area too large', 
-                message: `The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max 30 miles across) to prevent system overload.` 
+                message: `The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max 40 miles across) to prevent system overload.` 
             }, { status: 400 });
         }
 
