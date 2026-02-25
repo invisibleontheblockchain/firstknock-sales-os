@@ -144,8 +144,8 @@ export default function TerritoryPrompt({
                                      queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
                                      queryClient.invalidateQueries({ queryKey: ['user'] });
                                      
-                                     // Provide a secondary hint without blocking the map view
-                                     toast("Click GENERATE at the bottom when you're ready to build routes.", { duration: 5000, icon: "⚡" });
+                                     // Automatically open settings so they can configure before generating routes
+                                     setShowCompare(true);
                                      
                                      // Remove the polygon so the map view is clear, but keep it in draft so they can edit it later if they want
                                      setDrawnPolygon(null);
