@@ -22,9 +22,25 @@ export default function TerritorySetupWizard({ user, onComplete }) {
 
     const handleSyncTerritory = async () => {
         if (!zipInput || zipInput.length < 5) { toast.error("Enter a valid zip code"); return; }
+        
+        // Front-end limit check (also enforced on backend)
+        const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+        const zipLimit = isPaid ? (user?.total_seats || 1) * 10 : 3;
+        const zips = zipInput.split(',').map(z => z.trim()).filter(z => /^\d{5}$/.test(z));
+        
+        // Filter out zips that are already generated so we don't count them against the limit in the check
+        const generatedZips = user?.generated_zip_codes || [];
+        const newZips = zips.filter(z => !generatedZips.includes(z));
+        
+        if (generatedZips.length + newZips.length > zipLimit) {
+            toast.error(isPaid 
+                ? `Limit reached (${zipLimit} zips). Add seats for more.` 
+                : `Free limit is 3 zips. Upgrade for more.`);
+            return;
+        }
+
         setLoading(true);
         try {
-            const zips = zipInput.split(',').map(z => z.trim()).filter(z => /^\d{5}$/.test(z));
             await base44.auth.updateMe({ working_area: zipInput, territory_zip_codes: zips });
             let allProps = [];
             let hitLimit = false;
