@@ -619,6 +619,15 @@ export default function Home() {
             });
     }, [properties, logs, user?.territory_zip_codes]);
 
+    // Auto-open Route Builder when properties exist on initial load in generate mode
+    const hasAutoOpenedRef = useRef(false);
+    useEffect(() => {
+        if (!hasAutoOpenedRef.current && mode === 'generate' && effectiveProperties.length > 0 && !activeRoute && !showCompare) {
+            hasAutoOpenedRef.current = true;
+            setShowCompare(true);
+        }
+    }, [effectiveProperties.length, mode]);
+
     // Filter out properties that are already in saved routes for generation
     const availableProperties = useMemo(() => {
         return effectiveProperties.filter(p => !assignedHashes.has(p.address_hash));
