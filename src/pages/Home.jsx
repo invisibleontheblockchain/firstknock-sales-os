@@ -127,7 +127,14 @@ export default function Home() {
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
-    const [mode, setMode] = useState('generate'); // Default to generate mode
+    const [mode, setModeRaw] = useState('generate'); // Default to generate mode
+    const setMode = (newMode) => {
+        setModeRaw(newMode);
+        // Auto-open Route Builder Settings when switching to generate mode with existing properties
+        if (newMode === 'generate') {
+            setShowCompare(true);
+        }
+    };
     const [showDashboard, setShowDashboard] = useState(false);
     const [drawingMode, setDrawingMode] = useState(false);
     const [drawnPolygon, setDrawnPolygon] = useState(null);
