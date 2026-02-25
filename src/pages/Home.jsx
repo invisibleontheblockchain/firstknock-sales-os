@@ -830,6 +830,8 @@ export default function Home() {
                 workingSet = workingSet.filter(p => isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon));
             }
 
+            const beforeSoldDateFilter = workingSet.length;
+
             // Apply Sold Date Filter (STRICT: If filter active, MUST have sold_date within range)
             if (soldDateFilter !== null) {
                 workingSet = workingSet.filter(p => {
@@ -840,6 +842,13 @@ export default function Home() {
                         return isAfter(date, cutoff);
                     } catch (e) { return false; }
                 });
+            }
+
+            if (beforeSoldDateFilter > 0 && workingSet.length === 0) {
+                 alert(`None of the properties in this area were sold within the past ${soldDateFilter} months. Try changing the "Recently Sold" filter in Route Settings to "Any Time".`);
+                 setRoutesGenerating(false);
+                 setShowCompare(true); // Open settings so they can change it
+                 return;
             }
 
             // Apply Property Type Filter
