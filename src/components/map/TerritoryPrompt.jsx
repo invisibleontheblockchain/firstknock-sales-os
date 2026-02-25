@@ -19,7 +19,8 @@ export default function TerritoryPrompt({
     draftPolygon,
     setDraftPolygon,
     user,
-    setZipCodeFilter
+    setZipCodeFilter,
+    onPullComplete
 }) {
     const queryClient = useQueryClient();
     const [pulling, setPulling] = useState(false);
@@ -171,15 +172,18 @@ export default function TerritoryPrompt({
                                      toast.error(res.data.message || res.data.error, { id: toastId });
                                  } else {
                                      toast.success(res.data.message || `Properties loaded onto the map!`, { id: toastId });
-                                     // Invalidate queries instead of reloading the page
-                                     queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
-                                     queryClient.invalidateQueries({ queryKey: ['user'] });
                                      
-                                     // Automatically open Route Builder Settings so user can configure
-                                     setShowCompare(true);
-                                     
-                                     // Remove the polygon so the map view is clear
-                                     setDrawnPolygon(null);
+                                     if (onPullComplete) {
+                                         // Pass control back to parent for auto-generation
+                                         onPullComplete();
+                                         // Don't clear polygon here - let generation use it
+                                     } else {
+                                         // Fallback behavior if no callback provided
+                                         queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
+                                         queryClient.invalidateQueries({ queryKey: ['user'] });
+                                         setShowCompare(true);
+                                         setDrawnPolygon(null);
+                                     }
                                  }
                              } catch (e) {
                                  const msg = e.response?.data?.message || e.message;
