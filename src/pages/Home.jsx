@@ -75,13 +75,13 @@ const BRAND = {
 
 // Default Status colors matching Design System
 const DEFAULT_STATUS_COLORS = {
-    ELIGIBLE: '#8888A0', // Gray (not knocked)
+    ELIGIBLE: '#404040', // Dark Gray (not knocked)
     SOLD: '#00F5A0',     // Neon Green (interested/closed)
     HARD_NO: '#FF6B6B',  // Soft Red (not interested)
     CALLBACK: '#FFD93D', // Gold (follow-ups)
-    NO_ANSWER: '#8888A0',// Gray
+    NO_ANSWER: '#404040',// Dark Gray
     QUALIFIED: '#00F5A0',// Neon Green
-    OTHER: '#8888A0'     // Gray
+    OTHER: '#404040'     // Dark Gray
 };
 
 const COLOR_SCHEME_MAP = {
@@ -1317,17 +1317,19 @@ export default function Home() {
                                 } catch(e){}
                             }
                             
+                            const isUnvisited = ['ELIGIBLE', 'NO_ANSWER', 'OTHER'].includes(p.effective_status);
+                            
                             return (
                                 <CircleMarker
                                     key={p.address_hash || p.id}
                                     center={[p.lat, p.lng]}
-                                    radius={isRecentlySold ? pinSize + 4 : pinSize}
+                                    radius={isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize)}
                                     eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
                                     pathOptions={{
                                         fillColor: isRecentlySold ? '#FF00FF' : (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER),
-                                        fillOpacity: isRecentlySold ? 1 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity),
-                                        color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER) : (mapSettings.pinBorderColor || '#000')),
-                                        weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : mapSettings.pinBorderWidth)
+                                        fillOpacity: isRecentlySold ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
+                                        color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER) : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
+                                        weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth))
                                     }}
                                 >
                                     {mapSettings.showLabels && (

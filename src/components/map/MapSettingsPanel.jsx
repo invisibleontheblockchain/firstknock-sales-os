@@ -22,7 +22,7 @@ const REP_COLOR_OPTIONS = [
 ];
 
 const COLOR_SCHEMES = [
-    { id: 'default', label: 'Default', colors: { ELIGIBLE: '#6b7280', SOLD: '#22c55e', HARD_NO: '#8B5CF6', CALLBACK: '#eab308', NO_ANSWER: '#6b7280' } },
+    { id: 'default', label: 'Default', colors: { ELIGIBLE: '#404040', SOLD: '#22c55e', HARD_NO: '#8B5CF6', CALLBACK: '#eab308', NO_ANSWER: '#404040' } },
     { id: 'neon', label: 'Neon', colors: { ELIGIBLE: '#00fff7', SOLD: '#39ff14', HARD_NO: '#ff073a', CALLBACK: '#ffed00', NO_ANSWER: '#00fff7' } },
     { id: 'pastel', label: 'Pastel', colors: { ELIGIBLE: '#a8b8c8', SOLD: '#77dd77', HARD_NO: '#b39ddb', CALLBACK: '#fff176', NO_ANSWER: '#a8b8c8' } },
     { id: 'heatmap', label: 'Heat', colors: { ELIGIBLE: '#1e3a5f', SOLD: '#ff4500', HARD_NO: '#8b0000', CALLBACK: '#ff8c00', NO_ANSWER: '#1e3a5f' } },
@@ -166,7 +166,7 @@ export default function MapSettingsPanel({
 
     const STATUS_FILTERS = [
         { id: 'all', label: 'ALL', color: '#E5E5E5' },
-        { id: 'eligible', label: 'NOT VISITED', color: '#6b7280' },
+        { id: 'eligible', label: 'NOT VISITED', color: '#404040' },
         { id: 'sold', label: 'SOLD', color: '#22c55e' },
         { id: 'rejected', label: 'UNDECIDED', color: '#8B5CF6' },
     ];
