@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
         const limit = 500;
         let hasMore = true;
         let requestCount = 0;
-        const maxRequests = 10; // Up to 5000 properties
+        const maxRequests = 4; // Up to 2000 properties to prevent excess API usage
 
         while (hasMore && requestCount < maxRequests) {
             const params = new URLSearchParams({
