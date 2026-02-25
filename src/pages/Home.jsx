@@ -1595,34 +1595,47 @@ export default function Home() {
                 <Button
                     onClick={(e) => {
                         e.stopPropagation();
-                        if (navigator.geolocation) {
-                            const toastId = toast.loading("Locating...");
+                        if (!navigator.geolocation) {
+                            toast.error("Geolocation is not supported by this browser.");
+                            return;
+                        }
+                        const toastId = toast.loading("Getting your location...");
+                        
+                        // Try high accuracy first, fall back to low accuracy
+                        const tryLocate = (highAccuracy) => {
                             navigator.geolocation.getCurrentPosition(
                                 (position) => {
-                                    const { latitude, longitude } = position.coords;
+                                    const { latitude, longitude, accuracy } = position.coords;
+                                    console.log(`[CenterOnMe] Got location: ${latitude}, ${longitude} (accuracy: ${accuracy}m, highAccuracy: ${highAccuracy})`);
                                     setUserLocation({ lat: latitude, lng: longitude });
                                     if (mapRef.current) {
                                         try {
-                                            if (mapRef.current._mapPane) {
-                                                mapRef.current.setView([latitude, longitude], 18);
-                                            }
-                                        } catch (err) {}
+                                            mapRef.current.setView([latitude, longitude], 18);
+                                        } catch (err) {
+                                            console.warn('[CenterOnMe] Map setView error:', err);
+                                        }
                                     }
-                                    toast.success("Location found", { id: toastId });
+                                    toast.success(`Location found (±${Math.round(accuracy)}m)`, { id: toastId });
                                 },
                                 (error) => {
-                                    toast.error("Could not get location. Check permissions.", { id: toastId });
+                                    console.error(`[CenterOnMe] Geolocation error (highAccuracy=${highAccuracy}):`, error.code, error.message);
+                                    if (highAccuracy) {
+                                        // Retry without high accuracy
+                                        console.log('[CenterOnMe] Retrying with low accuracy...');
+                                        tryLocate(false);
+                                    } else {
+                                        const messages = {
+                                            1: "Location permission denied. Please enable location in your browser/device settings.",
+                                            2: "Location unavailable. Make sure GPS/Location Services are turned on.",
+                                            3: "Location request timed out. Try again or move to an area with better signal."
+                                        };
+                                        toast.error(messages[error.code] || `Location error: ${error.message}`, { id: toastId, duration: 5000 });
+                                    }
                                 },
-                                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                                { enableHighAccuracy: highAccuracy, timeout: highAccuracy ? 8000 : 15000, maximumAge: 30000 }
                             );
-                        } else if (mapRef.current) {
-                            try { 
-                                if (mapRef.current._mapPane) {
-                                    mapRef.current.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true }); 
-                                }
-                            } catch(err){}
-                            toast.success("Locating...");
-                        }
+                        };
+                        tryLocate(true);
                     }}
                     className="rounded-full h-10 px-4 shadow-2xl backdrop-blur-md font-bold text-xs tracking-wide flex items-center gap-2 border border-blue-500/50 hover:bg-[#333]"
                     style={{ background: 'rgba(31, 31, 31, 0.9)', color: '#3b82f6' }}
