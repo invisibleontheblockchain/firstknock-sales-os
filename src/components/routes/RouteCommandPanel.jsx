@@ -185,6 +185,27 @@ export default function RouteCommandPanel({
                                                     >
                                                         SAVE ALL
                                                     </Button>
+                                                    <Button
+                                                        onClick={() => {
+                                                            const baseRoutes = (filteredRoutes && filteredRoutes.length > 0) ? filteredRoutes : generatedRoutes;
+                                                            const seen = new Set();
+                                                            const allProps = [];
+                                                            baseRoutes.forEach(r => (r.properties || []).forEach(p => {
+                                                                const key = p.address_hash || p.id;
+                                                                if (key && !seen.has(key)) { seen.add(key); allProps.push(p); }
+                                                            }));
+                                                            if (allProps.length === 0) return;
+                                                            const merged = generateOptimizedRoutes(allProps, allProps.length, null, [], { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest' });
+                                                            if (merged && merged.length > 0) {
+                                                                const big = { ...merged[0], id: 'route_merged', name: 'All-in-One Route' };
+                                                                onSelectRoute(big);
+                                                            }
+                                                        }}
+                                                        size="sm"
+                                                        className="bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-[10px] h-8 px-3 ml-2"
+                                                    >
+                                                        MERGE TO ONE
+                                                    </Button>
                                                 </div>
 
                                                 <div className="grid grid-cols-4 gap-2">
