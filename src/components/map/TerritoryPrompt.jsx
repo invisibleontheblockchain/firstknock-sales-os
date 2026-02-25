@@ -181,17 +181,15 @@ export default function TerritoryPrompt({
                                      toast.success(d.message || `Properties loaded onto the map!${note}`, { id: toastId });
 
                                      if (onPullComplete) {
-                                         // Pass control back to parent for auto-generation
+                                         // Notify parent and open the Route Builder
                                          onPullComplete();
-                                         // Open the Generate tab/screen
-                                         setShowCompare(false);
-                                         try { window.dispatchEvent(new CustomEvent('fk:open-generate')); } catch {}
+                                         setShowCompare(true);
                                          // Don't clear polygon here - let generation use it
                                      } else {
                                          // Fallback behavior if no callback provided
                                          queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
                                          queryClient.invalidateQueries({ queryKey: ['user'] });
-                                         setShowCompare(false);
+                                         setShowCompare(true);
                                          setDrawnPolygon(null);
                                      }
                                  }

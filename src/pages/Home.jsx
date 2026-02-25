@@ -882,8 +882,8 @@ export default function Home() {
                 return;
             }
 
-            // 4. UI UPDATES (Close Panel & Move Map)
-            setShowCompare(false);
+            // 4. UI UPDATES (Keep Builder available & Move Map)
+            setShowCompare(true);
             
             if (mapRef.current && workingSet.length > 0) {
                 const bounds = L.latLngBounds(workingSet.map(p => [p.lat, p.lng]));
@@ -1047,31 +1047,22 @@ export default function Home() {
 
     // Callback for when area pull is complete (from TerritoryPrompt)
     const handleAreaPullComplete = useCallback(async () => {
-        setShowCompare(false); // Ensure the settings panel doesn't pop up
-        toast.loading("Processing data & generating routes...", { id: "auto-gen-toast", duration: 15000 });
+        // Open the Route Builder (Generate tab) after a successful area fetch
+        setMode('generate');
+        setShowCompare(true);
 
+        // Refresh data in the background so the builder has latest properties
         try {
-            // Wait for data to actually finish fetching from server
             await queryClient.invalidateQueries({ queryKey: ['user'] });
             await queryClient.refetchQueries({ queryKey: ['masterProperties'] });
         } catch (e) {
             console.error("Error refreshing data:", e);
         }
-        
-        // Queue auto-generate to run after the current render cycle finishes
-        setPendingAutoGenerate(true);
     }, [queryClient]);
 
     // Run auto generation when data is fresh
     useEffect(() => {
-        if (pendingAutoGenerate) {
-            setPendingAutoGenerate(false);
-            toast.dismiss("auto-gen-toast");
-            // Tiny timeout to let React completely flush the new masterProperties state into the generateRoutes closure
-            setTimeout(() => {
-                if (generateRoutesRef.current) generateRoutesRef.current();
-            }, 300);
-        }
+        // Auto-generation disabled here to prioritize opening the Builder panel after fetch
     }, [pendingAutoGenerate]);
 
     // Dynamic status colors based on selected color scheme
