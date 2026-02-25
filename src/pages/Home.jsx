@@ -1568,17 +1568,31 @@ export default function Home() {
                 <Button
                     onClick={(e) => {
                         e.stopPropagation();
-                        setGpsTracking(true); // Always enable highlighting when centering
-                        if (mapRef.current) {
+                        if (navigator.geolocation) {
+                            const toastId = toast.loading("Locating...");
+                            navigator.geolocation.getCurrentPosition(
+                                (position) => {
+                                    const { latitude, longitude } = position.coords;
+                                    if (mapRef.current) {
+                                        try {
+                                            if (mapRef.current._mapPane) {
+                                                mapRef.current.setView([latitude, longitude], 18);
+                                            }
+                                        } catch (err) {}
+                                    }
+                                    toast.success("Location found", { id: toastId });
+                                },
+                                (error) => {
+                                    toast.error("Could not get location. Check permissions.", { id: toastId });
+                                },
+                                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                            );
+                        } else if (mapRef.current) {
                             try { 
                                 if (mapRef.current._mapPane) {
-                                    mapRef.current.locate({ 
-                                        setView: true, 
-                                        maxZoom: 18,
-                                        enableHighAccuracy: true 
-                                    }); 
+                                    mapRef.current.locate({ setView: true, maxZoom: 18, enableHighAccuracy: true }); 
                                 }
-                            } catch(e){}
+                            } catch(err){}
                             toast.success("Locating...");
                         }
                     }}
