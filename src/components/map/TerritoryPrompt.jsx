@@ -176,6 +176,8 @@ export default function TerritoryPrompt({
                                      if (onPullComplete) {
                                          // Pass control back to parent for auto-generation
                                          onPullComplete();
+                                         // Ensure the Generate screen opens
+                                         setShowCompare(true);
                                          // Don't clear polygon here - let generation use it
                                      } else {
                                          // Fallback behavior if no callback provided
@@ -198,7 +200,7 @@ export default function TerritoryPrompt({
                          {pulling ? (
                              <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Pulling...</>
                          ) : (
-                             'Pull Data & Generate Routes'
+                             'Fetch data'
                          )}
                      </Button>
                      <button 
