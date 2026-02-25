@@ -407,10 +407,14 @@ export default function Home() {
     });
     const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
 
-    // Effect for checking setup wizard status - Moved after savedRoutes declaration
+    // Auto-open Route Builder when properties exist on initial load in generate mode
+    const hasAutoOpenedRef = useRef(false);
     useEffect(() => {
-        // Disabled auto-wizard to let users jump straight to the map and drawing tools
-    }, [user, savedRoutes.length]);
+        if (!hasAutoOpenedRef.current && mode === 'generate' && effectiveProperties.length > 0 && !activeRoute && !showCompare) {
+            hasAutoOpenedRef.current = true;
+            setShowCompare(true);
+        }
+    }, [effectiveProperties.length, mode]);
 
     // Identify properties already assigned to saved routes
     const assignedHashes = useMemo(() => {
