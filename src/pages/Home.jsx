@@ -407,15 +407,6 @@ export default function Home() {
     });
     const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
 
-    // Auto-open Route Builder when properties exist on initial load in generate mode
-    const hasAutoOpenedRef = useRef(false);
-    useEffect(() => {
-        if (!hasAutoOpenedRef.current && mode === 'generate' && effectiveProperties.length > 0 && !activeRoute && !showCompare) {
-            hasAutoOpenedRef.current = true;
-            setShowCompare(true);
-        }
-    }, [effectiveProperties.length, mode]);
-
     // Identify properties already assigned to saved routes
     const assignedHashes = useMemo(() => {
         const hashes = new Set();
