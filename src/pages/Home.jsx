@@ -1548,7 +1548,10 @@ export default function Home() {
                     onClick={(e) => {
                         e.stopPropagation();
                         if (mapRef.current) {
-                            try { if (mapRef.current._mapPane) mapRef.current.locate({ setView: true, maxZoom: 16 }); } catch(e){}
+                            try { if (mapRef.current._mapPane) mapRef.current.locate({ setView: true, maxZoom: 19 }); } catch(e){}
+                            if (drawingMode) {
+                                setGpsTracking(true);
+                            }
                             toast.success("Centered on your location");
                         }
                     }}
