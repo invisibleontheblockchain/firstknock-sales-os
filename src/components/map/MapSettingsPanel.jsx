@@ -73,7 +73,8 @@ export default function MapSettingsPanel({
     showRouteLines = false, setShowRouteLines,
     // New deep settings
     mapSettings, setMapSettings,
-    soldDateFilter, setSoldDateFilter
+    soldDateFilter, setSoldDateFilter,
+    highlightRecentlySold, setHighlightRecentlySold
 }) {
     // Local buffering state for settings
     const [localMapSettings, setLocalMapSettings] = useState(mapSettings || {});
@@ -85,6 +86,7 @@ export default function MapSettingsPanel({
     const [localNavigationApp, setLocalNavigationApp] = useState(navigationApp);
     const [localQuickFilter, setLocalQuickFilter] = useState(quickFilter);
     const [localSoldDateFilter, setLocalSoldDateFilter] = useState(soldDateFilter);
+    const [localHighlightRecentlySold, setLocalHighlightRecentlySold] = useState(highlightRecentlySold);
 
     const update = (key, value) => {
         setLocalMapSettings(prev => ({ ...prev, [key]: value }));
@@ -99,6 +101,7 @@ export default function MapSettingsPanel({
         if (setMapTheme) setMapTheme(localMapTheme);
         if (setNavigationApp) setNavigationApp(localNavigationApp);
         // Filters are live, but save ensuring sync
+        if (setHighlightRecentlySold) setHighlightRecentlySold(localHighlightRecentlySold);
         onClose();
     };
 
@@ -114,6 +117,10 @@ export default function MapSettingsPanel({
     const setLiveShowAllProperties = (val) => {
         setLocalShowAllProperties(val);
         if (setShowAllProperties) setShowAllProperties(val);
+    };
+    const setLiveHighlightRecentlySold = (val) => {
+        setLocalHighlightRecentlySold(val);
+        if (setHighlightRecentlySold) setHighlightRecentlySold(val);
     };
 
     const handleReset = () => {
@@ -139,6 +146,7 @@ export default function MapSettingsPanel({
         setLocalNavigationApp('apple');
         setLocalQuickFilter('all');
         setLocalSoldDateFilter(null);
+        setLocalHighlightRecentlySold(false);
     };
 
     const settings = localMapSettings;
@@ -387,6 +395,15 @@ export default function MapSettingsPanel({
                                         <p className="text-[9px] text-gray-500">Show pins not in any route</p>
                                     </div>
                                     <Switch checked={localShowAllProperties} onCheckedChange={setLiveShowAllProperties} />
+                                </div>
+                            )}
+                            {setHighlightRecentlySold && (
+                                <div className="flex items-center justify-between py-2 border-b border-gray-800 mb-3">
+                                    <div>
+                                        <span className="text-xs font-bold text-gray-300">Highlight Recently Sold</span>
+                                        <p className="text-[9px] text-gray-500">Highlights homes sold in the last 30 days (Magenta)</p>
+                                    </div>
+                                    <Switch checked={localHighlightRecentlySold} onCheckedChange={setLiveHighlightRecentlySold} />
                                 </div>
                             )}
                             <div className="grid grid-cols-2 gap-2">

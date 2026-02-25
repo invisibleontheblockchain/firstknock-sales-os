@@ -124,6 +124,7 @@ export default function Home() {
     const [zipCodeFilter, setZipCodeFilter] = useState(''); // Comma separated string
     const [analyzeZipFilter, setAnalyzeZipFilter] = useState('all'); // Filter for Analyze mode
     const [soldDateFilter, setSoldDateFilter] = useState(null); // null = All Time, number = months
+    const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
     const [mode, setMode] = useState('generate'); // Default to generate mode
@@ -1320,28 +1321,37 @@ export default function Home() {
                             if (quickFilter === 'rejected') return p.effective_status === 'HARD_NO';
                             return true;
                         })
-                        .map(p => (
-                            <CircleMarker
-                                key={p.address_hash || p.id}
-                                center={[p.lat, p.lng]}
-                                radius={pinSize}
-                                eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
-                                pathOptions={{
-                                    fillColor: STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER,
-                                    fillOpacity: (mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity,
-                                    color: mapSettings.fillStyle === 'outline' ? (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER) : (mapSettings.pinBorderColor || '#000'),
-                                    weight: mapSettings.fillStyle === 'outline' ? 2 : mapSettings.pinBorderWidth
-                                }}
-                            >
-                                {mapSettings.showLabels && (
-                                    <Tooltip permanent direction="center" className="route-number-tooltip">
-                                        <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '8px', textShadow: '0 0 3px #000' }}>
-                                            {mapSettings.labelType === 'number' ? p.house_number : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0,1) : (p.street_name || '').split(' ')[0]}
-                                        </span>
-                                    </Tooltip>
-                                )}
-                            </CircleMarker>
-                        ))}
+                        .map(p => {
+                            let isRecentlySold = false;
+                            if (highlightRecentlySold && p.sold_date) {
+                                try {
+                                    isRecentlySold = isAfter(parseISO(p.sold_date), subMonths(new Date(), 1));
+                                } catch(e){}
+                            }
+                            
+                            return (
+                                <CircleMarker
+                                    key={p.address_hash || p.id}
+                                    center={[p.lat, p.lng]}
+                                    radius={isRecentlySold ? pinSize + 4 : pinSize}
+                                    eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
+                                    pathOptions={{
+                                        fillColor: isRecentlySold ? '#FF00FF' : (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER),
+                                        fillOpacity: isRecentlySold ? 1 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity),
+                                        color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER) : (mapSettings.pinBorderColor || '#000')),
+                                        weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : mapSettings.pinBorderWidth)
+                                    }}
+                                >
+                                    {mapSettings.showLabels && (
+                                        <Tooltip permanent direction="center" className="route-number-tooltip">
+                                            <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '8px', textShadow: '0 0 3px #000' }}>
+                                                {mapSettings.labelType === 'number' ? p.house_number : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0,1) : (p.street_name || '').split(' ')[0]}
+                                            </span>
+                                        </Tooltip>
+                                    )}
+                                </CircleMarker>
+                            );
+                        })}
                 </LayerGroup>
 
                 {/* GPS TRACKER LAYERS */}
@@ -1910,6 +1920,8 @@ export default function Home() {
                                       setMapSettings={setMapSettings}
                                       soldDateFilter={soldDateFilter}
                                       setSoldDateFilter={setSoldDateFilter}
+                                      highlightRecentlySold={highlightRecentlySold}
+                                      setHighlightRecentlySold={setHighlightRecentlySold}
                                   />
                               )}
 
