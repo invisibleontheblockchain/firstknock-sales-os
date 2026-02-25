@@ -12,12 +12,18 @@ export function LocationMarker({ autoCenter }) {
                 try { if (map._mapPane) map.setView(e.latlng, 15); } catch (e) {}
             }
         };
-        try { map.locate({ setView: autoCenter, maxZoom: 16 }).on("locationfound", handleLocationFound); } catch (e) {}
+        try { 
+            // Using watch: true ensures the marker stays updated and visible
+            map.locate({ setView: autoCenter, maxZoom: 16, watch: true, enableHighAccuracy: true })
+               .on("locationfound", handleLocationFound); 
+        } catch (e) {}
+        
         return () => {
             map.off("locationfound", handleLocationFound);
             try { map.stopLocate(); } catch (e) {}
         };
     }, [map, autoCenter]);
+    
     return position ? (
         <CircleMarker center={position} radius={8} pathOptions={{ fillColor: '#3b82f6', fillOpacity: 1, color: '#ffffff', weight: 3 }}>
             <Tooltip permanent direction="right" offset={[10, 0]} className="route-number-tooltip">
