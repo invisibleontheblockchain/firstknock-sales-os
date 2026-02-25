@@ -1097,7 +1097,7 @@ export default function Home() {
                         attribution=""
                     />
                 )}
-                <LocationMarker autoCenter={availableProperties.length === 0} />
+                <LocationMarker autoCenter={availableProperties.length === 0} userLocation={userLocation} />
                 <DarkRoomManager />
                 <MapController 
                     fitBounds={fitBounds} 
