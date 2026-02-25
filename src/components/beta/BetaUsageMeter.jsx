@@ -52,9 +52,14 @@ export default function BetaUsageMeter({ className = '', showUpgrade = true }) {
 
             {generatedZips.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-2">
-                    {generatedZips.map(z => (
+                    {generatedZips.slice(0, 5).map(z => (
                         <span key={z} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gray-800 text-gray-400">{z}</span>
                     ))}
+                    {generatedZips.length > 5 && (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-gray-800 text-gray-500">
+                            +{generatedZips.length - 5} more
+                        </span>
+                    )}
                 </div>
             )}
 

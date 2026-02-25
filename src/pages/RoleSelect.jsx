@@ -176,7 +176,7 @@ export default function RoleSelect() {
             <div className="absolute top-0 left-0 w-full h-96 bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none" />
             <div className="absolute bottom-0 right-0 w-64 h-64 bg-blue-500/5 blur-3xl rounded-full pointer-events-none" />
 
-            <div className="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full z-10 py-8">
+            <div className="flex-1 flex flex-col items-center justify-start md:justify-center pt-12 pb-8 md:py-8 max-w-md mx-auto w-full z-10 min-h-min">
                 
                 {/* Brand Header */}
                 <motion.div 
