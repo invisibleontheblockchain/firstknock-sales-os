@@ -153,7 +153,7 @@ export default function TerritoryPrompt({
                          }}
                          className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] h-6 px-2 py-0 rounded-md ml-2"
                      >
-                         Pull Data
+                         Pull Data & Generate Routes
                      </Button>
                      <button 
                          onClick={() => {
