@@ -95,8 +95,27 @@ export default function TerritoryPrompt({
                 </div>
             )}
 
+            {/* Pull Progress Bar */}
+            {pulling && (
+                <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[2000] w-11/12 max-w-sm animate-in fade-in">
+                    <div className="bg-black/90 backdrop-blur-md border border-blue-500/50 rounded-xl p-4 shadow-2xl">
+                        <div className="flex items-center gap-3 mb-3">
+                            <Loader2 className="w-5 h-5 text-blue-400 animate-spin shrink-0" />
+                            <div>
+                                <p className="text-xs font-bold text-white">Fetching Property Data</p>
+                                <p className="text-[10px] text-gray-400">{pullProgress}</p>
+                            </div>
+                        </div>
+                        <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full animate-pulse" style={{ width: '70%', transition: 'width 2s ease' }} />
+                        </div>
+                        <p className="text-[9px] text-gray-500 mt-2 text-center">This may take 10-30 seconds depending on area size</p>
+                    </div>
+                </div>
+            )}
+
             {/* Drawn Polygon Controls */}
-            {!drawingMode && drawnPolygon && drawnPolygon.length > 2 && (
+            {!drawingMode && !pulling && drawnPolygon && drawnPolygon.length > 2 && (
                  <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[1000] bg-black/90 backdrop-blur-md border border-gray-800 rounded-full px-4 py-2 shadow-2xl flex items-center gap-3 animate-in fade-in">
                      <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
                      <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
