@@ -620,11 +620,8 @@ export default function Home() {
     // Smart Auto-Open/Close for Generate Mode
     useEffect(() => {
         if (mode === 'generate') {
-            // If we have data (and no active route), open the settings panel automatically
-            // But if we have NO data, ensure settings are closed so user sees the "Zero State" (TerritoryPrompt)
-            if (effectiveProperties.length > 0 && !activeRoute) {
-                setShowCompare(true);
-            } else if (effectiveProperties.length === 0) {
+            // If we have NO data, ensure settings are closed so user sees the "Zero State" (TerritoryPrompt)
+            if (effectiveProperties.length === 0) {
                 setShowCompare(false);
             }
         }
