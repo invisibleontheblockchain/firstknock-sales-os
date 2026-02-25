@@ -1,9 +1,28 @@
-import React, { useState, useEffect } from 'react';
-import { useMapEvents, Polyline, Polygon, CircleMarker } from 'react-leaflet';
+import React, { useState, useEffect, useRef } from 'react';
+import { useMapEvents, useMap, Polygon, CircleMarker } from 'react-leaflet';
+import L from 'leaflet';
 
 export default function MapDrawTool({ active, onPointsUpdate, drawnPolygon }) {
     const [points, setPoints] = useState([]);
-    const [mousePos, setMousePos] = useState(null);
+    const map = useMap();
+    const cursorLineRef = useRef(null);
+
+    // Change cursor and disable map click default behavior when active
+    useEffect(() => {
+        const container = map.getContainer();
+        if (active) {
+            container.style.cursor = 'crosshair';
+            // Disable double click zoom while drawing
+            map.doubleClickZoom.disable();
+        } else {
+            container.style.cursor = '';
+            map.doubleClickZoom.enable();
+        }
+        return () => {
+            container.style.cursor = '';
+            map.doubleClickZoom.enable();
+        }
+    }, [active, map]);
 
     useMapEvents({
         click(e) {
@@ -15,17 +34,67 @@ export default function MapDrawTool({ active, onPointsUpdate, drawnPolygon }) {
             }
         },
         mousemove(e) {
-            if (!active) return;
-            setMousePos(e.latlng);
+            if (!active || points.length === 0) return;
+            
+            // Draw a temporary line to the cursor natively so it's perfectly smooth and 0 lag
+            let linePoints = [...points, e.latlng];
+            if (points.length >= 2) {
+                // close the visual shape back to the start
+                linePoints.push(points[0]);
+            }
+            
+            if (!cursorLineRef.current) {
+                cursorLineRef.current = L.polyline(linePoints, { 
+                    color: '#FFD93D', 
+                    dashArray: '5,5', 
+                    weight: 2,
+                    interactive: false
+                }).addTo(map);
+            } else {
+                cursorLineRef.current.setLatLngs(linePoints);
+            }
         }
     });
 
     useEffect(() => {
         if (!active) {
             setPoints([]);
-            setMousePos(null);
+            if (cursorLineRef.current) {
+                cursorLineRef.current.remove();
+                cursorLineRef.current = null;
+            }
         }
     }, [active]);
+
+    // Keep native polyline updated if points array changes (e.g. on click)
+    useEffect(() => {
+        if (active && cursorLineRef.current && points.length > 0) {
+            const currentLinePoints = cursorLineRef.current.getLatLngs();
+            if (currentLinePoints.length > 0) {
+                // The last element before potentially closing is the mouse pos
+                const mousePoint = currentLinePoints.length > points.length ? 
+                    currentLinePoints[points.length] : currentLinePoints[currentLinePoints.length - 1];
+                
+                let linePoints = [...points, mousePoint];
+                if (points.length >= 2) {
+                    linePoints.push(points[0]);
+                }
+                cursorLineRef.current.setLatLngs(linePoints);
+            }
+        } else if (active && points.length === 0 && cursorLineRef.current) {
+            cursorLineRef.current.remove();
+            cursorLineRef.current = null;
+        }
+    }, [points, active]);
+
+    useEffect(() => {
+        return () => {
+            if (cursorLineRef.current) {
+                cursorLineRef.current.remove();
+                cursorLineRef.current = null;
+            }
+        };
+    }, []);
 
     const displayPoints = active ? points : (drawnPolygon || []);
 
@@ -33,12 +102,6 @@ export default function MapDrawTool({ active, onPointsUpdate, drawnPolygon }) {
 
     return (
         <>
-            {active && displayPoints.length > 0 && mousePos && (
-                <Polyline 
-                    positions={[...displayPoints, mousePos]} 
-                    pathOptions={{ color: '#FFD93D', dashArray: '5,5', weight: 2 }} 
-                />
-            )}
             {displayPoints.length > 2 && (
                 <Polygon 
                     positions={displayPoints} 
