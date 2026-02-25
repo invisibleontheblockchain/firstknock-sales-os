@@ -803,7 +803,7 @@ export default function Home() {
             let targetZips = [];
             if (zipCodeFilter && zipCodeFilter.trim()) {
                 targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
-            } else if (user?.territory_zip_codes?.length > 0) {
+            } else if (!(drawnPolygon && drawnPolygon.length > 2) && user?.territory_zip_codes?.length > 0) {
                 targetZips = user.territory_zip_codes;
             }
 
