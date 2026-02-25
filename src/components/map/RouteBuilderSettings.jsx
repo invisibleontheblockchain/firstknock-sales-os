@@ -16,7 +16,7 @@ const BRAND = {
     offWhite: '#E5E5E5'
 };
 
-const ROUTE_SIZE_OPTIONS = [15, 25, 50, 75, 100, 150];
+const ROUTE_SIZE_OPTIONS = [20, 50, 100, 200, 500, 1000];
 
 export default function RouteBuilderSettings({
     // State values
@@ -161,7 +161,7 @@ export default function RouteBuilderSettings({
                                 <input
                                     type="number"
                                     value={housesPerRoute}
-                                    onChange={(e) => setHousesPerRoute(Math.max(5, Math.min(500, parseInt(e.target.value) || 50)))}
+                                    onChange={(e) => setHousesPerRoute(Math.max(5, Math.min(1000, parseInt(e.target.value) || 50)))}
                                     className="w-16 px-2 py-1 rounded text-xs bg-[#1F1F1F] text-white border border-[#333] text-center"
                                 />
                             </div>
@@ -366,6 +366,27 @@ export default function RouteBuilderSettings({
                                     onChange={(e) => setRouteConfig(prev => ({ ...prev, maxYearBuilt: e.target.value ? parseInt(e.target.value) : null }))}
                                     className="flex-1 px-2 py-2 rounded-lg text-xs bg-[#1F1F1F] text-white border border-[#333] text-center"
                                 />
+                            </div>
+                        </div>
+
+                        {/* Sold Date Filter */}
+                        <div className="space-y-2 mb-4">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase">Recently Sold (Months)</label>
+                            <div className="flex gap-1.5">
+                                {[
+                                    { label: 'Any Time', val: null },
+                                    { label: 'Past Month', val: 1 },
+                                    { label: 'Past 3 Mo', val: 3 },
+                                    { label: 'Past 6 Mo', val: 6 },
+                                    { label: 'Past Year', val: 12 },
+                                ].map(opt => (
+                                    <button key={opt.label} onClick={() => setSoldDateFilter(opt.val)}
+                                        className={`flex-1 py-1.5 rounded text-[9px] font-bold transition-all border border-gray-800 ${
+                                            soldDateFilter === opt.val
+                                                ? 'bg-yellow-500 text-black border-yellow-500' : 'bg-[#1A1A1A] text-gray-500 hover:text-white hover:border-gray-600'
+                                        }`}
+                                    >{opt.label}</button>
+                                ))}
                             </div>
                         </div>
 

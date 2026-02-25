@@ -9,6 +9,7 @@ export default function TerritoryPrompt({
     activeRoute, 
     routesGenerating, 
     showCompare, 
+    setShowCompare,
     showRoutePanel,
     drawingMode,
     setDrawingMode,
@@ -42,14 +43,11 @@ export default function TerritoryPrompt({
                             Draw Custom Area
                         </Button>
                         <Button 
-                            onClick={() => {
-                                setZipCodeFilter(user?.territory_zip_codes?.join(', ') || '');
-                                toast.success("Using Main Territory");
-                            }} 
+                            onClick={() => setShowCompare(true)} 
                             className="bg-black/60 hover:bg-black text-white font-bold h-12 text-base w-full rounded-full border border-gray-700 backdrop-blur transition-colors"
                         >
-                            <Layers className="w-5 h-5 mr-2 text-yellow-500" />
-                            Use Main Territory
+                            <MapIcon className="w-5 h-5 mr-2 text-yellow-500" />
+                            Search by Zip Code
                         </Button>
                     </div>
                 </div>
