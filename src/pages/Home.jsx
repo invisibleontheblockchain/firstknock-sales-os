@@ -322,17 +322,7 @@ export default function Home() {
         }
     };
 
-    // Dark Room removed — no-op component
     const DarkRoomManager = () => null;
-
-    // Connection check disabled by default - Dark Room is opt-in
-    // useEffect(() => {
-    //     darkRoom.testConnection().then(result => {
-    //         if (result.connected) {
-    //             setDarkRoomCount(result.totalProperties);
-    //         }
-    //     });
-    // }, []);
 
     // Fetch Properties - support both user-specific and fallback for mobile auth
     const { data: userProperties = [], isLoading: propsLoading } = useQuery({
@@ -1014,13 +1004,6 @@ export default function Home() {
             
             if (availableProperties[0] && availableProperties[0].lat) {
                 setMapCenter([availableProperties[0].lat, availableProperties[0].lng]);
-            } else if (user?.working_area) {
-                // Geocode working area if needed (simplified: assume it's set or we just rely on properties)
-                // If working_area is zip, we might need to fetch a coord. 
-                // For now, let's try to search properties in that area first which usually sets availableProperties.
-                
-                // If we have no properties but have a working area zip, we might want to fetch/geocode it.
-                // Using a fallback for now or the first property found.
             }
         };
         updateCenter();
