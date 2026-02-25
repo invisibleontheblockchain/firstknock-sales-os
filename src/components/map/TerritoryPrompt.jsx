@@ -121,13 +121,14 @@ export default function TerritoryPrompt({
                              const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
                              const distance = R * c;
                              const radius = Math.max(0.5, distance / 2); // At least 0.5 miles, up to diagonal/2
+                             const areaSqMiles = Math.PI * (radius * radius);
 
                              if (radius > 5) {
                                  toast.error(`The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max 10 miles across) to avoid excessive API usage.`);
                                  return;
                              }
 
-                             const toastId = toast.loading("Pulling national data and preparing route settings...");
+                             const toastId = toast.loading(`Pulling data for approx ${areaSqMiles.toFixed(1)} sq miles...`);
                              try {
                                  const res = await base44.functions.invoke('fetchAreaProperties', { 
                                      latitude: centerLat, 
@@ -138,13 +139,16 @@ export default function TerritoryPrompt({
                                  if (res.data?.error) {
                                      toast.error(res.data.message || res.data.error, { id: toastId });
                                  } else {
-                                     toast.success(res.data.message || `Data pulled successfully!`, { id: toastId });
+                                     toast.success(res.data.message || `Properties loaded onto the map!`, { id: toastId });
                                      // Invalidate queries instead of reloading the page
                                      queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
                                      queryClient.invalidateQueries({ queryKey: ['user'] });
                                      
-                                     // Automatically open settings so they can configure before generating routes
-                                     setShowCompare(true);
+                                     // Provide a secondary hint without blocking the map view
+                                     toast("Click GENERATE at the bottom when you're ready to build routes.", { duration: 5000, icon: "⚡" });
+                                     
+                                     // Remove the polygon so the map view is clear, but keep it in draft so they can edit it later if they want
+                                     setDrawnPolygon(null);
                                  }
                              } catch (e) {
                                  const msg = e.response?.data?.message || e.message;
