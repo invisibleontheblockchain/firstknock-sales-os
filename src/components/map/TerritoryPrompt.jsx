@@ -33,7 +33,7 @@ export default function TerritoryPrompt({
                     <h2 className="text-3xl sm:text-4xl font-extrabold text-white drop-shadow-lg text-center tracking-tight" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.9)' }}>
                         Plan Today's Territory
                     </h2>
-                    <p className="text-gray-400 text-sm font-medium mb-2 text-center max-w-xs">Draw a custom area or use your pre-configured territory to build optimized routes.</p>
+                    <p className="text-gray-400 text-sm font-medium mb-2 text-center max-w-xs">Draw a custom area or search by zip code to build optimized routes.</p>
                     <div className="flex flex-col gap-3 w-full max-w-xs">
                         <Button 
                             onClick={() => setDrawingMode(true)} 
