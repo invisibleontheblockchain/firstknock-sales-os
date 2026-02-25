@@ -72,14 +72,13 @@ Deno.serve(async (req) => {
         const limit = 500;
         let hasMore = true;
         let requestCount = 0;
-        const maxRequests = 4; // Up to 2000 properties to prevent excess API usage
+        const maxRequests = Math.min(20, radius <= 5 ? 6 : radius <= 10 ? 10 : 14); // Scale with area (max ~10k props)
 
         while (hasMore && requestCount < maxRequests) {
             const params = new URLSearchParams({
                 latitude: String(latitude),
                 longitude: String(longitude),
                 radius: String(radius), // in miles
-                propertyType: 'Single Family',
                 limit: String(limit),
                 offset: String(offset),
             });
@@ -127,9 +126,11 @@ Deno.serve(async (req) => {
                 status: 'empty',
                 count: 0,
                 total_found: 0,
+                total_returned_by_api: 0,
                 in_polygon_count: 0,
                 recent_sales_12mo: 0,
                 mapped_count: 0,
+                dropped_no_address: 0,
                 message: `No properties found in this area.`
             });
         }
@@ -152,6 +153,7 @@ Deno.serve(async (req) => {
             }
             return acc;
         }, 0);
+        const droppedNoAddressCount = filteredProperties.filter(p => !(p.addressLine1 || p.formattedAddress) || !p.latitude || !p.longitude).length;
 
         // We need to figure out which ones we already have. 
         // For an area, it's easier to fetch existing ones inside a bounding box, but for simplicity, we'll just try to insert and ignore duplicates.
@@ -160,11 +162,12 @@ Deno.serve(async (req) => {
 
         // Map to schema
         const mapped = filteredProperties
-            .filter(p => p.latitude && p.longitude && p.addressLine1)
+            .filter(p => p.latitude && p.longitude && (p.addressLine1 || p.formattedAddress))
             .map(p => {
-                const addressMatch = (p.addressLine1 || "").match(/^(\d+)\s+(.*)$/);
+                const addressLine = p.addressLine1 || (p.formattedAddress ? p.formattedAddress.split(',')[0] : "");
+                const addressMatch = (addressLine).match(/^(\d+)\s+(.*)$/);
                 const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
-                const street_name = addressMatch ? addressMatch[2] : (p.addressLine1 || "Unknown");
+                const street_name = addressMatch ? addressMatch[2] : (addressLine || "Unknown");
                 let original_status = 'ELIGIBLE';
                 if (p.lastSaleDate) {
                     const saleDate = new Date(p.lastSaleDate);
@@ -195,9 +198,11 @@ Deno.serve(async (req) => {
                 status: 'empty',
                 count: 0,
                 total_found: allProperties.length,
+                total_returned_by_api: allProperties.length,
                 in_polygon_count: filteredProperties.length,
                 recent_sales_12mo: recentSales12moCount,
                 mapped_count: 0,
+                dropped_no_address: droppedNoAddressCount,
                 message: `Properties found but none matched criteria inside polygon.`
             });
         }
@@ -246,9 +251,11 @@ Deno.serve(async (req) => {
             status: 'imported',
             count: successCount,
             total_found: allProperties.length,
+            total_returned_by_api: allProperties.length,
             in_polygon_count: filteredProperties.length,
             recent_sales_12mo: recentSales12moCount,
             mapped_count: mapped.length,
+            dropped_no_address: droppedNoAddressCount,
             message: `Imported ${successCount} new properties in area.`
         });
 
