@@ -101,84 +101,7 @@ const LINE_DASH_MAP = {
 
 const ROUTE_COLORS = ['#FFD700', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#f97316', '#a855f7'];
 
-function LocationMarker() {
-    const [position, setPosition] = useState(null);
-    const map = useMap();
-    useEffect(() => {
-        const handleLocationFound = (e) => setPosition(e.latlng);
-        map.locate().on("locationfound", handleLocationFound);
-        return () => {
-            map.off("locationfound", handleLocationFound);
-            try { map.stopLocate(); } catch (e) {}
-        };
-    }, [map]);
-    return position ? (
-        <Circle center={position} radius={15} pathOptions={{ fillColor: BRAND.gold, fillOpacity: 0.3, color: BRAND.gold, weight: 2 }} />
-    ) : null;
-}
-
-// Component to capture map instance for external control
-function MapRefHandler({ mapRef }) {
-    const map = useMap();
-    useEffect(() => {
-        if (mapRef) mapRef.current = map;
-    }, [map, mapRef]);
-    return null;
-}
-
-function MapController({ fitBounds, onZoomChange, onMoveEnd }) {
-    const map = useMap();
-    
-    // Track zoom & move
-    useEffect(() => {
-        if (!map) return;
-        
-        const handleZoom = () => {
-            setTimeout(() => {
-                try {
-                    if (map && map.getZoom) onZoomChange(map.getZoom());
-                } catch (e) { /* Map destroyed */ }
-            }, 0);
-        };
-        const handleMove = () => {
-            setTimeout(() => {
-                try {
-                    if (map && map.getBounds) onMoveEnd(map.getBounds());
-                } catch (e) { /* Map destroyed */ }
-            }, 0);
-        };
-        
-        map.on('zoomend', handleZoom);
-        map.on('moveend', handleMove);
-        
-        return () => {
-            try {
-                map.off('zoomend', handleZoom);
-                map.off('moveend', handleMove);
-            } catch (e) { /* Map already destroyed */ }
-        };
-    }, [map, onZoomChange, onMoveEnd]);
-
-    // Use a ref to prevent aggressive re-fitting on data updates
-    const lastBoundsRef = useRef(null);
-
-    useEffect(() => {
-        if (fitBounds?.length > 0) {
-            try {
-                // Only fit bounds if they have significantly changed (e.g. new route selected)
-                // or if it's the very first load
-                const bounds = L.latLngBounds(fitBounds);
-                const boundsKey = JSON.stringify(fitBounds.slice(0, 1)); // Simple check on first point to detect route switch
-
-                if (bounds.isValid() && lastBoundsRef.current !== boundsKey) {
-                    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17, animate: false });
-                    lastBoundsRef.current = boundsKey;
-                }
-            } catch (e) { }
-        }
-    }, [fitBounds, map]);
-    return null;
-}
+import { LocationMarker, MapRefHandler, MapController } from '../components/map/MapHelpers';
 
 
 
@@ -1139,7 +1062,7 @@ export default function Home() {
                         attribution=""
                     />
                 )}
-                <LocationMarker />
+                <LocationMarker autoCenter={availableProperties.length === 0} />
                 <DarkRoomManager />
                 <MapController 
                     fitBounds={fitBounds} 
@@ -1623,46 +1546,61 @@ export default function Home() {
             )}
 
             {/* Right side floating buttons - GPS + Locate */}
-            <div className="absolute bottom-24 right-4 z-[1000] pointer-events-auto flex flex-col gap-2">
-                <Button
-                    onClick={() => {
-                        setGpsTracking(!gpsTracking);
-                        if (!gpsTracking && mapRef.current) {
-                            mapRef.current.locate({ setView: true, maxZoom: 18 });
-                        }
-                    }}
-                    size="icon"
-                    className={`rounded-full w-10 h-10 shadow-2xl backdrop-blur-md transition-all ${gpsTracking ? 'ring-2 ring-green-500 ring-offset-2 ring-offset-black' : ''}`}
-                    style={{ 
-                        background: gpsTracking ? 'rgba(34, 197, 94, 0.3)' : 'rgba(31, 31, 31, 0.9)', 
-                        color: gpsTracking ? '#22c55e' : BRAND.gold, 
-                        border: `1px solid ${gpsTracking ? '#22c55e' : BRAND.gold + '40'}` 
-                    }}
-                >
-                    <Crosshair className="w-4 h-4" />
-                </Button>
-
+            <div className="absolute bottom-24 right-4 z-[1000] pointer-events-auto flex flex-col gap-3 items-end">
+                {/* Center on Me Button (Prominent) */}
                 <Button
                     onClick={(e) => {
                         e.stopPropagation();
                         if (mapRef.current) {
-                            if (fitBounds && fitBounds.length > 0) {
-                                mapRef.current.fitBounds(fitBounds, { padding: [30, 30], maxZoom: 17 });
-                                toast.success("Centered on Territory");
-                            } else {
-                                mapRef.current.locate({ setView: true, maxZoom: 16 });
-                                toast.success("Locating...");
-                            }
-                        } else {
-                            toast.error("Map not ready");
+                            mapRef.current.locate({ setView: true, maxZoom: 16 });
+                            toast.success("Centered on your location");
                         }
                     }}
-                    size="icon"
-                    className="rounded-full w-10 h-10 shadow-2xl backdrop-blur-md"
-                    style={{ background: 'rgba(31, 31, 31, 0.9)', color: BRAND.gold, border: `1px solid ${BRAND.gold}40` }}
+                    className="rounded-full h-10 px-4 shadow-2xl backdrop-blur-md font-bold text-xs tracking-wide flex items-center gap-2 border border-blue-500/50 hover:bg-[#333]"
+                    style={{ background: 'rgba(31, 31, 31, 0.9)', color: '#3b82f6' }}
                 >
                     <Locate className="w-4 h-4" />
+                    Center on Me
                 </Button>
+
+                <div className="flex flex-col gap-2">
+                    {/* GPS Tracking Toggle */}
+                    <Button
+                        onClick={() => {
+                            setGpsTracking(!gpsTracking);
+                            if (!gpsTracking && mapRef.current) {
+                                mapRef.current.locate({ setView: true, maxZoom: 18 });
+                            }
+                        }}
+                        size="icon"
+                        className={`rounded-full w-10 h-10 shadow-2xl backdrop-blur-md transition-all ml-auto ${gpsTracking ? 'ring-2 ring-green-500 ring-offset-2 ring-offset-black' : ''}`}
+                        style={{ 
+                            background: gpsTracking ? 'rgba(34, 197, 94, 0.3)' : 'rgba(31, 31, 31, 0.9)', 
+                            color: gpsTracking ? '#22c55e' : BRAND.gold, 
+                            border: `1px solid ${gpsTracking ? '#22c55e' : BRAND.gold + '40'}` 
+                        }}
+                    >
+                        <Crosshair className="w-4 h-4" />
+                    </Button>
+
+                    {/* Center on Territory Button */}
+                    {(fitBounds && fitBounds.length > 0) && (
+                        <Button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (mapRef.current && fitBounds && fitBounds.length > 0) {
+                                    mapRef.current.fitBounds(fitBounds, { padding: [30, 30], maxZoom: 17 });
+                                    toast.success("Centered on Territory");
+                                }
+                            }}
+                            size="icon"
+                            className="rounded-full w-10 h-10 shadow-2xl backdrop-blur-md ml-auto"
+                            style={{ background: 'rgba(31, 31, 31, 0.9)', color: BRAND.gold, border: `1px solid ${BRAND.gold}40` }}
+                        >
+                            <MapPin className="w-4 h-4" />
+                        </Button>
+                    )}
+                </div>
             </div>
 
             {/* Bottom Action Bar */}
