@@ -82,7 +82,7 @@ export function MapController({ fitBounds, onZoomChange, onMoveEnd }) {
                 const boundsKey = JSON.stringify(fitBounds.slice(0, 1)); // Simple check on first point to detect route switch
 
                 if (bounds.isValid() && lastBoundsRef.current !== boundsKey) {
-                    map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17, animate: false });
+                    if (map._mapPane) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17, animate: false });
                     lastBoundsRef.current = boundsKey;
                 }
             } catch (e) { }
