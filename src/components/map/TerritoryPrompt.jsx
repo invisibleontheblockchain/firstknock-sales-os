@@ -101,6 +101,7 @@ export default function TerritoryPrompt({
                      <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
                      <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
                      <Button
+                         disabled={pulling}
                          onClick={async () => {
                              // Calculate bounding box and center
                              let minLat = 90, maxLat = -90, minLng = 180, maxLng = -180;
@@ -130,6 +131,8 @@ export default function TerritoryPrompt({
                                  return;
                              }
 
+                             setPulling(true);
+                             setPullProgress(`Pulling data for ~${areaSqMiles.toFixed(1)} sq mi...`);
                              const toastId = toast.loading(`Pulling data for approx ${areaSqMiles.toFixed(1)} sq miles...`);
                              try {
                                  const res = await base44.functions.invoke('fetchAreaProperties', { 
@@ -146,20 +149,27 @@ export default function TerritoryPrompt({
                                      queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
                                      queryClient.invalidateQueries({ queryKey: ['user'] });
                                      
-                                     // Automatically open settings so they can configure before generating routes
+                                     // Automatically open Route Builder Settings so user can configure
                                      setShowCompare(true);
                                      
-                                     // Remove the polygon so the map view is clear, but keep it in draft so they can edit it later if they want
+                                     // Remove the polygon so the map view is clear
                                      setDrawnPolygon(null);
                                  }
                              } catch (e) {
                                  const msg = e.response?.data?.message || e.message;
                                  toast.error(`Failed to pull data: ${msg}`, { id: toastId });
+                             } finally {
+                                 setPulling(false);
+                                 setPullProgress('');
                              }
                          }}
-                         className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] h-6 px-2 py-0 rounded-md ml-2"
+                         className={`text-white text-[10px] h-6 px-2 py-0 rounded-md ml-2 ${pulling ? 'bg-blue-800' : 'bg-blue-600 hover:bg-blue-500'}`}
                      >
-                         Pull Data & Generate Routes
+                         {pulling ? (
+                             <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Pulling...</>
+                         ) : (
+                             'Pull Data & Generate Routes'
+                         )}
                      </Button>
                      <button 
                          onClick={() => {
