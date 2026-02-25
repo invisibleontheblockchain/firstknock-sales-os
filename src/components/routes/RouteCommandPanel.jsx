@@ -157,8 +157,8 @@ export default function RouteCommandPanel({
                                             <div className="bg-gradient-to-br from-[#1A1A1A] to-[#0F0F0F] rounded-xl p-4 border border-yellow-900/30 relative overflow-hidden">
                                                 <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-3xl pointer-events-none" />
                                                 
-                                                <div className="flex justify-between items-start mb-4">
-                                                    <div>
+                                                <div className="flex items-start mb-4 gap-3">
+                                                    <div className="flex-1 min-w-0">
                                                         <h3 className="text-sm font-bold text-white flex items-center gap-2">
                                                             <BarChart3 className="w-4 h-4 text-yellow-500" />
                                                             GENERATION SUMMARY
@@ -167,46 +167,48 @@ export default function RouteCommandPanel({
                                                             {zipCodeFilter || 'All Areas'} • {housesPerRoute} homes/route
                                                         </p>
                                                     </div>
-                                                    <Button 
-                                                        onClick={onAutoAssignAll}
-                                                        size="sm"
-                                                        className="bg-green-600 hover:bg-green-500 text-white font-bold text-[10px] h-8 px-3"
-                                                    >
-                                                        <User className="w-3 h-3 mr-1" />
-                                                        AUTO-DISPATCH ALL
-                                                    </Button>
-                                                    <Button
-                                                        onClick={() => {
-                                                            if(confirm("Save all generated routes without assigning?")) {
-                                                                generatedRoutes.forEach(r => onSaveRoute(r, null, null));
-                                                            }
-                                                        }}
-                                                        size="sm"
-                                                        className="bg-gray-700 hover:bg-gray-600 text-white font-bold text-[10px] h-8 px-3 ml-2"
-                                                    >
-                                                        SAVE ALL
-                                                    </Button>
-                                                    <Button
-                                                        onClick={() => {
-                                                            const baseRoutes = (filteredRoutes && filteredRoutes.length > 0) ? filteredRoutes : generatedRoutes;
-                                                            const seen = new Set();
-                                                            const allProps = [];
-                                                            baseRoutes.forEach(r => (r.properties || []).forEach(p => {
-                                                                const key = p.address_hash || p.id;
-                                                                if (key && !seen.has(key)) { seen.add(key); allProps.push(p); }
-                                                            }));
-                                                            if (allProps.length === 0) return;
-                                                            const merged = generateOptimizedRoutes(allProps, allProps.length, null, [], { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest' });
-                                                            if (merged && merged.length > 0) {
-                                                                const big = { ...merged[0], id: 'route_merged', name: 'All-in-One Route' };
-                                                                onSelectRoute(big);
-                                                            }
-                                                        }}
-                                                        size="sm"
-                                                        className="bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-[10px] h-8 px-3 ml-2" title="Combine all into one optimized mega route"
-                                                    >
-                                                        MERGE TO ONE
-                                                    </Button>
+                                                    <div className="ml-auto flex gap-2 shrink-0">
+                                                        <Button 
+                                                            onClick={onAutoAssignAll}
+                                                            size="sm"
+                                                            className="w-28 h-8 bg-green-600 hover:bg-green-500 text-white font-bold text-[10px]"
+                                                        >
+                                                            <User className="w-3 h-3 mr-1" />
+                                                            AUTO-DISPATCH ALL
+                                                        </Button>
+                                                        <Button
+                                                            onClick={() => {
+                                                                if(confirm("Save all generated routes without assigning?")) {
+                                                                    generatedRoutes.forEach(r => onSaveRoute(r, null, null));
+                                                                }
+                                                            }}
+                                                            size="sm"
+                                                            className="w-28 h-8 bg-gray-700 hover:bg-gray-600 text-white font-bold text-[10px]"
+                                                        >
+                                                            SAVE ALL
+                                                        </Button>
+                                                        <Button
+                                                            onClick={() => {
+                                                                const baseRoutes = (filteredRoutes && filteredRoutes.length > 0) ? filteredRoutes : generatedRoutes;
+                                                                const seen = new Set();
+                                                                const allProps = [];
+                                                                baseRoutes.forEach(r => (r.properties || []).forEach(p => {
+                                                                    const key = p.address_hash || p.id;
+                                                                    if (key && !seen.has(key)) { seen.add(key); allProps.push(p); }
+                                                                }));
+                                                                if (allProps.length === 0) return;
+                                                                const merged = generateOptimizedRoutes(allProps, allProps.length, null, [], { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest' });
+                                                                if (merged && merged.length > 0) {
+                                                                    const big = { ...merged[0], id: 'route_merged', name: 'All-in-One Route' };
+                                                                    onSelectRoute(big);
+                                                                }
+                                                            }}
+                                                            size="sm"
+                                                            className="w-28 h-8 bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-[10px]" title="Combine all into one optimized mega route"
+                                                        >
+                                                            MERGE ALL
+                                                        </Button>
+                                                    </div>
                                                 </div>
 
                                                 <div className="grid grid-cols-4 gap-2">
@@ -233,7 +235,7 @@ export default function RouteCommandPanel({
                                         )}
 
                                         {/* Route List */}
-                                        <div className="space-y-2">
+                                        <div className="space-y-3">
                                             {filteredRoutes.map((route, idx) => (
                                                 <NewRouteCard 
                                                     key={route.id}
