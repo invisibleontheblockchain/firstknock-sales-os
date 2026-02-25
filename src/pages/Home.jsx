@@ -123,7 +123,7 @@ export default function Home() {
     const [startAddressInput, setStartAddressInput] = useState("");
     const [zipCodeFilter, setZipCodeFilter] = useState(''); // Comma separated string
     const [analyzeZipFilter, setAnalyzeZipFilter] = useState('all'); // Filter for Analyze mode
-    const [soldDateFilter, setSoldDateFilter] = useState(null); // null = All Time, number = months
+    const [soldDateFilter, setSoldDateFilter] = useState(12); // null = All Time, number = months
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
@@ -192,7 +192,7 @@ export default function Home() {
     const [gpsTracking, setGpsTracking] = useState(false);
     const [userLocation, setUserLocation] = useState(null); // {lat, lng} from Center on Me
     const [routeConfig, setRouteConfig] = useState({
-        walkingPattern: 'nearest',
+        walkingPattern: 'street_sweep',
         minimizeTurns: true,
         use2Opt: true,
         returnToStart: false,
