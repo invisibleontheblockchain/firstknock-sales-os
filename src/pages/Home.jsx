@@ -607,7 +607,7 @@ export default function Home() {
                     effective_status: p.is_dark_room ? (p.effective_status || 'ELIGIBLE') : determineEffectiveStatus(p, propLogs)
                 };
             });
-    }, [properties, logs, user?.territory_zip_codes]);
+    }, [properties, logs, user?.territory_zip_codes, zipCodeFilter, drawnPolygon]);
 
     // Smart Auto-Open/Close for Generate Mode
     useEffect(() => {
@@ -834,11 +834,12 @@ export default function Home() {
             }
 
             if (beforeSoldDateFilter > 0 && workingSet.length === 0) {
-                 alert(`None of the properties in this area were sold within the past ${soldDateFilter} months. Try changing the "Recently Sold" filter in Route Settings to "Any Time".`);
+                 toast.info(`No homes match "Sold in last ${soldDateFilter} months". Relaxing to Any Time...`);
+                 setSoldDateFilter(null);
                  setRoutesGenerating(false);
-                 setShowCompare(true); // Open settings so they can change it
+                 setShowCompare(true);
                  return;
-            }
+             }
 
             // Apply Property Type Filter
             if (routeConfig.propertyTypes.length > 0) {
