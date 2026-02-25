@@ -418,11 +418,12 @@ export default function RouteBuilderSettings({
                     >
                         <div className="space-y-2">
                             <label className="text-[10px] font-bold text-gray-500 uppercase">Sort Routes By</label>
-                            <div className="grid grid-cols-3 gap-2">
+                            <div className="grid grid-cols-2 gap-2">
                                 {[
                                     { id: 'score', label: 'SCORE', desc: 'Best leads first' },
                                     { id: 'houses', label: 'SIZE', desc: 'Most houses' },
                                     { id: 'distance', label: 'DISTANCE', desc: 'Shortest walk' },
+                                    { id: 'recent_sale', label: 'RECENT SALE', desc: 'Newest homeowners' },
                                 ].map(opt => (
                                     <button key={opt.id} onClick={() => setSortBy(opt.id)}
                                         className={`py-3 rounded-lg text-center transition-all ${
