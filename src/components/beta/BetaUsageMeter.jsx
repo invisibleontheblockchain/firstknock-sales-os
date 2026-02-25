@@ -6,7 +6,7 @@ import { MapPin, Lock, Crown } from 'lucide-react';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { createPageUrl } from '@/utils';
 
-const FREE_ZIP_LIMIT = 1;
+const FREE_ZIP_LIMIT = 3;
 const ZIPS_PER_SEAT = 10;
 
 export default function BetaUsageMeter({ className = '', showUpgrade = true }) {

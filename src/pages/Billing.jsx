@@ -133,7 +133,7 @@ export default function Billing() {
                          <div className="grid grid-cols-2 gap-4 divide-x divide-gray-800">
                             <div>
                                 <p className="text-xs text-gray-500 uppercase font-bold mb-1">Free Plan</p>
-                                <p className="text-xl font-bold text-white">1 Zip Code</p>
+                                <p className="text-xl font-bold text-white">3 Zip Codes</p>
                             </div>
                             <div>
                                 <p className="text-xs text-yellow-500 uppercase font-bold mb-1">Pro Plan</p>

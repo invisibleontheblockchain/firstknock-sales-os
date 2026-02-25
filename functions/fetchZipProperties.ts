@@ -4,8 +4,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
 
-// Zip limits: free = 1, paid = 10 per seat
-const FREE_ZIP_LIMIT = 1;
+// Zip limits: free = 3, paid = 10 per seat
+const FREE_ZIP_LIMIT = 3;
 const ZIPS_PER_SEAT = 10;
 
 Deno.serve(async (req) => {
@@ -19,9 +19,9 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { zip_code, force_sync = false, check_usage_only = false } = body;
 
-    // --- Determine user's zip limits (Flat rate: 1 free, 10 paid) ---
+    // --- Determine user's zip limits (Flat rate: 3 free, 10 paid) ---
     const isPaid = user.subscription_status === 'active' || user.subscription_status === 'trialing';
-    const zipLimit = isPaid ? 10 : 1;
+    const zipLimit = isPaid ? 10 : FREE_ZIP_LIMIT;
     const generatedZips = user.generated_zip_codes || [];
     const zipsUsed = generatedZips.length;
     const zipsRemaining = zipLimit - zipsUsed;
@@ -70,8 +70,8 @@ Deno.serve(async (req) => {
     if (!alreadyGenerated && zipsRemaining <= 0) {
       console.warn(`[FetchZip-v6] ZIP LIMIT REACHED: ${zipsUsed}/${zipLimit} (tier: ${subTier})`);
       const upgradeMsg = !isPaid
-        ? `You've used your 1 free zip code. Subscribe to unlock more territories.`
-        : `You've reached your ${zipLimit} zip code limit (${totalSeats} seats × ${ZIPS_PER_SEAT} zips). Add more seats for more zips.`;
+        ? `You've used your ${FREE_ZIP_LIMIT} free zip codes. Subscribe to unlock more territories.`
+        : `You've reached your ${zipLimit} zip code limit (Add more seats for more zips).`;
       return Response.json({
         error: 'Zip code limit reached',
         message: upgradeMsg,

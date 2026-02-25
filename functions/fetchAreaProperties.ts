@@ -3,7 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
 
-const FREE_PULL_LIMIT = 1; // Number of area pulls allowed for free users
+const FREE_PULL_LIMIT = 3; // Number of area pulls allowed for free users
 const PAID_PULL_LIMIT = 20; // Number of area pulls allowed for paid users
 
 // Ray-casting algorithm for point in polygon
@@ -39,14 +39,18 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Latitude, longitude, and radius are required' }, { status: 400 });
         }
 
-        if (radius > 5) {
+        const isPaid = user.subscription_status === 'active' || user.subscription_status === 'trialing';
+        const maxRadius = isPaid ? 5 : 1;
+
+        if (radius > maxRadius) {
             return Response.json({ 
                 error: 'Area too large', 
-                message: `The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max 10 miles across) to prevent system overload and excess API usage.` 
+                message: !isPaid && radius <= 5 
+                    ? `Free accounts are limited to drawing areas up to 2 miles across. Please subscribe to Pro to draw larger areas.`
+                    : `The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max ${maxRadius * 2} miles across) to prevent system overload and excess API usage.` 
             }, { status: 400 });
         }
 
-        const isPaid = user.subscription_status === 'active' || user.subscription_status === 'trialing';
         const pullLimit = isPaid ? PAID_PULL_LIMIT : FREE_PULL_LIMIT;
         
         // Track usage (we'll reuse generated_zip_codes array for area pulls as a quick hack, or a new field)
@@ -54,7 +58,7 @@ Deno.serve(async (req) => {
         
         if (areaPulls >= pullLimit) {
             const upgradeMsg = !isPaid
-                ? `You've used your free data pull. Subscribe to unlock more territories.`
+                ? `You've used your ${FREE_PULL_LIMIT} free data pulls. Subscribe to unlock more territories.`
                 : `You've reached your data pull limit.`;
             return Response.json({ error: 'Data limit reached', message: upgradeMsg }, { status: 429 });
         }
