@@ -130,10 +130,8 @@ export default function Home() {
     const [mode, setModeRaw] = useState('generate'); // Default to generate mode
     const setMode = (newMode) => {
         setModeRaw(newMode);
-        // Auto-open Route Builder Settings when switching to generate mode with existing properties
-        if (newMode === 'generate') {
-            setShowCompare(true);
-        }
+        // Always auto-open the settings panel when switching modes
+        setShowCompare(true);
     };
     const [showDashboard, setShowDashboard] = useState(false);
     const [drawingMode, setDrawingMode] = useState(false);
@@ -1441,37 +1439,37 @@ export default function Home() {
             </MapContainer>
 
             {/* Top Stats Bar */}
-            <div className="absolute top-2 left-2 right-2 sm:top-4 sm:left-4 sm:right-4 z-[1000] flex flex-col gap-2 pointer-events-none">
-                <div className="flex flex-nowrap items-center justify-between gap-1.5 sm:gap-2 w-full">
+            <div className="absolute top-1 left-1 right-1 sm:top-4 sm:left-4 sm:right-4 z-[1000] flex flex-col gap-1.5 sm:gap-2 pointer-events-none">
+                <div className="flex flex-nowrap items-center justify-between gap-1 sm:gap-2 w-full">
                     {/* DASHBOARD & SETTINGS TOGGLES */}
-                    <div className="pointer-events-auto shrink-0 flex gap-1 sm:gap-2">
+                    <div className="pointer-events-auto shrink-0 flex gap-1">
                         <Button
                             onClick={() => setShowDashboard(true)}
                             size="icon"
-                            className="bg-black/80 hover:bg-black backdrop-blur-md border border-gray-800 shadow-xl h-9 w-9 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl"
+                            className="bg-black/80 hover:bg-black backdrop-blur-md border border-gray-800 shadow-xl h-8 w-8 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl"
                         >
-                            <LayoutDashboard className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500" />
+                            <LayoutDashboard className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-yellow-500" />
                         </Button>
                         <Button
                             onClick={() => setShowMapSettings(true)}
                             size="icon"
-                            className="bg-black/80 hover:bg-black backdrop-blur-md border border-gray-800 shadow-xl h-9 w-9 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl"
+                            className="bg-black/80 hover:bg-black backdrop-blur-md border border-gray-800 shadow-xl h-8 w-8 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl"
                         >
-                            <Settings className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+                            <Settings className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-gray-400" />
                         </Button>
                     </div>
 
                     {/* MODE TOGGLE - Centered */}
-                    <div className="pointer-events-auto bg-black/80 backdrop-blur-md rounded-lg sm:rounded-xl p-0.5 sm:p-1 border border-gray-800 flex gap-0.5 sm:gap-1 shadow-xl shrink-0">
+                    <div className="pointer-events-auto bg-black/80 backdrop-blur-md rounded-lg sm:rounded-xl p-0.5 sm:p-1 border border-gray-800 flex gap-0.5 shadow-xl shrink-0">
                         <button
                             onClick={() => setMode('analyze')}
-                            className={`px-2.5 py-1.5 sm:px-4 sm:py-2.5 rounded-md sm:rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'analyze' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                            className={`px-2 py-1.5 sm:px-4 sm:py-2.5 rounded-md sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'analyze' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
                         >
                             DISPATCH
                         </button>
                         <button
                             onClick={() => setMode('generate')}
-                            className={`px-2.5 py-1.5 sm:px-4 sm:py-2.5 rounded-md sm:rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                            className={`px-2 py-1.5 sm:px-4 sm:py-2.5 rounded-md sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-400 hover:text-white'}`}
                         >
                             BUILDER
                         </button>
@@ -1482,20 +1480,20 @@ export default function Home() {
                         <Button
                             onClick={() => setShowCompare(true)}
                             size="icon"
-                            className="bg-black/80 hover:bg-black backdrop-blur-md rounded-lg sm:rounded-xl h-9 w-9 sm:h-11 sm:w-11 font-bold shadow-xl border border-yellow-500/40"
+                            className="bg-black/80 hover:bg-black backdrop-blur-md rounded-lg sm:rounded-xl h-8 w-8 sm:h-11 sm:w-11 font-bold shadow-xl border border-yellow-500/40"
                         >
-                            {mode === 'generate' ? <Settings className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500" /> : <Filter className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-500" />}
+                            {mode === 'generate' ? <Settings className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-yellow-500" /> : <Filter className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-yellow-500" />}
                         </Button>
                     </div>
                 </div>
 
                 {/* Active Route Banner - Compact */}
                 {activeRoute && (
-                    <div className="pointer-events-auto rounded-full px-1.5 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2 shadow-2xl border border-yellow-600/40 animate-in slide-in-from-top-2 backdrop-blur-md" style={{ background: 'rgba(10,10,10,0.92)' }}>
-                        <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: BRAND.gold }}>
-                            <Navigation className="w-3.5 h-3.5 sm:w-4 sm:h-4" style={{ color: BRAND.voidBlack }} />
+                    <div className="pointer-events-auto rounded-full px-1 py-1 sm:px-1.5 sm:py-1.5 flex items-center gap-1 sm:gap-2 shadow-2xl border border-yellow-600/40 animate-in slide-in-from-top-2 backdrop-blur-md" style={{ background: 'rgba(10,10,10,0.92)' }}>
+                        <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: BRAND.gold }}>
+                            <Navigation className="w-3 h-3 sm:w-4 sm:h-4" style={{ color: BRAND.voidBlack }} />
                         </div>
-                        <span className="text-xs sm:text-sm font-bold truncate flex-1 min-w-0" style={{ color: BRAND.gold }}>{activeRoute.name}</span>
+                        <span className="text-[10px] sm:text-sm font-bold truncate flex-1 min-w-0 max-w-[60px] sm:max-w-[120px]" style={{ color: BRAND.gold }}>{activeRoute.name}</span>
                         <div onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} className="shrink-0">
                             <select
                                 value={activeRoute.assigned_to || ""}
@@ -1504,11 +1502,11 @@ export default function Home() {
                                     handleAssignRoute(activeRoute.id, e.target.value);
                                 }}
                                 onPointerDown={(e) => e.stopPropagation()}
-                                className="text-[10px] sm:text-xs font-medium bg-white/10 border border-white/10 rounded-full px-2 py-1 sm:px-3 sm:py-1.5 outline-none cursor-pointer hover:bg-white/15 transition-colors appearance-auto max-w-[90px] sm:max-w-none"
+                                className="text-[9px] sm:text-xs font-medium bg-white/10 border border-white/10 rounded-full px-1.5 py-0.5 sm:px-3 sm:py-1.5 outline-none cursor-pointer hover:bg-white/15 transition-colors appearance-auto max-w-[70px] sm:max-w-none"
                                 style={{ color: '#ccc', WebkitAppearance: 'menulist' }}
                             >
                                 <option value="">Unassigned</option>
-                                <option value={user?.id || 'manager'}>Me (Manager)</option>
+                                <option value={user?.id || 'manager'}>Me</option>
                                 {teamMembers.map(m => (
                                     <option key={m.id} value={m.id}>{m.name}</option>
                                 ))}
@@ -1521,9 +1519,9 @@ export default function Home() {
                                     try { if (mapRef.current._mapPane) mapRef.current.setZoom(Math.max(13, mapRef.current.getZoom() - 2)); } catch(e){}
                                 }
                             }} 
-                            className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center hover:bg-white/10 active:bg-white/15 rounded-full transition-colors shrink-0"
+                            className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center hover:bg-white/10 active:bg-white/15 rounded-full transition-colors shrink-0"
                         >
-                            <X className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-400" />
+                            <X className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
                         </button>
                     </div>
                 )}
@@ -1577,7 +1575,7 @@ export default function Home() {
             )}
 
             {/* Right side floating buttons - GPS + Locate */}
-            <div className="absolute bottom-[5.5rem] sm:bottom-6 right-2 sm:right-4 z-[1000] pointer-events-auto flex flex-col gap-2 items-end">
+            <div className="absolute bottom-2 right-1 sm:bottom-6 sm:right-4 z-[1000] pointer-events-auto flex flex-col gap-1.5 sm:gap-2 items-end">
                 {/* Center on Me Button */}
                 <Button
                     onClick={(e) => {
@@ -1616,10 +1614,10 @@ export default function Home() {
                         tryLocate(true);
                     }}
                     size="icon"
-                    className="rounded-full w-10 h-10 shadow-2xl backdrop-blur-md border border-blue-500/50 hover:bg-[#333]"
+                    className="rounded-full w-9 h-9 sm:w-10 sm:h-10 shadow-2xl backdrop-blur-md border border-blue-500/50 hover:bg-[#333]"
                     style={{ background: 'rgba(31, 31, 31, 0.9)', color: '#3b82f6' }}
                 >
-                    <Locate className="w-5 h-5" />
+                    <Locate className="w-4 h-4 sm:w-5 sm:h-5" />
                 </Button>
 
                 {/* Center on Territory Button */}
@@ -1633,7 +1631,7 @@ export default function Home() {
                             }
                         }}
                         size="icon"
-                        className="rounded-full w-10 h-10 shadow-2xl backdrop-blur-md"
+                        className="rounded-full w-9 h-9 sm:w-10 sm:h-10 shadow-2xl backdrop-blur-md"
                         style={{ background: 'rgba(31, 31, 31, 0.9)', color: BRAND.gold, border: `1px solid ${BRAND.gold}40` }}
                     >
                         <MapPin className="w-4 h-4" />
@@ -1642,7 +1640,7 @@ export default function Home() {
             </div>
 
             {/* Bottom Action Bar */}
-            <div className="absolute bottom-20 sm:bottom-6 left-0 right-14 sm:right-auto md:left-4 z-[1000] pointer-events-none flex justify-center md:justify-start px-3 sm:px-4">
+            <div className="absolute bottom-1 sm:bottom-6 left-0 right-12 sm:right-auto md:left-4 z-[1000] pointer-events-none flex justify-center md:justify-start px-2 sm:px-4">
                 <div className="pointer-events-auto flex items-center justify-center gap-1.5 sm:gap-2 bg-black/70 backdrop-blur-lg p-1.5 sm:p-2 rounded-full border border-white/10 shadow-2xl">
                     {/* GENERATE button */}
                     {mode === 'generate' && !activeRoute && (
