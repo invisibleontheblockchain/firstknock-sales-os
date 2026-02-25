@@ -157,7 +157,7 @@ export default function RouteCommandPanel({
                                             <div className="bg-gradient-to-br from-[#1A1A1A] to-[#0F0F0F] rounded-xl p-4 border border-yellow-900/30 relative overflow-hidden">
                                                 <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-3xl pointer-events-none" />
                                                 
-                                                <div className="flex items-start mb-4 gap-3">
+                                                <div className="flex flex-col sm:flex-row items-start mb-4 gap-3">
                                                     <div className="flex-1 min-w-0">
                                                         <h3 className="text-sm font-bold text-white flex items-center gap-2">
                                                             <BarChart3 className="w-4 h-4 text-yellow-500" />
@@ -167,11 +167,11 @@ export default function RouteCommandPanel({
                                                             {zipCodeFilter || 'All Areas'} • {housesPerRoute} homes/route
                                                         </p>
                                                     </div>
-                                                    <div className="ml-auto flex gap-2 shrink-0 flex-wrap md:flex-nowrap">
+                                                    <div className="ml-0 sm:ml-auto grid grid-cols-1 sm:grid-cols-3 gap-2 w-full sm:w-auto">
                                                         <Button 
                                                             onClick={onAutoAssignAll}
                                                             size="sm"
-                                                            className="w-28 h-8 bg-green-600 hover:bg-green-500 text-white font-bold text-[10px]"
+                                                            className="w-full h-8 bg-green-600 hover:bg-green-500 text-white font-bold text-[10px]"
                                                         >
                                                             <User className="w-3 h-3 mr-1" />
                                                             AUTO-DISPATCH ALL
@@ -183,7 +183,7 @@ export default function RouteCommandPanel({
                                                                 }
                                                             }}
                                                             size="sm"
-                                                            className="w-28 h-8 bg-gray-700 hover:bg-gray-600 text-white font-bold text-[10px]"
+                                                            className="w-full h-8 bg-gray-700 hover:bg-gray-600 text-white font-bold text-[10px]"
                                                         >
                                                             SAVE ALL
                                                         </Button>
@@ -204,7 +204,7 @@ export default function RouteCommandPanel({
                                                                 }
                                                             }}
                                                             size="sm"
-                                                            className="w-28 h-8 bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-[10px]" title="Combine all into one optimized mega route"
+                                                            className="w-full h-8 bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-[10px]" title="Combine all into one optimized mega route"
                                                         >
                                                             MERGE ALL
                                                         </Button>
