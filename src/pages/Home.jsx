@@ -834,11 +834,10 @@ export default function Home() {
                 });
             }
 
-            if (beforeSoldDateFilter > 0 && workingSet.length === 0) {
-                 toast.info(`No homes match "Sold in last ${soldDateFilter} months". Relaxing to Any Time...`);
-                 setSoldDateFilter(null);
-                 // Continue generation without sold-date restriction
-                 workingSet = preSoldWorkingSet;
+            if (soldDateFilter !== null && beforeSoldDateFilter > 0 && workingSet.length === 0) {
+                 toast.error(`No homes match "Sold in last ${soldDateFilter} months" with current filters.`);
+                 setRoutesGenerating(false);
+                 return;
             }
 
             // Apply Property Type Filter
