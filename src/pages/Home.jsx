@@ -1574,6 +1574,7 @@ export default function Home() {
                             navigator.geolocation.getCurrentPosition(
                                 (position) => {
                                     const { latitude, longitude } = position.coords;
+                                    setUserLocation({ lat: latitude, lng: longitude });
                                     if (mapRef.current) {
                                         try {
                                             if (mapRef.current._mapPane) {
