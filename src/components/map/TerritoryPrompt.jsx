@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { base44 } from '@/api/base44Client';
-import { Map as MapIcon, Pencil, Layers, X, Check, Trash2 } from 'lucide-react';
+import { Map as MapIcon, Pencil, Layers, X, Check, Trash2, Loader2 } from 'lucide-react';
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -22,6 +22,8 @@ export default function TerritoryPrompt({
     setZipCodeFilter
 }) {
     const queryClient = useQueryClient();
+    const [pulling, setPulling] = useState(false);
+    const [pullProgress, setPullProgress] = useState('');
 
     if (mode !== 'generate' || activeRoute || routesGenerating || showCompare || showRoutePanel) return null;
 
