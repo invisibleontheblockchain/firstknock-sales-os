@@ -168,22 +168,35 @@ export default function TerritoryPrompt({
                                      radius: radius,
                                      polygon: drawnPolygon
                                  });
-                                 if (res.data?.error) {
-                                     toast.error(res.data.message || res.data.error, { id: toastId });
+                                 const d = res.data || {};
+                                 if (d.error) {
+                                     toast.error(d.message || d.error, { id: toastId });
+                                 } else if (d.status === 'empty' || d.count === 0) {
+                                     const base = d.total_found ? `${d.total_found} found, ${d.in_polygon_count || 0} in area` : '0 found';
+                                     let extra = '';
+                                     if ((d.in_polygon_count || 0) > 0 && (d.recent_sales_12mo || 0) > 0) {
+                                         extra = ` • ${d.recent_sales_12mo} sold within last 12 months (may be excluded by your filters).`;
+                                     }
+                                     toast.info(d.message || `No houses to generate routes. ${base}.${extra}`, { id: toastId });
                                  } else {
-                                     toast.success(res.data.message || `Properties loaded onto the map!`, { id: toastId });
-                                     
+                                     let note = '';
+                                     if (d.recent_sales_12mo) {
+                                         note = ` • Note: ${d.recent_sales_12mo} sold in last 12 months.`;
+                                     }
+                                     toast.success(d.message || `Properties loaded onto the map!${note}`, { id: toastId });
+
                                      if (onPullComplete) {
                                          // Pass control back to parent for auto-generation
                                          onPullComplete();
-                                         // Ensure the Generate screen opens
-                                         setShowCompare(true);
+                                         // Open the Generate tab/screen
+                                         setShowCompare(false);
+                                         try { window.dispatchEvent(new CustomEvent('fk:open-generate')); } catch {}
                                          // Don't clear polygon here - let generation use it
                                      } else {
                                          // Fallback behavior if no callback provided
                                          queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
                                          queryClient.invalidateQueries({ queryKey: ['user'] });
-                                         setShowCompare(true);
+                                         setShowCompare(false);
                                          setDrawnPolygon(null);
                                      }
                                  }

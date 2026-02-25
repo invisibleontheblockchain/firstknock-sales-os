@@ -126,7 +126,12 @@ Deno.serve(async (req) => {
 
         if (allProperties.length === 0) {
             return Response.json({
-                status: 'empty', count: 0,
+                status: 'empty',
+                count: 0,
+                total_found: 0,
+                in_polygon_count: 0,
+                recent_sales_12mo: 0,
+                mapped_count: 0,
                 message: `No properties found in this area.`
             });
         }
@@ -140,6 +145,15 @@ Deno.serve(async (req) => {
             });
             console.log(`[FetchArea] Filtered down to ${filteredProperties.length} properties inside the drawn polygon.`);
         }
+        const twelveMonthsAgo = new Date();
+        twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
+        const recentSales12moCount = filteredProperties.reduce((acc, p) => {
+            if (p.lastSaleDate) {
+                const d = new Date(p.lastSaleDate);
+                if (!isNaN(d) && d > twelveMonthsAgo) return acc + 1;
+            }
+            return acc;
+        }, 0);
 
         // We need to figure out which ones we already have. 
         // For an area, it's easier to fetch existing ones inside a bounding box, but for simplicity, we'll just try to insert and ignore duplicates.
@@ -180,7 +194,12 @@ Deno.serve(async (req) => {
 
         if (mapped.length === 0) {
             return Response.json({
-                status: 'empty', count: 0,
+                status: 'empty',
+                count: 0,
+                total_found: allProperties.length,
+                in_polygon_count: filteredProperties.length,
+                recent_sales_12mo: recentSales12moCount,
+                mapped_count: 0,
                 message: `Properties found but none matched criteria inside polygon.`
             });
         }
@@ -229,6 +248,9 @@ Deno.serve(async (req) => {
             status: 'imported',
             count: successCount,
             total_found: allProperties.length,
+            in_polygon_count: filteredProperties.length,
+            recent_sales_12mo: recentSales12moCount,
+            mapped_count: mapped.length,
             message: `Imported ${successCount} new properties in area.`
         });
 
