@@ -186,6 +186,7 @@ export default function Home() {
     const [fetchedProperties, setFetchedProperties] = useState([]); // Dynamic fetch storage
     const [templateName, setTemplateName] = useState("");
     const [gpsTracking, setGpsTracking] = useState(false);
+    const [userLocation, setUserLocation] = useState(null); // {lat, lng} from Center on Me
     const [routeConfig, setRouteConfig] = useState({
         walkingPattern: 'nearest',
         minimizeTurns: true,
