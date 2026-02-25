@@ -477,19 +477,7 @@ export default function Home() {
 
     // Effect for checking setup wizard status - Moved after savedRoutes declaration
     useEffect(() => {
-        // Trigger wizard if manager hasn't set working area OR if they have no saved routes
-        // This ensures they are walked through the process
-        if (user && user.app_role === 'manager') {
-            const hasRoutes = savedRoutes.length > 0;
-            const hasArea = !!user.working_area;
-            
-            // If they have area but no routes, we still might want to prompt them, 
-            // but let's be less aggressive if they have area. 
-            // Main trigger: No Area.
-            if (!hasArea) {
-                setShowSetupWizard(true);
-            }
-        }
+        // Disabled auto-wizard to let users jump straight to the map and drawing tools
     }, [user, savedRoutes.length]);
 
     // Identify properties already assigned to saved routes
