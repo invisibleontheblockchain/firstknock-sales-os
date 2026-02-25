@@ -874,7 +874,7 @@ export default function Home() {
             if (mapRef.current && workingSet.length > 0) {
                 const bounds = L.latLngBounds(workingSet.map(p => [p.lat, p.lng]));
                 if (bounds.isValid()) {
-                    mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+                    try { if (mapRef.current._mapPane) mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 }); } catch(e){}
                 }
             }
 
@@ -954,7 +954,7 @@ export default function Home() {
         if (availableProperties.length > 0 && !hasCenteredRef.current && mapRef.current) {
              const bounds = L.latLngBounds(availableProperties.slice(0, 1000).map(p => [p.lat, p.lng]));
              if (bounds.isValid()) {
-                 mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false });
+                 try { if (mapRef.current._mapPane) mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false }); } catch(e){}
                  hasCenteredRef.current = true;
              }
         }
@@ -1239,7 +1239,7 @@ export default function Home() {
                                 click: () => {
                                     // Zoom in on cluster click
                                     if (mapRef.current) {
-                                        mapRef.current.setView([cluster.lat, cluster.lng], Math.min(zoomLevel + 3, 16));
+                                        try { if (mapRef.current._mapPane) mapRef.current.setView([cluster.lat, cluster.lng], Math.min(zoomLevel + 3, 16)); } catch(e){}
                                     }
                                 }
                             }}
@@ -1488,7 +1488,7 @@ export default function Home() {
                             onClick={() => {
                                 setActiveRoute(null);
                                 if (mapRef.current) {
-                                    mapRef.current.setZoom(Math.max(13, mapRef.current.getZoom() - 2));
+                                    try { if (mapRef.current._mapPane) mapRef.current.setZoom(Math.max(13, mapRef.current.getZoom() - 2)); } catch(e){}
                                 }
                             }} 
                             className="w-8 h-8 flex items-center justify-center hover:bg-white/10 active:bg-white/15 rounded-full transition-colors shrink-0"
@@ -1553,7 +1553,7 @@ export default function Home() {
                     onClick={(e) => {
                         e.stopPropagation();
                         if (mapRef.current) {
-                            mapRef.current.locate({ setView: true, maxZoom: 16 });
+                            try { if (mapRef.current._mapPane) mapRef.current.locate({ setView: true, maxZoom: 16 }); } catch(e){}
                             toast.success("Centered on your location");
                         }
                     }}
@@ -1570,7 +1570,7 @@ export default function Home() {
                         onClick={() => {
                             setGpsTracking(!gpsTracking);
                             if (!gpsTracking && mapRef.current) {
-                                mapRef.current.locate({ setView: true, maxZoom: 18 });
+                                try { if (mapRef.current._mapPane) mapRef.current.locate({ setView: true, maxZoom: 18 }); } catch(e){}
                             }
                         }}
                         size="icon"
@@ -1590,7 +1590,7 @@ export default function Home() {
                             onClick={(e) => {
                                 e.stopPropagation();
                                 if (mapRef.current && fitBounds && fitBounds.length > 0) {
-                                    mapRef.current.fitBounds(fitBounds, { padding: [30, 30], maxZoom: 17 });
+                                    try { if (mapRef.current._mapPane) mapRef.current.fitBounds(fitBounds, { padding: [30, 30], maxZoom: 17 }); } catch(e){}
                                     toast.success("Centered on Territory");
                                 }
                             }}
