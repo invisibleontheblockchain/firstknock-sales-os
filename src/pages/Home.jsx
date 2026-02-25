@@ -382,7 +382,7 @@ export default function Home() {
             seen.add(id);
             return true;
         });
-    }, [userProperties, localProperties, darkRoomProperties]);
+    }, [userProperties, localProperties, darkRoomProperties, fetchedProperties]);
 
     const { data: savedRoutesRaw = [] } = useQuery({
         queryKey: ['savedRoutes', user?.id],
@@ -607,7 +607,7 @@ export default function Home() {
                     effective_status: p.is_dark_room ? (p.effective_status || 'ELIGIBLE') : determineEffectiveStatus(p, propLogs)
                 };
             });
-    }, [properties, logs, user?.territory_zip_codes, zipCodeFilter, drawnPolygon]);
+    }, [properties, logs, user?.territory_zip_codes, user?.generated_zip_codes, zipCodeFilter, drawnPolygon]);
 
     // Smart Auto-Open/Close for Generate Mode
     useEffect(() => {
@@ -820,6 +820,7 @@ export default function Home() {
             }
 
             const beforeSoldDateFilter = workingSet.length;
+            const preSoldWorkingSet = workingSet.slice();
 
             // Apply Sold Date Filter (STRICT: If filter active, MUST have sold_date within range)
             if (soldDateFilter !== null) {
@@ -836,10 +837,9 @@ export default function Home() {
             if (beforeSoldDateFilter > 0 && workingSet.length === 0) {
                  toast.info(`No homes match "Sold in last ${soldDateFilter} months". Relaxing to Any Time...`);
                  setSoldDateFilter(null);
-                 setRoutesGenerating(false);
-                 setShowCompare(true);
-                 return;
-             }
+                 // Continue generation without sold-date restriction
+                 workingSet = preSoldWorkingSet;
+            }
 
             // Apply Property Type Filter
             if (routeConfig.propertyTypes.length > 0) {
