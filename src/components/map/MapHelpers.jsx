@@ -1,38 +1,98 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CircleMarker, Tooltip, useMap } from 'react-leaflet';
+import { CircleMarker, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 
-export function LocationMarker({ autoCenter }) {
-    const [position, setPosition] = useState(null);
+export function LocationMarker({ autoCenter, userLocation }) {
+    const [watchPosition, setWatchPosition] = useState(null);
+    const [accuracy, setAccuracy] = useState(null);
     const map = useMap();
+    const watchIdRef = useRef(null);
+
+    // Use native Geolocation API for continuous watching (more reliable than Leaflet's)
     useEffect(() => {
-        const handleLocationFound = (e) => {
-            setPosition(e.latlng);
-            if (autoCenter) {
-                try { if (map._mapPane) map.setView(e.latlng, 15); } catch (e) {}
+        if (!navigator.geolocation) return;
+
+        const onSuccess = (pos) => {
+            const latlng = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+            setWatchPosition(latlng);
+            setAccuracy(pos.coords.accuracy);
+        };
+
+        const onError = (err) => {
+            console.log('[LocationMarker] Watch error:', err.code, err.message);
+        };
+
+        watchIdRef.current = navigator.geolocation.watchPosition(onSuccess, onError, {
+            enableHighAccuracy: true,
+            timeout: 20000,
+            maximumAge: 5000
+        });
+
+        return () => {
+            if (watchIdRef.current !== null) {
+                navigator.geolocation.clearWatch(watchIdRef.current);
             }
         };
-        try { 
-            // Using watch: true ensures the marker stays updated and visible
-            map.locate({ setView: autoCenter, maxZoom: 16, watch: true, enableHighAccuracy: true })
-               .on("locationfound", handleLocationFound); 
-        } catch (e) {}
-        
-        return () => {
-            map.off("locationfound", handleLocationFound);
-            try { map.stopLocate(); } catch (e) {}
-        };
-    }, [map, autoCenter]);
-    
-    return position ? (
-        <CircleMarker center={position} radius={8} pathOptions={{ fillColor: '#3b82f6', fillOpacity: 1, color: '#ffffff', weight: 3 }}>
-            <Tooltip permanent direction="right" offset={[10, 0]} className="route-number-tooltip">
-                <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '11px', textShadow: '0 1px 3px #000, 0 0 5px #000', backgroundColor: '#3b82f6', padding: '2px 6px', borderRadius: '12px' }}>
-                    YOU ARE HERE
-                </span>
-            </Tooltip>
-        </CircleMarker>
-    ) : null;
+    }, []);
+
+    // Auto-center on first position if requested
+    const hasCenteredRef = useRef(false);
+    useEffect(() => {
+        if (watchPosition && autoCenter && !hasCenteredRef.current) {
+            try {
+                map.setView([watchPosition.lat, watchPosition.lng], 15);
+                hasCenteredRef.current = true;
+            } catch (e) {}
+        }
+    }, [watchPosition, autoCenter, map]);
+
+    // Also respond to explicit userLocation from "Center on Me" button
+    const displayPos = userLocation || watchPosition;
+
+    if (!displayPos) return null;
+
+    return (
+        <>
+            {/* Accuracy circle - subtle blue ring */}
+            {accuracy && accuracy < 500 && (
+                <Circle
+                    center={[displayPos.lat, displayPos.lng]}
+                    radius={accuracy}
+                    pathOptions={{
+                        fillColor: '#3b82f6',
+                        fillOpacity: 0.08,
+                        color: '#3b82f6',
+                        weight: 1,
+                        opacity: 0.3
+                    }}
+                />
+            )}
+            {/* Outer glow ring */}
+            <CircleMarker
+                center={[displayPos.lat, displayPos.lng]}
+                radius={16}
+                pathOptions={{
+                    fillColor: '#3b82f6',
+                    fillOpacity: 0.15,
+                    color: '#3b82f6',
+                    weight: 0,
+                    opacity: 0
+                }}
+            />
+            {/* Main blue dot - matches Apple Maps style */}
+            <CircleMarker
+                center={[displayPos.lat, displayPos.lng]}
+                radius={9}
+                pathOptions={{
+                    fillColor: '#3b82f6',
+                    fillOpacity: 1,
+                    color: '#ffffff',
+                    weight: 3,
+                    opacity: 1
+                }}
+            />
+        </>
+    );
 }
 
 export function MapRefHandler({ mapRef }) {
@@ -82,10 +142,8 @@ export function MapController({ fitBounds, onZoomChange, onMoveEnd }) {
     useEffect(() => {
         if (fitBounds?.length > 0) {
             try {
-                // Only fit bounds if they have significantly changed (e.g. new route selected)
-                // or if it's the very first load
                 const bounds = L.latLngBounds(fitBounds);
-                const boundsKey = JSON.stringify(fitBounds.slice(0, 1)); // Simple check on first point to detect route switch
+                const boundsKey = JSON.stringify(fitBounds.slice(0, 1));
 
                 if (bounds.isValid() && lastBoundsRef.current !== boundsKey) {
                     if (map._mapPane) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17, animate: false });
