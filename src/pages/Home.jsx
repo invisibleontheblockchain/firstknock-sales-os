@@ -588,7 +588,8 @@ export default function Home() {
     // Process ALL properties with territory filter
     const effectiveProperties = useMemo(() => {
         const propsArray = Array.isArray(properties) ? properties : (properties?.items || []);
-        const territoryZips = user?.territory_zip_codes || [];
+        // Combine territory zips and generated zips to ensure user sees what they pull
+        const territoryZips = [...(user?.territory_zip_codes || []), ...(user?.generated_zip_codes || [])];
         
         return propsArray
             .filter(p => {
@@ -1044,6 +1045,22 @@ export default function Home() {
             gps_proof_lng: property.lng
         });
     }, [createLogMutation]);
+
+    // Callback for when area pull is complete (from TerritoryPrompt)
+    const handleAreaPullComplete = useCallback(async () => {
+        // 1. Refresh Data
+        await queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
+        await queryClient.invalidateQueries({ queryKey: ['user'] });
+        
+        // 2. Trigger Generation
+        // We use a timeout to allow the query cache to update and the component to re-render with new effectiveProperties
+        // This ensures generateRoutes has access to the newly fetched data
+        toast.loading("Processing data & generating routes...", { duration: 2000 });
+        
+        setTimeout(() => {
+            generateRoutes();
+        }, 2000);
+    }, [queryClient, generateRoutes]);
 
     // Dynamic status colors based on selected color scheme
     const STATUS_COLORS = useMemo(() => {
@@ -1546,6 +1563,7 @@ export default function Home() {
                 setDraftPolygon={setDraftPolygon}
                 user={user}
                 setZipCodeFilter={setZipCodeFilter}
+                onPullComplete={handleAreaPullComplete}
             />
 
             {/* Team Analysis Legend (Top Right) - Hidden on mobile */}
