@@ -1547,12 +1547,18 @@ export default function Home() {
                 <Button
                     onClick={(e) => {
                         e.stopPropagation();
+                        setGpsTracking(true); // Always enable highlighting when centering
                         if (mapRef.current) {
-                            try { if (mapRef.current._mapPane) mapRef.current.locate({ setView: true, maxZoom: 19 }); } catch(e){}
-                            if (drawingMode) {
-                                setGpsTracking(true);
-                            }
-                            toast.success("Centered on your location");
+                            try { 
+                                if (mapRef.current._mapPane) {
+                                    mapRef.current.locate({ 
+                                        setView: true, 
+                                        maxZoom: 18,
+                                        enableHighAccuracy: true 
+                                    }); 
+                                }
+                            } catch(e){}
+                            toast.success("Locating...");
                         }
                     }}
                     className="rounded-full h-10 px-4 shadow-2xl backdrop-blur-md font-bold text-xs tracking-wide flex items-center gap-2 border border-blue-500/50 hover:bg-[#333]"
@@ -1563,25 +1569,6 @@ export default function Home() {
                 </Button>
 
                 <div className="flex flex-col gap-2">
-                    {/* GPS Tracking Toggle */}
-                    <Button
-                        onClick={() => {
-                            setGpsTracking(!gpsTracking);
-                            if (!gpsTracking && mapRef.current) {
-                                try { if (mapRef.current._mapPane) mapRef.current.locate({ setView: true, maxZoom: 18 }); } catch(e){}
-                            }
-                        }}
-                        size="icon"
-                        className={`rounded-full w-10 h-10 shadow-2xl backdrop-blur-md transition-all ml-auto ${gpsTracking ? 'ring-2 ring-green-500 ring-offset-2 ring-offset-black' : ''}`}
-                        style={{ 
-                            background: gpsTracking ? 'rgba(34, 197, 94, 0.3)' : 'rgba(31, 31, 31, 0.9)', 
-                            color: gpsTracking ? '#22c55e' : BRAND.gold, 
-                            border: `1px solid ${gpsTracking ? '#22c55e' : BRAND.gold + '40'}` 
-                        }}
-                    >
-                        <Crosshair className="w-4 h-4" />
-                    </Button>
-
                     {/* Center on Territory Button */}
                     {(fitBounds && fitBounds.length > 0) && (
                         <Button
