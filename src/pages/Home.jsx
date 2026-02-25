@@ -1063,6 +1063,8 @@ export default function Home() {
         // This ensures generateRoutes has access to the newly fetched data
         toast.loading("Processing data & generating routes...", { duration: 2000 });
         
+        setShowCompare(false); // Ensure the settings panel doesn't pop up
+
         setTimeout(() => {
             generateRoutes();
         }, 2000);
