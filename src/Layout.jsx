@@ -175,6 +175,7 @@ function LayoutInner({ children }) {
             `}</style>
 
             {/* Header */}
+            {!isRoleSelectPage && (
             <header className="bg-black border-b border-slate-800 px-4 pt-[env(safe-area-inset-top)] pb-3 z-20 shadow-md">
                 <div className="flex justify-between items-center max-w-7xl mx-auto w-full pt-3">
                     <div className="flex items-center gap-3">
@@ -214,6 +215,7 @@ function LayoutInner({ children }) {
                     </div>
                 </div>
             </header>
+            )}
 
             {/* Theme Picker Popup */}
             {showThemePicker && (
@@ -230,6 +232,7 @@ function LayoutInner({ children }) {
             </main>
 
             {/* Bottom Nav */}
+            {!isRoleSelectPage && (
             <nav className="bg-black border-t border-slate-800 z-20 safe-area-bottom shrink-0">
                 {user.app_role === 'rep' ? (
                     <div className="flex justify-around items-center h-16 max-w-full mx-auto">
@@ -248,6 +251,7 @@ function LayoutInner({ children }) {
                     </div>
                 )}
             </nav>
+            )}
         </div>
     );
 }

@@ -164,14 +164,14 @@ export default function RoleSelect() {
 
     if (user?.app_role) {
         return (
-            <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center justify-center text-white space-y-4">
+            <div className="h-full w-full bg-[#0A0A0A] flex flex-col items-center justify-center text-white space-y-4">
                 <div className="w-12 h-12 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: accent, borderTopColor: 'transparent' }} />
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen bg-[#0A0A0A] flex flex-col px-6 relative overflow-hidden">
+        <div className="h-full w-full bg-[#0A0A0A] flex flex-col px-6 relative overflow-y-auto">
             {/* Background Gradients */}
             <div className="absolute top-0 left-0 w-full h-96 bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none" />
             <div className="absolute bottom-0 right-0 w-64 h-64 bg-blue-500/5 blur-3xl rounded-full pointer-events-none" />
