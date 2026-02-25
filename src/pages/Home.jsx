@@ -1035,23 +1035,41 @@ export default function Home() {
         });
     }, [createLogMutation]);
 
+    const generateRoutesRef = useRef(generateRoutes);
+    useEffect(() => {
+        generateRoutesRef.current = generateRoutes;
+    }, [generateRoutes]);
+
+    const [pendingAutoGenerate, setPendingAutoGenerate] = useState(false);
+
     // Callback for when area pull is complete (from TerritoryPrompt)
     const handleAreaPullComplete = useCallback(async () => {
-        // 1. Refresh Data
-        await queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
-        await queryClient.invalidateQueries({ queryKey: ['user'] });
-        
-        // 2. Trigger Generation
-        // We use a timeout to allow the query cache to update and the component to re-render with new effectiveProperties
-        // This ensures generateRoutes has access to the newly fetched data
-        toast.loading("Processing data & generating routes...", { duration: 2000 });
-        
         setShowCompare(false); // Ensure the settings panel doesn't pop up
+        toast.loading("Processing data & generating routes...", { id: "auto-gen-toast", duration: 15000 });
 
-        setTimeout(() => {
-            generateRoutes();
-        }, 2000);
-    }, [queryClient, generateRoutes]);
+        try {
+            // Wait for data to actually finish fetching from server
+            await queryClient.invalidateQueries({ queryKey: ['user'] });
+            await queryClient.refetchQueries({ queryKey: ['masterProperties'] });
+        } catch (e) {
+            console.error("Error refreshing data:", e);
+        }
+        
+        // Queue auto-generate to run after the current render cycle finishes
+        setPendingAutoGenerate(true);
+    }, [queryClient]);
+
+    // Run auto generation when data is fresh
+    useEffect(() => {
+        if (pendingAutoGenerate) {
+            setPendingAutoGenerate(false);
+            toast.dismiss("auto-gen-toast");
+            // Tiny timeout to let React completely flush the new masterProperties state into the generateRoutes closure
+            setTimeout(() => {
+                if (generateRoutesRef.current) generateRoutesRef.current();
+            }, 300);
+        }
+    }, [pendingAutoGenerate]);
 
     // Dynamic status colors based on selected color scheme
     const STATUS_COLORS = useMemo(() => {
