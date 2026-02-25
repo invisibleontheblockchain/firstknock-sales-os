@@ -127,7 +127,7 @@ export default function TerritoryPrompt({
                                  return;
                              }
 
-                             const toastId = toast.loading("Pulling national data for this area...");
+                             const toastId = toast.loading("Pulling national data and preparing route settings...");
                              try {
                                  const res = await base44.functions.invoke('fetchAreaProperties', { 
                                      latitude: centerLat, 
