@@ -52,6 +52,22 @@ export default function RouteBuilderSettings({
     const [expandedSection, setExpandedSection] = useState('presets');
     const [activePreset, setActivePreset] = useState(null);
 
+    // Auto-build when panel opens based on saved Map Settings or a one-time flag
+    React.useEffect(() => {
+        try {
+            const settingsRaw = localStorage.getItem('fk_mapSettings_v3');
+            const settings = settingsRaw ? JSON.parse(settingsRaw) : {};
+            const autoOnClick = !!settings.autoBuildOnGenerateButton;
+            const pendingOnce = localStorage.getItem('fk_autobuild_next_open') === 'true';
+            if ((autoOnClick || pendingOnce) && !routesGenerating) {
+                // slight delay to allow UI to render
+                setTimeout(() => { onGenerate && onGenerate(); }, 50);
+                if (pendingOnce) localStorage.removeItem('fk_autobuild_next_open');
+            }
+        } catch (e) { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const toggleSection = (id) => {
         setExpandedSection(expandedSection === id ? null : id);
     };

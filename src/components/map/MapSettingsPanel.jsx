@@ -113,6 +113,13 @@ export default function MapSettingsPanel({
     const setLiveSoldDateFilter = (val) => {
         setLocalSoldDateFilter(val);
         if (setSoldDateFilter) setSoldDateFilter(val);
+        // If narrowing to a recent window, optionally prepare an auto-build for next open
+        if (val !== null) {
+            const confirmed = window.confirm(`Build routes now using \"Sold in last ${val} months\"?`);
+            if (confirmed) {
+                try { localStorage.setItem('fk_autobuild_next_open', 'true'); } catch (e) {}
+            }
+        }
     };
     const setLiveShowAllProperties = (val) => {
         setLocalShowAllProperties(val);
