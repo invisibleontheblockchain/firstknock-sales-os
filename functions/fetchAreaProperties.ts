@@ -10,17 +10,17 @@ const PAID_PULL_LIMIT = 20; // Number of area pulls allowed for paid users
 function isPointInPolygon(point, vs) {
     if (!vs || vs.length < 3) return true;
     let x = point.lng, y = point.lat;
-    
+
     let inside = false;
     for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
         let xi = vs[i].lng, yi = vs[i].lat;
         let xj = vs[j].lng, yj = vs[j].lat;
-        
+
         let intersect = ((yi > y) !== (yj > y))
             && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
         if (intersect) inside = !inside;
     }
-    
+
     return inside;
 }
 
@@ -43,17 +43,17 @@ Deno.serve(async (req) => {
         const maxRadius = 20; // 40 miles across cap
 
         if (radius > maxRadius) {
-            return Response.json({ 
-                error: 'Area too large', 
-                message: `The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max ${maxRadius * 2} miles across).` 
+            return Response.json({
+                error: 'Area too large',
+                message: `The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max ${maxRadius * 2} miles across).`
             }, { status: 400 });
         }
 
         const pullLimit = isPaid ? PAID_PULL_LIMIT : FREE_PULL_LIMIT;
-        
+
         // Track usage (we'll reuse generated_zip_codes array for area pulls as a quick hack, or a new field)
         const areaPulls = user.area_pulls_count || 0;
-        
+
         if (areaPulls >= pullLimit) {
             const upgradeMsg = !isPaid
                 ? `You've used your ${FREE_PULL_LIMIT} free data pulls. Subscribe to unlock more territories.`
@@ -174,9 +174,9 @@ Deno.serve(async (req) => {
                 let original_status = 'ELIGIBLE';
                 if (p.lastSaleDate) {
                     const saleDate = new Date(p.lastSaleDate);
-                    const twoYearsAgo = new Date();
-                    twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-                    if (saleDate > twoYearsAgo) original_status = 'SOLD';
+                    const oneYearAgo = new Date();
+                    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                    if (saleDate > oneYearAgo) original_status = 'SOLD';
                 }
                 const pZip = p.zipCode || '00000';
                 return {
@@ -223,15 +223,15 @@ Deno.serve(async (req) => {
             } catch (e) {
                 console.error(`[FetchArea] Bulk failed, trying singles`);
                 for (const prop of chunk) {
-                    try { 
+                    try {
                         // Check if exists first to avoid errors spam
                         const exists = await base44.entities.MasterProperty.filter({ address_hash: prop.address_hash }, null, 1);
                         const existingArr = Array.isArray(exists) ? exists : (exists?.items || []);
                         if (existingArr.length === 0) {
-                            await base44.entities.MasterProperty.create(prop); 
-                            successCount++; 
+                            await base44.entities.MasterProperty.create(prop);
+                            successCount++;
                         }
-                    } catch {}
+                    } catch { }
                 }
             }
         }

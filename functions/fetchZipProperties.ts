@@ -90,12 +90,11 @@ Deno.serve(async (req) => {
     const limit = 500;
     let hasMore = true;
     let requestCount = 0;
-    const maxRequestsThisZip = 4; // Up to 2000 properties per zip
+    const maxRequestsThisZip = 20; // Up to 10000 properties per zip
 
     while (hasMore && requestCount < maxRequestsThisZip) {
       const params = new URLSearchParams({
         zipCode: zip,
-        propertyType: 'Single Family',
         limit: String(limit),
         offset: String(offset),
       });
@@ -153,7 +152,7 @@ Deno.serve(async (req) => {
     if (allProperties.length === 0) {
       return Response.json({
         status: 'empty', count: 0,
-        message: `No single family properties found for zip ${zip}.`,
+        message: `No properties found for zip ${zip}.`,
         usage: { zips_used: newZipsUsed, zip_limit: zipLimit, zips_remaining: newZipsRemaining, tier: subTier }
       });
     }
@@ -177,9 +176,9 @@ Deno.serve(async (req) => {
         let original_status = 'ELIGIBLE';
         if (p.lastSaleDate) {
           const saleDate = new Date(p.lastSaleDate);
-          const twoYearsAgo = new Date();
-          twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
-          if (saleDate > twoYearsAgo) original_status = 'SOLD';
+          const oneYearAgo = new Date();
+          oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+          if (saleDate > oneYearAgo) original_status = 'SOLD';
         }
         return {
           address_hash: p.id || `${p.addressLine1}-${zip}`,
@@ -217,7 +216,7 @@ Deno.serve(async (req) => {
       } catch (e) {
         console.error(`[FetchZip-v6] Bulk failed, trying singles:`, e.message);
         for (const prop of chunk) {
-          try { await base44.entities.MasterProperty.create(prop); successCount++; } catch {}
+          try { await base44.entities.MasterProperty.create(prop); successCount++; } catch { }
         }
       }
     }
