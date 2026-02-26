@@ -3,9 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { 
-    LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, 
-    ResponsiveContainer, Legend, AreaChart, Area, ComposedChart 
+import {
+    LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
+    ResponsiveContainer, Legend, AreaChart, Area, ComposedChart
 } from 'recharts';
 import { TrendingUp, Users, Clock, Zap, AlertCircle, Calendar } from 'lucide-react';
 import { format, parseISO, getHours, getDay } from 'date-fns';
@@ -31,10 +31,10 @@ export default function AdvancedRouteAnalytics({ logs = [], routes = [], teamMem
 
         logs.forEach(log => {
             if (new Date(log.created_date) < cutoff) return;
-            
+
             const date = log.created_date.split('T')[0];
             if (!data[date]) data[date] = { date, knocks: 0, sales: 0 };
-            
+
             data[date].knocks++;
             if (['SOLD', 'QUALIFIED'].includes(log.parsed_status)) {
                 data[date].sales++;
@@ -69,7 +69,7 @@ export default function AdvancedRouteAnalytics({ logs = [], routes = [], teamMem
     // --- 3. TIME OPTIMIZATION DATA (Best Times) ---
     const timeOptimization = useMemo(() => {
         const hours = Array(24).fill(0).map((_, i) => ({ hour: i, knocks: 0, sales: 0 }));
-        
+
         logs.forEach(log => {
             const date = new Date(log.created_date);
             const hour = getHours(date);
@@ -96,10 +96,10 @@ export default function AdvancedRouteAnalytics({ logs = [], routes = [], teamMem
 
         const getAvgMetrics = (reps) => {
             if (reps.length === 0) return { knocks: 0, sales: 0, conversion: 0 };
-            
+
             let totalKnocks = 0;
             let totalSales = 0;
-            
+
             reps.forEach(rep => {
                 const repLogs = logs.filter(l => l.created_by === rep.email);
                 totalKnocks += repLogs.length;
@@ -108,7 +108,7 @@ export default function AdvancedRouteAnalytics({ logs = [], routes = [], teamMem
 
             const avgKnocks = totalKnocks / reps.length;
             const avgSales = totalSales / reps.length;
-            
+
             return {
                 knocks: avgKnocks.toFixed(0),
                 sales: avgSales.toFixed(1),
@@ -123,6 +123,49 @@ export default function AdvancedRouteAnalytics({ logs = [], routes = [], teamMem
             manualCount: manualReps.length
         };
     }, [teamMembers, logs]);
+
+    // --- 5. ROUTE PERFORMANCE DATA (A/B Testing) ---
+    const routePerformance = useMemo(() => {
+        // Group logs by route_id to see per-route conversion
+        const routeMap = {};
+
+        logs.forEach(log => {
+            const rid = log.route_id;
+            if (!rid) return; // Skip logs without a route_id (pre-tracking)
+
+            if (!routeMap[rid]) {
+                // Find the matching saved route for metadata
+                const matchedRoute = routes.find(r => r.id === rid);
+                routeMap[rid] = {
+                    route_id: rid,
+                    name: matchedRoute?.name || `Route ${rid.slice(-4)}`,
+                    assigned_to: matchedRoute?.assigned_to_name || 'Unknown',
+                    total_doors: matchedRoute?.property_hashes?.length || 0,
+                    knocks: 0,
+                    sales: 0,
+                    no_answer: 0,
+                    callbacks: 0,
+                    hard_no: 0,
+                    golden_doors: 0, // Doors that were recently sold (anchors)
+                };
+            }
+
+            routeMap[rid].knocks++;
+            if (['SOLD', 'QUALIFIED'].includes(log.parsed_status)) routeMap[rid].sales++;
+            if (log.parsed_status === 'NO_ANSWER') routeMap[rid].no_answer++;
+            if (log.parsed_status === 'CALLBACK') routeMap[rid].callbacks++;
+            if (log.parsed_status === 'HARD_NO') routeMap[rid].hard_no++;
+        });
+
+        return Object.values(routeMap)
+            .map(r => ({
+                ...r,
+                completion: r.total_doors > 0 ? Math.round((r.knocks / r.total_doors) * 100) : 0,
+                conversion: r.knocks > 0 ? ((r.sales / r.knocks) * 100).toFixed(1) : '0.0',
+                callback_rate: r.knocks > 0 ? ((r.callbacks / r.knocks) * 100).toFixed(1) : '0.0',
+            }))
+            .sort((a, b) => parseFloat(b.conversion) - parseFloat(a.conversion));
+    }, [logs, routes]);
 
     const CustomTooltip = ({ active, payload, label }) => {
         if (active && payload && payload.length) {
@@ -160,13 +203,99 @@ export default function AdvancedRouteAnalytics({ logs = [], routes = [], teamMem
                 </Select>
             </div>
 
-            <Tabs defaultValue="trends" className="w-full">
+            <Tabs defaultValue="routes" className="w-full">
                 <TabsList className="bg-[#111] border border-gray-800 w-full justify-start p-1 h-10 mb-4 overflow-x-auto">
+                    <TabsTrigger value="routes" className="text-xs data-[state=active]:bg-yellow-500 data-[state=active]:text-black">Route A/B</TabsTrigger>
                     <TabsTrigger value="trends" className="text-xs data-[state=active]:bg-yellow-500 data-[state=active]:text-black">Trends</TabsTrigger>
                     <TabsTrigger value="compare" className="text-xs data-[state=active]:bg-yellow-500 data-[state=active]:text-black">Comparison</TabsTrigger>
                     <TabsTrigger value="time" className="text-xs data-[state=active]:bg-yellow-500 data-[state=active]:text-black">Optimization</TabsTrigger>
                     <TabsTrigger value="impact" className="text-xs data-[state=active]:bg-yellow-500 data-[state=active]:text-black">Auto-Assign Impact</TabsTrigger>
                 </TabsList>
+
+                {/* --- 5. ROUTE A/B TESTING TAB --- */}
+                <TabsContent value="routes" className="space-y-4">
+                    {routePerformance.length === 0 ? (
+                        <Card className="bg-[#111] border-gray-800">
+                            <CardContent className="py-12 text-center">
+                                <AlertCircle className="w-8 h-8 text-gray-700 mx-auto mb-3" />
+                                <p className="text-gray-400 text-sm font-bold">No Route-Tagged Logs Yet</p>
+                                <p className="text-gray-600 text-xs mt-1">Once reps start knocking with the updated app, per-route conversion data will appear here.</p>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <>
+                            <Card className="bg-[#111] border-gray-800">
+                                <CardHeader>
+                                    <CardTitle className="text-sm font-bold text-gray-400">Route Conversion Leaderboard</CardTitle>
+                                    <CardDescription className="text-xs text-gray-500">Sorted by knock-to-sale conversion rate. Higher = better routing algorithm.</CardDescription>
+                                </CardHeader>
+                                <CardContent className="h-[350px]">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={routePerformance.slice(0, 10)} layout="vertical" margin={{ left: 30 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#333" horizontal={false} />
+                                            <XAxis type="number" stroke="#666" fontSize={12} />
+                                            <YAxis type="category" dataKey="name" stroke="#fff" fontSize={11} width={100} />
+                                            <ReTooltip content={<CustomTooltip />} />
+                                            <Legend />
+                                            <Bar dataKey="sales" fill={BRAND.gold} name="Sales" radius={[0, 4, 4, 0]} barSize={16} />
+                                            <Bar dataKey="callbacks" fill={BRAND.blue} name="Callbacks" radius={[0, 4, 4, 0]} barSize={16} />
+                                            <Bar dataKey="hard_no" fill={BRAND.purple} name="Not Interested" radius={[0, 4, 4, 0]} barSize={16} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </CardContent>
+                            </Card>
+
+                            {/* Route Performance Table */}
+                            <Card className="bg-[#111] border-gray-800">
+                                <CardHeader>
+                                    <CardTitle className="text-sm font-bold text-gray-400">Detailed Route Metrics</CardTitle>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-xs">
+                                            <thead>
+                                                <tr className="border-b border-gray-800">
+                                                    <th className="text-left py-2 text-gray-500 font-bold">Route</th>
+                                                    <th className="text-left py-2 text-gray-500 font-bold">Rep</th>
+                                                    <th className="text-center py-2 text-gray-500 font-bold">Doors</th>
+                                                    <th className="text-center py-2 text-gray-500 font-bold">Knocked</th>
+                                                    <th className="text-center py-2 text-gray-500 font-bold">Completion</th>
+                                                    <th className="text-center py-2 text-gray-500 font-bold">Sales</th>
+                                                    <th className="text-center py-2 text-gray-500 font-bold">Conversion</th>
+                                                    <th className="text-center py-2 text-gray-500 font-bold">Callbacks</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {routePerformance.map(r => (
+                                                    <tr key={r.route_id} className="border-b border-gray-800/50 hover:bg-white/[0.02]">
+                                                        <td className="py-2.5 text-white font-bold">{r.name}</td>
+                                                        <td className="py-2.5 text-gray-400">{r.assigned_to}</td>
+                                                        <td className="py-2.5 text-center text-gray-400">{r.total_doors}</td>
+                                                        <td className="py-2.5 text-center text-white font-bold">{r.knocks}</td>
+                                                        <td className="py-2.5 text-center">
+                                                            <span className={`font-bold ${r.completion >= 80 ? 'text-green-400' : r.completion >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
+                                                                {r.completion}%
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-2.5 text-center">
+                                                            <span className="text-green-400 font-bold bg-green-500/10 px-2 py-0.5 rounded">{r.sales}</span>
+                                                        </td>
+                                                        <td className="py-2.5 text-center">
+                                                            <span className={`font-bold ${parseFloat(r.conversion) > 5 ? 'text-green-400' : parseFloat(r.conversion) > 2 ? 'text-yellow-400' : 'text-gray-400'}`}>
+                                                                {r.conversion}%
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-2.5 text-center text-blue-400 font-bold">{r.callbacks}</td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </>
+                    )}
+                </TabsContent>
 
                 {/* --- 1. TRENDS TAB --- */}
                 <TabsContent value="trends" className="space-y-4">
@@ -185,7 +314,7 @@ export default function AdvancedRouteAnalytics({ logs = [], routes = [], teamMem
                                     <Legend />
                                     <Bar yAxisId="left" dataKey="knocks" fill="#333" name="Knocks" barSize={20} radius={[4, 4, 0, 0]} />
                                     <Line yAxisId="right" type="monotone" dataKey="conversion" stroke={BRAND.green} strokeWidth={2} name="Conversion Rate" dot={false} />
-                                    <Line yAxisId="left" type="monotone" dataKey="sales" stroke={BRAND.gold} strokeWidth={2} name="Sales" dot={{r:4}} />
+                                    <Line yAxisId="left" type="monotone" dataKey="sales" stroke={BRAND.gold} strokeWidth={2} name="Sales" dot={{ r: 4 }} />
                                 </ComposedChart>
                             </ResponsiveContainer>
                         </CardContent>
@@ -229,8 +358,8 @@ export default function AdvancedRouteAnalytics({ logs = [], routes = [], teamMem
                                     <AreaChart data={timeOptimization}>
                                         <defs>
                                             <linearGradient id="colorConv" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor={BRAND.green} stopOpacity={0.3}/>
-                                                <stop offset="95%" stopColor={BRAND.green} stopOpacity={0}/>
+                                                <stop offset="5%" stopColor={BRAND.green} stopOpacity={0.3} />
+                                                <stop offset="95%" stopColor={BRAND.green} stopOpacity={0} />
                                             </linearGradient>
                                         </defs>
                                         <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
@@ -307,7 +436,7 @@ export default function AdvancedRouteAnalytics({ logs = [], routes = [], teamMem
                         <div>
                             <h4 className="font-bold text-blue-400 text-sm">Productivity Insight</h4>
                             <p className="text-xs text-gray-400 mt-1">
-                                {Number(autoAssignImpact.auto.knocks) > Number(autoAssignImpact.manual.knocks) 
+                                {Number(autoAssignImpact.auto.knocks) > Number(autoAssignImpact.manual.knocks)
                                     ? "Reps with Auto-Assign enabled are averaging more knocks per person. This suggests reduced downtime between routes."
                                     : "Auto-Assign reps have similar or lower volume. Consider checking route inventory quality."}
                             </p>

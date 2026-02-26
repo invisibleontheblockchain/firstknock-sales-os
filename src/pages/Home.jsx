@@ -6,9 +6,9 @@ import 'leaflet/dist/leaflet.css';
 // Fix leaflet marker icons
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
 // Fix Leaflet unmount error during scroll wheel zoom
@@ -141,7 +141,7 @@ export default function Home() {
     const [zoomLevel, setZoomLevel] = useState(15);
     const [showMapSettings, setShowMapSettings] = useState(false);
     const [navigationApp, setNavigationApp] = useState('apple');
-    
+
     // Persisted Map Settings
     const [mapTheme, setMapTheme] = useState(() => localStorage.getItem('fk_mapTheme_v2') || 'satellite');
     const [showRouteDetails, setShowRouteDetails] = useState(() => {
@@ -244,10 +244,10 @@ export default function Home() {
         if (template.config.street_cooldown_days) setStreetCooldownDays(template.config.street_cooldown_days);
         if (template.config.zip_code_filter) setZipCodeFilter(template.config.zip_code_filter);
         if (template.config.start_location) setStartLocation(template.config.start_location);
-        
+
         toast.success(`Loaded template: ${template.name}`);
     };
-    
+
     // Working Area Setup - Replaced by TerritorySetupWizard
     const [showSetupWizard, setShowSetupWizard] = useState(false);
 
@@ -274,7 +274,7 @@ export default function Home() {
 
     // Generate Rep Colors Map - Use stored colors from TeamMember entity
     const [localRepColors, setLocalRepColors] = useState({});
-    
+
     const repColors = useMemo(() => {
         const colors = {};
         const PALETTE = ['#FFD700', '#ef4444', '#22c55e', '#3b82f6', '#ec4899', '#f97316', '#8b5cf6', '#06b6d4', '#eab308', '#14b8a6'];
@@ -311,7 +311,7 @@ export default function Home() {
             });
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
             toast.success(`Assigned to ${assigneeName || 'Unassigned'}`);
-            
+
             // Update local state if active
             if (activeRoute && activeRoute.id === routeId) {
                 setActiveRoute(prev => ({ ...prev, assigned_to: memberId, assigned_to_name: assigneeName }));
@@ -329,14 +329,14 @@ export default function Home() {
         queryKey: ['masterProperties', user?.email, user?.territory_zip_codes],
         queryFn: async () => {
             if (!user) return [];
-            
+
             try {
                 let items = [];
                 // If user has configured territory zip codes, fetch properties for those zips
                 // This ensures we get the data regardless of who created it (e.g. system import)
                 if (user.territory_zip_codes && user.territory_zip_codes.length > 0) {
                     console.log(`[Home] Fetching properties for zips: ${user.territory_zip_codes.join(', ')}`);
-                    const promises = user.territory_zip_codes.map(zip => 
+                    const promises = user.territory_zip_codes.map(zip =>
                         base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000)
                     );
                     const results = await Promise.all(promises);
@@ -346,7 +346,7 @@ export default function Home() {
                     const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 10000);
                     items = Array.isArray(result) ? result : (result?.items || []);
                 }
-                
+
                 console.log(`[Home] Total fetched properties: ${items.length}`);
                 return items;
             } catch (e) {
@@ -476,10 +476,10 @@ export default function Home() {
         const R = 3959; // Miles
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLng = (lng2 - lng1) * Math.PI / 180;
-        const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-                Math.sin(dLng/2) * Math.sin(dLng/2);
-        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
         return R * c;
     };
 
@@ -500,7 +500,7 @@ export default function Home() {
         // 2. Determine Rep Location (Last Log)
         const repLocations = {};
         teamMembers.forEach(rep => {
-            const repLogs = logs.filter(l => l.created_by === rep.email).sort((a,b) => new Date(b.created_date) - new Date(a.created_date));
+            const repLogs = logs.filter(l => l.created_by === rep.email).sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
             if (repLogs.length > 0) {
                 repLocations[rep.id] = { lat: repLogs[0].gps_proof_lat, lng: repLogs[0].gps_proof_lng, lastActive: repLogs[0].created_date };
             }
@@ -543,20 +543,20 @@ export default function Home() {
 
     const handleAutoAssignAll = async () => {
         if (!confirm("This will automatically assign the best available rep to each generated route based on location, availability, and performance. Continue?")) return;
-        
+
         // Track assignments to load balance locally during loop
-        const tempBusyCounts = {}; 
-        
+        const tempBusyCounts = {};
+
         for (const route of routes) {
             // Recalculate best match for this route considering new assignments
             const center = route.properties[0]; // Approx center
             const recommendations = getRepRecommendations(center);
-            
+
             // Adjust scores based on temp assignments in this batch
             const bestRep = recommendations.map(r => {
                 const addedLoad = tempBusyCounts[r.id] || 0;
                 return { ...r, matchScore: r.matchScore - (addedLoad * 30) }; // Penalty for multiple assignments in one batch
-            }).sort((a,b) => b.matchScore - a.matchScore)[0];
+            }).sort((a, b) => b.matchScore - a.matchScore)[0];
 
             if (bestRep) {
                 // Trigger save
@@ -582,19 +582,19 @@ export default function Home() {
         const hasActivePolygon = !!(drawnPolygon && drawnPolygon.length > 2);
         const hasExplicitZipFilter = !!(zipCodeFilter && zipCodeFilter.trim());
         const applyTerritoryFilter = territoryZips.length > 0 && !hasActivePolygon && !hasExplicitZipFilter;
-        
+
         return propsArray
             .filter(p => {
                 if (!p?.lat || !p?.lng || isNaN(p.lat) || isNaN(p.lng)) return false;
                 // Filter out Null Island (0,0) coordinates
                 if (Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001) return false;
-                
+
                 // Apply territory filter only when appropriate (not when polygon/explicit zips are active)
                 if (applyTerritoryFilter) {
                     const propZip = String(p.zip_code || '').trim().slice(0, 5);
                     if (!territoryZips.includes(propZip)) return false;
                 }
-                
+
                 return true;
             })
             .map(p => {
@@ -629,21 +629,21 @@ export default function Home() {
         return savedRoutes
             .filter(r => repFilter === 'all' || (r.assigned_to_name && r.assigned_to_name.includes(repFilter)))
             .map(route => {
-            const routeProps = route.property_hashes
-                .map(hash => effectiveProperties.find(p => p.address_hash === hash))
-                .filter(Boolean);
+                const routeProps = route.property_hashes
+                    .map(hash => effectiveProperties.find(p => p.address_hash === hash))
+                    .filter(Boolean);
 
-            return {
-                ...route,
-                id: route.id,
-                properties: routeProps,
-                houseCount: route.metrics?.house_count || routeProps.length,
-                totalDistance: route.metrics?.distance || 0,
-                competitivenessScore: route.metrics?.score || 0,
-                isSaved: true
-            };
-        }).filter(r => r.properties.length > 0)
-        .sort((a, b) => (b.competitivenessScore || 0) - (a.competitivenessScore || 0));
+                return {
+                    ...route,
+                    id: route.id,
+                    properties: routeProps,
+                    houseCount: route.metrics?.house_count || routeProps.length,
+                    totalDistance: route.metrics?.distance || 0,
+                    competitivenessScore: route.metrics?.score || 0,
+                    isSaved: true
+                };
+            }).filter(r => r.properties.length > 0)
+            .sort((a, b) => (b.competitivenessScore || 0) - (a.competitivenessScore || 0));
     }, [savedRoutes, effectiveProperties, repFilter]);
 
     // Extract unique reps from saved routes for filter
@@ -710,17 +710,17 @@ export default function Home() {
 
     const generateRoutes = useCallback(async () => {
         setRoutesGenerating(true);
-        
+
         try {
             // 1. DYNAMIC DATA FETCHING (if zip code is set)
             let dynamicProps = [];
             if (zipCodeFilter && zipCodeFilter.trim()) {
                 const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
-                
+
                 // Check if we need to fetch (simple check: do we have enough data for these zips?)
                 // We'll just fetch to be safe and merge.
                 // Note: Parallel fetch for multiple zips
-                const fetchPromises = targetZips.map(zip => 
+                const fetchPromises = targetZips.map(zip =>
                     base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000)
                         .then(res => Array.isArray(res) ? res : (res?.items || []))
                         .catch(err => {
@@ -728,7 +728,7 @@ export default function Home() {
                             return [];
                         })
                 );
-                
+
                 const results = await Promise.all(fetchPromises);
                 let flattened = results.flat();
 
@@ -736,7 +736,7 @@ export default function Home() {
                 if (flattened.length === 0) {
                     console.log(`[Generate] No properties found for ${targetZips.join(', ')}. Fetching from RentCast...`);
                     toast.loading("Pulling property data...", { id: 'fetch-zip' });
-                    
+
                     for (const zip of targetZips) {
                         try {
                             const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zip });
@@ -745,11 +745,11 @@ export default function Home() {
                             console.warn(`Failed to fetch zip ${zip}`, err);
                         }
                     }
-                    
+
                     toast.success("Data synced!", { id: 'fetch-zip' });
-                    
+
                     // Re-fetch after import
-                    const retryPromises = targetZips.map(zip => 
+                    const retryPromises = targetZips.map(zip =>
                         base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000)
                             .then(res => Array.isArray(res) ? res : (res?.items || []))
                             .catch(() => [])
@@ -757,7 +757,7 @@ export default function Home() {
                     const retryResults = await Promise.all(retryPromises);
                     flattened = retryResults.flat();
                 }
-                
+
                 if (flattened.length > 0) {
                     console.log(`[Generate] Fetched ${flattened.length} properties from backend for zips: ${targetZips.join(', ')}`);
                     dynamicProps = flattened;
@@ -775,7 +775,7 @@ export default function Home() {
             // Combine current available (memoized) with newly fetched dynamic props
             // Need to apply same processing (dedup, assigned filtering) to dynamicProps
             const assignedSet = assignedHashes; // closed over from render
-            
+
             // Convert dynamicProps to effective format (add lat/lng parse if needed, though filter returns entities)
             const processedDynamic = dynamicProps.map(p => {
                 const propLogs = logs.filter(l => (p.address_hash && l.address_hash === p.address_hash));
@@ -786,9 +786,9 @@ export default function Home() {
                     lng: parseFloat(p.lng),
                     effective_status: determineEffectiveStatus(p, propLogs)
                 };
-            }).filter(p => 
-                !assignedSet.has(p.address_hash) && 
-                p.lat && p.lng && 
+            }).filter(p =>
+                !assignedSet.has(p.address_hash) &&
+                p.lat && p.lng &&
                 !(Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001)
             );
 
@@ -796,7 +796,7 @@ export default function Home() {
             const combinedMap = new Map();
             availableProperties.forEach(p => combinedMap.set(p.address_hash, p));
             processedDynamic.forEach(p => combinedMap.set(p.address_hash, p));
-            
+
             let workingSet = Array.from(combinedMap.values());
 
             // 3. FILTERING
@@ -835,9 +835,9 @@ export default function Home() {
             }
 
             if (soldDateFilter !== null && beforeSoldDateFilter > 0 && workingSet.length === 0) {
-                 toast.error(`No homes match "Sold in last ${soldDateFilter} months" with current filters.`);
-                 setRoutesGenerating(false);
-                 return;
+                toast.error(`No homes match "Sold in last ${soldDateFilter} months" with current filters.`);
+                setRoutesGenerating(false);
+                return;
             }
 
             // Apply Property Type Filter
@@ -883,11 +883,11 @@ export default function Home() {
 
             // 4. UI UPDATES (Keep Builder available & Move Map)
             setShowCompare(true);
-            
+
             if (mapRef.current && workingSet.length > 0) {
                 const bounds = L.latLngBounds(workingSet.map(p => [p.lat, p.lng]));
                 if (bounds.isValid()) {
-                    try { if (mapRef.current._mapPane) mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 }); } catch(e){}
+                    try { if (mapRef.current._mapPane) mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 }); } catch (e) { }
                 }
             }
 
@@ -901,8 +901,8 @@ export default function Home() {
                 housesPerRoute,
                 start,
                 logs,
-                { 
-                    streetCooldownDays, 
+                {
+                    streetCooldownDays,
                     useStreetSweep: routeConfig.walkingPattern === 'street_sweep',
                     minimizeTurns: routeConfig.minimizeTurns,
                     use2Opt: routeConfig.use2Opt,
@@ -946,7 +946,7 @@ export default function Home() {
                             try {
                                 const dt = new Date(p.sold_date).getTime();
                                 if (dt > latest) latest = dt;
-                            } catch(e){}
+                            } catch (e) { }
                         }
                     });
                     return latest;
@@ -966,7 +966,7 @@ export default function Home() {
 
         // Identify "High Potential" (score > 100)
         const highPotentialCount = routes.filter(r => r.competitivenessScore >= 100).length;
-        
+
         // Count excluded if available from generation metadata
         const excludedCount = routes._cooldownInfo ? routes._cooldownInfo.propertiesExcluded : 0;
 
@@ -986,11 +986,11 @@ export default function Home() {
     const hasCenteredRef = useRef(false);
     useEffect(() => {
         if (availableProperties.length > 0 && !hasCenteredRef.current && mapRef.current) {
-             const bounds = L.latLngBounds(availableProperties.slice(0, 1000).map(p => [p.lat, p.lng]));
-             if (bounds.isValid()) {
-                 try { if (mapRef.current._mapPane) mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false }); } catch(e){}
-                 hasCenteredRef.current = true;
-             }
+            const bounds = L.latLngBounds(availableProperties.slice(0, 1000).map(p => [p.lat, p.lng]));
+            if (bounds.isValid()) {
+                try { if (mapRef.current._mapPane) mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false }); } catch (e) { }
+                hasCenteredRef.current = true;
+            }
         }
     }, [availableProperties]);
 
@@ -1000,10 +1000,10 @@ export default function Home() {
     useEffect(() => {
         const updateCenter = async () => {
             if (activeRoute?.properties?.length > 0) {
-                 // Active route takes priority
-                 return; 
+                // Active route takes priority
+                return;
             }
-            
+
             if (availableProperties[0] && availableProperties[0].lat) {
                 setMapCenter([availableProperties[0].lat, availableProperties[0].lng]);
             }
@@ -1033,9 +1033,10 @@ export default function Home() {
             raw_input_text: note || status,
             parsed_status: status,
             gps_proof_lat: property.lat,
-            gps_proof_lng: property.lng
+            gps_proof_lng: property.lng,
+            route_id: activeRoute?.id || null
         });
-    }, [createLogMutation]);
+    }, [createLogMutation, activeRoute]);
 
     const generateRoutesRef = useRef(generateRoutes);
     useEffect(() => {
@@ -1100,13 +1101,13 @@ export default function Home() {
                 <TileLayer
                     key={`basemap-${mapTheme}`}
                     url={
-                        mapTheme === 'satellite' 
+                        mapTheme === 'satellite'
                             ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                             : mapTheme === 'hybrid'
-                            ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                            : mapTheme === 'light' 
-                            ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                            : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+                                ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                                : mapTheme === 'light'
+                                    ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+                                    : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
                     }
                     attribution={mapTheme === 'satellite' || mapTheme === 'hybrid' ? '&copy; Esri' : '&copy; CARTO'}
                 />
@@ -1119,16 +1120,16 @@ export default function Home() {
                 )}
                 <LocationMarker autoCenter={availableProperties.length === 0} userLocation={userLocation} />
                 <DarkRoomManager />
-                <MapController 
-                    fitBounds={fitBounds} 
-                    onZoomChange={setZoomLevel} 
-                    onMoveEnd={() => {}}
+                <MapController
+                    fitBounds={fitBounds}
+                    onZoomChange={setZoomLevel}
+                    onMoveEnd={() => { }}
                 />
 
-                <MapDrawTool 
-                    active={drawingMode} 
-                    onPointsUpdate={setDraftPolygon} 
-                    drawnPolygon={drawnPolygon} 
+                <MapDrawTool
+                    active={drawingMode}
+                    onPointsUpdate={setDraftPolygon}
+                    drawnPolygon={drawnPolygon}
                 />
 
                 {/* --- ANALYZE MODE: Existing Routes --- */}
@@ -1140,70 +1141,70 @@ export default function Home() {
                             return route.properties.some(p => p.zip_code === analyzeZipFilter);
                         })
                         .map((route, routeIdx) => {
-                        // If assigned, use Rep Color. If unassigned, use palette color to make it visible.
-                        const repColor = route.assigned_to 
-                            ? (repColors[route.assigned_to] || '#3b82f6') 
-                            : ROUTE_COLORS[routeIdx % ROUTE_COLORS.length];
-                            
-                        const isUnassigned = !route.assigned_to;
-                        const centerProp = route.properties[Math.floor(route.properties.length / 2)];
+                            // If assigned, use Rep Color. If unassigned, use palette color to make it visible.
+                            const repColor = route.assigned_to
+                                ? (repColors[route.assigned_to] || '#3b82f6')
+                                : ROUTE_COLORS[routeIdx % ROUTE_COLORS.length];
 
-                        return (
-                            <React.Fragment key={`saved-group-${route.id}`}>
-                                {/* Rank/Label Marker at Center - VISIBLE IN ANALYZE MODE */}
-                                {centerProp && centerProp.lat && centerProp.lng && (
-                                    <CircleMarker
-                                        center={[centerProp.lat, centerProp.lng]}
-                                        radius={14}
-                                        pathOptions={{ fillColor: 'black', fillOpacity: 0.7, color: repColor, weight: 2 }}
-                                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
-                                    >
-                                        <Tooltip permanent direction="center" className="route-number-tooltip">
-                                            <span style={{ color: repColor, fontWeight: '900', fontSize: '10px' }}>#{routeIdx + 1}</span>
-                                        </Tooltip>
-                                    </CircleMarker>
-                                )}
+                            const isUnassigned = !route.assigned_to;
+                            const centerProp = route.properties[Math.floor(route.properties.length / 2)];
 
-                                {showRouteDetails && route.properties
-                                    .filter(p => {
-                                        if (!p || p.lat === undefined || p.lng === undefined) return false;
-                                        if (quickFilter === 'all') return true;
-                                        if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
-                                        if (quickFilter === 'sold') return p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED';
-                                        if (quickFilter === 'rejected') return p.effective_status === 'HARD_NO';
-                                        return true;
-                                    })
-                                    .map((p, idx) => (
-                                    <CircleMarker
-                                        key={`saved-${route.id}-${p.address_hash || 'no-hash'}-${idx}`}
-                                        center={[p.lat, p.lng]}
-                                        radius={pinSize}
-                                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
-                                        pathOptions={{ 
-                                            fillColor: repColor, 
-                                            fillOpacity: (isUnassigned ? 0.6 : 0.8) * mapSettings.pinOpacity, 
-                                            color: mapSettings.fillStyle === 'outline' ? repColor : (mapSettings.pinBorderColor || '#000'), 
-                                            weight: mapSettings.fillStyle === 'outline' ? 2 : mapSettings.pinBorderWidth 
-                                        }}
-                                    >
-                                        {mapSettings.showLabels && (
+                            return (
+                                <React.Fragment key={`saved-group-${route.id}`}>
+                                    {/* Rank/Label Marker at Center - VISIBLE IN ANALYZE MODE */}
+                                    {centerProp && centerProp.lat && centerProp.lng && (
+                                        <CircleMarker
+                                            center={[centerProp.lat, centerProp.lng]}
+                                            radius={14}
+                                            pathOptions={{ fillColor: 'black', fillOpacity: 0.7, color: repColor, weight: 2 }}
+                                            eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
+                                        >
                                             <Tooltip permanent direction="center" className="route-number-tooltip">
-                                                <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '8px', textShadow: '0 0 3px #000' }}>
-                                                    {mapSettings.labelType === 'number' ? p.house_number : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0,1) : (p.street_name || '').split(' ')[0]}
-                                                </span>
+                                                <span style={{ color: repColor, fontWeight: '900', fontSize: '10px' }}>#{routeIdx + 1}</span>
                                             </Tooltip>
-                                        )}
-                                    </CircleMarker>
-                                ))}
-                                {showRouteLines && route.properties.length > 1 && (
-                                    <Polyline
-                                        positions={route.properties.map(p => [p.lat, p.lng])}
-                                        pathOptions={{ color: repColor, weight: mapSettings.lineWidth, opacity: mapSettings.lineOpacity, dashArray: lineDashArray }}
-                                    />
-                                )}
-                            </React.Fragment>
-                        );
-                    })}
+                                        </CircleMarker>
+                                    )}
+
+                                    {showRouteDetails && route.properties
+                                        .filter(p => {
+                                            if (!p || p.lat === undefined || p.lng === undefined) return false;
+                                            if (quickFilter === 'all') return true;
+                                            if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
+                                            if (quickFilter === 'sold') return p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED';
+                                            if (quickFilter === 'rejected') return p.effective_status === 'HARD_NO';
+                                            return true;
+                                        })
+                                        .map((p, idx) => (
+                                            <CircleMarker
+                                                key={`saved-${route.id}-${p.address_hash || 'no-hash'}-${idx}`}
+                                                center={[p.lat, p.lng]}
+                                                radius={pinSize}
+                                                eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
+                                                pathOptions={{
+                                                    fillColor: repColor,
+                                                    fillOpacity: (isUnassigned ? 0.6 : 0.8) * mapSettings.pinOpacity,
+                                                    color: mapSettings.fillStyle === 'outline' ? repColor : (mapSettings.pinBorderColor || '#000'),
+                                                    weight: mapSettings.fillStyle === 'outline' ? 2 : mapSettings.pinBorderWidth
+                                                }}
+                                            >
+                                                {mapSettings.showLabels && (
+                                                    <Tooltip permanent direction="center" className="route-number-tooltip">
+                                                        <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '8px', textShadow: '0 0 3px #000' }}>
+                                                            {mapSettings.labelType === 'number' ? p.house_number : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0, 1) : (p.street_name || '').split(' ')[0]}
+                                                        </span>
+                                                    </Tooltip>
+                                                )}
+                                            </CircleMarker>
+                                        ))}
+                                    {showRouteLines && route.properties.length > 1 && (
+                                        <Polyline
+                                            positions={route.properties.map(p => [p.lat, p.lng])}
+                                            pathOptions={{ color: repColor, weight: mapSettings.lineWidth, opacity: mapSettings.lineOpacity, dashArray: lineDashArray }}
+                                        />
+                                    )}
+                                </React.Fragment>
+                            );
+                        })}
                 </LayerGroup>
 
                 {/* GENERATE MODE: Existing Routes (Dimmed) layer removed to reduce map clutter */}
@@ -1213,7 +1214,7 @@ export default function Home() {
                     {mode === 'generate' && !activeRoute && filteredRoutes.length > 0 && filteredRoutes.map((route, rIdx) => {
                         const routeColor = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
                         const centerProp = route.properties[Math.floor(route.properties.length / 2)];
-                        
+
                         return (
                             <React.Fragment key={`route-group-${route.id}`}>
                                 {/* Rank Marker at Center */}
@@ -1229,18 +1230,18 @@ export default function Home() {
                                         </Tooltip>
                                     </CircleMarker>
                                 )}
-                                
+
                                 {showRouteDetails && route.properties.filter(p => p && p.lat && p.lng).map((p, idx) => (
                                     <CircleMarker
                                         key={`generated-${route.id}-${idx}`}
                                         center={[p.lat, p.lng]}
                                         radius={pinSize + 1}
                                         eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
-                                        pathOptions={{ 
-                                            fillColor: routeColor, 
-                                            fillOpacity: 0.6 * mapSettings.pinOpacity, 
-                                            color: mapSettings.fillStyle === 'outline' ? routeColor : (mapSettings.pinBorderColor || '#000'), 
-                                            weight: mapSettings.pinBorderWidth 
+                                        pathOptions={{
+                                            fillColor: routeColor,
+                                            fillOpacity: 0.6 * mapSettings.pinOpacity,
+                                            color: mapSettings.fillStyle === 'outline' ? routeColor : (mapSettings.pinBorderColor || '#000'),
+                                            weight: mapSettings.pinBorderWidth
                                         }}
                                     />
                                 ))}
@@ -1281,7 +1282,7 @@ export default function Home() {
                                 click: () => {
                                     // Zoom in on cluster click
                                     if (mapRef.current) {
-                                        try { if (mapRef.current._mapPane) mapRef.current.setView([cluster.lat, cluster.lng], Math.min(zoomLevel + 3, 16)); } catch(e){}
+                                        try { if (mapRef.current._mapPane) mapRef.current.setView([cluster.lat, cluster.lng], Math.min(zoomLevel + 3, 16)); } catch (e) { }
                                     }
                                 }
                             }}
@@ -1345,7 +1346,7 @@ export default function Home() {
                             if (mode === 'generate' && drawnPolygon && drawnPolygon.length > 2) {
                                 if (!isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon)) return false;
                             }
-                            
+
                             // Date Filter (Sold Date) - STRICT
                             if (soldDateFilter !== null) {
                                 if (!p.sold_date) return false;
@@ -1367,11 +1368,11 @@ export default function Home() {
                             if (highlightRecentlySold && p.sold_date) {
                                 try {
                                     isRecentlySold = isAfter(parseISO(p.sold_date), subMonths(new Date(), 1));
-                                } catch(e){}
+                                } catch (e) { }
                             }
-                            
+
                             const isUnvisited = ['ELIGIBLE', 'NO_ANSWER', 'OTHER'].includes(p.effective_status);
-                            
+
                             return (
                                 <CircleMarker
                                     key={p.address_hash || p.id}
@@ -1388,7 +1389,7 @@ export default function Home() {
                                     {mapSettings.showLabels && (
                                         <Tooltip permanent direction="center" className="route-number-tooltip">
                                             <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '8px', textShadow: '0 0 3px #000' }}>
-                                                {mapSettings.labelType === 'number' ? p.house_number : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0,1) : (p.street_name || '').split(' ')[0]}
+                                                {mapSettings.labelType === 'number' ? p.house_number : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0, 1) : (p.street_name || '').split(' ')[0]}
                                             </span>
                                         </Tooltip>
                                     )}
@@ -1398,7 +1399,7 @@ export default function Home() {
                 </LayerGroup>
 
                 {/* GPS TRACKER LAYERS */}
-                <GpsTrackerMapLayers 
+                <GpsTrackerMapLayers
                     properties={effectiveProperties}
                     isTracking={gpsTracking}
                     onSelectProperty={setSelectedProperty}
@@ -1419,11 +1420,11 @@ export default function Home() {
                     <>
                         <Polyline
                             positions={activeRoute.properties.filter(p => p && p.lat && p.lng).map(p => [p.lat, p.lng])}
-                            pathOptions={{ 
-                                color: BRAND.gold, 
-                                weight: mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4, 
+                            pathOptions={{
+                                color: BRAND.gold,
+                                weight: mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4,
                                 opacity: mapSettings.lineOpacity ? Math.max(0.6, mapSettings.lineOpacity) : 0.8,
-                                dashArray: lineDashArray 
+                                dashArray: lineDashArray
                             }}
                         />
                         {activeRoute.properties.map((p, idx) => (
@@ -1445,11 +1446,11 @@ export default function Home() {
                                 }}
                             >
                                 <Tooltip permanent direction="top" offset={[0, -6]} className="route-number-tooltip">
-                                    <span style={{ 
-                                        color: '#fff', 
-                                        fontWeight: 'bold', 
+                                    <span style={{
+                                        color: '#fff',
+                                        fontWeight: 'bold',
                                         fontSize: '11px',
-                                        textShadow: '0 1px 3px #000, 0 0 5px #000' 
+                                        textShadow: '0 1px 3px #000, 0 0 5px #000'
                                     }}>
                                         {idx + 1}
                                     </span>
@@ -1534,13 +1535,13 @@ export default function Home() {
                                 ))}
                             </select>
                         </div>
-                        <button 
+                        <button
                             onClick={() => {
                                 setActiveRoute(null);
                                 if (mapRef.current) {
-                                    try { if (mapRef.current._mapPane) mapRef.current.setZoom(Math.max(13, mapRef.current.getZoom() - 2)); } catch(e){}
+                                    try { if (mapRef.current._mapPane) mapRef.current.setZoom(Math.max(13, mapRef.current.getZoom() - 2)); } catch (e) { }
                                 }
-                            }} 
+                            }}
                             className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center hover:bg-white/10 active:bg-white/15 rounded-full transition-colors shrink-0"
                         >
                             <X className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
@@ -1550,7 +1551,7 @@ export default function Home() {
 
             </div>
 
-            <TerritoryPrompt 
+            <TerritoryPrompt
                 mode={mode}
                 activeRoute={activeRoute}
                 routesGenerating={routesGenerating}
@@ -1608,14 +1609,14 @@ export default function Home() {
                             return;
                         }
                         const toastId = toast.loading("Getting your location...");
-                        
+
                         const tryLocate = (highAccuracy) => {
                             navigator.geolocation.getCurrentPosition(
                                 (position) => {
                                     const { latitude, longitude, accuracy } = position.coords;
                                     setUserLocation({ lat: latitude, lng: longitude });
                                     if (mapRef.current) {
-                                        try { mapRef.current.setView([latitude, longitude], 18); } catch (err) {}
+                                        try { mapRef.current.setView([latitude, longitude], 18); } catch (err) { }
                                     }
                                     toast.success(`Location found (±${Math.round(accuracy)}m)`, { id: toastId });
                                 },
@@ -1649,7 +1650,7 @@ export default function Home() {
                         onClick={(e) => {
                             e.stopPropagation();
                             if (mapRef.current && fitBounds && fitBounds.length > 0) {
-                                try { if (mapRef.current._mapPane) mapRef.current.fitBounds(fitBounds, { padding: [30, 30], maxZoom: 17 }); } catch(e){}
+                                try { if (mapRef.current._mapPane) mapRef.current.fitBounds(fitBounds, { padding: [30, 30], maxZoom: 17 }); } catch (e) { }
                                 toast.success("Centered on Territory");
                             }
                         }}
@@ -1684,8 +1685,8 @@ export default function Home() {
                     <Button
                         onClick={() => setShowRoutePanel(true)}
                         className="rounded-full h-9 px-3 sm:h-10 sm:px-5 text-[11px] sm:text-sm font-bold tracking-wide shadow-lg transition-all duration-300 transform active:scale-95 whitespace-nowrap"
-                        style={{ 
-                            background: mode === 'generate' && !activeRoute ? 'rgba(31, 31, 31, 0.9)' : 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', 
+                        style={{
+                            background: mode === 'generate' && !activeRoute ? 'rgba(31, 31, 31, 0.9)' : 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)',
                             color: mode === 'generate' && !activeRoute ? BRAND.gold : BRAND.voidBlack,
                             border: mode === 'generate' && !activeRoute ? `1px solid ${BRAND.gold}` : 'none'
                         }}
@@ -1796,10 +1797,10 @@ export default function Home() {
                                         <Filter className="w-3 h-3 inline mr-1" /> SORT BY
                                     </label>
                                     <div className="flex gap-2 flex-wrap">
-                                       {[{ id: 'score', label: 'SCORE' }, { id: 'houses', label: 'HOUSES' }, { id: 'distance', label: 'DISTANCE' }, { id: 'recent_sale', label: 'RECENT SALE' }].map(opt => (
-                                           <button
-                                               key={opt.id}
-                                               onClick={() => setSortBy(opt.id)}
+                                        {[{ id: 'score', label: 'SCORE' }, { id: 'houses', label: 'HOUSES' }, { id: 'distance', label: 'DISTANCE' }, { id: 'recent_sale', label: 'RECENT SALE' }].map(opt => (
+                                            <button
+                                                key={opt.id}
+                                                onClick={() => setSortBy(opt.id)}
                                                 className="px-3 py-2 rounded-lg text-xs font-bold tracking-wide transition-all"
                                                 style={{
                                                     background: sortBy === opt.id ? BRAND.gold : BRAND.charcoal,
@@ -1836,7 +1837,7 @@ export default function Home() {
                     routeConfig={routeConfig} setRouteConfig={setRouteConfig}
                     onGenerate={generateRoutes} routesGenerating={routesGenerating}
                     onReset={() => {
-                        if(confirm("Reset all generated routes?")) {
+                        if (confirm("Reset all generated routes?")) {
                             setRoutes([]);
                             setFetchedProperties([]);
                             setDrawnPolygon(null); // Clear polygon on reset
@@ -1928,53 +1929,53 @@ export default function Home() {
 
             {/* New Territory Setup Wizard */}
             {showSetupWizard && (
-                <TerritorySetupWizard 
-                    user={user} 
-                    onComplete={handleWizardComplete} 
+                <TerritorySetupWizard
+                    user={user}
+                    onComplete={handleWizardComplete}
                 />
             )}
 
             {/* Property Details Drawer */}
             {/* Command Center Dashboard Overlay */}
-                              {showDashboard && (
-                                  <CommandCenterDashboard
-                                      properties={effectiveProperties}
-                                      logs={logs}
-                                      routes={savedRoutes}
-                                      teamMembers={teamMembers}
-                                      onClose={() => setShowDashboard(false)}
-                                  />
-                              )}
+            {showDashboard && (
+                <CommandCenterDashboard
+                    properties={effectiveProperties}
+                    logs={logs}
+                    routes={savedRoutes}
+                    teamMembers={teamMembers}
+                    onClose={() => setShowDashboard(false)}
+                />
+            )}
 
-                              {/* Map Settings Panel */}
-                              {showMapSettings && (
-                                  <MapSettingsPanel
-                                      mapTheme={mapTheme}
-                                      setMapTheme={setMapTheme}
-                                      teamMembers={teamMembers}
-                                      repColors={repColors}
-                                      onUpdateRepColor={handleUpdateRepColor}
-                                      onClose={() => setShowMapSettings(false)}
-                                      quickFilter={quickFilter}
-                                      setQuickFilter={setQuickFilter}
-                                      showRouteDetails={showRouteDetails}
-                                      setShowRouteDetails={setShowRouteDetails}
-                                      showAllProperties={showAllProperties}
-                                      setShowAllProperties={setShowAllProperties}
-                                      navigationApp={navigationApp}
-                                      setNavigationApp={updateNavigationApp}
-                                      pinSize={pinSize}
-                                      setPinSize={setPinSize}
-                                      showRouteLines={showRouteLines}
-                                      setShowRouteLines={setShowRouteLines}
-                                      mapSettings={mapSettings}
-                                      setMapSettings={setMapSettings}
-                                      soldDateFilter={soldDateFilter}
-                                      setSoldDateFilter={setSoldDateFilter}
-                                      highlightRecentlySold={highlightRecentlySold}
-                                      setHighlightRecentlySold={setHighlightRecentlySold}
-                                  />
-                              )}
+            {/* Map Settings Panel */}
+            {showMapSettings && (
+                <MapSettingsPanel
+                    mapTheme={mapTheme}
+                    setMapTheme={setMapTheme}
+                    teamMembers={teamMembers}
+                    repColors={repColors}
+                    onUpdateRepColor={handleUpdateRepColor}
+                    onClose={() => setShowMapSettings(false)}
+                    quickFilter={quickFilter}
+                    setQuickFilter={setQuickFilter}
+                    showRouteDetails={showRouteDetails}
+                    setShowRouteDetails={setShowRouteDetails}
+                    showAllProperties={showAllProperties}
+                    setShowAllProperties={setShowAllProperties}
+                    navigationApp={navigationApp}
+                    setNavigationApp={updateNavigationApp}
+                    pinSize={pinSize}
+                    setPinSize={setPinSize}
+                    showRouteLines={showRouteLines}
+                    setShowRouteLines={setShowRouteLines}
+                    mapSettings={mapSettings}
+                    setMapSettings={setMapSettings}
+                    soldDateFilter={soldDateFilter}
+                    setSoldDateFilter={setSoldDateFilter}
+                    highlightRecentlySold={highlightRecentlySold}
+                    setHighlightRecentlySold={setHighlightRecentlySold}
+                />
+            )}
 
             <ManagerPropertyDetailSheet
                 selectedProperty={selectedProperty}
@@ -1985,6 +1986,6 @@ export default function Home() {
                 handleLogResult={handleLogResult}
                 toast={toast}
             />
-            </div>
-            );
-            }
+        </div>
+    );
+}
