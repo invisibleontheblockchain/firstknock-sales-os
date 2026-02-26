@@ -68,54 +68,96 @@ Deno.serve(async (req) => {
         console.log(`[FetchArea] Fetching from RentCast for lat:${latitude}, lng:${longitude}, r:${radius}`);
 
         const allProperties = [];
-        let offset = 0;
-        const limit = 500;
+        // Pass 1: Fetch Golden Doors (Recent Sales in last 365 days)
         let requestCount = 0;
         let reportedTotal = 0;
+        let pass1Offset = 0;
+        const pass1Limit = 500;
+        const maxPass1Items = 2000; // Cap Pass 1 to 2000 recent sales to leave room for density
 
-        while (true) {
+        while (allProperties.length < maxPass1Items) {
             const params = new URLSearchParams({
                 latitude: String(latitude),
                 longitude: String(longitude),
                 radius: String(radius),
-                limit: String(limit),
-                offset: String(offset),
+                limit: String(pass1Limit),
+                offset: String(pass1Offset),
+                saleDateRange: '0:365', // ONLY recently sold
                 includeTotalCount: 'true',
             });
 
             const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
-            console.log(`[FetchArea] Request ${requestCount + 1}: offset=${offset}`);
+            console.log(`[FetchArea Phase 1 - Recent Sales] Request ${requestCount + 1}: offset=${pass1Offset}`);
 
-            const response = await fetch(url, {
-                headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY },
-            });
+            const response = await fetch(url, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
 
             if (!response.ok) {
                 const errText = await response.text();
-                console.error(`[FetchArea] RentCast error ${response.status}: ${errText}`);
+                console.error(`[FetchArea Phase 1] RentCast error ${response.status}: ${errText}`);
                 if (response.status === 429) break;
-                if (requestCount === 0) {
-                    return Response.json({ error: `RentCast API error: ${response.status}` }, { status: 500 });
-                }
+                if (requestCount === 0) return Response.json({ error: `RentCast API error: ${response.status}` }, { status: 500 });
                 break;
             }
 
-            const totalHeader = response.headers.get('X-Total-Count');
-            if (totalHeader) {
-                const n = parseInt(totalHeader, 10);
-                if (!isNaN(n)) reportedTotal = n;
+            if (!reportedTotal) {
+                const totalHeader = response.headers.get('X-Total-Count');
+                if (totalHeader) reportedTotal = parseInt(totalHeader, 10);
             }
 
             const data = await response.json();
             const batch = Array.isArray(data) ? data : [];
-            console.log(`[FetchArea] Got ${batch.length} properties (total so far: ${allProperties.length + batch.length}${reportedTotal ? ` / ${reportedTotal}` : ''})`);
-
             allProperties.push(...batch);
             requestCount++;
-            if (batch.length < limit) break;
-            offset += limit;
-            if (requestCount >= 20) { console.warn('[FetchArea] Reached safety page cap (20).'); break; }
+
+            if (batch.length < pass1Limit) break;
+            pass1Offset += pass1Limit;
+            if (requestCount >= 10) break; // Max 10 pages for Pass 1
         }
+
+        console.log(`[FetchArea Phase 1] Finished. Found ${allProperties.length} recently sold properties.`);
+
+        // Pass 2: Fetch Density (General Properties) to fill the rest of the limit
+        let pass2Offset = 0;
+        const pass2Limit = 500;
+        const maxTotalItems = 10000; // Total upper limit for the entire pull
+
+        while (allProperties.length < maxTotalItems) {
+            const currentLimit = Math.min(pass2Limit, maxTotalItems - allProperties.length);
+            const params = new URLSearchParams({
+                latitude: String(latitude),
+                longitude: String(longitude),
+                radius: String(radius),
+                limit: String(currentLimit),
+                offset: String(pass2Offset)
+            });
+
+            const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
+            console.log(`[FetchArea Phase 2 - Density] Request ${requestCount + 1}: offset=${pass2Offset}`);
+
+            const response = await fetch(url, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
+
+            if (!response.ok) {
+                const errText = await response.text();
+                console.error(`[FetchArea Phase 2] RentCast error ${response.status}: ${errText}`);
+                break;
+            }
+
+            const data = await response.json();
+            const batch = Array.isArray(data) ? data : [];
+
+            // Deduplicate Pass 2 against Pass 1
+            const existingIds = new Set(allProperties.map(p => p.id));
+            const newProperties = batch.filter(p => !existingIds.has(p.id));
+
+            allProperties.push(...newProperties);
+            requestCount++;
+
+            if (batch.length < currentLimit) break; // Use original batch length to check if API exhausted
+            pass2Offset += currentLimit;
+            if (requestCount >= 25) { console.warn('[FetchArea] Reached total combined page safety cap (25).'); break; }
+        }
+
+        console.log(`[FetchArea] Combined Total: ${allProperties.length} properties before polygon check.`);
 
         // Increment usage
         try {
