@@ -117,7 +117,11 @@ export default function MapSettingsPanel({
         if (val !== null) {
             const confirmed = window.confirm(`Build routes now using "Sold in last ${val} months"?`);
             if (confirmed) {
-                if (onRequestGenerate) onRequestGenerate();
+                if (onRequestGenerate) {
+                    onRequestGenerate();
+                } else {
+                    try { localStorage.setItem('fk_autobuild_next_open', 'true'); } catch (e) {}
+                }
             }
         }
     };
@@ -486,6 +490,18 @@ export default function MapSettingsPanel({
         <Switch checked={!!(localMapSettings.autoBuildOnGenerateButton || settings.autoBuildOnGenerateButton)} onCheckedChange={(v) => update('autoBuildOnGenerateButton', v)} />
     </div>
     <p className="text-[10px] text-gray-600">Filter changes will ask before building.</p>
+</CollapsibleSection>
+
+{/* Builder Behavior */}
+<CollapsibleSection title="Builder Behavior" icon={Zap} defaultOpen={false}>
+    <div className="flex items-center justify-between py-2">
+        <div>
+            <span className="text-xs font-bold text-gray-300">Auto-build on Generate</span>
+            <p className="text-[9px] text-gray-500">Clicking the big Generate button builds immediately.</p>
+        </div>
+        <Switch checked={!!(localMapSettings.autoBuildOnGenerateButton || settings.autoBuildOnGenerateButton)} onCheckedChange={(v) => update('autoBuildOnGenerateButton', v)} />
+    </div>
+    <p className="text-[10px] text-gray-600">When you change the Sold Date filter, we’ll ask before building.</p>
 </CollapsibleSection>
 
 <CollapsibleSection title="Navigation App" icon={Zap} defaultOpen={false}>
