@@ -710,6 +710,7 @@ export default function Home() {
 
     const generateRoutes = useCallback(async () => {
         setRoutesGenerating(true);
+        const toastId = toast.loading("Building routes...", { id: 'build-routes' });
 
         try {
             // 1. DYNAMIC DATA FETCHING (if zip code is set)
@@ -876,7 +877,7 @@ export default function Home() {
             }
 
             if (workingSet.length === 0) {
-                alert("No properties found in the selected zip codes (checked local and database).");
+                toast.error("No properties found with current filters/area.", { id: 'build-routes' });
                 setRoutesGenerating(false);
                 return;
             }
@@ -918,6 +919,7 @@ export default function Home() {
 
             setRoutes(generated);
             setShowRoutePanel(true);
+            toast.success(`Built ${generated.length} route${generated.length === 1 ? '' : 's'}`, { id: 'build-routes' });
 
         } catch (e) {
             console.error("Route generation error:", e);
@@ -1669,7 +1671,14 @@ export default function Home() {
                     {/* GENERATE button */}
                     {mode === 'generate' && !activeRoute && (
                         <Button
-                            onClick={() => setShowCompare(true)}
+                            onClick={() => {
+                                if (routesGenerating) return;
+                                if (!showCompare) {
+                                    setShowCompare(true);
+                                } else {
+                                    generateRoutesRef.current && generateRoutesRef.current();
+                                }
+                            }}
                             disabled={routesGenerating}
                             className="rounded-full h-9 px-3 sm:h-10 sm:px-5 text-[11px] sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap"
                             style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
