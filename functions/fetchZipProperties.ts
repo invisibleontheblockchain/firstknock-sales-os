@@ -239,18 +239,27 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Bulk insert
+    // Bulk insert NEW properties only
     let successCount = 0;
-    const CHUNK_SIZE = 50;
-    for (let i = 0; i < mapped.length; i += CHUNK_SIZE) {
-      const chunk = mapped.slice(i, i + CHUNK_SIZE);
-      try {
-        await base44.entities.MasterProperty.bulkCreate(chunk);
-        successCount += chunk.length;
-      } catch (e) {
-        console.error(`[FetchZip-v6] Bulk failed, trying singles:`, e.message);
-        for (const prop of chunk) {
-          try { await base44.entities.MasterProperty.create(prop); successCount++; } catch { }
+    if (mapped.length > 0) {
+      const CHUNK_SIZE = 100;
+      for (let i = 0; i < mapped.length; i += CHUNK_SIZE) {
+        const chunk = mapped.slice(i, i + CHUNK_SIZE);
+        try {
+          await base44.entities.MasterProperty.bulkCreate(chunk);
+          successCount += chunk.length;
+        } catch (e) {
+          console.error(`[FetchZip-v6] Chunk failed, trying smaller chunks:`, e.message);
+          const SMALL_CHUNK = 10;
+          for (let j = 0; j < chunk.length; j += SMALL_CHUNK) {
+            const small = chunk.slice(j, j + SMALL_CHUNK);
+            try {
+              await base44.entities.MasterProperty.bulkCreate(small);
+              successCount += small.length;
+            } catch {
+              console.warn(`[FetchZip-v6] Small chunk failed, skipping`);
+            }
+          }
         }
       }
     }

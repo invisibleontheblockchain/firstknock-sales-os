@@ -65,6 +65,17 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'RENTCAST_API_KEY not configured' }, { status: 500 });
         }
 
+        // Pre-increment usage BEFORE making expensive API calls (optimistic lock)
+        // This prevents double-tap race conditions where two concurrent requests
+        // both read areaPulls=0, both pass the check, and both fire API calls.
+        try {
+            await base44.auth.updateMe({ area_pulls_count: areaPulls + 1 });
+        } catch (e) {
+            console.error(`[FetchArea] Failed to pre-increment usage:`, e.message);
+            // If we can't track usage, block the request to prevent abuse
+            return Response.json({ error: 'Failed to verify usage limits. Please try again.' }, { status: 500 });
+        }
+
         console.log(`[FetchArea] Fetching from RentCast for lat:${latitude}, lng:${longitude}, r:${radius}`);
 
         const allProperties = [];
@@ -159,12 +170,7 @@ Deno.serve(async (req) => {
 
         console.log(`[FetchArea] Combined Total: ${allProperties.length} properties before polygon check.`);
 
-        // Increment usage
-        try {
-            await base44.auth.updateMe({ area_pulls_count: areaPulls + 1 });
-        } catch (e) {
-            console.error(`[FetchArea] Failed to update usage:`, e.message);
-        }
+        // Usage already pre-incremented before API calls (see above)
 
         if (allProperties.length === 0) {
             return Response.json({
@@ -252,36 +258,55 @@ Deno.serve(async (req) => {
             });
         }
 
-        // Bulk insert
-        let successCount = 0;
-        const CHUNK_SIZE = 50;
-        for (let i = 0; i < mapped.length; i += CHUNK_SIZE) {
-            const chunk = mapped.slice(i, i + CHUNK_SIZE);
+        // Deduplicate against database
+        const uniqueZips = [...new Set(mapped.map(p => p.zip_code))];
+        const existingHashes = new Set();
+
+        console.log(`[FetchArea] Checking existing data for ${uniqueZips.length} zips...`);
+        // Fetch up to 5000 existing hashes per zip to be safe, though larger pulls might still be tricky
+        for (const zip of uniqueZips) {
             try {
-                // If there's a unique constraint on address_hash, bulkCreate might fail the whole chunk if one exists.
-                // We'll try bulk, if fails, do singles.
-                await base44.entities.MasterProperty.bulkCreate(chunk);
-                successCount += chunk.length;
+                const existing = await base44.entities.MasterProperty.filter({ zip_code: zip }, null, 5000);
+                const existingArr = Array.isArray(existing) ? existing : (existing?.items || []);
+                existingArr.forEach(p => existingHashes.add(p.address_hash));
             } catch (e) {
-                console.error(`[FetchArea] Bulk failed, trying singles`);
-                for (const prop of chunk) {
-                    try {
-                        // Check if exists first to avoid errors spam
-                        const exists = await base44.entities.MasterProperty.filter({ address_hash: prop.address_hash }, null, 1);
-                        const existingArr = Array.isArray(exists) ? exists : (exists?.items || []);
-                        if (existingArr.length === 0) {
-                            await base44.entities.MasterProperty.create(prop);
-                            successCount++;
+                console.warn(`[FetchArea] Failed to fetch existing for zip ${zip}:`, e.message);
+            }
+        }
+
+        const newMapped = mapped.filter(p => !existingHashes.has(p.address_hash));
+        console.log(`[FetchArea] ${newMapped.length} NEW properties to import (out of ${mapped.length})`);
+
+        // Bulk insert new properties
+        let successCount = 0;
+        if (newMapped.length > 0) {
+            const CHUNK_SIZE = 100;
+            for (let i = 0; i < newMapped.length; i += CHUNK_SIZE) {
+                const chunk = newMapped.slice(i, i + CHUNK_SIZE);
+                try {
+                    await base44.entities.MasterProperty.bulkCreate(chunk);
+                    successCount += chunk.length;
+                } catch (e) {
+                    console.error(`[FetchArea] Chunk import failed, trying small chunks:`, e.message);
+                    // Minimal fallback: try chunks of 10
+                    const SMALL_CHUNK = 10;
+                    for (let j = 0; j < chunk.length; j += SMALL_CHUNK) {
+                        const small = chunk.slice(j, j + SMALL_CHUNK);
+                        try {
+                            await base44.entities.MasterProperty.bulkCreate(small);
+                            successCount += small.length;
+                        } catch {
+                            // If even small chunks fail, likely a true DB error or single bad record
+                            console.warn(`[FetchArea] Small chunk failed, skipping`);
                         }
-                    } catch { }
+                    }
                 }
             }
         }
 
-        console.log(`[FetchArea] Done! Imported ${successCount}/${mapped.length}`);
+        console.log(`[FetchArea] Done! Imported ${successCount}/${newMapped.length} new properties.`);
 
         // Update user's territory zip codes so the frontend loads them
-        const uniqueZips = [...new Set(mapped.map(p => p.zip_code))];
         if (uniqueZips.length > 0) {
             const currentZips = user.territory_zip_codes || [];
             const newZips = [...new Set([...currentZips, ...uniqueZips])];

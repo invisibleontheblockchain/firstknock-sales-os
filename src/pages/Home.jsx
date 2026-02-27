@@ -61,6 +61,8 @@ import PropertyHistory from '../components/rep/PropertyHistory';
 import ManagerPropertyDetailSheet from '../components/map/ManagerPropertyDetailSheet';
 import MapDrawTool from '../components/map/MapDrawTool';
 import TerritoryPrompt from '../components/map/TerritoryPrompt';
+import ManagerMapLayers from '../components/map/ManagerMapLayers';
+import MapToolbar from '../components/map/MapToolbar';
 
 // Brand Colors
 const BRAND = {
@@ -238,7 +240,7 @@ export default function Home() {
 
     const loadTemplate = (template) => {
         if (!template.config) return;
-        if (template.config.houses_per_route) setHousesPerRoute(template.config.houses_per_per_route);
+        if (template.config.houses_per_route) setHousesPerRoute(template.config.houses_per_route);
         if (template.config.max_distance) setMaxRouteDistance(template.config.max_distance);
         if (template.config.min_score) setMinScore(template.config.min_score);
         if (template.config.street_cooldown_days) setStreetCooldownDays(template.config.street_cooldown_days);
@@ -568,7 +570,10 @@ export default function Home() {
     };
 
     const createLogMutation = useMutation({
-        mutationFn: (logData) => base44.entities.InteractionLog.create(logData),
+        mutationFn: (logData) => base44.entities.InteractionLog.create({
+            ...logData,
+            route_id: activeRoute?.id || null,
+        }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['interactionLogs'] });
             queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] });
@@ -612,12 +617,13 @@ export default function Home() {
     // Smart Auto-Open/Close for Generate Mode
     useEffect(() => {
         if (mode === 'generate') {
-            // If we have NO data, ensure settings are closed so user sees the "Zero State" (TerritoryPrompt)
-            if (effectiveProperties.length === 0) {
+            // If we have NO data AND NO polygon, ensure settings are closed so user sees the "Zero State" (TerritoryPrompt)
+            // But if we have a polygon, we might be fetching or about to, so don't force close
+            if (effectiveProperties.length === 0 && (!drawnPolygon || drawnPolygon.length === 0)) {
                 setShowCompare(false);
             }
         }
-    }, [mode, effectiveProperties.length === 0]); // Dependency on "has properties" state change
+    }, [mode, effectiveProperties.length === 0, drawnPolygon]); // Dependency on "has properties" or polygon state change
 
     // Filter out properties that are already in saved routes for generation
     const availableProperties = useMemo(() => {
@@ -1049,18 +1055,24 @@ export default function Home() {
 
     // Callback for when area pull is complete (from TerritoryPrompt)
     const handleAreaPullComplete = useCallback(async () => {
-        // Open the Route Builder (Generate tab) after a successful area fetch
-        setMode('generate');
-        setShowCompare(true);
+        console.log('[Home] Area pull complete, updating state...');
 
-        // Refresh data in the background so the builder has latest properties
+        // Refresh data first
         try {
+            await queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
             await queryClient.invalidateQueries({ queryKey: ['user'] });
-            await queryClient.refetchQueries({ queryKey: ['masterProperties'] });
         } catch (e) {
             console.error("Error refreshing data:", e);
         }
-    }, [queryClient]);
+
+        // Open the Route Builder (Generate tab) after a successful area fetch
+        // Small delay to ensure the properties filter has updated and won't trigger the auto-close
+        setTimeout(() => {
+            setMode('generate');
+            setShowCompare(true);
+            console.log('[Home] Opening Route Builder after pull');
+        }, 300);
+    }, [queryClient, setMode]);
 
     // Run auto generation when data is fresh
     useEffect(() => {
@@ -1134,271 +1146,46 @@ export default function Home() {
                     drawnPolygon={drawnPolygon}
                 />
 
-                {/* --- ANALYZE MODE: Existing Routes --- */}
-                <LayerGroup>
-                    {mode === 'analyze' && !activeRoute && zoomLevel >= 8 && hydratedSavedRoutes
-                        .filter(route => {
-                            if (analyzeZipFilter === 'all') return true;
-                            // Check if route has any property in the selected zip
-                            return route.properties.some(p => p.zip_code === analyzeZipFilter);
-                        })
-                        .map((route, routeIdx) => {
-                            // If assigned, use Rep Color. If unassigned, use palette color to make it visible.
-                            const repColor = route.assigned_to
-                                ? (repColors[route.assigned_to] || '#3b82f6')
-                                : ROUTE_COLORS[routeIdx % ROUTE_COLORS.length];
-
-                            const isUnassigned = !route.assigned_to;
-                            const centerProp = route.properties[Math.floor(route.properties.length / 2)];
-
-                            return (
-                                <React.Fragment key={`saved-group-${route.id}`}>
-                                    {/* Rank/Label Marker at Center - VISIBLE IN ANALYZE MODE */}
-                                    {centerProp && centerProp.lat && centerProp.lng && (
-                                        <CircleMarker
-                                            center={[centerProp.lat, centerProp.lng]}
-                                            radius={14}
-                                            pathOptions={{ fillColor: 'black', fillOpacity: 0.7, color: repColor, weight: 2 }}
-                                            eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
-                                        >
-                                            <Tooltip permanent direction="center" className="route-number-tooltip">
-                                                <span style={{ color: repColor, fontWeight: '900', fontSize: '10px' }}>#{routeIdx + 1}</span>
-                                            </Tooltip>
-                                        </CircleMarker>
-                                    )}
-
-                                    {showRouteDetails && route.properties
-                                        .filter(p => {
-                                            if (!p || p.lat === undefined || p.lng === undefined) return false;
-                                            if (quickFilter === 'all') return true;
-                                            if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
-                                            if (quickFilter === 'sold') return p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED';
-                                            if (quickFilter === 'rejected') return p.effective_status === 'HARD_NO';
-                                            return true;
-                                        })
-                                        .map((p, idx) => (
-                                            <CircleMarker
-                                                key={`saved-${route.id}-${p.address_hash || 'no-hash'}-${idx}`}
-                                                center={[p.lat, p.lng]}
-                                                radius={pinSize}
-                                                eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
-                                                pathOptions={{
-                                                    fillColor: repColor,
-                                                    fillOpacity: (isUnassigned ? 0.6 : 0.8) * mapSettings.pinOpacity,
-                                                    color: mapSettings.fillStyle === 'outline' ? repColor : (mapSettings.pinBorderColor || '#000'),
-                                                    weight: mapSettings.fillStyle === 'outline' ? 2 : mapSettings.pinBorderWidth
-                                                }}
-                                            >
-                                                {mapSettings.showLabels && (
-                                                    <Tooltip permanent direction="center" className="route-number-tooltip">
-                                                        <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '8px', textShadow: '0 0 3px #000' }}>
-                                                            {mapSettings.labelType === 'number' ? p.house_number : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0, 1) : (p.street_name || '').split(' ')[0]}
-                                                        </span>
-                                                    </Tooltip>
-                                                )}
-                                            </CircleMarker>
-                                        ))}
-                                    {showRouteLines && route.properties.length > 1 && (
-                                        <Polyline
-                                            positions={route.properties.map(p => [p.lat, p.lng])}
-                                            pathOptions={{ color: repColor, weight: mapSettings.lineWidth, opacity: mapSettings.lineOpacity, dashArray: lineDashArray }}
-                                        />
-                                    )}
-                                </React.Fragment>
-                            );
-                        })}
-                </LayerGroup>
-
-                {/* GENERATE MODE: Existing Routes (Dimmed) layer removed to reduce map clutter */}
-
-                {/* --- GENERATE MODE: New Routes --- */}
-                <LayerGroup>
-                    {mode === 'generate' && !activeRoute && filteredRoutes.length > 0 && filteredRoutes.map((route, rIdx) => {
-                        const routeColor = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
-                        const centerProp = route.properties[Math.floor(route.properties.length / 2)];
-
-                        return (
-                            <React.Fragment key={`route-group-${route.id}`}>
-                                {/* Rank Marker at Center */}
-                                {centerProp && centerProp.lat && centerProp.lng && (
-                                    <CircleMarker
-                                        center={[centerProp.lat, centerProp.lng]}
-                                        radius={16}
-                                        pathOptions={{ fillColor: 'black', fillOpacity: 0.8, color: routeColor, weight: 3 }}
-                                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
-                                    >
-                                        <Tooltip permanent direction="center" className="route-number-tooltip">
-                                            <span style={{ color: routeColor, fontWeight: '900', fontSize: '14px' }}>#{rIdx + 1}</span>
-                                        </Tooltip>
-                                    </CircleMarker>
-                                )}
-
-                                {showRouteDetails && route.properties.filter(p => p && p.lat && p.lng).map((p, idx) => (
-                                    <CircleMarker
-                                        key={`generated-${route.id}-${idx}`}
-                                        center={[p.lat, p.lng]}
-                                        radius={pinSize + 1}
-                                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
-                                        pathOptions={{
-                                            fillColor: routeColor,
-                                            fillOpacity: 0.6 * mapSettings.pinOpacity,
-                                            color: mapSettings.fillStyle === 'outline' ? routeColor : (mapSettings.pinBorderColor || '#000'),
-                                            weight: mapSettings.pinBorderWidth
-                                        }}
-                                    />
-                                ))}
-                                {showRouteLines && route.properties.length > 1 && (
-                                    <Polyline
-                                        positions={route.properties.map(p => [p.lat, p.lng])}
-                                        pathOptions={{ color: routeColor, weight: mapSettings.lineWidth, opacity: mapSettings.lineOpacity, dashArray: lineDashArray }}
-                                    />
-                                )}
-                            </React.Fragment>
-                        );
-                    })}
-                </LayerGroup>
-
-                {/* HEATMAP LAYER (Only at Zoom >= 10) */}
-                {viewMode === 'heatmap' && zoomLevel >= 10 && heatmapData.map(cell => (
-                    <Circle
-                        key={cell.id}
-                        center={[cell.lat, cell.lng]}
-                        radius={200} // ~200 meters
-                        pathOptions={{
-                            fillColor: getHeatColor(cell.avgScore),
-                            fillOpacity: 0.5 + (cell.intensity * 0.3),
-                            color: 'transparent',
-                            weight: 0
-                        }}
-                    />
-                ))}
-
-                {/* DARK ROOM CLUSTER LAYER (Very Low Zoom Only) */}
-                <LayerGroup>
-                    {zoomLevel < 10 && darkRoomClusters.map(cluster => (
-                        <CircleMarker
-                            key={cluster.id}
-                            center={[cluster.lat, cluster.lng]}
-                            radius={Math.min(25, 8 + Math.sqrt(cluster.count) * 2)}
-                            eventHandlers={{
-                                click: () => {
-                                    // Zoom in on cluster click
-                                    if (mapRef.current) {
-                                        try { if (mapRef.current._mapPane) mapRef.current.setView([cluster.lat, cluster.lng], Math.min(zoomLevel + 3, 16)); } catch (e) { }
-                                    }
-                                }
-                            }}
-                            pathOptions={{
-                                fillColor: DarkRoomClient.getScoreColor(cluster.avgScore),
-                                fillOpacity: 0.7,
-                                color: '#000',
-                                weight: 2
-                            }}
-                        >
-                            <Tooltip permanent direction="center" className="route-number-tooltip">
-                                <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '10px', textShadow: '0 0 3px #000' }}>
-                                    {cluster.count}
-                                </span>
-                            </Tooltip>
-                        </CircleMarker>
-                    ))}
-                </LayerGroup>
-
-                {/* DARK ROOM INDIVIDUAL PINS (Zoom 10+) */}
-                <LayerGroup>
-                    {zoomLevel >= 10 && darkRoomProperties.map(p => (
-                        <CircleMarker
-                            key={p.id}
-                            center={[p.lat, p.lng]}
-                            radius={5}
-                            eventHandlers={{
-                                click: async (e) => {
-                                    L.DomEvent.stopPropagation(e);
-                                    // Lazy load full details
-                                    const details = await darkRoom.fetchPropertyDetails(p.id);
-                                    setSelectedProperty(details || p);
-                                }
-                            }}
-                            pathOptions={{
-                                fillColor: DarkRoomClient.getScoreColor(p.smart_score),
-                                fillOpacity: 0.85,
-                                color: '#000',
-                                weight: 1
-                            }}
-                        />
-                    ))}
-                </LayerGroup>
-
-                {/* USER PROPERTIES PIN LAYER - Visible in Generate Mode or Explicit Show */}
-                <LayerGroup>
-                    {viewMode === 'pins' && zoomLevel >= 13 && !activeRoute && (mode === 'generate' || showAllProperties) && effectiveProperties
-                        .filter(p => !p.is_dark_room)
-                        .filter(p => {
-                            // In Generate mode, hide properties already in saved routes (unless filtering explicitly)
-                            if (mode === 'generate' && assignedHashes.has(p.address_hash)) return false;
-
-                            // Visual Filter: Only show requested Zips in Generate Mode
-                            if (mode === 'generate' && zipCodeFilter && zipCodeFilter.trim()) {
-                                const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
-                                const pZip = String(p.zip_code || '').trim().slice(0, 5);
-                                if (targetZips.length > 0 && !targetZips.includes(pZip)) return false;
-                            }
-
-                            // Visual Polygon Filter
-                            if (mode === 'generate' && drawnPolygon && drawnPolygon.length > 2) {
-                                if (!isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon)) return false;
-                            }
-
-                            // Date Filter (Sold Date) - STRICT
-                            if (soldDateFilter !== null) {
-                                if (!p.sold_date) return false;
-                                try {
-                                    const date = parseISO(p.sold_date);
-                                    const cutoff = subMonths(new Date(), soldDateFilter);
-                                    if (!isAfter(date, cutoff)) return false;
-                                } catch (e) { return false; }
-                            }
-
-                            if (quickFilter === 'all') return true;
-                            if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
-                            if (quickFilter === 'sold') return p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED';
-                            if (quickFilter === 'rejected') return p.effective_status === 'HARD_NO';
-                            return true;
-                        })
-                        .map(p => {
-                            let isRecentlySold = false;
-                            if (highlightRecentlySold && p.sold_date) {
-                                try {
-                                    isRecentlySold = isAfter(parseISO(p.sold_date), subMonths(new Date(), 1));
-                                } catch (e) { }
-                            }
-
-                            const isUnvisited = ['ELIGIBLE', 'NO_ANSWER', 'OTHER'].includes(p.effective_status);
-
-                            return (
-                                <CircleMarker
-                                    key={p.address_hash || p.id}
-                                    center={[p.lat, p.lng]}
-                                    radius={isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize)}
-                                    eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
-                                    pathOptions={{
-                                        fillColor: isRecentlySold ? '#FF00FF' : (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER),
-                                        fillOpacity: isRecentlySold ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
-                                        color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER) : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
-                                        weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth))
-                                    }}
-                                >
-                                    {mapSettings.showLabels && (
-                                        <Tooltip permanent direction="center" className="route-number-tooltip">
-                                            <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '8px', textShadow: '0 0 3px #000' }}>
-                                                {mapSettings.labelType === 'number' ? p.house_number : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0, 1) : (p.street_name || '').split(' ')[0]}
-                                            </span>
-                                        </Tooltip>
-                                    )}
-                                </CircleMarker>
-                            );
-                        })}
-                </LayerGroup>
+                {/* All map data layers extracted to ManagerMapLayers */}
+                <ManagerMapLayers
+                    mode={mode}
+                    activeRoute={activeRoute}
+                    zoomLevel={zoomLevel}
+                    viewMode={viewMode}
+                    hydratedSavedRoutes={hydratedSavedRoutes}
+                    filteredRoutes={filteredRoutes}
+                    ROUTE_COLORS={ROUTE_COLORS}
+                    effectiveProperties={effectiveProperties}
+                    darkRoomProperties={darkRoomProperties}
+                    darkRoomClusters={darkRoomClusters}
+                    heatmapData={heatmapData}
+                    previewRoute={previewRoute}
+                    analyzeZipFilter={analyzeZipFilter}
+                    quickFilter={quickFilter}
+                    zipCodeFilter={zipCodeFilter}
+                    soldDateFilter={soldDateFilter}
+                    drawnPolygon={drawnPolygon}
+                    assignedHashes={assignedHashes}
+                    showAllProperties={showAllProperties}
+                    showRouteDetails={showRouteDetails}
+                    showRouteLines={showRouteLines}
+                    highlightRecentlySold={highlightRecentlySold}
+                    mapSettings={mapSettings}
+                    pinSize={pinSize}
+                    lineDashArray={lineDashArray}
+                    STATUS_COLORS={STATUS_COLORS}
+                    repColors={repColors}
+                    BRAND={BRAND}
+                    setActiveRoute={setActiveRoute}
+                    setSelectedProperty={setSelectedProperty}
+                    mapRef={mapRef}
+                    isPointInPolygon={isPointInPolygon}
+                    getHeatColor={getHeatColor}
+                    parseISO={parseISO}
+                    subMonths={subMonths}
+                    isAfter={isAfter}
+                    darkRoom={darkRoom}
+                />
 
                 {/* GPS TRACKER LAYERS */}
                 <GpsTrackerMapLayers
@@ -1406,152 +1193,32 @@ export default function Home() {
                     isTracking={gpsTracking}
                     onSelectProperty={setSelectedProperty}
                 />
-
-                {/* User Location Pin handled by LocationMarker component */}
-
-                {/* Preview Route (hover/tap from list) */}
-                {previewRoute && !activeRoute && (
-                    <Polyline
-                        positions={previewRoute.properties.filter(p => p && p.lat && p.lng).map(p => [p.lat, p.lng])}
-                        pathOptions={{ color: BRAND.gold, weight: 3, opacity: 0.6, dashArray: '5,10' }}
-                    />
-                )}
-
-                {/* Active Route - Mail Carrier Style */}
-                {activeRoute && (
-                    <>
-                        <Polyline
-                            positions={activeRoute.properties.filter(p => p && p.lat && p.lng).map(p => [p.lat, p.lng])}
-                            pathOptions={{
-                                color: BRAND.gold,
-                                weight: mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4,
-                                opacity: mapSettings.lineOpacity ? Math.max(0.6, mapSettings.lineOpacity) : 0.8,
-                                dashArray: lineDashArray
-                            }}
-                        />
-                        {activeRoute.properties.map((p, idx) => (
-                            <CircleMarker
-                                key={p.address_hash}
-                                center={[p.lat, p.lng]}
-                                radius={5}
-                                eventHandlers={{
-                                    click: (e) => {
-                                        L.DomEvent.stopPropagation(e);
-                                        setSelectedProperty(p);
-                                    }
-                                }}
-                                pathOptions={{
-                                    fillColor: idx === 0 ? '#22c55e' : '#f97316',
-                                    fillOpacity: 1,
-                                    color: '#fff',
-                                    weight: 1.5
-                                }}
-                            >
-                                <Tooltip permanent direction="top" offset={[0, -6]} className="route-number-tooltip">
-                                    <span style={{
-                                        color: '#fff',
-                                        fontWeight: 'bold',
-                                        fontSize: '11px',
-                                        textShadow: '0 1px 3px #000, 0 0 5px #000'
-                                    }}>
-                                        {idx + 1}
-                                    </span>
-                                </Tooltip>
-                            </CircleMarker>
-                        ))}
-                    </>
-                )}
             </MapContainer>
 
-            {/* Top Stats Bar */}
-            <div className="absolute top-1 left-1 right-1 sm:top-4 sm:left-4 sm:right-4 z-[1000] flex flex-col gap-1.5 sm:gap-2 pointer-events-none">
-                <div className="flex flex-nowrap items-center justify-between gap-1 sm:gap-2 w-full">
-                    {/* DASHBOARD & SETTINGS TOGGLES */}
-                    <div className="pointer-events-auto shrink-0 flex gap-1">
-                        <Button
-                            onClick={() => setShowDashboard(true)}
-                            size="icon"
-                            className="bg-black/80 hover:bg-black backdrop-blur-md border border-gray-800 shadow-xl h-8 w-8 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl"
-                        >
-                            <LayoutDashboard className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-yellow-500" />
-                        </Button>
-                        <Button
-                            onClick={() => setShowMapSettings(true)}
-                            size="icon"
-                            className="bg-black/80 hover:bg-black backdrop-blur-md border border-gray-800 shadow-xl h-8 w-8 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl"
-                        >
-                            <Settings className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-gray-400" />
-                        </Button>
-                    </div>
-
-                    {/* MODE TOGGLE - Centered */}
-                    <div className="pointer-events-auto bg-black/80 backdrop-blur-md rounded-lg sm:rounded-xl p-0.5 sm:p-1 border border-gray-800 flex gap-0.5 shadow-xl shrink-0">
-                        <button
-                            onClick={() => setMode('analyze')}
-                            className={`px-2 py-1.5 sm:px-4 sm:py-2.5 rounded-md sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'analyze' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
-                        >
-                            DISPATCH
-                        </button>
-                        <button
-                            onClick={() => setMode('generate')}
-                            className={`px-2 py-1.5 sm:px-4 sm:py-2.5 rounded-md sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-400 hover:text-white'}`}
-                        >
-                            BUILDER
-                        </button>
-                    </div>
-
-                    {/* FILTER / SETTINGS BUTTON */}
-                    <div className="pointer-events-auto shrink-0">
-                        <Button
-                            onClick={() => setShowCompare(true)}
-                            size="icon"
-                            className="bg-black/80 hover:bg-black backdrop-blur-md rounded-lg sm:rounded-xl h-8 w-8 sm:h-11 sm:w-11 font-bold shadow-xl border border-yellow-500/40"
-                        >
-                            {mode === 'generate' ? <Settings className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-yellow-500" /> : <Filter className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-yellow-500" />}
-                        </Button>
-                    </div>
-                </div>
-
-                {/* Active Route Banner - Compact */}
-                {activeRoute && (
-                    <div className="pointer-events-auto rounded-full px-1 py-1 sm:px-1.5 sm:py-1.5 flex items-center gap-1 sm:gap-2 shadow-2xl border border-yellow-600/40 animate-in slide-in-from-top-2 backdrop-blur-md" style={{ background: 'rgba(10,10,10,0.92)' }}>
-                        <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: BRAND.gold }}>
-                            <Navigation className="w-3 h-3 sm:w-4 sm:h-4" style={{ color: BRAND.voidBlack }} />
-                        </div>
-                        <span className="text-[10px] sm:text-sm font-bold truncate flex-1 min-w-0 max-w-[60px] sm:max-w-[120px]" style={{ color: BRAND.gold }}>{activeRoute.name}</span>
-                        <div onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} className="shrink-0">
-                            <select
-                                value={activeRoute.assigned_to || ""}
-                                onChange={(e) => {
-                                    e.stopPropagation();
-                                    handleAssignRoute(activeRoute.id, e.target.value);
-                                }}
-                                onPointerDown={(e) => e.stopPropagation()}
-                                className="text-[9px] sm:text-xs font-medium bg-white/10 border border-white/10 rounded-full px-1.5 py-0.5 sm:px-3 sm:py-1.5 outline-none cursor-pointer hover:bg-white/15 transition-colors appearance-auto max-w-[70px] sm:max-w-none"
-                                style={{ color: '#ccc', WebkitAppearance: 'menulist' }}
-                            >
-                                <option value="">Unassigned</option>
-                                <option value={user?.id || 'manager'}>Me</option>
-                                {teamMembers.map(m => (
-                                    <option key={m.id} value={m.id}>{m.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <button
-                            onClick={() => {
-                                setActiveRoute(null);
-                                if (mapRef.current) {
-                                    try { if (mapRef.current._mapPane) mapRef.current.setZoom(Math.max(13, mapRef.current.getZoom() - 2)); } catch (e) { }
-                                }
-                            }}
-                            className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center hover:bg-white/10 active:bg-white/15 rounded-full transition-colors shrink-0"
-                        >
-                            <X className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
-                        </button>
-                    </div>
-                )}
-
-            </div>
+            {/* Map UI Overlays extracted to MapToolbar */}
+            <MapToolbar
+                mode={mode}
+                setMode={setMode}
+                activeRoute={activeRoute}
+                setActiveRoute={setActiveRoute}
+                routesGenerating={routesGenerating}
+                setShowDashboard={setShowDashboard}
+                setShowMapSettings={setShowMapSettings}
+                setShowCompare={setShowCompare}
+                setShowRoutePanel={setShowRoutePanel}
+                setShowChecklist={setShowChecklist}
+                teamMembers={teamMembers}
+                hydratedSavedRoutes={hydratedSavedRoutes}
+                routes={routes}
+                filteredRoutes={filteredRoutes}
+                fitBounds={fitBounds}
+                repColors={repColors}
+                user={user}
+                mapRef={mapRef}
+                setUserLocation={setUserLocation}
+                handleAssignRoute={handleAssignRoute}
+                BRAND={BRAND}
+            />
 
             <TerritoryPrompt
                 mode={mode}
@@ -1571,156 +1238,7 @@ export default function Home() {
                 onPullComplete={handleAreaPullComplete}
             />
 
-            {/* Team Analysis Legend (Top Right) - Hidden on mobile */}
-            {!activeRoute && (
-                <div className="hidden md:block absolute top-20 right-4 z-[900] pointer-events-auto bg-black/80 backdrop-blur-md border border-gray-800 rounded-xl p-3 max-w-[200px] animate-in slide-in-from-right">
-                    <p className="text-[10px] font-bold text-gray-400 mb-2 uppercase">Team Analysis</p>
-                    <div className="space-y-2 max-h-[200px] overflow-y-auto">
-                        {teamMembers.map(member => {
-                            const memberRoutes = hydratedSavedRoutes.filter(r => r.assigned_to === member.id);
-                            if (memberRoutes.length === 0) return null;
-                            return (
-                                <div key={member.id} className="flex items-center justify-between text-xs">
-                                    <div className="flex items-center gap-2">
-                                        <span className="w-2 h-2 rounded-full" style={{ background: repColors[member.id] }} />
-                                        <span className="text-white truncate max-w-[80px]">{member.name}</span>
-                                    </div>
-                                    <span className="text-gray-500">{memberRoutes.length} Rts</span>
-                                </div>
-                            );
-                        })}
-                        <div className="flex items-center justify-between text-xs opacity-50">
-                            <div className="flex items-center gap-2">
-                                <span className="w-2 h-2 rounded-full bg-[#666]" />
-                                <span className="text-white">Unassigned</span>
-                            </div>
-                            <span className="text-gray-500">{hydratedSavedRoutes.filter(r => !r.assigned_to).length}</span>
-                        </div>
-                    </div>
-                </div>
-            )}
 
-            {/* Right side floating buttons - GPS + Locate */}
-            <div className="absolute bottom-2 right-1 sm:bottom-6 sm:right-4 z-[1000] pointer-events-auto flex flex-col gap-1.5 sm:gap-2 items-end">
-                {/* Center on Me Button */}
-                <Button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        if (!navigator.geolocation) {
-                            toast.error("Geolocation is not supported by this browser.");
-                            return;
-                        }
-                        const toastId = toast.loading("Getting your location...");
-
-                        const tryLocate = (highAccuracy) => {
-                            navigator.geolocation.getCurrentPosition(
-                                (position) => {
-                                    const { latitude, longitude, accuracy } = position.coords;
-                                    setUserLocation({ lat: latitude, lng: longitude });
-                                    if (mapRef.current) {
-                                        try { mapRef.current.setView([latitude, longitude], 18); } catch (err) { }
-                                    }
-                                    toast.success(`Location found (±${Math.round(accuracy)}m)`, { id: toastId });
-                                },
-                                (error) => {
-                                    if (highAccuracy) {
-                                        tryLocate(false);
-                                    } else {
-                                        const messages = {
-                                            1: "Location permission denied. Enable location in settings.",
-                                            2: "Location unavailable. Turn on GPS/Location Services.",
-                                            3: "Location timed out. Try again."
-                                        };
-                                        toast.error(messages[error.code] || `Location error: ${error.message}`, { id: toastId, duration: 5000 });
-                                    }
-                                },
-                                { enableHighAccuracy: highAccuracy, timeout: highAccuracy ? 8000 : 15000, maximumAge: 30000 }
-                            );
-                        };
-                        tryLocate(true);
-                    }}
-                    size="icon"
-                    className="rounded-full w-9 h-9 sm:w-10 sm:h-10 shadow-2xl backdrop-blur-md border border-blue-500/50 hover:bg-[#333]"
-                    style={{ background: 'rgba(31, 31, 31, 0.9)', color: '#3b82f6' }}
-                >
-                    <Locate className="w-4 h-4 sm:w-5 sm:h-5" />
-                </Button>
-
-                {/* Center on Territory Button */}
-                {(fitBounds && fitBounds.length > 0) && (
-                    <Button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            if (mapRef.current && fitBounds && fitBounds.length > 0) {
-                                try { if (mapRef.current._mapPane) mapRef.current.fitBounds(fitBounds, { padding: [30, 30], maxZoom: 17 }); } catch (e) { }
-                                toast.success("Centered on Territory");
-                            }
-                        }}
-                        size="icon"
-                        className="rounded-full w-9 h-9 sm:w-10 sm:h-10 shadow-2xl backdrop-blur-md"
-                        style={{ background: 'rgba(31, 31, 31, 0.9)', color: BRAND.gold, border: `1px solid ${BRAND.gold}40` }}
-                    >
-                        <MapPin className="w-4 h-4" />
-                    </Button>
-                )}
-            </div>
-
-            {/* Bottom Action Bar */}
-            <div className="absolute bottom-1 sm:bottom-6 left-0 right-12 sm:right-auto md:left-4 z-[1000] pointer-events-none flex justify-center md:justify-start px-2 sm:px-4">
-                <div className="pointer-events-auto flex items-center justify-center gap-1.5 sm:gap-2 bg-black/70 backdrop-blur-lg p-1.5 sm:p-2 rounded-full border border-white/10 shadow-2xl">
-                    {/* GENERATE button */}
-                    {mode === 'generate' && !activeRoute && (
-                        <Button
-                            onClick={() => {
-                                if (routesGenerating) return;
-                                if (!showCompare) {
-                                    setShowCompare(true);
-                                } else {
-                                    generateRoutesRef.current && generateRoutesRef.current();
-                                }
-                            }}
-                            disabled={routesGenerating}
-                            className="rounded-full h-9 px-3 sm:h-10 sm:px-5 text-[11px] sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap"
-                            style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
-                        >
-                            {routesGenerating ? (
-                                <><Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 animate-spin" /> BUILDING</>
-                            ) : (
-                                <><Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" /> GENERATE</>
-                            )}
-                        </Button>
-                    )}
-
-                    <Button
-                        onClick={() => setShowRoutePanel(true)}
-                        className="rounded-full h-9 px-3 sm:h-10 sm:px-5 text-[11px] sm:text-sm font-bold tracking-wide shadow-lg transition-all duration-300 transform active:scale-95 whitespace-nowrap"
-                        style={{
-                            background: mode === 'generate' && !activeRoute ? 'rgba(31, 31, 31, 0.9)' : 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)',
-                            color: mode === 'generate' && !activeRoute ? BRAND.gold : BRAND.voidBlack,
-                            border: mode === 'generate' && !activeRoute ? `1px solid ${BRAND.gold}` : 'none'
-                        }}
-                    >
-                        <List className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                        ROUTES
-                        {!routesGenerating && (hydratedSavedRoutes.length > 0 || routes.length > 0) && (
-                            <Badge className="ml-1 sm:ml-2 h-5 min-w-[20px] px-1.5 text-[10px]" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
-                                {hydratedSavedRoutes.length > 0 ? hydratedSavedRoutes.length : routes.length}
-                            </Badge>
-                        )}
-                    </Button>
-
-                    {activeRoute && (
-                        <Button
-                            onClick={() => setShowChecklist(true)}
-                            className="rounded-full h-9 px-3 sm:h-10 sm:px-5 text-[11px] sm:text-sm font-bold tracking-wide shadow-lg backdrop-blur-md transition-all duration-300 transform active:scale-95 whitespace-nowrap"
-                            style={{ background: 'rgba(31, 31, 31, 0.9)', color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}
-                        >
-                            <List className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-                            CHECKLIST
-                        </Button>
-                    )}
-                </div>
-            </div>
 
             {/* Routes Panel - Refactored Command Panel */}
             {showRoutePanel && (

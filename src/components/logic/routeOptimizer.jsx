@@ -70,7 +70,7 @@ export function scoreProperty(property, logs = [], neighborhoodStats = {}) {
     if (neighborhoodStats && property.zip_code) {
         const zipHeat = neighborhoodStats[property.zip_code] || 0;
         // Boost if area is hot (lots of recent sales = active market)
-        score += Math.min(zipHeat * 5, 50); 
+        score += Math.min(zipHeat * 5, 50);
     }
 
     // 5. Contact Frequency (Burnout Protection)
@@ -94,8 +94,11 @@ function kMeansClustering(properties, numClusters) {
         return properties.map((p, i) => ({ ...p, cluster: i }));
     }
 
+    // Clone properties to avoid mutating React state objects in-place
+    let items = properties.map(p => ({ ...p }));
+
     // Initialize centroids randomly
-    let centroids = properties
+    let centroids = items
         .slice()
         .sort(() => 0.5 - Math.random())
         .slice(0, numClusters)
@@ -110,7 +113,7 @@ function kMeansClustering(properties, numClusters) {
         iterations++;
 
         // Assign each property to nearest centroid
-        properties.forEach(prop => {
+        items.forEach(prop => {
             let minDist = Infinity;
             let bestCluster = 0;
 
@@ -130,7 +133,7 @@ function kMeansClustering(properties, numClusters) {
 
         // Recalculate centroids
         centroids = centroids.map((_, idx) => {
-            const clusterProps = properties.filter(p => p.cluster === idx);
+            const clusterProps = items.filter(p => p.cluster === idx);
             if (clusterProps.length === 0) return centroids[idx];
 
             const avgLat = clusterProps.reduce((sum, p) => sum + p.lat, 0) / clusterProps.length;
@@ -139,7 +142,7 @@ function kMeansClustering(properties, numClusters) {
         });
     }
 
-    return properties;
+    return items;
 }
 
 /**
@@ -166,26 +169,26 @@ function apply2Opt(route) {
     while (improved && iterations < maxIterations) {
         improved = false;
         iterations++;
-        
+
         for (let i = 0; i < route.length - 2; i++) {
             for (let j = i + 2; j < route.length - 1; j++) { // j starts at i+2 to ensure we don't swap adjacent edges
                 const p1 = route[i];
-                const p2 = route[i+1];
+                const p2 = route[i + 1];
                 const p3 = route[j];
-                const p4 = route[j+1];
+                const p4 = route[j + 1];
 
                 // Current distance: p1->p2 + p3->p4
-                const currentDist = calculateDistance(p1.lat, p1.lng, p2.lat, p2.lng) + 
-                                    calculateDistance(p3.lat, p3.lng, p4.lat, p4.lng);
-                
+                const currentDist = calculateDistance(p1.lat, p1.lng, p2.lat, p2.lng) +
+                    calculateDistance(p3.lat, p3.lng, p4.lat, p4.lng);
+
                 // New distance if swapped: p1->p3 + p2->p4 (reversing the segment p2...p3)
-                const newDist = calculateDistance(p1.lat, p1.lng, p3.lat, p3.lng) + 
-                                calculateDistance(p2.lat, p2.lng, p4.lat, p4.lng);
+                const newDist = calculateDistance(p1.lat, p1.lng, p3.lat, p3.lng) +
+                    calculateDistance(p2.lat, p2.lng, p4.lat, p4.lng);
 
                 if (newDist < currentDist) {
                     // Reverse the segment from i+1 to j
-                    const segment = route.slice(i+1, j+1).reverse();
-                    route.splice(i+1, segment.length, ...segment);
+                    const segment = route.slice(i + 1, j + 1).reverse();
+                    route.splice(i + 1, segment.length, ...segment);
                     improved = true;
                 }
             }
@@ -215,7 +218,7 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null, minimi
         // Find nearest to start
         let nearestIdx = 0;
         let minScore = Infinity;
-        
+
         unvisited.forEach((prop, idx) => {
             const dist = calculateDistance(current.lat, current.lng, prop.lat, prop.lng);
             if (dist < minScore) {
@@ -239,10 +242,10 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null, minimi
 
             // Heuristic: Minimize Turns
             if (minimizeTurns && currentBearing !== null) {
-                const newBearing = calculateBearing(current.lat * Math.PI/180, current.lng * Math.PI/180, prop.lat * Math.PI/180, prop.lng * Math.PI/180);
+                const newBearing = calculateBearing(current.lat * Math.PI / 180, current.lng * Math.PI / 180, prop.lat * Math.PI / 180, prop.lng * Math.PI / 180);
                 const turnAngle = Math.abs(newBearing - currentBearing);
                 const normalizedTurn = turnAngle > 180 ? 360 - turnAngle : turnAngle;
-                
+
                 // Penalize sharp turns (e.g., 90-180 degrees)
                 // Add "virtual miles" to the distance for sharp turns
                 if (normalizedTurn > 45) {
@@ -257,10 +260,10 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null, minimi
         });
 
         const nextProp = unvisited.splice(bestIdx, 1)[0];
-        
+
         // Update bearing
-        currentBearing = calculateBearing(current.lat * Math.PI/180, current.lng * Math.PI/180, nextProp.lat * Math.PI/180, nextProp.lng * Math.PI/180);
-        
+        currentBearing = calculateBearing(current.lat * Math.PI / 180, current.lng * Math.PI / 180, nextProp.lat * Math.PI / 180, nextProp.lng * Math.PI / 180);
+
         current = nextProp;
         route.push(current);
     }
@@ -290,8 +293,8 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 
     // Filter out properties on streets that are on cooldown
     // Also filter out invalid coordinates (Null Island 0,0)
-    let eligible = properties.filter(p => 
-        p && p.lat && p.lng && 
+    let eligible = properties.filter(p =>
+        p && p.lat && p.lng &&
         !(Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001)
     );
 
@@ -332,11 +335,11 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
     // Cluster properties
     // OPTIMIZATION: If multiple zip codes are present, cluster by Zip Code first to respect boundaries
     let clustered = [];
-    
+
     // Group by Zip Code if we have enough properties and variance
     const uniqueZips = [...new Set(scored.map(p => p.zip_code).filter(Boolean))];
     // Disable zip clustering to prevent tiny routes in sparse zips - prefer pure geographic clustering
-    const useZipClustering = false; 
+    const useZipClustering = false;
 
     if (useZipClustering) {
         let routeOffset = 0;
@@ -344,15 +347,15 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
             const zipProps = scored.filter(p => p.zip_code === zip);
             // Determine routes needed for this zip
             const zipRoutesCount = Math.max(1, Math.ceil(zipProps.length / housesPerRoute));
-            
+
             // Sub-cluster this zip
             const zipClustered = kMeansClustering(zipProps, zipRoutesCount);
-            
+
             // Apply global cluster IDs
             zipClustered.forEach(p => {
                 p.cluster = p.cluster + routeOffset;
             });
-            
+
             clustered = [...clustered, ...zipClustered];
             routeOffset += zipRoutesCount;
         });
@@ -413,7 +416,7 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
                 minimizeTurns
             );
         }
-        
+
         // Apply 2-opt post-optimization for smoother paths (if enabled)
         if (use2Opt && walkingPattern !== 'street_sweep') {
             orderedProps = apply2Opt(orderedProps);
@@ -433,13 +436,13 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
                 orderedProps[j].lat, orderedProps[j].lng,
                 orderedProps[j + 1].lat, orderedProps[j + 1].lng
             );
-            
+
             // Basic Max Distance Check - Stop adding if we exceed limit
             if (maxRouteDistance && (totalDistance + legDist) > maxRouteDistance) {
                 // Remove remaining properties from this route
                 // In a real implementation we might want to put them back in the pool, 
                 // but for now we just truncate to respect the user's hard constraint.
-                orderedProps.splice(j + 1); 
+                orderedProps.splice(j + 1);
                 break;
             }
 
@@ -543,12 +546,14 @@ export function exportRouteToJSON(route) {
 
 /**
  * Generate Apple Maps URL for route
+ * Returns { url, truncated, totalStops } so callers can warn users
  */
 export function generateAppleMapsUrl(route) {
-    if (!route.properties || route.properties.length === 0) return '';
+    if (!route.properties || route.properties.length === 0) return { url: '', truncated: false, totalStops: 0 };
 
     const properties = route.properties;
     const maxStops = Math.min(properties.length, 10);
+    const truncated = properties.length > 10;
     const step = Math.max(1, Math.floor(properties.length / maxStops));
 
     const origin = properties[0];
@@ -574,5 +579,5 @@ export function generateAppleMapsUrl(route) {
         url = `https://maps.apple.com/?saddr=${originStr}&daddr=${destStr}&dirflg=w`;
     }
 
-    return url;
+    return { url, truncated, totalStops: properties.length };
 }

@@ -25,7 +25,7 @@ export default function RepHome() {
     const [showMap, setShowMap] = useState(false);
     const [showAnalytics, setShowAnalytics] = useState(false);
     const [showChat, setShowChat] = useState(false);
-    
+
     // Offline Listener
     React.useEffect(() => {
         const handleOnline = () => setIsOffline(false);
@@ -51,10 +51,10 @@ export default function RepHome() {
                 const members = Array.isArray(res) ? res : (res?.items || []);
                 const emailLower = user.email.trim().toLowerCase();
                 const nameLower = (user.full_name || '').trim().toLowerCase();
-                
+
                 // Primary: exact email match (could be multiple from different managers)
                 const emailMatches = members.filter(m => m.email?.trim().toLowerCase() === emailLower);
-                
+
                 // Secondary: also find records where the name matches but email differs
                 // (e.g. manager manually created "Charles Henson" with work email, but rep logs in with personal email)
                 const nameMatches = nameLower ? members.filter(m => {
@@ -63,21 +63,21 @@ export default function RepHome() {
                     // Match if names are similar (contains or equal)
                     return mName && (mName === nameLower || nameLower.includes(mName) || mName.includes(nameLower));
                 }) : [];
-                
+
                 const allMatches = [...emailMatches, ...nameMatches];
-                
+
                 // The "primary" record is the one whose manager_id matches user.team_manager_id (from invite code),
                 // or the most recently created one
                 const primary = allMatches.find(m => user.team_manager_id && m.manager_id === user.team_manager_id)
-                    || emailMatches[0] 
-                    || allMatches[0] 
+                    || emailMatches[0]
+                    || allMatches[0]
                     || null;
-                
+
                 // Collect all unique IDs this rep could be known as
                 const allIds = [...new Set(allMatches.map(m => m.id))];
-                
+
                 console.log(`[RepHome] TeamMember lookup: primary=${primary?.id}, allIds=${allIds.join(',')}, emailMatches=${emailMatches.length}, nameMatches=${nameMatches.length}`);
-                
+
                 return { primary, allIds, allMatches };
             } catch (e) {
                 console.error("Error fetching team member profile", e);
@@ -86,7 +86,7 @@ export default function RepHome() {
         },
         enabled: !!user?.email
     });
-    
+
     const teamMember = teamMemberData?.primary || null;
     const allTeamMemberIds = teamMemberData?.allIds || [];
 
@@ -99,25 +99,25 @@ export default function RepHome() {
                 // Fetch ALL routes (we need to match against multiple possible IDs)
                 const res = await base44.entities.SavedRoute.list('-created_date', 500);
                 const allRoutes = Array.isArray(res) ? res : (res?.items || []);
-                
+
                 // Build a set of all IDs this rep could be assigned under
                 const myIds = new Set([
                     user.id,                            // Auth user ID (manager may have assigned to this)
                     ...(allTeamMemberIds || []),         // All TeamMember record IDs (from different invite codes)
                 ]);
-                
+
                 // Also match by assigned_to_name as a fallback (case-insensitive)
                 const myName = (user.full_name || '').trim().toLowerCase();
                 const myEmail = (user.email || '').trim().toLowerCase();
                 const isManager = user.app_role === 'manager';
-                
+
                 const myRoutes = allRoutes.filter(r => {
                     // Match by any known ID
                     if (r.assigned_to && myIds.has(r.assigned_to)) return true;
-                    
+
                     // Manager in Rep Mode: also show routes they own (created as manager)
                     if (isManager && r.manager_id === user.id) return true;
-                    
+
                     // Fallback: match by assigned_to_name (handles cases where assignment was by old/different ID)
                     if (r.assigned_to_name && myName) {
                         const routeName = r.assigned_to_name.trim().toLowerCase();
@@ -127,24 +127,24 @@ export default function RepHome() {
                         const myNameParts = myName.split(' ');
                         if (routeNameParts.length > 1 && myNameParts.length > 1) {
                             // Match last name + first 3 chars of first name
-                            const lastMatch = routeNameParts[routeNameParts.length-1] === myNameParts[myNameParts.length-1];
-                            const firstPartial = routeNameParts[0].slice(0,3) === myNameParts[0].slice(0,3) || 
-                                                 myNameParts[0].startsWith(routeNameParts[0]) || 
-                                                 routeNameParts[0].startsWith(myNameParts[0]);
+                            const lastMatch = routeNameParts[routeNameParts.length - 1] === myNameParts[myNameParts.length - 1];
+                            const firstPartial = routeNameParts[0].slice(0, 3) === myNameParts[0].slice(0, 3) ||
+                                myNameParts[0].startsWith(routeNameParts[0]) ||
+                                routeNameParts[0].startsWith(myNameParts[0]);
                             if (lastMatch && firstPartial) return true;
                         }
                     }
-                    
+
                     return false;
                 });
-                
+
                 // Filter to only non-completed, non-archived routes
-                const activeRoutes = myRoutes.filter(r => 
+                const activeRoutes = myRoutes.filter(r =>
                     r.status !== 'COMPLETED' && r.status !== 'ARCHIVED'
                 );
-                
+
                 console.log(`[RepHome] Found ${activeRoutes.length} active routes (${myRoutes.length} total) for IDs: [${[...myIds].join(', ')}], name: "${myName}"`);
-                
+
                 // Cache routes for offline
                 if (activeRoutes.length > 0) {
                     localforage.setItem('cached_routes', activeRoutes);
@@ -181,43 +181,43 @@ export default function RepHome() {
         queryFn: async () => {
             if (!activeRoute?.property_hashes?.length) return [];
             const hashes = activeRoute.property_hashes;
-            
+
             try {
                 let allProps = [];
-                
+
                 // Batch fetch in chunks of 20 hashes at a time using filter
                 const BATCH_SIZE = 20;
                 const batches = [];
                 for (let i = 0; i < hashes.length; i += BATCH_SIZE) {
                     batches.push(hashes.slice(i, i + BATCH_SIZE));
                 }
-                
+
                 console.log(`[RepHome] Fetching ${hashes.length} properties in ${batches.length} batches`);
-                
+
                 const results = await Promise.all(
-                    batches.map(batch => 
+                    batches.map(batch =>
                         base44.entities.MasterProperty.filter(
-                            { address_hash: batch }, 
-                            '-created_date', 
+                            { address_hash: batch },
+                            '-created_date',
                             batch.length
                         ).then(r => Array.isArray(r) ? r : (r?.items || []))
-                         .catch(err => {
-                             console.warn('[RepHome] Batch fetch failed, trying individually', err);
-                             // Fallback: fetch individually for this batch
-                             return Promise.all(
-                                 batch.map(hash => 
-                                     base44.entities.MasterProperty.filter({ address_hash: hash }, '-created_date', 1)
-                                         .then(r => Array.isArray(r) ? r : (r?.items || []))
-                                         .catch(() => [])
-                                 )
-                             ).then(results => results.flat());
-                         })
+                            .catch(err => {
+                                console.warn('[RepHome] Batch fetch failed, trying individually', err);
+                                // Fallback: fetch individually for this batch
+                                return Promise.all(
+                                    batch.map(hash =>
+                                        base44.entities.MasterProperty.filter({ address_hash: hash }, '-created_date', 1)
+                                            .then(r => Array.isArray(r) ? r : (r?.items || []))
+                                            .catch(() => [])
+                                    )
+                                ).then(results => results.flat());
+                            })
                     )
                 );
-                
+
                 allProps = results.flat();
                 console.log(`[RepHome] Found ${allProps.length}/${hashes.length} properties`);
-                
+
                 // Cache for offline
                 if (allProps.length > 0) {
                     localforage.setItem(`cached_props_${activeRoute.id}`, allProps);
@@ -237,8 +237,8 @@ export default function RepHome() {
         queryKey: ['routeLogs', activeRoute?.id],
         queryFn: async () => {
             if (activeRoute?.property_hashes?.length > 0) {
-                return await base44.entities.InteractionLog.filter({ 
-                    address_hash: activeRoute.property_hashes 
+                return await base44.entities.InteractionLog.filter({
+                    address_hash: activeRoute.property_hashes
                 }, '-created_date', 1000);
             }
             if (user?.email) {
@@ -291,7 +291,10 @@ export default function RepHome() {
 
     // Log Result Mutation
     const createLogMutation = useMutation({
-        mutationFn: (logData) => base44.entities.InteractionLog.create(logData),
+        mutationFn: (logData) => base44.entities.InteractionLog.create({
+            ...logData,
+            route_id: activeRoute?.id || null,
+        }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['myLogs'] });
             queryClient.invalidateQueries({ queryKey: ['routeLogs'] }); // Also invalidate route logs to update progress
@@ -301,7 +304,7 @@ export default function RepHome() {
 
     // Complete Route Mutation
     const completeRouteMutation = useMutation({
-        mutationFn: () => base44.entities.SavedRoute.update(activeRoute.id, { 
+        mutationFn: () => base44.entities.SavedRoute.update(activeRoute.id, {
             status: 'COMPLETED',
             // optional: completed_date: new Date().toISOString()
         }),
@@ -315,7 +318,7 @@ export default function RepHome() {
     // Hydrate Route with Property Data & Status
     const routeProperties = useMemo(() => {
         if (!activeRoute || !properties.length) return [];
-        
+
         // Map hashes to real properties
         const props = (activeRoute.property_hashes || [])
             .map(hash => properties.find(p => p.address_hash === hash))
@@ -352,7 +355,7 @@ export default function RepHome() {
 
             // Status filter
             const isDone = p.effective_status !== 'ELIGIBLE' && p.effective_status !== 'CALLBACK';
-            
+
             if (filterStatus === 'todo') return !isDone;
             if (filterStatus === 'done') return isDone;
             return true;
@@ -452,7 +455,7 @@ export default function RepHome() {
     return (
         <div className="h-full flex flex-col bg-[#0A0A0F] text-[#F0F0F5]">
             {/* Compact Header */}
-            <RepHeader 
+            <RepHeader
                 user={user}
                 isOffline={isOffline}
                 activeRoute={activeRoute}
@@ -476,9 +479,8 @@ export default function RepHome() {
                             <button
                                 key={tab.id}
                                 onClick={() => setFilterStatus(tab.id)}
-                                className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold tracking-wide transition-all ${
-                                    filterStatus === tab.id ? 'bg-white text-black shadow-md' : 'text-[#8888A0] hover:text-white'
-                                }`}
+                                className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold tracking-wide transition-all ${filterStatus === tab.id ? 'bg-white text-black shadow-md' : 'text-[#8888A0] hover:text-white'
+                                    }`}
                             >
                                 {tab.label}
                             </button>
@@ -489,7 +491,7 @@ export default function RepHome() {
                     {routeProperties.length > 8 && (
                         <div className="relative w-28">
                             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[#8888A0]" />
-                            <Input 
+                            <Input
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 placeholder="Search"
@@ -533,9 +535,9 @@ export default function RepHome() {
             {/* Floating action buttons */}
             <div className="fixed bottom-20 left-4 right-4 z-30 flex items-center gap-2">
                 {stats.percent >= 100 && (
-                    <Button 
+                    <Button
                         onClick={() => {
-                            if(confirm("Mark route as complete?")) completeRouteMutation.mutate();
+                            if (confirm("Mark route as complete?")) completeRouteMutation.mutate();
                         }}
                         className="flex-1 h-10 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-2xl text-xs"
                     >
@@ -569,9 +571,8 @@ export default function RepHome() {
                                 <button
                                     key={route.id}
                                     onClick={() => { setManualRouteId(route.id); setShowRouteList(false); }}
-                                    className={`w-full p-3 rounded-xl border text-left transition-all ${
-                                        activeRoute?.id === route.id ? 'bg-yellow-500/10 border-yellow-500' : 'bg-gray-900 border-gray-800'
-                                    }`}
+                                    className={`w-full p-3 rounded-xl border text-left transition-all ${activeRoute?.id === route.id ? 'bg-yellow-500/10 border-yellow-500' : 'bg-gray-900 border-gray-800'
+                                        }`}
                                 >
                                     <div className="flex justify-between items-center">
                                         <span className={`font-bold text-sm ${activeRoute?.id === route.id ? 'text-yellow-500' : 'text-white'}`}>
