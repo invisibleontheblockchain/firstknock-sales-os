@@ -179,13 +179,12 @@ export default function RoleSelect() {
                     alt="Sales Rep knocking on door"
                     className="w-full h-full object-cover"
                 />
-                {/* Dark overlay to ensure text readability */}
-                <div className="absolute inset-0 bg-black/50" />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-transparent to-[#0A0A0A]/50" />
+                {/* Global Dark overlay to ensure text readability */}
+                <div className="absolute inset-0 bg-black/40" />
             </div>
 
-            {/* Content Container */}
-            <div className="relative z-10 w-full max-w-md px-6 flex flex-col justify-center min-h-min mb-12">
+            {/* Content Container - No background, just a container for the cards */}
+            <div className="relative z-10 w-full max-w-md px-6 flex flex-col justify-center min-h-min mb-12 mt-12">
 
                 {/* Brand Header */}
                 <motion.div
@@ -197,11 +196,11 @@ export default function RoleSelect() {
                     <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 mx-auto rotate-3 hover:rotate-6 transition-transform duration-300 shadow-xl" style={{ background: `linear-gradient(135deg, ${accent}, ${accent}CC)`, boxShadow: `0 8px 32px ${accent}40` }}>
                         <Navigation className="w-7 h-7" style={{ color: accentTxt }} />
                     </div>
-                    <h1 className="text-4xl font-extrabold text-white mb-2 tracking-tight drop-shadow-lg">FirstKnock</h1>
-                    <p className="text-gray-200 text-lg font-medium tracking-wide drop-shadow-md">How would you like to use FirstKnock?</p>
+                    <h1 className="text-4xl font-extrabold text-white mb-2 tracking-tight drop-shadow-md">FirstKnock</h1>
+                    <p className="text-gray-200 text-sm font-medium tracking-wide drop-shadow-md">How would you like to use FirstKnock?</p>
                 </motion.div>
 
-                {/* Main Options */}
+                {/* Main Options Container - This houses the translucent cards */}
                 <div className="w-full space-y-4">
 
                     {/* Returning Rep Option */}
@@ -212,14 +211,17 @@ export default function RoleSelect() {
                             transition={{ delay: 0.1, duration: 0.4 }}
                             onClick={() => selectRole('rep')}
                             disabled={isLoading}
-                            className="w-full relative overflow-hidden group rounded-2xl border border-green-500/30 bg-black/40 backdrop-blur-md p-5 transition-all hover:bg-black/50 text-left flex items-center gap-5 shadow-lg hover:shadow-xl"
+                            className="w-full relative overflow-hidden group rounded-xl border border-white/20 bg-black/30 backdrop-blur-md p-5 transition-all hover:bg-black/50 text-left flex items-center gap-5 shadow-lg"
                         >
-                            <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center text-green-400 shrink-0 shadow-[0_0_15px_rgba(34,197,94,0.3)]">
-                                <ArrowRight className="w-6 h-6" />
+                            {/* Inner Green Glow */}
+                            <div className="absolute inset-0 bg-gradient-to-r from-green-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+
+                            <div className="w-10 h-10 rounded-full flex items-center justify-center text-green-400 shrink-0 bg-green-500/10 aspect-square">
+                                <ArrowRight className="w-5 h-5" />
                             </div>
                             <div>
-                                <h3 className="text-xl font-bold text-white mb-0.5 tracking-tight">Resume My Route</h3>
-                                <p className="text-sm text-gray-300">You're already on a team. Jump right back in.</p>
+                                <h3 className="text-lg font-bold text-white mb-0.5 tracking-tight shadow-black drop-shadow-md">Resume My Route</h3>
+                                <p className="text-xs text-gray-300 shadow-black drop-shadow-md">You're already on a team. Jump right back in.</p>
                             </div>
                         </motion.button>
                     )}
@@ -231,15 +233,15 @@ export default function RoleSelect() {
                         transition={{ delay: 0.2, duration: 0.4 }}
                         onClick={() => selectRole('manager')}
                         disabled={isLoading}
-                        className="w-full relative overflow-hidden group rounded-2xl border border-white/10 bg-black/40 backdrop-blur-md p-6 transition-all hover:border-white/20 hover:bg-black/50 disabled:opacity-50 text-left shadow-lg"
+                        className="w-full relative overflow-hidden group rounded-xl border border-white/20 bg-black/30 backdrop-blur-md p-6 transition-all hover:border-white/30 hover:bg-black/50 disabled:opacity-50 text-left shadow-lg"
                     >
                         <div className="relative flex items-start gap-4">
-                            <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-gray-200 shrink-0 group-hover:bg-white/20 group-hover:text-white transition-colors">
-                                <ShieldCheck className="w-6 h-6" />
+                            <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-gray-200 shrink-0 group-hover:bg-white/20 group-hover:text-white transition-colors aspect-square">
+                                <ShieldCheck className="w-5 h-5" />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xl font-bold text-white mb-1 tracking-tight">Create a Workspace</h3>
-                                <p className="text-sm text-gray-300 leading-relaxed">I am a manager. I want to build territories, generate routes, and invite my team.</p>
+                                <h3 className="text-lg font-bold text-white mb-1 tracking-tight drop-shadow-md">Create a Workspace</h3>
+                                <p className="text-xs text-gray-300 leading-relaxed drop-shadow-md">I am a manager. I want to build territories, generate routes, and invite my team.</p>
                             </div>
                         </div>
                     </motion.button>
@@ -249,11 +251,11 @@ export default function RoleSelect() {
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ delay: 0.3 }}
-                        className="flex items-center gap-4 py-1"
+                        className="flex items-center gap-4 py-1 opacity-70"
                     >
-                        <div className="flex-1 h-px bg-white/20" />
-                        <span className="text-xs font-bold text-gray-400 uppercase tracking-widest drop-shadow-md">OR</span>
-                        <div className="flex-1 h-px bg-white/20" />
+                        <div className="flex-1 h-px bg-white/30" />
+                        <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest drop-shadow-md">OR</span>
+                        <div className="flex-1 h-px bg-white/30" />
                     </motion.div>
 
                     {/* Join Team Option */}
@@ -261,17 +263,17 @@ export default function RoleSelect() {
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ delay: 0.4, duration: 0.4 }}
-                        className="w-full relative overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-md p-6 text-left transition-all shadow-lg"
-                        style={{ boxShadow: inviteCode ? `0 0 20px ${accent}30` : 'none', borderColor: inviteCode ? `${accent}60` : 'rgba(255,255,255,0.1)' }}
+                        className="w-full relative overflow-hidden rounded-xl border border-white/20 bg-black/30 backdrop-blur-md p-6 text-left transition-all shadow-lg"
+                        style={{ boxShadow: inviteCode ? `0 0 20px ${accent}30` : 'none', borderColor: inviteCode ? `${accent}60` : 'rgba(255,255,255,0.2)' }}
                     >
                         <div className="relative flex flex-col gap-4">
                             <div className="flex items-start gap-4">
-                                <div className="w-12 h-12 rounded-full flex items-center justify-center transition-colors shrink-0" style={{ background: `${accent}20`, color: accentTxt, boxShadow: `0 0 15px ${accent}40` }}>
-                                    <Map className="w-6 h-6" style={{ color: accent }} />
+                                <div className="w-10 h-10 rounded-full flex items-center justify-center transition-colors shrink-0 aspect-square" style={{ background: `${accent}20`, color: accentTxt }}>
+                                    <Map className="w-5 h-5" style={{ color: accent }} />
                                 </div>
                                 <div className="flex-1">
-                                    <h3 className="text-xl font-bold text-white mb-1 tracking-tight">Join a Team</h3>
-                                    <p className="text-sm text-gray-300 leading-relaxed">I am a sales rep. I have an invite code from my manager.</p>
+                                    <h3 className="text-lg font-bold text-white mb-1 tracking-tight drop-shadow-md">Join a Team</h3>
+                                    <p className="text-xs text-gray-300 leading-relaxed drop-shadow-md">I am a sales rep. I have an invite code from my manager.</p>
                                 </div>
                             </div>
 
@@ -279,28 +281,31 @@ export default function RoleSelect() {
                                 <Input
                                     value={inviteCode}
                                     onChange={(e) => setInviteCode(e.target.value)}
-                                    placeholder="Invite Code..."
-                                    className="bg-black/60 border-white/20 text-white placeholder:text-gray-400 focus-visible:ring-1 focus-visible:ring-white h-12 text-center sm:text-left sm:pl-6 text-lg tracking-widest font-mono uppercase rounded-xl flex-1 backdrop-blur-md"
+                                    placeholder="INVITE CODE..."
+                                    className="bg-black/80 border-black/50 text-white placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-white h-10 text-center sm:text-left sm:pl-4 text-sm tracking-widest font-mono uppercase rounded-lg flex-1 shadow-inner"
                                     type="text"
                                     maxLength={8}
                                 />
                                 <Button
                                     onClick={handleCodeSubmit}
                                     disabled={!inviteCode || isLoading}
-                                    className="h-12 px-8 rounded-xl font-bold transition-all disabled:opacity-50 shadow-lg text-lg sm:w-auto w-full"
-                                    style={{ background: inviteCode ? accent : 'rgba(255,255,255,0.1)', color: inviteCode ? accentTxt : 'rgba(255,255,255,0.4)' }}
+                                    className="h-10 px-6 rounded-lg font-bold transition-all disabled:opacity-50 shadow-md text-sm sm:w-auto w-full"
+                                    style={{ background: inviteCode ? accent : 'rgba(255,255,255,0.15)', color: inviteCode ? accentTxt : 'rgba(255,255,255,0.6)' }}
                                 >
-                                    {isLoading ? <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" /> : 'Join'}
+                                    {isLoading ? <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" /> : 'Join'}
                                 </Button>
                             </div>
                         </div>
                     </motion.div>
                 </div>
+            </div>
 
-                {/* Footer */}
-                <div className="absolute -bottom-16 left-0 right-0 py-6 text-center text-xs text-gray-400 font-medium tracking-wide drop-shadow-md">
-                    <p>Protected by FirstKnock Security</p>
-                </div>
+            {/* Overlay Gradient at the bottom to ensure footer is readable */}
+            <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/80 to-transparent pointer-events-none z-10" />
+
+            {/* Footer */}
+            <div className="absolute bottom-6 left-0 right-0 py-2 text-center text-[10px] text-gray-400 font-medium tracking-wide drop-shadow-md z-20">
+                <p>Protected by FirstKnock Security</p>
             </div>
         </div>
     );
