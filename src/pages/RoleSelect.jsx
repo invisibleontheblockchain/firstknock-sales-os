@@ -32,7 +32,7 @@ export default function RoleSelect() {
                         toast.success(`Referred by ${res.data.referrer_name || 'a friend'}!`);
                     }
                 })
-                .catch(() => {})
+                .catch(() => { })
                 .finally(() => setReferralApplied(true));
         }
     }, [user, referralApplied]);
@@ -58,7 +58,7 @@ export default function RoleSelect() {
         if (role === 'rep' && existingTeamMember) {
             setIsLoading(true);
             try {
-                await updateUserMutation.mutateAsync({ 
+                await updateUserMutation.mutateAsync({
                     app_role: 'rep',
                     team_manager_id: existingTeamMember.manager_id || null
                 });
@@ -93,7 +93,7 @@ export default function RoleSelect() {
 
             if (validCode) {
                 // 1. Update User Role AND store the manager link on the user
-                await updateUserMutation.mutateAsync({ 
+                await updateUserMutation.mutateAsync({
                     app_role: validCode.role,
                     team_manager_id: validCode.linked_user_id || null,
                     team_invite_code: validCode.code
@@ -102,7 +102,7 @@ export default function RoleSelect() {
                 // 2. Create Team Member record if not exists
                 const allMembers = await base44.entities.TeamMember.list('-created_date', 500);
                 const membersList = Array.isArray(allMembers) ? allMembers : (allMembers?.items || []);
-                const memberExists = membersList.some(m => 
+                const memberExists = membersList.some(m =>
                     m.email?.trim().toLowerCase() === user.email.trim().toLowerCase()
                 );
 
@@ -112,12 +112,12 @@ export default function RoleSelect() {
                         email: user.email.trim().toLowerCase(),
                         role: validCode.role,
                         status: 'active',
-                        color: '#' + Math.floor(Math.random()*16777215).toString(16),
+                        color: '#' + Math.floor(Math.random() * 16777215).toString(16),
                         manager_id: validCode.linked_user_id || null,
                         invite_code: validCode.code
                     });
                 } else {
-                    const existingMember = membersList.find(m => 
+                    const existingMember = membersList.find(m =>
                         m.email?.trim().toLowerCase() === user.email.trim().toLowerCase()
                     );
                     if (existingMember && validCode.linked_user_id && existingMember.manager_id !== validCode.linked_user_id) {
@@ -171,119 +171,136 @@ export default function RoleSelect() {
     }
 
     return (
-        <div className="h-full w-full bg-[#0A0A0A] flex flex-col px-6 relative overflow-y-auto">
-            {/* Background Gradients */}
-            <div className="absolute top-0 left-0 w-full h-96 bg-gradient-to-b from-yellow-500/10 to-transparent pointer-events-none" />
-            <div className="absolute bottom-0 right-0 w-64 h-64 bg-blue-500/5 blur-3xl rounded-full pointer-events-none" />
+        <div className="relative flex w-full h-screen bg-[#0A0A0A] overflow-hidden text-white font-sans items-center justify-center">
+            {/* Background Image Container */}
+            <div className="absolute inset-0 z-0">
+                <img
+                    src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?ixlib=rb-4.0.3&auto=format&fit=crop&w=2075&q=80"
+                    alt="Sales Rep knocking on door"
+                    className="w-full h-full object-cover"
+                />
+                {/* Dark overlay to ensure text readability */}
+                <div className="absolute inset-0 bg-black/50" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-transparent to-[#0A0A0A]/50" />
+            </div>
 
-            <div className="flex-1 flex flex-col items-center justify-start md:justify-center pt-12 pb-8 md:py-8 max-w-md mx-auto w-full z-10 min-h-min">
-                
+            {/* Content Container */}
+            <div className="relative z-10 w-full max-w-md px-6 flex flex-col justify-center min-h-min mb-12">
+
                 {/* Brand Header */}
-                <motion.div 
+                <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="text-center mb-10"
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                    className="mb-8 text-center"
                 >
-                    <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5 mx-auto rotate-3 hover:rotate-6 transition-transform duration-300" style={{ background: `linear-gradient(135deg, ${accent}, ${accent}CC)`, boxShadow: `0 0 30px ${accent}30` }}>
-                        <Navigation className="w-8 h-8" style={{ color: accentTxt }} />
+                    <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4 mx-auto rotate-3 hover:rotate-6 transition-transform duration-300 shadow-xl" style={{ background: `linear-gradient(135deg, ${accent}, ${accent}CC)`, boxShadow: `0 8px 32px ${accent}40` }}>
+                        <Navigation className="w-7 h-7" style={{ color: accentTxt }} />
                     </div>
-                    <h1 className="text-3xl font-extrabold text-white mb-2 tracking-tight">FirstKnock</h1>
-                    <p className="text-gray-400 font-medium">How would you like to use FirstKnock?</p>
+                    <h1 className="text-4xl font-extrabold text-white mb-2 tracking-tight drop-shadow-lg">FirstKnock</h1>
+                    <p className="text-gray-200 text-lg font-medium tracking-wide drop-shadow-md">How would you like to use FirstKnock?</p>
                 </motion.div>
 
                 {/* Main Options */}
-                <div className="w-full space-y-5">
-                    
+                <div className="w-full space-y-4">
+
                     {/* Returning Rep Option */}
                     {existingTeamMember && (
                         <motion.button
-                            initial={{ opacity: 0, y: -10 }}
+                            initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: 0.1, duration: 0.4 }}
                             onClick={() => selectRole('rep')}
                             disabled={isLoading}
-                            className="w-full relative overflow-hidden group rounded-2xl border border-green-500/30 bg-green-500/10 p-4 transition-all hover:bg-green-500/20 text-left flex items-center gap-4 shadow-[0_0_20px_rgba(34,197,94,0.15)]"
+                            className="w-full relative overflow-hidden group rounded-2xl border border-green-500/30 bg-black/40 backdrop-blur-md p-5 transition-all hover:bg-black/50 text-left flex items-center gap-5 shadow-lg hover:shadow-xl"
                         >
-                            <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center text-green-400 shrink-0">
-                                <ArrowRight className="w-5 h-5" />
+                            <div className="w-12 h-12 rounded-full bg-green-500/20 flex items-center justify-center text-green-400 shrink-0 shadow-[0_0_15px_rgba(34,197,94,0.3)]">
+                                <ArrowRight className="w-6 h-6" />
                             </div>
                             <div>
-                                <h3 className="text-lg font-bold text-white mb-0.5">Resume My Route</h3>
-                                <p className="text-xs text-gray-300">You're already on a team. Jump right back in.</p>
+                                <h3 className="text-xl font-bold text-white mb-0.5 tracking-tight">Resume My Route</h3>
+                                <p className="text-sm text-gray-300">You're already on a team. Jump right back in.</p>
                             </div>
                         </motion.button>
                     )}
 
                     {/* Manager Option */}
                     <motion.button
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.1 }}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.2, duration: 0.4 }}
                         onClick={() => selectRole('manager')}
                         disabled={isLoading}
-                        className="w-full relative overflow-hidden group rounded-2xl border border-gray-800 bg-[#151515] p-5 transition-all hover:border-blue-500/50 hover:bg-[#1A1A24] disabled:opacity-50 text-left"
+                        className="w-full relative overflow-hidden group rounded-2xl border border-white/10 bg-black/40 backdrop-blur-md p-6 transition-all hover:border-white/20 hover:bg-black/50 disabled:opacity-50 text-left shadow-lg"
                     >
                         <div className="relative flex items-start gap-4">
-                            <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400 shrink-0 mt-1">
+                            <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-gray-200 shrink-0 group-hover:bg-white/20 group-hover:text-white transition-colors">
                                 <ShieldCheck className="w-6 h-6" />
                             </div>
-                            <div>
-                                <h3 className="text-lg font-bold text-white mb-1">Create a Workspace</h3>
-                                <p className="text-sm text-gray-500 leading-relaxed">I am a manager. I want to build territories, generate routes, and invite my team.</p>
+                            <div className="flex-1">
+                                <h3 className="text-xl font-bold text-white mb-1 tracking-tight">Create a Workspace</h3>
+                                <p className="text-sm text-gray-300 leading-relaxed">I am a manager. I want to build territories, generate routes, and invite my team.</p>
                             </div>
                         </div>
                     </motion.button>
 
                     {/* Divider */}
-                    <div className="flex items-center gap-4 py-1">
-                        <div className="flex-1 h-px bg-gray-800" />
-                        <span className="text-xs font-bold text-gray-600 uppercase tracking-widest">OR</span>
-                        <div className="flex-1 h-px bg-gray-800" />
-                    </div>
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.3 }}
+                        className="flex items-center gap-4 py-1"
+                    >
+                        <div className="flex-1 h-px bg-white/20" />
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-widest drop-shadow-md">OR</span>
+                        <div className="flex-1 h-px bg-white/20" />
+                    </motion.div>
 
                     {/* Join Team Option */}
                     <motion.div
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.2 }}
-                        className="w-full relative overflow-hidden rounded-2xl border border-gray-800 bg-[#151515] p-5 text-left"
-                        style={{ boxShadow: inviteCode ? `0 0 30px ${accent}15` : 'none', borderColor: inviteCode ? `${accent}50` : '' }}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.4, duration: 0.4 }}
+                        className="w-full relative overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-md p-6 text-left transition-all shadow-lg"
+                        style={{ boxShadow: inviteCode ? `0 0 20px ${accent}30` : 'none', borderColor: inviteCode ? `${accent}60` : 'rgba(255,255,255,0.1)' }}
                     >
                         <div className="relative flex flex-col gap-4">
                             <div className="flex items-start gap-4">
-                                <div className="w-12 h-12 rounded-full flex items-center justify-center transition-colors shrink-0 mt-1" style={{ background: `${accent}15`, color: accent }}>
-                                    <Map className="w-6 h-6" />
+                                <div className="w-12 h-12 rounded-full flex items-center justify-center transition-colors shrink-0" style={{ background: `${accent}20`, color: accentTxt, boxShadow: `0 0 15px ${accent}40` }}>
+                                    <Map className="w-6 h-6" style={{ color: accent }} />
                                 </div>
-                                <div>
-                                    <h3 className="text-lg font-bold text-white mb-1">Join a Team</h3>
-                                    <p className="text-sm text-gray-500 leading-relaxed">I am a sales rep. I have an invite code from my manager.</p>
+                                <div className="flex-1">
+                                    <h3 className="text-xl font-bold text-white mb-1 tracking-tight">Join a Team</h3>
+                                    <p className="text-sm text-gray-300 leading-relaxed">I am a sales rep. I have an invite code from my manager.</p>
                                 </div>
                             </div>
-                            
-                            <div className="mt-1 flex gap-2">
+
+                            <div className="mt-2 flex flex-col sm:flex-row gap-3">
                                 <Input
                                     value={inviteCode}
                                     onChange={(e) => setInviteCode(e.target.value)}
                                     placeholder="Invite Code..."
-                                    className="bg-black border-gray-800 text-white placeholder:text-gray-600 focus-visible:ring-1 focus-visible:ring-white h-12 text-center text-lg tracking-widest font-mono uppercase"
+                                    className="bg-black/60 border-white/20 text-white placeholder:text-gray-400 focus-visible:ring-1 focus-visible:ring-white h-12 text-center sm:text-left sm:pl-6 text-lg tracking-widest font-mono uppercase rounded-xl flex-1 backdrop-blur-md"
                                     type="text"
                                     maxLength={8}
                                 />
-                                <Button 
+                                <Button
                                     onClick={handleCodeSubmit}
                                     disabled={!inviteCode || isLoading}
-                                    className="h-12 px-6 rounded-xl font-bold transition-all disabled:opacity-50 shadow-lg"
-                                    style={{ background: accent, color: accentTxt }}
+                                    className="h-12 px-8 rounded-xl font-bold transition-all disabled:opacity-50 shadow-lg text-lg sm:w-auto w-full"
+                                    style={{ background: inviteCode ? accent : 'rgba(255,255,255,0.1)', color: inviteCode ? accentTxt : 'rgba(255,255,255,0.4)' }}
                                 >
-                                    {isLoading ? <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" /> : 'Join'}
+                                    {isLoading ? <div className="w-6 h-6 border-2 border-current border-t-transparent rounded-full animate-spin" /> : 'Join'}
                                 </Button>
                             </div>
                         </div>
                     </motion.div>
                 </div>
-            </div>
-            {/* Footer */}
-            <div className="py-6 text-center text-xs text-gray-600">
-                <p>Protected by FirstKnock Security</p>
+
+                {/* Footer */}
+                <div className="absolute -bottom-16 left-0 right-0 py-6 text-center text-xs text-gray-400 font-medium tracking-wide drop-shadow-md">
+                    <p>Protected by FirstKnock Security</p>
+                </div>
             </div>
         </div>
     );
