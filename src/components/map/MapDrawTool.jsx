@@ -20,8 +20,8 @@ export default function MapDrawTool({ active, onPointsUpdate, drawnPolygon, draw
             for (let i = 0; i < 32; i++) {
                 const angle = (i / 32) * Math.PI * 2;
                 newPoints.push({
-                    lat: centerLatlng.lat + (Math.sin(angle) * radiusLat),
-                    lng: centerLatlng.lng + (Math.cos(angle) * radiusLng)
+                    lat: centerLatlng.lat + (Math.cos(angle) * radiusLat),
+                    lng: centerLatlng.lng + (Math.sin(angle) * radiusLng)
                 });
             }
         } else if (shape === 'square') {
@@ -63,7 +63,9 @@ export default function MapDrawTool({ active, onPointsUpdate, drawnPolygon, draw
     useMapEvents({
         click(e) {
             if (!active) return;
+            console.log(`[MapDrawTool] Clicked map! active shape=${drawShape} size=${drawSizeMiles}`);
             const generated = generateShape(e.latlng, drawShape, drawSizeMiles);
+            console.log(`[MapDrawTool] Generated ${generated.length} points for Polygon:`, generated);
             setPoints(generated);
             if (onPointsUpdate) {
                 onPointsUpdate(generated);

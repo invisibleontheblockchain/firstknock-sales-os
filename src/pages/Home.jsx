@@ -138,6 +138,8 @@ export default function Home() {
     const [drawingMode, setDrawingMode] = useState(false);
     const [drawnPolygon, setDrawnPolygon] = useState(null);
     const [draftPolygon, setDraftPolygon] = useState([]);
+    const [drawShape, setDrawShape] = useState('circle');
+    const [drawSizeMiles, setDrawSizeMiles] = useState(10);
     const [showTimingPanel, setShowTimingPanel] = useState(false);
     const [selectedProperty, setSelectedProperty] = useState(null);
     const [zoomLevel, setZoomLevel] = useState(15);
@@ -1144,6 +1146,8 @@ export default function Home() {
                     active={drawingMode}
                     onPointsUpdate={setDraftPolygon}
                     drawnPolygon={drawnPolygon}
+                    drawShape={drawShape}
+                    drawSizeMiles={drawSizeMiles}
                 />
 
                 {/* All map data layers extracted to ManagerMapLayers */}
@@ -1233,6 +1237,10 @@ export default function Home() {
                 setDrawnPolygon={setDrawnPolygon}
                 draftPolygon={draftPolygon}
                 setDraftPolygon={setDraftPolygon}
+                drawShape={drawShape}
+                setDrawShape={setDrawShape}
+                drawSizeMiles={drawSizeMiles}
+                setDrawSizeMiles={setDrawSizeMiles}
                 user={user}
                 setZipCodeFilter={setZipCodeFilter}
                 onPullComplete={handleAreaPullComplete}
@@ -1501,6 +1509,7 @@ export default function Home() {
                     setSoldDateFilter={setSoldDateFilter}
                     highlightRecentlySold={highlightRecentlySold}
                     setHighlightRecentlySold={setHighlightRecentlySold}
+                    onRequestGenerate={generateRoutes}
                 />
             )}
 
