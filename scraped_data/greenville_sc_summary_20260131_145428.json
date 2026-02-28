@@ -1,0 +1,20 @@
+{
+  "summaries": [
+    {
+      "name": "Greenville, SC",
+      "property_count": 351,
+      "min_price": 10000.0,
+      "max_price": 2200000.0,
+      "avg_price": 303787.2342857143,
+      "median_price": 269000.0
+    }
+  ],
+  "stats": {
+    "counties_attempted": 1,
+    "counties_success": 1,
+    "counties_failed": 0,
+    "total_properties": 351,
+    "errors": []
+  },
+  "generated_at": "20260131_145428"
+}

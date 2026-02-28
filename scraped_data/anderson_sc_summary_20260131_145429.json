@@ -1,0 +1,20 @@
+{
+  "summaries": [
+    {
+      "name": "Anderson, SC",
+      "property_count": 351,
+      "min_price": 20000.0,
+      "max_price": 11300000.0,
+      "avg_price": 487070.82857142854,
+      "median_price": 299500.0
+    }
+  ],
+  "stats": {
+    "counties_attempted": 2,
+    "counties_success": 2,
+    "counties_failed": 0,
+    "total_properties": 702,
+    "errors": []
+  },
+  "generated_at": "20260131_145429"
+}

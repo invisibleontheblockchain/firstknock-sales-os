@@ -1,0 +1,1371 @@
+{
+    "version": 626,
+    "errorMessage": "Success",
+    "resultCode": 0,
+    "payload": {
+        "homes": [
+            {
+                "mlsId": {
+                    "label": "MLS#",
+                    "value": "155528"
+                },
+                "showMlsId": false,
+                "mlsStatus": "Active",
+                "showDatasourceLogo": true,
+                "price": {
+                    "value": 225000,
+                    "level": 1
+                },
+                "hideSalePrice": false,
+                "hoa": {
+                    "value": 35,
+                    "level": 1
+                },
+                "isHoaFrequencyKnown": true,
+                "sqFt": {
+                    "value": 1344,
+                    "level": 1
+                },
+                "pricePerSqFt": {
+                    "value": 167,
+                    "level": 1
+                },
+                "lotSize": {
+                    "value": 21780,
+                    "level": 1
+                },
+                "beds": 3,
+                "baths": 2.0,
+                "fullBaths": 2,
+                "location": {
+                    "value": "Walnut Grove",
+                    "level": 1
+                },
+                "stories": 1.0,
+                "latLong": {
+                    "value": {
+                        "latitude": 35.1726304,
+                        "longitude": -83.4247968
+                    },
+                    "level": 1
+                },
+                "streetLine": {
+                    "value": "210 Ledbetter Ln",
+                    "level": 1
+                },
+                "unitNumber": {
+                    "level": 1
+                },
+                "city": "Franklin",
+                "state": "NC",
+                "zip": "28734",
+                "postalCode": {
+                    "value": "28734",
+                    "level": 1
+                },
+                "countryCode": "US",
+                "showAddressOnMap": true,
+                "soldDate": 1522738800000,
+                "searchStatus": 1,
+                "propertyType": 10,
+                "uiPropertyType": 7,
+                "listingType": 1,
+                "propertyId": 133256466,
+                "listingId": 211298918,
+                "dataSourceId": 522,
+                "marketId": 19,
+                "yearBuilt": {
+                    "value": 1998,
+                    "level": 1
+                },
+                "dom": {
+                    "value": 1,
+                    "level": 1
+                },
+                "timeOnRedfin": {
+                    "value": 1473156,
+                    "level": 1
+                },
+                "originalTimeOnRedfin": {
+                    "value": 1473160,
+                    "level": 1
+                },
+                "timeZone": "US/Eastern",
+                "primaryPhotoDisplayLevel": 1,
+                "photos": {
+                    "value": "0-31:0",
+                    "level": 1
+                },
+                "additionalPhotosInfo": [],
+                "photoFormat": "webp",
+                "url": "/NC/Franklin/210-Ledbetter-Ln-28734/home/133256466",
+                "hasInsight": false,
+                "sashes": [
+                    {
+                        "sashType": 7,
+                        "sashTypeId": 7,
+                        "sashTypeName": "New",
+                        "sashTypeColor": "#2E7E36",
+                        "isRedfin": false,
+                        "isActiveKeyListing": false,
+                        "timeOnRedfin": 1473156,
+                        "openHouseText": "",
+                        "lastSaleDate": "",
+                        "lastSalePrice": ""
+                    }
+                ],
+                "keyFacts": [
+                    {
+                        "description": "0.5 acre lot",
+                        "rank": 0
+                    },
+                    {
+                        "description": "Built 1998",
+                        "rank": 1
+                    }
+                ],
+                "isHot": false,
+                "hasVirtualTour": false,
+                "hasVideoTour": false,
+                "has3DTour": false,
+                "newConstructionCommunityInfo": {},
+                "isRedfin": false,
+                "isNewConstruction": false,
+                "listingRemarks": "Welcome to easy mountain living in beautiful Franklin! This well-maintained 3-bedroom, 2-bath double-wide mobile home (on a permanent foundation) offers a fantastic long-range view that you'll never get tired of waking up to. Inside, the home is clean, comfortable, and thoughtfully cared for. Outside is where it really shines\u2014enjoy your morning coffee or evenings on the covered porch, fire up the grill in the dedicated grilling area, and take advantage of the large workshop, perfect for hobbies, storage, or projects. Major updates include a brand-new roof installed last year, giving you peace of mind for years to come. Whether you're looking for a full-time residence, mountain getaway",
+                "remarksAccessLevel": 1,
+                "businessMarketId": 21,
+                "isShortlisted": false,
+                "isViewedListing": false,
+                "skPoolType": 5
+            },
+            {
+                "mlsId": {
+                    "label": "MLS#",
+                    "value": "26043209"
+                },
+                "showMlsId": false,
+                "mlsStatus": "Active",
+                "showDatasourceLogo": false,
+                "price": {
+                    "value": 71000,
+                    "level": 1
+                },
+                "hideSalePrice": false,
+                "hoa": {
+                    "value": 385,
+                    "level": 1
+                },
+                "isHoaFrequencyKnown": true,
+                "sqFt": {
+                    "level": 1
+                },
+                "pricePerSqFt": {
+                    "level": 1
+                },
+                "lotSize": {
+                    "level": 1
+                },
+                "beds": 2,
+                "baths": 2.0,
+                "fullBaths": 2,
+                "location": {
+                    "value": "Carolina Highland Park",
+                    "level": 1
+                },
+                "latLong": {
+                    "value": {
+                        "latitude": 35.1868612,
+                        "longitude": -83.3707105
+                    },
+                    "level": 1
+                },
+                "streetLine": {
+                    "value": "3610 #52 Highlands Rd",
+                    "level": 1
+                },
+                "unitNumber": {
+                    "level": 1
+                },
+                "city": "Franklin",
+                "state": "NC",
+                "zip": "28734",
+                "postalCode": {
+                    "value": "28734",
+                    "level": 1
+                },
+                "countryCode": "US",
+                "showAddressOnMap": true,
+                "searchStatus": 1,
+                "propertyType": 6,
+                "uiPropertyType": 1,
+                "listingType": 1,
+                "propertyId": 196329405,
+                "listingId": 211281550,
+                "dataSourceId": 562,
+                "marketId": 19,
+                "yearBuilt": {
+                    "value": 1982,
+                    "level": 1
+                },
+                "dom": {
+                    "value": 1,
+                    "level": 1
+                },
+                "timeOnRedfin": {
+                    "value": 84361544,
+                    "level": 1
+                },
+                "originalTimeOnRedfin": {
+                    "value": 84361548,
+                    "level": 1
+                },
+                "timeZone": "US/Eastern",
+                "primaryPhotoDisplayLevel": 1,
+                "photos": {
+                    "value": "0-36:1",
+                    "level": 1
+                },
+                "additionalPhotosInfo": [],
+                "photoFormat": "webp",
+                "url": "/NC/Franklin/52-Highlands-Rd-28734/home/196329405",
+                "hasInsight": false,
+                "sashes": [
+                    {
+                        "sashType": 7,
+                        "sashTypeId": 7,
+                        "sashTypeName": "New",
+                        "sashTypeColor": "#2E7E36",
+                        "isRedfin": false,
+                        "isActiveKeyListing": false,
+                        "timeOnRedfin": 84361544,
+                        "openHouseText": "",
+                        "lastSaleDate": "",
+                        "lastSalePrice": ""
+                    }
+                ],
+                "keyFacts": [
+                    {
+                        "description": "Close to restaurants",
+                        "rank": 0
+                    },
+                    {
+                        "description": "Close to waterfalls",
+                        "rank": 1
+                    },
+                    {
+                        "description": "Screened porch",
+                        "rank": 2
+                    }
+                ],
+                "listingTags": [
+                    "LVP FLOORING",
+                    "SCREENED PORCH",
+                    "PEACEFUL WINTER VIEWS",
+                    "CLOSE TO RESTAURANTS",
+                    "CLOSE TO SHOPPING",
+                    "CLOSE TO WATERFALLS"
+                ],
+                "isHot": false,
+                "hasVirtualTour": false,
+                "hasVideoTour": false,
+                "has3DTour": false,
+                "newConstructionCommunityInfo": {},
+                "isRedfin": false,
+                "isNewConstruction": false,
+                "listingRemarks": "This spacious 2 bedroom, 2 bath home is located in an established 55+ community and offers comfortable, low-maintenance living with recent updates throughout. The home features LVP flooring, a large primary bedroom with an ensuite bath, and a guest bedroom that also includes its own ensuite. Enjoy peaceful winter views from the beautiful screened porch, perfect for relaxing year-round. Ideally situated just 3 miles from historic downtown Franklin, the property is close to restaurants, shopping, waterfalls, and hiking trails, making it an excellent choice for full-time living or a summer mountain retreat.",
+                "remarksAccessLevel": 1,
+                "businessMarketId": 21,
+                "isShortlisted": false,
+                "isViewedListing": false,
+                "skParkingSpaces": 1,
+                "skPoolType": 5
+            },
+            {
+                "mlsId": {
+                    "label": "MLS#",
+                    "value": "26043199"
+                },
+                "showMlsId": false,
+                "mlsStatus": "Active",
+                "showDatasourceLogo": false,
+                "price": {
+                    "value": 299900,
+                    "level": 1
+                },
+                "hideSalePrice": false,
+                "hoa": {
+                    "level": 1
+                },
+                "isHoaFrequencyKnown": true,
+                "sqFt": {
+                    "value": 1104,
+                    "level": 1
+                },
+                "pricePerSqFt": {
+                    "value": 272,
+                    "level": 1
+                },
+                "lotSize": {
+                    "value": 37461,
+                    "level": 1
+                },
+                "beds": 2,
+                "baths": 2.0,
+                "fullBaths": 2,
+                "location": {
+                    "value": "Franklin Heights",
+                    "level": 1
+                },
+                "latLong": {
+                    "value": {
+                        "latitude": 35.2082539,
+                        "longitude": -83.3220637
+                    },
+                    "level": 1
+                },
+                "streetLine": {
+                    "value": "602 Franklin Farm Rd",
+                    "level": 1
+                },
+                "unitNumber": {
+                    "level": 1
+                },
+                "city": "Franklin",
+                "state": "NC",
+                "zip": "28734",
+                "postalCode": {
+                    "value": "28734",
+                    "level": 1
+                },
+                "countryCode": "US",
+                "showAddressOnMap": true,
+                "soldDate": 1653634800000,
+                "searchStatus": 1,
+                "propertyType": 6,
+                "uiPropertyType": 1,
+                "listingType": 1,
+                "propertyId": 133441485,
+                "listingId": 211248855,
+                "dataSourceId": 562,
+                "marketId": 19,
+                "yearBuilt": {
+                    "value": 1988,
+                    "level": 1
+                },
+                "dom": {
+                    "value": 2,
+                    "level": 1
+                },
+                "timeOnRedfin": {
+                    "value": 174307897,
+                    "level": 1
+                },
+                "originalTimeOnRedfin": {
+                    "value": 174307901,
+                    "level": 1
+                },
+                "timeZone": "US/Eastern",
+                "primaryPhotoDisplayLevel": 1,
+                "photos": {
+                    "value": "0-24:0",
+                    "level": 1
+                },
+                "additionalPhotosInfo": [],
+                "photoFormat": "webp",
+                "url": "/NC/Franklin/602-Franklin-Farm-Rd-28734/home/133441485",
+                "hasInsight": false,
+                "sashes": [
+                    {
+                        "sashType": 31,
+                        "sashTypeId": 31,
+                        "sashTypeName": "3D Walkthrough",
+                        "sashTypeColor": "#7556F2",
+                        "isRedfin": false,
+                        "isActiveKeyListing": false,
+                        "openHouseText": "",
+                        "lastSaleDate": "",
+                        "lastSalePrice": ""
+                    }
+                ],
+                "keyFacts": [
+                    {
+                        "description": "Large bonus room",
+                        "rank": 0
+                    },
+                    {
+                        "description": "Single level layout",
+                        "rank": 1
+                    },
+                    {
+                        "description": "Whirlpool tub",
+                        "rank": 2
+                    }
+                ],
+                "listingTags": [
+                    "WESTWARD FACING VIEWS",
+                    "SINGLE LEVEL LAYOUT",
+                    "LARGE BONUS ROOM",
+                    "WALK IN SHOWER",
+                    "WHIRLPOOL TUB",
+                    "SPLIT BEDROOM FLOOR PLAN"
+                ],
+                "isHot": false,
+                "hasVirtualTour": true,
+                "hasVideoTour": false,
+                "has3DTour": false,
+                "newConstructionCommunityInfo": {},
+                "isRedfin": false,
+                "isNewConstruction": false,
+                "listingRemarks": "This fully furnished home offers the ideal blend of comfort, privacy, and convenience, just 10 minutes from downtown. Tucked away with westward-facing long-range views, this property is ideal as a full-time residence, a second home, or a short-term rental investment. Step inside to discover an inviting single-level layout featuring 2 bedrooms, 2 full bathrooms, and a large bonus room with an en-suite bath, complete with a walk-in shower and a relaxing whirlpool tub. The thoughtful split-bedroom floor plan ensures privacy for guests or family, while the open-concept living, dining, and kitchen area makes entertaining easy and enjoyable. Warm hardwood floors through the living spaces, and cer",
+                "remarksAccessLevel": 1,
+                "businessMarketId": 21,
+                "isShortlisted": false,
+                "isViewedListing": false,
+                "skPoolType": 5
+            },
+            {
+                "mlsId": {
+                    "label": "MLS#",
+                    "value": "26043205"
+                },
+                "showMlsId": false,
+                "mlsStatus": "Active",
+                "showDatasourceLogo": false,
+                "price": {
+                    "value": 525000,
+                    "level": 1
+                },
+                "hideSalePrice": false,
+                "hoa": {
+                    "level": 1
+                },
+                "isHoaFrequencyKnown": true,
+                "sqFt": {
+                    "value": 1184,
+                    "level": 1
+                },
+                "pricePerSqFt": {
+                    "value": 443,
+                    "level": 1
+                },
+                "lotSize": {
+                    "value": 95832,
+                    "level": 1
+                },
+                "beds": 2,
+                "baths": 3.0,
+                "fullBaths": 3,
+                "location": {
+                    "value": "Franklin",
+                    "level": 1
+                },
+                "latLong": {
+                    "value": {
+                        "latitude": 35.1000074,
+                        "longitude": -83.3958003
+                    },
+                    "level": 1
+                },
+                "streetLine": {
+                    "value": "249 Bates Branch Rd",
+                    "level": 1
+                },
+                "unitNumber": {
+                    "level": 1
+                },
+                "city": "Franklin",
+                "state": "NC",
+                "zip": "28734",
+                "postalCode": {
+                    "value": "28734",
+                    "level": 1
+                },
+                "countryCode": "US",
+                "showAddressOnMap": true,
+                "soldDate": 1452758400000,
+                "searchStatus": 1,
+                "propertyType": 6,
+                "uiPropertyType": 1,
+                "listingType": 1,
+                "propertyId": 133602269,
+                "listingId": 211270572,
+                "dataSourceId": 562,
+                "marketId": 19,
+                "yearBuilt": {
+                    "value": 1991,
+                    "level": 1
+                },
+                "dom": {
+                    "value": 1,
+                    "level": 1
+                },
+                "timeOnRedfin": {
+                    "value": 100015384,
+                    "level": 1
+                },
+                "originalTimeOnRedfin": {
+                    "value": 100015388,
+                    "level": 1
+                },
+                "timeZone": "US/Eastern",
+                "primaryPhotoDisplayLevel": 1,
+                "photos": {
+                    "value": "0-41:0",
+                    "level": 1
+                },
+                "additionalPhotosInfo": [],
+                "photoFormat": "webp",
+                "url": "/NC/Franklin/249-Bates-Branch-Rd-28734/home/133602269",
+                "hasInsight": false,
+                "sashes": [
+                    {
+                        "sashType": 7,
+                        "sashTypeId": 7,
+                        "sashTypeName": "New",
+                        "sashTypeColor": "#2E7E36",
+                        "isRedfin": false,
+                        "isActiveKeyListing": false,
+                        "timeOnRedfin": 100015384,
+                        "openHouseText": "",
+                        "lastSaleDate": "",
+                        "lastSalePrice": ""
+                    }
+                ],
+                "keyFacts": [
+                    {
+                        "description": "Easterly view",
+                        "rank": 0
+                    },
+                    {
+                        "description": "Valley pastures",
+                        "rank": 1
+                    },
+                    {
+                        "description": "Large porch",
+                        "rank": 2
+                    }
+                ],
+                "listingTags": [
+                    "USABLE LAND",
+                    "EASTERLY VIEW",
+                    "LARGE PORCH",
+                    "OPEN DECKS",
+                    "VALLEY PASTURES",
+                    "DISTANT VIEW"
+                ],
+                "isHot": false,
+                "hasVirtualTour": false,
+                "hasVideoTour": false,
+                "has3DTour": false,
+                "newConstructionCommunityInfo": {},
+                "isRedfin": false,
+                "isNewConstruction": false,
+                "listingRemarks": "What an absolutely adorable country cabin sitting on over two acres of usable land and with an easterly view for that morning sunshine and coffee. Large porch and open decks looking over valley pastures and on to the distant view. South sun all winter long and lots of western shade. Large great room downstairs with propane logs and add. room. Modern kitchen with stainless appliances. Easy access off paved state road onto paved private to a large parking area.",
+                "remarksAccessLevel": 1,
+                "businessMarketId": 21,
+                "isShortlisted": false,
+                "isViewedListing": false,
+                "skGarageSpaces": 1,
+                "skParkingSpaces": 2,
+                "skPoolType": 5
+            },
+            {
+                "mlsId": {
+                    "label": "MLS#",
+                    "value": "26043203"
+                },
+                "showMlsId": false,
+                "mlsStatus": "Active",
+                "showDatasourceLogo": false,
+                "price": {
+                    "value": 150000,
+                    "level": 1
+                },
+                "hideSalePrice": false,
+                "hoa": {
+                    "level": 1
+                },
+                "isHoaFrequencyKnown": true,
+                "sqFt": {
+                    "level": 1
+                },
+                "pricePerSqFt": {
+                    "level": 1
+                },
+                "lotSize": {
+                    "value": 43560,
+                    "level": 1
+                },
+                "beds": 2,
+                "baths": 2.0,
+                "fullBaths": 2,
+                "location": {
+                    "value": "Franklin",
+                    "level": 1
+                },
+                "latLong": {
+                    "value": {
+                        "latitude": 35.2143317,
+                        "longitude": -83.4022663
+                    },
+                    "level": 1
+                },
+                "streetLine": {
+                    "value": "153 Breezy Oak Ln",
+                    "level": 1
+                },
+                "unitNumber": {
+                    "level": 1
+                },
+                "city": "Franklin",
+                "state": "NC",
+                "zip": "28734",
+                "postalCode": {
+                    "value": "28734",
+                    "level": 1
+                },
+                "countryCode": "US",
+                "showAddressOnMap": true,
+                "searchStatus": 1,
+                "propertyType": 6,
+                "uiPropertyType": 1,
+                "listingType": 1,
+                "propertyId": 133166431,
+                "listingId": 211267821,
+                "dataSourceId": 562,
+                "marketId": 19,
+                "yearBuilt": {
+                    "value": 1980,
+                    "level": 1
+                },
+                "dom": {
+                    "value": 1,
+                    "level": 1
+                },
+                "timeOnRedfin": {
+                    "value": 104197081,
+                    "level": 1
+                },
+                "originalTimeOnRedfin": {
+                    "value": 104197085,
+                    "level": 1
+                },
+                "timeZone": "US/Eastern",
+                "primaryPhotoDisplayLevel": 1,
+                "photos": {
+                    "value": "0-23:2,24-33:1",
+                    "level": 1
+                },
+                "additionalPhotosInfo": [],
+                "photoFormat": "webp",
+                "url": "/NC/Franklin/153-Breezy-Oak-Ln-28734/home/133166431",
+                "hasInsight": false,
+                "sashes": [
+                    {
+                        "sashType": 7,
+                        "sashTypeId": 7,
+                        "sashTypeName": "New",
+                        "sashTypeColor": "#2E7E36",
+                        "isRedfin": false,
+                        "isActiveKeyListing": false,
+                        "timeOnRedfin": 104197081,
+                        "openHouseText": "",
+                        "lastSaleDate": "",
+                        "lastSalePrice": ""
+                    }
+                ],
+                "keyFacts": [
+                    {
+                        "description": "Rare seclusion",
+                        "rank": 0
+                    },
+                    {
+                        "description": "Private back deck",
+                        "rank": 1
+                    },
+                    {
+                        "description": "Garden area",
+                        "rank": 2
+                    }
+                ],
+                "listingTags": [
+                    "PRIVATE BACK DECK",
+                    "GARDEN AREA",
+                    "TWO WELLS",
+                    "SECOND BUILD SITE",
+                    "UNRESTRICTED FULLY USABLE LAND",
+                    "RARE SECLUSION"
+                ],
+                "isHot": false,
+                "hasVirtualTour": false,
+                "hasVideoTour": false,
+                "has3DTour": false,
+                "newConstructionCommunityInfo": {},
+                "isRedfin": false,
+                "isNewConstruction": false,
+                "listingRemarks": "This 2-bedroom, 2-bath home offers solid livable space with plenty of potential for updating and personalization. It sits on one acre of unrestricted, fully usable land at the end of the road, providing rare seclusion while still being just five minutes from town. The property features a private back deck, a garden area, two wells, and a second build site ideal for an additional home or future expansion. With its combination of privacy, usable land, and opportunity for improvement, this property is a great option for anyone looking to create their own space in a peaceful setting",
+                "remarksAccessLevel": 1,
+                "businessMarketId": 21,
+                "isShortlisted": false,
+                "isViewedListing": false,
+                "skPoolType": 5
+            },
+            {
+                "mlsId": {
+                    "label": "MLS#",
+                    "value": "1002518"
+                },
+                "showMlsId": false,
+                "mlsStatus": "Active",
+                "showDatasourceLogo": false,
+                "price": {
+                    "value": 3200000,
+                    "level": 1
+                },
+                "hideSalePrice": false,
+                "hoa": {
+                    "level": 1
+                },
+                "isHoaFrequencyKnown": true,
+                "sqFt": {
+                    "level": 1
+                },
+                "pricePerSqFt": {
+                    "level": 1
+                },
+                "lotSize": {
+                    "value": 365904,
+                    "level": 1
+                },
+                "beds": 3,
+                "baths": 2.0,
+                "fullBaths": 2,
+                "location": {
+                    "value": "Brookwood Heights",
+                    "level": 1
+                },
+                "stories": 2.0,
+                "latLong": {
+                    "value": {
+                        "latitude": 35.1813535,
+                        "longitude": -83.4036081
+                    },
+                    "level": 1
+                },
+                "streetLine": {
+                    "value": "520 Baird Cove Rd #0",
+                    "level": 1
+                },
+                "unitNumber": {
+                    "value": "#0",
+                    "level": 1
+                },
+                "city": "Franklin",
+                "state": "NC",
+                "zip": "28734",
+                "postalCode": {
+                    "value": "28734",
+                    "level": 1
+                },
+                "countryCode": "US",
+                "showAddressOnMap": true,
+                "searchStatus": 1,
+                "propertyType": 3,
+                "uiPropertyType": 2,
+                "listingType": 1,
+                "propertyId": 133633958,
+                "listingId": 211273319,
+                "dataSourceId": 619,
+                "marketId": 19,
+                "yearBuilt": {
+                    "value": 2012,
+                    "level": 1
+                },
+                "dom": {
+                    "value": 1,
+                    "level": 1
+                },
+                "timeOnRedfin": {
+                    "value": 96331804,
+                    "level": 1
+                },
+                "originalTimeOnRedfin": {
+                    "value": 96331808,
+                    "level": 1
+                },
+                "timeZone": "US/Eastern",
+                "primaryPhotoDisplayLevel": 1,
+                "photos": {
+                    "value": "0-92:0",
+                    "level": 1
+                },
+                "additionalPhotosInfo": [],
+                "photoFormat": "webp",
+                "url": "/NC/Franklin/520-Baird-Cove-Rd-28734/home/133633958",
+                "hasInsight": false,
+                "sashes": [
+                    {
+                        "sashType": 7,
+                        "sashTypeId": 7,
+                        "sashTypeName": "New",
+                        "sashTypeColor": "#2E7E36",
+                        "isRedfin": false,
+                        "isActiveKeyListing": false,
+                        "timeOnRedfin": 96331804,
+                        "openHouseText": "",
+                        "lastSaleDate": "",
+                        "lastSalePrice": ""
+                    }
+                ],
+                "keyFacts": [
+                    {
+                        "description": "Expansion potential",
+                        "rank": 0
+                    },
+                    {
+                        "description": "5 garage spots",
+                        "rank": 1
+                    },
+                    {
+                        "description": "Built 2012",
+                        "rank": 2
+                    }
+                ],
+                "listingTags": [
+                    "APPROXIMATELY 8.2 ACRES",
+                    "14 RENTAL OPPORTUNITIES",
+                    "EXPANSION POTENTIAL",
+                    "CONSIDERABLE UNDEVELOPED LAND",
+                    "OPPORTUNITY FOR SUBDIVISION"
+                ],
+                "isHot": false,
+                "hasVirtualTour": false,
+                "hasVideoTour": false,
+                "has3DTour": false,
+                "newConstructionCommunityInfo": {},
+                "isRedfin": false,
+                "isNewConstruction": false,
+                "listingRemarks": "Discover an exceptional multi-family investment opportunity in the heart of Franklin, NC! This remarkable property spans approximately 8.2 acres and is located just minutes from the vibrant downtown area. It features city sewer and water connections that are already in place for existing buildings, with additional connections available for expansion. This presents a rare and lucrative opportunity for savvy investors. With a well-balanced portfolio of income-generating properties, this site is positioned for both immediate returns and future growth potential. The property features 14 rental opportunities, including 5 thoughtfully designed 3-bedroom, 2-bathroom townhomes built in 2010, ideal ",
+                "remarksAccessLevel": 1,
+                "businessMarketId": 21,
+                "isShortlisted": false,
+                "isViewedListing": false,
+                "skGarageSpaces": 5,
+                "skParkingSpaces": 6,
+                "skPoolType": 5
+            },
+            {
+                "mlsId": {
+                    "label": "MLS#",
+                    "value": "4341942"
+                },
+                "showMlsId": false,
+                "mlsStatus": "Active",
+                "showDatasourceLogo": false,
+                "price": {
+                    "value": 97500,
+                    "level": 1
+                },
+                "hideSalePrice": false,
+                "hoa": {
+                    "level": 1
+                },
+                "isHoaFrequencyKnown": true,
+                "sqFt": {
+                    "level": 1
+                },
+                "pricePerSqFt": {
+                    "level": 1
+                },
+                "lotSize": {
+                    "value": 272685,
+                    "level": 1
+                },
+                "location": {
+                    "value": "Sunset Ridge",
+                    "level": 1
+                },
+                "latLong": {
+                    "value": {
+                        "latitude": 35.2783079,
+                        "longitude": -83.480403
+                    },
+                    "level": 1
+                },
+                "streetLine": {
+                    "value": "9999 Lower Burningtown Rd",
+                    "level": 1
+                },
+                "unitNumber": {
+                    "level": 1
+                },
+                "city": "Franklin",
+                "state": "NC",
+                "zip": "28734",
+                "postalCode": {
+                    "value": "28734",
+                    "level": 1
+                },
+                "countryCode": "US",
+                "showAddressOnMap": true,
+                "searchStatus": 1,
+                "propertyType": 8,
+                "uiPropertyType": 5,
+                "listingType": 1,
+                "propertyId": 200249342,
+                "listingId": 211245135,
+                "dataSourceId": 103,
+                "marketId": 19,
+                "yearBuilt": {
+                    "level": 1
+                },
+                "dom": {
+                    "value": 2,
+                    "level": 1
+                },
+                "timeOnRedfin": {
+                    "value": 179417784,
+                    "level": 1
+                },
+                "originalTimeOnRedfin": {
+                    "value": 179417789,
+                    "level": 1
+                },
+                "timeZone": "US/Eastern",
+                "primaryPhotoDisplayLevel": 1,
+                "photos": {
+                    "value": "0-25:0",
+                    "level": 1
+                },
+                "additionalPhotosInfo": [],
+                "photoFormat": "webp",
+                "url": "/NC/Franklin/9999-Lower-Burningtown-Rd-28734/home/200249342",
+                "hasInsight": false,
+                "sashes": [],
+                "keyFacts": [
+                    {
+                        "description": "6.26 acre lot",
+                        "rank": 0
+                    },
+                    {
+                        "description": "Listed 2 days",
+                        "rank": 1
+                    }
+                ],
+                "listingTags": [
+                    "THREE PRIVATE PARCELS"
+                ],
+                "isHot": false,
+                "hasVirtualTour": false,
+                "hasVideoTour": false,
+                "has3DTour": false,
+                "newConstructionCommunityInfo": {},
+                "isRedfin": false,
+                "isNewConstruction": false,
+                "listingRemarks": "Make your mountain home vision a reality on a sprawling 6.26+/- acre estate comprised of three private parcels in the heart of Franklin, NC. Nestled in the Burningtown area, this land offers a perfect balance: the tranquility of mountain living combined with the convenience of being just minutes from the vibrant amenities and charm that downtown Franklin has to offer. Privacy is paramount here, and the acreage ensures you can create your secluded haven. Best of all, your building process is fast-tracked with a valid, three-bedroom septic improvement permit already on file! Imagine the possibilities\u2014with some strategic tree clearing, the property promises to reveal stunning, long-range",
+                "remarksAccessLevel": 1,
+                "businessMarketId": 21,
+                "isShortlisted": false,
+                "isViewedListing": false,
+                "skPoolType": 5
+            },
+            {
+                "mlsId": {
+                    "label": "MLS#",
+                    "value": "26043201"
+                },
+                "showMlsId": false,
+                "mlsStatus": "Active",
+                "showDatasourceLogo": false,
+                "price": {
+                    "value": 45000,
+                    "level": 1
+                },
+                "hideSalePrice": false,
+                "hoa": {
+                    "level": 1
+                },
+                "isHoaFrequencyKnown": true,
+                "sqFt": {
+                    "level": 1
+                },
+                "pricePerSqFt": {
+                    "level": 1
+                },
+                "lotSize": {
+                    "value": 43560,
+                    "level": 1
+                },
+                "location": {
+                    "value": "Franklin",
+                    "level": 1
+                },
+                "latLong": {
+                    "value": {
+                        "latitude": 35.183654,
+                        "longitude": -83.258752672
+                    },
+                    "level": 1
+                },
+                "streetLine": {
+                    "value": "000 Wild Turkey Ln",
+                    "level": 1
+                },
+                "unitNumber": {
+                    "level": 1
+                },
+                "city": "Franklin",
+                "state": "NC",
+                "zip": "28734",
+                "postalCode": {
+                    "value": "28734",
+                    "level": 1
+                },
+                "countryCode": "US",
+                "showAddressOnMap": true,
+                "soldDate": 1762156800000,
+                "searchStatus": 1,
+                "propertyType": 8,
+                "uiPropertyType": 5,
+                "listingType": 1,
+                "propertyId": 186013706,
+                "listingId": 211252958,
+                "dataSourceId": 562,
+                "marketId": 19,
+                "yearBuilt": {
+                    "level": 1
+                },
+                "dom": {
+                    "value": 2,
+                    "level": 1
+                },
+                "timeOnRedfin": {
+                    "value": 168987308,
+                    "level": 1
+                },
+                "originalTimeOnRedfin": {
+                    "value": 168987313,
+                    "level": 1
+                },
+                "timeZone": "US/Eastern",
+                "primaryPhotoDisplayLevel": 1,
+                "photos": {
+                    "value": "0-19:1,20-23:0",
+                    "level": 1
+                },
+                "additionalPhotosInfo": [],
+                "photoFormat": "webp",
+                "url": "/NC/Unknown/Wild-Turkey-Ln-28734/home/186013706",
+                "hasInsight": false,
+                "sashes": [],
+                "keyFacts": [
+                    {
+                        "description": "Peaceful setting",
+                        "rank": 0
+                    },
+                    {
+                        "description": "1 acre parcel",
+                        "rank": 1
+                    },
+                    {
+                        "description": "1 acre lot",
+                        "rank": 2
+                    }
+                ],
+                "listingTags": [
+                    "NATURAL SPRING WATER SOURCE",
+                    "1 ACRE PARCEL",
+                    "QUIET LIGHTLY TRAVELED ROAD",
+                    "PEACEFUL SETTING"
+                ],
+                "isHot": false,
+                "hasVirtualTour": false,
+                "hasVideoTour": false,
+                "has3DTour": false,
+                "newConstructionCommunityInfo": {},
+                "isRedfin": false,
+                "isNewConstruction": false,
+                "listingRemarks": "UNRESTRICTED! SPRING! GRAVEL DRIVE AND HOUSE SITE DONE! 2 BEDROOM SEPTIC PERMIT!  Beautiful 1-acre parcel of rolling and scenic land with some recent under-brushing completed. An active 2-bedroom septic permit is in place. The driveway and homesite have been freshly graveled, and a natural spring water source is located on the property. Ideally positioned on a quiet, lightly traveled road where the only occupied lot is at the end of the lane, this property offers both easy access and a peaceful setting. Conveniently located just 15\u201320 minutes to town off Little Ellijay and Henry roads, situated between Franklin and Highlands. Sitting at over 3,000 feet in elevation, the property enjoy",
+                "remarksAccessLevel": 1,
+                "businessMarketId": 21,
+                "isShortlisted": false,
+                "isViewedListing": false,
+                "skPoolType": 5
+            },
+            {
+                "mlsId": {
+                    "label": "MLS#",
+                    "value": "4342181"
+                },
+                "showMlsId": false,
+                "mlsStatus": "Active",
+                "showDatasourceLogo": false,
+                "price": {
+                    "value": 24999,
+                    "level": 1
+                },
+                "hideSalePrice": false,
+                "hoa": {
+                    "level": 1
+                },
+                "isHoaFrequencyKnown": true,
+                "sqFt": {
+                    "level": 1
+                },
+                "pricePerSqFt": {
+                    "level": 1
+                },
+                "lotSize": {
+                    "value": 20908,
+                    "level": 1
+                },
+                "location": {
+                    "value": "Lindsey Farm Acres",
+                    "level": 1
+                },
+                "latLong": {
+                    "value": {
+                        "latitude": 35.1613956,
+                        "longitude": -83.4567204
+                    },
+                    "level": 1
+                },
+                "streetLine": {
+                    "value": "4300 Old Murphy Rd",
+                    "level": 1
+                },
+                "unitNumber": {
+                    "level": 1
+                },
+                "city": "Franklin",
+                "state": "NC",
+                "zip": "28734",
+                "postalCode": {
+                    "value": "28734",
+                    "level": 1
+                },
+                "countryCode": "US",
+                "showAddressOnMap": true,
+                "searchStatus": 1,
+                "propertyType": 8,
+                "uiPropertyType": 5,
+                "listingType": 1,
+                "propertyId": 200269423,
+                "listingId": 211272641,
+                "dataSourceId": 103,
+                "marketId": 19,
+                "yearBuilt": {
+                    "level": 1
+                },
+                "dom": {
+                    "value": 1,
+                    "level": 1
+                },
+                "timeOnRedfin": {
+                    "value": 97393567,
+                    "level": 1
+                },
+                "originalTimeOnRedfin": {
+                    "value": 97393572,
+                    "level": 1
+                },
+                "timeZone": "US/Eastern",
+                "primaryPhotoDisplayLevel": 1,
+                "photos": {
+                    "value": "0-5:0",
+                    "level": 1
+                },
+                "additionalPhotosInfo": [],
+                "photoFormat": "webp",
+                "url": "/NC/Franklin/4300-Old-Murphy-Rd-28734/home/200269423",
+                "hasInsight": false,
+                "sashes": [
+                    {
+                        "sashType": 7,
+                        "sashTypeId": 7,
+                        "sashTypeName": "New",
+                        "sashTypeColor": "#2E7E36",
+                        "isRedfin": false,
+                        "isActiveKeyListing": false,
+                        "timeOnRedfin": 97393567,
+                        "openHouseText": "",
+                        "lastSaleDate": "",
+                        "lastSalePrice": ""
+                    }
+                ],
+                "keyFacts": [
+                    {
+                        "description": "0.48 acre lot",
+                        "rank": 0
+                    }
+                ],
+                "isHot": false,
+                "hasVirtualTour": false,
+                "hasVideoTour": false,
+                "has3DTour": false,
+                "newConstructionCommunityInfo": {},
+                "isRedfin": false,
+                "isNewConstruction": false,
+                "listingRemarks": "This 0.48-acre lot could be the spot for your next dream home. Utilities are unknown. Buyer to verify lot dimensions, utilities, restrictions and feasibility before purchase. The address used in the listing may be a placeholder. A true address number will be issued at the time of development. I make it my policy to put all known information about each lot in the write-up details, so if you don\u2019t see the answer you\u2019re looking for, please contact the county to gather additional information. Please understand that when buying or selling vacant/raw land this is usually the case. The listing agent does not guarantee the accuracy of the information in this listing and is to be held ha",
+                "remarksAccessLevel": 1,
+                "businessMarketId": 21,
+                "isShortlisted": false,
+                "isViewedListing": false,
+                "skPoolType": 5
+            },
+            {
+                "mlsId": {
+                    "label": "MLS#",
+                    "value": "4342199"
+                },
+                "showMlsId": false,
+                "mlsStatus": "Active",
+                "showDatasourceLogo": false,
+                "price": {
+                    "value": 37999,
+                    "level": 1
+                },
+                "hideSalePrice": false,
+                "hoa": {
+                    "value": 13,
+                    "level": 1
+                },
+                "isHoaFrequencyKnown": true,
+                "sqFt": {
+                    "level": 1
+                },
+                "pricePerSqFt": {
+                    "level": 1
+                },
+                "lotSize": {
+                    "value": 43560,
+                    "level": 1
+                },
+                "location": {
+                    "value": "Laurel Mountain Estates",
+                    "level": 1
+                },
+                "latLong": {
+                    "value": {
+                        "latitude": 35.0728852,
+                        "longitude": -83.3720267
+                    },
+                    "level": 1
+                },
+                "streetLine": {
+                    "value": "155 Laurel Mountain Estates Rd",
+                    "level": 1
+                },
+                "unitNumber": {
+                    "level": 1
+                },
+                "city": "Franklin",
+                "state": "NC",
+                "zip": "28734",
+                "postalCode": {
+                    "value": "28734",
+                    "level": 1
+                },
+                "countryCode": "US",
+                "showAddressOnMap": true,
+                "searchStatus": 1,
+                "propertyType": 8,
+                "uiPropertyType": 5,
+                "listingType": 1,
+                "propertyId": 200270221,
+                "listingId": 211274105,
+                "dataSourceId": 103,
+                "marketId": 19,
+                "yearBuilt": {
+                    "level": 1
+                },
+                "dom": {
+                    "value": 1,
+                    "level": 1
+                },
+                "timeOnRedfin": {
+                    "value": 94938969,
+                    "level": 1
+                },
+                "originalTimeOnRedfin": {
+                    "value": 94938973,
+                    "level": 1
+                },
+                "timeZone": "US/Eastern",
+                "primaryPhotoDisplayLevel": 1,
+                "photos": {
+                    "value": "0-5:0",
+                    "level": 1
+                },
+                "additionalPhotosInfo": [],
+                "photoFormat": "webp",
+                "url": "/NC/Franklin/155-Laurel-Mountain-Rd-28734/home/200270221",
+                "hasInsight": false,
+                "sashes": [
+                    {
+                        "sashType": 7,
+                        "sashTypeId": 7,
+                        "sashTypeName": "New",
+                        "sashTypeColor": "#2E7E36",
+                        "isRedfin": false,
+                        "isActiveKeyListing": false,
+                        "timeOnRedfin": 94938969,
+                        "openHouseText": "",
+                        "lastSaleDate": "",
+                        "lastSalePrice": ""
+                    }
+                ],
+                "keyFacts": [
+                    {
+                        "description": "1 acre lot",
+                        "rank": 0
+                    }
+                ],
+                "isHot": false,
+                "hasVirtualTour": false,
+                "hasVideoTour": false,
+                "has3DTour": false,
+                "newConstructionCommunityInfo": {},
+                "isRedfin": false,
+                "isNewConstruction": false,
+                "listingRemarks": "This 1-acre lot could be the spot for your next dream home. Utilities are unknown. Buyer to verify lot dimensions, utilities, restrictions and feasibility before purchase. The address used in the listing may be a placeholder. A true address number will be issued at the time of development. I make it my policy to put all known information about each lot in the write-up details, so if you don\u2019t see the answer you\u2019re looking for, please contact the county to gather additional information. Please understand that when buying or selling vacant/raw land this is usually the case. The listing agent does not guarantee the accuracy of the information in this listing and is to be held harml",
+                "remarksAccessLevel": 1,
+                "businessMarketId": 21,
+                "isShortlisted": false,
+                "isViewedListing": false,
+                "skPoolType": 5
+            }
+        ],
+        "dataSources": [
+            {
+                "id": 103,
+                "name": "CANOPYMLS as Distributed by MLS Grid",
+                "description": "Canopy MLS",
+                "disclaimer": "<p>Based on information submitted to the MLS GRID as of ${CURRENT_DATE}. All data is obtained from various sources and may not have been verified by broker or MLS GRID. Supplied Open House Information is subject to change without notice. All information should be independently reviewed and verified for accuracy. Properties may or may not be listed by the office/agent presenting the information.</p>",
+                "canShowInFooter": false,
+                "homecardTextAttribution": false
+            },
+            {
+                "id": 522,
+                "name": "MLBOR",
+                "description": "Mountain Lakes Board of REALTORS (MLBOR)",
+                "logo": "mtlbor_small.png",
+                "largeLogo": "mtlbor_large.png",
+                "canShowInFooter": false,
+                "homecardTextAttribution": false
+            }
+        ],
+        "buildings": {},
+        "searchMedian": {
+            "price": 123750,
+            "sqFt": 1184,
+            "pricePerSqFt": 272,
+            "dom": 1,
+            "beds": 2,
+            "baths": 2.0
+        },
+        "serviceRegionName": "nc-franklin-highlands",
+        "csvDownloadLinkDisplayLevel": 3,
+        "gisHomesQueryId": "BgRGreCqS-ylU4MgfiTD8w&1769892143104"
+    }
+}

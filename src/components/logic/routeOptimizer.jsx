@@ -30,10 +30,10 @@ function calculateDistance(lat1, lng1, lat2, lng2) {
 export function scoreProperty(property, logs = [], neighborhoodStats = {}) {
     let score = 100; // Base score
 
-    // 1. Status Scoring
-    if (property.effective_status === 'ELIGIBLE') score += 50;
-    if (property.effective_status === 'CALLBACK') score += 40; // Bumped up
-    if (property.effective_status === 'NO_ANSWER') score += 20;
+    // 1. Status Scoring Logic
+    if (property.effective_status === 'ELIGIBLE') score += 60; // Slightly higher priority for fresh doors
+    if (property.effective_status === 'CALLBACK') score += 100; // Top priority
+    if (property.effective_status === 'NO_ANSWER') score += 30; // Worth another try
     if (property.effective_status === 'QUALIFIED') score += 80;
     if (property.effective_status === 'SOLD' || property.effective_status === 'HARD_NO') return 0;
 
@@ -41,7 +41,7 @@ export function scoreProperty(property, logs = [], neighborhoodStats = {}) {
     if (property.sold_date && property.price) {
         const soldDate = new Date(property.sold_date);
         const now = new Date();
-        const yearsOwned = (now - soldDate) / (1000 * 60 * 60 * 24 * 365);
+        const yearsOwned = Number(now.getTime() - soldDate.getTime()) / (1000 * 60 * 60 * 24 * 365);
 
         // Simple Equity Proxy: 3% appreciation per year + down payment
         // (Just a heuristic score, not financial advice)
@@ -73,11 +73,18 @@ export function scoreProperty(property, logs = [], neighborhoodStats = {}) {
         score += Math.min(zipHeat * 5, 50);
     }
 
-    // 5. Contact Frequency (Burnout Protection)
+    // 5. Contact Frequency (Avoid Burnout, optimize 'when to knock')
     if (logs && logs.length > 0) {
         const myLogs = logs.filter(l => l.address_hash === (property.address_hash || property.id));
-        if (myLogs.length > 3) score -= 50; // Too many touches, diminished return
-        if (myLogs.length === 1 && myLogs[0].parsed_status === 'NO_ANSWER') score += 10; // Worth trying again
+
+        // Optimize for feedback from finished routes
+        if (myLogs.length > 3) {
+            score -= 60; // Too many touches, severely diminish priority
+        } else if (myLogs.length === 1 && myLogs[0].parsed_status === 'NO_ANSWER') {
+            score += 25; // Definitely try a second time
+        } else if (myLogs.length === 2 && myLogs.every(l => l.parsed_status === 'NO_ANSWER')) {
+            score -= 10; // 3rd try on NO_ANSWER is less ideal
+        }
     }
 
     // 6. High Value
@@ -508,7 +515,12 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 
     // Attach cooldown info to result
     if (cooldownInfo) {
-        routes._cooldownInfo = cooldownInfo;
+        // Use Object.defineProperty to avoid TS complaining about Array properties
+        Object.defineProperty(routes, '_cooldownInfo', {
+            value: cooldownInfo,
+            enumerable: false,
+            writable: true
+        });
     }
 
     return routes;

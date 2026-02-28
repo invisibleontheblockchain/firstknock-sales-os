@@ -1,0 +1,8 @@
+Columns: ['Address', 'Lead_Status', 'Latitude', 'Longitude', 'Source', 'Last_Visited', 'Last_Result', 'Callback_Target', 'Notes', 'SALE TYPE', 'SOLD DATE', 'PROPERTY TYPE', 'ADDRESS', 'CITY', 'STATE OR PROVINCE', 'ZIP OR POSTAL CODE', 'PRICE', 'BEDS', 'BATHS', 'LOCATION', 'SQUARE FEET', 'LOT SIZE', 'YEAR BUILT', 'DAYS ON MARKET', '$/SQUARE FEET', 'HOA/MONTH', 'STATUS', 'NEXT OPEN HOUSE START TIME', 'NEXT OPEN HOUSE END TIME', 'URL (SEE https://www.redfin.com/buy-a-home/comparative-market-analysis FOR INFO ON PRICING)', 'SOURCE', 'MLS#', 'FAVORITE', 'INTERESTED', 'LATITUDE', 'LONGITUDE', 'County_Source', 'Address_Normalized', 'Geocodio Latitude', 'Geocodio Longitude', 'In_Source_CSV', 'Price', 'Beds', 'Baths', 'SqFt', 'Sold Date', 'Redfin Link', 'Geocodio Accuracy Score', 'Geocodio Accuracy Type', 'Geocodio Address Line 1', 'Geocodio Address Line 2', 'Geocodio Address Line 3', 'Geocodio House Number', 'Geocodio Street', 'Geocodio Unit Type', 'Geocodio Unit Number', 'Geocodio City', 'Geocodio State', 'Geocodio County', 'Geocodio Postal Code', 'Geocodio Country', 'Geocodio Source', 'Next_Eligible_Date', 'Street_Key', 'Street_Last_Visited', 'Street_Next_Eligible_Date', 'Street_Cooldown_Source']
+Total rows containing '29412': 3
+Using date column: SOLD DATE
+Sales in 29412 since 2021: 2
+
+Sales by Year:
+SOLD DATE
+2025    2

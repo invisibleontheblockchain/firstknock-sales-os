@@ -5,11 +5,11 @@ import { Map as MapIcon, Pencil, Layers, X, Check, Trash2, Loader2 } from 'lucid
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
-export default function TerritoryPrompt({ 
-    mode, 
-    activeRoute, 
-    routesGenerating, 
-    showCompare, 
+export default function TerritoryPrompt({
+    mode,
+    activeRoute,
+    routesGenerating,
+    showCompare,
     setShowCompare,
     showRoutePanel,
     drawingMode,
@@ -18,6 +18,10 @@ export default function TerritoryPrompt({
     setDrawnPolygon,
     draftPolygon,
     setDraftPolygon,
+    drawShape,
+    setDrawShape,
+    drawSizeMiles,
+    setDrawSizeMiles,
     user,
     setZipCodeFilter,
     onPullComplete
@@ -41,15 +45,15 @@ export default function TerritoryPrompt({
                     </h2>
                     <p className="text-gray-400 text-sm font-medium mb-2 text-center max-w-xs">Define your working area to generate optimized door-to-door routes.</p>
                     <div className="flex flex-col gap-3 w-full max-w-xs">
-                        <Button 
-                            onClick={() => setDrawingMode(true)} 
+                        <Button
+                            onClick={() => setDrawingMode(true)}
                             className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold h-12 text-base w-full rounded-full shadow-[0_0_20px_rgba(255,215,0,0.4)] transition-transform hover:scale-105 border-none"
                         >
                             <Pencil className="w-5 h-5 mr-2" />
                             Draw Custom Area
                         </Button>
-                        <Button 
-                            onClick={() => setShowCompare(true)} 
+                        <Button
+                            onClick={() => setShowCompare(true)}
                             className="bg-black/60 hover:bg-black text-white font-bold h-12 text-base w-full rounded-full border border-gray-700 backdrop-blur transition-colors"
                         >
                             <MapIcon className="w-5 h-5 mr-2 text-yellow-500" />
@@ -61,160 +65,207 @@ export default function TerritoryPrompt({
 
             {/* Active Drawing Controls */}
             {drawingMode && (
-                <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[2000] bg-black/90 backdrop-blur-md border border-yellow-500/50 rounded-2xl p-3 shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-4 w-11/12 max-w-sm">
-                    <div className="w-8 h-8 rounded-full bg-yellow-500/20 flex items-center justify-center shrink-0">
-                        <Pencil className="w-4 h-4 text-yellow-500" />
+                <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[2000] bg-black/90 backdrop-blur-md border border-yellow-500/50 rounded-2xl p-3 shadow-2xl flex flex-col sm:flex-row items-center gap-3 animate-in slide-in-from-top-4 w-11/12 max-w-lg">
+                    <div className="flex items-center gap-3 w-full sm:w-auto">
+                        <div className="w-8 h-8 rounded-full bg-yellow-500/20 flex items-center justify-center shrink-0">
+                            <Pencil className="w-4 h-4 text-yellow-500" />
+                        </div>
+                        <div className="flex-1 sm:w-32">
+                            <p className="text-xs font-bold text-white uppercase tracking-wider">Drawing Mode</p>
+                            <p className="text-[10px] text-gray-400">Click map to drop shape</p>
+                        </div>
                     </div>
-                    <div className="flex-1">
-                        <p className="text-xs font-bold text-white uppercase tracking-wider">Drawing Mode</p>
-                        <p className="text-[10px] text-gray-400">Click map to outline area</p>
-                    </div>
-                    <div className="flex gap-2 shrink-0">
-                        <Button
-                            size="icon"
-                            onClick={() => {
-                                setDrawingMode(false);
-                                setDraftPolygon([]);
-                            }}
-                            className="h-8 w-8 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white border-none"
-                        >
-                            <X className="w-4 h-4" />
-                        </Button>
-                        <Button
-                            size="icon"
-                            disabled={draftPolygon.length < 3}
-                            onClick={() => {
-                                setDrawnPolygon(draftPolygon);
-                                setDrawingMode(false);
-                                toast.success("Territory area saved!");
-                            }}
-                            className="h-8 w-8 rounded-full bg-green-500/20 text-green-500 hover:bg-green-500 hover:text-white border-none disabled:opacity-50"
-                        >
-                            <Check className="w-4 h-4" />
-                        </Button>
+
+                    <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start border-t sm:border-t-0 border-gray-800 pt-2 sm:pt-0 mt-1 sm:mt-0">
+                        <div className="flex gap-2">
+                            <select
+                                value={drawShape || 'circle'}
+                                onChange={(e) => setDrawShape(e.target.value)}
+                                className="bg-gray-900 border border-gray-700 text-white text-xs rounded-md px-2 py-1 h-8"
+                            >
+                                <option value="circle">Circle</option>
+                                <option value="square">Square</option>
+                                <option value="triangle">Triangle</option>
+                            </select>
+
+                            <select
+                                value={drawSizeMiles || 10}
+                                onChange={(e) => setDrawSizeMiles(Number(e.target.value))}
+                                className="bg-gray-900 border border-gray-700 text-white text-xs rounded-md px-2 py-1 h-8"
+                            >
+                                <option value={10}>10 miles</option>
+                                <option value={20}>20 miles</option>
+                                <option value={30}>30 miles</option>
+                            </select>
+                        </div>
+                        <div className="flex gap-2">
+                            <Button
+                                size="icon"
+                                onClick={() => {
+                                    setDrawingMode(false);
+                                    setDraftPolygon([]);
+                                }}
+                                className="h-8 w-8 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white border-none"
+                            >
+                                <X className="w-4 h-4" />
+                            </Button>
+                            <Button
+                                size="icon"
+                                disabled={draftPolygon.length < 3}
+                                onClick={() => {
+                                    setDrawnPolygon(draftPolygon);
+                                    setDrawingMode(false);
+                                    toast.success("Territory area saved!");
+                                }}
+                                className="h-8 w-8 rounded-full bg-green-500/20 text-green-500 hover:bg-green-500 hover:text-white border-none disabled:opacity-50"
+                            >
+                                <Check className="w-4 h-4" />
+                            </Button>
+                        </div>
                     </div>
                 </div>
             )}
 
             {/* Pull Progress Bar */}
-            {pulling && (
-                <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[2000] w-11/12 max-w-sm animate-in fade-in">
-                    <div className="bg-black/90 backdrop-blur-md border border-blue-500/50 rounded-xl p-4 shadow-2xl">
-                        <div className="flex items-center gap-3 mb-3">
-                            <Loader2 className="w-5 h-5 text-blue-400 animate-spin shrink-0" />
-                            <div>
-                                <p className="text-xs font-bold text-white">Fetching Property Data</p>
-                                <p className="text-[10px] text-gray-400">{pullProgress}</p>
+            {
+                pulling && (
+                    <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[2000] w-11/12 max-w-sm animate-in fade-in">
+                        <div className="bg-black/90 backdrop-blur-md border border-blue-500/50 rounded-xl p-4 shadow-2xl">
+                            <div className="flex items-center gap-3 mb-3">
+                                <Loader2 className="w-5 h-5 text-blue-400 animate-spin shrink-0" />
+                                <div>
+                                    <p className="text-xs font-bold text-white">Fetching Property Data</p>
+                                    <p className="text-[10px] text-gray-400">{pullProgress}</p>
+                                </div>
                             </div>
+                            <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+                                <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full animate-pulse" style={{ width: '70%', transition: 'width 2s ease' }} />
+                            </div>
+                            <p className="text-[9px] text-gray-500 mt-2 text-center">This may take 10-30 seconds depending on area size</p>
                         </div>
-                        <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
-                            <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full animate-pulse" style={{ width: '70%', transition: 'width 2s ease' }} />
-                        </div>
-                        <p className="text-[9px] text-gray-500 mt-2 text-center">This may take 10-30 seconds depending on area size</p>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Drawn Polygon Controls */}
-            {!drawingMode && !pulling && drawnPolygon && drawnPolygon.length > 2 && (
-                 <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[1000] bg-black/90 backdrop-blur-md border border-gray-800 rounded-full px-4 py-2 shadow-2xl flex items-center gap-3 animate-in fade-in">
-                     <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
-                     <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
-                     <Button
-                         disabled={pulling}
-                         onClick={async () => {
-                             // Compute centroid and coverage radius
-                             const centerLat = drawnPolygon.reduce((s,p)=>s+p.lat,0) / drawnPolygon.length;
-                             const centerLng = drawnPolygon.reduce((s,p)=>s+p.lng,0) / drawnPolygon.length;
+            {
+                !drawingMode && !pulling && drawnPolygon && drawnPolygon.length > 2 && (
+                    <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[1000] bg-black/90 backdrop-blur-md border border-gray-800 rounded-full px-4 py-2 shadow-2xl flex items-center gap-3 animate-in fade-in">
+                        <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
+                        <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
+                        <Button
+                            disabled={pulling}
+                            onClick={async () => {
+                                // Compute centroid and coverage radius
+                                const centerLat = drawnPolygon.reduce((s, p) => s + p.lat, 0) / drawnPolygon.length;
+                                const centerLng = drawnPolygon.reduce((s, p) => s + p.lng, 0) / drawnPolygon.length;
 
-                             const R = 3959; // miles
-                             const toRad = (v) => v * Math.PI / 180;
-                             let maxDist = 0;
-                             for (const p of drawnPolygon) {
-                                 const dLat = toRad(p.lat - centerLat);
-                                 const dLng = toRad(p.lng - centerLng);
-                                 const a = Math.sin(dLat/2)**2 + Math.cos(toRad(centerLat)) * Math.cos(toRad(p.lat)) * Math.sin(dLng/2)**2;
-                                 const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-                                 const d = R * c;
-                                 if (d > maxDist) maxDist = d;
-                             }
-                             const radius = Math.max(0.5, maxDist * 1.05); // small buffer
-                             const areaSqMiles = Math.PI * (radius * radius);
+                                const R = 3959; // miles
+                                const toRad = (v) => v * Math.PI / 180;
+                                let maxDist = 0;
+                                for (const p of drawnPolygon) {
+                                    const dLat = toRad(p.lat - centerLat);
+                                    const dLng = toRad(p.lng - centerLng);
+                                    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(centerLat)) * Math.cos(toRad(p.lat)) * Math.sin(dLng / 2) ** 2;
+                                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                                    const d = R * c;
+                                    if (d > maxDist) maxDist = d;
+                                }
+                                const radius = Math.max(0.5, maxDist * 1.05); // small buffer
+                                const areaSqMiles = Math.PI * (radius * radius);
 
-                             const maxRadius = 20; // 40 miles across cap
+                                // Get user subscription info
+                                const isPaid = user?.subscription_status === 'active';
+                                const totalSeats = user?.total_seats || 1;
+                                const MILES_PER_SEAT = 200;
+                                const FREE_MILE_LIMIT = 40;
 
-                             if (radius > maxRadius) {
-                                 toast.error(`The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max ${maxRadius * 2} miles across).`);
-                                 return;
-                             }
+                                const mileLimit = isPaid ? totalSeats * MILES_PER_SEAT : FREE_MILE_LIMIT;
+                                const milesUsed = user?.miles_pulled || 0;
+                                const milesRemaining = Math.max(0, mileLimit - milesUsed);
 
-                             setPulling(true);
-                             setPullProgress(`Pulling data for ~${areaSqMiles.toFixed(1)} sq mi...`);
-                             const toastId = toast.loading(`Pulling data for approx ${areaSqMiles.toFixed(1)} sq miles...`);
-                             try {
-                                 const res = await base44.functions.invoke('fetchAreaProperties', { 
-                                     latitude: centerLat, 
-                                     longitude: centerLng, 
-                                     radius: radius,
-                                     polygon: drawnPolygon
-                                 });
-                                 const d = res.data || {};
-                                 if (d.error) {
-                                     toast.error(d.message || d.error, { id: toastId });
-                                 } else if (d.status === 'empty' || d.count === 0) {
-                                     const base = d.total_found ? `${d.total_found} found, ${d.in_polygon_count || 0} in area` : '0 found';
-                                     let extra = '';
-                                     if ((d.in_polygon_count || 0) > 0 && (d.recent_sales_12mo || 0) > 0) {
-                                         extra = ` • ${d.recent_sales_12mo} sold within last 12 months (may be excluded by your filters).`;
-                                     }
-                                     toast.info(d.message || `No houses to generate routes. ${base}.${extra}`, { id: toastId });
-                                 } else {
-                                     let note = '';
-                                     if (d.recent_sales_12mo) {
-                                         note = ` • Note: ${d.recent_sales_12mo} sold in last 12 months.`;
-                                     }
-                                     toast.success(d.message || `Properties loaded onto the map!${note}`, { id: toastId });
+                                // To equate "areaSqMiles" loosely to "linear miles" or just treat area as miles for the credit
+                                // The requirement says "40 miles of maximum free usage". We'll treat 1 sq mile = 1 mile used.
+                                if (areaSqMiles > milesRemaining) {
+                                    toast.error(`Area too large! This area is ~${Math.round(areaSqMiles)} sq miles. You only have ${Math.round(milesRemaining)} miles remaining.`);
+                                    return;
+                                }
 
-                                     if (onPullComplete) {
-                                         // Notify parent and open the Route Builder
-                                         onPullComplete();
-                                         setShowCompare(true);
-                                         // Don't clear polygon here - let generation use it
-                                     } else {
-                                         // Fallback behavior if no callback provided
-                                         queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
-                                         queryClient.invalidateQueries({ queryKey: ['user'] });
-                                         setShowCompare(true);
-                                         setDrawnPolygon(null);
-                                     }
-                                 }
-                             } catch (e) {
-                                 const msg = e.response?.data?.message || e.message;
-                                 toast.error(`Failed to pull data: ${msg}`, { id: toastId });
-                             } finally {
-                                 setPulling(false);
-                                 setPullProgress('');
-                             }
-                         }}
-                         className={`text-white text-[10px] h-6 px-2 py-0 rounded-md ml-2 ${pulling ? 'bg-blue-800' : 'bg-blue-600 hover:bg-blue-500'}`}
-                     >
-                         {pulling ? (
-                             <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Pulling...</>
-                         ) : (
-                             'Fetch data'
-                         )}
-                     </Button>
-                     <button 
-                         onClick={() => {
-                             setDrawnPolygon(null);
-                             setDraftPolygon([]);
-                         }}
-                         className="text-gray-400 hover:text-red-500 transition-colors p-1 bg-white/5 rounded-full"
-                     >
-                         <Trash2 className="w-3 h-3" />
-                     </button>
-                 </div>
-            )}
+                                const maxRadius = isPaid ? 50 : 20; // Hard cap
+
+                                if (radius > maxRadius) {
+                                    toast.error(`The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max ${maxRadius * 2} miles across).`);
+                                    return;
+                                }
+
+                                setPulling(true);
+                                setPullProgress(`Pulling data for ~${areaSqMiles.toFixed(1)} sq mi...`);
+                                const toastId = toast.loading(`Pulling data for approx ${areaSqMiles.toFixed(1)} sq miles...`);
+                                try {
+                                    const res = await base44.functions.invoke('fetchAreaProperties', {
+                                        latitude: centerLat,
+                                        longitude: centerLng,
+                                        radius: radius,
+                                        polygon: drawnPolygon
+                                    });
+                                    const d = res.data || {};
+                                    if (d.error) {
+                                        toast.error(d.message || d.error, { id: toastId });
+                                    } else if (d.status === 'empty' || d.count === 0) {
+                                        const base = d.total_found ? `${d.total_found} found, ${d.in_polygon_count || 0} in area` : '0 found';
+                                        let extra = '';
+                                        if ((d.in_polygon_count || 0) > 0 && (d.recent_sales_12mo || 0) > 0) {
+                                            extra = ` • ${d.recent_sales_12mo} sold within last 12 months (may be excluded by your filters).`;
+                                        }
+                                        toast.info(d.message || `No houses to generate routes. ${base}.${extra}`, { id: toastId });
+                                    } else {
+                                        let note = '';
+                                        if (d.recent_sales_12mo) {
+                                            note = ` • Note: ${d.recent_sales_12mo} sold in last 12 months.`;
+                                        }
+                                        toast.success(d.message || `Properties loaded onto the map!${note}`, { id: toastId });
+
+                                        if (onPullComplete) {
+                                            // Notify parent and open the Route Builder
+                                            onPullComplete();
+                                            setShowCompare(true);
+                                            // Don't clear polygon here - let generation use it
+                                        } else {
+                                            // Fallback behavior if no callback provided
+                                            queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
+                                            queryClient.invalidateQueries({ queryKey: ['user'] });
+                                            setShowCompare(true);
+                                            setDrawnPolygon(null);
+                                        }
+                                    }
+                                } catch (e) {
+                                    const msg = e.response?.data?.message || e.message;
+                                    toast.error(`Failed to pull data: ${msg}`, { id: toastId });
+                                } finally {
+                                    setPulling(false);
+                                    setPullProgress('');
+                                }
+                            }}
+                            className={`text-white text-[10px] h-6 px-2 py-0 rounded-md ml-2 ${pulling ? 'bg-blue-800' : 'bg-blue-600 hover:bg-blue-500'}`}
+                        >
+                            {pulling ? (
+                                <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Pulling...</>
+                            ) : (
+                                'Fetch data'
+                            )}
+                        </Button>
+                        <button
+                            onClick={() => {
+                                setDrawnPolygon(null);
+                                setDraftPolygon([]);
+                            }}
+                            className="text-gray-400 hover:text-red-500 transition-colors p-1 bg-white/5 rounded-full"
+                        >
+                            <Trash2 className="w-3 h-3" />
+                        </button>
+                    </div>
+                )
+            }
         </>
     );
 }

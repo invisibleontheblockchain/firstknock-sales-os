@@ -1,0 +1,236 @@
+{
+    "version": 626,
+    "errorMessage": "Success",
+    "resultCode": 0,
+    "payload": {
+        "homes": [
+            {
+                "mlsId": {
+                    "label": "MLS#",
+                    "value": "1578013"
+                },
+                "showMlsId": false,
+                "mlsStatus": "Active",
+                "showDatasourceLogo": false,
+                "price": {
+                    "value": 355000,
+                    "level": 1
+                },
+                "hideSalePrice": false,
+                "hoa": {
+                    "value": 260,
+                    "level": 1
+                },
+                "isHoaFrequencyKnown": true,
+                "sqFt": {
+                    "value": 2244,
+                    "level": 1
+                },
+                "pricePerSqFt": {
+                    "value": 158,
+                    "level": 1
+                },
+                "lotSize": {
+                    "level": 1
+                },
+                "beds": 3,
+                "baths": 2.5,
+                "fullBaths": 2,
+                "partialBaths": 1,
+                "location": {
+                    "value": "Willow Haven at Cobbs Glen",
+                    "level": 1
+                },
+                "stories": 2.0,
+                "latLong": {
+                    "value": {
+                        "latitude": 34.547888,
+                        "longitude": -82.601204
+                    },
+                    "level": 1
+                },
+                "streetLine": {
+                    "value": "96 Coosa Ln",
+                    "level": 1
+                },
+                "unitNumber": {
+                    "level": 1
+                },
+                "city": "Anderson",
+                "state": "SC",
+                "zip": "29621-4211",
+                "postalCode": {
+                    "value": "29621-4211",
+                    "level": 1
+                },
+                "countryCode": "US",
+                "showAddressOnMap": true,
+                "soldDate": 1676534400000,
+                "searchStatus": 1,
+                "propertyType": 13,
+                "uiPropertyType": 3,
+                "listingType": 1,
+                "propertyId": 176588679,
+                "listingId": 210437725,
+                "dataSourceId": 178,
+                "marketId": 63,
+                "yearBuilt": {
+                    "level": 1
+                },
+                "dom": {
+                    "value": 29,
+                    "level": 1
+                },
+                "timeOnRedfin": {
+                    "value": 2530376067,
+                    "level": 1
+                },
+                "originalTimeOnRedfin": {
+                    "value": 2530376072,
+                    "level": 1
+                },
+                "timeZone": "US/Eastern",
+                "primaryPhotoDisplayLevel": 1,
+                "photos": {
+                    "value": "0-42:0",
+                    "level": 1
+                },
+                "alternatePhotosInfo": {
+                    "mediaListType": "1",
+                    "mediaListIndex": 0,
+                    "groupCode": "1177463_JPG",
+                    "positionSpec": [
+                        18,
+                        22,
+                        1,
+                        4,
+                        2,
+                        5,
+                        3,
+                        6,
+                        7,
+                        9,
+                        10,
+                        8,
+                        39,
+                        40,
+                        38,
+                        41,
+                        37,
+                        31,
+                        42,
+                        12,
+                        13,
+                        43,
+                        44,
+                        36,
+                        35,
+                        34,
+                        33,
+                        32,
+                        21,
+                        20,
+                        19,
+                        15,
+                        14,
+                        17,
+                        23,
+                        24,
+                        25,
+                        26,
+                        27,
+                        28,
+                        29,
+                        45,
+                        46
+                    ],
+                    "type": 1
+                },
+                "additionalPhotosInfo": [],
+                "photoFormat": "webp",
+                "scanUrl": "https://my.matterport.com/show/?m=waaSJpzaujX&brand=0",
+                "posterFrameUrl": "https://my.matterport.com/api/v2/player/models/waaSJpzaujX/thumb",
+                "listingAgent": {
+                    "name": "Nikki Sword",
+                    "redfinAgentId": 66240
+                },
+                "url": "/SC/Anderson/96-Coosa-Ln-29621/home/176588679",
+                "hasInsight": false,
+                "sashes": [
+                    {
+                        "sashType": 13,
+                        "sashTypeId": 13,
+                        "sashTypeName": "For Sale",
+                        "sashTypeColor": "#2E7E36",
+                        "isRedfin": true,
+                        "isActiveKeyListing": false,
+                        "openHouseText": "",
+                        "lastSaleDate": "",
+                        "lastSalePrice": ""
+                    },
+                    {
+                        "sashType": 31,
+                        "sashTypeId": 31,
+                        "sashTypeName": "3D Walkthrough",
+                        "sashTypeColor": "#7556F2",
+                        "isRedfin": false,
+                        "isActiveKeyListing": false,
+                        "openHouseText": "",
+                        "lastSaleDate": "",
+                        "lastSalePrice": ""
+                    }
+                ],
+                "keyFacts": [
+                    {
+                        "description": "Gated community",
+                        "rank": 0
+                    },
+                    {
+                        "description": "Prime location",
+                        "rank": 1
+                    },
+                    {
+                        "description": "Corner lot",
+                        "rank": 2
+                    }
+                ],
+                "listingTags": [
+                    "CORNER LOT",
+                    "GATED COMMUNITY",
+                    "PRIME LOCATION",
+                    "MODERN OPEN-CONCEPT LAYOUT",
+                    "COZY GAS-BURNING FIREPLACE",
+                    "CHARMING BREAKFAST AREA"
+                ],
+                "isHot": false,
+                "hasVirtualTour": true,
+                "hasVideoTour": false,
+                "has3DTour": true,
+                "newConstructionCommunityInfo": {},
+                "isRedfin": true,
+                "isNewConstruction": false,
+                "listingRemarks": "Welcome to 96 Coosa Lane, a beautifully maintained, maintenance-free, end-unit townhome situated on a desirable corner lot in the Willow Haven section of Cobbs Glen. This gated community offers a prime location just minutes from downtown Anderson, shopping, and dining. This spacious 3-bedroom, 2.5 bath home with a 2-car garage features a thoughtfully designed floorplan that blends comfort, flexibility, and the feel of a single-family residence. The main level showcases a modern open-concept layout filled with upgrades, 9-foot ceilings, and abundant natural light. The great room centers around a cozy gas-burning fireplace, creating an inviting space for everyday living or entertaining. The k",
+                "remarksAccessLevel": 1,
+                "businessMarketId": 39,
+                "isShortlisted": false,
+                "isViewedListing": false,
+                "skGarageSpaces": 2,
+                "skParkingSpaces": 2,
+                "skPoolType": 5
+            }
+        ],
+        "dataSources": [],
+        "buildings": {},
+        "searchMedian": {
+            "price": 355000,
+            "sqFt": 2244,
+            "pricePerSqFt": 158,
+            "dom": 29,
+            "beds": 3,
+            "baths": 2.5
+        },
+        "serviceRegionName": "greenville-anderson-county-east",
+        "csvDownloadLinkDisplayLevel": 3,
+        "gisHomesQueryId": "9T6QbanrSqqycefRxjqzZw&1769892185408"
+    }
+}

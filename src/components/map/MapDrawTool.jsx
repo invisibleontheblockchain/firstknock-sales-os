@@ -2,56 +2,89 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useMapEvents, useMap, Polygon, CircleMarker } from 'react-leaflet';
 import L from 'leaflet';
 
-export default function MapDrawTool({ active, onPointsUpdate, drawnPolygon }) {
+export default function MapDrawTool({ active, onPointsUpdate, drawnPolygon, drawShape = 'circle', drawSizeMiles = 10 }) {
     const [points, setPoints] = useState([]);
     const map = useMap();
     const cursorLineRef = useRef(null);
+
+    // Helper: generate shape points around a center
+    const generateShape = (centerLatlng, shape, sizeMiles) => {
+        // approximate miles to degrees (rough estimate: 1 lat deg = 69 miles, 1 lng deg at 40N = ~53 miles)
+        // Let's use simple turf-like math, or basic approximation since precision isn't critically needed for drawing
+        const radiusLat = sizeMiles / 69.0;
+        const radiusLng = sizeMiles / (69.0 * Math.cos(centerLatlng.lat * Math.PI / 180));
+
+        let newPoints = [];
+        if (shape === 'circle') {
+            // Generate a 32-point polygon approximating a circle
+            for (let i = 0; i < 32; i++) {
+                const angle = (i / 32) * Math.PI * 2;
+                newPoints.push({
+                    lat: centerLatlng.lat + (Math.sin(angle) * radiusLat),
+                    lng: centerLatlng.lng + (Math.cos(angle) * radiusLng)
+                });
+            }
+        } else if (shape === 'square') {
+            newPoints = [
+                { lat: centerLatlng.lat + radiusLat, lng: centerLatlng.lng - radiusLng },
+                { lat: centerLatlng.lat + radiusLat, lng: centerLatlng.lng + radiusLng },
+                { lat: centerLatlng.lat - radiusLat, lng: centerLatlng.lng + radiusLng },
+                { lat: centerLatlng.lat - radiusLat, lng: centerLatlng.lng - radiusLng }
+            ];
+        } else if (shape === 'triangle') {
+            newPoints = [
+                { lat: centerLatlng.lat + radiusLat, lng: centerLatlng.lng },
+                { lat: centerLatlng.lat - radiusLat, lng: centerLatlng.lng + radiusLng },
+                { lat: centerLatlng.lat - radiusLat, lng: centerLatlng.lng - radiusLng }
+            ];
+        }
+        return newPoints;
+    };
 
     // Change cursor and disable map click default behavior when active
     useEffect(() => {
         const container = map.getContainer();
         if (active) {
             container.style.cursor = 'crosshair';
-            // Disable double click zoom while drawing
             map.doubleClickZoom.disable();
+            map.dragging.disable(); // disable dragging to make clicking easier
         } else {
             container.style.cursor = '';
             map.doubleClickZoom.enable();
+            map.dragging.enable();
         }
         return () => {
             container.style.cursor = '';
             map.doubleClickZoom.enable();
+            if (map.dragging) map.dragging.enable();
         }
     }, [active, map]);
 
     useMapEvents({
         click(e) {
             if (!active) return;
-            const newPoints = [...points, e.latlng];
-            setPoints(newPoints);
+            const generated = generateShape(e.latlng, drawShape, drawSizeMiles);
+            setPoints(generated);
             if (onPointsUpdate) {
-                onPointsUpdate(newPoints);
+                onPointsUpdate(generated);
             }
         },
         mousemove(e) {
-            if (!active || points.length === 0) return;
-            
-            // Draw a temporary line to the cursor natively so it's perfectly smooth and 0 lag
-            let linePoints = [...points, e.latlng];
-            if (points.length >= 2) {
-                // close the visual shape back to the start
-                linePoints.push(points[0]);
-            }
-            
+            if (!active) return;
+
+            // Show preview of the shape that will be dropped
+            const previewPoints = generateShape(e.latlng, drawShape, drawSizeMiles);
+
             if (!cursorLineRef.current) {
-                cursorLineRef.current = L.polyline(linePoints, { 
-                    color: '#FFD93D', 
-                    dashArray: '5,5', 
+                cursorLineRef.current = L.polygon(previewPoints, {
+                    color: '#FFD93D',
+                    dashArray: '5,5',
                     weight: 2,
-                    interactive: false
+                    interactive: false,
+                    fillOpacity: 0.1
                 }).addTo(map);
             } else {
-                cursorLineRef.current.setLatLngs(linePoints);
+                cursorLineRef.current.setLatLngs(previewPoints);
             }
         }
     });
@@ -66,26 +99,13 @@ export default function MapDrawTool({ active, onPointsUpdate, drawnPolygon }) {
         }
     }, [active]);
 
-    // Keep native polyline updated if points array changes (e.g. on click)
+    // Cleanup hover preview when unmounted or mode changes
     useEffect(() => {
-        if (active && cursorLineRef.current && points.length > 0) {
-            const currentLinePoints = cursorLineRef.current.getLatLngs();
-            if (currentLinePoints.length > 0) {
-                // The last element before potentially closing is the mouse pos
-                const mousePoint = currentLinePoints.length > points.length ? 
-                    currentLinePoints[points.length] : currentLinePoints[currentLinePoints.length - 1];
-                
-                let linePoints = [...points, mousePoint];
-                if (points.length >= 2) {
-                    linePoints.push(points[0]);
-                }
-                cursorLineRef.current.setLatLngs(linePoints);
-            }
-        } else if (active && points.length === 0 && cursorLineRef.current) {
+        if (!active && cursorLineRef.current) {
             cursorLineRef.current.remove();
             cursorLineRef.current = null;
         }
-    }, [points, active]);
+    }, [active, drawShape, drawSizeMiles]);
 
     useEffect(() => {
         return () => {
@@ -103,17 +123,17 @@ export default function MapDrawTool({ active, onPointsUpdate, drawnPolygon }) {
     return (
         <>
             {displayPoints.length > 2 && (
-                <Polygon 
-                    positions={displayPoints} 
-                    pathOptions={{ fillColor: '#FFD93D', color: '#FFD93D', fillOpacity: 0.2, weight: active ? 0 : 2 }} 
+                <Polygon
+                    positions={displayPoints}
+                    pathOptions={{ fillColor: '#FFD93D', color: '#FFD93D', fillOpacity: 0.2, weight: active ? 0 : 2 }}
                 />
             )}
             {displayPoints.map((p, i) => (
-                <CircleMarker 
-                    key={i} 
-                    center={p} 
-                    radius={active ? 4 : 2} 
-                    pathOptions={{ color: '#FFD93D', fillColor: '#000', fillOpacity: 1, weight: 1 }} 
+                <CircleMarker
+                    key={i}
+                    center={p}
+                    radius={active ? 4 : 2}
+                    pathOptions={{ color: '#FFD93D', fillColor: '#000', fillOpacity: 1, weight: 1 }}
                 />
             ))}
         </>

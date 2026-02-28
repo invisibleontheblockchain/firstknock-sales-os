@@ -1,0 +1,20 @@
+{
+  "summaries": [
+    {
+      "name": "Oconee, SC",
+      "property_count": 124,
+      "min_price": 10000.0,
+      "max_price": 475000.0,
+      "avg_price": 145562.9837398374,
+      "median_price": 130000.0
+    }
+  ],
+  "stats": {
+    "counties_attempted": 1,
+    "counties_success": 1,
+    "counties_failed": 0,
+    "total_properties": 124,
+    "errors": []
+  },
+  "generated_at": "20260131_145356"
+}

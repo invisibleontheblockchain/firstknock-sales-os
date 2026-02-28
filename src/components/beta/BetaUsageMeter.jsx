@@ -6,10 +6,10 @@ import { MapPin, Lock, Crown, Map } from 'lucide-react';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { createPageUrl } from '@/utils';
 
-const FREE_ZIP_LIMIT = 3;
+const FREE_ZIP_LIMIT = 1;
 const ZIPS_PER_SEAT = 10;
-const FREE_PULL_LIMIT = 3;
-const PAID_PULL_LIMIT = 20;
+const FREE_MILE_LIMIT = 40;
+const MILES_PER_SEAT = 200;
 
 export default function BetaUsageMeter({ className = '', showUpgrade = true }) {
     const { accent } = useTheme();
@@ -21,7 +21,7 @@ export default function BetaUsageMeter({ className = '', showUpgrade = true }) {
 
     const isPaid = user?.subscription_status === 'active';
     const totalSeats = user?.total_seats || 1;
-    
+
     // Zip Codes
     const zipLimit = isPaid ? totalSeats * ZIPS_PER_SEAT : FREE_ZIP_LIMIT;
     const tierLabel = isPaid ? `Pro (${totalSeats} seat${totalSeats !== 1 ? 's' : ''})` : 'Free Beta';
@@ -31,16 +31,16 @@ export default function BetaUsageMeter({ className = '', showUpgrade = true }) {
     const zipsPct = Math.min((zipsUsed / zipLimit) * 100, 100);
     const zipsDepleted = zipsRemaining <= 0;
 
-    // Area Pulls
-    const pullLimit = isPaid ? PAID_PULL_LIMIT : FREE_PULL_LIMIT;
-    const pullsUsed = user?.area_pulls_count || 0;
-    const pullsRemaining = Math.max(0, pullLimit - pullsUsed);
-    const pullsPct = Math.min((pullsUsed / pullLimit) * 100, 100);
-    const pullsDepleted = pullsRemaining <= 0;
+    // Miles / Area Allowances
+    const mileLimit = isPaid ? totalSeats * MILES_PER_SEAT : FREE_MILE_LIMIT;
+    const milesUsed = user?.miles_pulled || 0; // Using miles_pulled from db or defaulting to 0
+    const milesRemaining = Math.max(0, mileLimit - milesUsed);
+    const milesPct = Math.min((milesUsed / mileLimit) * 100, 100);
+    const milesDepleted = milesRemaining <= 0;
 
     return (
-        <div className={`p-3 rounded-xl border bg-[#0A0A0A] ${(zipsDepleted || pullsDepleted) && !isPaid ? 'border-red-800' : 'border-gray-800'} ${className}`}>
-            
+        <div className={`p-3 rounded-xl border bg-[#0A0A0A] ${(zipsDepleted || milesDepleted) && !isPaid ? 'border-red-800' : 'border-gray-800'} ${className}`}>
+
             <div className="space-y-4">
                 {/* Zip Codes Meter */}
                 <div>
@@ -78,32 +78,32 @@ export default function BetaUsageMeter({ className = '', showUpgrade = true }) {
                     )}
                 </div>
 
-                {/* Area Pulls Meter */}
+                {/* Miles Usage Meter */}
                 <div>
                     <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                            <Map className="w-3.5 h-3.5" style={{ color: pullsDepleted && !isPaid ? '#EF4444' : accent }} />
+                            <Map className="w-3.5 h-3.5" style={{ color: milesDepleted && !isPaid ? '#EF4444' : accent }} />
                             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                                {tierLabel} — Map Area Pulls
+                                {tierLabel} — Map Miles
                             </span>
                         </div>
-                        <span className={`text-xs font-bold ${pullsDepleted && !isPaid ? 'text-red-400' : 'text-white'}`}>
-                            {pullsUsed}/{pullLimit === 999 ? '∞' : pullLimit}
+                        <span className={`text-xs font-bold ${milesDepleted && !isPaid ? 'text-red-400' : 'text-white'}`}>
+                            {Math.round(milesUsed)}/{mileLimit === 999 ? '∞' : mileLimit} mi
                         </span>
                     </div>
                     <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
                         <div
                             className="h-full rounded-full transition-all duration-500"
                             style={{
-                                width: `${pullLimit === 999 ? 10 : pullsPct}%`,
-                                background: pullsDepleted && !isPaid ? '#EF4444' : accent
+                                width: `${milesPct}%`,
+                                background: milesDepleted && !isPaid ? '#EF4444' : accent
                             }}
                         />
                     </div>
                 </div>
             </div>
 
-            {(zipsDepleted || pullsDepleted) && !isPaid && showUpgrade ? (
+            {(zipsDepleted || milesDepleted) && !isPaid && showUpgrade ? (
                 <div className="mt-4 p-2 rounded-lg bg-red-900/20 border border-red-800/50">
                     <div className="flex items-center gap-2 mb-1.5">
                         <Lock className="w-3 h-3 text-red-400" />
@@ -119,8 +119,8 @@ export default function BetaUsageMeter({ className = '', showUpgrade = true }) {
                 </div>
             ) : (
                 <p className="text-[10px] mt-3 text-gray-600">
-                    {zipsRemaining > 0 || pullsRemaining > 0
-                        ? `${zipsRemaining} zip(s) & ${pullsRemaining} map pull(s) remaining on your plan.`
+                    {zipsRemaining > 0 || milesRemaining > 0
+                        ? `${zipsRemaining} zip(s) & ${Math.round(milesRemaining)} miles remaining on your plan.`
                         : isPaid ? 'Need more limits? Add seats or contact support.' : ''
                     }
                 </p>
