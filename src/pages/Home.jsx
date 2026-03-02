@@ -762,13 +762,31 @@ export default function Home() {
                     console.log(`[Generate] No properties found for ${targetZips.join(', ')}. Fetching from RentCast...`);
                     toast.loading("Pulling property data...", { id: 'fetch-zip' });
 
+                    let hitLimit = false;
                     for (const zip of targetZips) {
                         try {
                             const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zip });
                             console.log(`[Generate] Fetch result for ${zip}:`, res.data);
+                            if (res.data?.error) {
+                                toast.error(res.data.message || res.data.error, { id: 'fetch-zip' });
+                                hitLimit = true;
+                                break;
+                            }
                         } catch (err) {
                             console.warn(`Failed to fetch zip ${zip}`, err);
+                            const errData = err?.response?.data;
+                            if (errData?.error?.includes('limit')) {
+                                toast.error(errData.message || 'Zip code limit reached. Upgrade your plan.', { id: 'fetch-zip' });
+                                hitLimit = true;
+                                break;
+                            }
                         }
+                    }
+
+                    if (hitLimit && !isPaid) {
+                        setTimeout(() => { window.location.href = '/Billing'; }, 2000);
+                        setRoutesGenerating(false);
+                        return;
                     }
 
                     toast.success("Data synced!", { id: 'fetch-zip' });
