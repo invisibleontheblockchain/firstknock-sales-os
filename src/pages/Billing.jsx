@@ -138,7 +138,7 @@ export default function Billing() {
                             </div>
                             <div>
                                 <p className="text-xs text-yellow-500 uppercase font-bold mb-1">Pro Plan</p>
-                                <p className="text-xl font-bold text-white">10 Zip Codes <span className="text-xs font-normal text-gray-400">/seat</span></p>
+                                <p className="text-xl font-bold text-white">10 Zip Codes</p>
                                 <p className="text-sm font-medium text-gray-400">20 Area Pulls</p>
                             </div>
                          </div>
