@@ -398,7 +398,6 @@ export default function RouteCommandPanel({
                                     </div>
                                 )}
                             </>
-                            </>
                         )}
                         </div>
                     </ScrollArea>
