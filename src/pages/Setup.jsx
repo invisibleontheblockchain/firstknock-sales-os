@@ -124,6 +124,14 @@ export default function Setup() {
                                 </Button>
                             </div>
 
+                            <div className="p-4 rounded-xl bg-[#0A0A0A] border border-[#222]">
+                                <h3 className="text-base font-bold text-white mb-2">Import from SalesRabbit / Spotio</h3>
+                                <p className="text-sm text-gray-400 mb-4">
+                                    Already have data? Upload your CSV export here to bring all your existing leads, pins, and history into FirstKnock instantly.
+                                </p>
+                                <CsvUploader onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ['masterProperties'] })} />
+                            </div>
+
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="p-3 rounded-xl bg-[#0A0A0A] border border-[#222]">
                                     <h4 className="text-white font-bold flex items-center gap-2 text-sm">
