@@ -1071,6 +1071,7 @@ export default function Home() {
         // Open the Route Builder (Generate tab) after a successful area fetch
         // Small delay to ensure the properties filter has updated and won't trigger the auto-close
         setTimeout(() => {
+            localStorage.setItem('fk_autobuild_next_open', 'true');
             setMode('generate');
             setShowCompare(true);
             console.log('[Home] Opening Route Builder after pull');
