@@ -286,7 +286,7 @@ export default function ManagerMapLayers({
                         let isRecentlySold = false;
                         if (highlightRecentlySold && p.sold_date) {
                             try {
-                                isRecentlySold = isAfter(parseISO(p.sold_date), subMonths(new Date(), 1));
+                                isRecentlySold = new Date(p.sold_date) > subMonths(new Date(), 1);
                             } catch (e) { }
                         }
 
