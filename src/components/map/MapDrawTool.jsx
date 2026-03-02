@@ -122,13 +122,24 @@ export default function MapDrawTool({ active, onPointsUpdate, drawnPolygon, draw
 
     if (displayPoints.length === 0) return null;
 
+    const getAreaText = () => {
+        if (drawShape === 'circle') return `Radius: ${drawSizeMiles} mi | Area: ~${Math.round(Math.PI * drawSizeMiles * drawSizeMiles)} sq mi`;
+        if (drawShape === 'square') return `Width: ${drawSizeMiles * 2} mi | Area: ~${Math.round(4 * drawSizeMiles * drawSizeMiles)} sq mi`;
+        if (drawShape === 'triangle') return `Height: ${drawSizeMiles * 2} mi | Area: ~${Math.round(2 * drawSizeMiles * drawSizeMiles)} sq mi`;
+        return `${drawSizeMiles} mi`;
+    };
+
     return (
         <>
             {displayPoints.length > 2 && (
                 <Polygon
                     positions={displayPoints}
                     pathOptions={{ fillColor: '#FFD93D', color: '#FFD93D', fillOpacity: 0.2, weight: active ? 0 : 2 }}
-                />
+                >
+                    <Tooltip permanent direction="center" className="bg-black/90 text-yellow-400 font-bold text-[10px] border border-yellow-500/50 rounded shadow-xl whitespace-nowrap text-center z-50">
+                        {getAreaText()}
+                    </Tooltip>
+                </Polygon>
             )}
             {displayPoints.map((p, i) => (
                 <CircleMarker
