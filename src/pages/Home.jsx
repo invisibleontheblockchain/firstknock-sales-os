@@ -1474,13 +1474,32 @@ export default function Home() {
                         const toastId = toast.loading("Syncing...");
                         try {
                             const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zipCodeFilter, force_sync: true });
+                            if (res.data?.error) {
+                                toast.error(res.data.message || res.data.error, { id: toastId });
+                                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+                                if (!isPaid) {
+                                    setTimeout(() => { window.location.href = '/Billing'; }, 2000);
+                                }
+                                return;
+                            }
                             if (res.data.count > 0) {
                                 toast.success(`Synced ${res.data.count} new properties!`, { id: toastId });
                                 queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
                             } else {
                                 toast.info(res.data.message || "Up to date", { id: toastId });
                             }
-                        } catch (e) { toast.error("Sync failed", { id: toastId }); }
+                        } catch (e) { 
+                            const errData = e?.response?.data;
+                            if (errData?.error?.includes('limit')) {
+                                toast.error(errData.message || 'Zip code limit reached. Upgrade your plan.', { id: toastId });
+                                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+                                if (!isPaid) {
+                                    setTimeout(() => { window.location.href = '/Billing'; }, 2000);
+                                }
+                            } else {
+                                toast.error("Sync failed", { id: toastId }); 
+                            }
+                        }
                     }}
                     onClearArea={async () => {
                         if (!confirm(`DELETE ALL properties in zip ${zipCodeFilter}?`)) return;
