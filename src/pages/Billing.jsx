@@ -9,18 +9,51 @@ import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import BetaUsageMeter from '../components/beta/BetaUsageMeter';
 
-const PRICE_ID = 'price_1SwDXY2MvSNi6E8hZb5nSRDw'; // Hustler $49 base
-const FLAT_PRICE = 49;
-
-const ALL_FEATURES = [
-'Up to 10 Zip Code Territories',
-'Unlimited Routes within your Zip Codes',
-'Live GPS Tracking & Proof of Visit',
-'AI Route Optimization',
-'Command Center Auto-Dispatch',
-'Team Leaderboard & Metrics',
-'Property Intel & History',
-'Priority Support'];
+const PLANS = [
+  {
+    id: 'hustler',
+    name: 'Hustler',
+    price: 49,
+    priceId: 'price_1SwDXY2MvSNi6E8hZb5nSRDw',
+    features: [
+      'Up to 3 Zip Code Territories',
+      'Unlimited Routes within your Zip Codes',
+      'Live GPS Tracking & Proof of Visit',
+      'Standard Support'
+    ]
+  },
+  {
+    id: 'growth',
+    name: 'Growth',
+    price: 99,
+    priceId: 'price_1SwDXY2MvSNi6E8hfhtK7rBc',
+    isPopular: true,
+    features: [
+      'Up to 10 Zip Code Territories',
+      'Unlimited Routes within your Zip Codes',
+      'Live GPS Tracking & Proof of Visit',
+      'AI Route Optimization',
+      'Command Center Auto-Dispatch',
+      'Team Leaderboard & Metrics',
+      'Property Intel & History',
+      'Priority Support'
+    ]
+  },
+  {
+    id: 'enterprise',
+    name: 'Enterprise',
+    price: 299,
+    priceId: 'price_1SwDXY2MvSNi6E8hbaKcsk0d',
+    features: [
+      'Unlimited Zip Code Territories',
+      'Unlimited Routes everywhere',
+      'All Growth Features',
+      'Dedicated Account Manager',
+      'Custom Integrations',
+      'Advanced Analytics'
+    ]
+  }
+];
 
 
 export default function Billing() {
