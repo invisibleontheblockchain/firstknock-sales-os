@@ -295,7 +295,8 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         use2Opt = true,
         walkingPattern = 'nearest',
         returnToStart = false,
-        maxRouteDistance = null
+        maxRouteDistance = null,
+        excludeTerminal = true
     } = options;
 
     // Filter out properties on streets that are on cooldown
@@ -317,8 +318,10 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
     }
 
     // Double Dip Protection: Exclude Terminal Statuses
-    const terminalStatuses = ['HARD_NO', 'SOLD', 'DO_NOT_KNOCK', 'COOLDOWN'];
-    eligible = eligible.filter(p => !terminalStatuses.includes(p.effective_status));
+    if (excludeTerminal) {
+        const terminalStatuses = ['HARD_NO', 'SOLD', 'DO_NOT_KNOCK', 'COOLDOWN'];
+        eligible = eligible.filter(p => !terminalStatuses.includes(p.effective_status));
+    }
 
     if (eligible.length === 0) return [];
 
