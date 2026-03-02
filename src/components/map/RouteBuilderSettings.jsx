@@ -78,16 +78,16 @@ export default function RouteBuilderSettings({
             id: 'best',
             name: 'FirstKnock Best',
             icon: <Zap className="w-4 h-4" />,
-            desc: 'Balanced efficiency and lead quality. Recommended for most users.',
-            criteria: 'Score 20+, 60 doors, 14d cooldown',
+            desc: 'Finds the most recently sold homes and routes you to them first.',
+            criteria: 'Recent sales first, 60 doors, 14d cooldown',
             apply: () => {
                 setHousesPerRoute(60);
                 setMaxRouteDistance(5);
                 setStreetCooldownDays(14);
-                setMinScore(20);
-                setSoldDateFilter(null);
-                setSortBy('score');
-                setRouteConfig(prev => ({ ...prev, walkingPattern: 'street_sweep', minimizeTurns: true, use2Opt: true, returnToStart: true, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
+                setMinScore(0);
+                setSoldDateFilter(12); // Filter for past 12 months
+                setSortBy('recent_sale');
+                setRouteConfig(prev => ({ ...prev, walkingPattern: 'recent_sale_first', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
                 toast.success("FirstKnock Best applied");
             }
         },
@@ -353,6 +353,7 @@ export default function RouteBuilderSettings({
                                     <div className="grid grid-cols-2 gap-2">
                                         {[
                                             { id: 'street_sweep', label: 'Street Sweep', desc: 'Mailman style — one side, then the other', icon: Footprints },
+                                            { id: 'recent_sale_first', label: 'Recent Sale First', desc: 'Start at the most recently sold home', icon: Flame },
                                             { id: 'nearest', label: 'Nearest Door', desc: 'Always go to the closest next house', icon: Target },
                                             { id: 'zigzag', label: 'Zig-Zag', desc: 'Cross street back & forth', icon: GitBranch },
                                             { id: 'cluster', label: 'Cluster Hop', desc: 'Hit dense pockets first, then expand', icon: Flame },
