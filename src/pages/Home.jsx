@@ -202,6 +202,7 @@ export default function Home() {
         returnToStart: false,
         excludeTerminal: true,
         includeCallbacks: true,
+        excludeAssigned: true,
         propertyTypes: [],
         minPrice: null,
         maxPrice: null,
