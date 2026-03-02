@@ -71,7 +71,7 @@ Deno.serve(async (req) => {
       console.warn(`[FetchZip-v6] ZIP LIMIT REACHED: ${zipsUsed}/${zipLimit} (tier: ${subTier})`);
       const upgradeMsg = !isPaid
         ? `You've used your ${FREE_ZIP_LIMIT} free zip codes. Subscribe to unlock more territories.`
-        : `You've reached your ${zipLimit} zip code limit (Add more seats for more zips).`;
+        : `You've reached your ${zipLimit} zip code limit. Contact support for enterprise plans.`;
       return Response.json({
         error: 'Zip code limit reached',
         message: upgradeMsg,
