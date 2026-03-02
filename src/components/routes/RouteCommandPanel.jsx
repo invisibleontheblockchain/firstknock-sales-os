@@ -75,7 +75,7 @@ export default function RouteCommandPanel({
                 style={{ background: 'rgba(10, 10, 10, 0.98)' }}
             >
                 {/* Header */}
-                <div className="p-4 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
+                <div className="p-4 border-b flex justify-between items-center shrink-0" style={{ borderColor: BRAND.charcoal }}>
                     <div>
                         <h2 className="flex items-center gap-2 text-lg font-bold tracking-wide" style={{ color: BRAND.gold }}>
                             <Navigation className="w-5 h-5" />
