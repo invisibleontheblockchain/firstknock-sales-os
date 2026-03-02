@@ -193,9 +193,11 @@ export default function Billing() {
                     ))}
                 </div>
 
-                <div className="text-center text-xs text-gray-600">
-                    <p>Secure payments processed by Stripe.</p>
-                </div>
+                {!isSubscribed && (
+                    <p className="text-center text-xs text-gray-500 mt-4">
+                        Secure payments via Stripe. Cancel anytime.
+                    </p>
+                )}
 
             </div>
         </div>);
