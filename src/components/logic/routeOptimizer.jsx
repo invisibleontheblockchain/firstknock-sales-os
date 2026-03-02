@@ -384,7 +384,30 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 
         // Use walking pattern to determine ordering
         let orderedProps;
-        if (walkingPattern === 'street_sweep' || (useStreetSweep && walkingPattern !== 'nearest' && walkingPattern !== 'zigzag' && walkingPattern !== 'cluster')) {
+        if (walkingPattern === 'recent_sale_first') {
+            // Find the most recently sold property in the cluster
+            let mostRecent = clusterProps[0];
+            let latestDate = 0;
+            clusterProps.forEach(p => {
+                if (p.sold_date) {
+                    try {
+                        const dt = new Date(p.sold_date).getTime();
+                        if (dt > latestDate) {
+                            latestDate = dt;
+                            mostRecent = p;
+                        }
+                    } catch (e) {}
+                }
+            });
+            
+            // Start nearest neighbor from the most recently sold property
+            orderedProps = optimizeRouteOrder(
+                clusterProps,
+                mostRecent.lat,
+                mostRecent.lng,
+                minimizeTurns
+            );
+        } else if (walkingPattern === 'street_sweep' || (useStreetSweep && walkingPattern !== 'nearest' && walkingPattern !== 'zigzag' && walkingPattern !== 'cluster' && walkingPattern !== 'recent_sale_first')) {
             orderedProps = orderForStreetSweep(clusterProps);
         } else if (walkingPattern === 'zigzag') {
             // Zig-zag: sort by street, then alternate odd/even within each street
