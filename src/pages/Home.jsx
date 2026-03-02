@@ -1268,6 +1268,21 @@ export default function Home() {
                     }}
                     onSaveRoute={handleSaveRoute}
                     onAutoAssignAll={handleAutoAssignAll}
+                    onDeleteAllRoutes={async () => {
+                        try {
+                            const ids = hydratedSavedRoutes.map(r => r.id);
+                            if (ids.length > 0) {
+                                await Promise.all(ids.map(id => base44.entities.SavedRoute.delete(id)));
+                                queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+                                if (activeRoute && ids.includes(activeRoute.id)) {
+                                    setActiveRoute(null);
+                                }
+                                toast.success("All saved routes deleted");
+                            }
+                        } catch (e) {
+                            toast.error("Failed to delete routes");
+                        }
+                    }}
                     onClose={() => setShowRoutePanel(false)}
                     activeRouteId={activeRoute?.id}
                     streetCooldownDays={streetCooldownDays}
