@@ -6,7 +6,7 @@ import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
 import {
     Navigation, X, BarChart3, User, Shield, MapPin,
     ArrowRight, Flame, Plus, Clock, CheckCircle2,
-    AlertCircle, ChevronRight, Zap
+    AlertCircle, ChevronRight, Zap, Trash2
 } from 'lucide-react';
 
 const BRAND = {
