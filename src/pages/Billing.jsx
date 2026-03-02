@@ -64,7 +64,7 @@ export default function Billing() {
     queryFn: () => base44.auth.me()
   });
 
-  const handleSubscribe = async (trialDays = 0) => {
+  const handleSubscribe = async (priceId, trialDays = 0) => {
     // Check if running in iframe (preview mode)
     if (window.self !== window.top) {
       alert("Stripe Checkout cannot run in this preview window due to security restrictions.\n\nPlease open your app in a new tab (click the 'Open App' button in the top right) to test payments.");
@@ -72,9 +72,9 @@ export default function Billing() {
     }
 
     try {
-      setLoadingPriceId(trialDays > 0 ? 'trial' : 'now');
+      setLoadingPriceId(priceId);
       const res = await base44.functions.invoke('createCheckoutSession', {
-        priceId: PRICE_ID,
+        priceId: priceId,
         quantity: 1,
         successUrl: window.location.origin + '/Billing?success=true',
         cancelUrl: window.location.origin + '/Billing?canceled=true',
