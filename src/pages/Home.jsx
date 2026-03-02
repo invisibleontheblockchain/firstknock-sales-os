@@ -726,6 +726,22 @@ export default function Home() {
             if (zipCodeFilter && zipCodeFilter.trim()) {
                 const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
 
+                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+                const zipLimit = isPaid ? (user?.total_seats || 1) * 10 : 3;
+                const generatedZips = user?.generated_zip_codes || [];
+                const newZips = targetZips.filter(z => !generatedZips.includes(z));
+
+                if (generatedZips.length + newZips.length > zipLimit) {
+                    toast.error(isPaid 
+                        ? `Limit reached (${zipLimit} zips). Add seats for more.` 
+                        : `Free limit is 3 zips. Upgrade for more.`, { id: 'build-routes' });
+                    if (!isPaid) {
+                        setTimeout(() => { window.location.href = '/Billing'; }, 2000);
+                    }
+                    setRoutesGenerating(false);
+                    return;
+                }
+
                 // Check if we need to fetch (simple check: do we have enough data for these zips?)
                 // We'll just fetch to be safe and merge.
                 // Note: Parallel fetch for multiple zips
