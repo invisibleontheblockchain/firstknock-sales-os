@@ -112,13 +112,13 @@ export default function Billing() {
 
   return (
     <div className="h-full overflow-y-auto bg-black text-white p-4 sm:p-6 lg:p-8">
-            <div className="max-w-2xl mx-auto space-y-8">
+            <div className="max-w-6xl mx-auto space-y-8">
                 
                 {/* Header */}
                 <div className="text-center space-y-3">
-                    <h1 className="text-4xl font-extrabold tracking-tight">FirstKnock Pro</h1>
+                    <h1 className="text-4xl font-extrabold tracking-tight">FirstKnock Plans</h1>
                     <p className="text-gray-400 max-w-md mx-auto">
-                        One simple plan. Everything included. Start your 7-day free trial.
+                        Choose the perfect plan for your team. Start your 7-day free trial.
                     </p>
                 </div>
 
