@@ -191,6 +191,9 @@ export default function TerritoryPrompt({
                                 // The requirement says "40 miles of maximum free usage". We'll treat 1 sq mile = 1 mile used.
                                 if (areaSqMiles > milesRemaining) {
                                     toast.error(`Area too large! This area is ~${Math.round(areaSqMiles)} sq miles. You only have ${Math.round(milesRemaining)} miles remaining.`);
+                                    if (!isPaid) {
+                                        setTimeout(() => { window.location.href = '/Billing'; }, 2000);
+                                    }
                                     return;
                                 }
 
