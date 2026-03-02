@@ -131,10 +131,7 @@ export default function MapDrawTool({ active, onPointsUpdate, drawnPolygon, draw
     if (displayPoints.length === 0) return null;
 
     const getAreaText = () => {
-        if (drawShape === 'circle') return `Radius: ${drawSizeMiles} mi | Area: ~${Math.round(Math.PI * drawSizeMiles * drawSizeMiles)} sq mi`;
-        if (drawShape === 'square') return `Width: ${drawSizeMiles * 2} mi | Area: ~${Math.round(4 * drawSizeMiles * drawSizeMiles)} sq mi`;
-        if (drawShape === 'triangle') return `Height: ${drawSizeMiles * 2} mi | Area: ~${Math.round(2 * drawSizeMiles * drawSizeMiles)} sq mi`;
-        return `${drawSizeMiles} mi`;
+        return `~${drawSizeMiles} sq mi`;
     };
 
     return (
