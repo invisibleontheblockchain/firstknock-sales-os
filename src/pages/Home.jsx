@@ -927,6 +927,7 @@ export default function Home() {
 
             setRoutes(generated);
             setShowRoutePanel(true);
+            setShowCompare(false); // Close builder to see the map
             toast.success(`Built ${generated.length} route${generated.length === 1 ? '' : 's'}`, { id: 'build-routes' });
 
         } catch (e) {
