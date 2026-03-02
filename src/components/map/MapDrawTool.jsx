@@ -8,11 +8,19 @@ export default function MapDrawTool({ active, onPointsUpdate, drawnPolygon, draw
     const cursorLineRef = useRef(null);
 
     // Helper: generate shape points around a center
-    const generateShape = (centerLatlng, shape, sizeMiles) => {
+    const generateShape = (centerLatlng, shape, areaSqMiles) => {
+        let radiusInMiles = 1;
+        if (shape === 'circle') {
+            radiusInMiles = Math.sqrt(areaSqMiles / Math.PI);
+        } else if (shape === 'square') {
+            radiusInMiles = Math.sqrt(areaSqMiles / 4);
+        } else if (shape === 'triangle') {
+            radiusInMiles = Math.sqrt(areaSqMiles / 2);
+        }
+
         // approximate miles to degrees (rough estimate: 1 lat deg = 69 miles, 1 lng deg at 40N = ~53 miles)
-        // Let's use simple turf-like math, or basic approximation since precision isn't critically needed for drawing
-        const radiusLat = sizeMiles / 69.0;
-        const radiusLng = sizeMiles / (69.0 * Math.cos(centerLatlng.lat * Math.PI / 180));
+        const radiusLat = radiusInMiles / 69.0;
+        const radiusLng = radiusInMiles / (69.0 * Math.cos(centerLatlng.lat * Math.PI / 180));
 
         let newPoints = [];
         if (shape === 'circle') {
