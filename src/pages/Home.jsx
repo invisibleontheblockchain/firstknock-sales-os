@@ -1133,6 +1133,7 @@ export default function Home() {
                         key={`basemap-labels-${mapTheme}`}
                         url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
                         attribution=""
+                        zIndex={100}
                     />
                 )}
                 <LocationMarker autoCenter={availableProperties.length === 0} userLocation={userLocation} />
