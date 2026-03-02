@@ -93,9 +93,12 @@ export default function TerritoryPrompt({
                                 onChange={(e) => setDrawSizeMiles(Number(e.target.value))}
                                 className="bg-gray-900 border border-gray-700 text-white text-xs rounded-md px-2 py-1 h-8"
                             >
-                                <option value={10}>10 miles</option>
-                                <option value={20}>20 miles</option>
-                                <option value={30}>30 miles</option>
+                                <option value={1}>1 sq mile</option>
+                                <option value={5}>5 sq miles</option>
+                                <option value={10}>10 sq miles</option>
+                                <option value={20}>20 sq miles</option>
+                                <option value={30}>30 sq miles</option>
+                                <option value={40}>40 sq miles</option>
                             </select>
                         </div>
                         <div className="flex gap-2">
