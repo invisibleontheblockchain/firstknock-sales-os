@@ -6,10 +6,10 @@ import { MapPin, Lock, Crown, Map } from 'lucide-react';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { createPageUrl } from '@/utils';
 
-const FREE_ZIP_LIMIT = 1;
+const FREE_ZIP_LIMIT = 3;
 const ZIPS_PER_SEAT = 10;
-const FREE_MILE_LIMIT = 40;
-const MILES_PER_SEAT = 200;
+const FREE_AREA_LIMIT = 3;
+const AREAS_PER_SEAT = 10;
 
 export default function BetaUsageMeter({ className = '', showUpgrade = true }) {
     const { accent } = useTheme();
@@ -31,15 +31,15 @@ export default function BetaUsageMeter({ className = '', showUpgrade = true }) {
     const zipsPct = Math.min((zipsUsed / zipLimit) * 100, 100);
     const zipsDepleted = zipsRemaining <= 0;
 
-    // Miles / Area Allowances
-    const mileLimit = isPaid ? totalSeats * MILES_PER_SEAT : FREE_MILE_LIMIT;
-    const milesUsed = user?.miles_pulled || 0; // Using miles_pulled from db or defaulting to 0
-    const milesRemaining = Math.max(0, mileLimit - milesUsed);
-    const milesPct = Math.min((milesUsed / mileLimit) * 100, 100);
-    const milesDepleted = milesRemaining <= 0;
+    // Area Allowances
+    const areaLimit = isPaid ? totalSeats * AREAS_PER_SEAT : FREE_AREA_LIMIT;
+    const areasUsed = user?.area_pulls_count || 0;
+    const areasRemaining = Math.max(0, areaLimit - areasUsed);
+    const areasPct = Math.min((areasUsed / areaLimit) * 100, 100);
+    const areasDepleted = areasRemaining <= 0;
 
     return (
-        <div className={`p-3 rounded-xl border bg-[#0A0A0A] ${(zipsDepleted || milesDepleted) && !isPaid ? 'border-red-800' : 'border-gray-800'} ${className}`}>
+        <div className={`p-3 rounded-xl border bg-[#0A0A0A] ${(zipsDepleted || areasDepleted) && !isPaid ? 'border-red-800' : 'border-gray-800'} ${className}`}>
 
             <div className="space-y-4">
                 {/* Zip Codes Meter */}
@@ -78,32 +78,32 @@ export default function BetaUsageMeter({ className = '', showUpgrade = true }) {
                     )}
                 </div>
 
-                {/* Miles Usage Meter */}
+                {/* Areas Usage Meter */}
                 <div>
                     <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2">
-                            <Map className="w-3.5 h-3.5" style={{ color: milesDepleted && !isPaid ? '#EF4444' : accent }} />
+                            <Map className="w-3.5 h-3.5" style={{ color: areasDepleted && !isPaid ? '#EF4444' : accent }} />
                             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                                {tierLabel} — Map Miles
+                                {tierLabel} — Drawn Areas
                             </span>
                         </div>
-                        <span className={`text-xs font-bold ${milesDepleted && !isPaid ? 'text-red-400' : 'text-white'}`}>
-                            {Math.round(milesUsed)}/{mileLimit === 999 ? '∞' : mileLimit} mi
+                        <span className={`text-xs font-bold ${areasDepleted && !isPaid ? 'text-red-400' : 'text-white'}`}>
+                            {areasUsed}/{areaLimit === 999 ? '∞' : areaLimit}
                         </span>
                     </div>
                     <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
                         <div
                             className="h-full rounded-full transition-all duration-500"
                             style={{
-                                width: `${milesPct}%`,
-                                background: milesDepleted && !isPaid ? '#EF4444' : accent
+                                width: `${areasPct}%`,
+                                background: areasDepleted && !isPaid ? '#EF4444' : accent
                             }}
                         />
                     </div>
                 </div>
             </div>
 
-            {(zipsDepleted || milesDepleted) && !isPaid && showUpgrade ? (
+            {(zipsDepleted || areasDepleted) && !isPaid && showUpgrade ? (
                 <div className="mt-4 p-2 rounded-lg bg-red-900/20 border border-red-800/50">
                     <div className="flex items-center gap-2 mb-1.5">
                         <Lock className="w-3 h-3 text-red-400" />
