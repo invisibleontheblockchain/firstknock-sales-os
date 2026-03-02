@@ -79,12 +79,22 @@ export default function TerritorySetupWizard({ user, onComplete }) {
     };
 
     const handleGenerate = async () => {
+        const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+        if (!isPaid && user?.has_generated_routes) {
+            window.location.href = '/Billing';
+            return;
+        }
+
         setLoading(true);
-        setTimeout(() => {
+        setTimeout(async () => {
             try {
                 const routes = generateOptimizedRoutes(fetchedProperties, housesPerRoute, null, [], { streetCooldownDays: 30, useStreetSweep: true });
                 setGeneratedRoutes(routes);
                 setStep(3);
+                
+                if (!isPaid && !user?.has_generated_routes) {
+                    try { await base44.auth.updateMe({ has_generated_routes: true }); } catch(e) {}
+                }
             } catch (e) { toast.error("Failed to generate routes"); }
             finally { setLoading(false); }
         }, 500);
