@@ -136,6 +136,8 @@ export default function OnboardingWizard({ user, onComplete }) {
                     </Button>
                 </div>
             </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
