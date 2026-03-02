@@ -566,6 +566,15 @@ export default function RouteBuilderSettings({
                                     onChange={(v) => setRouteConfig(prev => ({ ...prev, excludeTerminal: v }))}
                                 />
 
+                                {/* Exclude Saved Routes */}
+                                <ToggleOption
+                                    label="Exclude Saved Routes"
+                                    description="Don't build over properties already in a saved route"
+                                    icon={<Layers className="w-4 h-4" />}
+                                    checked={routeConfig.excludeAssigned !== false}
+                                    onChange={(v) => setRouteConfig(prev => ({ ...prev, excludeAssigned: v }))}
+                                />
+
                                 {/* Include Callbacks */}
                                 <ToggleOption
                                     label="Include Callbacks"
