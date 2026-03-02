@@ -703,7 +703,19 @@ export default function RouteBuilderSettings({
                 <div className="absolute bottom-0 left-0 right-0 p-4 bg-[#0A0A0A] border-t border-gray-800">
                     <div className="flex gap-2">
                         <Button
-                            onClick={onGenerate}
+                            onClick={async () => {
+                                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+                                if (!isPaid && user?.has_generated_routes) {
+                                    window.location.href = '/Billing';
+                                    return;
+                                }
+                                
+                                onGenerate();
+                                
+                                if (!isPaid && !user?.has_generated_routes) {
+                                    try { await base44.auth.updateMe({ has_generated_routes: true }); } catch(e) {}
+                                }
+                            }}
                             disabled={routesGenerating}
                             className="flex-1 h-12 font-bold tracking-wide bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg"
                         >
