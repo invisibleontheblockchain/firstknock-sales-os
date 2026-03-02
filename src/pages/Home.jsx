@@ -1283,6 +1283,7 @@ export default function Home() {
                             toast.error("Failed to delete routes");
                         }
                     }}
+                    onReplaceRoutes={(newRoutes) => setRoutes(newRoutes)}
                     onClose={() => setShowRoutePanel(false)}
                     activeRouteId={activeRoute?.id}
                     streetCooldownDays={streetCooldownDays}
