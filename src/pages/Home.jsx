@@ -954,6 +954,7 @@ export default function Home() {
                     maxRouteDistance: maxRouteDistance > 0 ? maxRouteDistance : null,
                     walkingPattern: routeConfig.walkingPattern,
                     returnToStart: routeConfig.returnToStart,
+                    excludeTerminal: routeConfig.excludeTerminal,
                 }
             );
 
