@@ -73,10 +73,17 @@ export default function TerritorySetupWizard({ user, onComplete }) {
                 props = props.filter(p => p.lat && p.lng && !(Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001));
                 allProps = [...allProps, ...props];
             }
-            if (allProps.length === 0) { toast.error("No properties found. Try a different zip."); }
-            setFetchedProperties(allProps);
-            setStep(2);
-            toast.success(`Found ${allProps.length} properties!`);
+            if (allProps.length === 0) { 
+                toast.error("No properties found. Try a different zip."); 
+            } else {
+                setFetchedProperties(allProps);
+                setStep(2);
+                toast.success(`Found ${allProps.length} properties!`);
+            }
+
+            if (hitLimit && !isPaid) {
+                setTimeout(() => { window.location.href = '/Billing'; }, 2000);
+            }
         } catch (e) { toast.error("Sync failed: " + e.message); }
         finally { setLoading(false); }
     };
