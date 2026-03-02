@@ -1410,7 +1410,7 @@ export default function Home() {
                             const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zipCodeFilter, force_sync: true });
                             if (res.data.count > 0) {
                                 toast.success(`Synced ${res.data.count} new properties!`, { id: toastId });
-                                window.location.reload();
+                                queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
                             } else {
                                 toast.info(res.data.message || "Up to date", { id: toastId });
                             }
@@ -1422,7 +1422,7 @@ export default function Home() {
                         try {
                             const res = await base44.functions.invoke('cleanupDatabase', { action: 'cleanup', zip_code: zipCodeFilter });
                             toast.success(`Deleted ${res.data.deleted} properties`, { id: toastId });
-                            setTimeout(() => window.location.reload(), 1500);
+                            queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
                         } catch (e) { toast.error("Failed", { id: toastId }); }
                     }}
                     user={user}
