@@ -396,6 +396,7 @@ export default function RouteCommandPanel({
                                                 repColor="#666"
                                                 isActive={activeRouteId === route.id}
                                                 onSelect={() => onSelectRoute(route)}
+                                                onDelete={() => onDeleteRoute && onDeleteRoute(route)}
                                             />
                                         ))}
                                     </div>
