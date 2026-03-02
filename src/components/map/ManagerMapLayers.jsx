@@ -66,10 +66,11 @@ export default function ManagerMapLayers({
 }) {
     return (
         <>
-            {/* --- ANALYZE MODE: Existing Routes --- */}
+            {/* --- Existing Routes --- */}
             <LayerGroup>
-                {mode === 'analyze' && !activeRoute && zoomLevel >= 8 && hydratedSavedRoutes
+                {(mode === 'analyze' || mode === 'generate') && !activeRoute && zoomLevel >= 8 && hydratedSavedRoutes
                     .filter(route => {
+                        if (mode === 'generate') return true;
                         if (analyzeZipFilter === 'all') return true;
                         return route.properties.some(p => p.zip_code === analyzeZipFilter);
                     })
