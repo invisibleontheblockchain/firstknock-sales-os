@@ -156,7 +156,7 @@ export default function RouteCommandPanel({
                                             <div className="bg-gradient-to-br from-[#1A1A1A] to-[#0F0F0F] rounded-xl p-4 border border-yellow-900/30 relative overflow-hidden">
                                                 <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-3xl pointer-events-none" />
 
-                                                <div className="flex flex-col sm:flex-row items-start mb-4 gap-3">
+                                                <div className="flex flex-col mb-4 gap-3">
                                                     <div className="flex-1 min-w-0">
                                                         <h3 className="text-sm font-bold text-white flex items-center gap-2">
                                                             <BarChart3 className="w-4 h-4 text-yellow-500" />
@@ -166,7 +166,7 @@ export default function RouteCommandPanel({
                                                             {zipCodeFilter || 'All Areas'} • {housesPerRoute} homes/route
                                                         </p>
                                                     </div>
-                                                    <div className="ml-0 sm:ml-auto grid grid-cols-1 sm:grid-cols-3 gap-2 w-full sm:w-auto">
+                                                    <div className="grid grid-cols-3 gap-2 w-full">
                                                         {/* @ts-ignore */}
                                                         <Button
                                                             onClick={onAutoAssignAll}
