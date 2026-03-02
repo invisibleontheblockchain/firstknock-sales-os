@@ -25,7 +25,7 @@ export default function TerritorySetupWizard({ user, onComplete }) {
         
         // Front-end limit check (also enforced on backend)
         const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-        const zipLimit = isPaid ? (user?.total_seats || 1) * 10 : 3;
+        const zipLimit = isPaid ? 10 : 3;
         const zips = zipInput.split(',').map(z => z.trim()).filter(z => /^\d{5}$/.test(z));
         
         // Filter out zips that are already generated so we don't count them against the limit in the check
