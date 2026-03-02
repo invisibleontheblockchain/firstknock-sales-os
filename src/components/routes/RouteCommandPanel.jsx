@@ -257,6 +257,24 @@ export default function RouteCommandPanel({
                         {/* ACTIVE ROUTES TAB */}
                         {activeTab === 'active' && (
                             <>
+                                <div className="flex justify-between items-center mb-2 px-1">
+                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">All Campaigns</span>
+                                    {savedRoutes.length > 0 && (
+                                        <Button
+                                            onClick={() => {
+                                                if (confirm("Are you sure you want to delete ALL saved routes? This action cannot be undone.")) {
+                                                    onDeleteAllRoutes && onDeleteAllRoutes();
+                                                }
+                                            }}
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 text-[10px] text-red-500 hover:text-red-400 hover:bg-red-900/20 px-2"
+                                        >
+                                            <X className="w-3 h-3 mr-1" /> DELETE ALL
+                                        </Button>
+                                    )}
+                                </div>
+
                                 {/* In Progress */}
                                 {routesByStatus.IN_PROGRESS.length > 0 && (
                                     <RouteSection
