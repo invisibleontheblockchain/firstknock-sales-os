@@ -727,7 +727,7 @@ export default function Home() {
                 const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
 
                 const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                const zipLimit = isPaid ? (user?.total_seats || 1) * 10 : 3;
+                const zipLimit = isPaid ? 10 : 3;
                 const generatedZips = user?.generated_zip_codes || [];
                 const newZips = targetZips.filter(z => !generatedZips.includes(z));
 
