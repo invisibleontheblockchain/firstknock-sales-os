@@ -202,7 +202,11 @@ export default function RouteCommandPanel({
                                                                 const merged = generateOptimizedRoutes(allProps, allProps.length, null, [], { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest' });
                                                                 if (merged && merged.length > 0) {
                                                                     const big = { ...merged[0], id: 'route_merged', name: 'All-in-One Route' };
-                                                                    onSelectRoute(big);
+                                                                    if (onReplaceRoutes) {
+                                                                        onReplaceRoutes([big]);
+                                                                    } else {
+                                                                        onSelectRoute(big);
+                                                                    }
                                                                 }
                                                             }}
                                                             size="sm"
