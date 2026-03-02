@@ -445,7 +445,7 @@ function StatBox({ label, value, highlight = false, tooltip = undefined }) {
     );
 }
 
-function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRouteId, collapsed = false }) {
+function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRouteId, collapsed = false, onDeleteRoute }) {
     const [isExpanded, setIsExpanded] = useState(!collapsed);
 
     return (
@@ -467,6 +467,7 @@ function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRou
                     repColor={route.assigned_to ? repColors[route.assigned_to] : '#666'}
                     isActive={activeRouteId === route.id}
                     onSelect={() => onSelectRoute(route)}
+                    onDelete={() => onDeleteRoute && onDeleteRoute(route)}
                 />
             ))}
         </div>
