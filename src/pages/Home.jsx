@@ -1128,7 +1128,7 @@ export default function Home() {
                     }
                     attribution={mapTheme === 'satellite' || mapTheme === 'hybrid' ? '&copy; Esri' : '&copy; CARTO'}
                 />
-                {mapTheme === 'hybrid' && (
+                {(mapTheme === 'hybrid' || mapTheme === 'satellite') && (
                     <TileLayer
                         key={`basemap-labels-${mapTheme}`}
                         url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
