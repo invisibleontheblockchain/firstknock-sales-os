@@ -27,6 +27,7 @@ export default function RouteCommandPanel({
     onSelectRoute,
     onSaveRoute,
     onAutoAssignAll,
+    onDeleteAllRoutes,
     onClose,
     activeRouteId,
     streetCooldownDays = 30,
