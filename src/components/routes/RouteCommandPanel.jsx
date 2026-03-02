@@ -563,37 +563,48 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave 
     );
 }
 
-function SavedRouteCard({ route, repColor, isActive, onSelect }) {
+function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete }) {
     return (
-        <button
-            onClick={onSelect}
-            className="w-full p-3 rounded-xl border transition-all text-left hover:border-gray-600"
-            style={{
-                background: isActive ? `${BRAND.gold}15` : '#151515',
-                borderColor: isActive ? BRAND.gold : '#222',
-                borderLeftWidth: '3px',
-                borderLeftColor: repColor
-            }}
-        >
-            <div className="flex items-center justify-between">
-                <div>
-                    <span className="font-bold text-sm text-white block">{route.name}</span>
-                    {route.assigned_to_name && (
-                        <span className="text-[10px] text-gray-500">{route.assigned_to_name}</span>
-                    )}
+        <div className="relative group">
+            <button
+                onClick={onSelect}
+                className="w-full p-3 rounded-xl border transition-all text-left hover:border-gray-600"
+                style={{
+                    background: isActive ? `${BRAND.gold}15` : '#151515',
+                    borderColor: isActive ? BRAND.gold : '#222',
+                    borderLeftWidth: '3px',
+                    borderLeftColor: repColor
+                }}
+            >
+                <div className="flex items-center justify-between">
+                    <div>
+                        <span className="font-bold text-sm text-white block pr-6">{route.name}</span>
+                        {route.assigned_to_name && (
+                            <span className="text-[10px] text-gray-500">{route.assigned_to_name}</span>
+                        )}
+                    </div>
+                    <Badge variant="default" className="shrink-0" style={{
+                        background: route.status === 'COMPLETED' ? '#22c55e' :
+                            route.status === 'IN_PROGRESS' ? '#3b82f6' : '#333',
+                        color: '#fff'
+                    }}>
+                        {route.status}
+                    </Badge>
                 </div>
-                <Badge variant="default" className="shrink-0" style={{
-                    background: route.status === 'COMPLETED' ? '#22c55e' :
-                        route.status === 'IN_PROGRESS' ? '#3b82f6' : '#333',
-                    color: '#fff'
-                }}>
-                    {route.status}
-                </Badge>
-            </div>
-            <div className="flex gap-3 text-[10px] text-gray-600 mt-1">
-                <span>{route.houseCount || route.metrics?.house_count} doors</span>
-                <span>{route.competitivenessScore || route.metrics?.score || 0} score</span>
-            </div>
-        </button>
+                <div className="flex gap-3 text-[10px] text-gray-600 mt-1">
+                    <span>{route.houseCount || route.metrics?.house_count} doors</span>
+                    <span>{route.competitivenessScore || route.metrics?.score || 0} score</span>
+                </div>
+            </button>
+            {onDelete && (
+                <button
+                    onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                    className="absolute top-2 right-2 p-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-500 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Delete Route"
+                >
+                    <Trash2 className="w-3.5 h-3.5" />
+                </button>
+            )}
+        </div>
     );
 }
