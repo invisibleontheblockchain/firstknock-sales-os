@@ -119,8 +119,8 @@ export default function BetaUsageMeter({ className = '', showUpgrade = true }) {
                 </div>
             ) : (
                 <p className="text-[10px] mt-3 text-gray-600">
-                    {zipsRemaining > 0 || milesRemaining > 0
-                        ? `${zipsRemaining} zip(s) & ${Math.round(milesRemaining)} miles remaining on your plan.`
+                    {zipsRemaining > 0 || areasRemaining > 0
+                        ? `${zipsRemaining} zip(s) & ${areasRemaining} drawn area(s) remaining on your plan.`
                         : isPaid ? 'Need more limits? Add seats or contact support.' : ''
                     }
                 </p>
