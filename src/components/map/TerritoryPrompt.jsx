@@ -179,11 +179,11 @@ export default function TerritoryPrompt({
 
                                 // Get user subscription info
                                 const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                                const pullLimit = isPaid ? 20 : 3;
+                                const pullLimit = isPaid ? 10 : 3;
                                 const pullsUsed = user?.area_pulls_count || 0;
 
                                 if (pullsUsed >= pullLimit) {
-                                    toast.error(isPaid ? "You've reached your 20 area pulls limit." : "You've used your 3 free area pulls. Please upgrade.");
+                                    toast.error(isPaid ? "You've reached your 10 custom drawn areas limit." : "You've used your 3 free custom drawn areas. Please upgrade.");
                                     if (!isPaid) {
                                         setTimeout(() => { window.location.href = '/Billing'; }, 2000);
                                     }

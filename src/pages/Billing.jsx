@@ -11,46 +11,21 @@ import BetaUsageMeter from '../components/beta/BetaUsageMeter';
 
 const PLANS = [
   {
-    id: 'hustler',
-    name: 'Hustler',
+    id: 'pro',
+    name: 'FirstKnock Pro',
     price: 49,
     priceId: 'price_1SwDXY2MvSNi6E8hZb5nSRDw',
-    features: [
-      'Up to 3 Zip Code Territories',
-      'Unlimited Routes within your Zip Codes',
-      'Live GPS Tracking & Proof of Visit',
-      'Standard Support'
-    ]
-  },
-  {
-    id: 'growth',
-    name: 'Growth',
-    price: 99,
-    priceId: 'price_1SwDXY2MvSNi6E8hfhtK7rBc',
     isPopular: true,
     features: [
       'Up to 10 Zip Code Territories',
-      'Unlimited Routes within your Zip Codes',
+      'Up to 10 Custom Drawn Areas',
+      'Unlimited Routes within your Areas',
       'Live GPS Tracking & Proof of Visit',
       'AI Route Optimization',
       'Command Center Auto-Dispatch',
       'Team Leaderboard & Metrics',
       'Property Intel & History',
       'Priority Support'
-    ]
-  },
-  {
-    id: 'enterprise',
-    name: 'Enterprise',
-    price: 299,
-    priceId: 'price_1SwDXY2MvSNi6E8hbaKcsk0d',
-    features: [
-      'Unlimited Zip Code Territories',
-      'Unlimited Routes everywhere',
-      'All Growth Features',
-      'Dedicated Account Manager',
-      'Custom Integrations',
-      'Advanced Analytics'
     ]
   }
 ];
@@ -145,7 +120,7 @@ export default function Billing() {
         }
 
                 {/* Main Pricing Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 max-w-md mx-auto gap-6">
                     {PLANS.map((plan) => (
                         <div key={plan.id} className={`relative rounded-2xl p-6 border ${plan.isPopular ? 'border-yellow-500 bg-gray-900/80 shadow-[0_0_30px_rgba(255,215,0,0.1)]' : 'border-gray-800 bg-[#111]'} backdrop-blur-sm flex flex-col`}>
                             {plan.isPopular && (
