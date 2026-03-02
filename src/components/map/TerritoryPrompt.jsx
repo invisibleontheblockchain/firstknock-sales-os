@@ -178,19 +178,12 @@ export default function TerritoryPrompt({
                                 const areaSqMiles = Math.PI * (radius * radius);
 
                                 // Get user subscription info
-                                const isPaid = user?.subscription_status === 'active';
-                                const totalSeats = user?.total_seats || 1;
-                                const MILES_PER_SEAT = 200;
-                                const FREE_MILE_LIMIT = 40;
+                                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+                                const pullLimit = isPaid ? 20 : 3;
+                                const pullsUsed = user?.area_pulls_count || 0;
 
-                                const mileLimit = isPaid ? totalSeats * MILES_PER_SEAT : FREE_MILE_LIMIT;
-                                const milesUsed = user?.miles_pulled || 0;
-                                const milesRemaining = Math.max(0, mileLimit - milesUsed);
-
-                                // To equate "areaSqMiles" loosely to "linear miles" or just treat area as miles for the credit
-                                // The requirement says "40 miles of maximum free usage". We'll treat 1 sq mile = 1 mile used.
-                                if (areaSqMiles > milesRemaining) {
-                                    toast.error(`Area too large! This area is ~${Math.round(areaSqMiles)} sq miles. You only have ${Math.round(milesRemaining)} miles remaining.`);
+                                if (pullsUsed >= pullLimit) {
+                                    toast.error(isPaid ? "You've reached your 20 area pulls limit." : "You've used your 3 free area pulls. Please upgrade.");
                                     if (!isPaid) {
                                         setTimeout(() => { window.location.href = '/Billing'; }, 2000);
                                     }
