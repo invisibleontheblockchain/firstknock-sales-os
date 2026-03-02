@@ -271,9 +271,9 @@ export default function ManagerMapLayers({
                         if (soldDateFilter !== null) {
                             if (!p.sold_date) return false;
                             try {
-                                const date = parseISO(p.sold_date);
+                                const date = new Date(p.sold_date);
                                 const cutoff = subMonths(new Date(), soldDateFilter);
-                                if (!isAfter(date, cutoff)) return false;
+                                if (date < cutoff) return false;
                             } catch (e) { return false; }
                         }
                         if (quickFilter === 'all') return true;
