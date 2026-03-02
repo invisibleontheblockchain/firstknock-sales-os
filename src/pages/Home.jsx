@@ -1283,6 +1283,20 @@ export default function Home() {
                             toast.error("Failed to delete routes");
                         }
                     }}
+                    onDeleteRoute={async (route) => {
+                        if (confirm(`Delete route "${route.name}"?`)) {
+                            try {
+                                await base44.entities.SavedRoute.delete(route.id);
+                                queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+                                if (activeRoute && activeRoute.id === route.id) {
+                                    setActiveRoute(null);
+                                }
+                                toast.success("Route deleted");
+                            } catch (e) {
+                                toast.error("Failed to delete route");
+                            }
+                        }
+                    }}
                     onReplaceRoutes={(newRoutes) => setRoutes(newRoutes)}
                     onClose={() => setShowRoutePanel(false)}
                     activeRouteId={activeRoute?.id}
