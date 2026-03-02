@@ -28,6 +28,7 @@ export default function RouteCommandPanel({
     onSaveRoute,
     onAutoAssignAll,
     onDeleteAllRoutes,
+    onDeleteRoute,
     onReplaceRoutes,
     onClose,
     activeRouteId,
