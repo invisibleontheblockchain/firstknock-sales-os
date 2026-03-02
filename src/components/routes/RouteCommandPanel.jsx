@@ -92,7 +92,7 @@ export default function RouteCommandPanel({
                 </div>
 
                 {/* Tab Navigation */}
-                <div className="flex border-b px-4" style={{ borderColor: BRAND.charcoal }}>
+                <div className="flex border-b px-4 shrink-0" style={{ borderColor: BRAND.charcoal }}>
                     <button
                         onClick={() => setActiveTab('new')}
                         className={`flex-1 py-3 text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-2 ${activeTab === 'new'
