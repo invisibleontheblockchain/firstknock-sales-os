@@ -36,6 +36,9 @@ export default function TerritorySetupWizard({ user, onComplete }) {
             toast.error(isPaid 
                 ? `Limit reached (${zipLimit} zips). Add seats for more.` 
                 : `Free limit is 3 zips. Upgrade for more.`);
+            if (!isPaid) {
+                setTimeout(() => { window.location.href = '/Billing'; }, 2000);
+            }
             return;
         }
 
