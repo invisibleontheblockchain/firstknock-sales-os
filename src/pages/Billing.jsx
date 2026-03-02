@@ -14,7 +14,7 @@ const FLAT_PRICE = 49;
 
 const ALL_FEATURES = [
 'Up to 10 Zip Code Territories',
-'Advanced Route Builder & Management',
+'Unlimited Routes within your Zip Codes',
 'Live GPS Tracking & Proof of Visit',
 'AI Route Optimization',
 'Command Center Auto-Dispatch',
