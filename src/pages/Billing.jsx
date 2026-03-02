@@ -144,101 +144,53 @@ export default function Billing() {
                     </div>
         }
 
-                {/* Main Pricing Card */}
-                <div className="relative rounded-2xl p-6 sm:p-8 border border-yellow-500 bg-gray-900/80 backdrop-blur-sm shadow-[0_0_60px_rgba(255,215,0,0.1)]">
-                    
-                    <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-yellow-500 text-black text-xs font-bold px-4 py-1 rounded-full flex items-center gap-1 shadow-lg">
-                        <Star className="w-3 h-3 fill-black" />
-                        7-DAY FREE TRIAL
-                    </div>
-
-                    {/* Price Display */}
-                    <div className="text-center mb-8 mt-2">
-                        <div className="flex items-baseline justify-center gap-2">
-                            <span className="text-5xl font-extrabold text-white">${FLAT_PRICE}</span>
-                            <span className="text-gray-400 text-lg">/mo</span>
-                        </div>
-                        <p className="text-sm text-gray-500 mt-2">Flat rate. Unlimited team members.</p>
-                    </div>
-
-                    {/* Zip Code Limits Info */}
-                    <div className="bg-black/40 rounded-xl p-5 border border-gray-800 mb-6 text-center">
-                         <div className="grid grid-cols-2 gap-4 divide-x divide-gray-800">
-                            <div>
-                                <p className="text-xs text-gray-500 uppercase font-bold mb-1">Free Plan</p>
-                                <p className="text-xl font-bold text-white">3 Zip Codes</p>
-                                <p className="text-sm font-medium text-gray-400">3 Area Pulls</p>
-                            </div>
-                            <div>
-                                <p className="text-xs text-yellow-500 uppercase font-bold mb-1">Pro Plan</p>
-                                <p className="text-xl font-bold text-white">10 Zip Codes</p>
-                                <p className="text-sm font-medium text-gray-400">20 Area Pulls</p>
-                            </div>
-                         </div>
-                    </div>
-
-                    {/* Features */}
-                    <ul className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
-                        {ALL_FEATURES.map((feature, i) =>
-            <li key={i} className="flex items-center gap-3 text-sm text-gray-300">
-                                <div className="rounded-full p-1 bg-yellow-500/20 text-yellow-500 shrink-0">
-                                    <Check className="w-3 h-3" />
+                {/* Main Pricing Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {PLANS.map((plan) => (
+                        <div key={plan.id} className={`relative rounded-2xl p-6 border ${plan.isPopular ? 'border-yellow-500 bg-gray-900/80 shadow-[0_0_30px_rgba(255,215,0,0.1)]' : 'border-gray-800 bg-[#111]'} backdrop-blur-sm flex flex-col`}>
+                            {plan.isPopular && (
+                                <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-yellow-500 text-black text-xs font-bold px-4 py-1 rounded-full flex items-center gap-1 shadow-lg whitespace-nowrap">
+                                    <Star className="w-3 h-3 fill-black" />
+                                    MOST POPULAR
                                 </div>
-                                {feature}
-                            </li>
-            )}
-                    </ul>
+                            )}
 
-                    {/* CTA */}
-                    {!isSubscribed &&
-          <div className="flex flex-col gap-3">
-                            <Button
-              onClick={() => handleSubscribe(7)}
-              disabled={loadingPriceId !== null}
-              className="w-full h-14 font-bold text-lg tracking-wide bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg hover:shadow-yellow-500/20 transition-all rounded-xl">
-
-                                <PlayCircle className="w-5 h-5 mr-2" />
-                                {loadingPriceId === 'trial' ? 'PREPARING...' : `START 7-DAY FREE TRIAL`}
-                            </Button>
-                            
-                            <div className="relative flex py-2 items-center">
-                                <div className="flex-grow border-t border-gray-800"></div>
-                                <span className="flex-shrink-0 mx-4 text-xs text-gray-500 font-bold uppercase">or</span>
-                                <div className="flex-grow border-t border-gray-800"></div>
+                            <div className="text-center mb-6 mt-2">
+                                <h3 className="text-xl font-bold text-white mb-2">{plan.name}</h3>
+                                <div className="flex items-baseline justify-center gap-1">
+                                    <span className="text-4xl font-extrabold text-white">${plan.price}</span>
+                                    <span className="text-gray-400 text-sm">/mo</span>
+                                </div>
                             </div>
 
-                            <Button
-              onClick={() => handleSubscribe(0)}
-              disabled={loadingPriceId !== null}
-              variant="outline" className="bg-background text-gray-900 px-4 py-2 text-sm font-bold tracking-wide rounded-xl inline-flex items-center justify-center gap-2 whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 border shadow-sm hover:text-accent-foreground w-full h-12 border-gray-700 hover:bg-gray-800">
+                            <ul className="space-y-3 mb-8 flex-1">
+                                {plan.features.map((feature, i) => (
+                                    <li key={i} className="flex items-start gap-3 text-sm text-gray-300">
+                                        <div className={`rounded-full p-1 shrink-0 mt-0.5 ${plan.isPopular ? 'bg-yellow-500/20 text-yellow-500' : 'bg-gray-800 text-gray-400'}`}>
+                                            <Check className="w-3 h-3" />
+                                        </div>
+                                        <span>{feature}</span>
+                                    </li>
+                                ))}
+                            </ul>
 
-
-                                {loadingPriceId === 'now' ? 'PREPARING...' : `SKIP TRIAL & PAY $${FLAT_PRICE} NOW`}
-                            </Button>
+                            {!isSubscribed && (
+                                <div className="flex flex-col gap-3">
+                                    <Button
+                                        onClick={() => handleSubscribe(plan.priceId, plan.isPopular ? 7 : 0)}
+                                        disabled={loadingPriceId !== null}
+                                        className={`w-full h-12 font-bold tracking-wide rounded-xl transition-all ${
+                                            plan.isPopular 
+                                                ? 'bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg hover:shadow-yellow-500/20' 
+                                                : 'bg-white text-black hover:bg-gray-200'
+                                        }`}
+                                    >
+                                        {loadingPriceId === plan.priceId ? 'PREPARING...' : (plan.isPopular ? 'START 7-DAY FREE TRIAL' : 'SUBSCRIBE')}
+                                    </Button>
+                                </div>
+                            )}
                         </div>
-          }
-                    
-                    {!isSubscribed &&
-          <p className="text-center text-xs text-gray-500 mt-4">
-                            Secure payments via Stripe. Cancel anytime.
-                        </p>
-          }
-                </div>
-
-                {/* Enterprise Callout */}
-                <div className="bg-[#111] border border-gray-800 rounded-xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-full bg-blue-900/20 flex items-center justify-center text-blue-500">
-                            <Shield className="w-6 h-6" />
-                        </div>
-                        <div>
-                            <h3 className="font-bold text-white">Need more territories?</h3>
-                            <p className="text-sm text-gray-400">Contact us for custom enterprise pricing with higher limits.</p>
-                        </div>
-                    </div>
-                    <Button variant="outline" className="border-gray-700 text-white hover:bg-gray-800">
-                        Contact Sales
-                    </Button>
+                    ))}
                 </div>
 
                 <div className="text-center text-xs text-gray-600">
