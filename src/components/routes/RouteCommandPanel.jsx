@@ -290,6 +290,7 @@ export default function RouteCommandPanel({
                                         repColors={repColors}
                                         onSelectRoute={onSelectRoute}
                                         activeRouteId={activeRouteId}
+                                        onDeleteRoute={onDeleteRoute}
                                     />
                                 )}
 
@@ -302,6 +303,7 @@ export default function RouteCommandPanel({
                                         repColors={repColors}
                                         onSelectRoute={onSelectRoute}
                                         activeRouteId={activeRouteId}
+                                        onDeleteRoute={onDeleteRoute}
                                     />
                                 )}
 
@@ -314,6 +316,7 @@ export default function RouteCommandPanel({
                                         repColors={repColors}
                                         onSelectRoute={onSelectRoute}
                                         activeRouteId={activeRouteId}
+                                        onDeleteRoute={onDeleteRoute}
                                     />
                                 )}
 
@@ -327,6 +330,7 @@ export default function RouteCommandPanel({
                                         onSelectRoute={onSelectRoute}
                                         activeRouteId={activeRouteId}
                                         collapsed
+                                        onDeleteRoute={onDeleteRoute}
                                     />
                                 )}
 
