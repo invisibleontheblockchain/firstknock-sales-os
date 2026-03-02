@@ -831,14 +831,15 @@ export default function Home() {
                     effective_status: determineEffectiveStatus(p, propLogs)
                 };
             }).filter(p =>
-                !assignedSet.has(p.address_hash) &&
+                (routeConfig.excludeAssigned === false || !assignedSet.has(p.address_hash)) &&
                 p.lat && p.lng &&
                 !(Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001)
             );
 
             // Merge with existing availableProperties, deduping by address_hash
             const combinedMap = new Map();
-            availableProperties.forEach(p => combinedMap.set(p.address_hash, p));
+            const baseProps = routeConfig.excludeAssigned === false ? effectiveProperties : availableProperties;
+            baseProps.forEach(p => combinedMap.set(p.address_hash, p));
             processedDynamic.forEach(p => combinedMap.set(p.address_hash, p));
 
             let workingSet = Array.from(combinedMap.values());
