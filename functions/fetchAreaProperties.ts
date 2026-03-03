@@ -95,52 +95,82 @@ Deno.serve(async (req) => {
         // Increase the cap since we are only pulling high-value targets now
         const maxItems = isOwner ? 50000 : 10000; 
 
-        while (allProperties.length < maxItems) {
-            const params = new URLSearchParams({
-                latitude: String(latitude),
-                longitude: String(longitude),
-                radius: String(radius),
-                limit: String(limit),
-                offset: String(offset),
-                saleDateRange: '0:1095', // ONLY homes sold in the last 3 years (Golden Doors)
-                propertyType: 'Single Family,Townhouse,Multi-Family', // Exclude land, commercial, etc.
-                includeTotalCount: 'true',
-            });
+        // First request to get total count
+        const initialParams = new URLSearchParams({
+            latitude: String(latitude),
+            longitude: String(longitude),
+            radius: String(radius),
+            limit: String(limit),
+            offset: String(offset),
+            saleDateRange: '0:1095', // ONLY homes sold in the last 3 years (Golden Doors)
+            propertyType: 'Single Family,Townhouse,Multi-Family', // Exclude land, commercial, etc.
+            includeTotalCount: 'true',
+        });
 
-            const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
-            console.log(`[FetchArea - Optimized Recent Sales] Request ${requestCount + 1}: offset=${offset}`);
+        const initialUrl = `${RENTCAST_BASE}/properties?${initialParams.toString()}`;
+        console.log(`[FetchArea - Optimized Recent Sales] Initial Request: offset=${offset}`);
 
-            const response = await fetch(url, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
+        const initialResponse = await fetch(initialUrl, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
 
-            if (!response.ok) {
-                const errText = await response.text();
-                console.error(`[FetchArea] RentCast error ${response.status}: ${errText}`);
-                if (response.status === 429) break;
-                if (requestCount === 0) return Response.json({ error: `RentCast API error: ${response.status}` }, { status: 500 });
-                break;
+        if (!initialResponse.ok) {
+            const errText = await initialResponse.text();
+            console.error(`[FetchArea] RentCast error ${initialResponse.status}: ${errText}`);
+            return Response.json({ error: `RentCast API error: ${initialResponse.status}` }, { status: 500 });
+        }
+
+        const totalHeader = initialResponse.headers.get('X-Total-Count');
+        if (totalHeader) reportedTotal = parseInt(totalHeader, 10);
+
+        const initialData = await initialResponse.json();
+        const initialBatch = Array.isArray(initialData) ? initialData : [];
+        allProperties.push(...initialBatch);
+        requestCount++;
+        offset += limit;
+
+        const targetTotal = Math.min(reportedTotal || maxItems, maxItems);
+
+        // Parallelize remaining requests to prevent timeouts on large areas
+        if (initialBatch.length === limit && offset < targetTotal) {
+            const fetchPromises = [];
+            while (offset < targetTotal && requestCount < (isOwner ? 100 : 20)) {
+                const params = new URLSearchParams({
+                    latitude: String(latitude),
+                    longitude: String(longitude),
+                    radius: String(radius),
+                    limit: String(limit),
+                    offset: String(offset),
+                    saleDateRange: '0:1095',
+                    propertyType: 'Single Family,Townhouse,Multi-Family',
+                });
+                const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
+                
+                fetchPromises.push(
+                    fetch(url, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } })
+                        .then(res => res.ok ? res.json() : [])
+                        .catch(err => {
+                            console.error(`[FetchArea] Parallel fetch error:`, err.message);
+                            return [];
+                        })
+                );
+                
+                offset += limit;
+                requestCount++;
             }
 
-            if (!reportedTotal) {
-                const totalHeader = response.headers.get('X-Total-Count');
-                if (totalHeader) reportedTotal = parseInt(totalHeader, 10);
-            }
-
-            const data = await response.json();
-            const batch = Array.isArray(data) ? data : [];
-            allProperties.push(...batch);
-            requestCount++;
-
-            if (batch.length < limit) break;
-            offset += limit;
+            console.log(`[FetchArea] Firing ${fetchPromises.length} parallel requests...`);
             
-            // Safety cap on API calls per request: Owner=100 (50k max), Paid=20 (10k max)
-            if (requestCount >= (isOwner ? 100 : 20)) {
-                console.warn('[FetchArea] Reached total combined page safety cap.'); 
-                break; 
-            }
-            if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-                console.warn('[FetchArea] Execution time limit approaching, breaking early.');
-                break;
+            // Execute in chunks of 5 to avoid rate limits
+            for (let i = 0; i < fetchPromises.length; i += 5) {
+                const chunk = fetchPromises.slice(i, i + 5);
+                const results = await Promise.all(chunk);
+                for (const data of results) {
+                    const batch = Array.isArray(data) ? data : [];
+                    allProperties.push(...batch);
+                }
+                if (Date.now() - startTime > MAX_EXECUTION_TIME) {
+                    console.warn('[FetchArea] Execution time limit approaching, breaking early.');
+                    break;
+                }
             }
         }
 
