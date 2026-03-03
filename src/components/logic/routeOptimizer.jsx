@@ -30,6 +30,13 @@ function calculateDistanceSquaredFast(lat1, lng1, lat2, lng2) {
     return x * x + y * y;
 }
 
+// Fast approximate distance for routing comparisons
+function calculateDistanceFast(lat1, lng1, lat2, lng2) {
+    const x = (lng2 - lng1) * Math.cos((lat1 + lat2) / 2 * Math.PI / 180);
+    const y = lat2 - lat1;
+    return Math.sqrt(x * x + y * y) * 69; // rough miles
+}
+
 /**
  * Advanced Property Scoring Engine 3.0
  * Factors: Equity, Recent Sales (Activity), Property Type, Contact Frequency
