@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
         console.log(`[FetchArea] Fetching from RentCast for lat:${latitude}, lng:${longitude}, r:${radius}`);
 
         const startTime = Date.now();
-        const MAX_EXECUTION_TIME = 45000; // 45 seconds to avoid timeout
+        const MAX_EXECUTION_TIME = 55000; // 55 seconds to avoid timeout
 
         const allProperties = [];
         
