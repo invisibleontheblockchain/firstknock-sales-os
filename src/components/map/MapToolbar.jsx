@@ -44,6 +44,10 @@ export default function MapToolbar({
 
     // Brand
     BRAND,
+
+    // Route Filter
+    activeRouteSoldFilter,
+    setActiveRouteSoldFilter,
 }) {
     return (
         <>
