@@ -142,8 +142,8 @@ Deno.serve(async (req) => {
                         limit: String(limit),
                         offset: String(currentOffset),
                         saleDateRange: '0:1095',
-                        propertyType: 'Single Family,Townhouse,Multi-Family',
-                    });
+                        // Removed propertyType filter to ensure we capture ALL residential real estate (Condos, Mobiles, etc.)
+                        });
                     const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
                     try {
                         const res = await fetch(url, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
