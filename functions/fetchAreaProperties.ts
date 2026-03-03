@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
                         radius: String(radius),
                         limit: String(limit),
                         offset: String(currentOffset),
-                        saleDateRange: '0:1095',
+                        // Removed saleDateRange filter to pull ALL properties, not just recent sales
                         // Removed propertyType filter to ensure we capture ALL residential real estate (Condos, Mobiles, etc.)
                         });
                     const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
