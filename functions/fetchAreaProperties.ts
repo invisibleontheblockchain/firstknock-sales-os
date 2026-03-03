@@ -79,6 +79,9 @@ Deno.serve(async (req) => {
 
         console.log(`[FetchArea] Fetching from RentCast for lat:${latitude}, lng:${longitude}, r:${radius}`);
 
+        const startTime = Date.now();
+        const MAX_EXECUTION_TIME = 45000; // 45 seconds to avoid timeout
+
         const allProperties = [];
         // Pass 1: Fetch Golden Doors (Recent Sales in last 365 days)
         let requestCount = 0;
@@ -124,6 +127,10 @@ Deno.serve(async (req) => {
             if (batch.length < pass1Limit) break;
             pass1Offset += pass1Limit;
             if (requestCount >= (isOwner ? 40 : 10)) break; // Max pages for Pass 1
+            if (Date.now() - startTime > MAX_EXECUTION_TIME) {
+                console.warn('[FetchArea] Execution time limit approaching in Pass 1, breaking early.');
+                break;
+            }
         }
 
         console.log(`[FetchArea Phase 1] Finished. Found ${allProperties.length} recently sold properties.`);
@@ -167,6 +174,10 @@ Deno.serve(async (req) => {
             if (batch.length < currentLimit) break; // Use original batch length to check if API exhausted
             pass2Offset += currentLimit;
             if (requestCount >= (isOwner ? 200 : 25)) { console.warn('[FetchArea] Reached total combined page safety cap.'); break; }
+            if (Date.now() - startTime > MAX_EXECUTION_TIME) {
+                console.warn('[FetchArea] Execution time limit approaching in Pass 2, breaking early.');
+                break;
+            }
         }
 
         console.log(`[FetchArea] Combined Total: ${allProperties.length} properties before polygon check.`);
@@ -281,7 +292,7 @@ Deno.serve(async (req) => {
         // Bulk insert new properties
         let successCount = 0;
         if (newMapped.length > 0) {
-            const CHUNK_SIZE = 100;
+            const CHUNK_SIZE = 500; // Increased chunk size for faster inserts
             for (let i = 0; i < newMapped.length; i += CHUNK_SIZE) {
                 const chunk = newMapped.slice(i, i + CHUNK_SIZE);
                 try {
@@ -289,8 +300,8 @@ Deno.serve(async (req) => {
                     successCount += chunk.length;
                 } catch (e) {
                     console.error(`[FetchArea] Chunk import failed, trying small chunks:`, e.message);
-                    // Minimal fallback: try chunks of 10
-                    const SMALL_CHUNK = 10;
+                    // Minimal fallback: try chunks of 50
+                    const SMALL_CHUNK = 50;
                     for (let j = 0; j < chunk.length; j += SMALL_CHUNK) {
                         const small = chunk.slice(j, j + SMALL_CHUNK);
                         try {
@@ -301,6 +312,11 @@ Deno.serve(async (req) => {
                             console.warn(`[FetchArea] Small chunk failed, skipping`);
                         }
                     }
+                }
+                
+                if (Date.now() - startTime > MAX_EXECUTION_TIME + 10000) {
+                    console.warn('[FetchArea] Execution time limit approaching during DB inserts, breaking early.');
+                    break;
                 }
             }
         }

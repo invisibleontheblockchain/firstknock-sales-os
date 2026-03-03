@@ -30,6 +30,10 @@ export default function TerritoryPrompt({
     const [pulling, setPulling] = useState(false);
     const [pullProgress, setPullProgress] = useState('');
 
+    const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+    const isOwner = user?.is_owner === true || user?.email?.toLowerCase() === 'christian@nativapest.com' || user?.email?.toLowerCase() === 'christian@nativapes.com';
+    const canUseLargeAreas = isPaid || isOwner;
+
     if (mode !== 'generate' || activeRoute || routesGenerating || showCompare || showRoutePanel) return null;
 
     return (
@@ -90,7 +94,14 @@ export default function TerritoryPrompt({
 
                             <select
                                 value={drawSizeMiles || 10}
-                                onChange={(e) => setDrawSizeMiles(Number(e.target.value))}
+                                onChange={(e) => {
+                                    const val = Number(e.target.value);
+                                    if ((val === 100 || val === 200) && !canUseLargeAreas) {
+                                        toast.error("100 and 200 sq miles are only available on the Pro plan.");
+                                        return;
+                                    }
+                                    setDrawSizeMiles(val);
+                                }}
                                 className="bg-gray-900 border border-gray-700 text-white text-xs rounded-md px-2 py-1 h-8"
                             >
                                 <option value={1}>1 sq mile</option>
@@ -99,8 +110,17 @@ export default function TerritoryPrompt({
                                 <option value={20}>20 sq miles</option>
                                 <option value={30}>30 sq miles</option>
                                 <option value={40}>40 sq miles</option>
-                                <option value={100}>100 sq miles</option>
-                                <option value={200}>200 sq miles (Max)</option>
+                                {canUseLargeAreas ? (
+                                    <>
+                                        <option value={100}>100 sq miles</option>
+                                        <option value={200}>200 sq miles (Max)</option>
+                                    </>
+                                ) : (
+                                    <>
+                                        <option value={100} disabled>100 sq miles (Pro)</option>
+                                        <option value={200} disabled>200 sq miles (Pro)</option>
+                                    </>
+                                )}
                             </select>
                         </div>
                         <div className="flex gap-2">
