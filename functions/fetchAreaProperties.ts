@@ -131,37 +131,38 @@ Deno.serve(async (req) => {
 
         // Parallelize remaining requests to prevent timeouts on large areas
         if (initialBatch.length === limit && offset < targetTotal) {
-            const fetchPromises = [];
+            const fetchTasks = [];
             while (offset < targetTotal && requestCount < (isOwner ? 100 : 20)) {
-                const params = new URLSearchParams({
-                    latitude: String(latitude),
-                    longitude: String(longitude),
-                    radius: String(radius),
-                    limit: String(limit),
-                    offset: String(offset),
-                    saleDateRange: '0:1095',
-                    propertyType: 'Single Family,Townhouse,Multi-Family',
+                const currentOffset = offset;
+                fetchTasks.push(async () => {
+                    const params = new URLSearchParams({
+                        latitude: String(latitude),
+                        longitude: String(longitude),
+                        radius: String(radius),
+                        limit: String(limit),
+                        offset: String(currentOffset),
+                        saleDateRange: '0:1095',
+                        propertyType: 'Single Family,Townhouse,Multi-Family',
+                    });
+                    const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
+                    try {
+                        const res = await fetch(url, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
+                        return res.ok ? await res.json() : [];
+                    } catch (err) {
+                        console.error(`[FetchArea] Parallel fetch error:`, err.message);
+                        return [];
+                    }
                 });
-                const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
-                
-                fetchPromises.push(
-                    fetch(url, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } })
-                        .then(res => res.ok ? res.json() : [])
-                        .catch(err => {
-                            console.error(`[FetchArea] Parallel fetch error:`, err.message);
-                            return [];
-                        })
-                );
                 
                 offset += limit;
                 requestCount++;
             }
 
-            console.log(`[FetchArea] Firing ${fetchPromises.length} parallel requests...`);
+            console.log(`[FetchArea] Firing ${fetchTasks.length} parallel requests in chunks...`);
             
-            // Execute in chunks of 5 to avoid rate limits
-            for (let i = 0; i < fetchPromises.length; i += 5) {
-                const chunk = fetchPromises.slice(i, i + 5);
+            // Execute in chunks of 5 to avoid rate limits and memory spikes
+            for (let i = 0; i < fetchTasks.length; i += 5) {
+                const chunk = fetchTasks.slice(i, i + 5).map(task => task());
                 const results = await Promise.all(chunk);
                 for (const data of results) {
                     const batch = Array.isArray(data) ? data : [];
