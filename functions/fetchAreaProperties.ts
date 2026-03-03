@@ -123,7 +123,7 @@ Deno.serve(async (req) => {
 
             if (batch.length < pass1Limit) break;
             pass1Offset += pass1Limit;
-            if (requestCount >= 10) break; // Max 10 pages for Pass 1
+            if (requestCount >= (isOwner ? 40 : 10)) break; // Max pages for Pass 1
         }
 
         console.log(`[FetchArea Phase 1] Finished. Found ${allProperties.length} recently sold properties.`);
@@ -131,7 +131,7 @@ Deno.serve(async (req) => {
         // Pass 2: Fetch Density (General Properties) to fill the rest of the limit
         let pass2Offset = 0;
         const pass2Limit = 500;
-        const maxTotalItems = 10000; // Total upper limit for the entire pull
+        const maxTotalItems = isOwner ? 100000 : 10000; // Total upper limit for the entire pull
 
         while (allProperties.length < maxTotalItems) {
             const currentLimit = Math.min(pass2Limit, maxTotalItems - allProperties.length);
