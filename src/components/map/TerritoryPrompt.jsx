@@ -31,7 +31,7 @@ export default function TerritoryPrompt({
     const [pullProgress, setPullProgress] = useState('');
 
     const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-    const isOwner = user?.is_owner === true || user?.email?.toLowerCase() === 'christian@nativapest.com' || user?.email?.toLowerCase() === 'christian@nativapes.com';
+    const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
     const canUseLargeAreas = isPaid || isOwner;
 
     if (mode !== 'generate' || activeRoute || routesGenerating || showCompare || showRoutePanel) return null;
