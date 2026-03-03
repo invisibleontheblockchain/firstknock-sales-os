@@ -85,7 +85,7 @@ export default function RouteBuilderSettings({
                 setMaxRouteDistance(8); // Increased distance to allow connecting sparse recent sales without breaking
                 setStreetCooldownDays(14);
                 setMinScore(20);
-                setSoldDateFilter(12); // Past 12 months
+                setSoldDateFilter(24); // Past 24 months (expanded to capture more homes)
                 setSortBy('recent_sale');
                 setRouteConfig(prev => ({ ...prev, walkingPattern: 'recent_sale_first', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
                 toast.success("FirstKnock Best applied!");
