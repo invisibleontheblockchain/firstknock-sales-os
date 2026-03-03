@@ -78,17 +78,17 @@ export default function RouteBuilderSettings({
             id: 'best',
             name: 'FirstKnock Best',
             icon: <Zap className="w-4 h-4" />,
-            desc: 'Ultra-optimized for newest homeowners with high expendable capital. Focuses on recent sales and high property values.',
-            criteria: 'Past 6mo sales, $300k+ value, 60 doors',
+            desc: 'Balanced mix of hot leads and easy walking. Hits dense pockets of eligible homes.',
+            criteria: '60 doors, Street Sweep, Smart Score',
             apply: () => {
                 setHousesPerRoute(60);
                 setMaxRouteDistance(5);
-                setStreetCooldownDays(14);
+                setStreetCooldownDays(30);
                 setMinScore(50);
-                setSoldDateFilter(6); // Filter for past 6 months
-                setSortBy('recent_sale');
-                setRouteConfig(prev => ({ ...prev, walkingPattern: 'recent_sale_first', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, minPrice: 300000, maxPrice: null, propertyTypes: [] }));
-                toast.success("FirstKnock Best (Juiced) applied!");
+                setSoldDateFilter(null); // Remove strict date filter to maintain density
+                setSortBy('score');
+                setRouteConfig(prev => ({ ...prev, walkingPattern: 'street_sweep', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
+                toast.success("FirstKnock Best applied!");
             }
         },
         {
