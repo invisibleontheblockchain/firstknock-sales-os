@@ -1069,13 +1069,13 @@ export default function Home() {
     }, [routes]);
 
     const fitBounds = useMemo(() => {
-        if (activeRoute?.properties?.length > 0) {
-            return activeRoute.properties
+        if (filteredActiveRoute?.properties?.length > 0) {
+            return filteredActiveRoute.properties
                 .filter(p => p && p.lat !== undefined && p.lng !== undefined)
                 .map(p => [p.lat, p.lng]);
         }
         return null;
-    }, [activeRoute]);
+    }, [filteredActiveRoute]);
 
     // Initial Fit Effect
     const hasCenteredRef = useRef(false);
