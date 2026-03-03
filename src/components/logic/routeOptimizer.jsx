@@ -199,12 +199,12 @@ function apply2Opt(route) {
                 const p4 = route[j + 1];
 
                 // Current distance: p1->p2 + p3->p4
-                const currentDist = calculateDistance(p1.lat, p1.lng, p2.lat, p2.lng) +
-                    calculateDistance(p3.lat, p3.lng, p4.lat, p4.lng);
+                const currentDist = calculateDistanceFast(p1.lat, p1.lng, p2.lat, p2.lng) +
+                    calculateDistanceFast(p3.lat, p3.lng, p4.lat, p4.lng);
 
                 // New distance if swapped: p1->p3 + p2->p4 (reversing the segment p2...p3)
-                const newDist = calculateDistance(p1.lat, p1.lng, p3.lat, p3.lng) +
-                    calculateDistance(p2.lat, p2.lng, p4.lat, p4.lng);
+                const newDist = calculateDistanceFast(p1.lat, p1.lng, p3.lat, p3.lng) +
+                    calculateDistanceFast(p2.lat, p2.lng, p4.lat, p4.lng);
 
                 if (newDist < currentDist) {
                     // Reverse the segment from i+1 to j
