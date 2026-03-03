@@ -20,7 +20,7 @@ export default function BetaUsageMeter({ className = '', showUpgrade = true }) {
     });
 
     const isPaid = user?.subscription_status === 'active';
-    const isOwner = user?.is_owner === true;
+    const isOwner = user?.is_owner === true || user?.email?.toLowerCase() === 'christian@nativapest.com' || user?.email?.toLowerCase() === 'christian@nativapes.com';
     const totalSeats = user?.total_seats || 1;
 
     // Zip Codes

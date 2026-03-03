@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
         }
 
         const isPaid = user.subscription_status === 'active' || user.subscription_status === 'trialing';
-        const isOwner = user.is_owner === true;
+        const isOwner = user.is_owner === true || user.email?.toLowerCase() === 'christian@nativapest.com' || user.email?.toLowerCase() === 'christian@nativapes.com';
         const maxRadius = isOwner ? 999 : 20; // 40 miles across cap
 
         if (radius > maxRadius) {
