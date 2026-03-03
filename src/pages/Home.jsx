@@ -1582,7 +1582,7 @@ export default function Home() {
             />
 
             {/* Route Checklist */}
-            {showChecklist && activeRoute && (
+            {showChecklist && filteredActiveRoute && (
                 <div className="fixed inset-0 z-[2000]">
                     <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowChecklist(false)} />
                     <div
@@ -1590,11 +1590,13 @@ export default function Home() {
                         style={{ background: 'transparent' }}
                     >
                         <RouteChecklist
-                            route={activeRoute}
+                            route={filteredActiveRoute}
                             logs={logs}
                             onLogResult={handleLogResult}
                             onClose={() => setShowChecklist(false)}
                             navigationApp={navigationApp}
+                            activeRouteSoldFilter={activeRouteSoldFilter}
+                            setActiveRouteSoldFilter={setActiveRouteSoldFilter}
                         />
                     </div>
                 </div>
