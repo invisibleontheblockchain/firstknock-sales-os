@@ -1290,7 +1290,7 @@ export default function Home() {
             <MapToolbar
                 mode={mode}
                 setMode={setMode}
-                activeRoute={activeRoute}
+                activeRoute={filteredActiveRoute}
                 setActiveRoute={setActiveRoute}
                 routesGenerating={routesGenerating}
                 setShowDashboard={setShowDashboard}
@@ -1309,11 +1309,13 @@ export default function Home() {
                 setUserLocation={setUserLocation}
                 handleAssignRoute={handleAssignRoute}
                 BRAND={BRAND}
+                activeRouteSoldFilter={activeRouteSoldFilter}
+                setActiveRouteSoldFilter={setActiveRouteSoldFilter}
             />
 
             <TerritoryPrompt
                 mode={mode}
-                activeRoute={activeRoute}
+                activeRoute={filteredActiveRoute}
                 routesGenerating={routesGenerating}
                 showCompare={showCompare}
                 setShowCompare={setShowCompare}
