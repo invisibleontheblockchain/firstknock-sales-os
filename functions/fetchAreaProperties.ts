@@ -103,7 +103,7 @@ Deno.serve(async (req) => {
             limit: String(limit),
             offset: String(offset),
             saleDateRange: '0:1095', // Last 3 years
-            propertyType: 'Single Family,Condo,Townhouse,Multi-Family',
+            propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
             includeTotalCount: 'true',
         });
 
@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
                         limit: String(limit),
                         offset: String(currentOffset),
                         saleDateRange: '0:1095', // Last 3 years
-                        propertyType: 'Single Family,Condo,Townhouse,Multi-Family',
+                        propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
                         });
                     const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
                     try {
