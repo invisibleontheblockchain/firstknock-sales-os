@@ -103,7 +103,7 @@ Deno.serve(async (req) => {
             limit: String(limit),
             offset: String(offset),
             saleDateRange: '0:1095', // ONLY homes sold in the last 3 years (Golden Doors)
-            propertyType: 'Single Family,Townhouse,Multi-Family', // Exclude land, commercial, etc.
+            // Removed propertyType filter to ensure we capture ALL residential real estate (Condos, Mobiles, etc.)
             includeTotalCount: 'true',
         });
 
