@@ -201,7 +201,7 @@ export default function TerritoryPrompt({
 
                                 // Get user subscription info
                                 const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                                const isOwner = user?.is_owner === true || user?.email?.toLowerCase() === 'christian@nativapest.com' || user?.email?.toLowerCase() === 'christian@nativapes.com';
+                                const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
                                 const pullLimit = isOwner ? 999 : (isPaid ? 10 : 3);
                                 const pullsUsed = user?.area_pulls_count || 0;
 
