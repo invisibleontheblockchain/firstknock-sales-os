@@ -98,7 +98,9 @@ export default function TerritoryPrompt({
                                 <option value={10}>10 sq miles</option>
                                 <option value={20}>20 sq miles</option>
                                 <option value={30}>30 sq miles</option>
-                                <option value={40}>40 sq miles (Max)</option>
+                                <option value={40}>40 sq miles</option>
+                                <option value={100}>100 sq miles</option>
+                                <option value={200}>200 sq miles (Max)</option>
                             </select>
                         </div>
                         <div className="flex gap-2">
