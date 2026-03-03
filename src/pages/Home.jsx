@@ -774,7 +774,8 @@ export default function Home() {
                 const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
 
                 const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                const zipLimit = isPaid ? 10 : 3;
+                const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
+                const zipLimit = isOwner ? 999 : (isPaid ? 10 : 3);
                 const generatedZips = user?.generated_zip_codes || [];
                 const newZips = targetZips.filter(z => !generatedZips.includes(z));
 
