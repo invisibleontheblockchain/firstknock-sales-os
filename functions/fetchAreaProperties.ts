@@ -82,18 +82,123 @@ Deno.serve(async (req) => {
         const startTime = Date.now();
         const MAX_EXECUTION_TIME = 55000; // 55 seconds to avoid timeout
 
-        const allProperties = [];
-        
-        // OPTIMIZATION: Only fetch Golden Doors (Recent Sales in last 3 years)
-        // This drastically cuts down RentCast API calls/costs while perfectly aligning 
-        // with the FirstKnock Best algorithm thesis of targeting qualified new homebuyers.
+        // OPTIMIZATION: Process in batches to prevent memory crashes on large areas
         let requestCount = 0;
         let reportedTotal = 0;
         let offset = 0;
         const limit = 500;
+        const maxItems = 100000; 
+
+        // Tracking stats
+        let successCount = 0;
+        let totalFound = 0;
+        let inPolygonCount = 0;
+        let mappedCount = 0;
+        let recentSales12moCount = 0;
+        let droppedNoAddressCount = 0;
         
-        // Increase the cap since we are only pulling high-value targets now
-        const maxItems = 100000; // Removed strict cap to get all properties in the last 3 years
+        // Global caches for deduplication across batches
+        const uniqueZips = new Set();
+        const existingHashes = new Set();
+
+        // Helper to process a batch of properties
+        const processBatch = async (batch) => {
+            if (!batch || batch.length === 0) return;
+            totalFound += batch.length;
+
+            // Filter by exact polygon if provided
+            let filteredProperties = batch;
+            if (polygon && polygon.length >= 3) {
+                filteredProperties = batch.filter(p => {
+                    if (!p.latitude || !p.longitude) return false;
+                    return isPointInPolygon({ lat: p.latitude, lng: p.longitude }, polygon);
+                });
+            }
+            inPolygonCount += filteredProperties.length;
+
+            const twelveMonthsAgo = new Date();
+            twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
+            recentSales12moCount += filteredProperties.reduce((acc, p) => {
+                if (p.lastSaleDate) {
+                    const d = new Date(p.lastSaleDate);
+                    if (!isNaN(d) && d > twelveMonthsAgo) return acc + 1;
+                }
+                return acc;
+            }, 0);
+
+            droppedNoAddressCount += filteredProperties.filter(p => !(p.addressLine1 || p.formattedAddress) || !p.latitude || !p.longitude).length;
+
+            // Map to schema
+            const mapped = filteredProperties
+                .filter(p => p.latitude && p.longitude && (p.addressLine1 || p.formattedAddress))
+                .map(p => {
+                    const addressLine = p.addressLine1 || (p.formattedAddress ? p.formattedAddress.split(',')[0] : "");
+                    const addressMatch = (addressLine).match(/^(\d+)\s+(.*)$/);
+                    const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
+                    const street_name = addressMatch ? addressMatch[2] : (addressLine || "Unknown");
+                    let original_status = 'ELIGIBLE';
+                    if (p.lastSaleDate) {
+                        const saleDate = new Date(p.lastSaleDate);
+                        const oneYearAgo = new Date();
+                        oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                        if (saleDate > oneYearAgo) original_status = 'SOLD';
+                    }
+                    const pZip = p.zipCode || '00000';
+                    return {
+                        address_hash: p.id || `${p.addressLine1}-${pZip}`,
+                        house_number, street_name,
+                        full_address: p.formattedAddress || p.addressLine1,
+                        city: p.city || '', state: p.state || '', zip_code: pZip,
+                        lat: p.latitude, lng: p.longitude, original_status,
+                        beds: p.bedrooms || 0, baths: p.bathrooms || 0,
+                        sqft: p.squareFootage || 0, lot_size: p.lotSize || 0,
+                        year_built: p.yearBuilt || 0, price: p.lastSalePrice || 0,
+                        sold_date: p.lastSaleDate || null, sale_type: 'Market',
+                        property_type: p.propertyType || 'Single Family',
+                        mls_id: p.assessorID || null, url: null
+                    };
+                });
+
+            mappedCount += mapped.length;
+            if (mapped.length === 0) return;
+
+            // Deduplicate against database
+            const batchZips = [...new Set(mapped.map(p => p.zip_code))];
+            const newZipsToFetch = batchZips.filter(z => !uniqueZips.has(z));
+            
+            for (const zip of newZipsToFetch) {
+                uniqueZips.add(zip);
+                try {
+                    const existing = await base44.entities.MasterProperty.filter({ zip_code: zip }, null, 5000);
+                    const existingArr = Array.isArray(existing) ? existing : (existing?.items || []);
+                    existingArr.forEach(p => existingHashes.add(p.address_hash));
+                } catch (e) {
+                    console.warn(`[FetchArea] Failed to fetch existing for zip ${zip}:`, e.message);
+                }
+            }
+
+            const newMapped = mapped.filter(p => !existingHashes.has(p.address_hash));
+            
+            if (newMapped.length > 0) {
+                const CHUNK_SIZE = 500;
+                for (let i = 0; i < newMapped.length; i += CHUNK_SIZE) {
+                    const chunk = newMapped.slice(i, i + CHUNK_SIZE);
+                    try {
+                        await base44.entities.MasterProperty.bulkCreate(chunk);
+                        successCount += chunk.length;
+                    } catch (e) {
+                        const SMALL_CHUNK = 50;
+                        for (let j = 0; j < chunk.length; j += SMALL_CHUNK) {
+                            const small = chunk.slice(j, j + SMALL_CHUNK);
+                            try {
+                                await base44.entities.MasterProperty.bulkCreate(small);
+                                successCount += small.length;
+                            } catch {}
+                        }
+                    }
+                }
+            }
+        };
 
         // First request to get total count
         const initialParams = new URLSearchParams({
@@ -108,7 +213,7 @@ Deno.serve(async (req) => {
         });
 
         const initialUrl = `${RENTCAST_BASE}/properties?${initialParams.toString()}`;
-        console.log(`[FetchArea - Optimized Recent Sales] Initial Request: offset=${offset}`);
+        console.log(`[FetchArea] Initial Request: offset=${offset}`);
 
         const initialResponse = await fetch(initialUrl, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
 
@@ -123,13 +228,13 @@ Deno.serve(async (req) => {
 
         const initialData = await initialResponse.json();
         const initialBatch = Array.isArray(initialData) ? initialData : [];
-        allProperties.push(...initialBatch);
+        await processBatch(initialBatch);
         requestCount++;
         offset += limit;
 
         const targetTotal = Math.min(reportedTotal || maxItems, maxItems);
 
-        // Parallelize remaining requests to prevent timeouts on large areas
+        // Parallelize remaining requests in chunks to prevent memory spikes
         if (initialBatch.length === limit && offset < targetTotal) {
             const fetchTasks = [];
             while (offset < targetTotal && requestCount < 200) {
@@ -143,13 +248,12 @@ Deno.serve(async (req) => {
                         offset: String(currentOffset),
                         saleDateRange: '0:1095', // Last 3 years
                         propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
-                        });
+                    });
                     const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
                     try {
                         const res = await fetch(url, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
                         return res.ok ? await res.json() : [];
                     } catch (err) {
-                        console.error(`[FetchArea] Parallel fetch error:`, err.message);
                         return [];
                     }
                 });
@@ -160,14 +264,16 @@ Deno.serve(async (req) => {
 
             console.log(`[FetchArea] Firing ${fetchTasks.length} parallel requests in chunks...`);
             
-            // Execute in chunks of 5 to avoid rate limits and memory spikes
             for (let i = 0; i < fetchTasks.length; i += 5) {
                 const chunk = fetchTasks.slice(i, i + 5).map(task => task());
                 const results = await Promise.all(chunk);
+                
+                // Process each result batch immediately to free memory
                 for (const data of results) {
                     const batch = Array.isArray(data) ? data : [];
-                    allProperties.push(...batch);
+                    await processBatch(batch);
                 }
+                
                 if (Date.now() - startTime > MAX_EXECUTION_TIME) {
                     console.warn('[FetchArea] Execution time limit approaching, breaking early.');
                     break;
@@ -175,160 +281,13 @@ Deno.serve(async (req) => {
             }
         }
 
-        console.log(`[FetchArea] Finished. Found ${allProperties.length} recently sold properties before polygon check.`);
-
-        // Usage already pre-incremented before API calls (see above)
-
-        if (allProperties.length === 0) {
-            return Response.json({
-                status: 'empty',
-                count: 0,
-                total_found: 0,
-                total_returned_by_api: 0,
-                in_polygon_count: 0,
-                recent_sales_12mo: 0,
-                mapped_count: 0,
-                dropped_no_address: 0,
-                message: `No properties found in this area.`
-            });
-        }
-
-        // Filter by exact polygon if provided
-        let filteredProperties = allProperties;
-        if (polygon && polygon.length >= 3) {
-            filteredProperties = allProperties.filter(p => {
-                if (!p.latitude || !p.longitude) return false;
-                return isPointInPolygon({ lat: p.latitude, lng: p.longitude }, polygon);
-            });
-            console.log(`[FetchArea] Filtered down to ${filteredProperties.length} properties inside the drawn polygon.`);
-        }
-        const twelveMonthsAgo = new Date();
-        twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
-        const recentSales12moCount = filteredProperties.reduce((acc, p) => {
-            if (p.lastSaleDate) {
-                const d = new Date(p.lastSaleDate);
-                if (!isNaN(d) && d > twelveMonthsAgo) return acc + 1;
-            }
-            return acc;
-        }, 0);
-        const droppedNoAddressCount = filteredProperties.filter(p => !(p.addressLine1 || p.formattedAddress) || !p.latitude || !p.longitude).length;
-
-        // We need to figure out which ones we already have. 
-        // For an area, it's easier to fetch existing ones inside a bounding box, but for simplicity, we'll just try to insert and ignore duplicates.
-        // Or we can get existing hashes. Since area can cross zip codes, we can just rely on the database's unique constraint (if any) or check one by one.
-        // Base44 bulkCreate might fail if there's a unique constraint, but we can do chunks and fallback to singles.
-
-        // Map to schema
-        const mapped = filteredProperties
-            .filter(p => p.latitude && p.longitude && (p.addressLine1 || p.formattedAddress))
-            .map(p => {
-                const addressLine = p.addressLine1 || (p.formattedAddress ? p.formattedAddress.split(',')[0] : "");
-                const addressMatch = (addressLine).match(/^(\d+)\s+(.*)$/);
-                const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
-                const street_name = addressMatch ? addressMatch[2] : (addressLine || "Unknown");
-                let original_status = 'ELIGIBLE';
-                if (p.lastSaleDate) {
-                    const saleDate = new Date(p.lastSaleDate);
-                    const oneYearAgo = new Date();
-                    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-                    if (saleDate > oneYearAgo) original_status = 'SOLD';
-                }
-                const pZip = p.zipCode || '00000';
-                return {
-                    address_hash: p.id || `${p.addressLine1}-${pZip}`,
-                    house_number, street_name,
-                    full_address: p.formattedAddress || p.addressLine1,
-                    city: p.city || '', state: p.state || '', zip_code: pZip,
-                    lat: p.latitude, lng: p.longitude, original_status,
-                    beds: p.bedrooms || 0, baths: p.bathrooms || 0,
-                    sqft: p.squareFootage || 0, lot_size: p.lotSize || 0,
-                    year_built: p.yearBuilt || 0, price: p.lastSalePrice || 0,
-                    sold_date: p.lastSaleDate || null, sale_type: 'Market',
-                    property_type: p.propertyType || 'Single Family',
-                    mls_id: p.assessorID || null, url: null
-                };
-            });
-
-        console.log(`[FetchArea] ${mapped.length} valid properties to import`);
-
-        if (mapped.length === 0) {
-            return Response.json({
-                status: 'empty',
-                count: 0,
-                total_found: allProperties.length,
-                total_returned_by_api: allProperties.length,
-                in_polygon_count: filteredProperties.length,
-                recent_sales_12mo: recentSales12moCount,
-                mapped_count: 0,
-                dropped_no_address: droppedNoAddressCount,
-                message: `Properties found but none matched criteria inside polygon.`
-            });
-        }
-
-        // Deduplicate against database
-        const uniqueZips = [...new Set(mapped.map(p => p.zip_code))];
-        const existingHashes = new Set();
-
-        console.log(`[FetchArea] Checking existing data for ${uniqueZips.length} zips...`);
-        // Fetch up to 5000 existing hashes per zip to be safe, parallelize to avoid timeouts on large areas
-        for (let i = 0; i < uniqueZips.length; i += 5) {
-            const batchZips = uniqueZips.slice(i, i + 5);
-            await Promise.all(batchZips.map(async (zip) => {
-                try {
-                    const existing = await base44.entities.MasterProperty.filter({ zip_code: zip }, null, 5000);
-                    const existingArr = Array.isArray(existing) ? existing : (existing?.items || []);
-                    existingArr.forEach(p => existingHashes.add(p.address_hash));
-                } catch (e) {
-                    console.warn(`[FetchArea] Failed to fetch existing for zip ${zip}:`, e.message);
-                }
-            }));
-            if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-                console.warn('[FetchArea] Execution time limit approaching during deduplication, breaking early.');
-                break;
-            }
-        }
-
-        const newMapped = mapped.filter(p => !existingHashes.has(p.address_hash));
-        console.log(`[FetchArea] ${newMapped.length} NEW properties to import (out of ${mapped.length})`);
-
-        // Bulk insert new properties
-        let successCount = 0;
-        if (newMapped.length > 0) {
-            const CHUNK_SIZE = 500; // Increased chunk size for faster inserts
-            for (let i = 0; i < newMapped.length; i += CHUNK_SIZE) {
-                const chunk = newMapped.slice(i, i + CHUNK_SIZE);
-                try {
-                    await base44.entities.MasterProperty.bulkCreate(chunk);
-                    successCount += chunk.length;
-                } catch (e) {
-                    console.error(`[FetchArea] Chunk import failed, trying small chunks:`, e.message);
-                    // Minimal fallback: try chunks of 50
-                    const SMALL_CHUNK = 50;
-                    for (let j = 0; j < chunk.length; j += SMALL_CHUNK) {
-                        const small = chunk.slice(j, j + SMALL_CHUNK);
-                        try {
-                            await base44.entities.MasterProperty.bulkCreate(small);
-                            successCount += small.length;
-                        } catch {
-                            // If even small chunks fail, likely a true DB error or single bad record
-                            console.warn(`[FetchArea] Small chunk failed, skipping`);
-                        }
-                    }
-                }
-                
-                if (Date.now() - startTime > MAX_EXECUTION_TIME + 10000) {
-                    console.warn('[FetchArea] Execution time limit approaching during DB inserts, breaking early.');
-                    break;
-                }
-            }
-        }
-
-        console.log(`[FetchArea] Done! Imported ${successCount}/${newMapped.length} new properties.`);
+        console.log(`[FetchArea] Done! Imported ${successCount} new properties.`);
 
         // Update user's territory zip codes so the frontend loads them
-        if (uniqueZips.length > 0) {
+        const uniqueZipsArray = Array.from(uniqueZips);
+        if (uniqueZipsArray.length > 0) {
             const currentZips = user.territory_zip_codes || [];
-            const newZips = [...new Set([...currentZips, ...uniqueZips])];
+            const newZips = [...new Set([...currentZips, ...uniqueZipsArray])];
             try {
                 await base44.auth.updateMe({ territory_zip_codes: newZips });
             } catch (e) {
@@ -339,11 +298,11 @@ Deno.serve(async (req) => {
         return Response.json({
             status: 'imported',
             count: successCount,
-            total_found: allProperties.length,
+            total_found: totalFound,
             reported_total: reportedTotal,
-            in_polygon_count: filteredProperties.length,
+            in_polygon_count: inPolygonCount,
             recent_sales_12mo: recentSales12moCount,
-            mapped_count: mapped.length,
+            mapped_count: mappedCount,
             dropped_no_address: droppedNoAddressCount,
             message: `Imported ${successCount} new properties in area.`
         });

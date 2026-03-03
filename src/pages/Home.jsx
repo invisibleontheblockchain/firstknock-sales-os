@@ -341,11 +341,31 @@ export default function Home() {
                 // This ensures we get the data regardless of who created it (e.g. system import)
                 if (user.territory_zip_codes && user.territory_zip_codes.length > 0) {
                     console.log(`[Home] Fetching properties for zips: ${user.territory_zip_codes.join(', ')}`);
-                    const promises = user.territory_zip_codes.map(zip =>
-                        base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000)
-                    );
-                    const results = await Promise.all(promises);
-                    items = results.flatMap(r => Array.isArray(r) ? r : (r.items || []));
+                    
+                    // Chunk requests to avoid crashing the browser with too many concurrent requests
+                    const zips = user.territory_zip_codes;
+                    const chunkSize = 5;
+                    let totalFetched = 0;
+                    const MAX_PROPERTIES = 25000; // Safe limit for browser memory and map rendering
+                    
+                    for (let i = 0; i < zips.length; i += chunkSize) {
+                        if (totalFetched >= MAX_PROPERTIES) {
+                            console.log(`[Home] Reached max property limit (${MAX_PROPERTIES}), skipping remaining zips.`);
+                            break;
+                        }
+                        const chunk = zips.slice(i, i + chunkSize);
+                        const promises = chunk.map(zip =>
+                            base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000)
+                        );
+                        const results = await Promise.all(promises);
+                        const newItems = results.flatMap(r => Array.isArray(r) ? r : (r.items || []));
+                        items = [...items, ...newItems];
+                        totalFetched += newItems.length;
+                    }
+                    
+                    if (items.length > MAX_PROPERTIES) {
+                        items = items.slice(0, MAX_PROPERTIES);
+                    }
                 } else {
                     // Fallback to properties created by the user if no territory is defined
                     const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 10000);
