@@ -232,51 +232,90 @@ Deno.serve(async (req) => {
         requestCount++;
         offset += limit;
 
-        const targetTotal = Math.min(reportedTotal || maxItems, maxItems);
+        // If we didn't get a reported total, but we got a full batch, we'll fetch sequentially.
+        // If we got a reported total, we can fetch concurrently.
+        if (initialBatch.length === limit) {
+            if (reportedTotal > 0) {
+                const targetTotal = Math.min(reportedTotal, maxItems);
+                const fetchTasks = [];
+                
+                while (offset < targetTotal && requestCount < 200) {
+                    const currentOffset = offset;
+                    fetchTasks.push(async () => {
+                        const params = new URLSearchParams({
+                            latitude: String(latitude),
+                            longitude: String(longitude),
+                            radius: String(radius),
+                            limit: String(limit),
+                            offset: String(currentOffset),
+                            saleDateRange: '0:365',
+                            propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
+                        });
+                        const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
+                        try {
+                            const res = await fetch(url, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
+                            return res.ok ? await res.json() : [];
+                        } catch (err) {
+                            return [];
+                        }
+                    });
+                    
+                    offset += limit;
+                    requestCount++;
+                }
 
-        // Parallelize remaining requests in chunks to prevent memory spikes
-        if (initialBatch.length === limit && offset < targetTotal) {
-            const fetchTasks = [];
-            while (offset < targetTotal && requestCount < 200) {
-                const currentOffset = offset;
-                fetchTasks.push(async () => {
+                console.log(`[FetchArea] Firing ${fetchTasks.length} parallel requests in chunks...`);
+                
+                for (let i = 0; i < fetchTasks.length; i += 5) {
+                    const chunk = fetchTasks.slice(i, i + 5).map(task => task());
+                    const results = await Promise.all(chunk);
+                    
+                    for (const data of results) {
+                        const batch = Array.isArray(data) ? data : [];
+                        await processBatch(batch);
+                    }
+                    
+                    if (Date.now() - startTime > MAX_EXECUTION_TIME) {
+                        console.warn('[FetchArea] Execution time limit approaching, breaking early.');
+                        break;
+                    }
+                }
+            } else {
+                // Sequential fallback if X-Total-Count is missing
+                console.log(`[FetchArea] X-Total-Count missing, falling back to sequential pagination...`);
+                let keepFetching = true;
+                while (keepFetching && requestCount < 200) {
                     const params = new URLSearchParams({
                         latitude: String(latitude),
                         longitude: String(longitude),
                         radius: String(radius),
                         limit: String(limit),
-                        offset: String(currentOffset),
-                        saleDateRange: '0:365', // Last 1 year
+                        offset: String(offset),
+                        saleDateRange: '0:365',
                         propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
                     });
                     const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
                     try {
                         const res = await fetch(url, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
-                        return res.ok ? await res.json() : [];
+                        if (!res.ok) break;
+                        const data = await res.json();
+                        const batch = Array.isArray(data) ? data : [];
+                        await processBatch(batch);
+                        
+                        if (batch.length < limit) {
+                            keepFetching = false;
+                        } else {
+                            offset += limit;
+                            requestCount++;
+                        }
                     } catch (err) {
-                        return [];
+                        break;
                     }
-                });
-                
-                offset += limit;
-                requestCount++;
-            }
-
-            console.log(`[FetchArea] Firing ${fetchTasks.length} parallel requests in chunks...`);
-            
-            for (let i = 0; i < fetchTasks.length; i += 5) {
-                const chunk = fetchTasks.slice(i, i + 5).map(task => task());
-                const results = await Promise.all(chunk);
-                
-                // Process each result batch immediately to free memory
-                for (const data of results) {
-                    const batch = Array.isArray(data) ? data : [];
-                    await processBatch(batch);
-                }
-                
-                if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-                    console.warn('[FetchArea] Execution time limit approaching, breaking early.');
-                    break;
+                    
+                    if (Date.now() - startTime > MAX_EXECUTION_TIME) {
+                        console.warn('[FetchArea] Execution time limit approaching, breaking early.');
+                        break;
+                    }
                 }
             }
         }
