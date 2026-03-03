@@ -83,32 +83,37 @@ Deno.serve(async (req) => {
         const MAX_EXECUTION_TIME = 45000; // 45 seconds to avoid timeout
 
         const allProperties = [];
-        // Pass 1: Fetch Golden Doors (Recent Sales in last 365 days)
+        
+        // OPTIMIZATION: Only fetch Golden Doors (Recent Sales in last 3 years)
+        // This drastically cuts down RentCast API calls/costs while perfectly aligning 
+        // with the FirstKnock Best algorithm thesis of targeting qualified new homebuyers.
         let requestCount = 0;
         let reportedTotal = 0;
-        let pass1Offset = 0;
-        const pass1Limit = 500;
-        const maxPass1Items = isOwner ? 20000 : 2000; // Cap Pass 1 to 2000 recent sales to leave room for density
+        let offset = 0;
+        const limit = 500;
+        
+        // Increase the cap since we are only pulling high-value targets now
+        const maxItems = isOwner ? 50000 : 10000; 
 
-        while (allProperties.length < maxPass1Items) {
+        while (allProperties.length < maxItems) {
             const params = new URLSearchParams({
                 latitude: String(latitude),
                 longitude: String(longitude),
                 radius: String(radius),
-                limit: String(pass1Limit),
-                offset: String(pass1Offset),
-                saleDateRange: '0:365', // ONLY recently sold
+                limit: String(limit),
+                offset: String(offset),
+                saleDateRange: '0:1095', // ONLY homes sold in the last 3 years
                 includeTotalCount: 'true',
             });
 
             const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
-            console.log(`[FetchArea Phase 1 - Recent Sales] Request ${requestCount + 1}: offset=${pass1Offset}`);
+            console.log(`[FetchArea - Optimized Recent Sales] Request ${requestCount + 1}: offset=${offset}`);
 
             const response = await fetch(url, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
 
             if (!response.ok) {
                 const errText = await response.text();
-                console.error(`[FetchArea Phase 1] RentCast error ${response.status}: ${errText}`);
+                console.error(`[FetchArea] RentCast error ${response.status}: ${errText}`);
                 if (response.status === 429) break;
                 if (requestCount === 0) return Response.json({ error: `RentCast API error: ${response.status}` }, { status: 500 });
                 break;
@@ -124,63 +129,21 @@ Deno.serve(async (req) => {
             allProperties.push(...batch);
             requestCount++;
 
-            if (batch.length < pass1Limit) break;
-            pass1Offset += pass1Limit;
-            if (requestCount >= (isOwner ? 40 : 10)) break; // Max pages for Pass 1
+            if (batch.length < limit) break;
+            offset += limit;
+            
+            // Safety cap on API calls per request: Owner=100 (50k max), Paid=20 (10k max)
+            if (requestCount >= (isOwner ? 100 : 20)) {
+                console.warn('[FetchArea] Reached total combined page safety cap.'); 
+                break; 
+            }
             if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-                console.warn('[FetchArea] Execution time limit approaching in Pass 1, breaking early.');
+                console.warn('[FetchArea] Execution time limit approaching, breaking early.');
                 break;
             }
         }
 
-        console.log(`[FetchArea Phase 1] Finished. Found ${allProperties.length} recently sold properties.`);
-
-        // Pass 2: Fetch Density (General Properties) to fill the rest of the limit
-        let pass2Offset = 0;
-        const pass2Limit = 500;
-        const maxTotalItems = isOwner ? 100000 : 10000; // Total upper limit for the entire pull
-
-        while (allProperties.length < maxTotalItems) {
-            const currentLimit = Math.min(pass2Limit, maxTotalItems - allProperties.length);
-            const params = new URLSearchParams({
-                latitude: String(latitude),
-                longitude: String(longitude),
-                radius: String(radius),
-                limit: String(currentLimit),
-                offset: String(pass2Offset)
-            });
-
-            const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
-            console.log(`[FetchArea Phase 2 - Density] Request ${requestCount + 1}: offset=${pass2Offset}`);
-
-            const response = await fetch(url, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
-
-            if (!response.ok) {
-                const errText = await response.text();
-                console.error(`[FetchArea Phase 2] RentCast error ${response.status}: ${errText}`);
-                break;
-            }
-
-            const data = await response.json();
-            const batch = Array.isArray(data) ? data : [];
-
-            // Deduplicate Pass 2 against Pass 1
-            const existingIds = new Set(allProperties.map(p => p.id));
-            const newProperties = batch.filter(p => !existingIds.has(p.id));
-
-            allProperties.push(...newProperties);
-            requestCount++;
-
-            if (batch.length < currentLimit) break; // Use original batch length to check if API exhausted
-            pass2Offset += currentLimit;
-            if (requestCount >= (isOwner ? 200 : 25)) { console.warn('[FetchArea] Reached total combined page safety cap.'); break; }
-            if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-                console.warn('[FetchArea] Execution time limit approaching in Pass 2, breaking early.');
-                break;
-            }
-        }
-
-        console.log(`[FetchArea] Combined Total: ${allProperties.length} properties before polygon check.`);
+        console.log(`[FetchArea] Finished. Found ${allProperties.length} recently sold properties before polygon check.`);
 
         // Usage already pre-incremented before API calls (see above)
 
