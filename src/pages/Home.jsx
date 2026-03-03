@@ -110,7 +110,27 @@ import { LocationMarker, MapRefHandler, MapController } from '../components/map/
 export default function Home() {
     const queryClient = useQueryClient();
     const [activeRoute, setActiveRoute] = useState(null);
+    const [activeRouteSoldFilter, setActiveRouteSoldFilter] = useState('all');
     const [showChecklist, setShowChecklist] = useState(false);
+
+    const filteredActiveRoute = useMemo(() => {
+        if (!activeRoute) return null;
+        if (activeRouteSoldFilter === 'all') return activeRoute;
+
+        const cutoff = subMonths(new Date(), parseInt(activeRouteSoldFilter));
+        const filteredProps = activeRoute.properties.filter(p => {
+            if (!p.sold_date) return false;
+            try {
+                return isAfter(parseISO(p.sold_date), cutoff);
+            } catch (e) { return false; }
+        });
+
+        return {
+            ...activeRoute,
+            properties: filteredProps,
+            houseCount: filteredProps.length
+        };
+    }, [activeRoute, activeRouteSoldFilter]);
     const [showRoutePanel, setShowRoutePanel] = useState(false);
     const [showCompare, setShowCompare] = useState(true);
     const [housesPerRoute, setHousesPerRoute] = useState(100);
