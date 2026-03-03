@@ -117,8 +117,8 @@ export default function ManagerPropertyDetailSheet({
                                     <p className="text-[10px] text-gray-500 uppercase mb-1 flex items-center gap-1">
                                         <User className="w-3 h-3" /> Last Sold
                                     </p>
-                                    <p className="font-bold text-white">
-                                        {selectedProperty.sold_date ? format(new Date(selectedProperty.sold_date), 'yyyy') : '-'}
+                                    <p className="font-bold text-white text-xs">
+                                        {selectedProperty.sold_date ? format(new Date(selectedProperty.sold_date), 'MMM d, yyyy') : '-'}
                                     </p>
                                 </div>
                                 {selectedProperty.beds && (
