@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
         const limit = 500;
         
         // Increase the cap since we are only pulling high-value targets now
-        const maxItems = isOwner ? 50000 : 10000; 
+        const maxItems = 100000; // Removed strict cap to get all properties in the last 3 years
 
         // First request to get total count
         const initialParams = new URLSearchParams({
@@ -132,7 +132,7 @@ Deno.serve(async (req) => {
         // Parallelize remaining requests to prevent timeouts on large areas
         if (initialBatch.length === limit && offset < targetTotal) {
             const fetchTasks = [];
-            while (offset < targetTotal && requestCount < (isOwner ? 100 : 20)) {
+            while (offset < targetTotal && requestCount < 200) {
                 const currentOffset = offset;
                 fetchTasks.push(async () => {
                     const params = new URLSearchParams({

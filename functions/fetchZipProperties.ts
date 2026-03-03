@@ -86,18 +86,18 @@ Deno.serve(async (req) => {
     console.log(`[FetchZip-v6] Fetching from RentCast for zip: ${zip}`);
 
     const allProperties = [];
-    // Pass 1: Fetch Golden Doors (Recent Sales in last 365 days)
+    // Pass 1: Fetch Golden Doors (Recent Sales in last 3 years)
     let requestCount = 0;
     let pass1Offset = 0;
     const pass1Limit = 500;
-    const maxPass1Items = 2000; // Cap Pass 1 to 2000 recent sales to leave room for density
+    const maxPass1Items = 50000; // Increased cap to get all recent sales
 
     while (allProperties.length < maxPass1Items) {
       const params = new URLSearchParams({
         zipCode: zip,
         limit: String(pass1Limit),
         offset: String(pass1Offset),
-        saleDateRange: '0:365' // ONLY recently sold
+        saleDateRange: '0:1095' // ONLY recently sold in last 3 years
       });
 
       const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
 
       if (batch.length < pass1Limit) break;
       pass1Offset += pass1Limit;
-      if (requestCount >= 10) break; // Max 10 pages for Pass 1
+      if (requestCount >= 100) break; // Max 100 pages for Pass 1
     }
 
     console.log(`[FetchZip Phase 1] Finished. Found ${allProperties.length} recently sold properties.`);
@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
     // Pass 2: Fetch Density (General Properties) to fill the rest of the limit
     let pass2Offset = 0;
     const pass2Limit = 500;
-    const maxTotalItems = 10000; // Total upper limit for the entire pull
+    const maxTotalItems = 50000; // Total upper limit for the entire pull
 
     while (allProperties.length < maxTotalItems) {
       const currentLimit = Math.min(pass2Limit, maxTotalItems - allProperties.length);
@@ -162,7 +162,7 @@ Deno.serve(async (req) => {
 
       if (batch.length < currentLimit) break; // Use original batch length to check if API exhausted
       pass2Offset += currentLimit;
-      if (requestCount >= 25) { console.warn('[FetchZip] Reached total combined page safety cap (25).'); break; }
+      if (requestCount >= 200) { console.warn('[FetchZip] Reached total combined page safety cap (200).'); break; }
     }
 
     console.log(`[FetchZip] Combined Total: ${allProperties.length} properties before insertion.`);
