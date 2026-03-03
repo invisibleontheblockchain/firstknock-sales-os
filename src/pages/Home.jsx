@@ -1094,7 +1094,7 @@ export default function Home() {
 
     useEffect(() => {
         const updateCenter = async () => {
-            if (activeRoute?.properties?.length > 0) {
+            if (filteredActiveRoute?.properties?.length > 0) {
                 // Active route takes priority
                 return;
             }
@@ -1104,7 +1104,7 @@ export default function Home() {
             }
         };
         updateCenter();
-    }, [activeRoute, availableProperties, user?.working_area]);
+    }, [filteredActiveRoute, availableProperties, user?.working_area]);
 
     const center = availableProperties[0] && availableProperties[0].lat ? [availableProperties[0].lat, availableProperties[0].lng] : mapCenter;
 
