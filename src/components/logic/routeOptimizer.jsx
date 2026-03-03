@@ -104,6 +104,35 @@ export function scoreProperty(property, logs = [], neighborhoodStats = {}, learn
     // 6. High Value
     if (property.price > 1000000) score += 30;
 
+    // 7. Machine Learning Lead Scoring Enhancement
+    if (learnedWeights) {
+        // Age weight
+        if (property.year_built) {
+            const age = new Date().getFullYear() - property.year_built;
+            if (age > 10 && learnedWeights.age_gt_10_weight) {
+                score *= learnedWeights.age_gt_10_weight;
+            }
+        }
+
+        // Price weight
+        if (property.price > 300000 && learnedWeights.price_gt_300k_weight) {
+            score *= learnedWeights.price_gt_300k_weight;
+        }
+
+        // Property type weight
+        if (property.property_type && property.property_type.toLowerCase().includes('single') && learnedWeights.single_family_weight) {
+            score *= learnedWeights.single_family_weight;
+        }
+
+        // Recent sale weight
+        if (property.sold_date) {
+            const yearsOwned = (new Date() - new Date(property.sold_date)) / (1000 * 60 * 60 * 24 * 365);
+            if (yearsOwned <= 3 && learnedWeights.recent_sale_weight) {
+                score *= learnedWeights.recent_sale_weight;
+            }
+        }
+    }
+
     return Math.max(0, Math.round(score));
 }
 
@@ -301,7 +330,7 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null, minimi
  * @param {Object} options - Additional options { streetCooldownDays, useStreetSweep }
  * @returns {Array} Array of route objects with metadata
  */
-export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLocation = null, allLogs = [], options = {}) {
+export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLocation = null, allLogs = [], options = {}, learnedWeights = null) {
     const {
         streetCooldownDays = COOLDOWN_CONFIG.STREET_COOLDOWN_DAYS,
         useStreetSweep = true,
@@ -350,7 +379,7 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
     // Score all properties
     const scored = eligible.map(p => ({
         ...p,
-        score: scoreProperty(p, allLogs, neighborhoodStats)
+        score: scoreProperty(p, allLogs, neighborhoodStats, learnedWeights)
     }));
 
     // Calculate number of routes
