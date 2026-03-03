@@ -119,7 +119,7 @@ function kMeansClustering(properties, numClusters) {
         .map(p => ({ lat: p.lat, lng: p.lng }));
 
     let iterations = 0;
-    const maxIterations = 50;
+    const maxIterations = 20; // Reduced to 20 to prevent main thread blocking on large datasets
     let changed = true;
 
     while (changed && iterations < maxIterations) {
@@ -132,7 +132,7 @@ function kMeansClustering(properties, numClusters) {
             let bestCluster = 0;
 
             centroids.forEach((centroid, idx) => {
-                const dist = calculateDistance(prop.lat, prop.lng, centroid.lat, centroid.lng);
+                const dist = calculateDistanceSquaredFast(prop.lat, prop.lng, centroid.lat, centroid.lng);
                 if (dist < minDist) {
                     minDist = dist;
                     bestCluster = idx;
