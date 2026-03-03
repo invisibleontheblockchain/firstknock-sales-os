@@ -20,11 +20,12 @@ export default function BetaUsageMeter({ className = '', showUpgrade = true }) {
     });
 
     const isPaid = user?.subscription_status === 'active';
+    const isOwner = user?.is_owner === true;
     const totalSeats = user?.total_seats || 1;
 
     // Zip Codes
-    const zipLimit = isPaid ? totalSeats * ZIPS_PER_SEAT : FREE_ZIP_LIMIT;
-    const tierLabel = isPaid ? `Pro (${totalSeats} seat${totalSeats !== 1 ? 's' : ''})` : 'Free Beta';
+    const zipLimit = isOwner ? 999 : (isPaid ? totalSeats * ZIPS_PER_SEAT : FREE_ZIP_LIMIT);
+    const tierLabel = isOwner ? 'Owner' : (isPaid ? `Pro (${totalSeats} seat${totalSeats !== 1 ? 's' : ''})` : 'Free Beta');
     const generatedZips = user?.generated_zip_codes || [];
     const zipsUsed = generatedZips.length;
     const zipsRemaining = Math.max(0, zipLimit - zipsUsed);
@@ -32,7 +33,7 @@ export default function BetaUsageMeter({ className = '', showUpgrade = true }) {
     const zipsDepleted = zipsRemaining <= 0;
 
     // Area Allowances
-    const areaLimit = isPaid ? totalSeats * AREAS_PER_SEAT : FREE_AREA_LIMIT;
+    const areaLimit = isOwner ? 999 : (isPaid ? totalSeats * AREAS_PER_SEAT : FREE_AREA_LIMIT);
     const areasUsed = user?.area_pulls_count || 0;
     const areasRemaining = Math.max(0, areaLimit - areasUsed);
     const areasPct = Math.min((areasUsed / areaLimit) * 100, 100);
