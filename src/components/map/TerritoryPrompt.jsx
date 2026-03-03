@@ -179,7 +179,8 @@ export default function TerritoryPrompt({
 
                                 // Get user subscription info
                                 const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                                const pullLimit = isPaid ? 10 : 3;
+                                const isOwner = user?.is_owner === true;
+                                const pullLimit = isOwner ? 999 : (isPaid ? 10 : 3);
                                 const pullsUsed = user?.area_pulls_count || 0;
 
                                 if (pullsUsed >= pullLimit) {
@@ -190,7 +191,7 @@ export default function TerritoryPrompt({
                                     return;
                                 }
 
-                                const maxRadius = isPaid ? 50 : 20; // Hard cap
+                                const maxRadius = isOwner ? 999 : (isPaid ? 50 : 20); // Hard cap
 
                                 if (radius > maxRadius) {
                                     toast.error(`The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max ${maxRadius * 2} miles across).`);
