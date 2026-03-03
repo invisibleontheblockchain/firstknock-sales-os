@@ -29,7 +29,7 @@ const STATUS_COLORS = {
     QUALIFIED: '#3b82f6'
 };
 
-export default function RouteChecklist({ route, logs, onLogResult, onClose, navigationApp = 'apple' }) {
+export default function RouteChecklist({ route, logs, onLogResult, onClose, navigationApp = 'apple', activeRouteSoldFilter, setActiveRouteSoldFilter }) {
     const [expandedId, setExpandedId] = useState(null);
     const [filter, setFilter] = useState('all');
     const [callbackPhone, setCallbackPhone] = useState('');
