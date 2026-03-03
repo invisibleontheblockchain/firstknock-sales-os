@@ -459,6 +459,12 @@ export default function Home() {
     });
     const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
 
+    const { data: leadScoringWeightsRaw = [] } = useQuery({
+        queryKey: ['leadScoringWeights'],
+        queryFn: () => base44.entities.LeadScoringWeights.list(),
+    });
+    const learnedWeights = leadScoringWeightsRaw[0]?.weights || null;
+
     // REAL-TIME UPDATES: Listen for interactions from other reps
     useEffect(() => {
         if (!user) return;
@@ -955,7 +961,8 @@ export default function Home() {
                     walkingPattern: routeConfig.walkingPattern,
                     returnToStart: routeConfig.returnToStart,
                     excludeTerminal: routeConfig.excludeTerminal,
-                }
+                },
+                learnedWeights
             );
 
             if (generated._cooldownInfo) {

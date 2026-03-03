@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { generateOptimizedRoutes } from '../logic/routeOptimizer';
 import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
 import BetaUsageMeter from '../beta/BetaUsageMeter';
+import { useQuery } from "@tanstack/react-query";
 
 export default function TerritorySetupWizard({ user, onComplete }) {
     const [step, setStep] = useState(1);
@@ -19,6 +20,12 @@ export default function TerritorySetupWizard({ user, onComplete }) {
     const [fetchedProperties, setFetchedProperties] = useState([]);
     const { accent } = useTheme();
     const accentTxt = contrastText(accent);
+
+    const { data: leadScoringWeightsRaw = [] } = useQuery({
+        queryKey: ['leadScoringWeights'],
+        queryFn: () => base44.entities.LeadScoringWeights.list(),
+    });
+    const learnedWeights = leadScoringWeightsRaw[0]?.weights || null;
 
     const handleSyncTerritory = async () => {
         if (!zipInput || zipInput.length < 5) { toast.error("Enter a valid zip code"); return; }
@@ -98,7 +105,7 @@ export default function TerritorySetupWizard({ user, onComplete }) {
         setLoading(true);
         setTimeout(async () => {
             try {
-                const routes = generateOptimizedRoutes(fetchedProperties, housesPerRoute, null, [], { streetCooldownDays: 30, useStreetSweep: true });
+                const routes = generateOptimizedRoutes(fetchedProperties, housesPerRoute, null, [], { streetCooldownDays: 30, useStreetSweep: true }, learnedWeights);
                 setGeneratedRoutes(routes);
                 setStep(3);
                 
