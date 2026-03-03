@@ -287,7 +287,8 @@ Deno.serve(async (req) => {
         const uniqueZipsArray = Array.from(uniqueZips);
         if (uniqueZipsArray.length > 0) {
             const currentZips = user.territory_zip_codes || [];
-            const newZips = [...new Set([...currentZips, ...uniqueZipsArray])];
+            // Put new zips at the beginning so they are prioritized when frontend fetches data
+            const newZips = [...new Set([...uniqueZipsArray, ...currentZips])];
             try {
                 await base44.auth.updateMe({ territory_zip_codes: newZips });
             } catch (e) {
