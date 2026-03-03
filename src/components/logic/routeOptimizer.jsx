@@ -241,7 +241,7 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null, minimi
         let minScore = Infinity;
 
         unvisited.forEach((prop, idx) => {
-            const dist = calculateDistance(current.lat, current.lng, prop.lat, prop.lng);
+            const dist = calculateDistanceFast(current.lat, current.lng, prop.lat, prop.lng);
             if (dist < minScore) {
                 minScore = dist;
                 nearestIdx = idx;
@@ -258,7 +258,7 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null, minimi
         let bestScore = Infinity;
 
         unvisited.forEach((prop, idx) => {
-            const dist = calculateDistance(current.lat, current.lng, prop.lat, prop.lng);
+            const dist = calculateDistanceFast(current.lat, current.lng, prop.lat, prop.lng);
             let score = dist;
 
             // Heuristic: Minimize Turns
