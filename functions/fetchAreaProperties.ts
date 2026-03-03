@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
             radius: String(radius),
             limit: String(limit),
             offset: String(offset),
-            saleDateRange: '0:1095', // ONLY homes sold in the last 3 years (Golden Doors)
+            // Removed saleDateRange filter to pull ALL properties, not just recent sales
             // Removed propertyType filter to ensure we capture ALL residential real estate (Condos, Mobiles, etc.)
             includeTotalCount: 'true',
         });
