@@ -40,7 +40,8 @@ Deno.serve(async (req) => {
         }
 
         const isPaid = user.subscription_status === 'active' || user.subscription_status === 'trialing';
-        const maxRadius = 20; // 40 miles across cap
+        const isOwner = user.is_owner === true;
+        const maxRadius = isOwner ? 999 : 20; // 40 miles across cap
 
         if (radius > maxRadius) {
             return Response.json({
@@ -49,7 +50,7 @@ Deno.serve(async (req) => {
             }, { status: 400 });
         }
 
-        const pullLimit = isPaid ? PAID_PULL_LIMIT : FREE_PULL_LIMIT;
+        const pullLimit = isOwner ? 999 : (isPaid ? PAID_PULL_LIMIT : FREE_PULL_LIMIT);
 
         // Track usage (we'll reuse generated_zip_codes array for area pulls as a quick hack, or a new field)
         const areaPulls = user.area_pulls_count || 0;
