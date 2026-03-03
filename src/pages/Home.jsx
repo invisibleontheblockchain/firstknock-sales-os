@@ -1240,7 +1240,7 @@ export default function Home() {
                 {/* All map data layers extracted to ManagerMapLayers */}
                 <ManagerMapLayers
                     mode={mode}
-                    activeRoute={activeRoute}
+                    activeRoute={filteredActiveRoute}
                     zoomLevel={zoomLevel}
                     viewMode={viewMode}
                     hydratedSavedRoutes={hydratedSavedRoutes}
