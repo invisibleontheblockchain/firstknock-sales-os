@@ -41,7 +41,7 @@ function calculateDistanceFast(lat1, lng1, lat2, lng2) {
  * Advanced Property Scoring Engine 3.0
  * Factors: Equity, Recent Sales (Activity), Property Type, Contact Frequency
  */
-export function scoreProperty(property, logs = [], neighborhoodStats = {}) {
+export function scoreProperty(property, logs = [], neighborhoodStats = {}, learnedWeights = null) {
     let score = 100; // Base score
 
     // 1. Status Scoring Logic
