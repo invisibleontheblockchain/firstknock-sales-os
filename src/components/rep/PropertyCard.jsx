@@ -49,6 +49,11 @@ export default function PropertyCard({ property, index, onSelect }) {
                 {property.timeScore > 80 && !isDone && (
                     <p className="text-[9px] text-green-500 font-bold mt-0.5">⏰ BEST TIME</p>
                 )}
+                {property.sold_date && (
+                    <p className="text-[10px] text-yellow-500/80 font-medium mt-0.5">
+                        Sold: {new Date(property.sold_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                )}
             </div>
 
             {/* Status tag */}
