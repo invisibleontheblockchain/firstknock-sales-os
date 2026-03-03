@@ -269,14 +269,21 @@ Deno.serve(async (req) => {
         const existingHashes = new Set();
 
         console.log(`[FetchArea] Checking existing data for ${uniqueZips.length} zips...`);
-        // Fetch up to 5000 existing hashes per zip to be safe, though larger pulls might still be tricky
-        for (const zip of uniqueZips) {
-            try {
-                const existing = await base44.entities.MasterProperty.filter({ zip_code: zip }, null, 5000);
-                const existingArr = Array.isArray(existing) ? existing : (existing?.items || []);
-                existingArr.forEach(p => existingHashes.add(p.address_hash));
-            } catch (e) {
-                console.warn(`[FetchArea] Failed to fetch existing for zip ${zip}:`, e.message);
+        // Fetch up to 5000 existing hashes per zip to be safe, parallelize to avoid timeouts on large areas
+        for (let i = 0; i < uniqueZips.length; i += 5) {
+            const batchZips = uniqueZips.slice(i, i + 5);
+            await Promise.all(batchZips.map(async (zip) => {
+                try {
+                    const existing = await base44.entities.MasterProperty.filter({ zip_code: zip }, null, 5000);
+                    const existingArr = Array.isArray(existing) ? existing : (existing?.items || []);
+                    existingArr.forEach(p => existingHashes.add(p.address_hash));
+                } catch (e) {
+                    console.warn(`[FetchArea] Failed to fetch existing for zip ${zip}:`, e.message);
+                }
+            }));
+            if (Date.now() - startTime > MAX_EXECUTION_TIME) {
+                console.warn('[FetchArea] Execution time limit approaching during deduplication, breaking early.');
+                break;
             }
         }
 
