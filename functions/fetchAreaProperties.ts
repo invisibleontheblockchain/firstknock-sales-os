@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
         let reportedTotal = 0;
         let pass1Offset = 0;
         const pass1Limit = 500;
-        const maxPass1Items = 2000; // Cap Pass 1 to 2000 recent sales to leave room for density
+        const maxPass1Items = isOwner ? 20000 : 2000; // Cap Pass 1 to 2000 recent sales to leave room for density
 
         while (allProperties.length < maxPass1Items) {
             const params = new URLSearchParams({
