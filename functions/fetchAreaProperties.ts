@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
 
             if (batch.length < currentLimit) break; // Use original batch length to check if API exhausted
             pass2Offset += currentLimit;
-            if (requestCount >= 25) { console.warn('[FetchArea] Reached total combined page safety cap (25).'); break; }
+            if (requestCount >= (isOwner ? 200 : 25)) { console.warn('[FetchArea] Reached total combined page safety cap.'); break; }
         }
 
         console.log(`[FetchArea] Combined Total: ${allProperties.length} properties before polygon check.`);
