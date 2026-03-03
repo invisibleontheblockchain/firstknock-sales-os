@@ -78,48 +78,49 @@ export default function RouteBuilderSettings({
             id: 'best',
             name: 'FirstKnock Best',
             icon: <Zap className="w-4 h-4" />,
-            desc: 'Balanced mix of hot leads and easy walking. Hits dense pockets of eligible homes.',
-            criteria: '60 doors, Street Sweep, Smart Score',
+            desc: 'Ultra-optimized for newest homeowners. Starts at the most recently sold home and builds the route from there.',
+            criteria: 'Recent Sales First, 50 doors, Single Family/Townhouse',
             apply: () => {
-                setHousesPerRoute(60);
-                setMaxRouteDistance(5);
-                setStreetCooldownDays(30);
-                setMinScore(50);
-                setSoldDateFilter(null); // Remove strict date filter to maintain density
-                setSortBy('score');
-                setRouteConfig(prev => ({ ...prev, walkingPattern: 'street_sweep', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
+                setHousesPerRoute(50);
+                setMaxRouteDistance(8); // Increased distance to allow connecting sparse recent sales without breaking
+                setStreetCooldownDays(14);
+                setMinScore(20);
+                setSoldDateFilter(12); // Past 12 months
+                setSortBy('recent_sale');
+                setRouteConfig(prev => ({ ...prev, walkingPattern: 'recent_sale_first', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: ['Single Family', 'Townhouse'] }));
                 toast.success("FirstKnock Best applied!");
             }
         },
         {
             id: 'new_homeowners',
-            name: 'New Homeowners',
+            name: 'Hot Market Sweep',
             icon: <Flame className="w-4 h-4" />,
-            desc: 'Focus on recent sales (past 12 months). Great for new resident offers.',
-            criteria: 'Past 12mo sales, 14d cooldown',
+            desc: 'Sweeps entire streets that have high recent sales activity. Great for hitting dense pockets.',
+            criteria: 'Street Sweep, Past 36mo sales, 75 doors',
             apply: () => {
                 setHousesPerRoute(75);
-                setMaxRouteDistance(8);
+                setMaxRouteDistance(6);
                 setStreetCooldownDays(14);
                 setMinScore(0);
-                setSoldDateFilter(12);
-                setSortBy('recent_sale');
+                setSoldDateFilter(36); // Past 3 years (all data we pull)
+                setSortBy('score');
                 setRouteConfig(prev => ({ ...prev, walkingPattern: 'street_sweep', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
-                toast.success("New Homeowner Strategy applied");
+                toast.success("Hot Market Sweep applied");
             }
         },
         {
             id: 'speed',
             name: 'Speed Blitz',
             icon: <Footprints className="w-4 h-4" />,
-            desc: 'Max doors in minimum time. Short routes, no filters.',
-            criteria: '50 doors, nearest door, no score filter',
+            desc: 'Max doors in minimum time. Shortest walking distance, no filters.',
+            criteria: '60 doors, nearest door, no score filter',
             apply: () => {
-                setHousesPerRoute(50);
+                setHousesPerRoute(60);
                 setMaxRouteDistance(3);
                 setStreetCooldownDays(0);
                 setMinScore(0);
                 setSoldDateFilter(null);
+                setSortBy('distance');
                 setRouteConfig(prev => ({ ...prev, walkingPattern: 'nearest', minimizeTurns: false, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: false, minPrice: null, maxPrice: null, propertyTypes: [] }));
                 toast.success("Speed Blitz applied");
             }
