@@ -342,46 +342,26 @@ export default function AdminTeam() {
                 
                 {/* Header Section */}
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div className="w-full md:w-auto">
-                        <div className="flex items-center justify-between mb-2 md:mb-0">
-                            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
-                                <Shield className="w-6 h-6 md:w-8 md:h-8 text-yellow-500" />
+                    <div className="w-full md:w-auto flex justify-between items-center">
+                        <div className="flex flex-col">
+                            <h1 className="text-xl md:text-3xl font-extrabold tracking-tight text-white flex items-center gap-2 md:gap-3">
+                                <Shield className="w-5 h-5 md:w-8 md:h-8 text-yellow-500" />
                                 Command Center
                             </h1>
-                            {/* Mobile Team Filter */}
-                            <div className="md:hidden">
-                                {inviteCodes.length > 0 && (
-                                    <Select value={activeTeamCode} onValueChange={setActiveTeamCode}>
-                                        <SelectTrigger className="h-8 bg-black border-yellow-500/30 text-yellow-500 w-[120px] font-bold text-xs">
-                                            <SelectValue placeholder="All Teams" />
-                                        </SelectTrigger>
-                                        <SelectContent className="bg-[#111] border-gray-800 text-white">
-                                            <SelectItem value="all">All Teams</SelectItem>
-                                            {inviteCodes.filter(c => c.linked_user_id === user?.id).map(code => (
-                                                <SelectItem key={code.id} value={code.code}>
-                                                    Team {code.code}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                )}
-                            </div>
+                            <p className="hidden md:block text-gray-400 text-sm mt-1">Manage your team, routes, and performance.</p>
                         </div>
-                        
-                        <div className="hidden md:flex items-center gap-3 mt-1">
-                            <p className="text-gray-400 text-sm">Manage your team, routes, and performance.</p>
-                            
-                            {/* Desktop Team Code Filter Dropdown */}
+                        {/* Mobile Team Filter */}
+                        <div className="md:hidden">
                             {inviteCodes.length > 0 && (
                                 <Select value={activeTeamCode} onValueChange={setActiveTeamCode}>
-                                    <SelectTrigger className="h-8 bg-black border-yellow-500/30 text-yellow-500 w-auto min-w-[140px] font-bold text-xs">
+                                    <SelectTrigger className="h-8 bg-black border-yellow-500/30 text-yellow-500 w-[110px] font-bold text-[10px]">
                                         <SelectValue placeholder="All Teams" />
                                     </SelectTrigger>
                                     <SelectContent className="bg-[#111] border-gray-800 text-white">
                                         <SelectItem value="all">All Teams</SelectItem>
                                         {inviteCodes.filter(c => c.linked_user_id === user?.id).map(code => (
                                             <SelectItem key={code.id} value={code.code}>
-                                                Team {code.code} {code.label ? `(${code.label})` : ''}
+                                                Team {code.code}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -389,15 +369,34 @@ export default function AdminTeam() {
                             )}
                         </div>
                     </div>
+                    
+                    <div className="hidden md:flex items-center gap-3">
+                        {/* Desktop Team Code Filter Dropdown */}
+                        {inviteCodes.length > 0 && (
+                            <Select value={activeTeamCode} onValueChange={setActiveTeamCode}>
+                                <SelectTrigger className="h-8 bg-black border-yellow-500/30 text-yellow-500 w-auto min-w-[140px] font-bold text-xs">
+                                    <SelectValue placeholder="All Teams" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-[#111] border-gray-800 text-white">
+                                    <SelectItem value="all">All Teams</SelectItem>
+                                    {inviteCodes.filter(c => c.linked_user_id === user?.id).map(code => (
+                                        <SelectItem key={code.id} value={code.code}>
+                                            Team {code.code} {code.label ? `(${code.label})` : ''}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+                    </div>
                     <div className="flex w-full md:w-auto gap-2">
                         <Button 
                             onClick={() => {
                                 const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
                                 createCodeMutation.mutate({ code: randomCode, max_uses: 5, role: 'rep', label: `Demo Team (${randomCode})` });
                             }}
-                            className="flex-1 md:flex-none h-10 md:h-9 bg-gray-800 text-gray-300 font-bold hover:bg-gray-700 hover:text-white border border-gray-700 text-xs md:text-sm"
+                            className="flex-1 md:flex-none h-9 bg-gray-800 text-gray-300 font-bold hover:bg-gray-700 hover:text-white border border-gray-700 text-[10px] md:text-sm"
                         >
-                            <Key className="w-4 h-4 mr-2" /> Create Demo
+                            <Key className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" /> Create Demo
                         </Button>
 
                         {/* Code Created Success Dialog */}
