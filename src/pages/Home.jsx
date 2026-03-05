@@ -1634,12 +1634,7 @@ export default function Home() {
                 onSelectProperty={setSelectedProperty}
             />
 
-            {/* Nearby Hot Leads Banner */}
-            <NearbyHotLeads
-                properties={effectiveProperties}
-                radiusMiles={1}
-                maxLeads={5}
-            />
+            {/* NearbyHotLeads removed — replaced by simplified market setup flow */}
 
             {/* Route Checklist */}
             {showChecklist && filteredActiveRoute && (
