@@ -84,7 +84,8 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Failed to verify usage limits. Please try again.' }, { status: 500 });
         }
 
-        console.log(`[FetchArea] Fetching from RentCast for lat:${latitude}, lng:${longitude}, r:${radius} (polygon points: ${polygon ? polygon.length : 0})`);
+        console.log(`[FetchArea] Fetching from RentCast for lat:${latitude}, lng:${longitude}, r:${radius} miles (polygon points: ${polygon ? polygon.length : 0})`);
+        console.log(`[FetchArea] Radius passed to RentCast API: ${radius} miles`);
 
         const startTime = Date.now();
         const MAX_EXECUTION_TIME = 45000; // 45 seconds to leave buffer for DB writes
