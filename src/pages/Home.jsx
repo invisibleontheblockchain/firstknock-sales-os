@@ -1645,8 +1645,6 @@ export default function Home() {
                 onSelectProperty={setSelectedProperty}
             />
 
-            {/* (removed) */}
-
             {/* Route Checklist */}
             {showChecklist && filteredActiveRoute && (
                 <div className="fixed inset-0 z-[2000]">
