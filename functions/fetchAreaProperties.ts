@@ -233,7 +233,6 @@ Deno.serve(async (req) => {
             radius: String(radius),
             limit: String(limit),
             offset: String(offset),
-            saleDateRange: '0:365', // Last 1 year
             propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
             includeTotalCount: 'true',
         });
