@@ -639,6 +639,16 @@ export default function Home() {
         const hasExplicitZipFilter = !!(zipCodeFilter && zipCodeFilter.trim());
         const applyTerritoryFilter = territoryZips.length > 0 && !hasActivePolygon && !hasExplicitZipFilter;
 
+        // Pre-compute logs by address hash for O(1) lookup
+        const logsByAddress = new Map();
+        logs.forEach(l => {
+            if (!l.address_hash) return;
+            if (!logsByAddress.has(l.address_hash)) {
+                logsByAddress.set(l.address_hash, []);
+            }
+            logsByAddress.get(l.address_hash).push(l);
+        });
+
         return propsArray
             .filter(p => {
                 if (!p?.lat || !p?.lng || isNaN(p.lat) || isNaN(p.lng)) return false;
@@ -654,10 +664,11 @@ export default function Home() {
                 return true;
             })
             .map(p => {
-                const propLogs = logs.filter(l => (p.address_hash && l.address_hash === p.address_hash));
+                const hash = p.address_hash || p.id;
+                const propLogs = logsByAddress.get(hash) || [];
                 return {
                     ...p,
-                    address_hash: p.address_hash || p.id,
+                    address_hash: hash,
                     lat: parseFloat(p.lat),
                     lng: parseFloat(p.lng),
                     effective_status: p.is_dark_room ? (p.effective_status || 'ELIGIBLE') : determineEffectiveStatus(p, propLogs)
@@ -683,11 +694,14 @@ export default function Home() {
 
     // Hydrate Saved Routes for Map Display
     const hydratedSavedRoutes = useMemo(() => {
+        const propsByHash = new Map();
+        effectiveProperties.forEach(p => propsByHash.set(p.address_hash, p));
+
         return savedRoutes
             .filter(r => repFilter === 'all' || (r.assigned_to_name && r.assigned_to_name.includes(repFilter)))
             .map(route => {
                 let routeProps = route.property_hashes
-                    .map(hash => effectiveProperties.find(p => p.address_hash === hash))
+                    .map(hash => propsByHash.get(hash))
                     .filter(Boolean);
 
                 // Apply soldDateFilter to saved routes if active
@@ -884,13 +898,23 @@ export default function Home() {
             // Combine current available (memoized) with newly fetched dynamic props
             // Need to apply same processing (dedup, assigned filtering) to dynamicProps
             const assignedSet = assignedHashes; // closed over from render
+            
+            const logsByAddress = new Map();
+            logs.forEach(l => {
+                if (!l.address_hash) return;
+                if (!logsByAddress.has(l.address_hash)) {
+                    logsByAddress.set(l.address_hash, []);
+                }
+                logsByAddress.get(l.address_hash).push(l);
+            });
 
             // Convert dynamicProps to effective format (add lat/lng parse if needed, though filter returns entities)
             const processedDynamic = dynamicProps.map(p => {
-                const propLogs = logs.filter(l => (p.address_hash && l.address_hash === p.address_hash));
+                const hash = p.address_hash || p.id;
+                const propLogs = logsByAddress.get(hash) || [];
                 return {
                     ...p,
-                    address_hash: p.address_hash || p.id,
+                    address_hash: hash,
                     lat: parseFloat(p.lat),
                     lng: parseFloat(p.lng),
                     effective_status: determineEffectiveStatus(p, propLogs)
