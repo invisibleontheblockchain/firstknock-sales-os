@@ -379,7 +379,7 @@ export default function Home() {
                         );
                         const results = await Promise.all(promises);
                         const newItems = results.flatMap(r => Array.isArray(r) ? r : (r.items || []));
-                        items = [...items, ...newItems];
+                        items = items.concat(newItems);
                         totalFetched += newItems.length;
                     }
                     
