@@ -820,13 +820,17 @@ export default function Home() {
                 const results = await Promise.all(fetchPromises);
                 let flattened = results.flat();
 
-                // If no properties found, pull from RentCast via backend
-                if (flattened.length === 0) {
-                    console.log(`[Generate] No properties found for ${targetZips.join(', ')}. Fetching from RentCast...`);
+                const generatedZips = user?.generated_zip_codes || [];
+                const ungeneratedZips = targetZips.filter(z => !generatedZips.includes(z));
+
+                // If no properties found OR zip not generated yet, pull from RentCast via backend
+                if (flattened.length === 0 || ungeneratedZips.length > 0) {
+                    const zipsToFetch = ungeneratedZips.length > 0 ? ungeneratedZips : targetZips;
+                    console.log(`[Generate] Need to fetch zips from RentCast: ${zipsToFetch.join(', ')}`);
                     toast.loading("Pulling property data...", { id: 'fetch-zip' });
 
                     let hitLimit = false;
-                    for (const zip of targetZips) {
+                    for (const zip of zipsToFetch) {
                         try {
                             const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zip });
                             console.log(`[Generate] Fetch result for ${zip}:`, res.data);
