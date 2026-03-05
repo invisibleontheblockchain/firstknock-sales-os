@@ -1369,28 +1369,29 @@ export default function Home() {
                 setActiveRouteSoldFilter={setActiveRouteSoldFilter}
             />
 
-            <TerritoryPrompt
+            <MarketSetupPrompt
                 mode={mode}
-                setMode={setMode}
                 activeRoute={filteredActiveRoute}
                 routesGenerating={routesGenerating}
                 showCompare={showCompare}
-                setShowCompare={setShowCompare}
                 showRoutePanel={showRoutePanel}
-                setShowRoutePanel={setShowRoutePanel}
                 drawingMode={drawingMode}
-                setDrawingMode={setDrawingMode}
-                drawnPolygon={drawnPolygon}
-                setDrawnPolygon={setDrawnPolygon}
-                draftPolygon={draftPolygon}
-                setDraftPolygon={setDraftPolygon}
-                drawShape={drawShape}
-                setDrawShape={setDrawShape}
-                drawSizeMiles={drawSizeMiles}
-                setDrawSizeMiles={setDrawSizeMiles}
                 user={user}
                 setZipCodeFilter={setZipCodeFilter}
-                onPullComplete={handleAreaPullComplete}
+                setShowCompare={setShowCompare}
+                setShowRoutePanel={setShowRoutePanel}
+                setMode={setMode}
+                onSetupComplete={({ zips, routeCount }) => {
+                    // Set houses per route based on total properties / desired routes
+                    // We'll use a smart default: if user wants 1 route, give them all props
+                    // Otherwise divide evenly
+                    setHousesPerRoute(routeCount === 1 ? 5000 : Math.max(20, Math.round(5000 / routeCount)));
+                    setZipCodeFilter(zips.join(', '));
+                    // Open the route builder and auto-generate
+                    setShowCompare(true);
+                    // Trigger auto-build on next open
+                    localStorage.setItem('fk_autobuild_next_open', 'true');
+                }}
             />
 
 
