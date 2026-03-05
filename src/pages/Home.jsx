@@ -1638,7 +1638,7 @@ export default function Home() {
                 onSelectProperty={setSelectedProperty}
             />
 
-            {/* NearbyHotLeads removed */}
+            {/* NearbyHotLeadsRemoved removed */}
 
             {/* Route Checklist */}
             {showChecklist && filteredActiveRoute && (
