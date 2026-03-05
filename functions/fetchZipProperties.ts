@@ -97,7 +97,8 @@ Deno.serve(async (req) => {
         zipCode: zip,
         limit: String(pass1Limit),
         offset: String(pass1Offset),
-        saleDateRange: '0:1095' // ONLY recently sold in last 3 years
+        saleDateRange: '0:365', // ONLY recently sold in last 1 year
+        includeTotalCount: 'true'
       });
 
       const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
