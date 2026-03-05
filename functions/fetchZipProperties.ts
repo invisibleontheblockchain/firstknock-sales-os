@@ -226,16 +226,16 @@ Deno.serve(async (req) => {
       const updatedZips = [...generatedZips, zip];
       try {
         await base44.auth.updateMe({ generated_zip_codes: updatedZips });
-        console.log(`[FetchZip-v6] Tracked new zip. Total zips: ${updatedZips.length}/${zipLimit}`);
+        console.log(`[FetchZip-v7] Tracked new zip. Total zips: ${updatedZips.length}/${zipLimit}`);
       } catch (e) {
-        console.error(`[FetchZip-v6] Failed to update zip tracker:`, e.message);
+        console.error(`[FetchZip-v7] Failed to update zip tracker:`, e.message);
       }
     }
 
     const newZipsUsed = alreadyGenerated ? zipsUsed : zipsUsed + 1;
     const newZipsRemaining = zipLimit - newZipsUsed;
 
-    console.log(`[FetchZip-v6] Total fetched: ${allProperties.length} in ${requestCount} API calls`);
+    console.log(`[FetchZip-v7] Total fetched: ${allProperties.length} in ${requestCount + phase1.items.length + phase2.items.length} records`);
 
     if (allProperties.length === 0) {
       return Response.json({
