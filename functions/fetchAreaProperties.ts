@@ -303,10 +303,10 @@ Deno.serve(async (req) => {
                     requestCount++;
                 }
 
-                console.log(`[FetchArea] Firing ${fetchTasks.length} parallel requests in chunks...`);
+                console.log(`[FetchArea] Firing ${fetchTasks.length} parallel requests in chunks of ${maxParallel}...`);
                 
-                for (let i = 0; i < fetchTasks.length; i += 5) {
-                    const chunk = fetchTasks.slice(i, i + 5).map(task => task());
+                for (let i = 0; i < fetchTasks.length; i += maxParallel) {
+                    const chunk = fetchTasks.slice(i, i + maxParallel).map(task => task());
                     const results = await Promise.all(chunk);
                     
                     for (const data of results) {
