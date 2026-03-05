@@ -320,6 +320,7 @@ export const orderForStreetSweep = (properties) => {
 export const isPointInPolygon = (point, vs) => {
     if (!vs || vs.length < 3) return true;
     let x = point.lng, y = point.lat;
+    const epsilon = 1e-9;
     
     let inside = false;
     for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
@@ -327,7 +328,7 @@ export const isPointInPolygon = (point, vs) => {
         let xj = vs[j].lng, yj = vs[j].lat;
         
         let intersect = ((yi > y) !== (yj > y))
-            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi + epsilon);
         if (intersect) inside = !inside;
     }
     

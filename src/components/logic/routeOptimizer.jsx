@@ -9,6 +9,7 @@
  */
 
 import { filterByStreetCooldown, orderForStreetSweep, COOLDOWN_CONFIG } from './territoryLogic';
+import { latLngToCell, gridDisk } from 'h3-js';
 
 // Haversine distance in miles
 function calculateDistance(lat1, lng1, lat2, lng2) {
@@ -80,11 +81,14 @@ export function scoreProperty(property, logs = [], neighborhoodStats = {}, learn
     }
 
     // 4. Neighborhood Heat (Recent Sales Activity)
-    // If neighborhoodStats has data for this street/zip
-    if (neighborhoodStats && property.zip_code) {
-        const zipHeat = neighborhoodStats[property.zip_code] || 0;
-        // Boost if area is hot (lots of recent sales = active market)
-        score += Math.min(zipHeat * 5, 50);
+    // If neighborhoodStats has data for this H3 cell
+    if (neighborhoodStats && property.lat && property.lng) {
+        try {
+            const h3Index = latLngToCell(property.lat, property.lng, 9);
+            const zipHeat = neighborhoodStats[h3Index] || 0;
+            // Boost if area is hot (lots of recent sales = active market)
+            score += Math.min(zipHeat * 5, 50);
+        } catch (e) {}
     }
 
     // 5. Contact Frequency (Avoid Burnout, optimize 'when to knock')
@@ -218,12 +222,13 @@ function apply2Opt(route) {
     const maxIterations = 50; // Cap iterations for performance
     let iterations = 0;
 
-    // The Sentinel Point Strategy for open routes
-    const sentinel = { isSentinel: true, lat: 0, lng: 0 };
-    const currentRoute = [...route, sentinel];
+    // The Dummy Node Strategy for open routes
+    // Instead of a physical coordinate, we use a logical dummy node with 0.0 distance
+    const dummy = { isDummy: true };
+    const currentRoute = [...route, dummy];
 
     const dist = (pA, pB) => {
-        if (pA.isSentinel || pB.isSentinel) return 0;
+        if (pA.isDummy || pB.isDummy) return 0.0;
         return calculateDistanceFast(pA.lat, pA.lng, pB.lat, pB.lng);
     };
 
@@ -255,8 +260,8 @@ function apply2Opt(route) {
         }
     }
 
-    // Remove the sentinel to reveal the open-ended line
-    const sIdx = currentRoute.findIndex(p => p.isSentinel);
+    // Remove the dummy to reveal the open-ended line
+    const sIdx = currentRoute.findIndex(p => p.isDummy);
     currentRoute.splice(sIdx, 1);
 
     route.length = 0;
@@ -385,13 +390,20 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 
     if (eligible.length === 0) return [];
 
-    // Pre-calculate Neighborhood Heat (Recent Sales count per zip)
-    const neighborhoodStats = eligible.reduce((acc, p) => {
-        if (p.zip_code && (p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED')) {
-            acc[p.zip_code] = (acc[p.zip_code] || 0) + 1;
+    // Pre-calculate Neighborhood Heat (Recent Sales count per H3 hexagon)
+    const neighborhoodStats = {};
+    eligible.forEach(p => {
+        if (p.lat && p.lng && (p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED')) {
+            try {
+                const h3Index = latLngToCell(p.lat, p.lng, 9);
+                // Add heat to the cell itself and its immediate neighbors (gridDisk radius 1)
+                const disk = gridDisk(h3Index, 1);
+                disk.forEach(cell => {
+                    neighborhoodStats[cell] = (neighborhoodStats[cell] || 0) + 1;
+                });
+            } catch (e) {}
         }
-        return acc;
-    }, {});
+    });
 
     // Score all properties
     const scored = eligible.map(p => ({

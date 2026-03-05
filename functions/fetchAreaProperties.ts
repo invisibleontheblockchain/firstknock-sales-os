@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { polygonToCells, latLngToCell } from 'npm:h3-js@4.1.0';
 
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
@@ -10,6 +11,7 @@ const PAID_PULL_LIMIT = 20; // Number of area pulls allowed for paid users
 function isPointInPolygon(point, vs) {
     if (!vs || vs.length < 3) return true;
     let x = point.lng, y = point.lat;
+    const epsilon = 1e-9;
 
     let inside = false;
     for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
@@ -17,7 +19,7 @@ function isPointInPolygon(point, vs) {
         let xj = vs[j].lng, yj = vs[j].lat;
 
         let intersect = ((yi > y) !== (yj > y))
-            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi + epsilon);
         if (intersect) inside = !inside;
     }
 
@@ -48,6 +50,24 @@ Deno.serve(async (req) => {
                 error: 'Area too large',
                 message: `The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max ${maxRadius * 2} miles across).`
             }, { status: 400 });
+        }
+
+        // Pre-compute H3 cells for the polygon
+        let polygonH3Cells = new Set();
+        let useH3Filter = false;
+        if (polygon && polygon.length >= 3) {
+            try {
+                const h3Polygon = polygon.map(p => [p.lat, p.lng]);
+                if (h3Polygon.length > 0 && (h3Polygon[0][0] !== h3Polygon[h3Polygon.length - 1][0] || h3Polygon[0][1] !== h3Polygon[h3Polygon.length - 1][1])) {
+                    h3Polygon.push([...h3Polygon[0]]);
+                }
+                const cells = polygonToCells(h3Polygon, 9);
+                polygonH3Cells = new Set(cells);
+                useH3Filter = true;
+                console.log(`[FetchArea] Pre-computed ${cells.length} H3 cells for polygon filtering`);
+            } catch (e) {
+                console.warn("[FetchArea] H3 polygonToCells failed, falling back to ray-casting only:", e.message);
+            }
         }
 
         const pullLimit = isOwner ? 999 : (isPaid ? PAID_PULL_LIMIT : FREE_PULL_LIMIT);
@@ -111,6 +131,15 @@ Deno.serve(async (req) => {
             if (polygon && polygon.length >= 3) {
                 filteredProperties = batch.filter(p => {
                     if (!p.latitude || !p.longitude) return false;
+                    
+                    // Fast H3 pre-filter
+                    if (useH3Filter) {
+                        try {
+                            const cell = latLngToCell(p.latitude, p.longitude, 9);
+                            if (!polygonH3Cells.has(cell)) return false;
+                        } catch (e) {}
+                    }
+
                     return isPointInPolygon({ lat: p.latitude, lng: p.longitude }, polygon);
                 });
             }
