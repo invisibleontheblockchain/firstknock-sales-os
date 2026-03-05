@@ -868,7 +868,7 @@ export default function Home() {
                         // Dedup with existing fetched
                         const existingIds = new Set(prev.map(p => p.id));
                         const newUnique = flattened.filter(p => !existingIds.has(p.id));
-                        return [...prev, ...newUnique];
+                        return prev.concat(newUnique);
                     });
                 }
             }
