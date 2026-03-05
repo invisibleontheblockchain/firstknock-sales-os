@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
             status: 'exists',
             count: totalCount,
             message: `${totalCount} properties for ${zip} (synced ${Math.round((Date.now() - lastUpdated.getTime()) / 3600000)}h ago)`,
-            usage: { zips_used: zipsUsed, zip_limit: zipLimit, zips_remaining: Math.max(0, zipsRemaining), tier: subTier }
+            usage: { zips_used: zipsUsed, zip_limit: 'unlimited' }
           });
         }
         
@@ -220,7 +220,7 @@ Deno.serve(async (req) => {
       return Response.json({
         status: 'empty', count: 0,
         message: `No properties found for zip ${zip}.`,
-        usage: { zips_used: newZipsUsed, zip_limit: zipLimit, zips_remaining: newZipsRemaining, tier: subTier }
+        usage: { zips_used: newZipsUsed, zip_limit: 'unlimited' }
       });
     }
 
