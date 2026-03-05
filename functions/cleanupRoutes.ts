@@ -19,21 +19,28 @@ Deno.serve(async (req) => {
             }
         });
         
-        // 4. Fetch properties sequentially to avoid rate limits
+        // 4. Fetch properties in batches of 50
         const hashArray = Array.from(allRouteHashes);
         const propertiesMap = new Map();
         
-        for (let i = 0; i < hashArray.length; i++) {
+        const chunkSize = 50;
+        for (let i = 0; i < hashArray.length; i += chunkSize) {
+            const chunk = hashArray.slice(i, i + chunkSize);
             try {
-                const res = await base44.asServiceRole.entities.MasterProperty.filter({ address_hash: hashArray[i] }, null, 1);
-                if (res && res.length > 0) {
-                    propertiesMap.set(res[0].address_hash, res[0]);
+                // Fetch using $in if supported, or multiple ORs? 
+                // The SDK might support $in
+                const props = await base44.asServiceRole.entities.MasterProperty.filter({
+                    address_hash: { $in: chunk }
+                }, null, 100);
+                
+                if (props && props.length > 0) {
+                    props.forEach(p => propertiesMap.set(p.address_hash, p));
                 }
             } catch (e) {
-                console.error("Error fetching property", hashArray[i], e);
+                console.error("Error fetching batch", e);
             }
-            // Small delay
-            await new Promise(resolve => setTimeout(resolve, 20));
+            // Add a delay to avoid rate limits
+            await new Promise(resolve => setTimeout(resolve, 500));
         }
         
         const threeMonthsAgo = new Date();
@@ -45,7 +52,7 @@ Deno.serve(async (req) => {
         const debugInfo = {
             totalRoutes: routes.length,
             totalLogs: logs.length,
-            totalProperties: propertiesMap.size,
+            totalPropertiesFetched: propertiesMap.size,
             routeDetails: []
         };
         
@@ -57,7 +64,7 @@ Deno.serve(async (req) => {
                 if (knockedHashes.has(hash)) return false;
                 
                 const prop = propertiesMap.get(hash);
-                if (!prop) return false; // Property not found
+                if (!prop) return false; // Property not found or not fetched
                 
                 // Remove if no sold_date
                 if (!prop.sold_date) return false;
