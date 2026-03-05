@@ -60,7 +60,7 @@ import QuickMarkButtons from '../components/rep/QuickMarkButtons';
 import PropertyHistory from '../components/rep/PropertyHistory';
 import ManagerPropertyDetailSheet from '../components/map/ManagerPropertyDetailSheet';
 import MapDrawTool from '../components/map/MapDrawTool';
-import TerritoryPrompt from '../components/map/TerritoryPrompt';
+// TerritoryPrompt replaced by MarketSetupPrompt
 import ManagerMapLayers from '../components/map/ManagerMapLayers';
 import MapToolbar from '../components/map/MapToolbar';
 
