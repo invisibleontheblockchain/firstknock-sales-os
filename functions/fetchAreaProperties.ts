@@ -4,7 +4,7 @@ import { polygonToCells, latLngToCell } from 'npm:h3-js@4.1.0';
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
 
-const MONTHLY_PULL_LIMIT = 3; // Number of area pulls allowed per month
+const MAX_PULLS_PER_USER = 1; // One free pull per user — upgrade for more
 
 // Ray-casting algorithm for point in polygon
 function isPointInPolygon(point, vs) {
@@ -60,13 +60,13 @@ Deno.serve(async (req) => {
             }
         }
 
-        const pullLimit = isOwner ? 999 : MONTHLY_PULL_LIMIT;
+        const pullLimit = isOwner ? 999 : MAX_PULLS_PER_USER;
 
-        // Track usage
+        // Track usage — one free pull, then paywall
         const areaPulls = user.area_pulls_count || 0;
 
         if (areaPulls >= pullLimit) {
-            return Response.json({ error: 'Data limit reached', message: `You've used your ${MONTHLY_PULL_LIMIT} custom drawn areas this month. Resets next month.` }, { status: 429 });
+            return Response.json({ error: 'Data limit reached', message: `You've used your free data pull. Upgrade to pull fresh leads.` }, { status: 429 });
         }
 
         if (!RENTCAST_API_KEY) {
