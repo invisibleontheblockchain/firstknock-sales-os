@@ -811,22 +811,7 @@ export default function Home() {
             if (zipCodeFilter && zipCodeFilter.trim()) {
                 const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
 
-                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
-                const zipLimit = isOwner ? 999 : (isPaid ? 10 : 3);
-                const generatedZips = user?.generated_zip_codes || [];
-                const newZips = targetZips.filter(z => !generatedZips.includes(z));
-
-                if (generatedZips.length + newZips.length > zipLimit) {
-                    toast.error(isPaid 
-                        ? `Limit reached (${zipLimit} zips). Add seats for more.` 
-                        : `Free limit is 3 zips. Upgrade for more.`, { id: 'build-routes' });
-                    if (!isPaid) {
-                        setTimeout(() => { window.location.href = '/Billing'; }, 2000);
-                    }
-                    setRoutesGenerating(false);
-                    return;
-                }
+                // Zip codes are unlimited — no limit check needed
 
                 // Check if we need to fetch (simple check: do we have enough data for these zips?)
                 // We'll just fetch to be safe and merge.
@@ -858,7 +843,6 @@ export default function Home() {
                             console.log(`[Generate] Fetch result for ${zip}:`, JSON.stringify(res.data));
                             if (res.data?.error) {
                                 toast.error(res.data.message || res.data.error, { id: 'fetch-zip' });
-                                hitLimit = true;
                                 break;
                             }
                             // Log sold/MLS counts for debugging
@@ -868,18 +852,10 @@ export default function Home() {
                         } catch (err) {
                             console.warn(`Failed to fetch zip ${zip}`, err);
                             const errData = err?.response?.data;
-                            if (errData?.error?.includes('limit')) {
-                                toast.error(errData.message || 'Zip code limit reached. Upgrade your plan.', { id: 'fetch-zip' });
-                                hitLimit = true;
-                                break;
+                            if (errData?.error) {
+                                toast.error(errData.message || 'Failed to fetch zip data.', { id: 'fetch-zip' });
                             }
                         }
-                    }
-
-                    if (hitLimit && !isPaid) {
-                        setTimeout(() => { window.location.href = '/Billing'; }, 2000);
-                        setRoutesGenerating(false);
-                        return;
                     }
 
                     // Backend now auto-adds zips to territory_zip_codes, refresh user
