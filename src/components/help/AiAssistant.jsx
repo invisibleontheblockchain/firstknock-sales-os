@@ -52,10 +52,10 @@ export default function AiAssistant() {
                     whileHover={{ scale: 1.1 }}
                     whileTap={{ scale: 0.9 }}
                     onClick={() => setIsOpen(true)}
-                    className="fixed bottom-24 right-4 z-50 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center bg-gradient-to-br from-yellow-400 to-yellow-600 text-black border-2 border-yellow-200"
+                    className="fixed bottom-20 md:bottom-24 right-4 z-50 w-12 h-12 md:w-14 md:h-14 rounded-full shadow-2xl flex items-center justify-center bg-gradient-to-br from-yellow-400 to-yellow-600 text-black border-2 border-yellow-200"
                 >
-                    <Bot className="w-8 h-8" />
-                    <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-pulse" />
+                    <Bot className="w-6 h-6 md:w-8 md:h-8" />
+                    <div className="absolute -top-1 -right-1 w-3 h-3 md:w-4 md:h-4 bg-red-500 rounded-full animate-pulse" />
                 </motion.button>
             )}
 
@@ -66,7 +66,7 @@ export default function AiAssistant() {
                         initial={{ opacity: 0, y: 20, scale: 0.95 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 20, scale: 0.95 }}
-                        className="fixed bottom-24 right-4 z-50 w-[90vw] max-w-md h-[500px] max-h-[70vh] bg-[#111] border border-yellow-500/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+                        className="fixed bottom-20 md:bottom-24 right-4 z-50 w-[calc(100vw-32px)] md:w-[400px] h-[60vh] md:h-[500px] max-h-[600px] bg-[#111] border border-yellow-500/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden"
                     >
                         {/* Header */}
                         <div className="p-4 bg-gradient-to-r from-yellow-500 to-yellow-600 flex items-center justify-between">

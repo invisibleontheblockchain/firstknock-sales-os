@@ -122,7 +122,6 @@ export default function ListPage() {
     const tabs = [
         { id: 'overview', label: 'Overview', icon: BarChart3 },
         { id: 'routes', label: 'Routes', icon: Navigation },
-        { id: 'team', label: 'Team', icon: Users },
     ];
 
     return (
@@ -183,14 +182,14 @@ export default function ListPage() {
                 ) : (
                     <>
                         {activeTab === 'overview' && (
-                            <div className="space-y-5 max-w-7xl mx-auto">
+                            <div className="space-y-4 md:space-y-6 max-w-7xl mx-auto">
                                 <OverviewStats routes={savedRoutes} logs={logs} properties={effectiveProperties} teamMembers={teamMembers} viewMode={viewMode} />
                                 
                                 {viewMode === 'advanced' && (
                                     <KpiSummaryCards appointments={filteredAppointments} teamMembers={teamMembers} />
                                 )}
 
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
                                     <AppointmentTimeline appointments={filteredAppointments} days={dateDays || 90} />
                                     {viewMode === 'advanced' ? (
                                         <TimeOfDayEffectiveness logs={logs} />
@@ -200,32 +199,28 @@ export default function ListPage() {
                                 </div>
 
                                 {viewMode === 'advanced' && (
-                                    <>
-                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                                    <div className="space-y-4 md:space-y-6">
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
                                             <ConversionByIndustry appointments={filteredAppointments} />
                                             <RepSuccessRate appointments={filteredAppointments} teamMembers={teamMembers} />
                                         </div>
 
-                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
                                             <AppointmentForecast appointments={appointments} />
                                             <LeadScoringEffectiveness appointments={filteredAppointments} />
                                         </div>
 
-                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
                                             <RouteEfficiency routes={savedRoutes} appointments={filteredAppointments} logs={logs} />
                                             <StatusBreakdown properties={effectiveProperties} />
                                         </div>
-                                    </>
+                                    </div>
                                 )}
                             </div>
                         )}
 
                         {activeTab === 'routes' && (
                             <RouteProgress routes={savedRoutes} logs={logs} />
-                        )}
-
-                        {activeTab === 'team' && (
-                            <TeamPerformance teamMembers={teamMembers} logs={logs} routes={savedRoutes} />
                         )}
                     </>
                 )}
