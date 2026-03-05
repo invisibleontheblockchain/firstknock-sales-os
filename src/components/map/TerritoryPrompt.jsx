@@ -34,9 +34,10 @@ export default function TerritoryPrompt({
 
     const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
 
-    // Show initial prompt only if user has data already and is on generate mode with nothing active
     const hasPulledData = !!user?.has_pulled_data;
     const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
+    
+    // Show "Your Territory" prompt only for returning users who already pulled data
     const showInitialPrompt = hasPulledData && hasDefinedMarket && mode === 'generate' && !activeRoute && !routesGenerating && !showCompare && !showRoutePanel && !drawingMode && (!drawnPolygon || drawnPolygon.length === 0);
 
     return (
