@@ -1,13 +1,13 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 import { latLngToCell } from 'npm:h3-js@4.1.0';
 
-// v6 - Free = 1 zip code only, paid = more zips based on plan
+// v7 - Exhaustive ingestion, stale cache fix, territory auto-sync
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
 
-// Zip limits: free = 3, paid = 10 per seat
 const FREE_ZIP_LIMIT = 3;
 const ZIPS_PER_SEAT = 10;
+const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 Deno.serve(async (req) => {
   try {
@@ -20,15 +20,14 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { zip_code, force_sync = false, check_usage_only = false } = body;
 
-    // --- Determine user's zip limits (Flat rate: 3 free, 10 paid) ---
     const isPaid = user.subscription_status === 'active' || user.subscription_status === 'trialing';
     const zipLimit = isPaid ? 10 : FREE_ZIP_LIMIT;
     const generatedZips = user.generated_zip_codes || [];
+    const territoryZips = user.territory_zip_codes || [];
     const zipsUsed = generatedZips.length;
     const zipsRemaining = zipLimit - zipsUsed;
     const subTier = isPaid ? 'pro' : 'free';
 
-    // If just checking usage, return stats
     if (check_usage_only) {
       return Response.json({
         status: 'usage',
@@ -41,35 +40,56 @@ Deno.serve(async (req) => {
       });
     }
 
-    console.log(`[FetchZip-v6] zip=${zip_code}, tier=${subTier}, zips=${zipsUsed}/${zipLimit}`);
+    console.log(`[FetchZip-v7] zip=${zip_code}, tier=${subTier}, zips=${zipsUsed}/${zipLimit}`);
 
     if (!zip_code || !/^\d{5}$/.test(String(zip_code).trim())) {
       return Response.json({ error: 'Valid 5-digit zip code required' }, { status: 400 });
     }
 
     const zip = String(zip_code).trim();
-
-    // Check if this zip was already generated (always allow re-access to existing zips)
     const alreadyGenerated = generatedZips.includes(zip);
 
-    if (!force_sync) {
-      console.log(`[FetchZip-v6] Checking existing data for ${zip}...`);
-      const existing = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000);
-      const existingArr = Array.isArray(existing) ? existing : (existing?.items || []);
-      if (existingArr.length > 0) {
-        console.log(`[FetchZip-v6] Already have ${existingArr.length} properties for ${zip}`);
-        return Response.json({
-          status: 'exists',
-          count: existingArr.length,
-          message: `Already have ${existingArr.length} properties for ${zip}`,
-          usage: { zips_used: zipsUsed, zip_limit: zipLimit, zips_remaining: Math.max(0, zipsRemaining), tier: subTier }
-        });
+    // --- TERRITORY AUTO-SYNC: Always ensure zip is in territory_zip_codes ---
+    if (!territoryZips.includes(zip)) {
+      const updatedTerritory = [...territoryZips, zip];
+      try {
+        await base44.auth.updateMe({ territory_zip_codes: updatedTerritory });
+        console.log(`[FetchZip-v7] Added ${zip} to territory_zip_codes (now ${updatedTerritory.length} zips)`);
+      } catch (e) {
+        console.error(`[FetchZip-v7] Failed to update territory_zip_codes:`, e.message);
       }
     }
 
-    // --- ZIP LIMIT CHECK (only blocks NEW zips, not re-syncing existing ones) ---
+    // --- STALE CACHE CHECK: If data exists, check if it's fresh enough ---
+    if (!force_sync) {
+      console.log(`[FetchZip-v7] Checking existing data for ${zip}...`);
+      const existing = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 1);
+      const existingArr = Array.isArray(existing) ? existing : (existing?.items || []);
+      
+      if (existingArr.length > 0) {
+        const lastUpdated = existingArr[0]?.created_date ? new Date(existingArr[0].created_date) : null;
+        const isStale = !lastUpdated || (Date.now() - lastUpdated.getTime() > STALE_THRESHOLD_MS);
+        
+        if (!isStale) {
+          // Data is fresh (< 24h old) — count total and return
+          const countResult = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000);
+          const totalCount = (Array.isArray(countResult) ? countResult : (countResult?.items || [])).length;
+          console.log(`[FetchZip-v7] Data is fresh (${Math.round((Date.now() - lastUpdated.getTime()) / 3600000)}h old). ${totalCount} properties for ${zip}`);
+          return Response.json({
+            status: 'exists',
+            count: totalCount,
+            message: `${totalCount} properties for ${zip} (synced ${Math.round((Date.now() - lastUpdated.getTime()) / 3600000)}h ago)`,
+            usage: { zips_used: zipsUsed, zip_limit: zipLimit, zips_remaining: Math.max(0, zipsRemaining), tier: subTier }
+          });
+        }
+        
+        console.log(`[FetchZip-v7] Data is STALE (>${Math.round(STALE_THRESHOLD_MS / 3600000)}h). Re-syncing recent sales for ${zip}...`);
+      }
+    }
+
+    // --- ZIP LIMIT CHECK (only blocks NEW zips) ---
     if (!alreadyGenerated && zipsRemaining <= 0) {
-      console.warn(`[FetchZip-v6] ZIP LIMIT REACHED: ${zipsUsed}/${zipLimit} (tier: ${subTier})`);
+      console.warn(`[FetchZip-v7] ZIP LIMIT REACHED: ${zipsUsed}/${zipLimit} (tier: ${subTier})`);
       const upgradeMsg = !isPaid
         ? `You've used your ${FREE_ZIP_LIMIT} free zip codes. Subscribe to unlock more territories.`
         : `You've reached your ${zipLimit} zip code limit. Contact support for enterprise plans.`;
