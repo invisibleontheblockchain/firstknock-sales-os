@@ -17,13 +17,13 @@ const PLANS = [
     priceId: 'price_1SwDXY2MvSNi6E8hZb5nSRDw',
     isPopular: true,
     features: [
-      'Unlimited Zip Code Territories',
-      '3 Custom Drawn Areas per Month (200 sq mi each)',
-      'Unlimited Routes within your Areas',
+      '200 sq mi Service Area (Free: 1 pull)',
+      'Unlimited Fresh Data Pulls',
+      'Unlimited Route Generation',
+      'Filter by Price, Date, Property Type',
       'Live GPS Tracking & Proof of Visit',
       'AI Route Optimization',
-      'Command Center Auto-Dispatch',
-      'Team Leaderboard & Metrics',
+      'Team Management & Dispatch',
       'Property Intel & History',
       'Priority Support'
     ]
