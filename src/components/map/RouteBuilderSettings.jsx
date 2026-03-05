@@ -701,7 +701,7 @@ export default function RouteBuilderSettings({
                 </div>
 
                 {/* Sticky Bottom Actions */}
-                <div className="p-4 bg-[#0A0A0A] border-t border-gray-800 shrink-0">
+                <div className="absolute bottom-0 left-0 right-0 p-4 bg-[#0A0A0A] border-t border-gray-800 z-10 pb-[calc(1rem+env(safe-area-inset-bottom))]">
                     <div className="flex gap-2">
                         <Button
                             onClick={async () => {
