@@ -127,6 +127,50 @@ Deno.serve(async (req) => {
 
     console.log(`[FetchZip Phase 1] Finished. Found ${allProperties.length} recently sold properties.`);
 
+    // Pass 1.5: Fetch Inactive Listings (MLS-Sold but not yet recorded)
+    let listingsOffset = 0;
+    let listingsRequestCount = 0;
+    while (allProperties.length < maxPass1Items) {
+      const params = new URLSearchParams({
+        zipCode: zip,
+        limit: String(pass1Limit),
+        offset: String(listingsOffset),
+        status: 'Inactive',
+        daysOld: '0:365'
+      });
+
+      const url = `${RENTCAST_BASE}/listings/sale?${params.toString()}`;
+      console.log(`[FetchZip Phase 1.5 - MLS Sold] Request ${listingsRequestCount + 1}: offset=${listingsOffset}`);
+
+      const response = await fetch(url, { headers: { 'accept': 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
+
+      if (!response.ok) {
+        break;
+      }
+
+      const data = await response.json();
+      const batch = Array.isArray(data) ? data : [];
+      
+      const mappedBatch = batch.map(l => ({
+          ...l,
+          id: l.propertyId || l.id,
+          lastSaleDate: l.removedDate || l.listedDate,
+          lastSalePrice: l.price,
+      }));
+
+      // Deduplicate
+      const existingIds = new Set(allProperties.map(p => p.id));
+      const newProperties = mappedBatch.filter(p => !existingIds.has(p.id));
+
+      allProperties.push(...newProperties);
+      listingsRequestCount++;
+
+      if (batch.length < pass1Limit) break;
+      listingsOffset += pass1Limit;
+      if (listingsRequestCount >= 50) break;
+    }
+    console.log(`[FetchZip Phase 1.5] Finished. Total golden doors now: ${allProperties.length}`);
+
     // Pass 2: Fetch Density (General Properties) to fill the rest of the limit
     let pass2Offset = 0;
     const pass2Limit = 500;

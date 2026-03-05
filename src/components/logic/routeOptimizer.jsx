@@ -577,11 +577,28 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
             );
         }
 
+        // H3 Density Scoring
+        // Count how many properties are in each H3 cell in this route
+        const cellCounts = {};
+        let maxDensity = 0;
+        orderedProps.forEach(p => {
+            if (p.lat && p.lng) {
+                try {
+                    const cell = latLngToCell(p.lat, p.lng, 9);
+                    cellCounts[cell] = (cellCounts[cell] || 0) + 1;
+                    if (cellCounts[cell] > maxDensity) maxDensity = cellCounts[cell];
+                } catch (e) {}
+            }
+        });
+        
+        // Density multiplier: up to 20% bonus for highly dense routes (e.g. 10+ houses in same hex)
+        const densityMultiplier = 1 + Math.min(0.2, (maxDensity / 10) * 0.2);
+
         // Competitiveness: Score (60%) + Efficiency (30%) - Commute Penalty (10%)
         // Commute penalty: subtract 10 points per mile away?
         const commutePenalty = distanceFromStart * 5;
 
-        let competitivenessScore = Math.round((avgScore * 0.6 + efficiency * 100 * 0.4) - commutePenalty);
+        let competitivenessScore = Math.round(((avgScore * 0.6 + efficiency * 100 * 0.4) * densityMultiplier) - commutePenalty);
 
         // Get unique streets in this route
         const routeStreets = [...new Set(orderedProps.map(p => p.street_name).filter(Boolean))];

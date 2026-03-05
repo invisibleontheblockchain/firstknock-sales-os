@@ -349,6 +349,56 @@ Deno.serve(async (req) => {
             }
         }
 
+        // --- PASS 2: Fetch Inactive Listings (MLS-Sold but not yet recorded) ---
+        console.log(`[FetchArea] Fetching Inactive Listings (MLS-Sold)...`);
+        let listingsOffset = 0;
+        let listingsRequestCount = 0;
+        let keepFetchingListings = true;
+        
+        while (keepFetchingListings && listingsRequestCount < 50) {
+            const listingsParams = new URLSearchParams({
+                latitude: String(latitude),
+                longitude: String(longitude),
+                radius: String(radius),
+                limit: String(limit),
+                offset: String(listingsOffset),
+                status: 'Inactive',
+                daysOld: '0:365',
+                propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
+            });
+            const listingsUrl = `${RENTCAST_BASE}/listings/sale?${listingsParams.toString()}`;
+            try {
+                const res = await fetch(listingsUrl, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
+                if (!res.ok) break;
+                const data = await res.json();
+                const batch = Array.isArray(data) ? data : [];
+                
+                // Map listings to property format so processBatch can handle it
+                const mappedBatch = batch.map(l => ({
+                    ...l,
+                    id: l.propertyId || l.id,
+                    lastSaleDate: l.removedDate || l.listedDate, // Approximate sale date
+                    lastSalePrice: l.price,
+                }));
+                
+                await processBatch(mappedBatch);
+                
+                if (batch.length < limit) {
+                    keepFetchingListings = false;
+                } else {
+                    listingsOffset += limit;
+                    listingsRequestCount++;
+                }
+            } catch (err) {
+                break;
+            }
+            
+            if (Date.now() - startTime > MAX_EXECUTION_TIME) {
+                console.warn('[FetchArea] Execution time limit approaching during listings fetch, breaking early.');
+                break;
+            }
+        }
+
         console.log(`[FetchArea] Done! Imported ${successCount} new properties.`);
 
         // Update user's territory zip codes so the frontend loads them
