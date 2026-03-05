@@ -104,166 +104,113 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'RENTCAST_API_KEY not configured' }, { status: 500 });
     }
 
-    console.log(`[FetchZip-v6] Fetching from RentCast for zip: ${zip}`);
+    console.log(`[FetchZip-v7] Fetching from RentCast for zip: ${zip}`);
 
     const allPropertiesMap = new Map();
+    const PAGE_SIZE = 500;
 
-    // Phase 1: Fetch Golden Doors (Recent Sales in last 1 year)
-    const pass1Limit = 500;
-    const initialParams = new URLSearchParams({
-      zipCode: zip,
-      limit: String(pass1Limit),
-      offset: '0',
-      saleDateRange: '0:365', // ONLY recently sold in last 1 year
-      includeTotalCount: 'true'
-    });
+    // --- Helper: Exhaustive paginated fetch ---
+    async function fetchAllPages(baseUrl, params, label) {
+      params.set('limit', String(PAGE_SIZE));
+      params.set('offset', '0');
+      params.set('includeTotalCount', 'true');
 
-    const initialUrl = `${RENTCAST_BASE}/properties?${initialParams.toString()}`;
-    console.log(`[FetchZip Phase 1 - Recent Sales] Initial Request`);
-
-    const initialResponse = await fetch(initialUrl, { headers: { 'accept': 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
-
-    if (!initialResponse.ok) {
-      const errText = await initialResponse.text();
-      console.error(`[FetchZip Phase 1] RentCast error ${initialResponse.status}: ${errText}`);
-      if (initialResponse.status === 401) return Response.json({ error: 'RentCast API key invalid or expired.' }, { status: 500 });
-      return Response.json({ error: `RentCast API error: ${initialResponse.status}` }, { status: 500 });
-    }
-
-    const initialData = await initialResponse.json();
-    const totalCountHeader = initialResponse.headers.get('X-Total-Count');
-    const reportedTotal = totalCountHeader ? parseInt(totalCountHeader, 10) : (Array.isArray(initialData) ? initialData.length : 0);
-
-    if (Array.isArray(initialData)) {
-      initialData.forEach(p => allPropertiesMap.set(p.id, p));
-    }
-
-    if (reportedTotal > pass1Limit) {
-      const fetchTasks = [];
-      for (let offset = pass1Limit; offset < reportedTotal; offset += pass1Limit) {
-        fetchTasks.push(async () => {
-          const params = new URLSearchParams({
-            zipCode: zip,
-            limit: String(pass1Limit),
-            offset: String(offset),
-            saleDateRange: '0:365'
-          });
-          try {
-            const res = await fetch(`${RENTCAST_BASE}/properties?${params.toString()}`, { headers: { 'accept': 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
-            return res.ok ? await res.json() : [];
-          } catch (err) {
-            return [];
-          }
-        });
+      const firstUrl = `${baseUrl}?${params.toString()}`;
+      console.log(`[${label}] Initial request...`);
+      const firstRes = await fetch(firstUrl, { headers: { 'accept': 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
+      
+      if (!firstRes.ok) {
+        const errText = await firstRes.text();
+        console.error(`[${label}] Error ${firstRes.status}: ${errText}`);
+        return { ok: false, status: firstRes.status, items: [] };
       }
 
-      console.log(`[FetchZip Phase 1] Firing ${fetchTasks.length} parallel requests...`);
-      for (let i = 0; i < fetchTasks.length; i += 5) {
-        const chunk = fetchTasks.slice(i, i + 5).map(task => task());
-        const results = await Promise.all(chunk);
-        results.forEach(batch => {
-          if (Array.isArray(batch)) {
-            batch.forEach(p => allPropertiesMap.set(p.id, p));
-          }
-        });
-      }
-    }
+      const firstData = await firstRes.json();
+      const totalHeader = firstRes.headers.get('X-Total-Count');
+      const reportedTotal = totalHeader ? parseInt(totalHeader, 10) : (Array.isArray(firstData) ? firstData.length : 0);
+      const items = Array.isArray(firstData) ? [...firstData] : [];
 
-    console.log(`[FetchZip Phase 1] Finished. Found ${allPropertiesMap.size} recently sold properties.`);
+      console.log(`[${label}] Page 1: got ${items.length}, total reported: ${reportedTotal}`);
 
-    // Phase 2: Fetch Inactive Listings (MLS-Sold but not yet recorded)
-    const initialListingsParams = new URLSearchParams({
-      zipCode: zip,
-      limit: String(pass1Limit),
-      offset: '0',
-      status: 'Inactive',
-      daysOld: '0:365',
-      includeTotalCount: 'true'
-    });
-
-    console.log(`[FetchZip Phase 2 - MLS Sold] Initial Request`);
-    const initialListingsResponse = await fetch(`${RENTCAST_BASE}/listings/sale?${initialListingsParams.toString()}`, { headers: { 'accept': 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
-
-    if (initialListingsResponse.ok) {
-      const initialListingsData = await initialListingsResponse.json();
-      const listingsTotalCountHeader = initialListingsResponse.headers.get('X-Total-Count');
-      const listingsTotal = listingsTotalCountHeader ? parseInt(listingsTotalCountHeader, 10) : (Array.isArray(initialListingsData) ? initialListingsData.length : 0);
-
-      const processListingsBatch = (batch) => {
-        if (Array.isArray(batch)) {
-          batch.forEach(l => {
-            const id = l.propertyId || l.id;
-            allPropertiesMap.set(id, {
-              ...allPropertiesMap.get(id),
-              ...l,
-              id: id,
-              lastSaleDate: l.removedDate || l.listedDate,
-              lastSalePrice: l.price
-            });
-          });
-        }
-      };
-
-      processListingsBatch(initialListingsData);
-
-      if (listingsTotal > pass1Limit) {
-        const fetchTasks = [];
-        for (let offset = pass1Limit; offset < listingsTotal; offset += pass1Limit) {
-          fetchTasks.push(async () => {
-            const params = new URLSearchParams({
-              zipCode: zip,
-              limit: String(pass1Limit),
-              offset: String(offset),
-              status: 'Inactive',
-              daysOld: '0:365'
-            });
+      if (reportedTotal > PAGE_SIZE) {
+        const tasks = [];
+        for (let offset = PAGE_SIZE; offset < reportedTotal; offset += PAGE_SIZE) {
+          tasks.push(async () => {
+            const p = new URLSearchParams(params);
+            p.set('offset', String(offset));
+            p.delete('includeTotalCount');
             try {
-              const res = await fetch(`${RENTCAST_BASE}/listings/sale?${params.toString()}`, { headers: { 'accept': 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
+              const res = await fetch(`${baseUrl}?${p.toString()}`, { headers: { 'accept': 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
               return res.ok ? await res.json() : [];
-            } catch (err) {
-              return [];
-            }
+            } catch { return []; }
           });
         }
 
-        console.log(`[FetchZip Phase 2] Firing ${fetchTasks.length} parallel requests...`);
-        for (let i = 0; i < fetchTasks.length; i += 5) {
-          const chunk = fetchTasks.slice(i, i + 5).map(task => task());
-          const results = await Promise.all(chunk);
-          results.forEach(processListingsBatch);
+        console.log(`[${label}] Fetching ${tasks.length} additional pages...`);
+        // Execute in batches of 5 to avoid rate limits
+        for (let i = 0; i < tasks.length; i += 5) {
+          const batch = tasks.slice(i, i + 5).map(t => t());
+          const results = await Promise.all(batch);
+          results.forEach(r => { if (Array.isArray(r)) items.push(...r); });
+          if (i + 5 < tasks.length) await new Promise(r => setTimeout(r, 500));
         }
       }
-    }
-    console.log(`[FetchZip Phase 2] Finished. Total golden doors now: ${allPropertiesMap.size}`);
 
-    // Phase 3: Fetch Density (General Properties)
+      console.log(`[${label}] Complete: ${items.length} total items`);
+      return { ok: true, items };
+    }
+
+    // === PHASE 1: Golden Doors (Recent Sales - last 365 days) ===
+    const phase1Params = new URLSearchParams({ zipCode: zip, saleDateRange: '0:365' });
+    const phase1 = await fetchAllPages(`${RENTCAST_BASE}/properties`, phase1Params, 'Phase1-RecentSales');
+    
+    if (!phase1.ok && phase1.status === 401) {
+      return Response.json({ error: 'RentCast API key invalid or expired.' }, { status: 500 });
+    }
+
+    phase1.items.forEach(p => allPropertiesMap.set(p.id, p));
+    console.log(`[FetchZip-v7 Phase 1] ${allPropertiesMap.size} recently sold properties`);
+
+    // === PHASE 2: MLS-Sold (Inactive Listings - closes the deed recording gap) ===
+    const phase2Params = new URLSearchParams({ zipCode: zip, status: 'Inactive', daysOld: '0:365' });
+    const phase2 = await fetchAllPages(`${RENTCAST_BASE}/listings/sale`, phase2Params, 'Phase2-MLSSold');
+
+    if (phase2.ok) {
+      let mlsMerged = 0;
+      phase2.items.forEach(l => {
+        const id = l.propertyId || l.id;
+        // MLS listing data takes priority for sale info (bypasses 14-90 day recording lag)
+        const existing = allPropertiesMap.get(id) || {};
+        allPropertiesMap.set(id, {
+          ...existing,
+          ...l,
+          id: id,
+          lastSaleDate: l.removedDate || l.listedDate || existing.lastSaleDate,
+          lastSalePrice: l.price || existing.lastSalePrice,
+          _mlsSold: true // Flag to prioritize SOLD status
+        });
+        mlsMerged++;
+      });
+      console.log(`[FetchZip-v7 Phase 2] Merged ${mlsMerged} MLS listings. Total unique: ${allPropertiesMap.size}`);
+    }
+
+    // === PHASE 3: Density Fill (General property records) ===
     let pass3Offset = 0;
     let requestCount = 0;
     const maxTotalItems = 50000;
 
     while (allPropertiesMap.size < maxTotalItems) {
-      const currentLimit = Math.min(pass1Limit, maxTotalItems - allPropertiesMap.size);
-      const params = new URLSearchParams({
-        zipCode: zip,
-        limit: String(currentLimit),
-        offset: String(pass3Offset)
-      });
-
+      const currentLimit = Math.min(PAGE_SIZE, maxTotalItems - allPropertiesMap.size);
+      const params = new URLSearchParams({ zipCode: zip, limit: String(currentLimit), offset: String(pass3Offset) });
       const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
-      console.log(`[FetchZip Phase 3 - Density] Request ${requestCount + 1}: offset=${pass3Offset}`);
+      console.log(`[Phase3-Density] Request ${requestCount + 1}: offset=${pass3Offset}`);
 
       const response = await fetch(url, { headers: { 'accept': 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
-
       if (!response.ok) break;
 
       const data = await response.json();
       const batch = Array.isArray(data) ? data : [];
-
-      batch.forEach(p => {
-        if (!allPropertiesMap.has(p.id)) {
-          allPropertiesMap.set(p.id, p);
-        }
-      });
+      batch.forEach(p => { if (!allPropertiesMap.has(p.id)) allPropertiesMap.set(p.id, p); });
 
       requestCount++;
       if (batch.length < currentLimit) break;
@@ -272,7 +219,7 @@ Deno.serve(async (req) => {
     }
 
     const allProperties = Array.from(allPropertiesMap.values());
-    console.log(`[FetchZip] Combined Total: ${allProperties.length} properties before insertion.`);
+    console.log(`[FetchZip-v7] Combined Total: ${allProperties.length} properties before insertion.`);
 
     // --- Track this zip as generated (if new) ---
     if (!alreadyGenerated) {
