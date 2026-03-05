@@ -38,6 +38,9 @@ export default function MarketSetupPrompt({
     const canRefresh = daysSincePull >= 7; // 1 credit per week
 
     // Don't show if not in generate mode, or if user is doing something else
+    // Also don't show if user hasn't defined their market yet (MarketOnboarding handles first-time setup)
+    const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
+    if (!hasDefinedMarket) return null;
     if (mode !== 'generate' || activeRoute || routesGenerating || showCompare || showRoutePanel || drawingMode) return null;
 
     // If user already has a market set up, show the "ready" state
