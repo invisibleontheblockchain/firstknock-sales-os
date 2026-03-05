@@ -438,7 +438,7 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
                 p.cluster = p.cluster + routeOffset;
             });
 
-            clustered = [...clustered, ...zipClustered];
+            clustered = clustered.concat(zipClustered);
             routeOffset += zipRoutesCount;
         });
     } else {
