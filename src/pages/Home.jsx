@@ -836,7 +836,6 @@ export default function Home() {
                     console.log(`[Generate] Need to fetch zips from RentCast: ${zipsToFetch.join(', ')}`);
                     toast.loading("Pulling property data...", { id: 'fetch-zip' });
 
-                    let hitLimit = false;
                     for (const zip of zipsToFetch) {
                         try {
                             const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zip });
@@ -1583,10 +1582,6 @@ export default function Home() {
                             const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zipCodeFilter, force_sync: true });
                             if (res.data?.error) {
                                 toast.error(res.data.message || res.data.error, { id: toastId });
-                                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                                if (!isPaid) {
-                                    setTimeout(() => { window.location.href = '/Billing'; }, 2000);
-                                }
                                 return;
                             }
                             if (res.data.count > 0) {
@@ -1596,16 +1591,7 @@ export default function Home() {
                                 toast.info(res.data.message || "Up to date", { id: toastId });
                             }
                         } catch (e) { 
-                            const errData = e?.response?.data;
-                            if (errData?.error?.includes('limit')) {
-                                toast.error(errData.message || 'Zip code limit reached. Upgrade your plan.', { id: toastId });
-                                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                                if (!isPaid) {
-                                    setTimeout(() => { window.location.href = '/Billing'; }, 2000);
-                                }
-                            } else {
-                                toast.error("Sync failed", { id: toastId }); 
-                            }
+                            toast.error("Sync failed", { id: toastId }); 
                         }
                     }}
                     onClearArea={async () => {
