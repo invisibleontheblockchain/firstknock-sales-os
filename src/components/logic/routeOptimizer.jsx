@@ -524,8 +524,16 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         }
 
         // Apply 2-opt post-optimization for smoother paths (if enabled)
+        // For recent_sale_first: open-loop 2-opt starting at index 1 to lock the anchor
         if (use2Opt && walkingPattern !== 'street_sweep') {
-            orderedProps = apply2Opt(orderedProps);
+            if (walkingPattern === 'recent_sale_first' && orderedProps.length > 2) {
+                // Lock index 0 (anchor), only optimize indices 1..N
+                const anchor = orderedProps[0];
+                const rest = apply2Opt(orderedProps.slice(1));
+                orderedProps = [anchor, ...rest];
+            } else {
+                orderedProps = apply2Opt(orderedProps);
+            }
         }
 
         // Return to start: add first property at the end conceptually (affects distance calc)
