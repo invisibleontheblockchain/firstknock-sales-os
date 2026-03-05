@@ -278,12 +278,14 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Deduplicate if force_sync
+    // Always deduplicate against existing database records to prevent overlap
     let existingHashes = new Set();
-    if (force_sync) {
+    try {
       const existingProps = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000);
       const existingArr = Array.isArray(existingProps) ? existingProps : (existingProps?.items || []);
       existingHashes = new Set(existingArr.map(p => p.address_hash));
+    } catch (e) {
+      console.warn(`[FetchZip-v6] Failed to fetch existing properties for deduplication:`, e.message);
     }
 
     // Map to schema
