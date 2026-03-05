@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { base44 } from '@/api/base44Client';
-import { Map as MapIcon, Pencil, Layers, X, Check, Trash2, Loader2, List } from 'lucide-react';
+import { Map as MapIcon, Pencil, Layers, X, Check, Trash2, Loader2, List, Zap } from 'lucide-react';
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -34,54 +34,46 @@ export default function TerritoryPrompt({
 
     const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
 
-    // Drawing controls and drawn polygon controls should always show regardless of other panels
-    // Don't show if user hasn't defined their market yet (MarketOnboarding handles that)
+    // Show initial prompt only if user has data already and is on generate mode with nothing active
+    const hasPulledData = !!user?.has_pulled_data;
     const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
-    const showInitialPrompt = hasDefinedMarket && mode === 'generate' && !activeRoute && !routesGenerating && !showCompare && !showRoutePanel && !drawingMode && (!drawnPolygon || drawnPolygon.length === 0);
+    const showInitialPrompt = hasPulledData && hasDefinedMarket && mode === 'generate' && !activeRoute && !routesGenerating && !showCompare && !showRoutePanel && !drawingMode && (!drawnPolygon || drawnPolygon.length === 0);
 
     return (
         <>
-            {/* Prompt to start drawing or use main territory */}
+            {/* Simple prompt for returning users who already have data */}
             {showInitialPrompt && (
                 <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-auto">
-                    <div className="flex flex-col items-center gap-4 w-full px-4 max-w-md">
-                        <div className="w-16 h-16 rounded-full bg-yellow-500/20 flex items-center justify-center mb-2 shadow-[0_0_30px_rgba(255,215,0,0.3)]">
-                            <MapIcon className="w-8 h-8 text-yellow-500" />
+                    <div className="flex flex-col items-center gap-4 w-full px-4 max-w-sm">
+                        <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mb-2 shadow-[0_0_30px_rgba(0,245,160,0.3)]">
+                            <MapIcon className="w-8 h-8 text-green-400" />
                         </div>
-                        <h2 className="text-3xl sm:text-4xl font-extrabold text-white drop-shadow-lg text-center tracking-tight" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.9)' }}>
-                            Map Actions
+                        <h2 className="text-2xl font-extrabold text-white text-center tracking-tight">
+                            Your Territory
                         </h2>
-                        <p className="text-gray-300 text-sm font-medium mb-2 text-center">Choose an action to get started.</p>
+                        <p className="text-gray-400 text-sm text-center">Your lead data is loaded and ready.</p>
                         <div className="flex flex-col gap-3 w-full">
+                            <Button
+                                onClick={() => setShowCompare(true)}
+                                className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold h-14 text-base w-full rounded-xl shadow-[0_0_20px_rgba(255,215,0,0.4)] border-none"
+                            >
+                                <Zap className="w-5 h-5 mr-2" />
+                                Generate Routes
+                            </Button>
                             <Button
                                 onClick={() => {
                                     setMode('analyze');
                                     setShowRoutePanel(true);
                                 }}
-                                className="bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 font-bold h-12 text-base w-full rounded-full border border-blue-500/30 backdrop-blur transition-colors mb-2"
+                                className="bg-white/10 hover:bg-white/20 text-white font-bold h-12 text-sm w-full rounded-xl border border-white/10"
                             >
-                                <List className="w-5 h-5 mr-2" />
+                                <List className="w-4 h-4 mr-2" />
                                 View Saved Routes
                             </Button>
                             <Button
-                                onClick={() => setDrawingMode(true)}
-                                className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold h-12 text-base w-full rounded-full shadow-[0_0_20px_rgba(255,215,0,0.4)] transition-transform hover:scale-105 border-none"
-                            >
-                                <Pencil className="w-5 h-5 mr-2" />
-                                Draw Custom Area
-                            </Button>
-                            <Button
-                                onClick={() => setShowCompare(true)}
-                                className="bg-black/60 hover:bg-black text-white font-bold h-12 text-base w-full rounded-full border border-gray-700 backdrop-blur transition-colors mb-2"
-                            >
-                                <MapIcon className="w-5 h-5 mr-2 text-yellow-500" />
-                                Search by Zip Code
-                            </Button>
-                            <Button
                                 onClick={() => setMode('analyze')}
-                                className="bg-white/5 hover:bg-white/10 text-gray-300 font-bold h-12 text-base w-full rounded-full border border-gray-800 backdrop-blur transition-colors"
+                                className="bg-white/5 hover:bg-white/10 text-gray-400 font-bold h-10 text-xs w-full rounded-xl border border-gray-800"
                             >
-                                <MapIcon className="w-5 h-5 mr-2" />
                                 Just View Map
                             </Button>
                         </div>
