@@ -185,6 +185,7 @@ export default function TerritoryPrompt({
                                 const radius = Math.max(0.5, maxDist);
                                 // The actual area is 200 sq mi (set by the draw tool), use that for display
                                 const areaSqMiles = 200;
+                                console.log(`[TerritoryPrompt] Centroid: ${centerLat.toFixed(4)}, ${centerLng.toFixed(4)}, maxDist: ${maxDist.toFixed(2)} miles, radius sent: ${radius.toFixed(2)} miles, polygon pts: ${drawnPolygon.length}`);
 
                                 // Check pull limit — 1 free pull per user
                                 const pullLimit = isOwner ? 999 : 1;
