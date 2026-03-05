@@ -4,25 +4,27 @@ import { polygonToCells, latLngToCell } from 'npm:h3-js@4.1.0';
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
 
-const MAX_PULLS_PER_USER = 1; // One free pull per user — upgrade for more
+const MAX_PULLS_PER_USER = 1;
 
 // Ray-casting algorithm for point in polygon
 function isPointInPolygon(point, vs) {
     if (!vs || vs.length < 3) return true;
     let x = point.lng, y = point.lat;
     const epsilon = 1e-9;
-
     let inside = false;
     for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
         let xi = vs[i].lng, yi = vs[i].lat;
         let xj = vs[j].lng, yj = vs[j].lat;
-
         let intersect = ((yi > y) !== (yj > y))
             && (x < (xj - xi) * (y - yi) / (yj - yi) + xi + epsilon);
         if (intersect) inside = !inside;
     }
-
     return inside;
+}
+
+// Throttle-aware delay
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 Deno.serve(async (req) => {
@@ -61,8 +63,6 @@ Deno.serve(async (req) => {
         }
 
         const pullLimit = isOwner ? 999 : MAX_PULLS_PER_USER;
-
-        // Track usage — one free pull, then paywall
         const areaPulls = user.area_pulls_count || 0;
 
         if (areaPulls >= pullLimit) {
@@ -73,48 +73,36 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'RENTCAST_API_KEY not configured' }, { status: 500 });
         }
 
-        // Pre-increment usage BEFORE making expensive API calls (optimistic lock)
-        // This prevents double-tap race conditions where two concurrent requests
-        // both read areaPulls=0, both pass the check, and both fire API calls.
+        // Pre-increment usage to prevent race conditions
         try {
             await base44.auth.updateMe({ area_pulls_count: areaPulls + 1 });
         } catch (e) {
             console.error(`[FetchArea] Failed to pre-increment usage:`, e.message);
-            // If we can't track usage, block the request to prevent abuse
             return Response.json({ error: 'Failed to verify usage limits. Please try again.' }, { status: 500 });
         }
 
-        console.log(`[FetchArea] Fetching from RentCast for lat:${latitude}, lng:${longitude}, r:${radius} miles (polygon points: ${polygon ? polygon.length : 0})`);
-        console.log(`[FetchArea] Radius passed to RentCast API: ${radius} miles`);
+        const areaSqMiles = Math.PI * radius * radius;
+        console.log(`[FetchArea] === START === lat:${latitude}, lng:${longitude}, r:${radius} mi, area:${areaSqMiles.toFixed(1)} sq mi, polygon pts:${polygon ? polygon.length : 0}`);
 
         const startTime = Date.now();
-        const MAX_EXECUTION_TIME = 45000; // 45 seconds to leave buffer for DB writes
+        const MAX_EXECUTION_TIME = 50000; // 50s to leave buffer
 
-        // OPTIMIZATION: Scale limits based on area size to avoid timeouts
-        const areaSqMiles = Math.PI * radius * radius;
-        const isLargeArea = areaSqMiles > 50;
-        const isVeryLargeArea = areaSqMiles > 150;
-        
+        // === PASS 1: /v1/properties — ALL properties in the radius (no saleDateRange) ===
+        // This is the master property database. We want every property for door-knocking routes.
+        // saleDateRange is NOT used here — we want all properties, not just recently sold.
+        const LIMIT = 500; // RentCast max per request
+        const MAX_PARALLEL = 5; // Stay well under 20 req/s rate limit
+        const THROTTLE_DELAY_MS = 300; // Delay between parallel chunks to respect rate limits
+
         let requestCount = 0;
         let reportedTotal = 0;
-        let offset = 0;
-        const limit = 500;
-        // Raised limits for 200 sq mi — 8-mile radius is manageable for RentCast
-        const maxItems = isVeryLargeArea ? 20000 : (isLargeArea ? 20000 : 100000);
-        const maxRequests = isVeryLargeArea ? 40 : (isLargeArea ? 40 : 200);
-        const maxParallel = isVeryLargeArea ? 5 : 5;
-        
-        console.log(`[FetchArea] Area ~${areaSqMiles.toFixed(0)} sq mi, maxItems=${maxItems}, maxRequests=${maxRequests}`); 
-
-        // Tracking stats
-        let successCount = 0;
         let totalFound = 0;
         let inPolygonCount = 0;
         let mappedCount = 0;
         let recentSales12moCount = 0;
         let droppedNoAddressCount = 0;
-        
-        // Global caches for deduplication across batches
+        let successCount = 0;
+
         const uniqueZips = new Set();
         const existingHashes = new Set();
 
@@ -123,20 +111,16 @@ Deno.serve(async (req) => {
             if (!batch || batch.length === 0) return;
             totalFound += batch.length;
 
-            // Filter by exact polygon if provided
             let filteredProperties = batch;
             if (polygon && polygon.length >= 3) {
                 filteredProperties = batch.filter(p => {
                     if (!p.latitude || !p.longitude) return false;
-                    
-                    // Fast H3 pre-filter
                     if (useH3Filter) {
                         try {
                             const cell = latLngToCell(p.latitude, p.longitude, 9);
                             if (!polygonH3Cells.has(cell)) return false;
                         } catch (e) {}
                     }
-
                     return isPointInPolygon({ lat: p.latitude, lng: p.longitude }, polygon);
                 });
             }
@@ -154,7 +138,6 @@ Deno.serve(async (req) => {
 
             droppedNoAddressCount += filteredProperties.filter(p => !(p.addressLine1 || p.formattedAddress) || !p.latitude || !p.longitude).length;
 
-            // Map to schema
             const mapped = filteredProperties
                 .filter(p => p.latitude && p.longitude && (p.addressLine1 || p.formattedAddress))
                 .map(p => {
@@ -191,7 +174,6 @@ Deno.serve(async (req) => {
             // Deduplicate against database
             const batchZips = [...new Set(mapped.map(p => p.zip_code))];
             const newZipsToFetch = batchZips.filter(z => !uniqueZips.has(z));
-            
             for (const zip of newZipsToFetch) {
                 uniqueZips.add(zip);
                 try {
@@ -204,7 +186,9 @@ Deno.serve(async (req) => {
             }
 
             const newMapped = mapped.filter(p => !existingHashes.has(p.address_hash));
-            
+            // Track inserted hashes so subsequent batches don't re-insert
+            newMapped.forEach(p => existingHashes.add(p.address_hash));
+
             if (newMapped.length > 0) {
                 const CHUNK_SIZE = 500;
                 for (let i = 0; i < newMapped.length; i += CHUNK_SIZE) {
@@ -213,6 +197,7 @@ Deno.serve(async (req) => {
                         await base44.entities.MasterProperty.bulkCreate(chunk);
                         successCount += chunk.length;
                     } catch (e) {
+                        // Fallback to smaller chunks
                         const SMALL_CHUNK = 50;
                         for (let j = 0; j < chunk.length; j += SMALL_CHUNK) {
                             const small = chunk.slice(j, j + SMALL_CHUNK);
@@ -226,146 +211,165 @@ Deno.serve(async (req) => {
             }
         };
 
-        // First request to get total count
-        // Use saleDateRange to focus on recently sold (last 3 years = 1095 days)
-        // This filters server-side so RentCast returns far fewer results to paginate
+        // --- PASS 1: Fetch ALL properties via /v1/properties (no saleDateRange) ---
+        console.log(`[FetchArea] === PASS 1: /v1/properties (all properties in radius, no date filter) ===`);
+
         const initialParams = new URLSearchParams({
             latitude: String(latitude),
             longitude: String(longitude),
             radius: String(radius),
-            limit: String(limit),
-            offset: String(offset),
+            limit: String(LIMIT),
+            offset: '0',
             propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
-            saleDateRange: '1095',
             includeTotalCount: 'true',
         });
 
         const initialUrl = `${RENTCAST_BASE}/properties?${initialParams.toString()}`;
-        console.log(`[FetchArea] Initial Request (recently sold, saleDateRange=1095): offset=${offset}`);
+        console.log(`[FetchArea] Pass1 Request #1: offset=0, limit=${LIMIT}, includeTotalCount=true`);
 
         const initialResponse = await fetch(initialUrl, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
+        requestCount++;
 
         if (!initialResponse.ok) {
             const errText = await initialResponse.text();
             console.error(`[FetchArea] RentCast error ${initialResponse.status}: ${errText}`);
-            return Response.json({ error: `RentCast API error: ${initialResponse.status}` }, { status: 500 });
+            return Response.json({ error: `RentCast API error: ${initialResponse.status}`, details: errText }, { status: 500 });
         }
 
         const totalHeader = initialResponse.headers.get('X-Total-Count');
         if (totalHeader) reportedTotal = parseInt(totalHeader, 10);
+        const limitHeader = initialResponse.headers.get('X-Limit');
+        const offsetHeader = initialResponse.headers.get('X-Offset');
 
         const initialData = await initialResponse.json();
         const initialBatch = Array.isArray(initialData) ? initialData : [];
-        console.log(`[FetchArea] Initial batch size: ${initialBatch.length}, X-Total-Count: ${reportedTotal}, totalFound so far: ${totalFound}`);
+        console.log(`[FetchArea] Pass1 Response #1: ${initialBatch.length} records, X-Total-Count=${reportedTotal}, X-Limit=${limitHeader}, X-Offset=${offsetHeader}`);
+
         if (initialBatch.length > 0) {
-            console.log(`[FetchArea] Sample property: lat=${initialBatch[0].latitude}, lng=${initialBatch[0].longitude}, addr=${initialBatch[0].addressLine1 || initialBatch[0].formattedAddress}`);
+            console.log(`[FetchArea] Sample: lat=${initialBatch[0].latitude}, lng=${initialBatch[0].longitude}, addr=${initialBatch[0].addressLine1}, lastSaleDate=${initialBatch[0].lastSaleDate}, lastSalePrice=${initialBatch[0].lastSalePrice}`);
         }
+
         await processBatch(initialBatch);
-        console.log(`[FetchArea] After initial batch: totalFound=${totalFound}, inPolygon=${inPolygonCount}, mapped=${mappedCount}, imported=${successCount}`);
-        requestCount++;
-        offset += limit;
+        console.log(`[FetchArea] After batch #1: totalFound=${totalFound}, inPolygon=${inPolygonCount}, mapped=${mappedCount}, imported=${successCount}`);
 
-        // If we didn't get a reported total, but we got a full batch, we'll fetch sequentially.
-        // If we got a reported total, we can fetch concurrently.
-        if (initialBatch.length === limit) {
-            if (reportedTotal > 0) {
-                const targetTotal = Math.min(reportedTotal, maxItems);
-                const fetchTasks = [];
-                
-                while (offset < targetTotal && requestCount < maxRequests) {
-                    const currentOffset = offset;
-                    fetchTasks.push(async () => {
-                        const params = new URLSearchParams({
-                            latitude: String(latitude),
-                            longitude: String(longitude),
-                            radius: String(radius),
-                            limit: String(limit),
-                            offset: String(currentOffset),
-                            propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
-                            saleDateRange: '1095',
-                        });
-                        const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
-                        try {
-                            const res = await fetch(url, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
-                            return res.ok ? await res.json() : [];
-                        } catch (err) {
-                            return [];
-                        }
-                    });
-                    
-                    offset += limit;
-                    requestCount++;
-                }
+        // --- Dynamic pagination: exhaust X-Total-Count ---
+        if (initialBatch.length >= LIMIT && reportedTotal > LIMIT) {
+            const totalToFetch = Math.min(reportedTotal, 50000); // Hard safety cap
+            const remainingPages = Math.ceil((totalToFetch - LIMIT) / LIMIT);
+            console.log(`[FetchArea] Need ${remainingPages} more pages to exhaust ${totalToFetch} total records`);
 
-                console.log(`[FetchArea] Firing ${fetchTasks.length} parallel requests in chunks of ${maxParallel}...`);
-                
-                for (let i = 0; i < fetchTasks.length; i += maxParallel) {
-                    const chunk = fetchTasks.slice(i, i + maxParallel).map(task => task());
-                    const results = await Promise.all(chunk);
-                    
-                    for (const data of results) {
-                        const batch = Array.isArray(data) ? data : [];
-                        await processBatch(batch);
-                    }
-                    
-                    if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-                        console.warn('[FetchArea] Execution time limit approaching, breaking early.');
-                        break;
-                    }
-                }
-            } else {
-                // Sequential fallback if X-Total-Count is missing
-                console.log(`[FetchArea] X-Total-Count missing, falling back to sequential pagination...`);
-                let keepFetching = true;
-                while (keepFetching && requestCount < maxRequests) {
+            // Build all fetch tasks
+            const fetchTasks = [];
+            for (let page = 1; page <= remainingPages; page++) {
+                const currentOffset = page * LIMIT;
+                fetchTasks.push(async () => {
                     const params = new URLSearchParams({
                         latitude: String(latitude),
                         longitude: String(longitude),
                         radius: String(radius),
-                        limit: String(limit),
-                        offset: String(offset),
+                        limit: String(LIMIT),
+                        offset: String(currentOffset),
                         propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
-                        saleDateRange: '1095',
                     });
                     const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
                     try {
                         const res = await fetch(url, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
-                        if (!res.ok) break;
-                        const data = await res.json();
-                        const batch = Array.isArray(data) ? data : [];
-                        await processBatch(batch);
-                        
-                        if (batch.length < limit) {
-                            keepFetching = false;
-                        } else {
-                            offset += limit;
-                            requestCount++;
+                        if (!res.ok) {
+                            console.warn(`[FetchArea] Pass1 page offset=${currentOffset} failed: ${res.status}`);
+                            return [];
                         }
+                        return await res.json();
                     } catch (err) {
-                        break;
+                        console.warn(`[FetchArea] Pass1 page offset=${currentOffset} error: ${err.message}`);
+                        return [];
                     }
-                    
-                    if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-                        console.warn('[FetchArea] Execution time limit approaching, breaking early.');
-                        break;
-                    }
+                });
+            }
+
+            console.log(`[FetchArea] Executing ${fetchTasks.length} pagination requests in chunks of ${MAX_PARALLEL} with ${THROTTLE_DELAY_MS}ms delay...`);
+
+            let chunkIndex = 0;
+            for (let i = 0; i < fetchTasks.length; i += MAX_PARALLEL) {
+                chunkIndex++;
+                const chunkTasks = fetchTasks.slice(i, i + MAX_PARALLEL).map(task => task());
+                const results = await Promise.all(chunkTasks);
+                requestCount += results.length;
+
+                let chunkRecords = 0;
+                for (const data of results) {
+                    const batch = Array.isArray(data) ? data : [];
+                    chunkRecords += batch.length;
+                    await processBatch(batch);
+                }
+                console.log(`[FetchArea] Pass1 chunk ${chunkIndex}: ${chunkRecords} records, running total: totalFound=${totalFound}, inPolygon=${inPolygonCount}, imported=${successCount}`);
+
+                if (Date.now() - startTime > MAX_EXECUTION_TIME) {
+                    console.warn(`[FetchArea] Time limit reached after ${((Date.now() - startTime) / 1000).toFixed(1)}s, stopping Pass 1 pagination.`);
+                    break;
+                }
+
+                // Throttle between chunks to respect 20 req/s rate limit
+                if (i + MAX_PARALLEL < fetchTasks.length) {
+                    await sleep(THROTTLE_DELAY_MS);
                 }
             }
+        } else if (initialBatch.length >= LIMIT && !reportedTotal) {
+            // Sequential fallback if X-Total-Count header was missing
+            console.log(`[FetchArea] X-Total-Count missing, sequential pagination fallback...`);
+            let offset = LIMIT;
+            let keepGoing = true;
+            while (keepGoing && requestCount < 60) {
+                const params = new URLSearchParams({
+                    latitude: String(latitude),
+                    longitude: String(longitude),
+                    radius: String(radius),
+                    limit: String(LIMIT),
+                    offset: String(offset),
+                    propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
+                });
+                const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
+                try {
+                    const res = await fetch(url, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
+                    requestCount++;
+                    if (!res.ok) break;
+                    const data = await res.json();
+                    const batch = Array.isArray(data) ? data : [];
+                    console.log(`[FetchArea] Pass1 sequential offset=${offset}: ${batch.length} records`);
+                    await processBatch(batch);
+                    if (batch.length < LIMIT) keepGoing = false;
+                    else offset += LIMIT;
+                } catch (err) {
+                    console.warn(`[FetchArea] Sequential fetch error at offset=${offset}:`, err.message);
+                    break;
+                }
+                if (Date.now() - startTime > MAX_EXECUTION_TIME) {
+                    console.warn(`[FetchArea] Time limit in sequential mode.`);
+                    break;
+                }
+            }
+        } else {
+            console.log(`[FetchArea] Pass1 complete in single page (${initialBatch.length} < ${LIMIT} or total=${reportedTotal})`);
         }
 
-        // --- PASS 2: Fetch Inactive Listings (MLS-Sold but not yet recorded) ---
-        const maxListingRequests = isVeryLargeArea ? 20 : (isLargeArea ? 20 : 50);
-        console.log(`[FetchArea] Fetching Inactive Listings (MLS-Sold), max ${maxListingRequests} requests...`);
+        const pass1Elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`[FetchArea] === PASS 1 COMPLETE (${pass1Elapsed}s) === requests=${requestCount}, totalFound=${totalFound}, inPolygon=${inPolygonCount}, mapped=${mappedCount}, imported=${successCount}`);
+
+        // --- PASS 2: Fetch Inactive MLS Listings (recently sold via /v1/listings/sale) ---
+        // This catches properties that sold recently via MLS but haven't hit county records yet
+        const pass2Start = Date.now();
+        console.log(`[FetchArea] === PASS 2: /v1/listings/sale (inactive, daysOld=0:365) ===`);
         let listingsOffset = 0;
         let listingsRequestCount = 0;
+        let listingsTotalFound = 0;
+        const MAX_LISTING_REQUESTS = 30;
+
         let keepFetchingListings = true;
-        
-        while (keepFetchingListings && listingsRequestCount < maxListingRequests) {
+        while (keepFetchingListings && listingsRequestCount < MAX_LISTING_REQUESTS) {
             const listingsParams = new URLSearchParams({
                 latitude: String(latitude),
                 longitude: String(longitude),
                 radius: String(radius),
-                limit: String(limit),
+                limit: String(LIMIT),
                 offset: String(listingsOffset),
                 status: 'Inactive',
                 daysOld: '0:365',
@@ -374,44 +378,61 @@ Deno.serve(async (req) => {
             const listingsUrl = `${RENTCAST_BASE}/listings/sale?${listingsParams.toString()}`;
             try {
                 const res = await fetch(listingsUrl, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
-                if (!res.ok) break;
+                listingsRequestCount++;
+                if (!res.ok) {
+                    console.warn(`[FetchArea] Pass2 request failed: ${res.status}`);
+                    break;
+                }
                 const data = await res.json();
                 const batch = Array.isArray(data) ? data : [];
-                
-                // Map listings to property format so processBatch can handle it
+                listingsTotalFound += batch.length;
+                console.log(`[FetchArea] Pass2 offset=${listingsOffset}: ${batch.length} inactive listings`);
+
+                // Map listings to property format
                 const mappedBatch = batch.map(l => ({
                     ...l,
                     id: l.propertyId || l.id,
-                    lastSaleDate: l.removedDate || l.listedDate, // Approximate sale date
+                    lastSaleDate: l.removedDate || l.listedDate,
                     lastSalePrice: l.price,
                 }));
-                
                 await processBatch(mappedBatch);
-                
-                if (batch.length < limit) {
+
+                if (batch.length < LIMIT) {
                     keepFetchingListings = false;
                 } else {
-                    listingsOffset += limit;
-                    listingsRequestCount++;
+                    listingsOffset += LIMIT;
                 }
             } catch (err) {
+                console.warn(`[FetchArea] Pass2 error:`, err.message);
                 break;
             }
-            
             if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-                console.warn('[FetchArea] Execution time limit approaching during listings fetch, breaking early.');
+                console.warn(`[FetchArea] Time limit during Pass 2.`);
                 break;
             }
         }
 
-        console.log(`[FetchArea] FINAL SUMMARY: totalFound=${totalFound}, inPolygon=${inPolygonCount}, mapped=${mappedCount}, imported=${successCount}, recentSales12mo=${recentSales12moCount}, droppedNoAddr=${droppedNoAddressCount}, requests=${requestCount}+${listingsRequestCount} listings`);
+        const pass2Elapsed = ((Date.now() - pass2Start) / 1000).toFixed(1);
+        const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`[FetchArea] === PASS 2 COMPLETE (${pass2Elapsed}s) === listingsRequests=${listingsRequestCount}, listingsFound=${listingsTotalFound}`);
 
-        // Update user's territory zip codes and mark data as pulled
+        console.log(`[FetchArea] ============ FINAL SUMMARY (${totalElapsed}s total) ============`);
+        console.log(`[FetchArea]   X-Total-Count (Pass1): ${reportedTotal}`);
+        console.log(`[FetchArea]   Total API fetched:     ${totalFound} (Pass1) + ${listingsTotalFound} (Pass2 listings)`);
+        console.log(`[FetchArea]   In polygon:            ${inPolygonCount}`);
+        console.log(`[FetchArea]   Mapped (valid addr):   ${mappedCount}`);
+        console.log(`[FetchArea]   Dropped (no addr):     ${droppedNoAddressCount}`);
+        console.log(`[FetchArea]   Recent sales (12mo):   ${recentSales12moCount}`);
+        console.log(`[FetchArea]   NEW imported to DB:    ${successCount}`);
+        console.log(`[FetchArea]   Total API requests:    ${requestCount} (Pass1) + ${listingsRequestCount} (Pass2) = ${requestCount + listingsRequestCount}`);
+        console.log(`[FetchArea] ==============================================`);
+
+        // Update user's territory zip codes
         const uniqueZipsArray = Array.from(uniqueZips);
         const currentZips = user.territory_zip_codes || [];
         const newZips = uniqueZipsArray.length > 0 ? [...new Set([...uniqueZipsArray, ...currentZips])] : currentZips;
         try {
-            await base44.auth.updateMe({ 
+            await base44.auth.updateMe({
                 territory_zip_codes: newZips,
                 has_pulled_data: true,
                 territory_property_count: successCount,
@@ -422,7 +443,7 @@ Deno.serve(async (req) => {
         }
 
         return Response.json({
-            status: 'imported',
+            status: successCount > 0 || inPolygonCount > 0 ? 'imported' : 'empty',
             count: successCount,
             total_found: totalFound,
             reported_total: reportedTotal,
@@ -430,11 +451,18 @@ Deno.serve(async (req) => {
             recent_sales_12mo: recentSales12moCount,
             mapped_count: mappedCount,
             dropped_no_address: droppedNoAddressCount,
-            message: `Imported ${successCount} new properties in area.`
+            listings_found: listingsTotalFound,
+            total_requests: requestCount + listingsRequestCount,
+            elapsed_seconds: parseFloat(totalElapsed),
+            message: successCount > 0
+                ? `Imported ${successCount} new properties (${totalFound} found, ${inPolygonCount} in area).`
+                : inPolygonCount > 0
+                    ? `${inPolygonCount} properties found in area — all already in your database.`
+                    : `No properties found in this area. Try a different location.`
         });
 
     } catch (error) {
-        console.error('[FetchArea] Error:', error);
+        console.error('[FetchArea] Fatal error:', error);
         return Response.json({ error: error.message }, { status: 500 });
     }
 });
