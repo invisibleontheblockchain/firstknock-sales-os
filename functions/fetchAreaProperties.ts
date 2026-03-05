@@ -4,8 +4,7 @@ import { polygonToCells, latLngToCell } from 'npm:h3-js@4.1.0';
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
 
-const FREE_PULL_LIMIT = 3; // Number of area pulls allowed for free users
-const PAID_PULL_LIMIT = 20; // Number of area pulls allowed for paid users
+const MONTHLY_PULL_LIMIT = 3; // Number of area pulls allowed per month
 
 // Ray-casting algorithm for point in polygon
 function isPointInPolygon(point, vs) {
@@ -41,16 +40,7 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Latitude, longitude, and radius are required' }, { status: 400 });
         }
 
-        const isPaid = user.subscription_status === 'active' || user.subscription_status === 'trialing';
         const isOwner = user.is_owner === true || user.email?.toLowerCase().includes('christian');
-        const maxRadius = isOwner ? 999 : (isPaid ? 50 : 20); // Paid users get 100 miles across, free gets 40
-
-        if (radius > maxRadius) {
-            return Response.json({
-                error: 'Area too large',
-                message: `The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max ${maxRadius * 2} miles across).`
-            }, { status: 400 });
-        }
 
         // Pre-compute H3 cells for the polygon
         let polygonH3Cells = new Set();
@@ -70,16 +60,13 @@ Deno.serve(async (req) => {
             }
         }
 
-        const pullLimit = isOwner ? 999 : (isPaid ? PAID_PULL_LIMIT : FREE_PULL_LIMIT);
+        const pullLimit = isOwner ? 999 : MONTHLY_PULL_LIMIT;
 
-        // Track usage (we'll reuse generated_zip_codes array for area pulls as a quick hack, or a new field)
+        // Track usage
         const areaPulls = user.area_pulls_count || 0;
 
         if (areaPulls >= pullLimit) {
-            const upgradeMsg = !isPaid
-                ? `You've used your ${FREE_PULL_LIMIT} free data pulls. Subscribe to unlock more territories.`
-                : `You've reached your data pull limit.`;
-            return Response.json({ error: 'Data limit reached', message: upgradeMsg }, { status: 429 });
+            return Response.json({ error: 'Data limit reached', message: `You've used your ${MONTHLY_PULL_LIMIT} custom drawn areas this month. Resets next month.` }, { status: 429 });
         }
 
         if (!RENTCAST_API_KEY) {

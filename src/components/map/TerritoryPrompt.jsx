@@ -32,9 +32,7 @@ export default function TerritoryPrompt({
     const [pulling, setPulling] = useState(false);
     const [pullProgress, setPullProgress] = useState('');
 
-    const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
     const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
-    const canUseLargeAreas = isPaid || isOwner;
 
     // Drawing controls and drawn polygon controls should always show regardless of other panels
     // Don't show if user hasn't defined their market yet (MarketOnboarding handles that)
@@ -194,24 +192,12 @@ export default function TerritoryPrompt({
                                 const radius = Math.max(0.5, maxDist * 1.05); // small buffer
                                 const areaSqMiles = Math.PI * (radius * radius);
 
-                                // Get user subscription info
-                                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                                const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
-                                const pullLimit = isOwner ? 999 : (isPaid ? 10 : 3);
+                                // Check monthly draw limit (3 per month for all users)
+                                const pullLimit = isOwner ? 999 : 3;
                                 const pullsUsed = user?.area_pulls_count || 0;
 
                                 if (pullsUsed >= pullLimit) {
-                                    toast.error(isPaid ? "You've reached your 10 custom drawn areas limit." : "You've used your 3 free custom drawn areas. Please upgrade.");
-                                    if (!isPaid) {
-                                        setTimeout(() => { window.location.href = '/Billing'; }, 2000);
-                                    }
-                                    return;
-                                }
-
-                                const maxRadius = isOwner ? 999 : (isPaid ? 50 : 20); // Hard cap
-
-                                if (radius > maxRadius) {
-                                    toast.error(`The drawn area is too large (approx ${Math.round(radius * 2)} miles across). Please draw a smaller territory (max ${maxRadius * 2} miles across).`);
+                                    toast.error("You've used your 3 custom drawn areas this month. Resets next month.");
                                     return;
                                 }
 

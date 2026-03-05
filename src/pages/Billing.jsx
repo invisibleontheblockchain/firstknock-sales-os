@@ -17,8 +17,8 @@ const PLANS = [
     priceId: 'price_1SwDXY2MvSNi6E8hZb5nSRDw',
     isPopular: true,
     features: [
-      'Up to 10 Zip Code Territories',
-      'Up to 10 Custom Drawn Areas',
+      'Unlimited Zip Code Territories',
+      '3 Custom Drawn Areas per Month (200 sq mi each)',
       'Unlimited Routes within your Areas',
       'Live GPS Tracking & Proof of Visit',
       'AI Route Optimization',
