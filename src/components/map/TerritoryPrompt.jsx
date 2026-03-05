@@ -1,17 +1,19 @@
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { base44 } from '@/api/base44Client';
-import { Map as MapIcon, Pencil, Layers, X, Check, Trash2, Loader2 } from 'lucide-react';
+import { Map as MapIcon, Pencil, Layers, X, Check, Trash2, Loader2, List } from 'lucide-react';
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
 export default function TerritoryPrompt({
     mode,
+    setMode,
     activeRoute,
     routesGenerating,
     showCompare,
     setShowCompare,
     showRoutePanel,
+    setShowRoutePanel,
     drawingMode,
     setDrawingMode,
     drawnPolygon,
@@ -46,10 +48,20 @@ export default function TerritoryPrompt({
                             <MapIcon className="w-8 h-8 text-yellow-500" />
                         </div>
                         <h2 className="text-3xl sm:text-4xl font-extrabold text-white drop-shadow-lg text-center tracking-tight" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.9)' }}>
-                            Generate Routes
+                            Map Actions
                         </h2>
-                        <p className="text-gray-300 text-sm font-medium mb-2 text-center">Define your working area to generate optimized door-to-door routes.</p>
+                        <p className="text-gray-300 text-sm font-medium mb-2 text-center">Choose an action to get started.</p>
                         <div className="flex flex-col gap-3 w-full">
+                            <Button
+                                onClick={() => {
+                                    setMode('analyze');
+                                    setShowRoutePanel(true);
+                                }}
+                                className="bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 font-bold h-12 text-base w-full rounded-full border border-blue-500/30 backdrop-blur transition-colors mb-2"
+                            >
+                                <List className="w-5 h-5 mr-2" />
+                                View Saved Routes
+                            </Button>
                             <Button
                                 onClick={() => setDrawingMode(true)}
                                 className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold h-12 text-base w-full rounded-full shadow-[0_0_20px_rgba(255,215,0,0.4)] transition-transform hover:scale-105 border-none"
