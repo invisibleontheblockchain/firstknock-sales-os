@@ -348,7 +348,7 @@ export default function RouteBuilderSettings({
                                             placeholder="Enter start address..."
                                             value={startAddressInput}
                                             onChange={(e) => setStartAddressInput(e.target.value)}
-                                            className="flex-1 px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333] focus:border-yellow-500 focus:outline-none"
+                                            className="flex-1 px-3 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] focus:border-yellow-500 focus:outline-none"
                                         />
                                         <Button
                                             onClick={() => {
