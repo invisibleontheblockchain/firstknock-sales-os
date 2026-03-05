@@ -436,12 +436,12 @@ export default function RouteBuilderSettings({
                                     <div className="flex gap-2 items-center">
                                         <input type="number" placeholder="Min" value={routeConfig.minPrice || ''}
                                             onChange={(e) => setRouteConfig(prev => ({ ...prev, minPrice: e.target.value ? parseInt(e.target.value) : null }))}
-                                            className="flex-1 px-2 py-2 rounded-lg text-xs bg-[#1F1F1F] text-white border border-[#333] text-center"
+                                            className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
                                         />
                                         <span className="text-gray-600 text-xs">to</span>
                                         <input type="number" placeholder="Max" value={routeConfig.maxPrice || ''}
                                             onChange={(e) => setRouteConfig(prev => ({ ...prev, maxPrice: e.target.value ? parseInt(e.target.value) : null }))}
-                                            className="flex-1 px-2 py-2 rounded-lg text-xs bg-[#1F1F1F] text-white border border-[#333] text-center"
+                                            className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
                                         />
                                     </div>
                                 </div>
@@ -457,12 +457,12 @@ export default function RouteBuilderSettings({
                                     <div className="flex gap-2 items-center">
                                         <input type="number" placeholder="From" value={routeConfig.minYearBuilt || ''}
                                             onChange={(e) => setRouteConfig(prev => ({ ...prev, minYearBuilt: e.target.value ? parseInt(e.target.value) : null }))}
-                                            className="flex-1 px-2 py-2 rounded-lg text-xs bg-[#1F1F1F] text-white border border-[#333] text-center"
+                                            className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
                                         />
                                         <span className="text-gray-600 text-xs">to</span>
                                         <input type="number" placeholder="To" value={routeConfig.maxYearBuilt || ''}
                                             onChange={(e) => setRouteConfig(prev => ({ ...prev, maxYearBuilt: e.target.value ? parseInt(e.target.value) : null }))}
-                                            className="flex-1 px-2 py-2 rounded-lg text-xs bg-[#1F1F1F] text-white border border-[#333] text-center"
+                                            className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
                                         />
                                     </div>
                                 </div>
@@ -656,7 +656,7 @@ export default function RouteBuilderSettings({
                                     <label className="text-[10px] font-bold text-gray-500 uppercase">Save Current as Template</label>
                                     <div className="flex gap-2">
                                         <input
-                                            className="flex-1 bg-[#1F1F1F] border border-gray-700 rounded-lg px-3 py-2 text-xs text-white focus:border-yellow-500 focus:outline-none"
+                                            className="flex-1 bg-[#1F1F1F] border border-gray-700 rounded-lg px-3 py-2 text-base text-white focus:border-yellow-500 focus:outline-none"
                                             placeholder="Template Name"
                                             value={templateName}
                                             onChange={(e) => setTemplateName(e.target.value)}
