@@ -121,7 +121,9 @@ export default function Home() {
         const filteredProps = activeRoute.properties.filter(p => {
             if (!p.sold_date) return false;
             try {
-                return isAfter(parseISO(p.sold_date), cutoff);
+                const d = new Date(p.sold_date);
+                if (isNaN(d.getTime())) return false;
+                return isAfter(d, cutoff);
             } catch (e) { return false; }
         });
 
