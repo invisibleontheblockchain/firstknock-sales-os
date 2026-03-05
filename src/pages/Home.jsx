@@ -135,7 +135,7 @@ export default function Home() {
     }, [activeRoute, activeRouteSoldFilter]);
     const [showRoutePanel, setShowRoutePanel] = useState(false);
     const [showCompare, setShowCompare] = useState(false);
-    const [housesPerRoute, setHousesPerRoute] = useState(100);
+    const [housesPerRoute, setHousesPerRoute] = useState(50000); // Default: 1 big route with all properties
     const [maxRouteDistance, setMaxRouteDistance] = useState(10); // Default 10 miles
     const ROUTE_SIZE_OPTIONS = [25, 50, 75, 100];
     const [sortBy, setSortBy] = useState('score'); // score, houses, distance
@@ -147,7 +147,7 @@ export default function Home() {
     const [startAddressInput, setStartAddressInput] = useState("");
     const [zipCodeFilter, setZipCodeFilter] = useState(''); // Comma separated string
     const [analyzeZipFilter, setAnalyzeZipFilter] = useState('all'); // Filter for Analyze mode
-    const [soldDateFilter, setSoldDateFilter] = useState(null); // null = All Time, number = months (Default: All Time)
+    const [soldDateFilter, setSoldDateFilter] = useState(3); // Default: last 3 months of leads
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
