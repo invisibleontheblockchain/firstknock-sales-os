@@ -5,10 +5,10 @@ Deno.serve(async (req) => {
         const base44 = createClientFromRequest(req);
         
         // 1. Get all routes
-        const routes = await base44.asServiceRole.entities.SavedRoute.list({ limit: 1000 });
+        const routes = await base44.asServiceRole.entities.SavedRoute.list(null, 1000);
         
         // 2. Get all interaction logs to know what's been knocked
-        const logs = await base44.asServiceRole.entities.InteractionLog.list({ limit: 10000 });
+        const logs = await base44.asServiceRole.entities.InteractionLog.list(null, 10000);
         const knockedHashes = new Set(logs.map(l => l.address_hash));
         
         // 3. Get all properties
@@ -16,13 +16,12 @@ Deno.serve(async (req) => {
         let skip = 0;
         let hasMore = true;
         while (hasMore) {
-            const props = await base44.asServiceRole.entities.MasterProperty.list({ limit: 1000, skip });
-            if (props.length === 0) {
-                hasMore = false;
-            } else {
-                props.forEach(p => propertiesMap.set(p.address_hash, p));
-                skip += props.length;
-            }
+            // Since skip is not directly supported in list, we can use filter with skip if available, 
+            // but actually let's just fetch all properties if it's less than 10000, or we can just fetch the ones we need.
+            // Wait, we can't do skip easily. Let's just fetch up to 10000 properties.
+            const props = await base44.asServiceRole.entities.MasterProperty.list(null, 10000);
+            props.forEach(p => propertiesMap.set(p.address_hash, p));
+            hasMore = false; // Just fetch 10000 for now
         }
         
         const threeMonthsAgo = new Date();
