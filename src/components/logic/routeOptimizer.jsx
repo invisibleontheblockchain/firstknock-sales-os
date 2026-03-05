@@ -212,38 +212,55 @@ function calculateBearing(lat1, lng1, lat2, lng2) {
  * 2-opt Optimization to uncross paths and reduce total distance
  */
 function apply2Opt(route) {
+    if (route.length < 4) return route;
+
     let improved = true;
     const maxIterations = 50; // Cap iterations for performance
     let iterations = 0;
+
+    // The Sentinel Point Strategy for open routes
+    const sentinel = { isSentinel: true, lat: 0, lng: 0 };
+    const currentRoute = [...route, sentinel];
+
+    const dist = (pA, pB) => {
+        if (pA.isSentinel || pB.isSentinel) return 0;
+        return calculateDistanceFast(pA.lat, pA.lng, pB.lat, pB.lng);
+    };
 
     while (improved && iterations < maxIterations) {
         improved = false;
         iterations++;
 
-        for (let i = 0; i < route.length - 2; i++) {
-            for (let j = i + 2; j < route.length - 1; j++) { // j starts at i+2 to ensure we don't swap adjacent edges
-                const p1 = route[i];
-                const p2 = route[i + 1];
-                const p3 = route[j];
-                const p4 = route[j + 1];
+        // Start at i = 1 to protect the starting node (Stop #1)
+        for (let i = 1; i < currentRoute.length - 2; i++) {
+            for (let j = i + 2; j < currentRoute.length - 1; j++) { // j starts at i+2 to ensure we don't swap adjacent edges
+                const p1 = currentRoute[i];
+                const p2 = currentRoute[i + 1];
+                const p3 = currentRoute[j];
+                const p4 = currentRoute[j + 1];
 
                 // Current distance: p1->p2 + p3->p4
-                const currentDist = calculateDistanceFast(p1.lat, p1.lng, p2.lat, p2.lng) +
-                    calculateDistanceFast(p3.lat, p3.lng, p4.lat, p4.lng);
+                const currentDist = dist(p1, p2) + dist(p3, p4);
 
                 // New distance if swapped: p1->p3 + p2->p4 (reversing the segment p2...p3)
-                const newDist = calculateDistanceFast(p1.lat, p1.lng, p3.lat, p3.lng) +
-                    calculateDistanceFast(p2.lat, p2.lng, p4.lat, p4.lng);
+                const newDist = dist(p1, p3) + dist(p2, p4);
 
                 if (newDist < currentDist) {
                     // Reverse the segment from i+1 to j
-                    const segment = route.slice(i + 1, j + 1).reverse();
-                    route.splice(i + 1, segment.length, ...segment);
+                    const segment = currentRoute.slice(i + 1, j + 1).reverse();
+                    currentRoute.splice(i + 1, segment.length, ...segment);
                     improved = true;
                 }
             }
         }
     }
+
+    // Remove the sentinel to reveal the open-ended line
+    const sIdx = currentRoute.findIndex(p => p.isSentinel);
+    currentRoute.splice(sIdx, 1);
+
+    route.length = 0;
+    route.push(...currentRoute);
     return route;
 }
 
