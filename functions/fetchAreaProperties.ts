@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
 
         const isPaid = user.subscription_status === 'active' || user.subscription_status === 'trialing';
         const isOwner = user.is_owner === true || user.email?.toLowerCase().includes('christian');
-        const maxRadius = isOwner ? 999 : 20; // 40 miles across cap
+        const maxRadius = isOwner ? 999 : (isPaid ? 50 : 20); // Paid users get up to 100 miles across, free up to 40
 
         if (radius > maxRadius) {
             return Response.json({
