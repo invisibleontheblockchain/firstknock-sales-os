@@ -460,28 +460,29 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         // Use walking pattern to determine ordering
         let orderedProps;
         if (walkingPattern === 'recent_sale_first') {
-            // Find the most recently sold property in the cluster
-            let mostRecent = clusterProps[0];
-            let latestDate = 0;
-            clusterProps.forEach(p => {
-                if (p.sold_date) {
-                    try {
-                        const dt = new Date(p.sold_date).getTime();
-                        if (dt > latestDate) {
-                            latestDate = dt;
-                            mostRecent = p;
-                        }
-                    } catch (e) {}
-                }
+            // Sort by sold_date descending so index 0 = most recent sale
+            const sorted = [...clusterProps].sort((a, b) => {
+                const dateA = a.sold_date ? new Date(a.sold_date).getTime() : 0;
+                const dateB = b.sold_date ? new Date(b.sold_date).getTime() : 0;
+                return dateB - dateA;
             });
             
-            // Start nearest neighbor from the most recently sold property
+            const anchor = sorted[0]; // Stop #1 Lock: most recent sale is fixed start
+            
+            // Route remaining properties with nearest neighbor from anchor
             orderedProps = optimizeRouteOrder(
-                clusterProps,
-                mostRecent.lat,
-                mostRecent.lng,
+                sorted,
+                anchor.lat,
+                anchor.lng,
                 minimizeTurns
             );
+            
+            // Ensure anchor is locked at index 0 (nearest neighbor may have moved it)
+            const anchorIdx = orderedProps.findIndex(p => p.address_hash === anchor.address_hash);
+            if (anchorIdx > 0) {
+                orderedProps.splice(anchorIdx, 1);
+                orderedProps.unshift(anchor);
+            }
         } else if (walkingPattern === 'street_sweep' || (useStreetSweep && walkingPattern !== 'nearest' && walkingPattern !== 'zigzag' && walkingPattern !== 'cluster' && walkingPattern !== 'recent_sale_first')) {
             orderedProps = orderForStreetSweep(clusterProps);
         } else if (walkingPattern === 'zigzag') {
