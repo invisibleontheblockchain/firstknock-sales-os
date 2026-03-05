@@ -168,7 +168,7 @@ export default function RouteCommandPanel({
                                                             {zipCodeFilter || 'All Areas'} • {housesPerRoute} homes/route
                                                         </p>
                                                     </div>
-                                                    <div className="grid grid-cols-3 gap-2 w-full">
+                                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full">
                                                         {/* @ts-ignore */}
                                                         <Button
                                                             onClick={onAutoAssignAll}
@@ -176,7 +176,7 @@ export default function RouteCommandPanel({
                                                             className="w-full h-8 bg-green-600 hover:bg-green-500 text-white font-bold text-[10px]"
                                                         >
                                                             <User className="w-3 h-3 mr-1" />
-                                                            AUTO-DISPATCH ALL
+                                                            AUTO-DISPATCH
                                                         </Button>
                                                         <Button
                                                             onClick={() => {
@@ -214,6 +214,18 @@ export default function RouteCommandPanel({
                                                             className="w-full h-8 bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-[10px]" title="Combine all into one optimized mega route"
                                                         >
                                                             MERGE ALL
+                                                        </Button>
+                                                        <Button
+                                                            onClick={() => {
+                                                                if (confirm("Are you sure you want to clear all generated routes?")) {
+                                                                    if (onReplaceRoutes) onReplaceRoutes([]);
+                                                                }
+                                                            }}
+                                                            size="sm"
+                                                            className="w-full h-8 bg-red-900/40 hover:bg-red-900/60 text-red-500 border border-red-900/50 font-bold text-[10px]"
+                                                        >
+                                                            <Trash2 className="w-3 h-3 mr-1" />
+                                                            CLEAR ALL
                                                         </Button>
                                                     </div>
                                                 </div>
