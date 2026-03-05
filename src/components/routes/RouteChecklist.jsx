@@ -194,6 +194,8 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                             className="bg-[#1a1a1a] text-[#888] text-[10px] font-bold px-2 py-1.5 rounded-lg border-none outline-none cursor-pointer"
                         >
                             <option value="all">All Time</option>
+                            <option value="3">3 Months</option>
+                            <option value="6">6 Months</option>
                             <option value="12">1 Year</option>
                             <option value="24">2 Years</option>
                             <option value="36">3 Years</option>
