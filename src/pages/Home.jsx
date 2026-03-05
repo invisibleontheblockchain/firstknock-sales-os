@@ -1075,8 +1075,14 @@ export default function Home() {
                 .filter(p => p && p.lat !== undefined && p.lng !== undefined)
                 .map(p => [p.lat, p.lng]);
         }
+        if (availableProperties?.length > 0) {
+            return availableProperties
+                .slice(0, 1000)
+                .filter(p => p && p.lat !== undefined && p.lng !== undefined)
+                .map(p => [p.lat, p.lng]);
+        }
         return null;
-    }, [filteredActiveRoute]);
+    }, [filteredActiveRoute, availableProperties]);
 
     // Initial Fit Effect
     const hasCenteredRef = useRef(false);

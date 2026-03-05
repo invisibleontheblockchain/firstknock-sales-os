@@ -55,13 +55,13 @@ export default function MapToolbar({
             <div className="absolute top-1 left-1 right-1 sm:top-4 sm:left-4 sm:right-4 z-[1000] flex flex-col gap-1.5 sm:gap-2 pointer-events-none">
                 <div className="flex flex-nowrap items-center justify-between gap-1 sm:gap-2 w-full">
                     {/* DASHBOARD & SETTINGS TOGGLES */}
-                    <div className="pointer-events-auto shrink-0 flex gap-1">
+                    <div className="pointer-events-auto shrink-0 flex gap-1 sm:gap-2">
                         <Button
                             onClick={() => setShowDashboard(true)}
-                            size="icon"
-                            className="bg-black/80 hover:bg-black backdrop-blur-md border border-gray-800 shadow-xl h-8 w-8 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl"
+                            className="bg-black/80 hover:bg-black backdrop-blur-md border border-gray-800 shadow-xl h-8 sm:h-11 rounded-lg sm:rounded-xl px-2 sm:px-3 flex items-center gap-1.5 sm:gap-2"
                         >
                             <LayoutDashboard className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-yellow-500" />
+                            <span className="text-[10px] sm:text-xs font-bold text-white hidden sm:inline">COMMAND CENTER</span>
                         </Button>
                         <Button
                             onClick={() => setShowMapSettings(true)}
@@ -78,7 +78,7 @@ export default function MapToolbar({
                             onClick={() => setMode('analyze')}
                             className={`px-2 py-1.5 sm:px-4 sm:py-2.5 rounded-md sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'analyze' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
                         >
-                            DISPATCH
+                            ROUTES
                         </button>
                         <button
                             onClick={() => setMode('generate')}
@@ -250,7 +250,7 @@ export default function MapToolbar({
             </div>
 
             {/* Bottom Action Bar */}
-            <div className="absolute bottom-1 sm:bottom-6 left-0 right-12 sm:right-auto md:left-4 z-[1000] pointer-events-none flex justify-center md:justify-start px-2 sm:px-4">
+            <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 z-[1000] pointer-events-none flex justify-center px-4">
                 <div className="pointer-events-auto flex items-center justify-center gap-1.5 sm:gap-2 bg-black/70 backdrop-blur-lg p-1.5 sm:p-2 rounded-full border border-white/10 shadow-2xl">
                     {mode === 'generate' && !activeRoute && (
                         <Button

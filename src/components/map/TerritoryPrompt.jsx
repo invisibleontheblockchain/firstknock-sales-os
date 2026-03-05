@@ -40,29 +40,31 @@ export default function TerritoryPrompt({
         <>
             {/* Prompt to start drawing or use main territory */}
             {!drawingMode && (!drawnPolygon || drawnPolygon.length === 0) && (
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[2000] flex flex-col items-center gap-4 w-full px-4">
-                    <div className="w-16 h-16 rounded-full bg-yellow-500/20 flex items-center justify-center mb-2 shadow-[0_0_30px_rgba(255,215,0,0.3)]">
-                        <MapIcon className="w-8 h-8 text-yellow-500" />
-                    </div>
-                    <h2 className="text-3xl sm:text-4xl font-extrabold text-white drop-shadow-lg text-center tracking-tight" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.9)' }}>
-                        Generate Routes
-                    </h2>
-                    <p className="text-gray-400 text-sm font-medium mb-2 text-center max-w-xs">Define your working area to generate optimized door-to-door routes.</p>
-                    <div className="flex flex-col gap-3 w-full max-w-xs">
-                        <Button
-                            onClick={() => setDrawingMode(true)}
-                            className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold h-12 text-base w-full rounded-full shadow-[0_0_20px_rgba(255,215,0,0.4)] transition-transform hover:scale-105 border-none"
-                        >
-                            <Pencil className="w-5 h-5 mr-2" />
-                            Draw Custom Area
-                        </Button>
-                        <Button
-                            onClick={() => setShowCompare(true)}
-                            className="bg-black/60 hover:bg-black text-white font-bold h-12 text-base w-full rounded-full border border-gray-700 backdrop-blur transition-colors"
-                        >
-                            <MapIcon className="w-5 h-5 mr-2 text-yellow-500" />
-                            Search by Zip Code
-                        </Button>
+                <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-auto">
+                    <div className="flex flex-col items-center gap-4 w-full px-4 max-w-md">
+                        <div className="w-16 h-16 rounded-full bg-yellow-500/20 flex items-center justify-center mb-2 shadow-[0_0_30px_rgba(255,215,0,0.3)]">
+                            <MapIcon className="w-8 h-8 text-yellow-500" />
+                        </div>
+                        <h2 className="text-3xl sm:text-4xl font-extrabold text-white drop-shadow-lg text-center tracking-tight" style={{ textShadow: '0 2px 20px rgba(0,0,0,0.9)' }}>
+                            Generate Routes
+                        </h2>
+                        <p className="text-gray-300 text-sm font-medium mb-2 text-center">Define your working area to generate optimized door-to-door routes.</p>
+                        <div className="flex flex-col gap-3 w-full">
+                            <Button
+                                onClick={() => setDrawingMode(true)}
+                                className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold h-12 text-base w-full rounded-full shadow-[0_0_20px_rgba(255,215,0,0.4)] transition-transform hover:scale-105 border-none"
+                            >
+                                <Pencil className="w-5 h-5 mr-2" />
+                                Draw Custom Area
+                            </Button>
+                            <Button
+                                onClick={() => setShowCompare(true)}
+                                className="bg-black/60 hover:bg-black text-white font-bold h-12 text-base w-full rounded-full border border-gray-700 backdrop-blur transition-colors"
+                            >
+                                <MapIcon className="w-5 h-5 mr-2 text-yellow-500" />
+                                Search by Zip Code
+                            </Button>
+                        </div>
                     </div>
                 </div>
             )}
