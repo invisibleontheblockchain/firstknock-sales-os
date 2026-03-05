@@ -272,7 +272,7 @@ export default function ManagerMapLayers({
                             if (!p.sold_date) return false;
                             try {
                                 const date = new Date(p.sold_date);
-                                const cutoff = subMonths(new Date(), soldDateFilter);
+                                const cutoff = subMonths(new Date(), parseInt(soldDateFilter));
                                 if (date < cutoff) return false;
                             } catch (e) { return false; }
                         }
