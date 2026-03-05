@@ -116,20 +116,7 @@ export default function TerritoryPrompt({
                                 <option value="triangle">Triangle</option>
                             </select>
 
-                            <select
-                                value={drawSizeMiles || 10}
-                                onChange={(e) => setDrawSizeMiles(Number(e.target.value))}
-                                className="bg-gray-900 border border-gray-700 text-white text-xs rounded-md px-2 py-1 h-8"
-                            >
-                                <option value={1}>1 sq mile</option>
-                                <option value={5}>5 sq miles</option>
-                                <option value={10}>10 sq miles</option>
-                                <option value={20}>20 sq miles</option>
-                                <option value={30}>30 sq miles</option>
-                                <option value={40}>40 sq miles</option>
-                                <option value={100}>100 sq miles</option>
-                                <option value={200}>200 sq miles (Max)</option>
-                            </select>
+                            <span className="text-xs text-gray-300 font-mono bg-gray-900 border border-gray-700 rounded-md px-2 py-1 h-8 flex items-center">200 sq mi</span>
                         </div>
                         <div className="flex gap-2">
                             <Button
