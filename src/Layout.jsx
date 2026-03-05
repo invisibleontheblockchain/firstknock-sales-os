@@ -232,12 +232,11 @@ function LayoutInner({ children }) {
                 <OnboardingWizard user={user} />
                 <MarketOnboarding 
                     user={user} 
-                    onComplete={({ method }) => {
+                    onComplete={({ method, shape }) => {
                         if (method === 'draw') {
-                            // Navigate to Home and trigger drawing mode
-                            window.location.href = createPageUrl('Home') + '?startDraw=true';
+                            // Navigate to Home and trigger drawing mode with chosen shape
+                            window.location.href = createPageUrl('Home') + '?startDraw=true' + (shape ? `&drawShape=${shape}` : '');
                         }
-                        // For 'zip' method, data is already loaded, just refresh
                     }}
                 />
             </main>
