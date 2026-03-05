@@ -232,10 +232,34 @@ export default function RouteBuilderSettings({
                                 </div>
                             </div>
 
+                            {/* Recently Sold Filter */}
+                            <div className="space-y-4 pt-2">
+                                <div className="flex justify-between items-center">
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">3. Recently Sold</label>
+                                    <span className="text-sm font-bold text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded">
+                                        {soldDateFilter ? `${soldDateFilter} Months` : '12 Months'}
+                                    </span>
+                                </div>
+                                <Slider
+                                    value={[soldDateFilter || 12]}
+                                    onValueChange={([v]) => setSoldDateFilter(v)}
+                                    min={3}
+                                    max={12}
+                                    step={3}
+                                    className="w-full"
+                                />
+                                <div className="flex justify-between text-[10px] text-gray-600 font-medium px-1">
+                                    <span>3 Mo</span>
+                                    <span>6 Mo</span>
+                                    <span>9 Mo</span>
+                                    <span>12 Mo</span>
+                                </div>
+                            </div>
+
                             {/* Simple House Count */}
                             <div className="space-y-4 pt-2">
                                 <div className="flex justify-between items-center">
-                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">3. Houses per Route</label>
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">4. Houses per Route</label>
                                     <span className="text-sm font-bold text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded">{housesPerRoute}</span>
                                 </div>
                                 <Slider
