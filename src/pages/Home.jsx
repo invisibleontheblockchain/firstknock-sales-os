@@ -692,11 +692,13 @@ export default function Home() {
 
                 // Apply soldDateFilter to saved routes if active
                 if (soldDateFilter !== null) {
-                    const cutoff = subMonths(new Date(), soldDateFilter);
+                    const cutoff = subMonths(new Date(), parseInt(soldDateFilter));
                     routeProps = routeProps.filter(p => {
                         if (!p.sold_date) return false;
                         try {
-                            return isAfter(parseISO(p.sold_date), cutoff);
+                            const d = new Date(p.sold_date);
+                            if (isNaN(d.getTime())) return false;
+                            return isAfter(d, cutoff);
                         } catch (e) { return false; }
                     });
                 }
