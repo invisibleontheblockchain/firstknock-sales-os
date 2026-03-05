@@ -282,6 +282,7 @@ Deno.serve(async (req) => {
                             limit: String(limit),
                             offset: String(currentOffset),
                             propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
+                            saleDateRange: '1095',
                         });
                         const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
                         try {
