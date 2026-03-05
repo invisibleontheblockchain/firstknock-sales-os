@@ -278,7 +278,7 @@ Deno.serve(async (req) => {
                 const targetTotal = Math.min(reportedTotal, maxItems);
                 const fetchTasks = [];
                 
-                while (offset < targetTotal && requestCount < 200) {
+                while (offset < targetTotal && requestCount < maxRequests) {
                     const currentOffset = offset;
                     fetchTasks.push(async () => {
                         const params = new URLSearchParams({
