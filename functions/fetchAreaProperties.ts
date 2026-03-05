@@ -400,17 +400,19 @@ Deno.serve(async (req) => {
 
         console.log(`[FetchArea] Done! Imported ${successCount} new properties.`);
 
-        // Update user's territory zip codes so the frontend loads them
+        // Update user's territory zip codes and mark data as pulled
         const uniqueZipsArray = Array.from(uniqueZips);
-        if (uniqueZipsArray.length > 0) {
-            const currentZips = user.territory_zip_codes || [];
-            // Put new zips at the beginning so they are prioritized when frontend fetches data
-            const newZips = [...new Set([...uniqueZipsArray, ...currentZips])];
-            try {
-                await base44.auth.updateMe({ territory_zip_codes: newZips });
-            } catch (e) {
-                console.error(`[FetchArea] Failed to update user zips:`, e.message);
-            }
+        const currentZips = user.territory_zip_codes || [];
+        const newZips = uniqueZipsArray.length > 0 ? [...new Set([...uniqueZipsArray, ...currentZips])] : currentZips;
+        try {
+            await base44.auth.updateMe({ 
+                territory_zip_codes: newZips,
+                has_pulled_data: true,
+                territory_property_count: successCount,
+                last_data_pull: new Date().toISOString()
+            });
+        } catch (e) {
+            console.error(`[FetchArea] Failed to update user data:`, e.message);
         }
 
         return Response.json({
