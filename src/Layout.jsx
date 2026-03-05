@@ -230,6 +230,16 @@ function LayoutInner({ children }) {
                 <ErrorBoundary>{children}</ErrorBoundary>
                 <AiAssistant />
                 <OnboardingWizard user={user} />
+                <MarketOnboarding 
+                    user={user} 
+                    onComplete={({ method }) => {
+                        if (method === 'draw') {
+                            // Navigate to Home and trigger drawing mode
+                            window.location.href = createPageUrl('Home') + '?startDraw=true';
+                        }
+                        // For 'zip' method, data is already loaded, just refresh
+                    }}
+                />
             </main>
 
             {/* Bottom Nav */}
