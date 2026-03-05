@@ -128,19 +128,19 @@ export default function ListPage() {
     return (
         <div className="h-full flex flex-col" style={{ background: '#0A0A0F' }}>
             {/* Header */}
-            <div className="px-4 pt-4 pb-3 border-b border-white/5 sticky top-0 z-20 backdrop-blur-xl bg-black/60 shadow-xl">
-                <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl flex items-center justify-center transition-transform hover:scale-105 duration-300" style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05))`, boxShadow: `0 0 20px rgba(255,255,255,0.1)`, border: '1px solid rgba(255,255,255,0.1)' }}>
-                            <BarChart3 className="w-5 h-5 md:w-6 md:h-6 text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
+            <div className="px-3 md:px-4 pt-3 md:pt-4 pb-2 md:pb-3 border-b border-white/5 sticky top-0 z-20 backdrop-blur-xl bg-black/60 shadow-xl">
+                <div className="flex items-center justify-between mb-3 md:mb-4">
+                    <div className="flex items-center gap-2 md:gap-3">
+                        <div className="w-8 h-8 md:w-12 md:h-12 rounded-xl md:rounded-2xl flex items-center justify-center transition-transform hover:scale-105 duration-300" style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05))`, boxShadow: `0 0 20px rgba(255,255,255,0.1)`, border: '1px solid rgba(255,255,255,0.1)' }}>
+                            <BarChart3 className="w-4 h-4 md:w-6 md:h-6 text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
                         </div>
                         <div>
-                            <h1 className="text-xl md:text-2xl font-black text-white tracking-tight drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">Analytics</h1>
-                            <p className="text-[10px] md:text-xs text-gray-400 font-medium tracking-wide mt-0.5">Performance & territory insights</p>
+                            <h1 className="text-lg md:text-2xl font-black text-white tracking-tight drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">Analytics</h1>
+                            <p className="text-[9px] md:text-xs text-gray-400 font-medium tracking-wide mt-0 md:mt-0.5">Performance & territory insights</p>
                         </div>
                     </div>
                 </div>
-                <div className="flex p-1.5 bg-black/40 backdrop-blur-md rounded-2xl border border-white/5 mb-4 shadow-xl overflow-x-auto no-scrollbar">
+                <div className="flex p-1 bg-black/40 backdrop-blur-md rounded-xl md:rounded-2xl border border-white/5 mb-3 md:mb-4 shadow-xl overflow-x-auto no-scrollbar">
                     {tabs.map(tab => {
                         const Icon = tab.icon;
                         const isActive = activeTab === tab.id;
@@ -148,11 +148,11 @@ export default function ListPage() {
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`flex-1 min-w-[90px] py-2 px-2 md:py-2.5 md:px-3 rounded-xl text-[11px] md:text-[12px] font-bold transition-all duration-300 flex items-center justify-center gap-1.5 md:gap-2 ${
+                                className={`flex-1 min-w-[70px] md:min-w-[90px] py-1.5 px-2 md:py-2.5 md:px-3 rounded-lg md:rounded-xl text-[10px] md:text-[12px] font-bold transition-all duration-300 flex items-center justify-center gap-1.5 md:gap-2 ${
                                     isActive ? 'bg-white text-black shadow-[0_0_20px_rgba(255,255,255,0.3)]' : 'text-gray-400 hover:text-white hover:bg-white/10'
                                 }`}
                             >
-                                <Icon className={`w-3.5 h-3.5 md:w-4 md:h-4 ${isActive ? 'text-black' : ''}`} />
+                                <Icon className={`w-3 h-3 md:w-4 md:h-4 ${isActive ? 'text-black' : ''}`} />
                                 {tab.label}
                             </button>
                         );
@@ -160,14 +160,14 @@ export default function ListPage() {
                 </div>
 
                 {activeTab === 'overview' && (
-                    <div className="flex flex-col md:flex-row gap-3 mt-2">
+                    <div className="flex flex-col gap-2 mt-1 md:mt-2">
                         <div className="flex overflow-x-auto no-scrollbar gap-2 pb-1">
                             <DateRangeFilter selectedDays={dateDays} onChangeDays={setDateDays} accent={accent} />
                             <IndustryFilterBar industries={activeIndustries} selected={industryFilter} onSelect={setIndustryFilter} accent={accent} />
                         </div>
-                        <div className="flex items-center bg-black/50 backdrop-blur-md rounded-lg border border-white/10 p-0.5 shrink-0 w-full md:w-auto md:ml-auto mt-1 md:mt-0 shadow-lg">
-                            <button onClick={() => setViewMode('essential')} className={`flex-1 md:flex-none px-4 py-1.5 rounded-md text-[10px] uppercase tracking-wider font-bold transition-all duration-200 ${viewMode === 'essential' ? 'bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.2)]' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>Essential</button>
-                            <button onClick={() => setViewMode('advanced')} className={`flex-1 md:flex-none px-4 py-1.5 rounded-md text-[10px] uppercase tracking-wider font-bold transition-all duration-200 ${viewMode === 'advanced' ? 'bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.2)]' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>Advanced</button>
+                        <div className="flex items-center bg-black/50 backdrop-blur-md rounded-lg border border-white/10 p-0.5 w-full shadow-lg">
+                            <button onClick={() => setViewMode('essential')} className={`flex-1 px-2 py-1 md:py-1.5 rounded-md text-[9px] md:text-[10px] uppercase tracking-wider font-bold transition-all duration-200 ${viewMode === 'essential' ? 'bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.2)]' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>Essential</button>
+                            <button onClick={() => setViewMode('advanced')} className={`flex-1 px-2 py-1 md:py-1.5 rounded-md text-[9px] md:text-[10px] uppercase tracking-wider font-bold transition-all duration-200 ${viewMode === 'advanced' ? 'bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.2)]' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>Advanced</button>
                         </div>
                     </div>
                 )}
