@@ -1322,11 +1322,13 @@ export default function Home() {
 
             <TerritoryPrompt
                 mode={mode}
+                setMode={setMode}
                 activeRoute={filteredActiveRoute}
                 routesGenerating={routesGenerating}
                 showCompare={showCompare}
                 setShowCompare={setShowCompare}
                 showRoutePanel={showRoutePanel}
+                setShowRoutePanel={setShowRoutePanel}
                 drawingMode={drawingMode}
                 setDrawingMode={setDrawingMode}
                 drawnPolygon={drawnPolygon}
