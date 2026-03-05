@@ -186,12 +186,12 @@ export default function TerritoryPrompt({
                                 // The actual area is 200 sq mi (set by the draw tool), use that for display
                                 const areaSqMiles = 200;
 
-                                // Check monthly draw limit (3 per month for all users)
-                                const pullLimit = isOwner ? 999 : 3;
+                                // Check pull limit — 1 free pull per user
+                                const pullLimit = isOwner ? 999 : 1;
                                 const pullsUsed = user?.area_pulls_count || 0;
 
                                 if (pullsUsed >= pullLimit) {
-                                    toast.error("You've used your 3 custom drawn areas this month. Resets next month.");
+                                    toast.error("You've used your free data pull. Upgrade to pull fresh leads.");
                                     return;
                                 }
 
