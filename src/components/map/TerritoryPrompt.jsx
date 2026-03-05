@@ -227,13 +227,19 @@ export default function TerritoryPrompt({
                                             toast.success(d.message || `Properties loaded onto the map!${note}`, { id: toastId });
                                         }
 
+                                        // Mark user as having pulled data
+                                        try {
+                                            await base44.auth.updateMe({ 
+                                                has_pulled_data: true,
+                                                territory_property_count: d.count || d.in_polygon_count || 0,
+                                                last_data_pull: new Date().toISOString()
+                                            });
+                                        } catch (e) { console.warn('Failed to update pull status', e); }
+
                                         if (onPullComplete) {
-                                            // Notify parent and open the Route Builder
                                             onPullComplete();
                                             setShowCompare(true);
-                                            // Don't clear polygon here - let generation use it
                                         } else {
-                                            // Fallback behavior if no callback provided
                                             queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
                                             queryClient.invalidateQueries({ queryKey: ['user'] });
                                             setShowCompare(true);
