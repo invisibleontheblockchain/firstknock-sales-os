@@ -746,6 +746,10 @@ export default function Home() {
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         if (params.get('startDraw') === 'true') {
+            const shapeParam = params.get('drawShape');
+            if (shapeParam && ['circle', 'square', 'triangle'].includes(shapeParam)) {
+                setDrawShape(shapeParam);
+            }
             setDrawingMode(true);
             window.history.replaceState({}, '', window.location.pathname);
         }
