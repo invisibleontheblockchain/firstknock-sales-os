@@ -338,24 +338,25 @@ Deno.serve(async (req) => {
     // Bulk insert NEW properties only
     let successCount = 0;
     if (mapped.length > 0) {
-      const CHUNK_SIZE = 100;
+      const CHUNK_SIZE = 500; // Increase chunk size to reduce number of requests
       for (let i = 0; i < mapped.length; i += CHUNK_SIZE) {
         const chunk = mapped.slice(i, i + CHUNK_SIZE);
         try {
           await base44.entities.MasterProperty.bulkCreate(chunk);
           successCount += chunk.length;
-          await new Promise(r => setTimeout(r, 250)); // Delay to prevent rate limit
+          await new Promise(r => setTimeout(r, 1000)); // 1 second delay between large chunks
         } catch (e) {
           console.error(`[FetchZip-v6] Chunk failed, trying smaller chunks:`, e.message);
-          const SMALL_CHUNK = 10;
+          const SMALL_CHUNK = 100;
           for (let j = 0; j < chunk.length; j += SMALL_CHUNK) {
             const small = chunk.slice(j, j + SMALL_CHUNK);
             try {
               await base44.entities.MasterProperty.bulkCreate(small);
               successCount += small.length;
-              await new Promise(r => setTimeout(r, 250)); // Delay to prevent rate limit
+              await new Promise(r => setTimeout(r, 1000)); // 1 second delay
             } catch {
               console.warn(`[FetchZip-v6] Small chunk failed, skipping`);
+              await new Promise(r => setTimeout(r, 1000));
             }
           }
         }
