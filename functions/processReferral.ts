@@ -82,7 +82,12 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Missing params' }, { status: 400 });
       }
 
-      const commission = FLAT_COMMISSION;
+      // Calculate 10% commission based on subscription tier
+      let commission = 0;
+      if (subscription_tier === 'GROWTH') commission = 9.90; // 10% of $99
+      else if (subscription_tier === 'ENTERPRISE') commission = 29.90; // 10% of $299
+      else if (subscription_tier === 'HUSTLER') commission = 4.90; // 10% of $49
+      else commission = FLAT_COMMISSION;
 
       // Find the referral record
       const referrals = await base44.asServiceRole.entities.Referral.filter(
