@@ -86,7 +86,8 @@
     "turf": "^3.0.14",
     "vaul": "^1.1.2",
     "zod": "^3.24.2",
-    "@neondatabase/serverless": "^0.9.0"
+    "@neondatabase/serverless": "^0.9.0",
+    "h3-js": "^4.1.0"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
