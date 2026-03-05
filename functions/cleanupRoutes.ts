@@ -19,24 +19,21 @@ Deno.serve(async (req) => {
             }
         });
         
-        // 4. Fetch properties in batches
+        // 4. Fetch properties sequentially to avoid rate limits
         const hashArray = Array.from(allRouteHashes);
         const propertiesMap = new Map();
         
-        const chunkSize = 50;
-        for (let i = 0; i < hashArray.length; i += chunkSize) {
-            const chunk = hashArray.slice(i, i + chunkSize);
-            // Fetch properties individually to avoid $in if it's not supported
-            // Wait, we can fetch them individually or try to use a loop
-            const promises = chunk.map(hash => base44.asServiceRole.entities.MasterProperty.filter({ address_hash: hash }, null, 1));
-            const results = await Promise.all(promises);
-            results.forEach(res => {
+        for (let i = 0; i < hashArray.length; i++) {
+            try {
+                const res = await base44.asServiceRole.entities.MasterProperty.filter({ address_hash: hashArray[i] }, null, 1);
                 if (res && res.length > 0) {
                     propertiesMap.set(res[0].address_hash, res[0]);
                 }
-            });
-            // Add a small delay to avoid rate limits
-            await new Promise(resolve => setTimeout(resolve, 100));
+            } catch (e) {
+                console.error("Error fetching property", hashArray[i], e);
+            }
+            // Small delay
+            await new Promise(resolve => setTimeout(resolve, 20));
         }
         
         const threeMonthsAgo = new Date();
