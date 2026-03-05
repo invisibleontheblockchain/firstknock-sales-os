@@ -828,7 +828,8 @@ export default function Home() {
                 const results = await Promise.all(fetchPromises);
                 let flattened = results.flat();
 
-                const ungeneratedZips = targetZips.filter(z => !generatedZips.includes(z));
+                const userGeneratedZips = user?.generated_zip_codes || [];
+                const ungeneratedZips = targetZips.filter(z => !userGeneratedZips.includes(z));
 
                 // If no properties found OR zip not generated yet, pull from RentCast via backend
                 if (flattened.length === 0 || ungeneratedZips.length > 0) {
