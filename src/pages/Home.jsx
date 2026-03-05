@@ -134,7 +134,7 @@ export default function Home() {
         };
     }, [activeRoute, activeRouteSoldFilter]);
     const [showRoutePanel, setShowRoutePanel] = useState(false);
-    const [showCompare, setShowCompare] = useState(true);
+    const [showCompare, setShowCompare] = useState(false);
     const [housesPerRoute, setHousesPerRoute] = useState(100);
     const [maxRouteDistance, setMaxRouteDistance] = useState(10); // Default 10 miles
     const ROUTE_SIZE_OPTIONS = [25, 50, 75, 100];
