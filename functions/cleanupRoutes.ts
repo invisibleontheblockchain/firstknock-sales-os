@@ -19,29 +19,41 @@ Deno.serve(async (req) => {
             }
         });
         
-        // 4. Fetch properties in batches of 50
+        // 4. Fetch properties in parallel batches
         const hashArray = Array.from(allRouteHashes);
         const propertiesMap = new Map();
         
-        const chunkSize = 50;
+        const chunkSize = 100; // Increase chunk size
+        const chunks = [];
         for (let i = 0; i < hashArray.length; i += chunkSize) {
-            const chunk = hashArray.slice(i, i + chunkSize);
-            try {
-                // Fetch using $in if supported, or multiple ORs? 
-                // The SDK might support $in
-                const props = await base44.asServiceRole.entities.MasterProperty.filter({
-                    address_hash: { $in: chunk }
-                }, null, 100);
-                
-                if (props && props.length > 0) {
-                    props.forEach(p => propertiesMap.set(p.address_hash, p));
-                }
-            } catch (e) {
-                console.error("Error fetching batch", e);
-            }
-            // Add a delay to avoid rate limits
-            await new Promise(resolve => setTimeout(resolve, 500));
+            chunks.push(hashArray.slice(i, i + chunkSize));
         }
+        
+        // Process chunks with concurrency limit
+        const CONCURRENCY = 5;
+        const results = [];
+        
+        for (let i = 0; i < chunks.length; i += CONCURRENCY) {
+            const batch = chunks.slice(i, i + CONCURRENCY);
+            const promises = batch.map(async (chunk) => {
+                try {
+                    const props = await base44.asServiceRole.entities.MasterProperty.filter({
+                        address_hash: { $in: chunk }
+                    }, null, 1000); // Limit needs to be >= chunk size
+                    return props;
+                } catch (e) {
+                    console.error("Error fetching chunk", e);
+                    return [];
+                }
+            });
+            
+            const batchResults = await Promise.all(promises);
+            results.push(...batchResults.flat());
+        }
+        
+        results.forEach(p => {
+            if (p) propertiesMap.set(p.address_hash, p);
+        });
         
         const threeMonthsAgo = new Date();
         threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
@@ -64,7 +76,12 @@ Deno.serve(async (req) => {
                 if (knockedHashes.has(hash)) return false;
                 
                 const prop = propertiesMap.get(hash);
-                if (!prop) return false; // Property not found or not fetched
+                // If property not found, keep it? No, if we can't verify it, remove it or keep it?
+                // Assuming we fetched all properties for the hashes in the routes, if it's missing it might be deleted or invalid hash.
+                // Let's assume if it's missing, we remove it to be safe, or check if we should keep.
+                // The prompt says "ensure all generated routes and their associated properties reflect only those sold within the last 3 months".
+                // So if we don't have the property data, we can't verify sold date, so remove it.
+                if (!prop) return false; 
                 
                 // Remove if no sold_date
                 if (!prop.sold_date) return false;
