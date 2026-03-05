@@ -71,10 +71,17 @@ export default function TerritoryPrompt({
                             </Button>
                             <Button
                                 onClick={() => setShowCompare(true)}
-                                className="bg-black/60 hover:bg-black text-white font-bold h-12 text-base w-full rounded-full border border-gray-700 backdrop-blur transition-colors"
+                                className="bg-black/60 hover:bg-black text-white font-bold h-12 text-base w-full rounded-full border border-gray-700 backdrop-blur transition-colors mb-2"
                             >
                                 <MapIcon className="w-5 h-5 mr-2 text-yellow-500" />
                                 Search by Zip Code
+                            </Button>
+                            <Button
+                                onClick={() => setMode('analyze')}
+                                className="bg-white/5 hover:bg-white/10 text-gray-300 font-bold h-12 text-base w-full rounded-full border border-gray-800 backdrop-blur transition-colors"
+                            >
+                                <MapIcon className="w-5 h-5 mr-2" />
+                                Just View Map
                             </Button>
                         </div>
                     </div>
