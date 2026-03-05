@@ -323,7 +323,7 @@ Deno.serve(async (req) => {
                 // Sequential fallback if X-Total-Count is missing
                 console.log(`[FetchArea] X-Total-Count missing, falling back to sequential pagination...`);
                 let keepFetching = true;
-                while (keepFetching && requestCount < 200) {
+                while (keepFetching && requestCount < maxRequests) {
                     const params = new URLSearchParams({
                         latitude: String(latitude),
                         longitude: String(longitude),
