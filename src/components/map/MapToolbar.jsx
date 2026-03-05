@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
+import DataStatusIndicator from './DataStatusIndicator';
 
 /**
  * MapToolbar — extracted from Home.jsx
@@ -88,8 +89,9 @@ export default function MapToolbar({
                         </button>
                     </div>
 
-                    {/* FILTER / SETTINGS BUTTON */}
-                    <div className="pointer-events-auto shrink-0">
+                    {/* DATA STATUS + FILTER BUTTON */}
+                    <div className="pointer-events-auto shrink-0 flex items-center gap-1 sm:gap-2">
+                        <DataStatusIndicator user={user} />
                         <Button
                             onClick={() => setShowCompare(true)}
                             size="icon"
