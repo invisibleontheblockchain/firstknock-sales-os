@@ -103,7 +103,6 @@ export default function TerritoryPrompt({
                             >
                                 <option value="circle">Circle</option>
                                 <option value="square">Square</option>
-                                <option value="triangle">Triangle</option>
                             </select>
 
                             <span className="text-xs text-gray-300 font-mono bg-gray-900 border border-gray-700 rounded-md px-2 py-1 h-8 flex items-center">200 sq mi</span>
