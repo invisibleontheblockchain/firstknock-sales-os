@@ -48,6 +48,7 @@ import RouteChecklist from '../components/routes/RouteChecklist';
 import RouteCommandPanel from '../components/routes/RouteCommandPanel';
 import KnockTimeBanner from '../components/timing/KnockTimeBanner';
 import MarketSetupPrompt from '../components/map/MarketSetupPrompt';
+import DrawingControls from '../components/map/DrawingControls';
 import { darkRoom, DarkRoomClient } from '@/components/logic/neonClient';
 import CommandCenterDashboard from '../components/dashboard/CommandCenterDashboard';
 import MapSettingsPanel from '../components/map/MapSettingsPanel';
@@ -1614,7 +1615,7 @@ export default function Home() {
                 onSelectProperty={setSelectedProperty}
             />
 
-            {/* Simplified market setup flow */}
+            {/* NearbyHotLeads removed — replaced by simplified market setup flow */}
 
             {/* Route Checklist */}
             {showChecklist && filteredActiveRoute && (
