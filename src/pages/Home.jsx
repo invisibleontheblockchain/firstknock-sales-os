@@ -1350,8 +1350,16 @@ export default function Home() {
                 setActiveRouteSoldFilter={setActiveRouteSoldFilter}
             />
 
-            {/* Drawing Controls (from old TerritoryPrompt) */}
-            <DrawingControls
+            {/* Territory Prompt - Drawing Controls + Initial Prompt */}
+            <TerritoryPrompt
+                mode={mode}
+                setMode={setMode}
+                activeRoute={filteredActiveRoute}
+                routesGenerating={routesGenerating}
+                showCompare={showCompare}
+                setShowCompare={setShowCompare}
+                showRoutePanel={showRoutePanel}
+                setShowRoutePanel={setShowRoutePanel}
                 drawingMode={drawingMode}
                 setDrawingMode={setDrawingMode}
                 drawnPolygon={drawnPolygon}
@@ -1363,7 +1371,7 @@ export default function Home() {
                 drawSizeMiles={drawSizeMiles}
                 setDrawSizeMiles={setDrawSizeMiles}
                 user={user}
-                setShowCompare={setShowCompare}
+                setZipCodeFilter={setZipCodeFilter}
                 onPullComplete={() => {
                     queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
                     queryClient.invalidateQueries({ queryKey: ['user'] });
