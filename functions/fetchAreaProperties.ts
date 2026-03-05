@@ -404,7 +404,7 @@ Deno.serve(async (req) => {
             }
         }
 
-        console.log(`[FetchArea] Done! Imported ${successCount} new properties.`);
+        console.log(`[FetchArea] FINAL SUMMARY: totalFound=${totalFound}, inPolygon=${inPolygonCount}, mapped=${mappedCount}, imported=${successCount}, recentSales12mo=${recentSales12moCount}, droppedNoAddr=${droppedNoAddressCount}, requests=${requestCount}+${listingsRequestCount} listings`);
 
         // Update user's territory zip codes and mark data as pulled
         const uniqueZipsArray = Array.from(uniqueZips);
