@@ -8,26 +8,29 @@ Deno.serve(async (req) => {
         const routes = await base44.asServiceRole.entities.SavedRoute.list(null, 1000);
         
         // 2. Get all interaction logs to know what's been knocked
-        const logs = await base44.asServiceRole.entities.InteractionLog.list(null, 10000);
+        // We might not have 10k logs, maybe 1000 is enough to not rate limit
+        const logs = await base44.asServiceRole.entities.InteractionLog.list(null, 2000);
         const knockedHashes = new Set(logs.map(l => l.address_hash));
         
-        // 3. Just fetch all properties up to 10k 
-        // This is a single request to avoid rate limits
-        const props = await base44.asServiceRole.entities.MasterProperty.list(null, 10000);
-        
-        const propertiesMap = new Map();
-        props.forEach(p => propertiesMap.set(p.address_hash, p));
-        
+        // 3. Instead of fetching all properties, only fetch those that WERE sold in the last 3 months.
         const threeMonthsAgo = new Date();
         threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+        const threeMonthsAgoIso = threeMonthsAgo.toISOString();
+        
+        // This will only return properties that match, hopefully a small number!
+        const recentlySold = await base44.asServiceRole.entities.MasterProperty.filter({
+            sold_date: { $gte: threeMonthsAgoIso }
+        }, null, 5000);
+        
+        const validSoldHashes = new Set(recentlySold.map(p => p.address_hash));
         
         let updatedCount = 0;
         let deletedCount = 0;
         
         const debugInfo = {
             totalRoutes: routes.length,
-            totalLogs: logs.length,
-            totalPropertiesFetched: props.length,
+            totalLogsFetched: logs.length,
+            totalRecentlySoldFetched: recentlySold.length,
             routeDetails: []
         };
         
@@ -38,25 +41,8 @@ Deno.serve(async (req) => {
                 // Remove if already knocked
                 if (knockedHashes.has(hash)) return false;
                 
-                const prop = propertiesMap.get(hash);
-                if (!prop) {
-                    // If we didn't fetch it, we don't know its sold date. 
-                    // To be safe, if we have 10k properties fetched, maybe it's missing.
-                    // But wait, what if it's missing because of 10k limit? Let's just return false
-                    // to ensure only sold < 3 months are kept.
-                    return false; 
-                }
-                
-                // Remove if no sold_date
-                if (!prop.sold_date) return false;
-                
-                // Remove if sold_date is older than 3 months
-                try {
-                    const soldDate = new Date(prop.sold_date);
-                    if (soldDate < threeMonthsAgo) return false;
-                } catch (e) {
-                    return false;
-                }
+                // Remove if NOT in recentlySold
+                if (!validSoldHashes.has(hash)) return false;
                 
                 return true;
             });
