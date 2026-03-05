@@ -349,8 +349,7 @@ Deno.serve(async (req) => {
         }
 
         // --- PASS 2: Fetch Inactive Listings (MLS-Sold but not yet recorded) ---
-        // Skip Pass 2 for very large areas to stay within time limits
-        const maxListingRequests = isVeryLargeArea ? 5 : (isLargeArea ? 15 : 50);
+        const maxListingRequests = isVeryLargeArea ? 20 : (isLargeArea ? 20 : 50);
         console.log(`[FetchArea] Fetching Inactive Listings (MLS-Sold), max ${maxListingRequests} requests...`);
         let listingsOffset = 0;
         let listingsRequestCount = 0;
