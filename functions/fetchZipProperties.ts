@@ -344,6 +344,7 @@ Deno.serve(async (req) => {
         try {
           await base44.entities.MasterProperty.bulkCreate(chunk);
           successCount += chunk.length;
+          await new Promise(r => setTimeout(r, 250)); // Delay to prevent rate limit
         } catch (e) {
           console.error(`[FetchZip-v6] Chunk failed, trying smaller chunks:`, e.message);
           const SMALL_CHUNK = 10;
@@ -352,6 +353,7 @@ Deno.serve(async (req) => {
             try {
               await base44.entities.MasterProperty.bulkCreate(small);
               successCount += small.length;
+              await new Promise(r => setTimeout(r, 250)); // Delay to prevent rate limit
             } catch {
               console.warn(`[FetchZip-v6] Small chunk failed, skipping`);
             }
