@@ -273,7 +273,6 @@ Deno.serve(async (req) => {
                             radius: String(radius),
                             limit: String(limit),
                             offset: String(currentOffset),
-                            saleDateRange: '0:365',
                             propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
                         });
                         const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
@@ -316,7 +315,6 @@ Deno.serve(async (req) => {
                         radius: String(radius),
                         limit: String(limit),
                         offset: String(offset),
-                        saleDateRange: '0:365',
                         propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
                     });
                     const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
