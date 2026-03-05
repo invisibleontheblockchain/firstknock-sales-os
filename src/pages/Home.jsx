@@ -48,7 +48,7 @@ import RouteChecklist from '../components/routes/RouteChecklist';
 import RouteCommandPanel from '../components/routes/RouteCommandPanel';
 import KnockTimeBanner from '../components/timing/KnockTimeBanner';
 import MarketSetupPrompt from '../components/map/MarketSetupPrompt';
-import DrawingControls from '../components/map/DrawingControls';
+import TerritoryPrompt from '../components/map/TerritoryPrompt';
 import { darkRoom, DarkRoomClient } from '@/components/logic/neonClient';
 import CommandCenterDashboard from '../components/dashboard/CommandCenterDashboard';
 import MapSettingsPanel from '../components/map/MapSettingsPanel';
