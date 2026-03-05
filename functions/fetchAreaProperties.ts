@@ -254,7 +254,12 @@ Deno.serve(async (req) => {
 
         const initialData = await initialResponse.json();
         const initialBatch = Array.isArray(initialData) ? initialData : [];
+        console.log(`[FetchArea] Initial batch size: ${initialBatch.length}, X-Total-Count: ${reportedTotal}, totalFound so far: ${totalFound}`);
+        if (initialBatch.length > 0) {
+            console.log(`[FetchArea] Sample property: lat=${initialBatch[0].latitude}, lng=${initialBatch[0].longitude}, addr=${initialBatch[0].addressLine1 || initialBatch[0].formattedAddress}`);
+        }
         await processBatch(initialBatch);
+        console.log(`[FetchArea] After initial batch: totalFound=${totalFound}, inPolygon=${inPolygonCount}, mapped=${mappedCount}, imported=${successCount}`);
         requestCount++;
         offset += limit;
 
