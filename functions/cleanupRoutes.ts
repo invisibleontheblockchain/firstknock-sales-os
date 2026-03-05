@@ -6,10 +6,12 @@ Deno.serve(async (req) => {
         
         // 1. Get all routes
         const routes = await base44.asServiceRole.entities.SavedRoute.list({ limit: 1000 });
+        console.log(`Found ${routes.length} routes`);
         
         // 2. Get all interaction logs to know what's been knocked
         const logs = await base44.asServiceRole.entities.InteractionLog.list({ limit: 10000 });
         const knockedHashes = new Set(logs.map(l => l.address_hash));
+        console.log(`Found ${knockedHashes.size} knocked hashes`);
         
         // 3. Get all properties
         const propertiesMap = new Map();
@@ -24,6 +26,7 @@ Deno.serve(async (req) => {
                 skip += props.length;
             }
         }
+        console.log(`Loaded ${propertiesMap.size} properties`);
         
         const threeMonthsAgo = new Date();
         threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
