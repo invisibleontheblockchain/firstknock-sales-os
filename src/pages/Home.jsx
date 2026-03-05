@@ -684,22 +684,33 @@ export default function Home() {
         return savedRoutes
             .filter(r => repFilter === 'all' || (r.assigned_to_name && r.assigned_to_name.includes(repFilter)))
             .map(route => {
-                const routeProps = route.property_hashes
+                let routeProps = route.property_hashes
                     .map(hash => effectiveProperties.find(p => p.address_hash === hash))
                     .filter(Boolean);
+
+                // Apply soldDateFilter to saved routes if active
+                if (soldDateFilter !== null) {
+                    const cutoff = subMonths(new Date(), soldDateFilter);
+                    routeProps = routeProps.filter(p => {
+                        if (!p.sold_date) return false;
+                        try {
+                            return isAfter(parseISO(p.sold_date), cutoff);
+                        } catch (e) { return false; }
+                    });
+                }
 
                 return {
                     ...route,
                     id: route.id,
                     properties: routeProps,
-                    houseCount: route.metrics?.house_count || routeProps.length,
+                    houseCount: routeProps.length,
                     totalDistance: route.metrics?.distance || 0,
                     competitivenessScore: route.metrics?.score || 0,
                     isSaved: true
                 };
             }).filter(r => r.properties.length > 0)
             .sort((a, b) => (b.competitivenessScore || 0) - (a.competitivenessScore || 0));
-    }, [savedRoutes, effectiveProperties, repFilter]);
+    }, [savedRoutes, effectiveProperties, repFilter, soldDateFilter]);
 
     // Extract unique reps from saved routes for filter
     const uniqueReps = useMemo(() => {
