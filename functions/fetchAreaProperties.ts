@@ -91,7 +91,6 @@ Deno.serve(async (req) => {
         const MAX_EXECUTION_TIME = 45000; // 45 seconds to leave buffer for DB writes
 
         // OPTIMIZATION: Scale limits based on area size to avoid timeouts
-        // For large areas (100+ sq mi), we reduce max pages to stay within CPU limits
         const areaSqMiles = Math.PI * radius * radius;
         const isLargeArea = areaSqMiles > 50;
         const isVeryLargeArea = areaSqMiles > 150;
@@ -100,10 +99,10 @@ Deno.serve(async (req) => {
         let reportedTotal = 0;
         let offset = 0;
         const limit = 500;
-        // Scale max items based on area: large areas get fewer pages to avoid timeout
-        const maxItems = isVeryLargeArea ? 5000 : (isLargeArea ? 15000 : 100000);
-        const maxRequests = isVeryLargeArea ? 10 : (isLargeArea ? 30 : 200);
-        const maxParallel = isVeryLargeArea ? 3 : 5;
+        // Raised limits for 200 sq mi — 8-mile radius is manageable for RentCast
+        const maxItems = isVeryLargeArea ? 20000 : (isLargeArea ? 20000 : 100000);
+        const maxRequests = isVeryLargeArea ? 40 : (isLargeArea ? 40 : 200);
+        const maxParallel = isVeryLargeArea ? 5 : 5;
         
         console.log(`[FetchArea] Area ~${areaSqMiles.toFixed(0)} sq mi, maxItems=${maxItems}, maxRequests=${maxRequests}`); 
 
