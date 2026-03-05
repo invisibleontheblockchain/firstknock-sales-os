@@ -11,17 +11,32 @@ Deno.serve(async (req) => {
         const logs = await base44.asServiceRole.entities.InteractionLog.list(null, 10000);
         const knockedHashes = new Set(logs.map(l => l.address_hash));
         
-        // 3. Get all properties
+        // 3. Get all property hashes from routes
+        const allRouteHashes = new Set();
+        routes.forEach(r => {
+            if (r.property_hashes) {
+                r.property_hashes.forEach(h => allRouteHashes.add(h));
+            }
+        });
+        
+        // 4. Fetch properties in batches
+        const hashArray = Array.from(allRouteHashes);
         const propertiesMap = new Map();
-        let skip = 0;
-        let hasMore = true;
-        while (hasMore) {
-            // Since skip is not directly supported in list, we can use filter with skip if available, 
-            // but actually let's just fetch all properties if it's less than 10000, or we can just fetch the ones we need.
-            // Wait, we can't do skip easily. Let's just fetch up to 10000 properties.
-            const props = await base44.asServiceRole.entities.MasterProperty.list(null, 10000);
-            props.forEach(p => propertiesMap.set(p.address_hash, p));
-            hasMore = false; // Just fetch 10000 for now
+        
+        const chunkSize = 50;
+        for (let i = 0; i < hashArray.length; i += chunkSize) {
+            const chunk = hashArray.slice(i, i + chunkSize);
+            // Fetch properties individually to avoid $in if it's not supported
+            // Wait, we can fetch them individually or try to use a loop
+            const promises = chunk.map(hash => base44.asServiceRole.entities.MasterProperty.filter({ address_hash: hash }, null, 1));
+            const results = await Promise.all(promises);
+            results.forEach(res => {
+                if (res && res.length > 0) {
+                    propertiesMap.set(res[0].address_hash, res[0]);
+                }
+            });
+            // Add a small delay to avoid rate limits
+            await new Promise(resolve => setTimeout(resolve, 100));
         }
         
         const threeMonthsAgo = new Date();
