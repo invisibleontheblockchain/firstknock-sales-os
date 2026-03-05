@@ -360,12 +360,14 @@ Deno.serve(async (req) => {
         }
 
         // --- PASS 2: Fetch Inactive Listings (MLS-Sold but not yet recorded) ---
-        console.log(`[FetchArea] Fetching Inactive Listings (MLS-Sold)...`);
+        // Skip Pass 2 for very large areas to stay within time limits
+        const maxListingRequests = isVeryLargeArea ? 5 : (isLargeArea ? 15 : 50);
+        console.log(`[FetchArea] Fetching Inactive Listings (MLS-Sold), max ${maxListingRequests} requests...`);
         let listingsOffset = 0;
         let listingsRequestCount = 0;
         let keepFetchingListings = true;
         
-        while (keepFetchingListings && listingsRequestCount < 50) {
+        while (keepFetchingListings && listingsRequestCount < maxListingRequests) {
             const listingsParams = new URLSearchParams({
                 latitude: String(latitude),
                 longitude: String(longitude),
