@@ -132,11 +132,11 @@ export default function RouteBuilderSettings({
         <div className="fixed inset-0 z-[2000]">
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
             <div
-                className="absolute top-0 right-0 bottom-0 w-full max-w-md flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] backdrop-blur-xl shadow-2xl animate-in slide-in-from-right duration-300"
+                className="absolute top-0 right-0 bottom-0 w-full max-w-md overflow-hidden pt-[env(safe-area-inset-top)] backdrop-blur-xl shadow-2xl animate-in slide-in-from-right duration-300"
                 style={{ background: 'rgba(10, 10, 10, 0.97)', borderLeft: '1px solid rgba(255, 255, 255, 0.1)' }}
             >
                 {/* Header */}
-                <div className="p-4 border-b flex justify-between items-center shrink-0" style={{ borderColor: BRAND.charcoal }}>
+                <div className="p-4 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
                     <h2 className="flex items-center gap-2 font-bold tracking-wide" style={{ color: BRAND.gold }}>
                         <Navigation className="w-5 h-5" />
                         ROUTE BUILDER
@@ -146,7 +146,7 @@ export default function RouteBuilderSettings({
                     </button>
                 </div>
 
-                <div className="p-4 pb-0 shrink-0">
+                <div className="p-4 pb-0">
                     <div className="flex p-1 bg-[#1A1A1A] rounded-xl border border-gray-800">
                         <button
                             onClick={() => setViewMode('simple')}
@@ -163,7 +163,7 @@ export default function RouteBuilderSettings({
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto pb-4">
+                <div className="overflow-y-auto h-[calc(100%-180px)] pb-24">
                     {viewMode === 'simple' ? (
                         <div className="p-4 space-y-6">
                             {/* Target Area */}
