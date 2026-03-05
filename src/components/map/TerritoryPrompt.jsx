@@ -118,14 +118,7 @@ export default function TerritoryPrompt({
 
                             <select
                                 value={drawSizeMiles || 10}
-                                onChange={(e) => {
-                                    const val = Number(e.target.value);
-                                    if ((val === 100 || val === 200) && !canUseLargeAreas) {
-                                        toast.error("100 and 200 sq miles are only available on the Pro plan.");
-                                        return;
-                                    }
-                                    setDrawSizeMiles(val);
-                                }}
+                                onChange={(e) => setDrawSizeMiles(Number(e.target.value))}
                                 className="bg-gray-900 border border-gray-700 text-white text-xs rounded-md px-2 py-1 h-8"
                             >
                                 <option value={1}>1 sq mile</option>
@@ -134,17 +127,8 @@ export default function TerritoryPrompt({
                                 <option value={20}>20 sq miles</option>
                                 <option value={30}>30 sq miles</option>
                                 <option value={40}>40 sq miles</option>
-                                {canUseLargeAreas ? (
-                                    <>
-                                        <option value={100}>100 sq miles</option>
-                                        <option value={200}>200 sq miles (Max)</option>
-                                    </>
-                                ) : (
-                                    <>
-                                        <option value={100} disabled>100 sq miles (Pro)</option>
-                                        <option value={200} disabled>200 sq miles (Pro)</option>
-                                    </>
-                                )}
+                                <option value={100}>100 sq miles</option>
+                                <option value={200}>200 sq miles (Max)</option>
                             </select>
                         </div>
                         <div className="flex gap-2">
