@@ -255,7 +255,7 @@ Deno.serve(async (req) => {
       console.warn(`[FetchZip-v6] Failed to fetch existing properties for deduplication:`, e.message);
     }
 
-    // Map to schema
+    // Map to schema with H3 spatial indexing
     const mapped = allProperties
       .filter(p => p.latitude && p.longitude && p.addressLine1)
       .filter(p => !existingHashes.has(p.id))
@@ -263,14 +263,19 @@ Deno.serve(async (req) => {
         const addressMatch = (p.addressLine1 || "").match(/^(\d+)\s+(.*)$/);
         const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
         const street_name = addressMatch ? addressMatch[2] : (p.addressLine1 || "Unknown");
+        
+        // MLS-Sold flag takes priority (bypasses deed recording lag)
         let original_status = 'ELIGIBLE';
-        if (p.lastSaleDate) {
+        if (p._mlsSold) {
+          original_status = 'SOLD';
+        } else if (p.lastSaleDate) {
           const saleDate = new Date(p.lastSaleDate);
           const oneYearAgo = new Date();
           oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
           if (saleDate > oneYearAgo) original_status = 'SOLD';
         }
 
+        // H3 Resolution 9 index for spatial clustering
         let h3_index = null;
         try {
           h3_index = latLngToCell(p.latitude, p.longitude, 9);
@@ -286,13 +291,13 @@ Deno.serve(async (req) => {
           beds: p.bedrooms || 0, baths: p.bathrooms || 0,
           sqft: p.squareFootage || 0, lot_size: p.lotSize || 0,
           year_built: p.yearBuilt || 0, price: p.lastSalePrice || 0,
-          sold_date: p.lastSaleDate || null, sale_type: 'Market',
+          sold_date: p.lastSaleDate || null, sale_type: p._mlsSold ? 'MLS' : 'Market',
           property_type: p.propertyType || 'Single Family',
           mls_id: p.assessorID || null, url: null
         };
       });
 
-    console.log(`[FetchZip-v6] ${mapped.length} valid properties to import`);
+    console.log(`[FetchZip-v7] ${mapped.length} valid properties to import (${mapped.filter(m => m.original_status === 'SOLD').length} sold)`);
 
     if (mapped.length === 0) {
       return Response.json({
