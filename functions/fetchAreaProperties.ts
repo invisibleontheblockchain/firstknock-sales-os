@@ -227,6 +227,8 @@ Deno.serve(async (req) => {
         };
 
         // First request to get total count
+        // Use saleDateRange to focus on recently sold (last 3 years = 1095 days)
+        // This filters server-side so RentCast returns far fewer results to paginate
         const initialParams = new URLSearchParams({
             latitude: String(latitude),
             longitude: String(longitude),
@@ -234,11 +236,12 @@ Deno.serve(async (req) => {
             limit: String(limit),
             offset: String(offset),
             propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
+            saleDateRange: '1095',
             includeTotalCount: 'true',
         });
 
         const initialUrl = `${RENTCAST_BASE}/properties?${initialParams.toString()}`;
-        console.log(`[FetchArea] Initial Request: offset=${offset}`);
+        console.log(`[FetchArea] Initial Request (recently sold, saleDateRange=1095): offset=${offset}`);
 
         const initialResponse = await fetch(initialUrl, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
 
