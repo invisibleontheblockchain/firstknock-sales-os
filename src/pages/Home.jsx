@@ -1614,7 +1614,7 @@ export default function Home() {
                 onSelectProperty={setSelectedProperty}
             />
 
-            {/* NearbyHotLeads removed — replaced by simplified market setup flow */}
+            {/* Simplified market setup flow */}
 
             {/* Route Checklist */}
             {showChecklist && filteredActiveRoute && (
