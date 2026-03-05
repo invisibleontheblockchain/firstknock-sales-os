@@ -342,12 +342,14 @@ Deno.serve(async (req) => {
       zip_code: zip,
       count: successCount,
       total_found: allProperties.length,
-      message: `Imported ${successCount} properties for zip ${zip}`,
+      sold_count: mapped.filter(m => m.original_status === 'SOLD').length,
+      mls_count: mapped.filter(m => m.sale_type === 'MLS').length,
+      message: `Imported ${successCount} properties for zip ${zip} (${mapped.filter(m => m.original_status === 'SOLD').length} sold)`,
       usage: { zips_used: newZipsUsed, zip_limit: zipLimit, zips_remaining: newZipsRemaining, tier: subTier }
     });
 
   } catch (error) {
-    console.error('[FetchZip-v6] Error:', error);
+    console.error('[FetchZip-v7] Error:', error);
     return Response.json({ error: error.message }, { status: 500 });
   }
 });
