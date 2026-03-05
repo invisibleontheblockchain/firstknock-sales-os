@@ -1350,6 +1350,29 @@ export default function Home() {
                 setActiveRouteSoldFilter={setActiveRouteSoldFilter}
             />
 
+            {/* Drawing Controls (from old TerritoryPrompt) */}
+            <DrawingControls
+                drawingMode={drawingMode}
+                setDrawingMode={setDrawingMode}
+                drawnPolygon={drawnPolygon}
+                setDrawnPolygon={setDrawnPolygon}
+                draftPolygon={draftPolygon}
+                setDraftPolygon={setDraftPolygon}
+                drawShape={drawShape}
+                setDrawShape={setDrawShape}
+                drawSizeMiles={drawSizeMiles}
+                setDrawSizeMiles={setDrawSizeMiles}
+                user={user}
+                setShowCompare={setShowCompare}
+                onPullComplete={() => {
+                    queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
+                    queryClient.invalidateQueries({ queryKey: ['user'] });
+                    localStorage.setItem('fk_autobuild_next_open', 'true');
+                    setMode('generate');
+                    setShowCompare(true);
+                }}
+            />
+
             <MarketSetupPrompt
                 mode={mode}
                 activeRoute={filteredActiveRoute}
