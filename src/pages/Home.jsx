@@ -742,6 +742,15 @@ export default function Home() {
         return Array.from(zips).sort();
     }, [effectiveProperties]);
 
+    // Handle startDraw from MarketOnboarding
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('startDraw') === 'true') {
+            setDrawingMode(true);
+            window.history.replaceState({}, '', window.location.pathname);
+        }
+    }, []);
+
     // Handle Load Route from URL
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
