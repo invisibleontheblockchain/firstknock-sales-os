@@ -36,12 +36,13 @@ export default function TerritoryPrompt({
     const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
     const canUseLargeAreas = isPaid || isOwner;
 
-    if (mode !== 'generate' || activeRoute || routesGenerating || showCompare || showRoutePanel) return null;
+    // Drawing controls and drawn polygon controls should always show regardless of other panels
+    const showInitialPrompt = mode === 'generate' && !activeRoute && !routesGenerating && !showCompare && !showRoutePanel && !drawingMode && (!drawnPolygon || drawnPolygon.length === 0);
 
     return (
         <>
             {/* Prompt to start drawing or use main territory */}
-            {!drawingMode && (!drawnPolygon || drawnPolygon.length === 0) && (
+            {showInitialPrompt && (
                 <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-auto">
                     <div className="flex flex-col items-center gap-4 w-full px-4 max-w-md">
                         <div className="w-16 h-16 rounded-full bg-yellow-500/20 flex items-center justify-center mb-2 shadow-[0_0_30px_rgba(255,215,0,0.3)]">
