@@ -931,11 +931,12 @@ export default function Home() {
 
             // Apply Sold Date Filter (STRICT: If filter active, MUST have sold_date within range)
             if (soldDateFilter !== null) {
+                const cutoff = subMonths(new Date(), parseInt(soldDateFilter));
                 workingSet = workingSet.filter(p => {
                     if (!p.sold_date) return false;
                     try {
-                        const date = parseISO(p.sold_date);
-                        const cutoff = subMonths(new Date(), soldDateFilter);
+                        const date = new Date(p.sold_date);
+                        if (isNaN(date.getTime())) return false;
                         return isAfter(date, cutoff);
                     } catch (e) { return false; }
                 });
