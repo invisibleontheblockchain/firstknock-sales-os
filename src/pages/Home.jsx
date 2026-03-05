@@ -846,11 +846,15 @@ export default function Home() {
                     for (const zip of zipsToFetch) {
                         try {
                             const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zip });
-                            console.log(`[Generate] Fetch result for ${zip}:`, res.data);
+                            console.log(`[Generate] Fetch result for ${zip}:`, JSON.stringify(res.data));
                             if (res.data?.error) {
                                 toast.error(res.data.message || res.data.error, { id: 'fetch-zip' });
                                 hitLimit = true;
                                 break;
+                            }
+                            // Log sold/MLS counts for debugging
+                            if (res.data?.sold_count !== undefined) {
+                                console.log(`[Generate] ${zip}: ${res.data.count} imported, ${res.data.sold_count} sold, ${res.data.mls_count} MLS`);
                             }
                         } catch (err) {
                             console.warn(`Failed to fetch zip ${zip}`, err);
@@ -869,6 +873,8 @@ export default function Home() {
                         return;
                     }
 
+                    // Backend now auto-adds zips to territory_zip_codes, refresh user
+                    queryClient.invalidateQueries({ queryKey: ['user'] });
                     toast.success("Data synced!", { id: 'fetch-zip' });
 
                     // Re-fetch after import
