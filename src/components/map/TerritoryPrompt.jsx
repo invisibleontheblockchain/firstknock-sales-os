@@ -189,8 +189,10 @@ export default function TerritoryPrompt({
                                     const d = R * c;
                                     if (d > maxDist) maxDist = d;
                                 }
-                                const radius = Math.max(0.5, maxDist * 1.05); // small buffer
-                                const areaSqMiles = Math.PI * (radius * radius);
+                                // Use exact radius from centroid to edge — the draw tool already constrains to 200 sq mi
+                                const radius = Math.max(0.5, maxDist);
+                                // The actual area is 200 sq mi (set by the draw tool), use that for display
+                                const areaSqMiles = 200;
 
                                 // Check monthly draw limit (3 per month for all users)
                                 const pullLimit = isOwner ? 999 : 3;
