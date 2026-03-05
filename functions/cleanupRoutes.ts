@@ -11,25 +11,18 @@ Deno.serve(async (req) => {
         const logs = await base44.asServiceRole.entities.InteractionLog.list({ limit: 10000 });
         const knockedHashes = new Set(logs.map(l => l.address_hash));
         
-        // 3. Get all properties that are in these routes
-        const allRouteHashes = new Set();
-        routes.forEach(r => {
-            if (r.property_hashes) {
-                r.property_hashes.forEach(h => allRouteHashes.add(h));
-            }
-        });
-        
-        // Fetch properties in batches
-        const hashArray = Array.from(allRouteHashes);
+        // 3. Get all properties
         const propertiesMap = new Map();
-        
-        const chunkSize = 100;
-        for (let i = 0; i < hashArray.length; i += chunkSize) {
-            const chunk = hashArray.slice(i, i + chunkSize);
-            const props = await base44.asServiceRole.entities.MasterProperty.filter({
-                address_hash: { $in: chunk }
-            }, null, 100);
-            props.forEach(p => propertiesMap.set(p.address_hash, p));
+        let skip = 0;
+        let hasMore = true;
+        while (hasMore) {
+            const props = await base44.asServiceRole.entities.MasterProperty.list({ limit: 1000, skip });
+            if (props.length === 0) {
+                hasMore = false;
+            } else {
+                props.forEach(p => propertiesMap.set(p.address_hash, p));
+                skip += props.length;
+            }
         }
         
         const threeMonthsAgo = new Date();
