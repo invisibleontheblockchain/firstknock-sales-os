@@ -418,7 +418,7 @@ export default function Home() {
     const properties = useMemo(() => {
         // Merge Dark Room properties with User/Local properties
         // Dark Room properties are mapped to have similar structure
-        const combined = [...userProperties, ...localProperties, ...darkRoomProperties, ...fetchedProperties];
+        const combined = userProperties.concat(localProperties, darkRoomProperties, fetchedProperties);
         const seen = new Set();
         return combined.filter(p => {
             // Use id as fallback for address_hash if missing (Dark Room props might rely on ID)
