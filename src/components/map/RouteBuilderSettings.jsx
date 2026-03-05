@@ -680,14 +680,16 @@ export default function RouteBuilderSettings({
                         <Button
                             onClick={async () => {
                                 const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                                if (!isPaid && user?.has_generated_routes) {
+                                const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
+                                
+                                if (!isPaid && !isOwner && user?.has_generated_routes) {
                                     window.location.href = '/Billing';
                                     return;
                                 }
                                 
                                 onGenerate();
                                 
-                                if (!isPaid && !user?.has_generated_routes) {
+                                if (!isPaid && !isOwner && !user?.has_generated_routes) {
                                     try { await base44.auth.updateMe({ has_generated_routes: true }); } catch(e) {}
                                 }
                             }}
