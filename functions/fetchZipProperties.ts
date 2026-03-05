@@ -5,8 +5,6 @@ import { latLngToCell } from 'npm:h3-js@4.1.0';
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
 
-const FREE_ZIP_LIMIT = 3;
-const ZIPS_PER_SEAT = 10;
 const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 Deno.serve(async (req) => {
@@ -20,27 +18,20 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { zip_code, force_sync = false, check_usage_only = false } = body;
 
-    const isPaid = user.subscription_status === 'active' || user.subscription_status === 'trialing';
-    const zipLimit = isPaid ? 10 : FREE_ZIP_LIMIT;
     const generatedZips = user.generated_zip_codes || [];
     const territoryZips = user.territory_zip_codes || [];
     const zipsUsed = generatedZips.length;
-    const zipsRemaining = zipLimit - zipsUsed;
-    const subTier = isPaid ? 'pro' : 'free';
 
     if (check_usage_only) {
       return Response.json({
         status: 'usage',
         zips_used: zipsUsed,
-        zip_limit: zipLimit,
-        zips_remaining: Math.max(0, zipsRemaining),
+        zip_limit: 'unlimited',
         generated_zips: generatedZips,
-        tier: subTier,
-        is_paid: isPaid
       });
     }
 
-    console.log(`[FetchZip-v7] zip=${zip_code}, tier=${subTier}, zips=${zipsUsed}/${zipLimit}`);
+    console.log(`[FetchZip-v7] zip=${zip_code}, zips_used=${zipsUsed} (unlimited)`);
 
     if (!zip_code || !/^\d{5}$/.test(String(zip_code).trim())) {
       return Response.json({ error: 'Valid 5-digit zip code required' }, { status: 400 });
@@ -87,18 +78,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // --- ZIP LIMIT CHECK (only blocks NEW zips) ---
-    if (!alreadyGenerated && zipsRemaining <= 0) {
-      console.warn(`[FetchZip-v7] ZIP LIMIT REACHED: ${zipsUsed}/${zipLimit} (tier: ${subTier})`);
-      const upgradeMsg = !isPaid
-        ? `You've used your ${FREE_ZIP_LIMIT} free zip codes. Subscribe to unlock more territories.`
-        : `You've reached your ${zipLimit} zip code limit. Contact support for enterprise plans.`;
-      return Response.json({
-        error: 'Zip code limit reached',
-        message: upgradeMsg,
-        usage: { zips_used: zipsUsed, zip_limit: zipLimit, zips_remaining: 0, tier: subTier, is_paid: isPaid }
-      }, { status: 429 });
-    }
+    // Zip codes are unlimited — no limit check needed
 
     if (!RENTCAST_API_KEY) {
       return Response.json({ error: 'RENTCAST_API_KEY not configured' }, { status: 500 });
@@ -226,14 +206,13 @@ Deno.serve(async (req) => {
       const updatedZips = [...generatedZips, zip];
       try {
         await base44.auth.updateMe({ generated_zip_codes: updatedZips });
-        console.log(`[FetchZip-v7] Tracked new zip. Total zips: ${updatedZips.length}/${zipLimit}`);
+        console.log(`[FetchZip-v7] Tracked new zip. Total zips: ${updatedZips.length}`);
       } catch (e) {
         console.error(`[FetchZip-v7] Failed to update zip tracker:`, e.message);
       }
     }
 
     const newZipsUsed = alreadyGenerated ? zipsUsed : zipsUsed + 1;
-    const newZipsRemaining = zipLimit - newZipsUsed;
 
     console.log(`[FetchZip-v7] Total fetched: ${allProperties.length} in ${requestCount + phase1.items.length + phase2.items.length} records`);
 
@@ -303,7 +282,7 @@ Deno.serve(async (req) => {
       return Response.json({
         status: 'empty', count: 0,
         message: `Properties found but none had valid coordinates.`,
-        usage: { zips_used: newZipsUsed, zip_limit: zipLimit, zips_remaining: newZipsRemaining, tier: subTier }
+        usage: { zips_used: newZipsUsed, zip_limit: 'unlimited' }
       });
     }
 
@@ -345,7 +324,7 @@ Deno.serve(async (req) => {
       sold_count: mapped.filter(m => m.original_status === 'SOLD').length,
       mls_count: mapped.filter(m => m.sale_type === 'MLS').length,
       message: `Imported ${successCount} properties for zip ${zip} (${mapped.filter(m => m.original_status === 'SOLD').length} sold)`,
-      usage: { zips_used: newZipsUsed, zip_limit: zipLimit, zips_remaining: newZipsRemaining, tier: subTier }
+      usage: { zips_used: newZipsUsed, zip_limit: 'unlimited' }
     });
 
   } catch (error) {
