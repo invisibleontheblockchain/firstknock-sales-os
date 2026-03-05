@@ -6,12 +6,10 @@ Deno.serve(async (req) => {
         
         // 1. Get all routes
         const routes = await base44.asServiceRole.entities.SavedRoute.list({ limit: 1000 });
-        console.log(`Found ${routes.length} routes`);
         
         // 2. Get all interaction logs to know what's been knocked
         const logs = await base44.asServiceRole.entities.InteractionLog.list({ limit: 10000 });
         const knockedHashes = new Set(logs.map(l => l.address_hash));
-        console.log(`Found ${knockedHashes.size} knocked hashes`);
         
         // 3. Get all properties
         const propertiesMap = new Map();
@@ -26,13 +24,19 @@ Deno.serve(async (req) => {
                 skip += props.length;
             }
         }
-        console.log(`Loaded ${propertiesMap.size} properties`);
         
         const threeMonthsAgo = new Date();
         threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
         
         let updatedCount = 0;
         let deletedCount = 0;
+        
+        const debugInfo = {
+            totalRoutes: routes.length,
+            totalLogs: logs.length,
+            totalProperties: propertiesMap.size,
+            routeDetails: []
+        };
         
         for (const route of routes) {
             if (!route.property_hashes) continue;
@@ -62,6 +66,7 @@ Deno.serve(async (req) => {
                 // Delete route
                 await base44.asServiceRole.entities.SavedRoute.delete(route.id);
                 deletedCount++;
+                debugInfo.routeDetails.push({ id: route.id, action: 'deleted', oldLength: route.property_hashes.length });
             } else if (validHashes.length !== route.property_hashes.length) {
                 // Update route
                 await base44.asServiceRole.entities.SavedRoute.update(route.id, {
@@ -72,12 +77,14 @@ Deno.serve(async (req) => {
                     }
                 });
                 updatedCount++;
+                debugInfo.routeDetails.push({ id: route.id, action: 'updated', oldLength: route.property_hashes.length, newLength: validHashes.length });
             }
         }
         
         return Response.json({ 
             success: true, 
-            message: `Cleaned up routes. Updated ${updatedCount} routes, deleted ${deletedCount} empty routes.` 
+            message: `Cleaned up routes. Updated ${updatedCount} routes, deleted ${deletedCount} empty routes.`,
+            debugInfo
         });
     } catch (error) {
         return Response.json({ error: error.message }, { status: 500 });
