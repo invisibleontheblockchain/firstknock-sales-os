@@ -1572,6 +1572,7 @@ export default function Home() {
                         } catch (e) { toast.error("Failed", { id: toastId }); }
                     }}
                     user={user}
+                    hasDrawnArea={drawnPolygon && drawnPolygon.length > 2}
                 />
             )}
 
