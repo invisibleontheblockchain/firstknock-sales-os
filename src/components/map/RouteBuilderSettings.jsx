@@ -383,22 +383,24 @@ export default function RouteBuilderSettings({
                                 onToggle={() => toggleSection('filters')}
                             >
                                 {/* Sold Date Filter */}
-                                <div className="space-y-2 mb-4">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase">Recently Sold (Months)</label>
-                                    <div className="flex gap-1.5">
-                                        {[
-                                            { label: 'Any Time', val: null },
-                                            { label: 'Past Month', val: 1 },
-                                            { label: 'Past 3 Mo', val: 3 },
-                                            { label: 'Past 6 Mo', val: 6 },
-                                            { label: 'Past Year', val: 12 },
-                                        ].map(opt => (
-                                            <button key={opt.label} onClick={() => setSoldDateFilter(opt.val)}
-                                                className={`flex-1 py-1.5 rounded text-[9px] font-bold transition-all border border-gray-800 ${soldDateFilter === opt.val
-                                                    ? 'bg-yellow-500 text-black border-yellow-500' : 'bg-[#1A1A1A] text-gray-500 hover:text-white hover:border-gray-600'
-                                                    }`}
-                                            >{opt.label}</button>
-                                        ))}
+                                <div className="space-y-4 mb-4 pt-2">
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase">Recently Sold</label>
+                                        <span className="text-xs font-bold text-yellow-500">{soldDateFilter ? `${soldDateFilter} Months` : '12 Months'}</span>
+                                    </div>
+                                    <Slider
+                                        value={[soldDateFilter || 12]}
+                                        onValueChange={([v]) => setSoldDateFilter(v)}
+                                        min={3}
+                                        max={12}
+                                        step={3}
+                                        className="w-full"
+                                    />
+                                    <div className="flex justify-between text-[10px] text-gray-600 font-medium px-1">
+                                        <span>3 Mo</span>
+                                        <span>6 Mo</span>
+                                        <span>9 Mo</span>
+                                        <span>12 Mo</span>
                                     </div>
                                 </div>
 
