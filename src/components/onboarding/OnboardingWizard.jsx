@@ -44,8 +44,12 @@ export default function OnboardingWizard({ user, onComplete }) {
     const handleComplete = async () => {
         setIsOpen(false);
         try { await base44.auth.updateMe({ has_seen_onboarding: true }); } catch {}
+        // For managers, the MarketOnboarding component will handle the next step
         if (onComplete) onComplete();
     };
+
+    // If user hasn't seen onboarding yet AND is a manager without a market, 
+    // the welcome flow will complete and MarketOnboarding picks up after
 
     const isManager = user.app_role === 'manager';
 
