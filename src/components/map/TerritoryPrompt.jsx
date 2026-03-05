@@ -37,7 +37,9 @@ export default function TerritoryPrompt({
     const canUseLargeAreas = isPaid || isOwner;
 
     // Drawing controls and drawn polygon controls should always show regardless of other panels
-    const showInitialPrompt = mode === 'generate' && !activeRoute && !routesGenerating && !showCompare && !showRoutePanel && !drawingMode && (!drawnPolygon || drawnPolygon.length === 0);
+    // Don't show if user hasn't defined their market yet (MarketOnboarding handles that)
+    const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
+    const showInitialPrompt = hasDefinedMarket && mode === 'generate' && !activeRoute && !routesGenerating && !showCompare && !showRoutePanel && !drawingMode && (!drawnPolygon || drawnPolygon.length === 0);
 
     return (
         <>
