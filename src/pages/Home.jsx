@@ -161,7 +161,7 @@ export default function Home() {
     const [drawnPolygon, setDrawnPolygon] = useState(null);
     const [draftPolygon, setDraftPolygon] = useState([]);
     const [drawShape, setDrawShape] = useState('circle');
-    const [drawSizeMiles, setDrawSizeMiles] = useState(10);
+    const [drawSizeMiles, setDrawSizeMiles] = useState(200);
     const [showTimingPanel, setShowTimingPanel] = useState(false);
     const [selectedProperty, setSelectedProperty] = useState(null);
     const [zoomLevel, setZoomLevel] = useState(15);
