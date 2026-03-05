@@ -110,12 +110,12 @@ export default function RouteCommandPanel({
                     </button>
                     <button
                         onClick={() => setActiveTab('active')}
-                        className={`flex-1 py-3 text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-2 ${activeTab === 'active'
+                        className={`flex-1 min-w-[100px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeTab === 'active'
                             ? 'border-blue-500 text-blue-500'
                             : 'border-transparent text-gray-500 hover:text-white'
                             }`}
                     >
-                        <Clock className="w-4 h-4" />
+                        <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
                         ACTIVE
                         <Badge variant="default" className="bg-blue-600 text-white text-[9px] h-4 px-1.5">
                             {routesByStatus.IN_PROGRESS.length + routesByStatus.ACTIVE.length}
@@ -123,12 +123,12 @@ export default function RouteCommandPanel({
                     </button>
                     <button
                         onClick={() => setActiveTab('team')}
-                        className={`flex-1 py-3 text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-2 ${activeTab === 'team'
+                        className={`flex-1 min-w-[100px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeTab === 'team'
                             ? 'border-green-500 text-green-500'
                             : 'border-transparent text-gray-500 hover:text-white'
                             }`}
                     >
-                        <User className="w-4 h-4" />
+                        <User className="w-3 h-3 sm:w-4 sm:h-4" />
                         BY REP
                     </button>
                 </div>
