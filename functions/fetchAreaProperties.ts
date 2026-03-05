@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 import { polygonToCells, latLngToCell } from 'npm:h3-js@4.1.0';
 
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
