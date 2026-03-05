@@ -68,10 +68,10 @@ export default function Referrals() {
                     <h3 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center justify-center gap-2">
                         <DollarSign className="w-3 h-3" /> Recurring Commission
                     </h3>
-                    <p className="text-4xl font-extrabold" style={{ color: accent }}>20%</p>
+                    <p className="text-4xl font-extrabold" style={{ color: accent }}>10%</p>
                     <p className="text-sm text-gray-400 mt-1">LIFETIME recurring commission</p>
                     <p className="text-[10px] text-gray-600 mt-2">
-                        Earn 20% of the subscription revenue for as long as your referral remains a paying customer.
+                        Earn 10% of the subscription revenue for as long as your referral remains a paying customer.
                         Build an army and create passive income!
                     </p>
                 </div>

@@ -47,7 +47,8 @@ export default function RouteBuilderSettings({
     onForceSync, onClearArea,
     onDraw, // New prop for enabling drawing mode
     // Data
-    user
+    user,
+    hasDrawnArea
 }) {
     const [expandedSection, setExpandedSection] = useState('presets');
     const [activePreset, setActivePreset] = useState(null);
@@ -166,6 +167,7 @@ export default function RouteBuilderSettings({
                     {viewMode === 'simple' ? (
                         <div className="p-4 space-y-6">
                             {/* Target Area */}
+                            {!hasDrawnArea ? (
                             <div className="space-y-3">
                                 <div className="flex justify-between items-center">
                                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">1. Target Area</label>
@@ -184,6 +186,19 @@ export default function RouteBuilderSettings({
                                     className="w-full px-4 py-3 rounded-xl text-sm bg-[#1A1A1A] text-white border border-[#222] focus:border-yellow-500 focus:outline-none transition-colors"
                                 />
                             </div>
+                            ) : (
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center">
+                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">1. Target Area</label>
+                                </div>
+                                <div className="w-full px-4 py-3 rounded-xl text-sm bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 flex items-center justify-between">
+                                    <span>Custom Drawn Area Active</span>
+                                    <button onClick={onDraw} className="text-[10px] font-bold underline hover:text-yellow-400">
+                                        Redraw
+                                    </button>
+                                </div>
+                            </div>
+                            )}
 
                             {/* Strategy Selection */}
                             <div className="space-y-3">
@@ -248,6 +263,7 @@ export default function RouteBuilderSettings({
                                 onToggle={() => toggleSection('core')}
                             >
                                 {/* Zip Code Filter */}
+                                {!hasDrawnArea ? (
                                 <div className="space-y-2">
                                     <div className="flex justify-between items-center">
                                         <label className="text-[10px] font-bold text-gray-500 uppercase">Target Zip Codes</label>
@@ -266,6 +282,19 @@ export default function RouteBuilderSettings({
                                         className="w-full px-3 py-2 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333] focus:border-yellow-500 focus:outline-none"
                                     />
                                 </div>
+                                ) : (
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase">Target Area</label>
+                                    </div>
+                                    <div className="w-full px-3 py-2 rounded-lg text-xs bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 flex items-center justify-between">
+                                        <span>Custom Drawn Area Active</span>
+                                        <button onClick={onDraw} className="text-[9px] font-bold underline hover:text-yellow-400">
+                                            Redraw
+                                        </button>
+                                    </div>
+                                </div>
+                                )}
 
                                 {/* Houses Per Route */}
                                 <div className="space-y-2 pt-2 border-t border-gray-800/50">
