@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import AiAssistant from '@/components/help/AiAssistant';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
+import MarketOnboarding from '@/components/onboarding/MarketOnboarding';
 import { ThemeProvider, useTheme, contrastText } from '@/components/theme/ThemeProvider';
 import ThemeColorPicker from '@/components/theme/ThemeColorPicker';
 
