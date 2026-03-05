@@ -47,7 +47,7 @@ import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../com
 import RouteChecklist from '../components/routes/RouteChecklist';
 import RouteCommandPanel from '../components/routes/RouteCommandPanel';
 import KnockTimeBanner from '../components/timing/KnockTimeBanner';
-import MarketSetupPrompt from '../components/map/MarketSetupPrompt';
+// MarketSetupPrompt removed — onboarding handled by MarketOnboarding + TerritoryPrompt
 import TerritoryPrompt from '../components/map/TerritoryPrompt';
 import { darkRoom, DarkRoomClient } from '@/components/logic/neonClient';
 import CommandCenterDashboard from '../components/dashboard/CommandCenterDashboard';
