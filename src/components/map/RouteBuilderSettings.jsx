@@ -183,7 +183,7 @@ export default function RouteBuilderSettings({
                                     placeholder="Enter Zip Code(s) e.g. 90210"
                                     value={zipCodeFilter}
                                     onChange={(e) => setZipCodeFilter(e.target.value)}
-                                    className="w-full px-4 py-3 rounded-xl text-sm bg-[#1A1A1A] text-white border border-[#222] focus:border-yellow-500 focus:outline-none transition-colors"
+                                    className="w-full px-4 py-3 rounded-xl text-base bg-[#1A1A1A] text-white border border-[#222] focus:border-yellow-500 focus:outline-none transition-colors"
                                 />
                             </div>
                             ) : (
