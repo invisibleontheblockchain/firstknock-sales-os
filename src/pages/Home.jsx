@@ -48,6 +48,7 @@ import RouteChecklist from '../components/routes/RouteChecklist';
 import RouteCommandPanel from '../components/routes/RouteCommandPanel';
 import KnockTimeBanner from '../components/timing/KnockTimeBanner';
 import MarketSetupPrompt from '../components/map/MarketSetupPrompt';
+import DrawingControls from '../components/map/DrawingControls';
 import { darkRoom, DarkRoomClient } from '@/components/logic/neonClient';
 import CommandCenterDashboard from '../components/dashboard/CommandCenterDashboard';
 import MapSettingsPanel from '../components/map/MapSettingsPanel';
@@ -60,7 +61,7 @@ import QuickMarkButtons from '../components/rep/QuickMarkButtons';
 import PropertyHistory from '../components/rep/PropertyHistory';
 import ManagerPropertyDetailSheet from '../components/map/ManagerPropertyDetailSheet';
 import MapDrawTool from '../components/map/MapDrawTool';
-import TerritoryPrompt from '../components/map/TerritoryPrompt';
+// TerritoryPrompt replaced by MarketSetupPrompt
 import ManagerMapLayers from '../components/map/ManagerMapLayers';
 import MapToolbar from '../components/map/MapToolbar';
 
@@ -1362,37 +1363,15 @@ export default function Home() {
                 setShowRoutePanel={setShowRoutePanel}
                 setMode={setMode}
                 onSetupComplete={({ zips, routeCount }) => {
+                    // Set houses per route based on total properties / desired routes
+                    // We'll use a smart default: if user wants 1 route, give them all props
+                    // Otherwise divide evenly
                     setHousesPerRoute(routeCount === 1 ? 5000 : Math.max(20, Math.round(5000 / routeCount)));
                     setZipCodeFilter(zips.join(', '));
+                    // Open the route builder and auto-generate
                     setShowCompare(true);
+                    // Trigger auto-build on next open
                     localStorage.setItem('fk_autobuild_next_open', 'true');
-                }}
-            />
-
-            <TerritoryPrompt
-                mode={mode}
-                setMode={setMode}
-                activeRoute={filteredActiveRoute}
-                routesGenerating={routesGenerating}
-                showCompare={showCompare}
-                setShowCompare={setShowCompare}
-                showRoutePanel={showRoutePanel}
-                setShowRoutePanel={setShowRoutePanel}
-                drawingMode={drawingMode}
-                setDrawingMode={setDrawingMode}
-                drawnPolygon={drawnPolygon}
-                setDrawnPolygon={setDrawnPolygon}
-                draftPolygon={draftPolygon}
-                setDraftPolygon={setDraftPolygon}
-                drawShape={drawShape}
-                setDrawShape={setDrawShape}
-                drawSizeMiles={drawSizeMiles}
-                setDrawSizeMiles={setDrawSizeMiles}
-                user={user}
-                setZipCodeFilter={setZipCodeFilter}
-                onPullComplete={() => {
-                    queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
-                    queryClient.invalidateQueries({ queryKey: ['user'] });
                 }}
             />
 
@@ -1636,7 +1615,7 @@ export default function Home() {
                 onSelectProperty={setSelectedProperty}
             />
 
-            {/* Simplified market setup flow */}
+            {/* null /* NearbyHotLeads removed */ removed */}
 
             {/* Route Checklist */}
             {showChecklist && filteredActiveRoute && (
