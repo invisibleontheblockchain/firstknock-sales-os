@@ -49,11 +49,16 @@ Deno.serve(async (req) => {
             return Response.json({ skipped: true, reason: 'Not a create/update event' });
         }
 
-        // Only process pending or running jobs
-        if (data.status !== 'pending' && data.status !== 'running') {
+        // Only process pending or paused jobs, or running jobs that are being resumed
+        // Skip completed/failed jobs entirely
+        if (data.status === 'completed' || data.status === 'failed') {
             console.log(`[processFetchChunk] Job ${jobId} status=${data.status}, skipping.`);
             return Response.json({ skipped: true, reason: `Status is ${data.status}` });
         }
+
+        // For 'running' status: this is the chained trigger from our own update.
+        // For 'pending' status: this is the initial trigger from job creation.
+        // Both should be processed.
 
         if (!RENTCAST_API_KEY) {
             await base44.asServiceRole.entities.FetchJob.update(jobId, {
@@ -63,11 +68,6 @@ Deno.serve(async (req) => {
         }
 
         console.log(`[processFetchChunk] === Processing job ${jobId}, offset=${data.current_offset}, status=${data.status} ===`);
-
-        // Mark as running
-        if (data.status === 'pending') {
-            await base44.asServiceRole.entities.FetchJob.update(jobId, { status: 'running' });
-        }
 
         const { latitude, longitude, radius, polygon } = data;
         let currentOffset = data.current_offset || 0;
