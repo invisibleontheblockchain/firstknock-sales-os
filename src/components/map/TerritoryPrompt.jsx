@@ -48,8 +48,7 @@ export default function TerritoryPrompt({
     const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
     const isPaid = user?.subscription_status === 'active' || user?.is_owner;
     const pullCount = user?.area_pulls_count || 0;
-    const canPullAgain = isPaid || pullCount < 5;
-    const remainingPulls = isPaid ? '∞' : Math.max(0, 5 - pullCount);
+    const canPullAgain = isPaid || pullCount < 1;
     
     const showInitialPrompt = hasPulledData && hasDefinedMarket && mode === 'generate' && !activeRoute && !routesGenerating && !showCompare && !showRoutePanel && !drawingMode && (!drawnPolygon || drawnPolygon.length === 0);
 
@@ -159,7 +158,7 @@ export default function TerritoryPrompt({
     const handleFetchData = async () => {
         // Check pull limit on frontend too for instant feedback
         if (!canPullAgain) {
-            toast.error("You've used all 5 free data pulls. Upgrade to pull more.");
+            toast.error("You've used your free data pull. Upgrade to pull fresh leads.");
             return;
         }
 
@@ -197,7 +196,7 @@ export default function TerritoryPrompt({
 
             if (d.error) {
                 if (d.error === 'pull_limit_reached') {
-                    toast.error(d.message || "You've used all 5 free pulls. Upgrade for more.", { duration: 5000 });
+                    toast.error(d.message || "Upgrade to pull fresh leads.", { duration: 5000 });
                 } else {
                     toast.error(d.message || d.error);
                 }
@@ -254,7 +253,7 @@ export default function TerritoryPrompt({
                                 <option value="circle">Circle</option>
                                 <option value="square">Square</option>
                             </select>
-                            <span className="text-xs text-gray-300 font-mono bg-gray-900 border border-gray-700 rounded-md px-2 py-1 h-8 flex items-center">40 sq mi</span>
+                            <span className="text-xs text-gray-300 font-mono bg-gray-900 border border-gray-700 rounded-md px-2 py-1 h-8 flex items-center">200 sq mi</span>
                         </div>
                         <div className="flex gap-2">
                             <Button
@@ -330,20 +329,17 @@ export default function TerritoryPrompt({
                     <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
                     <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
                     {canPullAgain ? (
-                        <div className="flex items-center gap-2 ml-2">
-                            <Button
-                                disabled={pulling}
-                                onClick={handleFetchData}
-                                className="text-white text-[10px] h-6 px-2 py-0 rounded-md bg-blue-600 hover:bg-blue-500"
-                            >
-                                Fetch data
-                            </Button>
-                            <span className="text-[9px] text-gray-500 font-medium">{remainingPulls} pulls left</span>
-                        </div>
+                        <Button
+                            disabled={pulling}
+                            onClick={handleFetchData}
+                            className="text-white text-[10px] h-6 px-2 py-0 rounded-md ml-2 bg-blue-600 hover:bg-blue-500"
+                        >
+                            Fetch data
+                        </Button>
                     ) : (
                         <div className="flex items-center gap-1 ml-2 text-[10px] font-bold text-gray-500">
                             <Lock className="w-3 h-3" />
-                            <span>All 5 pulls used — Upgrade</span>
+                            <span>Upgrade to re-pull</span>
                         </div>
                     )}
                     <button
