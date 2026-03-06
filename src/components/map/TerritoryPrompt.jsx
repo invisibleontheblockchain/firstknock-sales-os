@@ -158,7 +158,7 @@ export default function TerritoryPrompt({
     const handleFetchData = async () => {
         // Check pull limit on frontend too for instant feedback
         if (!canPullAgain) {
-            toast.error("You've used your free data pull. Upgrade to pull fresh leads.");
+            toast.error("You've used all 5 free data pulls. Upgrade for more.");
             return;
         }
 

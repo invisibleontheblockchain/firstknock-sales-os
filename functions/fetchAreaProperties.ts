@@ -22,7 +22,7 @@ Deno.serve(async (req) => {
         if (pullCount >= 5 && !isPaid) {
             return Response.json({
                 error: 'pull_limit_reached',
-                message: 'You\'ve used your free data pull. Upgrade to pull fresh leads for your territory.'
+                message: 'You\'ve used all 5 free data pulls. Upgrade to pull fresh leads for your territory.'
             });
         }
 
