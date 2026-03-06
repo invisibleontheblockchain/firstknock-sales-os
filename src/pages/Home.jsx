@@ -368,7 +368,7 @@ export default function Home() {
                     const zips = user.territory_zip_codes;
                     const chunkSize = 5;
                     let totalFetched = 0;
-                    const MAX_PROPERTIES = 75000; // Increased limit to support larger drawn areas
+                    const MAX_PROPERTIES = 50000; // Property fetch limit
                     
                     for (let i = 0; i < zips.length; i += chunkSize) {
                         if (totalFetched >= MAX_PROPERTIES) {
