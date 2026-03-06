@@ -191,9 +191,9 @@ Deno.serve(async (req) => {
                 }
             }
 
-            // Bulk insert new records — sequential with throttling to avoid 429s
+            // Bulk insert new records — sequential to avoid 429s
             if (toInsert.length > 0) {
-                const CHUNK_SIZE = 200;
+                const CHUNK_SIZE = 500;
                 for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
                     const chunk = toInsert.slice(i, i + CHUNK_SIZE);
                     try {
@@ -201,8 +201,8 @@ Deno.serve(async (req) => {
                         newInsertCount += chunk.length;
                     } catch (e) {
                         // Retry in smaller chunks with delay
-                        await sleep(500);
-                        const SMALL_CHUNK = 50;
+                        await sleep(1000);
+                        const SMALL_CHUNK = 100;
                         for (let j = 0; j < chunk.length; j += SMALL_CHUNK) {
                             const small = chunk.slice(j, j + SMALL_CHUNK);
                             try {
@@ -211,10 +211,9 @@ Deno.serve(async (req) => {
                             } catch (e2) {
                                 console.warn(`[FetchArea] Small chunk insert failed:`, e2.message);
                             }
-                            await sleep(200);
+                            await sleep(300);
                         }
                     }
-                    if (i + CHUNK_SIZE < toInsert.length) await sleep(200);
                 }
             }
 
