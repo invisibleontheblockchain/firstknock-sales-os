@@ -71,10 +71,40 @@ export default function TerritoryPrompt({
 
                 if (!d) return;
 
-                setPullPct(d.progress_pct || 0);
+                const pct = d.progress_pct || 0;
+                setPullPct(pct);
                 const fetched = d.total_fetched || 0;
                 const expected = d.total_expected || 0;
                 const inserted = d.total_inserted || 0;
+                setTotalExpected(expected);
+                
+                // Track progress history for ETA calculation
+                pctHistoryRef.current.push({ pct, time: Date.now() });
+                // Keep last 10 samples
+                if (pctHistoryRef.current.length > 10) pctHistoryRef.current.shift();
+                
+                // Calculate ETA from progress rate
+                if (pctHistoryRef.current.length >= 2 && pct > 0 && pct < 100) {
+                    const first = pctHistoryRef.current[0];
+                    const last = pctHistoryRef.current[pctHistoryRef.current.length - 1];
+                    const pctDelta = last.pct - first.pct;
+                    const timeDelta = (last.time - first.time) / 1000; // seconds
+                    if (pctDelta > 0 && timeDelta > 0) {
+                        const pctPerSec = pctDelta / timeDelta;
+                        const remainPct = 100 - pct;
+                        const remainSec = remainPct / pctPerSec;
+                        if (remainSec < 60) {
+                            setEtaText('Less than 1 min remaining');
+                        } else {
+                            const mins = Math.ceil(remainSec / 60);
+                            setEtaText(`~${mins} min remaining`);
+                        }
+                    }
+                } else if (pct === 0 && expected > 0) {
+                    // Give rough estimate based on total expected
+                    const estMins = Math.ceil(expected / 7500); // ~7500 per chunk, ~1 min per chunk
+                    setEtaText(`Estimated ${estMins} min for ${expected.toLocaleString()} properties`);
+                }
                 
                 if (expected > 0) {
                     setPullProgress(`${fetched.toLocaleString()} / ${expected.toLocaleString()} properties fetched, ${inserted.toLocaleString()} new`);
