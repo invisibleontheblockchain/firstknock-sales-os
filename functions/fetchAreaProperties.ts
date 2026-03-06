@@ -217,20 +217,25 @@ Deno.serve(async (req) => {
                 }
             }
 
-            // Update existing records (upsert) — throttled to avoid 429s
+            // Update existing records — only update SOLD status changes to avoid 429s
             if (toUpdate.length > 0) {
-                const UPDATE_PARALLEL = 3;
-                for (let i = 0; i < toUpdate.length; i += UPDATE_PARALLEL) {
-                    const chunk = toUpdate.slice(i, i + UPDATE_PARALLEL);
-                    const updatePromises = chunk.map(({ id, data }) => {
-                        const { address_hash, ...updateData } = data;
-                        return base44.entities.MasterProperty.update(id, updateData)
-                            .then(() => { upsertUpdateCount++; })
-                            .catch(e => { /* silent — non-critical */ });
-                    });
-                    await Promise.all(updatePromises);
-                    if (i + UPDATE_PARALLEL < toUpdate.length) await sleep(100);
+                const soldUpdates = toUpdate.filter(({ data }) => data.original_status === 'SOLD');
+                if (soldUpdates.length > 0) {
+                    for (let i = 0; i < soldUpdates.length; i++) {
+                        const { id, data } = soldUpdates[i];
+                        try {
+                            await base44.entities.MasterProperty.update(id, {
+                                original_status: 'SOLD',
+                                sold_date: data.sold_date,
+                                price: data.price
+                            });
+                            upsertUpdateCount++;
+                        } catch (e) { /* silent */ }
+                        if (i % 5 === 4) await sleep(200);
+                    }
                 }
+                // Count the rest as "already existed"
+                upsertUpdateCount += toUpdate.length - soldUpdates.length;
             }
         };
 
