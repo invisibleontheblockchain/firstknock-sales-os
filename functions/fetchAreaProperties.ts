@@ -215,19 +215,19 @@ Deno.serve(async (req) => {
                 }
             }
 
-            // Update existing records (upsert)
+            // Update existing records (upsert) — throttled to avoid 429s
             if (toUpdate.length > 0) {
-                // Batch updates — do them in parallel chunks
-                const UPDATE_PARALLEL = 10;
+                const UPDATE_PARALLEL = 3;
                 for (let i = 0; i < toUpdate.length; i += UPDATE_PARALLEL) {
                     const chunk = toUpdate.slice(i, i + UPDATE_PARALLEL);
                     const updatePromises = chunk.map(({ id, data }) => {
-                        const { address_hash, ...updateData } = data; // don't overwrite address_hash
+                        const { address_hash, ...updateData } = data;
                         return base44.entities.MasterProperty.update(id, updateData)
                             .then(() => { upsertUpdateCount++; })
                             .catch(e => { /* silent — non-critical */ });
                     });
                     await Promise.all(updatePromises);
+                    if (i + UPDATE_PARALLEL < toUpdate.length) await sleep(100);
                 }
             }
         };
