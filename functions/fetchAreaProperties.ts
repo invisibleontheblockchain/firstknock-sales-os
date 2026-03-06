@@ -22,7 +22,6 @@ function isPointInPolygon(point, vs) {
     return inside;
 }
 
-// Throttle-aware delay
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -85,14 +84,17 @@ Deno.serve(async (req) => {
         console.log(`[FetchArea] === START === lat:${latitude}, lng:${longitude}, r:${radius} mi, area:${areaSqMiles.toFixed(1)} sq mi, polygon pts:${polygon ? polygon.length : 0}`);
 
         const startTime = Date.now();
-        const MAX_EXECUTION_TIME = 50000; // 50s to leave buffer
+        const MAX_EXECUTION_TIME = 50000;
 
-        // === PASS 1: /v1/properties — ALL properties in the radius (no saleDateRange) ===
-        // This is the master property database. We want every property for door-knocking routes.
-        // saleDateRange is NOT used here — we want all properties, not just recently sold.
+        // === TARGETED PULL: Only recently sold properties (saleDateRange=365) ===
+        // This is the cost-efficient approach:
+        //   - ~1,300 recently sold homes = ~3 API requests ($0.045 enterprise / $0.60 entry)
+        //   - vs ~50,000 all homes = ~100 API requests ($1.50 enterprise / $20 entry)
+        // The full universe of unsold homes should be a one-time "Territory Init" (separate function).
+        const SALE_DATE_RANGE_DAYS = 365; // Last 12 months of sales
         const LIMIT = 500; // RentCast max per request
-        const MAX_PARALLEL = 5; // Stay well under 20 req/s rate limit
-        const THROTTLE_DELAY_MS = 300; // Delay between parallel chunks to respect rate limits
+        const MAX_PARALLEL = 5;
+        const THROTTLE_DELAY_MS = 300;
 
         let requestCount = 0;
         let reportedTotal = 0;
@@ -145,13 +147,7 @@ Deno.serve(async (req) => {
                     const addressMatch = (addressLine).match(/^(\d+)\s+(.*)$/);
                     const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
                     const street_name = addressMatch ? addressMatch[2] : (addressLine || "Unknown");
-                    let original_status = 'ELIGIBLE';
-                    if (p.lastSaleDate) {
-                        const saleDate = new Date(p.lastSaleDate);
-                        const oneYearAgo = new Date();
-                        oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-                        if (saleDate > oneYearAgo) original_status = 'SOLD';
-                    }
+                    let original_status = 'SOLD'; // All results from this query are recently sold
                     const pZip = p.zipCode || '00000';
                     return {
                         address_hash: p.id || `${p.addressLine1}-${pZip}`,
@@ -186,7 +182,6 @@ Deno.serve(async (req) => {
             }
 
             const newMapped = mapped.filter(p => !existingHashes.has(p.address_hash));
-            // Track inserted hashes so subsequent batches don't re-insert
             newMapped.forEach(p => existingHashes.add(p.address_hash));
 
             if (newMapped.length > 0) {
@@ -197,7 +192,6 @@ Deno.serve(async (req) => {
                         await base44.entities.MasterProperty.bulkCreate(chunk);
                         successCount += chunk.length;
                     } catch (e) {
-                        // Fallback to smaller chunks
                         const SMALL_CHUNK = 50;
                         for (let j = 0; j < chunk.length; j += SMALL_CHUNK) {
                             const small = chunk.slice(j, j + SMALL_CHUNK);
@@ -211,8 +205,10 @@ Deno.serve(async (req) => {
             }
         };
 
-        // --- PASS 1: Fetch ALL properties via /v1/properties (no saleDateRange) ---
-        console.log(`[FetchArea] === PASS 1: /v1/properties (all properties in radius, no date filter) ===`);
+        // --- PASS 1: /v1/properties with saleDateRange (recently sold only) ---
+        // Server-side filtering: RentCast returns ONLY properties sold in last 365 days
+        // Expected: ~1,300 records = ~3 requests (vs ~100 requests without filter)
+        console.log(`[FetchArea] === PASS 1: /v1/properties (saleDateRange=${SALE_DATE_RANGE_DAYS}, recently sold only) ===`);
 
         const initialParams = new URLSearchParams({
             latitude: String(latitude),
@@ -221,11 +217,12 @@ Deno.serve(async (req) => {
             limit: String(LIMIT),
             offset: '0',
             propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
+            saleDateRange: String(SALE_DATE_RANGE_DAYS),
             includeTotalCount: 'true',
         });
 
         const initialUrl = `${RENTCAST_BASE}/properties?${initialParams.toString()}`;
-        console.log(`[FetchArea] Pass1 Request #1: offset=0, limit=${LIMIT}, includeTotalCount=true`);
+        console.log(`[FetchArea] Pass1 Request #1: offset=0, limit=${LIMIT}, saleDateRange=${SALE_DATE_RANGE_DAYS}, includeTotalCount=true`);
 
         const initialResponse = await fetch(initialUrl, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
         requestCount++;
@@ -238,15 +235,13 @@ Deno.serve(async (req) => {
 
         const totalHeader = initialResponse.headers.get('X-Total-Count');
         if (totalHeader) reportedTotal = parseInt(totalHeader, 10);
-        const limitHeader = initialResponse.headers.get('X-Limit');
-        const offsetHeader = initialResponse.headers.get('X-Offset');
 
         const initialData = await initialResponse.json();
         const initialBatch = Array.isArray(initialData) ? initialData : [];
-        console.log(`[FetchArea] Pass1 Response #1: ${initialBatch.length} records, X-Total-Count=${reportedTotal}, X-Limit=${limitHeader}, X-Offset=${offsetHeader}`);
+        console.log(`[FetchArea] Pass1 Response #1: ${initialBatch.length} records, X-Total-Count=${reportedTotal}`);
 
         if (initialBatch.length > 0) {
-            console.log(`[FetchArea] Sample: lat=${initialBatch[0].latitude}, lng=${initialBatch[0].longitude}, addr=${initialBatch[0].addressLine1}, lastSaleDate=${initialBatch[0].lastSaleDate}, lastSalePrice=${initialBatch[0].lastSalePrice}`);
+            console.log(`[FetchArea] Sample: addr=${initialBatch[0].addressLine1}, lastSaleDate=${initialBatch[0].lastSaleDate}, lastSalePrice=${initialBatch[0].lastSalePrice}`);
         }
 
         await processBatch(initialBatch);
@@ -254,11 +249,10 @@ Deno.serve(async (req) => {
 
         // --- Dynamic pagination: exhaust X-Total-Count ---
         if (initialBatch.length >= LIMIT && reportedTotal > LIMIT) {
-            const totalToFetch = Math.min(reportedTotal, 50000); // Hard safety cap
+            const totalToFetch = Math.min(reportedTotal, 20000); // Safety cap
             const remainingPages = Math.ceil((totalToFetch - LIMIT) / LIMIT);
-            console.log(`[FetchArea] Need ${remainingPages} more pages to exhaust ${totalToFetch} total records`);
+            console.log(`[FetchArea] ${remainingPages} more pages needed to exhaust ${totalToFetch} total records`);
 
-            // Build all fetch tasks
             const fetchTasks = [];
             for (let page = 1; page <= remainingPages; page++) {
                 const currentOffset = page * LIMIT;
@@ -270,23 +264,24 @@ Deno.serve(async (req) => {
                         limit: String(LIMIT),
                         offset: String(currentOffset),
                         propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
+                        saleDateRange: String(SALE_DATE_RANGE_DAYS),
                     });
                     const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
                     try {
                         const res = await fetch(url, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
                         if (!res.ok) {
-                            console.warn(`[FetchArea] Pass1 page offset=${currentOffset} failed: ${res.status}`);
+                            console.warn(`[FetchArea] Pass1 offset=${currentOffset} failed: ${res.status}`);
                             return [];
                         }
                         return await res.json();
                     } catch (err) {
-                        console.warn(`[FetchArea] Pass1 page offset=${currentOffset} error: ${err.message}`);
+                        console.warn(`[FetchArea] Pass1 offset=${currentOffset} error: ${err.message}`);
                         return [];
                     }
                 });
             }
 
-            console.log(`[FetchArea] Executing ${fetchTasks.length} pagination requests in chunks of ${MAX_PARALLEL} with ${THROTTLE_DELAY_MS}ms delay...`);
+            console.log(`[FetchArea] Executing ${fetchTasks.length} pagination requests (chunks of ${MAX_PARALLEL}, ${THROTTLE_DELAY_MS}ms delay)...`);
 
             let chunkIndex = 0;
             for (let i = 0; i < fetchTasks.length; i += MAX_PARALLEL) {
@@ -301,24 +296,20 @@ Deno.serve(async (req) => {
                     chunkRecords += batch.length;
                     await processBatch(batch);
                 }
-                console.log(`[FetchArea] Pass1 chunk ${chunkIndex}: ${chunkRecords} records, running total: totalFound=${totalFound}, inPolygon=${inPolygonCount}, imported=${successCount}`);
+                console.log(`[FetchArea] Pass1 chunk ${chunkIndex}: ${chunkRecords} records, running: found=${totalFound}, polygon=${inPolygonCount}, imported=${successCount}`);
 
                 if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-                    console.warn(`[FetchArea] Time limit reached after ${((Date.now() - startTime) / 1000).toFixed(1)}s, stopping Pass 1 pagination.`);
+                    console.warn(`[FetchArea] Time limit after ${((Date.now() - startTime) / 1000).toFixed(1)}s, stopping.`);
                     break;
                 }
-
-                // Throttle between chunks to respect 20 req/s rate limit
-                if (i + MAX_PARALLEL < fetchTasks.length) {
-                    await sleep(THROTTLE_DELAY_MS);
-                }
+                if (i + MAX_PARALLEL < fetchTasks.length) await sleep(THROTTLE_DELAY_MS);
             }
         } else if (initialBatch.length >= LIMIT && !reportedTotal) {
-            // Sequential fallback if X-Total-Count header was missing
-            console.log(`[FetchArea] X-Total-Count missing, sequential pagination fallback...`);
+            // Sequential fallback if X-Total-Count missing
+            console.log(`[FetchArea] X-Total-Count missing, sequential fallback...`);
             let offset = LIMIT;
             let keepGoing = true;
-            while (keepGoing && requestCount < 60) {
+            while (keepGoing && requestCount < 40) {
                 const params = new URLSearchParams({
                     latitude: String(latitude),
                     longitude: String(longitude),
@@ -326,6 +317,7 @@ Deno.serve(async (req) => {
                     limit: String(LIMIT),
                     offset: String(offset),
                     propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
+                    saleDateRange: String(SALE_DATE_RANGE_DAYS),
                 });
                 const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
                 try {
@@ -339,29 +331,26 @@ Deno.serve(async (req) => {
                     if (batch.length < LIMIT) keepGoing = false;
                     else offset += LIMIT;
                 } catch (err) {
-                    console.warn(`[FetchArea] Sequential fetch error at offset=${offset}:`, err.message);
+                    console.warn(`[FetchArea] Sequential error at offset=${offset}:`, err.message);
                     break;
                 }
-                if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-                    console.warn(`[FetchArea] Time limit in sequential mode.`);
-                    break;
-                }
+                if (Date.now() - startTime > MAX_EXECUTION_TIME) break;
             }
         } else {
-            console.log(`[FetchArea] Pass1 complete in single page (${initialBatch.length} < ${LIMIT} or total=${reportedTotal})`);
+            console.log(`[FetchArea] Pass1 complete in single page (${initialBatch.length} records)`);
         }
 
         const pass1Elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`[FetchArea] === PASS 1 COMPLETE (${pass1Elapsed}s) === requests=${requestCount}, totalFound=${totalFound}, inPolygon=${inPolygonCount}, mapped=${mappedCount}, imported=${successCount}`);
+        console.log(`[FetchArea] === PASS 1 COMPLETE (${pass1Elapsed}s) === requests=${requestCount}, found=${totalFound}, polygon=${inPolygonCount}, imported=${successCount}`);
 
-        // --- PASS 2: Fetch Inactive MLS Listings (recently sold via /v1/listings/sale) ---
-        // This catches properties that sold recently via MLS but haven't hit county records yet
+        // --- PASS 2: Inactive MLS Listings (recently sold via /v1/listings/sale) ---
+        // Catches MLS-sold homes not yet in county records
         const pass2Start = Date.now();
         console.log(`[FetchArea] === PASS 2: /v1/listings/sale (inactive, daysOld=0:365) ===`);
         let listingsOffset = 0;
         let listingsRequestCount = 0;
         let listingsTotalFound = 0;
-        const MAX_LISTING_REQUESTS = 30;
+        const MAX_LISTING_REQUESTS = 20;
 
         let keepFetchingListings = true;
         while (keepFetchingListings && listingsRequestCount < MAX_LISTING_REQUESTS) {
@@ -380,7 +369,7 @@ Deno.serve(async (req) => {
                 const res = await fetch(listingsUrl, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
                 listingsRequestCount++;
                 if (!res.ok) {
-                    console.warn(`[FetchArea] Pass2 request failed: ${res.status}`);
+                    console.warn(`[FetchArea] Pass2 failed: ${res.status}`);
                     break;
                 }
                 const data = await res.json();
@@ -388,7 +377,6 @@ Deno.serve(async (req) => {
                 listingsTotalFound += batch.length;
                 console.log(`[FetchArea] Pass2 offset=${listingsOffset}: ${batch.length} inactive listings`);
 
-                // Map listings to property format
                 const mappedBatch = batch.map(l => ({
                     ...l,
                     id: l.propertyId || l.id,
@@ -397,11 +385,8 @@ Deno.serve(async (req) => {
                 }));
                 await processBatch(mappedBatch);
 
-                if (batch.length < LIMIT) {
-                    keepFetchingListings = false;
-                } else {
-                    listingsOffset += LIMIT;
-                }
+                if (batch.length < LIMIT) keepFetchingListings = false;
+                else listingsOffset += LIMIT;
             } catch (err) {
                 console.warn(`[FetchArea] Pass2 error:`, err.message);
                 break;
@@ -412,22 +397,21 @@ Deno.serve(async (req) => {
             }
         }
 
-        const pass2Elapsed = ((Date.now() - pass2Start) / 1000).toFixed(1);
         const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`[FetchArea] === PASS 2 COMPLETE (${pass2Elapsed}s) === listingsRequests=${listingsRequestCount}, listingsFound=${listingsTotalFound}`);
-
-        console.log(`[FetchArea] ============ FINAL SUMMARY (${totalElapsed}s total) ============`);
+        const totalRequests = requestCount + listingsRequestCount;
+        console.log(`[FetchArea] ============ FINAL SUMMARY (${totalElapsed}s) ============`);
+        console.log(`[FetchArea]   Strategy:              TARGETED (saleDateRange=${SALE_DATE_RANGE_DAYS})`);
         console.log(`[FetchArea]   X-Total-Count (Pass1): ${reportedTotal}`);
-        console.log(`[FetchArea]   Total API fetched:     ${totalFound} (Pass1) + ${listingsTotalFound} (Pass2 listings)`);
+        console.log(`[FetchArea]   API fetched:           ${totalFound} (Pass1) + ${listingsTotalFound} (Pass2)`);
         console.log(`[FetchArea]   In polygon:            ${inPolygonCount}`);
         console.log(`[FetchArea]   Mapped (valid addr):   ${mappedCount}`);
         console.log(`[FetchArea]   Dropped (no addr):     ${droppedNoAddressCount}`);
         console.log(`[FetchArea]   Recent sales (12mo):   ${recentSales12moCount}`);
         console.log(`[FetchArea]   NEW imported to DB:    ${successCount}`);
-        console.log(`[FetchArea]   Total API requests:    ${requestCount} (Pass1) + ${listingsRequestCount} (Pass2) = ${requestCount + listingsRequestCount}`);
+        console.log(`[FetchArea]   Total API requests:    ${totalRequests} (${requestCount} Pass1 + ${listingsRequestCount} Pass2)`);
         console.log(`[FetchArea] ==============================================`);
 
-        // Update user's territory zip codes
+        // Update user data
         const uniqueZipsArray = Array.from(uniqueZips);
         const currentZips = user.territory_zip_codes || [];
         const newZips = uniqueZipsArray.length > 0 ? [...new Set([...uniqueZipsArray, ...currentZips])] : currentZips;
@@ -452,13 +436,13 @@ Deno.serve(async (req) => {
             mapped_count: mappedCount,
             dropped_no_address: droppedNoAddressCount,
             listings_found: listingsTotalFound,
-            total_requests: requestCount + listingsRequestCount,
+            total_requests: totalRequests,
             elapsed_seconds: parseFloat(totalElapsed),
             message: successCount > 0
-                ? `Imported ${successCount} new properties (${totalFound} found, ${inPolygonCount} in area).`
+                ? `Imported ${successCount} new recently-sold properties (${totalRequests} API requests).`
                 : inPolygonCount > 0
-                    ? `${inPolygonCount} properties found in area — all already in your database.`
-                    : `No properties found in this area. Try a different location.`
+                    ? `${inPolygonCount} properties found — all already in your database.`
+                    : `No recently sold properties found in this area.`
         });
 
     } catch (error) {
