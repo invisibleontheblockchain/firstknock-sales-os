@@ -1,8 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 
-// This function now just creates a FetchJob record.
-// The actual heavy lifting is done by processFetchChunk (triggered by entity automation).
-
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -18,6 +15,17 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Latitude, longitude, and radius are required' }, { status: 400 });
         }
 
+        // Enforce one free pull limit — check if user already used their pull
+        const pullCount = user.area_pulls_count || 0;
+        const isPaid = user.subscription_status === 'active' || user.is_owner;
+        
+        if (pullCount >= 1 && !isPaid) {
+            return Response.json({
+                error: 'pull_limit_reached',
+                message: 'You\'ve used your free data pull. Upgrade to pull fresh leads for your territory.'
+            });
+        }
+
         // Check if there's already an active job for this user
         const existingJobs = await base44.entities.FetchJob.filter(
             { user_email: user.email, status: 'running' }, null, 5
@@ -31,7 +39,7 @@ Deno.serve(async (req) => {
             });
         }
 
-        // Create the FetchJob — this will trigger the entity automation
+        // Create the FetchJob
         const job = await base44.entities.FetchJob.create({
             status: 'pending',
             latitude,
@@ -54,7 +62,7 @@ Deno.serve(async (req) => {
         // Update user pull tracking
         try {
             await base44.auth.updateMe({
-                area_pulls_count: (user.area_pulls_count || 0) + 1
+                area_pulls_count: pullCount + 1
             });
         } catch (e) {
             console.warn('Failed to update pull count:', e.message);
