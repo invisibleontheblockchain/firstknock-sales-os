@@ -679,13 +679,18 @@ export default function Home() {
     // Smart Auto-Open/Close for Generate Mode
     useEffect(() => {
         if (mode === 'generate') {
-            // If we have NO data AND NO polygon, ensure settings are closed so user sees the "Zero State" (TerritoryPrompt)
-            // But if we have a polygon, we might be fetching or about to, so don't force close
             if (effectiveProperties.length === 0 && (!drawnPolygon || drawnPolygon.length === 0)) {
                 setShowCompare(false);
             }
         }
-    }, [mode, effectiveProperties.length === 0, drawnPolygon]); // Dependency on "has properties" or polygon state change
+    }, [mode, effectiveProperties.length === 0, drawnPolygon]);
+
+    // When user returns and has data, auto-set to analyze mode so they see the map directly
+    useEffect(() => {
+        if (user?.has_pulled_data && effectiveProperties.length > 0 && !activeRoute && routes.length === 0) {
+            setModeRaw('analyze');
+        }
+    }, [user?.has_pulled_data, effectiveProperties.length > 0]);
 
     // Filter out properties that are already in saved routes for generation
     const availableProperties = useMemo(() => {
