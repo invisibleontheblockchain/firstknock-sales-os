@@ -172,6 +172,9 @@ export default function TerritoryPrompt({
         setPulling(true);
         setPullProgress('Starting background fetch...');
         setPullPct(0);
+        setEtaText('');
+        setTotalExpected(0);
+        pctHistoryRef.current = [];
 
         try {
             const res = await base44.functions.invoke('fetchAreaProperties', {
