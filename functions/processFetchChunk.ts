@@ -347,6 +347,8 @@ Deno.serve(async (req) => {
             console.log(`[processFetchChunk] === JOB COMPLETE === ${newTotalInserted} inserted, ${newTotalExisted} existed, ${newTotalUpdated} updated`);
         } else {
             // More chunks needed — update job to trigger next chunk via entity automation
+            // Increment chunk_number to guarantee the entity update event fires even though status stays 'running'
+            const nextChunkNumber = (data.chunk_number || 0) + 1;
             await base44.asServiceRole.entities.FetchJob.update(jobId, {
                 status: 'running',
                 current_offset: newOffset,
@@ -356,9 +358,10 @@ Deno.serve(async (req) => {
                 total_existed: newTotalExisted,
                 total_updated: newTotalUpdated,
                 progress_pct: progressPct,
-                zip_codes_found: zipCodesFound
+                zip_codes_found: zipCodesFound,
+                chunk_number: nextChunkNumber
             });
-            console.log(`[processFetchChunk] Updated job — next chunk will resume at offset ${newOffset} (${progressPct}%)`);
+            console.log(`[processFetchChunk] Updated job chunk #${nextChunkNumber} — next at offset ${newOffset} (${progressPct}%)`);
         }
 
         return Response.json({
