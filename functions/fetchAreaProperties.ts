@@ -73,11 +73,11 @@ Deno.serve(async (req) => {
         console.log(`[FetchArea] === START === lat:${latitude}, lng:${longitude}, r:${radius} mi, area:${areaSqMiles.toFixed(1)} sq mi, polygon pts:${polygon ? polygon.length : 0}`);
 
         const startTime = Date.now();
-        const MAX_EXECUTION_TIME = 55000; // 55s to leave room for final writes
+        const MAX_EXECUTION_TIME = 50000; // 50s to leave room for final writes
 
         const LIMIT = 500; // RentCast max per request
-        const MAX_PARALLEL = 3;
-        const THROTTLE_DELAY_MS = 500;
+        const MAX_PARALLEL = 5;
+        const THROTTLE_DELAY_MS = 200;
         const PROPERTY_TYPES = 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare';
 
         let requestCount = 0;
