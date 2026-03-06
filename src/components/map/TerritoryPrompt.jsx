@@ -302,13 +302,13 @@ export default function TerritoryPrompt({
             {pulling && (
                 <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[2000] w-11/12 max-w-sm animate-in fade-in">
                     <div className="bg-black/90 backdrop-blur-md border border-blue-500/50 rounded-xl p-4 shadow-2xl">
-                        <div className="flex items-center gap-3 mb-3">
+                        <div className="flex items-center gap-3 mb-2">
                             <Loader2 className="w-5 h-5 text-blue-400 animate-spin shrink-0" />
                             <div className="flex-1">
-                                <p className="text-xs font-bold text-white">Fetching Property Data</p>
+                                <p className="text-xs font-bold text-white">Importing Property Data</p>
                                 <p className="text-[10px] text-gray-400">{pullProgress}</p>
                             </div>
-                            <span className="text-sm font-mono font-bold text-blue-400">{pullPct}%</span>
+                            <span className="text-sm font-mono font-bold text-blue-400">{Math.round(pullPct)}%</span>
                         </div>
                         <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
                             <div
@@ -316,12 +316,26 @@ export default function TerritoryPrompt({
                                 style={{ width: `${Math.max(pullPct, 3)}%` }}
                             />
                         </div>
-                        <p className="text-[9px] text-gray-500 mt-2 text-center">
-                            {pullPct < 10
-                                ? 'Starting background fetch — large areas process in chunks...'
-                                : pullPct < 90
-                                    ? 'Processing in background chunks. This page will update automatically.'
-                                    : 'Almost done! Finishing final writes...'}
+                        {etaText && (
+                            <p className="text-[11px] text-cyan-400 font-semibold mt-2 text-center">
+                                ⏱ {etaText}
+                            </p>
+                        )}
+                        <div className="mt-2 bg-gray-900/80 rounded-lg p-2.5 border border-gray-800">
+                            <p className="text-[10px] text-gray-300 leading-relaxed text-center">
+                                {pullPct < 5
+                                    ? '🔍 Scanning your area for every property on record — this is a one-time setup that gives you the full picture.'
+                                    : pullPct < 30
+                                        ? '📦 Pulling property data in batches from public records. Larger areas have more homes to process.'
+                                        : pullPct < 70
+                                            ? '⚡ Deduplicating and writing to your database. You can close this page — it will keep running.'
+                                            : pullPct < 95
+                                                ? '🏁 Almost there! Writing final records and updating your territory map.'
+                                                : '✅ Wrapping up! Your territory will be ready in seconds.'}
+                            </p>
+                        </div>
+                        <p className="text-[9px] text-gray-600 mt-1.5 text-center">
+                            Safe to leave — data imports continue in the background
                         </p>
                     </div>
                 </div>
