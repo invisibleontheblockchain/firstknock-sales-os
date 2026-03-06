@@ -20,7 +20,7 @@ function isPointInPolygon(point, vs) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// How many API pages to process per chunk execution
+// Chunk config — conservative to stay within 60s
 const PAGES_PER_CHUNK = 15;
 const LIMIT = 500;
 const MAX_PARALLEL = 5;
@@ -28,37 +28,42 @@ const PROPERTY_TYPES = 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triple
 
 Deno.serve(async (req) => {
     const startTime = Date.now();
-    
+
     try {
         const base44 = createClientFromRequest(req);
-        const body = await req.json();
 
-        // Entity automation payload
-        const event = body.event;
-        const data = body.data;
+        // =====================================================================
+        // SCHEDULED POLLING: Find the next job that needs work
+        // =====================================================================
+        let job = null;
 
-        if (!event || !data) {
-            return Response.json({ error: 'No event data' }, { status: 400 });
+        // First look for 'running' jobs (resume in progress)
+        const runningJobs = await base44.asServiceRole.entities.FetchJob.filter(
+            { status: 'running' }, '-updated_date', 1
+        );
+        const runningArr = Array.isArray(runningJobs) ? runningJobs : (runningJobs?.items || []);
+        if (runningArr.length > 0) {
+            job = runningArr[0];
         }
 
-        const jobId = event.entity_id;
-        const eventType = event.type;
-
-        // Only process on create or update events
-        if (eventType !== 'create' && eventType !== 'update') {
-            return Response.json({ skipped: true, reason: 'Not a create/update event' });
+        // Then look for 'pending' jobs (new job to start)
+        if (!job) {
+            const pendingJobs = await base44.asServiceRole.entities.FetchJob.filter(
+                { status: 'pending' }, 'created_date', 1
+            );
+            const pendingArr = Array.isArray(pendingJobs) ? pendingJobs : (pendingJobs?.items || []);
+            if (pendingArr.length > 0) {
+                job = pendingArr[0];
+            }
         }
 
-        // Only process pending or paused jobs, or running jobs that are being resumed
-        // Skip completed/failed jobs entirely
-        if (data.status === 'completed' || data.status === 'failed') {
-            console.log(`[processFetchChunk] Job ${jobId} status=${data.status}, skipping.`);
-            return Response.json({ skipped: true, reason: `Status is ${data.status}` });
+        if (!job) {
+            console.log('[processFetchChunk] No pending/running jobs found. Sleeping.');
+            return Response.json({ idle: true, message: 'No active jobs' });
         }
 
-        // For 'running' status: this is the chained trigger from our own update.
-        // For 'pending' status: this is the initial trigger from job creation.
-        // Both should be processed.
+        const jobId = job.id;
+        const data = job;
 
         if (!RENTCAST_API_KEY) {
             await base44.asServiceRole.entities.FetchJob.update(jobId, {
@@ -67,7 +72,7 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'No API key' });
         }
 
-        console.log(`[processFetchChunk] === Processing job ${jobId}, offset=${data.current_offset}, status=${data.status} ===`);
+        console.log(`[processFetchChunk] === Processing job ${jobId}, offset=${data.current_offset}, status=${data.status}, chunk#=${data.chunk_number || 0} ===`);
 
         const { latitude, longitude, radius, polygon } = data;
         let currentOffset = data.current_offset || 0;
@@ -77,6 +82,11 @@ Deno.serve(async (req) => {
         let totalExisted = data.total_existed || 0;
         let totalUpdated = data.total_updated || 0;
         let zipCodesFound = data.zip_codes_found || [];
+
+        // Mark job as running if it was pending
+        if (data.status === 'pending') {
+            await base44.asServiceRole.entities.FetchJob.update(jobId, { status: 'running' });
+        }
 
         // Pre-compute H3 cells for polygon filtering
         let polygonH3Cells = new Set();
@@ -105,16 +115,13 @@ Deno.serve(async (req) => {
         let requestCount = 0;
         let reachedEnd = false;
 
-        // If this is the first chunk, include totalCount header
         const includeTotal = currentOffset === 0;
 
-        // Build fetch tasks for this chunk
         const offsets = [];
         for (let p = 0; p < PAGES_PER_CHUNK; p++) {
             offsets.push(currentOffset + p * LIMIT);
         }
 
-        // Execute in parallel batches of MAX_PARALLEL
         for (let i = 0; i < offsets.length; i += MAX_PARALLEL) {
             if (Date.now() - startTime > 45000) {
                 console.warn(`[processFetchChunk] Time budget hit at offset ${offsets[i]}`);
@@ -229,7 +236,6 @@ Deno.serve(async (req) => {
             const uniqueZips = [...new Set(mapped.map(p => p.zip_code))];
             const existingHashToId = new Map();
 
-            // Fetch existing records for dedup
             for (let i = 0; i < uniqueZips.length; i += 5) {
                 if (Date.now() - startTime > 55000) break;
                 const zipChunk = uniqueZips.slice(i, i + 5);
@@ -296,7 +302,7 @@ Deno.serve(async (req) => {
         }
 
         // =====================================================================
-        // UPDATE JOB STATUS — triggers next chunk if not done
+        // UPDATE JOB STATUS
         // =====================================================================
         const newTotalInserted = totalInserted + chunkInserted;
         const newTotalExisted = totalExisted + chunkExisted;
@@ -311,7 +317,6 @@ Deno.serve(async (req) => {
         console.log(`[processFetchChunk] Totals: fetched=${totalFetched}/${totalExpected}, inserted=${newTotalInserted}, existed=${newTotalExisted}, done=${isDone}`);
 
         if (isDone) {
-            // Job complete — use 'completed' status to stop the chain
             await base44.asServiceRole.entities.FetchJob.update(jobId, {
                 status: 'completed',
                 current_offset: newOffset,
@@ -326,7 +331,6 @@ Deno.serve(async (req) => {
 
             // Update user's territory data
             try {
-                // Fetch user to get current territory_zip_codes
                 const users = await base44.asServiceRole.entities.User.filter({ email: data.user_email }, null, 1);
                 const userArr = Array.isArray(users) ? users : (users?.items || []);
                 if (userArr.length > 0) {
@@ -346,8 +350,7 @@ Deno.serve(async (req) => {
 
             console.log(`[processFetchChunk] === JOB COMPLETE === ${newTotalInserted} inserted, ${newTotalExisted} existed, ${newTotalUpdated} updated`);
         } else {
-            // More chunks needed — update job to trigger next chunk via entity automation
-            // Increment chunk_number to guarantee the entity update event fires even though status stays 'running'
+            // Just update progress — the cron scheduler will pick up the next chunk
             const nextChunkNumber = (data.chunk_number || 0) + 1;
             await base44.asServiceRole.entities.FetchJob.update(jobId, {
                 status: 'running',
@@ -361,10 +364,11 @@ Deno.serve(async (req) => {
                 zip_codes_found: zipCodesFound,
                 chunk_number: nextChunkNumber
             });
-            console.log(`[processFetchChunk] Updated job chunk #${nextChunkNumber} — next at offset ${newOffset} (${progressPct}%)`);
+            console.log(`[processFetchChunk] Chunk #${nextChunkNumber} saved — cron will resume at offset ${newOffset} (${progressPct}%)`);
         }
 
         return Response.json({
+            job_id: jobId,
             chunk_fetched: allRaw.length,
             chunk_inserted: chunkInserted,
             chunk_existed: chunkExisted,
