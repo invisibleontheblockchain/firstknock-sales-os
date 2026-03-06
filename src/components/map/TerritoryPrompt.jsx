@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { base44 } from '@/api/base44Client';
-import { Map as MapIcon, Pencil, X, Check, Trash2, Loader2, List, Zap } from 'lucide-react';
+import { Map as MapIcon, Pencil, X, Check, Trash2, Loader2, List, Zap, Lock } from 'lucide-react';
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
