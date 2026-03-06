@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
     X, Sun, Moon, Palette, Globe, Mountain, Eye, EyeOff, 
     GitBranch, Circle, Square, Diamond, Layers, Type, 
-    Droplets, Zap, RotateCcw, ChevronDown, ChevronRight, Save, Calendar
+    Droplets, Zap, RotateCcw, ChevronDown, ChevronRight, Save, Calendar, MapPin
 } from 'lucide-react';
 
 const BRAND = {
@@ -75,7 +75,8 @@ export default function MapSettingsPanel({
     mapSettings, setMapSettings,
     soldDateFilter, setSoldDateFilter,
     highlightRecentlySold, setHighlightRecentlySold,
-    onRequestGenerate
+    onRequestGenerate,
+    showZipOverlay = false, setShowZipOverlay
 }) {
     // Local buffering state for settings
     const [localMapSettings, setLocalMapSettings] = useState(mapSettings || {});
@@ -88,6 +89,7 @@ export default function MapSettingsPanel({
     const [localQuickFilter, setLocalQuickFilter] = useState(quickFilter);
     const [localSoldDateFilter, setLocalSoldDateFilter] = useState(soldDateFilter);
     const [localHighlightRecentlySold, setLocalHighlightRecentlySold] = useState(highlightRecentlySold);
+    const [localShowZipOverlay, setLocalShowZipOverlay] = useState(showZipOverlay);
 
     const update = (key, value) => {
         setLocalMapSettings(prev => ({ ...prev, [key]: value }));
@@ -103,6 +105,7 @@ export default function MapSettingsPanel({
         if (setNavigationApp) setNavigationApp(localNavigationApp);
         // Filters are live, but save ensuring sync
         if (setHighlightRecentlySold) setHighlightRecentlySold(localHighlightRecentlySold);
+        if (setShowZipOverlay) setShowZipOverlay(localShowZipOverlay);
         onClose();
     };
 
