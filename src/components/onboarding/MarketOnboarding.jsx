@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Button } from "@/components/ui/button";
-import { Circle, Square, ArrowRight, Check, Loader2, Map as MapIcon } from 'lucide-react';
+import { Circle, Square, ArrowRight, Check, Lock, Map as MapIconLucide } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import { Slider } from "@/components/ui/slider";
 
 export default function MarketOnboarding({ user, onComplete }) {
     const queryClient = useQueryClient();
-    const [shape, setShape] = useState('circle');
+    const [shape, setShape] = useState('square');
+    const [monthsBack, setMonthsBack] = useState(3);
     const [isDrawingSession, setIsDrawingSession] = React.useState(false);
 
     React.useEffect(() => {
@@ -20,16 +22,14 @@ export default function MarketOnboarding({ user, onComplete }) {
     // Show for managers who haven't pulled data yet
     if (!user || user.app_role !== 'manager') return null;
     
-    // Hide if user already has territory data (any of these indicate they've completed setup)
+    // Hide if user already has territory data
     if (user.has_pulled_data || user.has_defined_market || user.territory_zip_codes?.length > 0 || user.area_pulls_count > 0) return null;
     
-    // Don't show if we are actively entering draw mode
     if (isDrawingSession) return null;
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('startDraw') === 'true') return null;
 
     const handleGo = async () => {
-        // Mark that user has started onboarding so this doesn't show again
-        await base44.auth.updateMe({ has_defined_market: true });
+        await base44.auth.updateMe({ has_defined_market: true, pull_months_back: monthsBack });
         await queryClient.invalidateQueries({ queryKey: ['user'] });
         onComplete({ method: 'draw', shape });
     };
@@ -44,7 +44,7 @@ export default function MarketOnboarding({ user, onComplete }) {
                 <div className="bg-[#111] border border-gray-800 rounded-3xl overflow-hidden shadow-2xl p-8">
                     <div className="text-center space-y-6">
                         <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto shadow-[0_0_40px_rgba(255,215,0,0.3)]" style={{ background: 'linear-gradient(135deg, #FFD93D, #FFA500)' }}>
-                            <MapIcon className="w-8 h-8 text-black" />
+                            <MapIconLucide className="w-8 h-8 text-black" />
                         </div>
 
                         <div>
@@ -52,7 +52,7 @@ export default function MarketOnboarding({ user, onComplete }) {
                                 Draw Your Service Area
                             </h2>
                             <p className="text-gray-400 text-sm leading-relaxed">
-                                Drop a shape on the map that covers your <strong className="text-white">entire territory</strong>. We'll pull all the leads inside it.
+                                Cover your <strong className="text-white">entire territory</strong> in one shape. We'll pull every recently sold home inside it — <strong className="text-white">one time, for free</strong>.
                             </p>
                         </div>
 
@@ -86,18 +86,37 @@ export default function MarketOnboarding({ user, onComplete }) {
                             </button>
                         </div>
 
+                        {/* Months back slider */}
+                        <div className="bg-black/40 border border-white/5 rounded-xl p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-gray-300">Sold in the last</span>
+                                <span className="text-sm font-extrabold text-yellow-500">{monthsBack} month{monthsBack !== 1 ? 's' : ''}</span>
+                            </div>
+                            <Slider
+                                value={[monthsBack]}
+                                onValueChange={([v]) => setMonthsBack(v)}
+                                min={1}
+                                max={12}
+                                step={1}
+                                className="w-full"
+                            />
+                            <p className="text-[10px] text-gray-500 text-center">
+                                More months = more leads, but older data
+                            </p>
+                        </div>
+
                         <div className="bg-black/40 border border-white/5 rounded-xl p-4 space-y-2 text-left">
                             <div className="flex items-center gap-2">
                                 <Check className="w-4 h-4 text-yellow-500 shrink-0" />
-                                <span className="text-xs text-gray-300">200 sq miles — covers most service areas</span>
+                                <span className="text-xs text-gray-300">200 sq miles max — covers most territories</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Check className="w-4 h-4 text-yellow-500 shrink-0" />
-                                <span className="text-xs text-gray-300">One-time data pull — all leads loaded instantly</span>
+                                <span className="text-xs text-gray-300">One free pull — filter by price, type, date after</span>
                             </div>
                             <div className="flex items-center gap-2">
-                                <Check className="w-4 h-4 text-yellow-500 shrink-0" />
-                                <span className="text-xs text-gray-300">Filter by price, date, property type after</span>
+                                <Lock className="w-4 h-4 text-gray-600 shrink-0" />
+                                <span className="text-xs text-gray-500">Need fresh leads later? Upgrade to re-pull</span>
                             </div>
                         </div>
 
