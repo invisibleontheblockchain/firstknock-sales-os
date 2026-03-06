@@ -439,6 +439,57 @@ export default function RouteCommandPanel({
 }
 
 // Sub-components
+function SplitRouteButton({ route, onReplaceRoutes }) {
+    const [showSplit, setShowSplit] = useState(false);
+    const splitOptions = [2, 3, 4, 5, 10];
+    const totalHouses = route?.houseCount || route?.properties?.length || 0;
+
+    if (showSplit) {
+        return (
+            <div className="w-full flex flex-col gap-1">
+                <p className="text-[9px] text-gray-400 font-bold text-center">SPLIT INTO:</p>
+                <div className="flex gap-1 flex-wrap justify-center">
+                    {splitOptions.filter(n => n < totalHouses).map(n => (
+                        <Button
+                            key={n}
+                            onClick={() => {
+                                const perRoute = Math.ceil(totalHouses / n);
+                                const splits = generateOptimizedRoutes(
+                                    route.properties, perRoute, null, [],
+                                    { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest' }
+                                );
+                                if (splits && splits.length > 0 && onReplaceRoutes) {
+                                    onReplaceRoutes(splits);
+                                }
+                                setShowSplit(false);
+                            }}
+                            size="sm"
+                            className="h-7 px-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px]"
+                        >
+                            {n} routes (~{Math.ceil(totalHouses / n)} ea)
+                        </Button>
+                    ))}
+                    <Button onClick={() => setShowSplit(false)} size="sm" className="h-7 px-2 bg-gray-800 hover:bg-gray-700 text-gray-400 text-[10px]">
+                        <X className="w-3 h-3" />
+                    </Button>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <Button
+            onClick={() => setShowSplit(true)}
+            size="sm"
+            className="w-full h-8 bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px]"
+            title="Split this route into smaller routes"
+        >
+            <Scissors className="w-3 h-3 mr-1" />
+            SPLIT ROUTE
+        </Button>
+    );
+}
+
 import { HelpCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
