@@ -20,10 +20,10 @@ function isPointInPolygon(point, vs) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// Chunk config — conservative to stay within 60s
-const PAGES_PER_CHUNK = 15;
+// Chunk config — aggressive parallelism for speed
+const PAGES_PER_CHUNK = 30;
 const LIMIT = 500;
-const MAX_PARALLEL = 5;
+const MAX_PARALLEL = 10;
 const PROPERTY_TYPES = 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare';
 
 Deno.serve(async (req) => {
