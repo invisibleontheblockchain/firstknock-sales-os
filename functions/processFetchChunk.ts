@@ -105,7 +105,7 @@ Deno.serve(async (req) => {
             }
         }
 
-        // Determine sold cutoff from user's preference (default 3 months)
+        // Determine sold cutoff for marking SOLD status (default 3 months)
         let monthsBack = 3;
         try {
             const users = await base44.asServiceRole.entities.User.filter({ email: data.user_email }, null, 1);
@@ -114,9 +114,6 @@ Deno.serve(async (req) => {
                 monthsBack = userArr[0].pull_months_back;
             }
         } catch (e) { console.warn('Could not fetch user prefs:', e.message); }
-        
-        // Convert months to days for RentCast saleDateRange parameter
-        const saleDateRangeDays = monthsBack * 30;
         
         const soldCutoff = new Date();
         soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
