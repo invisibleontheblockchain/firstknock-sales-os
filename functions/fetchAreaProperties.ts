@@ -4,8 +4,6 @@ import { polygonToCells, latLngToCell } from 'npm:h3-js@4.1.0';
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
 
-const MAX_PULLS_PER_USER = 1;
-
 // Ray-casting algorithm for point in polygon
 function isPointInPolygon(point, vs) {
     if (!vs || vs.length < 3) return true;
@@ -41,8 +39,6 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Latitude, longitude, and radius are required' }, { status: 400 });
         }
 
-        const isOwner = user.is_owner === true || user.email?.toLowerCase().includes('christian');
-
         // Pre-compute H3 cells for the polygon
         let polygonH3Cells = new Set();
         let useH3Filter = false;
@@ -61,36 +57,28 @@ Deno.serve(async (req) => {
             }
         }
 
-        // Pull limit temporarily disabled for development
-        const areaPulls = user.area_pulls_count || 0;
-
         if (!RENTCAST_API_KEY) {
             return Response.json({ error: 'RENTCAST_API_KEY not configured' }, { status: 500 });
         }
 
-        // Pre-increment usage to prevent race conditions
+        // Track pull count (no limit enforced for now)
+        const areaPulls = user.area_pulls_count || 0;
         try {
             await base44.auth.updateMe({ area_pulls_count: areaPulls + 1 });
         } catch (e) {
-            console.error(`[FetchArea] Failed to pre-increment usage:`, e.message);
-            return Response.json({ error: 'Failed to verify usage limits. Please try again.' }, { status: 500 });
+            console.error(`[FetchArea] Failed to increment usage:`, e.message);
         }
 
         const areaSqMiles = Math.PI * radius * radius;
         console.log(`[FetchArea] === START === lat:${latitude}, lng:${longitude}, r:${radius} mi, area:${areaSqMiles.toFixed(1)} sq mi, polygon pts:${polygon ? polygon.length : 0}`);
 
         const startTime = Date.now();
-        const MAX_EXECUTION_TIME = 50000;
+        const MAX_EXECUTION_TIME = 55000; // 55s to leave room for final writes
 
-        // === TARGETED PULL: Only recently sold properties (saleDateRange=365) ===
-        // This is the cost-efficient approach:
-        //   - ~1,300 recently sold homes = ~3 API requests ($0.045 enterprise / $0.60 entry)
-        //   - vs ~50,000 all homes = ~100 API requests ($1.50 enterprise / $20 entry)
-        // The full universe of unsold homes should be a one-time "Territory Init" (separate function).
-        const SALE_DATE_RANGE_DAYS = 365; // Last 12 months of sales
         const LIMIT = 500; // RentCast max per request
         const MAX_PARALLEL = 5;
         const THROTTLE_DELAY_MS = 300;
+        const PROPERTY_TYPES = 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare';
 
         let requestCount = 0;
         let reportedTotal = 0;
@@ -99,13 +87,15 @@ Deno.serve(async (req) => {
         let mappedCount = 0;
         let recentSales12moCount = 0;
         let droppedNoAddressCount = 0;
-        let successCount = 0;
+        let newInsertCount = 0;
+        let upsertUpdateCount = 0;
 
         const uniqueZips = new Set();
-        const existingHashes = new Set();
+        // Cache: address_hash -> existing record id (for upserts)
+        const existingHashToId = new Map();
 
         // Helper to process a batch of properties
-        const processBatch = async (batch) => {
+        const processBatch = async (batch, defaultStatus = 'ELIGIBLE') => {
             if (!batch || batch.length === 0) return;
             totalFound += batch.length;
 
@@ -143,7 +133,16 @@ Deno.serve(async (req) => {
                     const addressMatch = (addressLine).match(/^(\d+)\s+(.*)$/);
                     const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
                     const street_name = addressMatch ? addressMatch[2] : (addressLine || "Unknown");
-                    let original_status = 'SOLD'; // All results from this query are recently sold
+
+                    // Determine status: if sold in last 12 months, mark SOLD; otherwise ELIGIBLE
+                    let original_status = defaultStatus;
+                    if (p.lastSaleDate) {
+                        const saleDate = new Date(p.lastSaleDate);
+                        if (!isNaN(saleDate) && saleDate > twelveMonthsAgo) {
+                            original_status = 'SOLD';
+                        }
+                    }
+
                     const pZip = p.zipCode || '00000';
                     return {
                         address_hash: p.id || `${p.addressLine1}-${pZip}`,
@@ -153,7 +152,7 @@ Deno.serve(async (req) => {
                         lat: p.latitude, lng: p.longitude, original_status,
                         beds: p.bedrooms || 0, baths: p.bathrooms || 0,
                         sqft: p.squareFootage || 0, lot_size: p.lotSize || 0,
-                        year_built: p.yearBuilt || 0, price: p.lastSalePrice || 0,
+                        year_built: p.yearBuilt || 0, price: p.lastSalePrice || p.price || 0,
                         sold_date: p.lastSaleDate || null, sale_type: 'Market',
                         property_type: p.propertyType || 'Single Family',
                         mls_id: p.assessorID || null, url: null
@@ -163,7 +162,7 @@ Deno.serve(async (req) => {
             mappedCount += mapped.length;
             if (mapped.length === 0) return;
 
-            // Deduplicate against database
+            // Fetch existing records for dedup/upsert
             const batchZips = [...new Set(mapped.map(p => p.zip_code))];
             const newZipsToFetch = batchZips.filter(z => !uniqueZips.has(z));
             for (const zip of newZipsToFetch) {
@@ -171,40 +170,73 @@ Deno.serve(async (req) => {
                 try {
                     const existing = await base44.entities.MasterProperty.filter({ zip_code: zip }, null, 5000);
                     const existingArr = Array.isArray(existing) ? existing : (existing?.items || []);
-                    existingArr.forEach(p => existingHashes.add(p.address_hash));
+                    existingArr.forEach(p => existingHashToId.set(p.address_hash, p.id));
                 } catch (e) {
                     console.warn(`[FetchArea] Failed to fetch existing for zip ${zip}:`, e.message);
                 }
             }
 
-            const newMapped = mapped.filter(p => !existingHashes.has(p.address_hash));
-            newMapped.forEach(p => existingHashes.add(p.address_hash));
+            // Split into new records (insert) and existing records (upsert/update)
+            const toInsert = [];
+            const toUpdate = [];
 
-            if (newMapped.length > 0) {
+            for (const p of mapped) {
+                const existingId = existingHashToId.get(p.address_hash);
+                if (existingId) {
+                    // Upsert: update existing record with fresh data (especially status, price, sold_date)
+                    toUpdate.push({ id: existingId, data: p });
+                } else {
+                    toInsert.push(p);
+                    existingHashToId.set(p.address_hash, 'pending'); // prevent duplicates within batch
+                }
+            }
+
+            // Bulk insert new records
+            if (toInsert.length > 0) {
                 const CHUNK_SIZE = 500;
-                for (let i = 0; i < newMapped.length; i += CHUNK_SIZE) {
-                    const chunk = newMapped.slice(i, i + CHUNK_SIZE);
+                for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
+                    const chunk = toInsert.slice(i, i + CHUNK_SIZE);
                     try {
                         await base44.entities.MasterProperty.bulkCreate(chunk);
-                        successCount += chunk.length;
+                        newInsertCount += chunk.length;
                     } catch (e) {
+                        // Retry in smaller chunks
                         const SMALL_CHUNK = 50;
                         for (let j = 0; j < chunk.length; j += SMALL_CHUNK) {
                             const small = chunk.slice(j, j + SMALL_CHUNK);
                             try {
                                 await base44.entities.MasterProperty.bulkCreate(small);
-                                successCount += small.length;
-                            } catch {}
+                                newInsertCount += small.length;
+                            } catch (e2) {
+                                console.warn(`[FetchArea] Small chunk insert failed:`, e2.message);
+                            }
                         }
                     }
                 }
             }
+
+            // Update existing records (upsert)
+            if (toUpdate.length > 0) {
+                // Batch updates — do them in parallel chunks
+                const UPDATE_PARALLEL = 10;
+                for (let i = 0; i < toUpdate.length; i += UPDATE_PARALLEL) {
+                    const chunk = toUpdate.slice(i, i + UPDATE_PARALLEL);
+                    const updatePromises = chunk.map(({ id, data }) => {
+                        const { address_hash, ...updateData } = data; // don't overwrite address_hash
+                        return base44.entities.MasterProperty.update(id, updateData)
+                            .then(() => { upsertUpdateCount++; })
+                            .catch(e => { /* silent — non-critical */ });
+                    });
+                    await Promise.all(updatePromises);
+                }
+            }
         };
 
-        // --- PASS 1: /v1/properties with saleDateRange (recently sold only) ---
-        // Server-side filtering: RentCast returns ONLY properties sold in last 365 days
-        // Expected: ~1,300 records = ~3 requests (vs ~100 requests without filter)
-        console.log(`[FetchArea] === PASS 1: /v1/properties (saleDateRange=${SALE_DATE_RANGE_DAYS}, recently sold only) ===`);
+        // =====================================================================
+        // PASS 1: FULL TERRITORY PULL — ALL properties (no saleDateRange filter)
+        // This gets the complete universe of homes for door-knocking routes.
+        // =====================================================================
+        console.log(`[FetchArea] === PASS 1: /v1/properties (ALL properties, no date filter) ===`);
 
         const initialParams = new URLSearchParams({
             latitude: String(latitude),
@@ -212,13 +244,12 @@ Deno.serve(async (req) => {
             radius: String(radius),
             limit: String(LIMIT),
             offset: '0',
-            propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
-            saleDateRange: String(SALE_DATE_RANGE_DAYS),
+            propertyType: PROPERTY_TYPES,
             includeTotalCount: 'true',
         });
 
         const initialUrl = `${RENTCAST_BASE}/properties?${initialParams.toString()}`;
-        console.log(`[FetchArea] Pass1 Request #1: offset=0, limit=${LIMIT}, saleDateRange=${SALE_DATE_RANGE_DAYS}, includeTotalCount=true`);
+        console.log(`[FetchArea] Pass1 Request #1: offset=0, limit=${LIMIT}, NO saleDateRange, includeTotalCount=true`);
 
         const initialResponse = await fetch(initialUrl, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
         requestCount++;
@@ -237,15 +268,15 @@ Deno.serve(async (req) => {
         console.log(`[FetchArea] Pass1 Response #1: ${initialBatch.length} records, X-Total-Count=${reportedTotal}`);
 
         if (initialBatch.length > 0) {
-            console.log(`[FetchArea] Sample: addr=${initialBatch[0].addressLine1}, lastSaleDate=${initialBatch[0].lastSaleDate}, lastSalePrice=${initialBatch[0].lastSalePrice}`);
+            console.log(`[FetchArea] Sample: addr=${initialBatch[0].addressLine1}, lastSaleDate=${initialBatch[0].lastSaleDate}, lastSalePrice=${initialBatch[0].lastSalePrice}, propertyType=${initialBatch[0].propertyType}`);
         }
 
-        await processBatch(initialBatch);
-        console.log(`[FetchArea] After batch #1: totalFound=${totalFound}, inPolygon=${inPolygonCount}, mapped=${mappedCount}, imported=${successCount}`);
+        await processBatch(initialBatch, 'ELIGIBLE');
+        console.log(`[FetchArea] After batch #1: totalFound=${totalFound}, inPolygon=${inPolygonCount}, mapped=${mappedCount}, inserted=${newInsertCount}, updated=${upsertUpdateCount}`);
 
         // --- Dynamic pagination: exhaust X-Total-Count ---
         if (initialBatch.length >= LIMIT && reportedTotal > LIMIT) {
-            const totalToFetch = Math.min(reportedTotal, 20000); // Safety cap
+            const totalToFetch = Math.min(reportedTotal, 50000); // Higher cap for full pull
             const remainingPages = Math.ceil((totalToFetch - LIMIT) / LIMIT);
             console.log(`[FetchArea] ${remainingPages} more pages needed to exhaust ${totalToFetch} total records`);
 
@@ -259,8 +290,7 @@ Deno.serve(async (req) => {
                         radius: String(radius),
                         limit: String(LIMIT),
                         offset: String(currentOffset),
-                        propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
-                        saleDateRange: String(SALE_DATE_RANGE_DAYS),
+                        propertyType: PROPERTY_TYPES,
                     });
                     const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
                     try {
@@ -290,30 +320,28 @@ Deno.serve(async (req) => {
                 for (const data of results) {
                     const batch = Array.isArray(data) ? data : [];
                     chunkRecords += batch.length;
-                    await processBatch(batch);
+                    await processBatch(batch, 'ELIGIBLE');
                 }
-                console.log(`[FetchArea] Pass1 chunk ${chunkIndex}: ${chunkRecords} records, running: found=${totalFound}, polygon=${inPolygonCount}, imported=${successCount}`);
+                console.log(`[FetchArea] Pass1 chunk ${chunkIndex}: ${chunkRecords} records, running: found=${totalFound}, polygon=${inPolygonCount}, inserted=${newInsertCount}, updated=${upsertUpdateCount}`);
 
                 if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-                    console.warn(`[FetchArea] Time limit after ${((Date.now() - startTime) / 1000).toFixed(1)}s, stopping.`);
+                    console.warn(`[FetchArea] Time limit after ${((Date.now() - startTime) / 1000).toFixed(1)}s, stopping pagination.`);
                     break;
                 }
                 if (i + MAX_PARALLEL < fetchTasks.length) await sleep(THROTTLE_DELAY_MS);
             }
         } else if (initialBatch.length >= LIMIT && !reportedTotal) {
-            // Sequential fallback if X-Total-Count missing
             console.log(`[FetchArea] X-Total-Count missing, sequential fallback...`);
             let offset = LIMIT;
             let keepGoing = true;
-            while (keepGoing && requestCount < 40) {
+            while (keepGoing && requestCount < 100) {
                 const params = new URLSearchParams({
                     latitude: String(latitude),
                     longitude: String(longitude),
                     radius: String(radius),
                     limit: String(LIMIT),
                     offset: String(offset),
-                    propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
-                    saleDateRange: String(SALE_DATE_RANGE_DAYS),
+                    propertyType: PROPERTY_TYPES,
                 });
                 const url = `${RENTCAST_BASE}/properties?${params.toString()}`;
                 try {
@@ -323,7 +351,7 @@ Deno.serve(async (req) => {
                     const data = await res.json();
                     const batch = Array.isArray(data) ? data : [];
                     console.log(`[FetchArea] Pass1 sequential offset=${offset}: ${batch.length} records`);
-                    await processBatch(batch);
+                    await processBatch(batch, 'ELIGIBLE');
                     if (batch.length < LIMIT) keepGoing = false;
                     else offset += LIMIT;
                 } catch (err) {
@@ -337,73 +365,83 @@ Deno.serve(async (req) => {
         }
 
         const pass1Elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-        console.log(`[FetchArea] === PASS 1 COMPLETE (${pass1Elapsed}s) === requests=${requestCount}, found=${totalFound}, polygon=${inPolygonCount}, imported=${successCount}`);
+        console.log(`[FetchArea] === PASS 1 COMPLETE (${pass1Elapsed}s) === requests=${requestCount}, found=${totalFound}, polygon=${inPolygonCount}, inserted=${newInsertCount}, updated=${upsertUpdateCount}`);
 
-        // --- PASS 2: Inactive MLS Listings (recently sold via /v1/listings/sale) ---
+        // =====================================================================
+        // PASS 2: MLS Listings (recently sold via /v1/listings/sale)
         // Catches MLS-sold homes not yet in county records
-        const pass2Start = Date.now();
-        console.log(`[FetchArea] === PASS 2: /v1/listings/sale (inactive, daysOld=0:365) ===`);
-        let listingsOffset = 0;
+        // =====================================================================
         let listingsRequestCount = 0;
         let listingsTotalFound = 0;
-        const MAX_LISTING_REQUESTS = 20;
 
-        let keepFetchingListings = true;
-        while (keepFetchingListings && listingsRequestCount < MAX_LISTING_REQUESTS) {
-            const listingsParams = new URLSearchParams({
-                latitude: String(latitude),
-                longitude: String(longitude),
-                radius: String(radius),
-                limit: String(LIMIT),
-                offset: String(listingsOffset),
-                status: 'Inactive',
-                daysOld: '0:365',
-                propertyType: 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare',
-            });
-            const listingsUrl = `${RENTCAST_BASE}/listings/sale?${listingsParams.toString()}`;
-            try {
-                const res = await fetch(listingsUrl, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
-                listingsRequestCount++;
-                if (!res.ok) {
-                    console.warn(`[FetchArea] Pass2 failed: ${res.status}`);
+        // Only do Pass 2 if we have time left
+        if (Date.now() - startTime < MAX_EXECUTION_TIME - 10000) {
+            console.log(`[FetchArea] === PASS 2: /v1/listings/sale (inactive, daysOld=0:365) ===`);
+            let listingsOffset = 0;
+            const MAX_LISTING_REQUESTS = 20;
+            let keepFetchingListings = true;
+
+            while (keepFetchingListings && listingsRequestCount < MAX_LISTING_REQUESTS) {
+                const listingsParams = new URLSearchParams({
+                    latitude: String(latitude),
+                    longitude: String(longitude),
+                    radius: String(radius),
+                    limit: String(LIMIT),
+                    offset: String(listingsOffset),
+                    status: 'Inactive',
+                    daysOld: '0:365',
+                    propertyType: PROPERTY_TYPES,
+                });
+                const listingsUrl = `${RENTCAST_BASE}/listings/sale?${listingsParams.toString()}`;
+                try {
+                    const res = await fetch(listingsUrl, { headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY } });
+                    listingsRequestCount++;
+                    if (!res.ok) {
+                        console.warn(`[FetchArea] Pass2 failed: ${res.status}`);
+                        break;
+                    }
+                    const data = await res.json();
+                    const batch = Array.isArray(data) ? data : [];
+                    listingsTotalFound += batch.length;
+                    console.log(`[FetchArea] Pass2 offset=${listingsOffset}: ${batch.length} inactive listings`);
+
+                    const mappedBatch = batch.map(l => ({
+                        ...l,
+                        id: l.propertyId || l.id,
+                        lastSaleDate: l.removedDate || l.listedDate,
+                        lastSalePrice: l.price,
+                    }));
+                    await processBatch(mappedBatch, 'SOLD');
+
+                    if (batch.length < LIMIT) keepFetchingListings = false;
+                    else listingsOffset += LIMIT;
+                } catch (err) {
+                    console.warn(`[FetchArea] Pass2 error:`, err.message);
                     break;
                 }
-                const data = await res.json();
-                const batch = Array.isArray(data) ? data : [];
-                listingsTotalFound += batch.length;
-                console.log(`[FetchArea] Pass2 offset=${listingsOffset}: ${batch.length} inactive listings`);
-
-                const mappedBatch = batch.map(l => ({
-                    ...l,
-                    id: l.propertyId || l.id,
-                    lastSaleDate: l.removedDate || l.listedDate,
-                    lastSalePrice: l.price,
-                }));
-                await processBatch(mappedBatch);
-
-                if (batch.length < LIMIT) keepFetchingListings = false;
-                else listingsOffset += LIMIT;
-            } catch (err) {
-                console.warn(`[FetchArea] Pass2 error:`, err.message);
-                break;
+                if (Date.now() - startTime > MAX_EXECUTION_TIME) {
+                    console.warn(`[FetchArea] Time limit during Pass 2.`);
+                    break;
+                }
             }
-            if (Date.now() - startTime > MAX_EXECUTION_TIME) {
-                console.warn(`[FetchArea] Time limit during Pass 2.`);
-                break;
-            }
+        } else {
+            console.log(`[FetchArea] Skipping Pass 2 — not enough time remaining.`);
         }
 
         const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
         const totalRequests = requestCount + listingsRequestCount;
+        const totalImported = newInsertCount + upsertUpdateCount;
+
         console.log(`[FetchArea] ============ FINAL SUMMARY (${totalElapsed}s) ============`);
-        console.log(`[FetchArea]   Strategy:              TARGETED (saleDateRange=${SALE_DATE_RANGE_DAYS})`);
+        console.log(`[FetchArea]   Strategy:              FULL TERRITORY (no date filter)`);
         console.log(`[FetchArea]   X-Total-Count (Pass1): ${reportedTotal}`);
         console.log(`[FetchArea]   API fetched:           ${totalFound} (Pass1) + ${listingsTotalFound} (Pass2)`);
         console.log(`[FetchArea]   In polygon:            ${inPolygonCount}`);
         console.log(`[FetchArea]   Mapped (valid addr):   ${mappedCount}`);
         console.log(`[FetchArea]   Dropped (no addr):     ${droppedNoAddressCount}`);
         console.log(`[FetchArea]   Recent sales (12mo):   ${recentSales12moCount}`);
-        console.log(`[FetchArea]   NEW imported to DB:    ${successCount}`);
+        console.log(`[FetchArea]   NEW inserted to DB:    ${newInsertCount}`);
+        console.log(`[FetchArea]   UPDATED (upserted):    ${upsertUpdateCount}`);
         console.log(`[FetchArea]   Total API requests:    ${totalRequests} (${requestCount} Pass1 + ${listingsRequestCount} Pass2)`);
         console.log(`[FetchArea] ==============================================`);
 
@@ -415,7 +453,8 @@ Deno.serve(async (req) => {
             await base44.auth.updateMe({
                 territory_zip_codes: newZips,
                 has_pulled_data: true,
-                territory_property_count: successCount,
+                has_defined_market: true,
+                territory_property_count: totalImported,
                 last_data_pull: new Date().toISOString()
             });
         } catch (e) {
@@ -423,8 +462,9 @@ Deno.serve(async (req) => {
         }
 
         return Response.json({
-            status: successCount > 0 || inPolygonCount > 0 ? 'imported' : 'empty',
-            count: successCount,
+            status: totalImported > 0 || inPolygonCount > 0 ? 'imported' : 'empty',
+            count: newInsertCount,
+            updated: upsertUpdateCount,
             total_found: totalFound,
             reported_total: reportedTotal,
             in_polygon_count: inPolygonCount,
@@ -434,11 +474,11 @@ Deno.serve(async (req) => {
             listings_found: listingsTotalFound,
             total_requests: totalRequests,
             elapsed_seconds: parseFloat(totalElapsed),
-            message: successCount > 0
-                ? `Imported ${successCount} new recently-sold properties (${totalRequests} API requests).`
+            message: totalImported > 0
+                ? `Loaded ${newInsertCount} new + ${upsertUpdateCount} updated properties (${totalRequests} API calls).`
                 : inPolygonCount > 0
                     ? `${inPolygonCount} properties found — all already in your database.`
-                    : `No recently sold properties found in this area.`
+                    : `No properties found in this area.`
         });
 
     } catch (error) {
