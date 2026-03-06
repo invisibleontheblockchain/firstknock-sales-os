@@ -208,7 +208,7 @@ Deno.serve(async (req) => {
             let original_status = 'ELIGIBLE';
             if (p.lastSaleDate) {
                 const saleDate = new Date(p.lastSaleDate);
-                if (!isNaN(saleDate) && saleDate > twelveMonthsAgo) {
+                if (!isNaN(saleDate) && saleDate > soldCutoff) {
                     original_status = 'SOLD';
                 }
             }
