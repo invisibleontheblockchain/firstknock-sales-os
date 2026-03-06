@@ -371,19 +371,6 @@ Deno.serve(async (req) => {
 
     } catch (error) {
         console.error('[processFetchChunk] Fatal:', error);
-
-        // Try to mark job as failed
-        try {
-            const base44 = createClientFromRequest(req);
-            const body = await req.json().catch(() => ({}));
-            if (body?.event?.entity_id) {
-                await base44.asServiceRole.entities.FetchJob.update(body.event.entity_id, {
-                    status: 'failed',
-                    error_message: error.message
-                });
-            }
-        } catch (e) { /* can't recover */ }
-
         return Response.json({ error: error.message }, { status: 500 });
     }
 });
