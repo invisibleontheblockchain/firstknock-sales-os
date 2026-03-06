@@ -191,16 +191,17 @@ Deno.serve(async (req) => {
                 }
             }
 
-            // Bulk insert new records
+            // Bulk insert new records — sequential with throttling to avoid 429s
             if (toInsert.length > 0) {
-                const CHUNK_SIZE = 500;
+                const CHUNK_SIZE = 200;
                 for (let i = 0; i < toInsert.length; i += CHUNK_SIZE) {
                     const chunk = toInsert.slice(i, i + CHUNK_SIZE);
                     try {
                         await base44.entities.MasterProperty.bulkCreate(chunk);
                         newInsertCount += chunk.length;
                     } catch (e) {
-                        // Retry in smaller chunks
+                        // Retry in smaller chunks with delay
+                        await sleep(500);
                         const SMALL_CHUNK = 50;
                         for (let j = 0; j < chunk.length; j += SMALL_CHUNK) {
                             const small = chunk.slice(j, j + SMALL_CHUNK);
@@ -210,8 +211,10 @@ Deno.serve(async (req) => {
                             } catch (e2) {
                                 console.warn(`[FetchArea] Small chunk insert failed:`, e2.message);
                             }
+                            await sleep(200);
                         }
                     }
+                    if (i + CHUNK_SIZE < toInsert.length) await sleep(200);
                 }
             }
 
