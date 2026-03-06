@@ -370,6 +370,19 @@ export default function MapSettingsPanel({
 
                         {/* ═══ LABELS & OVERLAYS ═══ */}
                         <CollapsibleSection title="Labels & Overlays" icon={Type} defaultOpen={false}>
+                            {/* Zip Code Overlay */}
+                            {setShowZipOverlay && (
+                                <div className="flex items-center justify-between py-2 border-b border-gray-800 mb-3">
+                                    <div>
+                                        <span className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
+                                            <MapPin className="w-3 h-3 text-yellow-500" /> Show Zip Code Boundaries
+                                        </span>
+                                        <p className="text-[9px] text-gray-500">Outline zip codes with labels on the map</p>
+                                    </div>
+                                    <Switch checked={localShowZipOverlay} onCheckedChange={v => { setLocalShowZipOverlay(v); if (setShowZipOverlay) setShowZipOverlay(v); }} />
+                                </div>
+                            )}
+
                             <div className="flex items-center justify-between py-1">
                                 <span className="text-xs font-bold text-gray-300">Show Pin Labels</span>
                                 <Switch checked={showLabels} onCheckedChange={v => update('showLabels', v)} />
