@@ -187,15 +187,8 @@ export default function TerritoryPrompt({
                                 const areaSqMiles = 200;
                                 console.log(`[TerritoryPrompt] Centroid: ${centerLat.toFixed(4)}, ${centerLng.toFixed(4)}, maxDist: ${maxDist.toFixed(2)} miles, radius sent: ${radius.toFixed(2)} miles, polygon pts: ${drawnPolygon.length}`);
 
-                                // Check pull limit — subscribers and owners get unlimited, free users get 1
-                                const isSubscribed = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                                const pullLimit = (isOwner || isSubscribed) ? 999 : 1;
-                                const pullsUsed = user?.area_pulls_count || 0;
-
-                                if (pullsUsed >= pullLimit) {
-                                    toast.error("You've used your free data pull. Subscribe to pull fresh leads.", { duration: 5000 });
-                                    return;
-                                }
+                                // Pull limit disabled during development — will enforce via subscription later
+                                console.log('[TerritoryPrompt] Starting data pull...');
 
                                 setPulling(true);
                                 setPullProgress(`Pulling data for ~${areaSqMiles.toFixed(1)} sq mi...`);
