@@ -6,7 +6,7 @@ import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
 import {
     Navigation, X, BarChart3, User, Shield, MapPin,
     ArrowRight, Flame, Plus, Clock, CheckCircle2,
-    AlertCircle, ChevronRight, Zap, Trash2
+    AlertCircle, ChevronRight, Zap, Trash2, Scissors
 } from 'lucide-react';
 
 const BRAND = {
@@ -190,31 +190,38 @@ export default function RouteCommandPanel({
                                                             SAVE ALL
                                                         </Button>
                                                         {/* @ts-ignore */}
-                                                        <Button
-                                                            onClick={() => {
-                                                                const baseRoutes = (filteredRoutes && filteredRoutes.length > 0) ? filteredRoutes : generatedRoutes;
-                                                                const seen = new Set();
-                                                                const allProps = [];
-                                                                baseRoutes.forEach(r => (r.properties || []).forEach(p => {
-                                                                    const key = p.address_hash || p.id;
-                                                                    if (key && !seen.has(key)) { seen.add(key); allProps.push(p); }
-                                                                }));
-                                                                if (allProps.length === 0) return;
-                                                                const merged = generateOptimizedRoutes(allProps, allProps.length, null, [], { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest' });
-                                                                if (merged && merged.length > 0) {
-                                                                    const big = { ...merged[0], id: 'route_merged', name: 'All-in-One Route' };
-                                                                    if (onReplaceRoutes) {
-                                                                        onReplaceRoutes([big]);
-                                                                    } else {
-                                                                        onSelectRoute(big);
+                                                        {generatedRoutes.length === 1 ? (
+                                                            <SplitRouteButton
+                                                                route={generatedRoutes[0]}
+                                                                onReplaceRoutes={onReplaceRoutes}
+                                                            />
+                                                        ) : (
+                                                            <Button
+                                                                onClick={() => {
+                                                                    const baseRoutes = (filteredRoutes && filteredRoutes.length > 0) ? filteredRoutes : generatedRoutes;
+                                                                    const seen = new Set();
+                                                                    const allProps = [];
+                                                                    baseRoutes.forEach(r => (r.properties || []).forEach(p => {
+                                                                        const key = p.address_hash || p.id;
+                                                                        if (key && !seen.has(key)) { seen.add(key); allProps.push(p); }
+                                                                    }));
+                                                                    if (allProps.length === 0) return;
+                                                                    const merged = generateOptimizedRoutes(allProps, allProps.length, null, [], { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest' });
+                                                                    if (merged && merged.length > 0) {
+                                                                        const big = { ...merged[0], id: 'route_merged', name: 'All-in-One Route' };
+                                                                        if (onReplaceRoutes) {
+                                                                            onReplaceRoutes([big]);
+                                                                        } else {
+                                                                            onSelectRoute(big);
+                                                                        }
                                                                     }
-                                                                }
-                                                            }}
-                                                            size="sm"
-                                                            className="w-full h-8 bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-[10px]" title="Combine all into one optimized mega route"
-                                                        >
-                                                            MERGE ALL
-                                                        </Button>
+                                                                }}
+                                                                size="sm"
+                                                                className="w-full h-8 bg-yellow-600 hover:bg-yellow-500 text-black font-bold text-[10px]" title="Combine all into one optimized mega route"
+                                                            >
+                                                                MERGE ALL
+                                                            </Button>
+                                                        )}
                                                         <Button
                                                             onClick={() => {
                                                                 if (confirm("Are you sure you want to clear all generated routes?")) {

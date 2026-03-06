@@ -339,7 +339,7 @@ export default function TerritoryPrompt({
                     ) : (
                         <div className="flex items-center gap-1 ml-2 text-[10px] font-bold text-gray-500">
                             <Lock className="w-3 h-3" />
-                            <span>Upgrade to re-pull</span>
+                            <span>Upgrade for more pulls</span>
                         </div>
                     )}
                     <button
