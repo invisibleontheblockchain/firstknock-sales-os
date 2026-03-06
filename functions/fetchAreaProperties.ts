@@ -61,12 +61,8 @@ Deno.serve(async (req) => {
             }
         }
 
-        const pullLimit = isOwner ? 999 : MAX_PULLS_PER_USER;
+        // Pull limit temporarily disabled for development
         const areaPulls = user.area_pulls_count || 0;
-
-        if (areaPulls >= pullLimit) {
-            return Response.json({ error: 'Data limit reached', message: `You've used your free data pull. Upgrade to pull fresh leads.` }, { status: 429 });
-        }
 
         if (!RENTCAST_API_KEY) {
             return Response.json({ error: 'RENTCAST_API_KEY not configured' }, { status: 500 });
