@@ -1,7 +1,110 @@
-import React from 'react';
-import { CircleMarker, Polyline, Circle, LayerGroup, Tooltip } from 'react-leaflet';
+import React, { useMemo, useCallback } from 'react';
+import { CircleMarker, Polyline, Circle, LayerGroup, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { DarkRoomClient } from '@/components/logic/neonClient';
+
+/**
+ * ViewportCulledPins — Performance-optimized property pin layer.
+ * Only renders pins within the current map viewport + a small buffer,
+ * and caps the maximum rendered pins to prevent browser lag.
+ */
+function ViewportCulledPins({
+    viewMode, zoomLevel, activeRoute, mode, showAllProperties,
+    effectiveProperties, assignedHashes, zipCodeFilter, drawnPolygon,
+    soldDateFilter, quickFilter, highlightRecentlySold, pinSize,
+    mapSettings, STATUS_COLORS, setSelectedProperty, isPointInPolygon,
+    subMonths, mapRef
+}) {
+    const map = useMap();
+
+    // Get current viewport bounds with buffer
+    const bounds = map.getBounds();
+    const latBuffer = (bounds.getNorth() - bounds.getSouth()) * 0.15;
+    const lngBuffer = (bounds.getEast() - bounds.getWest()) * 0.15;
+    const north = bounds.getNorth() + latBuffer;
+    const south = bounds.getSouth() - latBuffer;
+    const east = bounds.getEast() + lngBuffer;
+    const west = bounds.getWest() - lngBuffer;
+
+    const MAX_VISIBLE_PINS = 5000;
+
+    const visiblePins = useMemo(() => {
+        if (viewMode !== 'pins' || zoomLevel < 13 || activeRoute || !(mode === 'generate' || showAllProperties)) {
+            return [];
+        }
+
+        let filtered = [];
+        const targetZips = (mode === 'generate' && zipCodeFilter && zipCodeFilter.trim())
+            ? zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean)
+            : [];
+        const cutoff = soldDateFilter !== null ? subMonths(new Date(), parseInt(soldDateFilter)) : null;
+
+        for (let i = 0; i < effectiveProperties.length; i++) {
+            if (filtered.length >= MAX_VISIBLE_PINS) break;
+
+            const p = effectiveProperties[i];
+            if (p.is_dark_room) continue;
+
+            // Viewport culling — skip pins outside visible area
+            if (p.lat < south || p.lat > north || p.lng < west || p.lng > east) continue;
+
+            if (mode === 'generate' && assignedHashes.has(p.address_hash)) continue;
+            if (targetZips.length > 0) {
+                const pZip = String(p.zip_code || '').trim().slice(0, 5);
+                if (!targetZips.includes(pZip)) continue;
+            }
+            if (mode === 'generate' && drawnPolygon && drawnPolygon.length > 2) {
+                if (!isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon)) continue;
+            }
+            if (cutoff !== null) {
+                if (!p.sold_date) continue;
+                const date = new Date(p.sold_date);
+                if (isNaN(date.getTime()) || date < cutoff) continue;
+            }
+            if (quickFilter !== 'all') {
+                if (quickFilter === 'eligible' && p.effective_status !== 'ELIGIBLE' && p.effective_status !== 'NO_ANSWER') continue;
+                if (quickFilter === 'sold' && p.effective_status !== 'SOLD' && p.effective_status !== 'QUALIFIED') continue;
+                if (quickFilter === 'rejected' && p.effective_status !== 'HARD_NO') continue;
+            }
+            filtered.push(p);
+        }
+        return filtered;
+    }, [viewMode, zoomLevel, activeRoute, mode, showAllProperties, effectiveProperties,
+        assignedHashes, zipCodeFilter, drawnPolygon, soldDateFilter, quickFilter,
+        north, south, east, west, subMonths, isPointInPolygon]);
+
+    const oneMonthAgo = useMemo(() => subMonths(new Date(), 1), [subMonths]);
+
+    if (visiblePins.length === 0) return null;
+
+    return (
+        <LayerGroup>
+            {visiblePins.map(p => {
+                let isRecentlySold = false;
+                if (highlightRecentlySold && p.sold_date) {
+                    isRecentlySold = new Date(p.sold_date) > oneMonthAgo;
+                }
+                const isUnvisited = ['ELIGIBLE', 'NO_ANSWER', 'OTHER'].includes(p.effective_status);
+                const fillColor = isRecentlySold ? '#FF00FF' : (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER);
+
+                return (
+                    <CircleMarker
+                        key={p.address_hash || p.id}
+                        center={[p.lat, p.lng]}
+                        radius={isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize)}
+                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
+                        pathOptions={{
+                            fillColor,
+                            fillOpacity: isRecentlySold ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
+                            color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
+                            weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth))
+                        }}
+                    />
+                );
+            })}
+        </LayerGroup>
+    );
+}
 
 /**
  * ManagerMapLayers — extracted from Home.jsx
