@@ -46,6 +46,9 @@ export default function TerritoryPrompt({
 
     const hasPulledData = !!user?.has_pulled_data;
     const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
+    const isPaid = user?.subscription_status === 'active' || user?.is_owner;
+    const pullCount = user?.area_pulls_count || 0;
+    const canPullAgain = isPaid || pullCount < 1;
     
     const showInitialPrompt = hasPulledData && hasDefinedMarket && mode === 'generate' && !activeRoute && !routesGenerating && !showCompare && !showRoutePanel && !drawingMode && (!drawnPolygon || drawnPolygon.length === 0);
 
