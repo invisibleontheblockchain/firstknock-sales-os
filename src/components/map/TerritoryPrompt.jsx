@@ -229,41 +229,7 @@ export default function TerritoryPrompt({
     return (
         <>
             {/* Simple prompt for returning users who already have data */}
-            {showInitialPrompt && (
-                <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm pointer-events-auto">
-                    <div className="flex flex-col items-center gap-4 w-full px-4 max-w-sm">
-                        <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mb-2 shadow-[0_0_30px_rgba(0,245,160,0.3)]">
-                            <MapIcon className="w-8 h-8 text-green-400" />
-                        </div>
-                        <h2 className="text-2xl font-extrabold text-white text-center tracking-tight">
-                            Your Territory
-                        </h2>
-                        <p className="text-gray-400 text-sm text-center">Your lead data is loaded and ready.</p>
-                        <div className="flex flex-col gap-3 w-full">
-                            <Button
-                                onClick={() => setShowCompare(true)}
-                                className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold h-14 text-base w-full rounded-xl shadow-[0_0_20px_rgba(255,215,0,0.4)] border-none"
-                            >
-                                <Zap className="w-5 h-5 mr-2" />
-                                Generate Routes
-                            </Button>
-                            <Button
-                                onClick={() => { setMode('analyze'); setShowRoutePanel(true); }}
-                                className="bg-white/10 hover:bg-white/20 text-white font-bold h-12 text-sm w-full rounded-xl border border-white/10"
-                            >
-                                <List className="w-4 h-4 mr-2" />
-                                View Saved Routes
-                            </Button>
-                            <Button
-                                onClick={() => setMode('analyze')}
-                                className="bg-white/5 hover:bg-white/10 text-gray-400 font-bold h-10 text-xs w-full rounded-xl border border-gray-800"
-                            >
-                                Just View Map
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Returning user prompt — skip straight to map, no modal blocking */}
 
             {/* Active Drawing Controls */}
             {drawingMode && (
