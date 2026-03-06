@@ -203,12 +203,10 @@ export default function TerritoryPrompt({
                                     const d = res.data || {};
                                     if (d.error) {
                                         toast.error(d.message || d.error, { id: toastId });
-                                    } else if (d.status === 'empty' || (d.count === 0 && (d.updated || 0) === 0 && d.in_polygon_count === 0)) {
-                                        const base = d.total_found ? `${d.total_found} found, ${d.in_polygon_count || 0} in area` : '0 found';
-                                        toast.error(d.message || `No properties found. ${base}.`, { id: toastId });
+                                    } else if (d.status === 'empty') {
+                                        toast.error(d.message || `No properties found in this area.`, { id: toastId });
                                     } else {
-                                        const totalLoaded = (d.count || 0) + (d.updated || 0);
-                                        toast.success(d.message || `${totalLoaded} properties loaded!`, { id: toastId });
+                                        toast.success(d.message || `Properties loaded!`, { id: toastId });
 
                                         // Mark user as having pulled data
                                         try {
