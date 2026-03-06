@@ -255,8 +255,31 @@ export default function ManagerMapLayers({
             </LayerGroup>
 
             {/* USER PROPERTIES PIN LAYER */}
+            <ViewportCulledPins
+                viewMode={viewMode}
+                zoomLevel={zoomLevel}
+                activeRoute={activeRoute}
+                mode={mode}
+                showAllProperties={showAllProperties}
+                effectiveProperties={effectiveProperties}
+                assignedHashes={assignedHashes}
+                zipCodeFilter={zipCodeFilter}
+                drawnPolygon={drawnPolygon}
+                soldDateFilter={soldDateFilter}
+                quickFilter={quickFilter}
+                highlightRecentlySold={highlightRecentlySold}
+                pinSize={pinSize}
+                mapSettings={mapSettings}
+                STATUS_COLORS={STATUS_COLORS}
+                setSelectedProperty={setSelectedProperty}
+                isPointInPolygon={isPointInPolygon}
+                subMonths={subMonths}
+                mapRef={mapRef}
+            />
+
+            {/* Legacy pin layer kept as hidden reference — replaced by ViewportCulledPins above */}
             <LayerGroup>
-                {viewMode === 'pins' && zoomLevel >= 13 && !activeRoute && (mode === 'generate' || showAllProperties) && effectiveProperties
+                {false && viewMode === 'pins' && zoomLevel >= 13 && !activeRoute && (mode === 'generate' || showAllProperties) && effectiveProperties
                     .filter(p => !p.is_dark_room)
                     .filter(p => {
                         if (mode === 'generate' && assignedHashes.has(p.address_hash)) return false;
