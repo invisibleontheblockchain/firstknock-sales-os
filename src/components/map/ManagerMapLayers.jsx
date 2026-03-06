@@ -16,22 +16,40 @@ function ViewportCulledPins({
     subMonths, mapRef
 }) {
     const map = useMap();
+    const [viewBounds, setViewBounds] = React.useState(null);
 
-    // Get current viewport bounds with buffer
-    const bounds = map.getBounds();
-    const latBuffer = (bounds.getNorth() - bounds.getSouth()) * 0.15;
-    const lngBuffer = (bounds.getEast() - bounds.getWest()) * 0.15;
-    const north = bounds.getNorth() + latBuffer;
-    const south = bounds.getSouth() - latBuffer;
-    const east = bounds.getEast() + lngBuffer;
-    const west = bounds.getWest() - lngBuffer;
+    // Listen for map move/zoom to update visible pins
+    React.useEffect(() => {
+        const updateBounds = () => {
+            const b = map.getBounds();
+            setViewBounds({
+                north: b.getNorth(), south: b.getSouth(),
+                east: b.getEast(), west: b.getWest()
+            });
+        };
+        updateBounds(); // initial
+        map.on('moveend', updateBounds);
+        map.on('zoomend', updateBounds);
+        return () => {
+            map.off('moveend', updateBounds);
+            map.off('zoomend', updateBounds);
+        };
+    }, [map]);
 
     const MAX_VISIBLE_PINS = 5000;
 
     const visiblePins = useMemo(() => {
+        if (!viewBounds) return [];
         if (viewMode !== 'pins' || zoomLevel < 13 || activeRoute || !(mode === 'generate' || showAllProperties)) {
             return [];
         }
+
+        const latBuffer = (viewBounds.north - viewBounds.south) * 0.15;
+        const lngBuffer = (viewBounds.east - viewBounds.west) * 0.15;
+        const north = viewBounds.north + latBuffer;
+        const south = viewBounds.south - latBuffer;
+        const east = viewBounds.east + lngBuffer;
+        const west = viewBounds.west - lngBuffer;
 
         let filtered = [];
         const targetZips = (mode === 'generate' && zipCodeFilter && zipCodeFilter.trim())
@@ -45,7 +63,7 @@ function ViewportCulledPins({
             const p = effectiveProperties[i];
             if (p.is_dark_room) continue;
 
-            // Viewport culling — skip pins outside visible area
+            // Viewport culling
             if (p.lat < south || p.lat > north || p.lng < west || p.lng > east) continue;
 
             if (mode === 'generate' && assignedHashes.has(p.address_hash)) continue;
@@ -69,9 +87,8 @@ function ViewportCulledPins({
             filtered.push(p);
         }
         return filtered;
-    }, [viewMode, zoomLevel, activeRoute, mode, showAllProperties, effectiveProperties,
-        assignedHashes, zipCodeFilter, drawnPolygon, soldDateFilter, quickFilter,
-        north, south, east, west, subMonths, isPointInPolygon]);
+    }, [viewBounds, viewMode, zoomLevel, activeRoute, mode, showAllProperties, effectiveProperties,
+        assignedHashes, zipCodeFilter, drawnPolygon, soldDateFilter, quickFilter, subMonths, isPointInPolygon]);
 
     const oneMonthAgo = useMemo(() => subMonths(new Date(), 1), [subMonths]);
 
