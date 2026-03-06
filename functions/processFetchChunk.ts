@@ -145,7 +145,6 @@ Deno.serve(async (req) => {
                     latitude: String(latitude), longitude: String(longitude),
                     radius: String(radius), limit: String(LIMIT), offset: String(offset),
                     propertyType: PROPERTY_TYPES,
-                    saleDateRange: `1:${saleDateRangeDays}`,
                 });
                 if (offset === 0 && includeTotal) params.set('includeTotalCount', 'true');
 
