@@ -115,6 +115,9 @@ Deno.serve(async (req) => {
             }
         } catch (e) { console.warn('Could not fetch user prefs:', e.message); }
         
+        // Convert months to days for RentCast saleDateRange parameter
+        const saleDateRangeDays = monthsBack * 30;
+        
         const soldCutoff = new Date();
         soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
 
