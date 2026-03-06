@@ -236,9 +236,9 @@ Deno.serve(async (req) => {
             const uniqueZips = [...new Set(mapped.map(p => p.zip_code))];
             const existingHashToId = new Map();
 
-            for (let i = 0; i < uniqueZips.length; i += 5) {
+            for (let i = 0; i < uniqueZips.length; i += 10) {
                 if (Date.now() - startTime > 55000) break;
-                const zipChunk = uniqueZips.slice(i, i + 5);
+                const zipChunk = uniqueZips.slice(i, i + 10);
                 const promises = zipChunk.map(zip =>
                     base44.asServiceRole.entities.MasterProperty.filter({ zip_code: zip }, null, 5000)
                         .then(res => {
