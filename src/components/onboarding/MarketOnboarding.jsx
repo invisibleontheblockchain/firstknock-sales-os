@@ -13,6 +13,9 @@ export default function MarketOnboarding({ user, onComplete }) {
     // Show for managers who haven't pulled data yet (even if they started but didn't finish)
     if (!user || user.app_role !== 'manager') return null;
     if (user.has_pulled_data) return null;
+    
+    // Don't show if we are actively entering draw mode
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('startDraw') === 'true') return null;
 
     const handleGo = async () => {
         // Mark that user has started onboarding so this doesn't show again
