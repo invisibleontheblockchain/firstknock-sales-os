@@ -203,24 +203,12 @@ export default function TerritoryPrompt({
                                     const d = res.data || {};
                                     if (d.error) {
                                         toast.error(d.message || d.error, { id: toastId });
-                                    } else if (d.status === 'empty' || (d.count === 0 && d.in_polygon_count === 0)) {
+                                    } else if (d.status === 'empty' || (d.count === 0 && (d.updated || 0) === 0 && d.in_polygon_count === 0)) {
                                         const base = d.total_found ? `${d.total_found} found, ${d.in_polygon_count || 0} in area` : '0 found';
-                                        let extra = '';
-                                        if ((d.in_polygon_count || 0) > 0 && (d.recent_sales_12mo || 0) > 0) {
-                                            extra = ` • ${d.recent_sales_12mo} sold within last 12 months (may be excluded by your filters).`;
-                                        }
-                                        toast.info(d.message || `No houses to generate routes. ${base}.${extra}`, { id: toastId });
+                                        toast.error(d.message || `No properties found. ${base}.`, { id: toastId });
                                     } else {
-                                        let note = '';
-                                        if (d.recent_sales_12mo) {
-                                            note = ` • Note: ${d.recent_sales_12mo} sold in last 12 months.`;
-                                        }
-                                        
-                                        if (d.count === 0 && d.in_polygon_count > 0) {
-                                            toast.success(`Area loaded! ${d.in_polygon_count} properties ready for routing.${note}`, { id: toastId });
-                                        } else {
-                                            toast.success(d.message || `Properties loaded onto the map!${note}`, { id: toastId });
-                                        }
+                                        const totalLoaded = (d.count || 0) + (d.updated || 0);
+                                        toast.success(d.message || `${totalLoaded} properties loaded!`, { id: toastId });
 
                                         // Mark user as having pulled data
                                         try {
