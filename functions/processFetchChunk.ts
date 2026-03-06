@@ -271,7 +271,7 @@ Deno.serve(async (req) => {
                     console.warn(`[processFetchChunk] Time limit during DB writes`);
                     break;
                 }
-                const chunk = toInsert.slice(i, i + 500);
+                const chunk = toInsert.slice(i, i + 1000);
                 try {
                     await base44.asServiceRole.entities.MasterProperty.bulkCreate(chunk);
                     chunkInserted += chunk.length;
