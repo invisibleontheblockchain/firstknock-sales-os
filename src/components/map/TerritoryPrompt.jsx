@@ -156,6 +156,12 @@ export default function TerritoryPrompt({
     };
 
     const handleFetchData = async () => {
+        // Check pull limit on frontend too for instant feedback
+        if (!canPullAgain) {
+            toast.error("You've used your free data pull. Upgrade to pull fresh leads.");
+            return;
+        }
+
         const centerLat = drawnPolygon.reduce((s, p) => s + p.lat, 0) / drawnPolygon.length;
         const centerLng = drawnPolygon.reduce((s, p) => s + p.lng, 0) / drawnPolygon.length;
 
