@@ -105,7 +105,7 @@ export default function TerritoryPrompt({
                     }
                 } else if (pct === 0 && expected > 0) {
                     // Give rough estimate based on total expected
-                    const estMins = Math.ceil(expected / 7500); // ~7500 per chunk, ~1 min per chunk
+                    const estMins = Math.ceil(expected / 15000); // ~15000 per chunk, ~1 min per chunk
                     setEtaText(`Estimated ${estMins} min for ${expected.toLocaleString()} properties`);
                 }
                 
