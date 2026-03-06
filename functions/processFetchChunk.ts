@@ -141,21 +141,34 @@ Deno.serve(async (req) => {
 
             const batch = offsets.slice(i, i + MAX_PARALLEL);
             const promises = batch.map(offset => {
+                const saleDays = monthsBack * 30;
                 const params = new URLSearchParams({
                     latitude: String(latitude), longitude: String(longitude),
                     radius: String(radius), limit: String(LIMIT), offset: String(offset),
                     propertyType: PROPERTY_TYPES,
+                    saleDateRange: String(saleDays),
                 });
                 if (offset === 0 && includeTotal) params.set('includeTotalCount', 'true');
 
-                return fetch(`${RENTCAST_BASE}/properties?${params}`, {
+                const url = `${RENTCAST_BASE}/properties?${params}`;
+                if (offset === 0) console.log(`[processFetchChunk] API URL: ${url}`);
+
+                return fetch(url, {
                     headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY }
                 }).then(async res => {
-                    if (!res.ok) return { records: [], total: null };
+                    if (!res.ok) {
+                        const errText = await res.text().catch(() => 'no body');
+                        console.error(`[processFetchChunk] API error ${res.status} at offset ${offset}: ${errText}`);
+                        return { records: [], total: null };
+                    }
                     const total = res.headers.get('X-Total-Count');
                     const records = await res.json();
+                    if (offset === 0) console.log(`[processFetchChunk] First page: ${Array.isArray(records) ? records.length : 0} records, X-Total-Count: ${total}`);
                     return { records: Array.isArray(records) ? records : [], total };
-                }).catch(() => ({ records: [], total: null }));
+                }).catch(e => {
+                    console.error(`[processFetchChunk] Fetch error at offset ${offset}:`, e.message);
+                    return { records: [], total: null };
+                });
             });
 
             const results = await Promise.all(promises);
