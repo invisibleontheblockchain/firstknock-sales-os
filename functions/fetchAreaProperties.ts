@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
         const pullCount = user.area_pulls_count || 0;
         const isPaid = user.subscription_status === 'active' || user.is_owner;
         
-        if (pullCount >= 1 && !isPaid) {
+        if (pullCount >= 5 && !isPaid) {
             return Response.json({
                 error: 'pull_limit_reached',
                 message: 'You\'ve used your free data pull. Upgrade to pull fresh leads for your territory.'

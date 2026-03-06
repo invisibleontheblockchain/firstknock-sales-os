@@ -48,7 +48,7 @@ export default function TerritoryPrompt({
     const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
     const isPaid = user?.subscription_status === 'active' || user?.is_owner;
     const pullCount = user?.area_pulls_count || 0;
-    const canPullAgain = isPaid || pullCount < 1;
+    const canPullAgain = isPaid || pullCount < 5;
     
     const showInitialPrompt = hasPulledData && hasDefinedMarket && mode === 'generate' && !activeRoute && !routesGenerating && !showCompare && !showRoutePanel && !drawingMode && (!drawnPolygon || drawnPolygon.length === 0);
 
@@ -253,7 +253,7 @@ export default function TerritoryPrompt({
                                 <option value="circle">Circle</option>
                                 <option value="square">Square</option>
                             </select>
-                            <span className="text-xs text-gray-300 font-mono bg-gray-900 border border-gray-700 rounded-md px-2 py-1 h-8 flex items-center">200 sq mi</span>
+                            <span className="text-xs text-gray-300 font-mono bg-gray-900 border border-gray-700 rounded-md px-2 py-1 h-8 flex items-center">40 sq mi</span>
                         </div>
                         <div className="flex gap-2">
                             <Button
