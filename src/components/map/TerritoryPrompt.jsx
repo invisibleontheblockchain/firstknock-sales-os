@@ -195,7 +195,11 @@ export default function TerritoryPrompt({
             const d = res.data || {};
 
             if (d.error) {
-                toast.error(d.message || d.error);
+                if (d.error === 'pull_limit_reached') {
+                    toast.error(d.message || "Upgrade to pull fresh leads.", { duration: 5000 });
+                } else {
+                    toast.error(d.message || d.error);
+                }
                 setPulling(false);
                 return;
             }
