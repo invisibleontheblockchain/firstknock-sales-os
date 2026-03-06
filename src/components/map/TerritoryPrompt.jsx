@@ -53,7 +53,7 @@ export default function TerritoryPrompt({
         if (pollRef.current) clearInterval(pollRef.current);
         
         let pollCount = 0;
-        const MAX_POLLS = 180; // 3 minutes at 1s intervals
+        const MAX_POLLS = 900; // 30 minutes at 2s intervals
 
         pollRef.current = setInterval(async () => {
             pollCount++;
