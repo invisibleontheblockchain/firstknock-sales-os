@@ -147,7 +147,7 @@ export default function Home() {
     const [startAddressInput, setStartAddressInput] = useState("");
     const [zipCodeFilter, setZipCodeFilter] = useState(''); // Comma separated string
     const [analyzeZipFilter, setAnalyzeZipFilter] = useState('all'); // Filter for Analyze mode
-    const [soldDateFilter, setSoldDateFilter] = useState(3); // Default: last 3 months of leads
+    const [soldDateFilter, setSoldDateFilter] = useState(null); // Default: show ALL properties (no date filter)
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
