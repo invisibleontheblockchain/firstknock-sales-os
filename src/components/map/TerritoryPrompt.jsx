@@ -32,7 +32,10 @@ export default function TerritoryPrompt({
     const [pulling, setPulling] = useState(false);
     const [pullProgress, setPullProgress] = useState('');
     const [pullPct, setPullPct] = useState(0);
+    const [etaText, setEtaText] = useState('');
+    const [totalExpected, setTotalExpected] = useState(0);
     const pollRef = useRef(null);
+    const pctHistoryRef = useRef([]);
 
     // Cleanup polling on unmount
     useEffect(() => {
