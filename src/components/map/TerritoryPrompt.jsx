@@ -61,7 +61,7 @@ export default function TerritoryPrompt({
                 clearInterval(pollRef.current);
                 pollRef.current = null;
                 setPulling(false);
-                toast.error("Fetch is taking longer than expected. It will continue in the background — refresh in a minute.");
+                toast.info("Still running in the background — come back and your data will be here!");
                 return;
             }
 
