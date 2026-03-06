@@ -105,8 +105,18 @@ Deno.serve(async (req) => {
             }
         }
 
-        const twelveMonthsAgo = new Date();
-        twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
+        // Determine sold cutoff from user's preference (default 3 months)
+        let monthsBack = 3;
+        try {
+            const users = await base44.asServiceRole.entities.User.filter({ email: data.user_email }, null, 1);
+            const userArr = Array.isArray(users) ? users : (users?.items || []);
+            if (userArr.length > 0 && userArr[0].pull_months_back) {
+                monthsBack = userArr[0].pull_months_back;
+            }
+        } catch (e) { console.warn('Could not fetch user prefs:', e.message); }
+        
+        const soldCutoff = new Date();
+        soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
 
         // =====================================================================
         // FETCH PHASE: Get PAGES_PER_CHUNK pages from RentCast
