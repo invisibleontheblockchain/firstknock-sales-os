@@ -141,13 +141,13 @@ Deno.serve(async (req) => {
 
             const batch = offsets.slice(i, i + MAX_PARALLEL);
             const promises = batch.map(offset => {
-                const saleDays = monthsBack * 30;
                 const params = new URLSearchParams({
                     latitude: String(latitude), longitude: String(longitude),
                     radius: String(radius), limit: String(LIMIT), offset: String(offset),
                     propertyType: PROPERTY_TYPES,
-                    saleDateRange: String(saleDays),
                 });
+                // Don't filter by saleDateRange — we want ALL properties in the area
+                // The sold_date tagging happens post-fetch based on monthsBack
                 if (offset === 0 && includeTotal) params.set('includeTotalCount', 'true');
 
                 const url = `${RENTCAST_BASE}/properties?${params}`;
