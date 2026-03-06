@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { base44 } from '@/api/base44Client';
-import { Map as MapIcon, Pencil, Layers, X, Check, Trash2, Loader2, List, Zap } from 'lucide-react';
+import { Map as MapIcon, Pencil, X, Check, Trash2, Loader2, List, Zap } from 'lucide-react';
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -31,14 +31,151 @@ export default function TerritoryPrompt({
     const queryClient = useQueryClient();
     const [pulling, setPulling] = useState(false);
     const [pullProgress, setPullProgress] = useState('');
+    const [pullPct, setPullPct] = useState(0);
+    const pollRef = useRef(null);
 
-    const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
+    // Cleanup polling on unmount
+    useEffect(() => {
+        return () => {
+            if (pollRef.current) clearInterval(pollRef.current);
+        };
+    }, []);
 
     const hasPulledData = !!user?.has_pulled_data;
     const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
     
-    // Show "Your Territory" prompt only for returning users who already pulled data
     const showInitialPrompt = hasPulledData && hasDefinedMarket && mode === 'generate' && !activeRoute && !routesGenerating && !showCompare && !showRoutePanel && !drawingMode && (!drawnPolygon || drawnPolygon.length === 0);
+
+    const startPolling = (jobId) => {
+        if (pollRef.current) clearInterval(pollRef.current);
+        
+        let pollCount = 0;
+        const MAX_POLLS = 180; // 3 minutes at 1s intervals
+
+        pollRef.current = setInterval(async () => {
+            pollCount++;
+            if (pollCount > MAX_POLLS) {
+                clearInterval(pollRef.current);
+                pollRef.current = null;
+                setPulling(false);
+                toast.error("Fetch is taking longer than expected. It will continue in the background — refresh in a minute.");
+                return;
+            }
+
+            try {
+                const res = await base44.functions.invoke('fetchJobStatus', { job_id: jobId });
+                const d = res.data;
+
+                if (!d) return;
+
+                setPullPct(d.progress_pct || 0);
+                const fetched = d.total_fetched || 0;
+                const expected = d.total_expected || 0;
+                const inserted = d.total_inserted || 0;
+                
+                if (expected > 0) {
+                    setPullProgress(`${fetched.toLocaleString()} / ${expected.toLocaleString()} properties fetched, ${inserted.toLocaleString()} new`);
+                } else {
+                    setPullProgress(`${fetched.toLocaleString()} properties fetched so far...`);
+                }
+
+                if (d.status === 'completed') {
+                    clearInterval(pollRef.current);
+                    pollRef.current = null;
+                    setPulling(false);
+                    setPullPct(100);
+
+                    const totalLoaded = (d.total_inserted || 0) + (d.total_existed || 0);
+                    toast.success(`Done! ${d.total_inserted?.toLocaleString()} new + ${d.total_existed?.toLocaleString()} existing properties.`);
+
+                    // Update user status
+                    try {
+                        await base44.auth.updateMe({ 
+                            has_pulled_data: true,
+                            territory_property_count: totalLoaded,
+                            last_data_pull: new Date().toISOString()
+                        });
+                    } catch (e) { console.warn('Failed to update pull status', e); }
+
+                    if (onPullComplete) {
+                        onPullComplete();
+                        setShowCompare(true);
+                    } else {
+                        queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
+                        queryClient.invalidateQueries({ queryKey: ['user'] });
+                        setShowCompare(true);
+                        setDrawnPolygon(null);
+                    }
+                } else if (d.status === 'failed') {
+                    clearInterval(pollRef.current);
+                    pollRef.current = null;
+                    setPulling(false);
+                    toast.error(d.error_message || 'Fetch job failed.');
+                }
+            } catch (e) {
+                // Silent — network hiccup, keep polling
+                console.warn('Poll error:', e.message);
+            }
+        }, 2000); // Poll every 2 seconds
+    };
+
+    const handleFetchData = async () => {
+        const centerLat = drawnPolygon.reduce((s, p) => s + p.lat, 0) / drawnPolygon.length;
+        const centerLng = drawnPolygon.reduce((s, p) => s + p.lng, 0) / drawnPolygon.length;
+
+        const R = 3959;
+        const toRad = (v) => v * Math.PI / 180;
+        let maxDist = 0;
+        for (const p of drawnPolygon) {
+            const dLat = toRad(p.lat - centerLat);
+            const dLng = toRad(p.lng - centerLng);
+            const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(centerLat)) * Math.cos(toRad(p.lat)) * Math.sin(dLng / 2) ** 2;
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            const d = R * c;
+            if (d > maxDist) maxDist = d;
+        }
+        const radius = Math.max(0.5, maxDist);
+
+        setPulling(true);
+        setPullProgress('Starting background fetch...');
+        setPullPct(0);
+
+        try {
+            const res = await base44.functions.invoke('fetchAreaProperties', {
+                latitude: centerLat,
+                longitude: centerLng,
+                radius: radius,
+                polygon: drawnPolygon
+            });
+            const d = res.data || {};
+
+            if (d.error) {
+                toast.error(d.message || d.error);
+                setPulling(false);
+                return;
+            }
+
+            if (d.status === 'already_running') {
+                toast.info(d.message);
+                // Start polling the existing job
+                startPolling(d.job_id);
+                return;
+            }
+
+            if (d.status === 'started' && d.job_id) {
+                toast.success('Fetch started in background!');
+                startPolling(d.job_id);
+            } else {
+                // Fallback for any other response shape
+                setPulling(false);
+                toast.success(d.message || 'Done!');
+            }
+        } catch (e) {
+            const msg = e.response?.data?.message || e.message;
+            toast.error(`Failed to start fetch: ${msg}`);
+            setPulling(false);
+        }
+    };
 
     return (
         <>
@@ -62,10 +199,7 @@ export default function TerritoryPrompt({
                                 Generate Routes
                             </Button>
                             <Button
-                                onClick={() => {
-                                    setMode('analyze');
-                                    setShowRoutePanel(true);
-                                }}
+                                onClick={() => { setMode('analyze'); setShowRoutePanel(true); }}
                                 className="bg-white/10 hover:bg-white/20 text-white font-bold h-12 text-sm w-full rounded-xl border border-white/10"
                             >
                                 <List className="w-4 h-4 mr-2" />
@@ -94,7 +228,6 @@ export default function TerritoryPrompt({
                             <p className="text-[10px] text-gray-400">Click map to drop shape</p>
                         </div>
                     </div>
-
                     <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-start border-t sm:border-t-0 border-gray-800 pt-2 sm:pt-0 mt-1 sm:mt-0">
                         <div className="flex gap-2">
                             <select
@@ -105,16 +238,12 @@ export default function TerritoryPrompt({
                                 <option value="circle">Circle</option>
                                 <option value="square">Square</option>
                             </select>
-
                             <span className="text-xs text-gray-300 font-mono bg-gray-900 border border-gray-700 rounded-md px-2 py-1 h-8 flex items-center">200 sq mi</span>
                         </div>
                         <div className="flex gap-2">
                             <Button
                                 size="icon"
-                                onClick={() => {
-                                    setDrawingMode(false);
-                                    setDraftPolygon([]);
-                                }}
+                                onClick={() => { setDrawingMode(false); setDraftPolygon([]); }}
                                 className="h-8 w-8 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white border-none"
                             >
                                 <X className="w-4 h-4" />
@@ -137,124 +266,54 @@ export default function TerritoryPrompt({
             )}
 
             {/* Pull Progress Bar */}
-            {
-                pulling && (
-                    <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[2000] w-11/12 max-w-sm animate-in fade-in">
-                        <div className="bg-black/90 backdrop-blur-md border border-blue-500/50 rounded-xl p-4 shadow-2xl">
-                            <div className="flex items-center gap-3 mb-3">
-                                <Loader2 className="w-5 h-5 text-blue-400 animate-spin shrink-0" />
-                                <div>
-                                    <p className="text-xs font-bold text-white">Fetching Property Data</p>
-                                    <p className="text-[10px] text-gray-400">{pullProgress}</p>
-                                </div>
+            {pulling && (
+                <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[2000] w-11/12 max-w-sm animate-in fade-in">
+                    <div className="bg-black/90 backdrop-blur-md border border-blue-500/50 rounded-xl p-4 shadow-2xl">
+                        <div className="flex items-center gap-3 mb-3">
+                            <Loader2 className="w-5 h-5 text-blue-400 animate-spin shrink-0" />
+                            <div className="flex-1">
+                                <p className="text-xs font-bold text-white">Fetching Property Data</p>
+                                <p className="text-[10px] text-gray-400">{pullProgress}</p>
                             </div>
-                            <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
-                                <div className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full animate-pulse" style={{ width: '70%', transition: 'width 2s ease' }} />
-                            </div>
-                            <p className="text-[9px] text-gray-500 mt-2 text-center">This may take 10-30 seconds depending on area size</p>
+                            <span className="text-sm font-mono font-bold text-blue-400">{pullPct}%</span>
                         </div>
+                        <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+                            <div
+                                className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-1000"
+                                style={{ width: `${Math.max(pullPct, 3)}%` }}
+                            />
+                        </div>
+                        <p className="text-[9px] text-gray-500 mt-2 text-center">
+                            {pullPct < 10
+                                ? 'Starting background fetch — large areas process in chunks...'
+                                : pullPct < 90
+                                    ? 'Processing in background chunks. This page will update automatically.'
+                                    : 'Almost done! Finishing final writes...'}
+                        </p>
                     </div>
-                )
-            }
+                </div>
+            )}
 
             {/* Drawn Polygon Controls */}
-            {
-                !drawingMode && !pulling && drawnPolygon && drawnPolygon.length > 2 && (
-                    <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[1000] bg-black/90 backdrop-blur-md border border-gray-800 rounded-full px-4 py-2 shadow-2xl flex items-center gap-3 animate-in fade-in">
-                        <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
-                        <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
-                        <Button
-                            disabled={pulling}
-                            onClick={async () => {
-                                // Compute centroid and coverage radius
-                                const centerLat = drawnPolygon.reduce((s, p) => s + p.lat, 0) / drawnPolygon.length;
-                                const centerLng = drawnPolygon.reduce((s, p) => s + p.lng, 0) / drawnPolygon.length;
-
-                                const R = 3959; // miles
-                                const toRad = (v) => v * Math.PI / 180;
-                                let maxDist = 0;
-                                for (const p of drawnPolygon) {
-                                    const dLat = toRad(p.lat - centerLat);
-                                    const dLng = toRad(p.lng - centerLng);
-                                    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(centerLat)) * Math.cos(toRad(p.lat)) * Math.sin(dLng / 2) ** 2;
-                                    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-                                    const d = R * c;
-                                    if (d > maxDist) maxDist = d;
-                                }
-                                // Use exact radius from centroid to edge — the draw tool already constrains to 200 sq mi
-                                const radius = Math.max(0.5, maxDist);
-                                // The actual area is 200 sq mi (set by the draw tool), use that for display
-                                const areaSqMiles = 200;
-                                console.log(`[TerritoryPrompt] Centroid: ${centerLat.toFixed(4)}, ${centerLng.toFixed(4)}, maxDist: ${maxDist.toFixed(2)} miles, radius sent: ${radius.toFixed(2)} miles, polygon pts: ${drawnPolygon.length}`);
-
-                                // Pull limit disabled during development — will enforce via subscription later
-                                console.log('[TerritoryPrompt] Starting data pull...');
-
-                                setPulling(true);
-                                setPullProgress(`Pulling data for ~${areaSqMiles.toFixed(1)} sq mi...`);
-                                const toastId = toast.loading(`Pulling data for approx ${areaSqMiles.toFixed(1)} sq miles...`);
-                                try {
-                                    const res = await base44.functions.invoke('fetchAreaProperties', {
-                                        latitude: centerLat,
-                                        longitude: centerLng,
-                                        radius: radius,
-                                        polygon: drawnPolygon
-                                    });
-                                    const d = res.data || {};
-                                    if (d.error) {
-                                        toast.error(d.message || d.error, { id: toastId });
-                                    } else if (d.status === 'empty') {
-                                        toast.error(d.message || `No properties found in this area.`, { id: toastId });
-                                    } else {
-                                        toast.success(d.message || `Properties loaded!`, { id: toastId });
-
-                                        // Mark user as having pulled data
-                                        try {
-                                            await base44.auth.updateMe({ 
-                                                has_pulled_data: true,
-                                                territory_property_count: d.count || d.in_polygon_count || 0,
-                                                last_data_pull: new Date().toISOString()
-                                            });
-                                        } catch (e) { console.warn('Failed to update pull status', e); }
-
-                                        if (onPullComplete) {
-                                            onPullComplete();
-                                            setShowCompare(true);
-                                        } else {
-                                            queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
-                                            queryClient.invalidateQueries({ queryKey: ['user'] });
-                                            setShowCompare(true);
-                                            setDrawnPolygon(null);
-                                        }
-                                    }
-                                } catch (e) {
-                                    const msg = e.response?.data?.message || e.message;
-                                    toast.error(`Failed to pull data: ${msg}`, { id: toastId });
-                                } finally {
-                                    setPulling(false);
-                                    setPullProgress('');
-                                }
-                            }}
-                            className={`text-white text-[10px] h-6 px-2 py-0 rounded-md ml-2 ${pulling ? 'bg-blue-800' : 'bg-blue-600 hover:bg-blue-500'}`}
-                        >
-                            {pulling ? (
-                                <><Loader2 className="w-3 h-3 mr-1 animate-spin" /> Pulling...</>
-                            ) : (
-                                'Fetch data'
-                            )}
-                        </Button>
-                        <button
-                            onClick={() => {
-                                setDrawnPolygon(null);
-                                setDraftPolygon([]);
-                            }}
-                            className="text-gray-400 hover:text-red-500 transition-colors p-1 bg-white/5 rounded-full"
-                        >
-                            <Trash2 className="w-3 h-3" />
-                        </button>
-                    </div>
-                )
-            }
+            {!drawingMode && !pulling && drawnPolygon && drawnPolygon.length > 2 && (
+                <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[1000] bg-black/90 backdrop-blur-md border border-gray-800 rounded-full px-4 py-2 shadow-2xl flex items-center gap-3 animate-in fade-in">
+                    <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
+                    <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
+                    <Button
+                        disabled={pulling}
+                        onClick={handleFetchData}
+                        className="text-white text-[10px] h-6 px-2 py-0 rounded-md ml-2 bg-blue-600 hover:bg-blue-500"
+                    >
+                        Fetch data
+                    </Button>
+                    <button
+                        onClick={() => { setDrawnPolygon(null); setDraftPolygon([]); }}
+                        className="text-gray-400 hover:text-red-500 transition-colors p-1 bg-white/5 rounded-full"
+                    >
+                        <Trash2 className="w-3 h-3" />
+                    </button>
+                </div>
+            )}
         </>
     );
 }
