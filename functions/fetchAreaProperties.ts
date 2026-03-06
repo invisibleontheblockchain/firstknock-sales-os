@@ -76,8 +76,8 @@ Deno.serve(async (req) => {
         const MAX_EXECUTION_TIME = 55000; // 55s to leave room for final writes
 
         const LIMIT = 500; // RentCast max per request
-        const MAX_PARALLEL = 5;
-        const THROTTLE_DELAY_MS = 300;
+        const MAX_PARALLEL = 3;
+        const THROTTLE_DELAY_MS = 500;
         const PROPERTY_TYPES = 'Single Family,Townhouse,Condo,Multi-Family,Duplex,Triplex,Fourplex,Apartment,Mobile Home,Cooperative,Timeshare';
 
         let requestCount = 0;
