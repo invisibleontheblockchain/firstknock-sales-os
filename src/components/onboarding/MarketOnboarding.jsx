@@ -9,12 +9,20 @@ import { useQueryClient } from "@tanstack/react-query";
 export default function MarketOnboarding({ user, onComplete }) {
     const queryClient = useQueryClient();
     const [shape, setShape] = useState('circle');
+    const [isDrawingSession, setIsDrawingSession] = React.useState(false);
+
+    React.useEffect(() => {
+        if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('startDraw') === 'true') {
+            setIsDrawingSession(true);
+        }
+    }, []);
 
     // Show for managers who haven't pulled data yet (even if they started but didn't finish)
     if (!user || user.app_role !== 'manager') return null;
     if (user.has_pulled_data) return null;
     
     // Don't show if we are actively entering draw mode
+    if (isDrawingSession) return null;
     if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('startDraw') === 'true') return null;
 
     const handleGo = async () => {
