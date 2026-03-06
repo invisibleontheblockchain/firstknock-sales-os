@@ -17,9 +17,11 @@ export default function MarketOnboarding({ user, onComplete }) {
         }
     }, []);
 
-    // Show for managers who haven't pulled data yet (even if they started but didn't finish)
+    // Show for managers who haven't pulled data yet
     if (!user || user.app_role !== 'manager') return null;
-    if (user.has_pulled_data) return null;
+    
+    // Hide if user already has territory data (any of these indicate they've completed setup)
+    if (user.has_pulled_data || user.has_defined_market || user.territory_zip_codes?.length > 0 || user.area_pulls_count > 0) return null;
     
     // Don't show if we are actively entering draw mode
     if (isDrawingSession) return null;
