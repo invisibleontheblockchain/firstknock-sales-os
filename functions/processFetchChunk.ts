@@ -265,8 +265,8 @@ Deno.serve(async (req) => {
                 }
             }
 
-            // Bulk insert
-            for (let i = 0; i < toInsert.length; i += 500) {
+            // Bulk insert — larger batches for speed
+            for (let i = 0; i < toInsert.length; i += 1000) {
                 if (Date.now() - startTime > 58000) {
                     console.warn(`[processFetchChunk] Time limit during DB writes`);
                     break;
