@@ -161,6 +161,7 @@ export default function MapSettingsPanel({
         setLocalQuickFilter('all');
         setLocalSoldDateFilter(null);
         setLocalHighlightRecentlySold(false);
+        setLocalShowZipOverlay(false);
     };
 
     const settings = localMapSettings;
