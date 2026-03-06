@@ -63,6 +63,7 @@ import ManagerPropertyDetailSheet from '../components/map/ManagerPropertyDetailS
 import MapDrawTool from '../components/map/MapDrawTool';
 import ManagerMapLayers from '../components/map/ManagerMapLayers';
 import MapToolbar from '../components/map/MapToolbar';
+import ZipCodeOverlay from '../components/map/ZipCodeOverlay';
 
 // Brand Colors
 const BRAND = {
@@ -166,6 +167,7 @@ export default function Home() {
     const [selectedProperty, setSelectedProperty] = useState(null);
     const [zoomLevel, setZoomLevel] = useState(15);
     const [showMapSettings, setShowMapSettings] = useState(false);
+    const [showZipOverlay, setShowZipOverlay] = useState(false);
     const [navigationApp, setNavigationApp] = useState('apple');
 
     // Persisted Map Settings
@@ -1308,6 +1310,11 @@ export default function Home() {
                     darkRoom={darkRoom}
                 />
 
+                {/* Zip Code Overlay */}
+                {showZipOverlay && (
+                    <ZipCodeOverlay properties={effectiveProperties} />
+                )}
+
                 {/* GPS TRACKER LAYERS */}
                 <GpsTrackerMapLayers
                     properties={effectiveProperties}
@@ -1672,6 +1679,8 @@ export default function Home() {
                     highlightRecentlySold={highlightRecentlySold}
                     setHighlightRecentlySold={setHighlightRecentlySold}
                     onRequestGenerate={generateRoutes}
+                    showZipOverlay={showZipOverlay}
+                    setShowZipOverlay={setShowZipOverlay}
                 />
             )}
 
