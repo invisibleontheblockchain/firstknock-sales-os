@@ -311,7 +311,7 @@ Deno.serve(async (req) => {
         console.log(`[processFetchChunk] Totals: fetched=${totalFetched}/${totalExpected}, inserted=${newTotalInserted}, existed=${newTotalExisted}, done=${isDone}`);
 
         if (isDone) {
-            // Job complete!
+            // Job complete — use 'completed' status to stop the chain
             await base44.asServiceRole.entities.FetchJob.update(jobId, {
                 status: 'completed',
                 current_offset: newOffset,
