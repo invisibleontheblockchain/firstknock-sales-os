@@ -173,6 +173,8 @@ function LayoutInner({ children }) {
                 .leaflet-container { background: #0A0A0F !important; }
                 .route-number-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important; }
                 .route-number-tooltip::before { display: none !important; }
+                .zip-label-tooltip { background: rgba(0,0,0,0.75) !important; border: 1px solid rgba(255,255,255,0.15) !important; box-shadow: 0 2px 12px rgba(0,0,0,0.5) !important; padding: 4px 8px !important; border-radius: 6px !important; text-align: center !important; }
+                .zip-label-tooltip::before { border-bottom-color: rgba(0,0,0,0.75) !important; }
             `}</style>
 
             {/* Header */}
