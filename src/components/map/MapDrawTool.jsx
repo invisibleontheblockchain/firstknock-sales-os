@@ -102,7 +102,7 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
         if (!active) {
             setPoints([]);
             if (cursorLineRef.current) {
-                cursorLineRef.current.remove();
+                try { cursorLineRef.current.remove(); } catch(e) {}
                 cursorLineRef.current = null;
             }
         }
