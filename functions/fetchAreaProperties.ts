@@ -68,6 +68,16 @@ Deno.serve(async (req) => {
             console.warn('Failed to update pull count:', e.message);
         }
 
+        // IMMEDIATELY kick off the first chunk — don't wait for cron/entity automation
+        try {
+            console.log(`[fetchAreaProperties] Immediately invoking processFetchChunk for job ${job.id}`);
+            base44.functions.invoke('processFetchChunk', {}).catch(e => {
+                console.warn('[fetchAreaProperties] Background chunk invoke failed (automation will pick up):', e.message);
+            });
+        } catch (e) {
+            console.warn('[fetchAreaProperties] Failed to invoke processFetchChunk:', e.message);
+        }
+
         return Response.json({
             status: 'started',
             job_id: job.id,
