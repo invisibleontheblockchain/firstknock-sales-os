@@ -167,7 +167,6 @@ export default function RouteBuilderSettings({
                     {viewMode === 'simple' ? (
                         <div className="p-4 space-y-6">
                             {/* Target Area */}
-                            {!hasDrawnArea ? (
                             <div className="space-y-3">
                                 <div className="flex justify-between items-center">
                                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">1. Target Area</label>
@@ -175,30 +174,19 @@ export default function RouteBuilderSettings({
                                         onClick={onDraw}
                                         className="text-[10px] font-bold text-yellow-500 hover:text-yellow-400 flex items-center gap-1 bg-yellow-500/10 px-2 py-1 rounded border border-yellow-500/30"
                                     >
-                                        <Pencil className="w-3 h-3" /> Draw on Map
+                                        <Pencil className="w-3 h-3" /> {hasDrawnArea ? 'Redraw' : 'Draw on Map'}
                                     </button>
                                 </div>
-                                <input
-                                    type="text"
-                                    placeholder="Enter Zip Code(s) e.g. 90210"
-                                    value={zipCodeFilter}
-                                    onChange={(e) => setZipCodeFilter(e.target.value)}
-                                    className="w-full px-4 py-3 rounded-xl text-base bg-[#1A1A1A] text-white border border-[#222] focus:border-yellow-500 focus:outline-none transition-colors"
-                                />
+                                {hasDrawnArea ? (
+                                    <div className="w-full px-4 py-3 rounded-xl text-sm bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 flex items-center justify-between">
+                                        <span>Custom Drawn Area Active</span>
+                                    </div>
+                                ) : (
+                                    <div className="w-full px-4 py-3 rounded-xl text-sm bg-[#1A1A1A] text-gray-400 border border-[#222] text-center">
+                                        Draw an area on the map to target
+                                    </div>
+                                )}
                             </div>
-                            ) : (
-                            <div className="space-y-3">
-                                <div className="flex justify-between items-center">
-                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">1. Target Area</label>
-                                </div>
-                                <div className="w-full px-4 py-3 rounded-xl text-sm bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 flex items-center justify-between">
-                                    <span>Custom Drawn Area Active</span>
-                                    <button onClick={onDraw} className="text-[10px] font-bold underline hover:text-yellow-400">
-                                        Redraw
-                                    </button>
-                                </div>
-                            </div>
-                            )}
 
                             {/* Recently Sold Filter */}
                             <div className="space-y-4 pt-2">
@@ -286,39 +274,27 @@ export default function RouteBuilderSettings({
                                 expanded={expandedSection === 'core' || expandedSection === 'presets'} // default open
                                 onToggle={() => toggleSection('core')}
                             >
-                                {/* Zip Code Filter */}
-                                {!hasDrawnArea ? (
+                                {/* Target Area */}
                                 <div className="space-y-2">
                                     <div className="flex justify-between items-center">
-                                        <label className="text-[10px] font-bold text-gray-500 uppercase">Target Zip Codes</label>
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase">Target Area</label>
                                         <button
                                             onClick={onDraw}
                                             className="text-[10px] font-bold text-yellow-500 hover:text-yellow-400 flex items-center gap-1 bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/30"
                                         >
-                                            <Pencil className="w-3 h-3" /> Draw on Map
+                                            <Pencil className="w-3 h-3" /> {hasDrawnArea ? 'Redraw' : 'Draw on Map'}
                                         </button>
                                     </div>
-                                    <input
-                                        type="text"
-                                        placeholder="e.g. 90210, 90001"
-                                        value={zipCodeFilter}
-                                        onChange={(e) => setZipCodeFilter(e.target.value)}
-                                        className="w-full px-3 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] focus:border-yellow-500 focus:outline-none"
-                                    />
+                                    {hasDrawnArea ? (
+                                        <div className="w-full px-3 py-2 rounded-lg text-xs bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 flex items-center justify-between">
+                                            <span>Custom Drawn Area Active</span>
+                                        </div>
+                                    ) : (
+                                        <div className="w-full px-3 py-2 rounded-lg text-xs bg-[#1F1F1F] text-gray-500 border border-[#333] text-center">
+                                            Draw an area on the map to target
+                                        </div>
+                                    )}
                                 </div>
-                                ) : (
-                                <div className="space-y-2">
-                                    <div className="flex justify-between items-center">
-                                        <label className="text-[10px] font-bold text-gray-500 uppercase">Target Area</label>
-                                    </div>
-                                    <div className="w-full px-3 py-2 rounded-lg text-xs bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 flex items-center justify-between">
-                                        <span>Custom Drawn Area Active</span>
-                                        <button onClick={onDraw} className="text-[9px] font-bold underline hover:text-yellow-400">
-                                            Redraw
-                                        </button>
-                                    </div>
-                                </div>
-                                )}
 
                                 {/* Houses Per Route */}
                                 <div className="space-y-2 pt-2 border-t border-gray-800/50">
