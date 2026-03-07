@@ -5,6 +5,7 @@ import { Map as MapIcon, Pencil, X, Check, Trash2, Loader2, List, Zap, Lock } fr
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 
+
 export default function TerritoryPrompt({
     mode,
     setMode,
