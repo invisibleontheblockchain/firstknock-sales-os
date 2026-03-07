@@ -32,10 +32,31 @@ export default function TerritoryPrompt({
     const [pulling, setPulling] = useState(false);
     const [pullProgress, setPullProgress] = useState('');
     const [pullPct, setPullPct] = useState(0);
+    const [displayPct, setDisplayPct] = useState(0);
     const [etaText, setEtaText] = useState('');
     const [totalExpected, setTotalExpected] = useState(0);
     const pollRef = useRef(null);
+    const animRef = useRef(null);
     const pctHistoryRef = useRef([]);
+    const targetPctRef = useRef(0);
+
+    // Smooth progress animation — ticks display forward toward real target
+    useEffect(() => {
+        if (pulling) {
+            animRef.current = setInterval(() => {
+                setDisplayPct(prev => {
+                    const target = targetPctRef.current;
+                    if (prev >= target) return prev;
+                    // Move 20% of the gap each tick for smooth easing
+                    const step = Math.max(0.3, (target - prev) * 0.2);
+                    return Math.min(target, prev + step);
+                });
+            }, 100);
+        } else {
+            if (animRef.current) clearInterval(animRef.current);
+        }
+        return () => { if (animRef.current) clearInterval(animRef.current); };
+    }, [pulling]);
 
     // Cleanup polling on unmount
     useEffect(() => {
