@@ -26,16 +26,28 @@ Deno.serve(async (req) => {
             });
         }
 
-        // Check if there's already an active job for this user
-        const existingJobs = await base44.entities.FetchJob.filter(
+        // Check if there's already an active job for this user (running OR pending)
+        const runningJobs = await base44.entities.FetchJob.filter(
             { user_email: user.email, status: 'running' }, null, 5
         );
-        const existing = Array.isArray(existingJobs) ? existingJobs : (existingJobs?.items || []);
-        if (existing.length > 0) {
+        const runningList = Array.isArray(runningJobs) ? runningJobs : (runningJobs?.items || []);
+        if (runningList.length > 0) {
             return Response.json({
                 status: 'already_running',
-                job_id: existing[0].id,
-                message: `A fetch job is already running (${existing[0].progress_pct || 0}% complete). Please wait for it to finish.`
+                job_id: runningList[0].id,
+                message: `A fetch job is already running (${runningList[0].progress_pct || 0}% complete). Please wait for it to finish.`
+            });
+        }
+        
+        const pendingJobs = await base44.entities.FetchJob.filter(
+            { user_email: user.email, status: 'pending' }, null, 5
+        );
+        const pendingList = Array.isArray(pendingJobs) ? pendingJobs : (pendingJobs?.items || []);
+        if (pendingList.length > 0) {
+            return Response.json({
+                status: 'already_running',
+                job_id: pendingList[0].id,
+                message: `A fetch job is starting up. Please wait for it to finish.`
             });
         }
 
