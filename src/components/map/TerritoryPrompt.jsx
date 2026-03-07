@@ -159,7 +159,12 @@ export default function TerritoryPrompt({
                 // Silent — network hiccup, keep polling
                 console.warn('Poll error:', e.message);
             }
-        }, 2000); // Poll every 2 seconds
+        };
+
+        // Start fast — poll every 1s for first 30s, then 2s after
+        pollRef.current = setInterval(doPoll, 1000);
+        // Also fire first poll immediately
+        doPoll();
     };
 
     const handleFetchData = async () => {
