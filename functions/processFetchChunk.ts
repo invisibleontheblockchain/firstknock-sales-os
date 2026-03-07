@@ -389,7 +389,16 @@ Deno.serve(async (req) => {
                 zip_codes_found: zipCodesFound,
                 chunk_number: nextChunkNumber
             });
-            console.log(`[processFetchChunk] Chunk #${nextChunkNumber} saved — cron will resume at offset ${newOffset} (${progressPct}%)`);
+            console.log(`[processFetchChunk] Chunk #${nextChunkNumber} saved — immediately chaining next chunk`);
+
+            // IMMEDIATELY chain the next chunk — fire-and-forget, don't wait
+            try {
+                base44.functions.invoke('processFetchChunk', {}).catch(e => {
+                    console.warn('[processFetchChunk] Self-chain invoke failed (cron will pick up):', e.message);
+                });
+            } catch (e) {
+                console.warn('[processFetchChunk] Failed to self-chain:', e.message);
+            }
         }
 
         return Response.json({
