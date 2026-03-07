@@ -215,6 +215,8 @@ export default function TerritoryPrompt({
         setPulling(true);
         setPullProgress('Connecting to property database...');
         setPullPct(2);
+        setDisplayPct(0);
+        targetPctRef.current = 2;
         setEtaText('Initializing...');
         setTotalExpected(0);
         pctHistoryRef.current = [];
