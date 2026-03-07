@@ -68,6 +68,53 @@ export default function TerritoryPrompt({
         };
     }, []);
 
+    // Auto-resume: check for running/pending fetch jobs on mount
+    useEffect(() => {
+        if (!user?.email) return;
+        let cancelled = false;
+        
+        const checkRunningJobs = async () => {
+            try {
+                const jobs = await base44.entities.FetchJob.filter(
+                    { user_email: user.email, status: 'running' },
+                    '-created_date',
+                    1
+                );
+                const jobList = Array.isArray(jobs) ? jobs : (jobs?.items || []);
+                let job = jobList[0];
+                
+                // Also check pending
+                if (!job) {
+                    const pendingJobs = await base44.entities.FetchJob.filter(
+                        { user_email: user.email, status: 'pending' },
+                        '-created_date',
+                        1
+                    );
+                    const pendingList = Array.isArray(pendingJobs) ? pendingJobs : (pendingJobs?.items || []);
+                    job = pendingList[0];
+                }
+                
+                if (job && !cancelled && !pulling) {
+                    console.log('[TerritoryPrompt] Resuming running job:', job.id);
+                    setPulling(true);
+                    setPullProgress('Resuming data import...');
+                    const pct = job.progress_pct || 0;
+                    setPullPct(pct);
+                    setDisplayPct(0);
+                    targetPctRef.current = pct;
+                    setEtaText('Resuming...');
+                    pctHistoryRef.current = [];
+                    startPolling(job.id);
+                }
+            } catch (e) {
+                console.warn('[TerritoryPrompt] Error checking running jobs:', e);
+            }
+        };
+        
+        checkRunningJobs();
+        return () => { cancelled = true; };
+    }, [user?.email]);
+
     const hasPulledData = !!user?.has_pulled_data;
     const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
     const isPaid = user?.subscription_status === 'active' || user?.is_owner;
