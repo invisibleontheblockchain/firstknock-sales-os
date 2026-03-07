@@ -315,7 +315,7 @@ Deno.serve(async (req) => {
             }
 
             // Sold status updates (limited)
-            for (let i = 0; i < Math.min(soldUpdates.length, 30); i++) {
+            for (let i = 0; i < Math.min(soldUpdates.length, 50); i++) {
                 if (Date.now() - startTime > 60000) break;
                 try {
                     await base44.asServiceRole.entities.MasterProperty.update(soldUpdates[i].id, {
