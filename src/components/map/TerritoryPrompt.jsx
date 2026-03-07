@@ -56,9 +56,10 @@ export default function TerritoryPrompt({
         if (pollRef.current) clearInterval(pollRef.current);
         
         let pollCount = 0;
-        const MAX_POLLS = 900; // 30 minutes at 2s intervals
+        const MAX_POLLS = 1800; // 30 minutes at 1s intervals
+        const pollStartTime = Date.now();
 
-        pollRef.current = setInterval(async () => {
+        const doPoll = async () => {
             pollCount++;
             if (pollCount > MAX_POLLS) {
                 clearInterval(pollRef.current);
@@ -66,6 +67,12 @@ export default function TerritoryPrompt({
                 setPulling(false);
                 toast.info("Still running in the background — come back and your data will be here!");
                 return;
+            }
+
+            // After first 30s, slow polling to 2s intervals
+            if (pollCount === 30) {
+                clearInterval(pollRef.current);
+                pollRef.current = setInterval(doPoll, 2000);
             }
 
             try {
