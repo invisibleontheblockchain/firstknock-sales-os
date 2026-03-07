@@ -15,8 +15,8 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'job_id required' }, { status: 400 });
         }
 
-        // Use service role to ensure we can read the job regardless of who created it
-        const jobs = await base44.entities.FetchJob.filter({ id: job_id }, null, 1);
+        // Use service role to ensure we can read the job regardless of who created/updated it
+        const jobs = await base44.asServiceRole.entities.FetchJob.filter({ id: job_id }, null, 1);
         const jobArr = Array.isArray(jobs) ? jobs : (jobs?.items || []);
 
         if (jobArr.length === 0) {
