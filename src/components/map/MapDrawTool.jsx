@@ -49,23 +49,20 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
         return newPoints;
     };
 
-    // Change cursor and disable map click default behavior when active
+    // Change cursor when active — do NOT disable dragging (causes frozen map)
     useEffect(() => {
         const container = map.getContainer();
         if (active) {
             container.style.cursor = 'crosshair';
             map.doubleClickZoom.disable();
-            map.dragging.disable(); // disable dragging to make clicking easier
         } else {
             container.style.cursor = '';
             map.doubleClickZoom.enable();
-            map.dragging.enable();
         }
         return () => {
             container.style.cursor = '';
             map.doubleClickZoom.enable();
-            if (map.dragging) map.dragging.enable();
-        }
+        };
     }, [active, map]);
 
     useMapEvents({
