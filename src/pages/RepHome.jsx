@@ -299,8 +299,14 @@ export default function RepHome() {
         }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['myLogs'] });
-            queryClient.invalidateQueries({ queryKey: ['routeLogs'] }); // Also invalidate route logs to update progress
-            setSelectedProperty(null); // Close detail view on success
+            queryClient.invalidateQueries({ queryKey: ['routeLogs'] });
+            queryClient.invalidateQueries({ queryKey: ['allMyLogs'] });
+            setSelectedProperty(null);
+            // Check if user just hit the 50-house limit
+            const newCount = (allMyLogs?.length || 0) + 1;
+            if (shouldShowUpgradeGate(user, newCount)) {
+                setShowUpgradeGate(true);
+            }
         }
     });
 
