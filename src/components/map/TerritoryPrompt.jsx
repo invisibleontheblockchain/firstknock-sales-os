@@ -343,13 +343,13 @@ export default function TerritoryPrompt({
                         )}
                         <div className="mt-2 bg-gray-900/80 rounded-lg p-2.5 border border-gray-800">
                             <p className="text-[10px] text-gray-300 leading-relaxed text-center">
-                                {pullPct < 5
+                                {displayPct < 5
                                     ? '🔍 Scanning your area for every property on record — this is a one-time setup that gives you the full picture.'
-                                    : pullPct < 30
+                                    : displayPct < 30
                                         ? '📦 Pulling property data in batches from public records. Larger areas have more homes to process.'
-                                        : pullPct < 70
+                                        : displayPct < 70
                                             ? '⚡ Deduplicating and writing to your database. You can close this page — it will keep running.'
-                                            : pullPct < 95
+                                            : displayPct < 95
                                                 ? '🏁 Almost there! Writing final records and updating your territory map.'
                                                 : '✅ Wrapping up! Your territory will be ready in seconds.'}
                             </p>
