@@ -179,9 +179,9 @@ export default function TerritoryPrompt({
         const radius = Math.max(0.5, maxDist);
 
         setPulling(true);
-        setPullProgress('Starting background fetch...');
-        setPullPct(0);
-        setEtaText('');
+        setPullProgress('Connecting to property database...');
+        setPullPct(2);
+        setEtaText('Initializing...');
         setTotalExpected(0);
         pctHistoryRef.current = [];
 
