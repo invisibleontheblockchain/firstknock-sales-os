@@ -383,8 +383,11 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
     }
 
     // Double Dip Protection: Exclude Terminal Statuses
+    // NOTE: 'SOLD' here means the property's original MLS sale record, NOT that a rep already sold them.
+    // When using sold-date-based filtering (e.g. FirstKnock Best), these are prime leads (new homeowners)
+    // so we only exclude HARD_NO / DO_NOT_KNOCK / COOLDOWN — NOT 'SOLD'.
     if (excludeTerminal) {
-        const terminalStatuses = ['HARD_NO', 'SOLD', 'DO_NOT_KNOCK', 'COOLDOWN'];
+        const terminalStatuses = ['HARD_NO', 'DO_NOT_KNOCK', 'COOLDOWN'];
         eligible = eligible.filter(p => !terminalStatuses.includes(p.effective_status));
     }
 
