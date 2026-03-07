@@ -633,6 +633,11 @@ export default function RepHome() {
                     onClose={() => setShowChat(false)}
                 />
             )}
+
+            {/* Upgrade Gate - shows after 50 houses */}
+            {showUpgradeGate && (
+                <UpgradeGate onClose={() => setShowUpgradeGate(false)} />
+            )}
         </div>
     );
 }
