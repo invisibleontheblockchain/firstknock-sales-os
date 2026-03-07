@@ -328,12 +328,12 @@ export default function TerritoryPrompt({
                                 <p className="text-xs font-bold text-white">Importing Property Data</p>
                                 <p className="text-[10px] text-gray-400">{pullProgress}</p>
                             </div>
-                            <span className="text-sm font-mono font-bold text-blue-400">{Math.round(pullPct)}%</span>
+                            <span className="text-sm font-mono font-bold text-blue-400">{Math.round(displayPct)}%</span>
                         </div>
                         <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
                             <div
-                                className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-1000"
-                                style={{ width: `${Math.max(pullPct, 3)}%` }}
+                                className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-300 ease-out"
+                                style={{ width: `${Math.max(displayPct, 2)}%` }}
                             />
                         </div>
                         {etaText && (
