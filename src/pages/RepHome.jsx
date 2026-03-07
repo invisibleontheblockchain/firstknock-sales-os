@@ -262,6 +262,13 @@ export default function RepHome() {
         enabled: !!user?.email
     });
 
+    // Show upgrade gate on load if user is over free limit
+    React.useEffect(() => {
+        if (allMyLogs.length > 0 && user && shouldShowUpgradeGate(user, allMyLogs.length)) {
+            setShowUpgradeGate(true);
+        }
+    }, [allMyLogs.length, user]);
+
     // REAL-TIME UPDATES: Prevent double-knocking (Team Mode)
     React.useEffect(() => {
         if (!user) return;
