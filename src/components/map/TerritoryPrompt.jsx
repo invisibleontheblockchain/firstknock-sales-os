@@ -242,6 +242,9 @@ export default function TerritoryPrompt({
     };
 
     const handleFetchData = async () => {
+        // Don't allow double-trigger
+        if (pulling) return;
+        
         // Check pull limit on frontend too for instant feedback
         if (!canPullAgain) {
             toast.error("You've used all 5 free data pulls. Upgrade for more.");
