@@ -149,6 +149,8 @@ export default function TerritoryPrompt({
                     pollRef.current = null;
                     setPulling(false);
                     setPullPct(100);
+                    setDisplayPct(100);
+                    targetPctRef.current = 100;
 
                     const totalLoaded = (d.total_inserted || 0) + (d.total_existed || 0);
                     toast.success(`Done! ${d.total_inserted?.toLocaleString()} new + ${d.total_existed?.toLocaleString()} existing properties.`);
