@@ -71,12 +71,14 @@ export default function MapDrawTool({ active, onPointsUpdate, drawnPolygon, draw
     useMapEvents({
         click(e) {
             if (!active) return;
-            console.log(`[MapDrawTool] Clicked map! active shape=${drawShape} size=${drawSizeMiles}`);
             const generated = generateShape(e.latlng, drawShape, drawSizeMiles);
-            console.log(`[MapDrawTool] Generated ${generated.length} points for Polygon:`, generated);
             setPoints(generated);
             if (onPointsUpdate) {
                 onPointsUpdate(generated);
+            }
+            // Auto-confirm: immediately commit the shape so user doesn't need to press confirm
+            if (onConfirm) {
+                onConfirm(generated);
             }
         },
         mousemove(e) {
