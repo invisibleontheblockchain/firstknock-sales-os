@@ -250,7 +250,10 @@ export default function TerritoryPrompt({
             }
 
             if (d.status === 'started' && d.job_id) {
-                toast.success('Fetch started in background!');
+                toast.success('Pulling property data now!');
+                // Immediately bump to 5% for instant visual feedback
+                targetPctRef.current = 5;
+                setPullProgress('Scanning property records...');
                 startPolling(d.job_id);
             } else {
                 // Fallback for any other response shape
