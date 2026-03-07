@@ -14,6 +14,7 @@ import PropertyCard from '@/components/rep/PropertyCard';
 import PropertyDetailSheet from '@/components/rep/PropertyDetailSheet';
 import RepAnalytics from '@/components/rep/RepAnalytics';
 import TeamChat from '@/components/rep/TeamChat';
+import UpgradeGate, { shouldShowUpgradeGate } from '@/components/upgrade/UpgradeGate';
 
 export default function RepHome() {
     const queryClient = useQueryClient();
@@ -25,6 +26,7 @@ export default function RepHome() {
     const [showMap, setShowMap] = useState(false);
     const [showAnalytics, setShowAnalytics] = useState(false);
     const [showChat, setShowChat] = useState(false);
+    const [showUpgradeGate, setShowUpgradeGate] = useState(false);
 
     // Offline Listener
     React.useEffect(() => {
