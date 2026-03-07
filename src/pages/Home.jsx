@@ -159,7 +159,22 @@ export default function Home() {
     };
     const [showDashboard, setShowDashboard] = useState(false);
     const [drawingMode, setDrawingMode] = useState(false);
-    const [drawnPolygon, setDrawnPolygon] = useState(null);
+    const [drawnPolygon, setDrawnPolygonRaw] = useState(() => {
+        try {
+            const saved = localStorage.getItem('fk_drawnPolygon');
+            return saved ? JSON.parse(saved) : null;
+        } catch { return null; }
+    });
+    const setDrawnPolygon = (val) => {
+        setDrawnPolygonRaw(val);
+        try {
+            if (val && val.length > 2) {
+                localStorage.setItem('fk_drawnPolygon', JSON.stringify(val));
+            } else {
+                localStorage.removeItem('fk_drawnPolygon');
+            }
+        } catch {}
+    };
     const [draftPolygon, setDraftPolygon] = useState([]);
     const [drawShape, setDrawShape] = useState('circle');
     const [drawSizeMiles, setDrawSizeMiles] = useState(40);
