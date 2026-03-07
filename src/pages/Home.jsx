@@ -1279,6 +1279,12 @@ export default function Home() {
                 <MapDrawTool
                     active={drawingMode}
                     onPointsUpdate={setDraftPolygon}
+                    onConfirm={(polygon) => {
+                        setDrawnPolygon(polygon);
+                        setDraftPolygon([]);
+                        setDrawingMode(false);
+                        toast.success("Area selected! Now fetch data or generate routes.");
+                    }}
                     drawnPolygon={drawnPolygon}
                     drawShape={drawShape}
                     drawSizeMiles={drawSizeMiles}
