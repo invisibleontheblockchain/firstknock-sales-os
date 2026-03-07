@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { base44 } from '@/api/base44Client';
-import { Map as MapIcon, Pencil, X, Check, Trash2, Loader2, List, Zap, Lock } from 'lucide-react';
+import { Map as MapIcon, Pencil, X, Check, Trash2, Loader2, List, Zap, Lock, ArrowRight } from 'lucide-react';
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
 
 
 export default function TerritoryPrompt({
@@ -380,10 +382,14 @@ export default function TerritoryPrompt({
                             Fetch data
                         </Button>
                     ) : (
-                        <div className="flex items-center gap-1 ml-2 text-[10px] font-bold text-gray-500">
+                        <Link
+                            to={createPageUrl('Billing')}
+                            className="flex items-center gap-1.5 ml-2 text-[10px] font-bold text-yellow-500 hover:text-yellow-400 transition-colors bg-yellow-500/10 border border-yellow-500/30 rounded-md px-2 py-1"
+                        >
                             <Lock className="w-3 h-3" />
-                            <span>Upgrade for more pulls</span>
-                        </div>
+                            <span>Upgrade</span>
+                            <ArrowRight className="w-3 h-3" />
+                        </Link>
                     )}
                     <button
                         onClick={() => { setDrawnPolygon(null); setDraftPolygon([]); }}

@@ -152,15 +152,18 @@ export default function Billing() {
                             {!isSubscribed && (
                                 <div className="flex flex-col gap-3">
                                     <Button
-                                        onClick={() => handleSubscribe(plan.priceId, plan.isPopular ? 7 : 0)}
+                                        onClick={() => handleSubscribe(plan.priceId, 7)}
                                         disabled={loadingPriceId !== null}
-                                        className={`w-full h-12 font-bold tracking-wide rounded-xl transition-all ${
-                                            plan.isPopular 
-                                                ? 'bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg hover:shadow-yellow-500/20' 
-                                                : 'bg-white text-black hover:bg-gray-200'
-                                        }`}
+                                        className="w-full h-12 font-bold tracking-wide rounded-xl transition-all bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg hover:shadow-yellow-500/20"
                                     >
-                                        {loadingPriceId === plan.priceId ? 'PREPARING...' : (plan.isPopular ? 'START 7-DAY FREE TRIAL' : 'SUBSCRIBE')}
+                                        {loadingPriceId === plan.priceId + '_trial' ? 'PREPARING...' : 'START 7-DAY FREE TRIAL'}
+                                    </Button>
+                                    <Button
+                                        onClick={() => handleSubscribe(plan.priceId, 0)}
+                                        disabled={loadingPriceId !== null}
+                                        className="w-full h-10 font-bold tracking-wide rounded-xl transition-all bg-white/10 text-white hover:bg-white/20 border border-white/10"
+                                    >
+                                        {loadingPriceId === plan.priceId + '_pay' ? 'PREPARING...' : 'PAY $49/MO — NO TRIAL'}
                                     </Button>
                                 </div>
                             )}

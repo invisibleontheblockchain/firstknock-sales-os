@@ -54,6 +54,7 @@ import Billing from './pages/Billing';
 import CostProjections from './pages/CostProjections';
 import DatabaseDiagnostic from './pages/DatabaseDiagnostic';
 import DeleteAccount from './pages/DeleteAccount';
+import Home from './pages/Home';
 import List from './pages/List';
 import MobileApp from './pages/MobileApp';
 import Referrals from './pages/Referrals';
@@ -66,7 +67,6 @@ import Sync from './pages/Sync';
 import Terms from './pages/Terms';
 import Tutorial from './pages/Tutorial';
 import ZipCodeExplorer from './pages/ZipCodeExplorer';
-import Home from './pages/Home';
 import __Layout from './Layout.jsx';
 
 
@@ -78,6 +78,7 @@ export const PAGES = {
     "CostProjections": CostProjections,
     "DatabaseDiagnostic": DatabaseDiagnostic,
     "DeleteAccount": DeleteAccount,
+    "Home": Home,
     "List": List,
     "MobileApp": MobileApp,
     "Referrals": Referrals,
@@ -90,7 +91,6 @@ export const PAGES = {
     "Terms": Terms,
     "Tutorial": Tutorial,
     "ZipCodeExplorer": ZipCodeExplorer,
-    "Home": Home,
 }
 
 export const pagesConfig = {
