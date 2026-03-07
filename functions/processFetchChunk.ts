@@ -263,7 +263,7 @@ Deno.serve(async (req) => {
 
             for (let i = 0; i < uniqueZips.length; i += 20) {
                 if (Date.now() - startTime > 55000) break;
-                const zipChunk = uniqueZips.slice(i, i + 10);
+                const zipChunk = uniqueZips.slice(i, i + 20);
                 const promises = zipChunk.map(zip =>
                     base44.asServiceRole.entities.MasterProperty.filter({ zip_code: zip }, null, 5000)
                         .then(res => {
