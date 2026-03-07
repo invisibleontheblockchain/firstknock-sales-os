@@ -244,7 +244,8 @@ export default function TerritoryPrompt({
 
             if (d.status === 'already_running') {
                 toast.info(d.message);
-                // Start polling the existing job
+                targetPctRef.current = 10;
+                setPullProgress('Resuming existing fetch...');
                 startPolling(d.job_id);
                 return;
             }
