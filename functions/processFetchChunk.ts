@@ -185,6 +185,7 @@ Deno.serve(async (req) => {
 
             if (reachedEnd) break;
             if (i + MAX_PARALLEL < offsets.length) await sleep(50);
+
         }
 
         const newOffset = currentOffset + allRaw.length;
