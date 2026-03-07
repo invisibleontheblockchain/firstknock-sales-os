@@ -50,7 +50,19 @@ export function scoreProperty(property, logs = [], neighborhoodStats = {}, learn
     if (property.effective_status === 'CALLBACK') score += 100; // Top priority
     if (property.effective_status === 'NO_ANSWER') score += 30; // Worth another try
     if (property.effective_status === 'QUALIFIED') score += 80;
-    if (property.effective_status === 'SOLD' || property.effective_status === 'HARD_NO') return 0;
+    if (property.effective_status === 'HARD_NO') return 0;
+    // 'SOLD' = recently sold home from MLS (new homeowner = prime lead), score based on recency
+    if (property.effective_status === 'SOLD') {
+        if (property.sold_date) {
+            const monthsAgo = (Date.now() - new Date(property.sold_date).getTime()) / (1000 * 60 * 60 * 24 * 30);
+            if (monthsAgo <= 3) score += 80;       // Just moved in — hottest leads
+            else if (monthsAgo <= 6) score += 60;  // Settled in, ready to buy
+            else if (monthsAgo <= 12) score += 40;  // Still new-ish homeowner
+            else score += 20;
+        } else {
+            score += 20;
+        }
+    }
 
     // 2. Estimated Equity & Tenure
     if (property.sold_date && property.price) {
