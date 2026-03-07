@@ -60,13 +60,22 @@ export default function RouteBuilderSettings({
             const pendingOnce = localStorage.getItem('fk_autobuild_next_open') === 'true';
             if (pendingOnce && !routesGenerating) {
                 localStorage.removeItem('fk_autobuild_next_open');
-                // Delay enough for data to load
-                const timer = setTimeout(() => { onGenerate && onGenerate(); }, 500);
+                // Delay enough for data to load — only auto-generate if we have a drawn area
+                const timer = setTimeout(() => {
+                    if (onGenerate) onGenerate();
+                }, 800);
                 return () => clearTimeout(timer);
             }
         } catch (e) { /* ignore */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Ensure simple mode has a default soldDateFilter set
+    React.useEffect(() => {
+        if (viewMode === 'simple' && soldDateFilter === null) {
+            setSoldDateFilter(12);
+        }
+    }, [viewMode]);
 
     const toggleSection = (id) => {
         setExpandedSection(expandedSection === id ? null : id);
