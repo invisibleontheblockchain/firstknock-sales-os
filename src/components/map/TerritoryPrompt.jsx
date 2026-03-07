@@ -104,6 +104,7 @@ export default function TerritoryPrompt({
 
                 const pct = d.progress_pct || 0;
                 setPullPct(pct);
+                targetPctRef.current = pct;
                 const fetched = d.total_fetched || 0;
                 const expected = d.total_expected || 0;
                 const inserted = d.total_inserted || 0;
