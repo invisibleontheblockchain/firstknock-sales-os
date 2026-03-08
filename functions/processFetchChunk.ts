@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
                     latitude: String(latitude), longitude: String(longitude),
                     radius: String(radius), limit: String(LIMIT), offset: String(offset),
                     propertyType: PROPERTY_TYPES,
-                    daysOldMax: String(daysOldMax), // Only pull properties sold within the user's window
+                    saleDateRange: `1:${daysBack}`, // Only pull properties sold within the user's window
                 });
                 if (offset === 0 && includeTotal) params.set('includeTotalCount', 'true');
 
