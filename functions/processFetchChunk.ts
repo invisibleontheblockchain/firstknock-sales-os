@@ -219,11 +219,13 @@ Deno.serve(async (req) => {
             const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
             const street_name = addressMatch ? addressMatch[2] : (addressLine || "Unknown");
 
-            let original_status = 'ELIGIBLE';
+            // Since we filter by daysOldMax, all returned properties are recently sold
+            let original_status = 'SOLD';
+            // Double-check with date if available, fall back to ELIGIBLE if clearly old
             if (p.lastSaleDate) {
                 const saleDate = new Date(p.lastSaleDate);
-                if (!isNaN(saleDate) && saleDate > soldCutoff) {
-                    original_status = 'SOLD';
+                if (!isNaN(saleDate) && saleDate <= soldCutoff) {
+                    original_status = 'ELIGIBLE'; // older than cutoff, treat as eligible
                 }
             }
 
