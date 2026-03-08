@@ -1,18 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, BarChart3, Navigation, Users } from 'lucide-react';
+import { Loader2, BarChart3, Navigation } from 'lucide-react';
 import { subDays, startOfDay, isAfter } from 'date-fns';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
 import { useTheme } from '@/components/theme/ThemeProvider';
-import { Link } from 'react-router-dom';
-import { createPageUrl } from '@/utils';
-import { Button } from '@/components/ui/button';
 import { INDUSTRIES } from '@/components/appointments/EligibilityScorer';
 
 import OverviewStats from '@/components/analytics/OverviewStats';
 import TimeOfDayEffectiveness from '@/components/analytics/TimeOfDayEffectiveness';
-import TeamPerformance from '@/components/analytics/TeamPerformance';
 import RouteProgress from '@/components/analytics/RouteProgress';
 import StatusBreakdown from '@/components/analytics/StatusBreakdown';
 

@@ -1,5 +1,4 @@
 import React from 'react';
-import { Card, CardContent } from "@/components/ui/card";
 import { Calendar, CheckCircle, TrendingUp, AlertTriangle, Users, Target } from 'lucide-react';
 
 export default function KpiSummaryCards({ appointments, teamMembers }) {

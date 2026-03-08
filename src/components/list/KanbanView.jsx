@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MapPin, DollarSign, Home, User } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 
 const STATUS_COLUMNS = {
     'ELIGIBLE': { label: 'To Knock', color: 'bg-gray-500' },

@@ -1,7 +1,6 @@
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, Circle, Shield, Smartphone, Map as MapIcon, Globe, WifiOff, FileText, Camera } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CheckCircle2, Circle, Shield, Smartphone, Map as MapIcon, Globe } from 'lucide-react';
 
 export default function Roadmap() {
   const phases = [

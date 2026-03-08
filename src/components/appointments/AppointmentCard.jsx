@@ -1,6 +1,5 @@
 import React from 'react';
-import { Calendar, MapPin, User, Clock, Phone, Star, ChevronRight } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { Calendar, User, Star, ChevronRight } from 'lucide-react';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { format } from 'date-fns';
 import { getIndustryLabel } from './EligibilityScorer';

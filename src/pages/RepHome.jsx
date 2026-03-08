@@ -5,7 +5,6 @@ import { Loader2, Navigation, CheckCircle2, Search, X, TrendingUp, MessageCircle
 import localforage from 'localforage';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { optimizeRouteForTime, getKnockWindowLabel } from '@/components/logic/knockTimeOptimizer';
 import { determineEffectiveStatus } from '@/components/logic/territoryLogic';
 import RepMapView from '@/components/rep/RepMapView';

@@ -4,8 +4,7 @@ import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import {
     Navigation, Loader2, MapPin, RefreshCw, X, ChevronDown, ChevronUp,
-    Zap, Route, Footprints, Clock, Shield, Flame, Target, Shuffle,
-    ArrowUpDown, GitBranch, ScanLine, Compass, Pencil, Layers
+    Zap, Route, Footprints, Clock, Shield, Flame, Target, Shuffle, GitBranch, ScanLine, Compass, Pencil, Layers
 } from 'lucide-react';
 import { toast } from "sonner";
 

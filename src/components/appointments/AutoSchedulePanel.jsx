@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
-import { Zap, Calendar, Loader2, Info } from 'lucide-react';
+import { Zap, Loader2, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
 import { scoreProperty, INDUSTRIES, getIndustryLabel } from './EligibilityScorer';
-import { addDays, setHours, setMinutes, format } from 'date-fns';
+import { addDays, setHours, setMinutes } from 'date-fns';
 
 export default function AutoSchedulePanel({ properties, logs, teamMembers, onComplete }) {
     const { accent } = useTheme();

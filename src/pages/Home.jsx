@@ -1,64 +1,27 @@
+// @ts-nocheck
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Polyline, useMap, Circle, LayerGroup, FeatureGroup, Tooltip } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-
-// Fix leaflet marker icons
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
-
-// Fix Leaflet unmount error during scroll wheel zoom
-const originalGetMapPanePos = L.Map.prototype._getMapPanePos;
-if (originalGetMapPanePos) {
-    L.Map.prototype._getMapPanePos = function () {
-        if (!this._mapPane) return L.point(0, 0);
-        return originalGetMapPanePos.call(this);
-    };
-}
-
-// Fix leaflet fast-unmount/interaction error
-const originalSetPosition = L.DomUtil.setPosition;
-if (originalSetPosition) {
-    L.DomUtil.setPosition = function (el, point) {
-        if (!el) return;
-        return originalSetPosition.call(this, el, point);
-    };
-}
+import Map from 'react-map-gl/maplibre';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 
-import { Slider } from "@/components/ui/slider";
-import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, Filter, MapPin, User, Shield, Layers, Flame, Home as HomeIcon, Calendar, DollarSign, Ruler, ArrowRight, RefreshCw, Zap } from 'lucide-react';
+import { Loader2, X, BarChart3, Filter } from 'lucide-react';
 import { toast } from "sonner";
 import { determineEffectiveStatus, isPointInPolygon } from '../components/logic/territoryLogic';
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { format, subMonths, isAfter, parseISO } from 'date-fns';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { subMonths, isAfter, parseISO } from 'date-fns';
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
 import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../components/logic/heatmapLogic';
 import RouteChecklist from '../components/routes/RouteChecklist';
 import RouteCommandPanel from '../components/routes/RouteCommandPanel';
-import KnockTimeBanner from '../components/timing/KnockTimeBanner';
 // MarketSetupPrompt removed — onboarding handled by MarketOnboarding + TerritoryPrompt
 import TerritoryPrompt from '../components/map/TerritoryPrompt';
-import { darkRoom, DarkRoomClient } from '@/components/logic/neonClient';
+import { darkRoom } from '@/components/logic/neonClient';
 import CommandCenterDashboard from '../components/dashboard/CommandCenterDashboard';
 import MapSettingsPanel from '../components/map/MapSettingsPanel';
 import RouteBuilderSettings from '../components/map/RouteBuilderSettings';
 import TerritorySetupWizard from '../components/manager/TerritorySetupWizard';
-import { LayoutDashboard, Settings, Crosshair } from 'lucide-react';
-import { openInMaps } from '../components/logic/navigation';
-import GpsTracker, { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../components/map/GpsTracker';
-import QuickMarkButtons from '../components/rep/QuickMarkButtons';
-import PropertyHistory from '../components/rep/PropertyHistory';
+import { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../components/map/GpsTracker';
 import ManagerPropertyDetailSheet from '../components/map/ManagerPropertyDetailSheet';
 import MapDrawTool from '../components/map/MapDrawTool';
 import ManagerMapLayers from '../components/map/ManagerMapLayers';
@@ -107,7 +70,7 @@ const LINE_DASH_MAP = {
 
 const ROUTE_COLORS = ['#FFD700', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#f97316', '#a855f7'];
 
-import { LocationMarker, MapRefHandler, MapController } from '../components/map/MapHelpers';
+import { LocationMarker, MapController } from '../components/map/MapHelpers';
 
 
 
@@ -1047,9 +1010,19 @@ export default function Home() {
             setShowCompare(true);
 
             if (mapRef.current && workingSet.length > 0) {
-                const bounds = L.latLngBounds(workingSet.map(p => [p.lat, p.lng]));
-                if (bounds.isValid()) {
-                    try { if (mapRef.current._mapPane) mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 }); } catch (e) { }
+                let minLng = 180, maxLng = -180, minLat = 90, maxLat = -90;
+                let valid = false;
+                for (const p of workingSet) {
+                    if (p.lat !== undefined && p.lng !== undefined) {
+                        if (p.lat < minLat) minLat = p.lat;
+                        if (p.lat > maxLat) maxLat = p.lat;
+                        if (p.lng < minLng) minLng = p.lng;
+                        if (p.lng > maxLng) maxLng = p.lng;
+                        valid = true;
+                    }
+                }
+                if (valid) {
+                    try { mapRef.current.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 50, maxZoom: 16 }); } catch (e) { }
                 }
             }
 
@@ -1158,9 +1131,19 @@ export default function Home() {
     const hasCenteredRef = useRef(false);
     useEffect(() => {
         if (availableProperties.length > 0 && !hasCenteredRef.current && mapRef.current) {
-            const bounds = L.latLngBounds(availableProperties.slice(0, 1000).map(p => [p.lat, p.lng]));
-            if (bounds.isValid()) {
-                try { if (mapRef.current._mapPane) mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false }); } catch (e) { }
+            let minLng = 180, maxLng = -180, minLat = 90, maxLat = -90;
+            let valid = false;
+            for (const p of availableProperties.slice(0, 1000)) {
+                if (p.lat !== undefined && p.lng !== undefined) {
+                    if (p.lat < minLat) minLat = p.lat;
+                    if (p.lat > maxLat) maxLat = p.lat;
+                    if (p.lng < minLng) minLng = p.lng;
+                    if (p.lng > maxLng) maxLng = p.lng;
+                    valid = true;
+                }
+            }
+            if (valid) {
+                try { mapRef.current.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 50, maxZoom: 16, duration: 0 }); } catch (e) { }
                 hasCenteredRef.current = true;
             }
         }
@@ -1248,36 +1231,55 @@ export default function Home() {
     return (
         <div className="h-full relative" style={{ background: BRAND.voidBlack }}>
             {/* Map */}
-            <MapContainer
-                center={center}
-                zoom={15}
-                style={{ height: '100%', width: '100%' }}
-                zoomControl={false}
-                attributionControl={false}
-                preferCanvas={true}
+            <Map
+                ref={mapRef}
+                initialViewState={{
+                    longitude: center[1],
+                    latitude: center[0],
+                    zoom: 15
+                }}
+                mapStyle={{
+                    version: 8,
+                    sources: {
+                        'raster-tiles': {
+                            type: 'raster',
+                            tiles: [
+                                mapTheme === 'satellite' || mapTheme === 'hybrid'
+                                    ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                                    : mapTheme === 'light'
+                                        ? "https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
+                                        : "https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
+                            ],
+                            tileSize: 256,
+                            attribution: mapTheme === 'satellite' || mapTheme === 'hybrid' ? '&copy; Esri' : '&copy; CARTO'
+                        },
+                        ...(mapTheme === 'hybrid' || mapTheme === 'satellite' ? {
+                            'raster-labels': {
+                                type: 'raster',
+                                tiles: ["https://basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png"],
+                                tileSize: 256
+                            }
+                        } : {})
+                    },
+                    layers: [
+                        {
+                            id: 'simple-tiles',
+                            type: 'raster',
+                            source: 'raster-tiles',
+                            minzoom: 0,
+                            maxzoom: 22
+                        },
+                        ...(mapTheme === 'hybrid' || mapTheme === 'satellite' ? [{
+                            id: 'simple-labels',
+                            type: 'raster',
+                            source: 'raster-labels',
+                            minzoom: 0,
+                            maxzoom: 22
+                        }] : [])
+                    ]
+                }}
+                style={{ width: '100%', height: '100%' }}
             >
-                <MapRefHandler mapRef={mapRef} />
-                <TileLayer
-                    key={`basemap-${mapTheme}`}
-                    url={
-                        mapTheme === 'satellite'
-                            ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                            : mapTheme === 'hybrid'
-                                ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                                : mapTheme === 'light'
-                                    ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                                    : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                    }
-                    attribution={mapTheme === 'satellite' || mapTheme === 'hybrid' ? '&copy; Esri' : '&copy; CARTO'}
-                />
-                {(mapTheme === 'hybrid' || mapTheme === 'satellite') && (
-                    <TileLayer
-                        key={`basemap-labels-${mapTheme}`}
-                        url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
-                        attribution=""
-                        zIndex={100}
-                    />
-                )}
                 <LocationMarker autoCenter={availableProperties.length === 0} userLocation={userLocation} />
                 <DarkRoomManager />
                 <MapController
@@ -1352,7 +1354,7 @@ export default function Home() {
                     isTracking={gpsTracking}
                     onSelectProperty={setSelectedProperty}
                 />
-            </MapContainer>
+            </Map>
 
             {/* Map UI Overlays extracted to MapToolbar */}
             <MapToolbar

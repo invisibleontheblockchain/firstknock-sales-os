@@ -1,7 +1,8 @@
+// @ts-nocheck
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Map, Upload, Navigation, LogIn, Users, HelpCircle, Sparkles, Smartphone, MoreVertical, LogOut, RefreshCw, User as UserIcon, TrendingUp, Paintbrush, Gift, Calendar } from 'lucide-react';
+import { Map, Upload, LogIn, Users, HelpCircle, Sparkles, Smartphone, MoreVertical, LogOut, RefreshCw, User as UserIcon, TrendingUp, Paintbrush, Gift, Calendar } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -39,10 +40,6 @@ function LayoutInner({ children }) {
     const accentText = contrastText(accent);
     const [showThemePicker, setShowThemePicker] = React.useState(false);
 
-    if (typeof window !== 'undefined' && window.location.pathname === '/login') {
-        window.location.replace('/SignIn');
-        return null;
-    }
 
     const [isOnline, setIsOnline] = React.useState(navigator.onLine);
     React.useEffect(() => {
@@ -77,6 +74,11 @@ function LayoutInner({ children }) {
 
     const queryClient = useQueryClient();
     const { data: user, isLoading } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), retry: false });
+
+    if (typeof window !== 'undefined' && window.location.pathname === '/login') {
+        window.location.replace('/SignIn');
+        return null;
+    }
 
     if (isLoading) {
         return (

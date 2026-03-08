@@ -4,8 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
 import {
-    Navigation, X, BarChart3, User, Shield, MapPin,
-    ArrowRight, Flame, Plus, Clock, CheckCircle2,
+    Navigation, X, BarChart3, User, Shield, MapPin, Flame, Plus, Clock, CheckCircle2,
     AlertCircle, ChevronRight, Zap, Trash2, Scissors
 } from 'lucide-react';
 

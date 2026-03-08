@@ -1,5 +1,4 @@
 import React from 'react';
-import { Database, Lock } from 'lucide-react';
 
 export default function DataStatusIndicator({ user }) {
     const hasPulledData = !!user?.has_pulled_data;

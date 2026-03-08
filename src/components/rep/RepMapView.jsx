@@ -1,30 +1,11 @@
+// @ts-nocheck
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, Tooltip, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-
-// Fix Leaflet unmount error during scroll wheel zoom
-const originalGetMapPanePos = L.Map.prototype._getMapPanePos;
-if (originalGetMapPanePos && !L.Map.prototype._getMapPanePos.isPatched) {
-    L.Map.prototype._getMapPanePos = function () {
-        if (!this._mapPane) return L.point(0, 0);
-        return originalGetMapPanePos.call(this);
-    };
-    L.Map.prototype._getMapPanePos.isPatched = true;
-}
-
-// Fix leaflet fast-unmount/interaction error
-const originalSetPosition = L.DomUtil.setPosition;
-if (originalSetPosition && !L.DomUtil.setPosition.isPatched) {
-    L.DomUtil.setPosition = function (el, point) {
-        if (!el) return;
-        return originalSetPosition.call(this, el, point);
-    };
-    L.DomUtil.setPosition.isPatched = true;
-}
+import { Map, Source, Layer, Marker } from 'react-map-gl/maplibre';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Navigation, X, Locate, ChevronUp, ChevronDown } from 'lucide-react';
+import circle from '@turf/circle';
 
 const BRAND = { gold: '#FFD93D', voidBlack: '#0A0A0F' };
 
@@ -45,32 +26,6 @@ function haversine(lat1, lng1, lat2, lng2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-function MapRefCapture({ mapRef }) {
-    const map = useMap();
-    useEffect(() => {
-        if (mapRef && map) {
-            map.whenReady(() => { mapRef.current = map; });
-        }
-    }, [map, mapRef]);
-    return null;
-}
-
-function GpsLayer({ position, accuracy }) {
-    if (!position) return null;
-    return (
-        <>
-            <Circle center={[position.lat, position.lng]} radius={accuracy}
-                pathOptions={{ fillColor: BRAND.gold, fillOpacity: 0.08, color: BRAND.gold, weight: 1, dashArray: '4,4' }} />
-            <CircleMarker center={[position.lat, position.lng]} radius={10}
-                pathOptions={{ fillColor: BRAND.gold, fillOpacity: 1, color: '#000', weight: 3 }}>
-                <Tooltip permanent direction="top" className="route-number-tooltip">
-                    <span style={{ color: BRAND.gold, fontWeight: '900', fontSize: '10px', textShadow: '0 0 6px #000' }}>YOU</span>
-                </Tooltip>
-            </CircleMarker>
-        </>
-    );
-}
-
 export default function RepMapView({ properties, onSelectProperty, onClose }) {
     const mapRef = useRef(null);
     const [position, setPosition] = useState(null);
@@ -86,11 +41,11 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
 
     const LINE_DASH_MAP = {
         solid: null,
-        dashed: '8,6',
-        dotted: '2,4',
-        dashdot: '10,4,2,4',
+        dashed: [8, 6],
+        dotted: [2, 4],
+        dashdot: [10, 4, 2, 4],
     };
-    const lineDashArray = mapSettings.lineStyle === 'solid' ? undefined : (LINE_DASH_MAP[mapSettings.lineStyle] || '8,6');
+    const lineDashArray = mapSettings.lineStyle === 'solid' ? undefined : (LINE_DASH_MAP[mapSettings.lineStyle] || [8, 6]);
 
     // Live GPS
     useEffect(() => {
@@ -112,12 +67,8 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
     const hasCentered = useRef(false);
     useEffect(() => {
         if (position && mapRef.current && !hasCentered.current) {
-            try {
-                mapRef.current.setView([position.lat, position.lng], 18, { animate: false });
-                hasCentered.current = true;
-            } catch (e) {
-                console.warn('Map not ready yet for setView', e);
-            }
+            mapRef.current.flyTo({ center: [position.lng, position.lat], zoom: 18, animate: false });
+            hasCentered.current = true;
         }
     }, [position]);
 
@@ -137,10 +88,51 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
 
     // Map center fallback
     const center = position
-        ? [position.lat, position.lng]
+        ? { longitude: position.lng, latitude: position.lat }
         : properties?.[0]
-            ? [properties[0].lat, properties[0].lng]
-            : [32.78, -79.93];
+            ? { longitude: properties[0].lng, latitude: properties[0].lat }
+            : { longitude: -79.93, latitude: 32.78 };
+
+    // GeoJSON calculations
+    const accuracyGeoJSON = useMemo(() => {
+        if (!position || !accuracy || accuracy >= 500) return null;
+        return circle([position.lng, position.lat], accuracy, { steps: 64, units: 'meters' });
+    }, [position, accuracy]);
+
+    const lineGeoJSON = useMemo(() => {
+        if (!position || nearbyProps.length === 0) return null;
+        return {
+            type: 'FeatureCollection',
+            features: nearbyProps.slice(0, 3).map(p => ({
+                type: 'Feature',
+                geometry: { type: 'LineString', coordinates: [[position.lng, position.lat], [p.lng, p.lat]] }
+            }))
+        };
+    }, [position, nearbyProps]);
+
+    const routePathGeoJSON = useMemo(() => {
+        if (!properties?.length) return null;
+        return {
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: properties.map(p => [p.lng, p.lat]) }
+        };
+    }, [properties]);
+
+    const propertyMarkersGeoJSON = useMemo(() => {
+        if (!properties?.length) return null;
+        return {
+            type: 'FeatureCollection',
+            features: properties.map((p, idx) => {
+                const isNearby = nearbyProps.some(n => n.address_hash === p.address_hash);
+                const color = STATUS_COLORS[p.effective_status] || '#6b7280';
+                return {
+                    type: 'Feature',
+                    geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+                    properties: { ...p, idx, isNearby, color: idx === 0 ? '#22c55e' : color }
+                };
+            })
+        };
+    }, [properties, nearbyProps]);
 
     return (
         <div className="fixed inset-0 z-50 bg-black flex flex-col">
@@ -157,12 +149,8 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
                 <div className="pointer-events-auto flex gap-2">
                     <Button
                         onClick={() => {
-                            try {
-                                if (position && mapRef.current) {
-                                    mapRef.current.setView([position.lat, position.lng], 18, { animate: true });
-                                }
-                            } catch (e) {
-                                console.warn('Map setView error', e);
+                            if (position && mapRef.current) {
+                                mapRef.current.flyTo({ center: [position.lng, position.lat], zoom: 18 });
                             }
                         }}
                         size="icon"
@@ -174,80 +162,137 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
             </div>
 
             {/* Map */}
-            <div className="flex-1">
-                <MapContainer
-                    center={center}
-                    zoom={18}
+            <div className="flex-1 relative">
+                <Map
+                    ref={mapRef}
+                    initialViewState={{
+                        longitude: center.longitude,
+                        latitude: center.latitude,
+                        zoom: 18
+                    }}
                     style={{ height: '100%', width: '100%' }}
-                    zoomControl={false}
-                    attributionControl={false}
+                    mapStyle={{
+                        version: 8,
+                        sources: {
+                            satellite: {
+                                type: 'raster',
+                                tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+                                tileSize: 256
+                            },
+                            labels: {
+                                type: 'raster',
+                                tiles: ['https://a.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}@2x.png'],
+                                tileSize: 256
+                            }
+                        },
+                        layers: [
+                            { id: 'satellite-layer', type: 'raster', source: 'satellite', minzoom: 0, maxzoom: 22 },
+                            { id: 'labels-layer', type: 'raster', source: 'labels', minzoom: 0, maxzoom: 22 }
+                        ]
+                    }}
+                    interactiveLayerIds={['property-markers']}
+                    onClick={(e) => {
+                        const feature = e.features && e.features[0];
+                        if (feature && feature.source === 'properties' && onSelectProperty) {
+                            onSelectProperty(feature.properties);
+                        }
+                    }}
                 >
-                    <MapRefCapture mapRef={mapRef} />
-                    <TileLayer
-                        url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                        attribution="&copy; Esri"
-                    />
-                    {/* Street labels on top of satellite */}
-                    <TileLayer
-                        url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
-                        attribution=""
-                    />
-
-                    {/* GPS Position */}
-                    <GpsLayer position={position} accuracy={accuracy} />
+                    {/* Route Path (Mail Carrier Style) */}
+                    {routePathGeoJSON && (
+                        <Source id="route-path" type="geojson" data={routePathGeoJSON}>
+                            <Layer
+                                id="route-path-layer"
+                                type="line"
+                                paint={{
+                                    'line-color': BRAND.gold,
+                                    'line-width': mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4,
+                                    'line-opacity': mapSettings.lineOpacity ? Math.max(0.6, mapSettings.lineOpacity) : 0.8,
+                                    'line-dasharray': lineDashArray
+                                }}
+                            />
+                        </Source>
+                    )}
 
                     {/* Lines to nearest 3 */}
-                    {position && nearbyProps.slice(0, 3).map((p, i) => (
-                        <Polyline key={`line-${i}`}
-                            positions={[[position.lat, position.lng], [p.lat, p.lng]]}
-                            pathOptions={{ color: BRAND.gold, weight: 1.5, opacity: 0.4, dashArray: '4,8' }}
-                        />
-                    ))}
+                    {lineGeoJSON && (
+                        <Source id="nearby-lines" type="geojson" data={lineGeoJSON}>
+                            <Layer
+                                id="nearby-lines-layer"
+                                type="line"
+                                paint={{
+                                    'line-color': BRAND.gold,
+                                    'line-width': 1.5,
+                                    'line-opacity': 0.4,
+                                    'line-dasharray': [4, 8]
+                                }}
+                            />
+                        </Source>
+                    )}
 
-                    {/* Route Path (Mail Carrier Style) */}
-                    {properties?.length > 0 && (
-                        <Polyline
-                            positions={properties.map(p => [p.lat, p.lng])}
-                            pathOptions={{ 
-                                color: BRAND.gold, 
-                                weight: mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4, 
-                                opacity: mapSettings.lineOpacity ? Math.max(0.6, mapSettings.lineOpacity) : 0.8,
-                                dashArray: lineDashArray 
-                            }}
-                        />
+                    {/* GPS Accuracy */}
+                    {accuracyGeoJSON && (
+                        <Source id="gps-accuracy" type="geojson" data={accuracyGeoJSON}>
+                            <Layer
+                                id="gps-accuracy-fill"
+                                type="fill"
+                                paint={{ 'fill-color': BRAND.gold, 'fill-opacity': 0.08 }}
+                            />
+                            <Layer
+                                id="gps-accuracy-line"
+                                type="line"
+                                paint={{ 'line-color': BRAND.gold, 'line-width': 1, 'line-dasharray': [4, 4] }}
+                            />
+                        </Source>
+                    )}
+
+                    {/* GPS Position */}
+                    {position && (
+                        <Marker longitude={position.lng} latitude={position.lat} anchor="center">
+                            <div style={{
+                                width: '20px', height: '20px', borderRadius: '50%', backgroundColor: BRAND.gold, border: '3px solid #000',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                            }}>
+                                <div style={{ position: 'absolute', top: '-20px', color: BRAND.gold, fontWeight: '900', fontSize: '10px', textShadow: '0 0 6px #000' }}>
+                                    YOU
+                                </div>
+                            </div>
+                        </Marker>
                     )}
 
                     {/* Property Pins */}
+                    {propertyMarkersGeoJSON && (
+                        <Source id="properties" type="geojson" data={propertyMarkersGeoJSON}>
+                            <Layer
+                                id="property-markers"
+                                type="circle"
+                                paint={{
+                                    'circle-color': ['get', 'color'],
+                                    'circle-radius': ['case', ['get', 'isNearby'], 8, 5],
+                                    'circle-stroke-color': '#ffffff',
+                                    'circle-stroke-width': ['case', ['get', 'isNearby'], 2, 1]
+                                }}
+                            />
+                        </Source>
+                    )}
+
+                    {/* Property Labels */}
                     {properties?.map((p, idx) => {
                         const isNearby = nearbyProps.some(n => n.address_hash === p.address_hash);
-                        const color = STATUS_COLORS[p.effective_status] || '#6b7280';
                         return (
-                            <CircleMarker
-                                key={p.address_hash}
-                                center={[p.lat, p.lng]}
-                                radius={isNearby ? 8 : 5}
-                                eventHandlers={{ click: () => onSelectProperty(p) }}
-                                pathOptions={{
-                                    fillColor: idx === 0 ? '#22c55e' : color,
-                                    fillOpacity: 1,
+                            <Marker key={`label-${p.address_hash}`} longitude={p.lng} latitude={p.lat} anchor="bottom" offset={[0, -5]} style={{pointerEvents:'none'}}>
+                                <span style={{
                                     color: '#fff',
-                                    weight: isNearby ? 2 : 1
-                                }}
-                            >
-                                <Tooltip permanent direction="top" offset={[0, -5]} className="route-number-tooltip">
-                                    <span style={{ 
-                                        color: '#fff', 
-                                        fontSize: isNearby ? '12px' : '10px', 
-                                        fontWeight: 'bold', 
-                                        textShadow: '0 1px 3px #000, 0 0 5px #000' 
-                                    }}>
-                                        {idx + 1}
-                                    </span>
-                                </Tooltip>
-                            </CircleMarker>
-                        );
+                                    fontSize: isNearby ? '12px' : '10px',
+                                    fontWeight: 'bold',
+                                    textShadow: '0 1px 3px #000, 0 0 5px #000'
+                                }}>
+                                    {idx + 1}
+                                </span>
+                            </Marker>
+                        )
                     })}
-                </MapContainer>
+                </Map>
             </div>
 
             {/* Bottom HUD - Nearby Properties */}

@@ -1,39 +1,18 @@
+// @ts-nocheck
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
-import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, CircleMarker, Tooltip, LayerGroup } from 'react-leaflet';
-import { Search, Loader2, Home, MapPin, ArrowLeft, Navigation, Save, CheckCircle2, Download, SlidersHorizontal, ChevronDown, ChevronUp } from 'lucide-react';
+import { Map, Source, Layer, Marker, Popup } from 'react-map-gl/maplibre';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import { Search, Loader2, Home, ArrowLeft, Navigation, Save, SlidersHorizontal, ChevronDown, ChevronUp } from 'lucide-react';
 import { getConnection } from '../components/neonClient';
 import { createPageUrl } from '../utils';
 import { Link, useNavigate } from 'react-router-dom';
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
 import { base44 } from '@/api/base44Client';
 import { toast } from "sonner";
-
-// Fix leaflet marker icons
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
-
-// Component to move map to new center
-function MapMover({ center, zoom, searchId }) {
-  const map = useMap();
-  React.useEffect(() => {
-    if (center && searchId) {
-      map.flyTo(center, zoom || 14);
-    }
-  }, [searchId]);
-  return null;
-}
 
 const ROUTE_COLORS = ['#FFD700', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#f97316', '#a855f7'];
 
@@ -134,11 +113,13 @@ export default function ZipCodeExplorer() {
       setLoading(false);
     }
   };
+  const mapRef = React.useRef(null);
   const [properties, setProperties] = useState([]);
   const [mapCenter, setMapCenter] = useState([39.8283, -98.5795]); // Center of US
   const [mapZoom, setMapZoom] = useState(4);
   const [searchId, setSearchId] = useState(0);
   const [error, setError] = useState(null);
+  const [popupInfo, setPopupInfo] = useState(null);
   const [stats, setStats] = useState(null);
   const [zipColumn, setZipColumn] = useState('zip_code');
 
@@ -267,6 +248,9 @@ export default function ZipCodeExplorer() {
         setMapCenter([avgLat, avgLng]);
         setMapZoom(14);
         setSearchId(prev => prev + 1); // Trigger map move
+        if (mapRef.current) {
+          mapRef.current.flyTo({ center: [avgLng, avgLat], zoom: 14 });
+        }
       } else {
         setError('Properties found but they have no latitude/longitude data.');
       }
@@ -744,89 +728,148 @@ export default function ZipCodeExplorer() {
         )}
 
         <div className="flex-1 relative">
-          <MapContainer
-            center={mapCenter}
-            zoom={mapZoom}
-            className="h-full w-full absolute inset-0"
-            style={{ height: '100%', width: '100%' }}
+          <Map
+            ref={mapRef}
+            initialViewState={{
+              longitude: mapCenter[1],
+              latitude: mapCenter[0],
+              zoom: mapZoom
+            }}
+            mapStyle={{
+              version: 8,
+              sources: {
+                osm: {
+                  type: 'raster',
+                  tiles: ['https://a.tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                  tileSize: 256,
+                }
+              },
+              layers: [{
+                id: 'osm-tiles',
+                type: 'raster',
+                source: 'osm',
+                minzoom: 0,
+                maxzoom: 19
+              }]
+            }}
+            style={{ width: '100%', height: '100%' }}
+            interactiveLayerIds={['base-properties-layer']}
+            onClick={(e) => {
+              const feature = e.features && e.features[0];
+              if (feature && generatedRoutes.length === 0) {
+                setPopupInfo(feature.properties);
+              }
+            }}
+            onMouseEnter={(e) => {
+              if (e.features && e.features.length > 0 && generatedRoutes.length === 0) {
+                e.target.getCanvas().style.cursor = 'pointer';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.target.getCanvas().style.cursor = '';
+            }}
           >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            <MapMover center={mapCenter} zoom={mapZoom} searchId={searchId} />
-
             {/* Properties (Before Generation) */}
             {generatedRoutes.length === 0 && (
-              <LayerGroup>
-                {properties.map((property, idx) => (
-                  <CircleMarker
-                    key={property.address_hash || idx}
-                    center={[property.lat, property.lng]}
-                    radius={6}
-                    pathOptions={{
-                      fillColor: '#3b82f6',
-                      fillOpacity: 0.8,
-                      color: '#1d4ed8',
-                      weight: 2,
-                      stroke: true
-                    }}
-                  >
-                    <Popup>
-                      <div className="text-sm">
-                        <p className="font-bold">{property.address || property.full_address}</p>
-                        <p className="text-xs text-gray-500">{property.city}, {property.state}</p>
-                      </div>
-                    </Popup>
-                  </CircleMarker>
-                ))}
-              </LayerGroup>
+              <Source id="base-properties" type="geojson" data={{
+                type: 'FeatureCollection',
+                features: properties.map(p => ({
+                  type: 'Feature',
+                  geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+                  properties: { ...p, address_hash: p.address_hash || p.id }
+                }))
+              }}>
+                <Layer
+                  id="base-properties-layer"
+                  type="circle"
+                  paint={{
+                    'circle-color': '#3b82f6',
+                    'circle-radius': 6,
+                    'circle-stroke-color': '#1d4ed8',
+                    'circle-stroke-width': 2
+                  }}
+                />
+              </Source>
+            )}
+
+            {popupInfo && generatedRoutes.length === 0 && (
+              <Popup
+                longitude={popupInfo.lng}
+                latitude={popupInfo.lat}
+                closeButton={true}
+                closeOnClick={false}
+                onClose={() => setPopupInfo(null)}
+                anchor="bottom"
+              >
+                <div className="text-sm">
+                  <p className="font-bold">{popupInfo.address || popupInfo.full_address}</p>
+                  <p className="text-xs text-gray-500">{popupInfo.city}, {popupInfo.state}</p>
+                </div>
+              </Popup>
             )}
 
             {/* Generated Routes */}
-            <LayerGroup>
-              {generatedRoutes.map((route, rIdx) => {
-                const color = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
-                const isActive = activeRoute === route;
+            {generatedRoutes.length > 0 && (
+              <>
+                {/* Active Route Line */}
+                {activeRoute && (
+                  <Source id="active-route-line" type="geojson" data={{
+                    type: 'Feature',
+                    geometry: {
+                      type: 'LineString',
+                      coordinates: activeRoute.properties.map(p => [p.lng, p.lat])
+                    }
+                  }}>
+                    <Layer
+                      id="active-route-line-layer"
+                      type="line"
+                      paint={{
+                        'line-color': ROUTE_COLORS[generatedRoutes.indexOf(activeRoute) % ROUTE_COLORS.length],
+                        'line-width': 3,
+                        'line-opacity': 0.8,
+                        'line-dasharray': [5, 5]
+                      }}
+                    />
+                  </Source>
+                )}
 
-                return (
-                  <React.Fragment key={rIdx}>
-                    {/* Route Path (only if active) */}
-                    {isActive && (
-                      <Polyline
-                        positions={route.properties.map(p => [p.lat, p.lng])}
-                        pathOptions={{ color: color, weight: 3, opacity: 0.8, dashArray: '5, 10' }}
-                      />
-                    )}
+                {/* All Generated Route Points */}
+                <Source id="generated-route-points" type="geojson" data={{
+                  type: 'FeatureCollection',
+                  features: generatedRoutes.flatMap((route, rIdx) => {
+                    const color = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
+                    const isActive = activeRoute === route;
+                    return route.properties.map(p => ({
+                      type: 'Feature',
+                      geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+                      properties: { color, isActive }
+                    }));
+                  })
+                }}>
+                  <Layer
+                    id="generated-route-points-layer"
+                    type="circle"
+                    paint={{
+                      'circle-color': ['get', 'color'],
+                      'circle-radius': ['case', ['get', 'isActive'], 8, 5],
+                      'circle-stroke-color': '#ffffff',
+                      'circle-stroke-width': 1,
+                      'circle-opacity': ['case', ['get', 'isActive'], 0.9, 0.6]
+                    }}
+                  />
+                </Source>
 
-                    {/* Route Points */}
-                    {route.properties.map((p, pIdx) => (
-                      <CircleMarker
-                        key={`${rIdx}-${pIdx}`}
-                        center={[p.lat, p.lng]}
-                        radius={isActive ? 8 : 5}
-                        eventHandlers={{
-                          click: () => setActiveRoute(route)
-                        }}
-                        pathOptions={{
-                          fillColor: color,
-                          fillOpacity: isActive ? 0.9 : 0.6,
-                          color: 'white',
-                          weight: 1
-                        }}
-                      >
-                        {isActive && (
-                          <Tooltip permanent direction="center" className="bg-transparent border-0 shadow-none text-white font-bold text-[10px]">
-                            {pIdx + 1}
-                          </Tooltip>
-                        )}
-                      </CircleMarker>
-                    ))}
-                  </React.Fragment>
-                );
-              })}
-            </LayerGroup>
-          </MapContainer>
+                {/* Active Route Number Labels */}
+                {activeRoute && activeRoute.properties.map((p, pIdx) => (
+                  <Marker key={`label-${pIdx}`} longitude={p.lng} latitude={p.lat} anchor="center">
+                    <div style={{ pointerEvents: 'none', color: '#fff', fontSize: '10px', fontWeight: 'bold' }}>
+                      {pIdx + 1}
+                    </div>
+                  </Marker>
+                ))}
+              </>
+            )}
+          </Map>
         </div>
       </div>
     </div>

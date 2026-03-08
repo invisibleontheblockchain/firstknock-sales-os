@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { X, Navigation, Camera, Loader2, Phone, Clock, ChevronUp, Mic, Check, Home, Ban, MapPin } from 'lucide-react';
-import { Button } from "@/components/ui/button";
+import { X, Camera, Loader2, Phone, ChevronUp, Check, Home, Ban, MapPin } from 'lucide-react';
 import { format } from 'date-fns';
 import PropertyHistory from './PropertyHistory';
 

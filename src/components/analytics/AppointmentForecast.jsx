@@ -1,8 +1,7 @@
 import React, { useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { TrendingUp } from 'lucide-react';
-import { format, subDays, addDays, startOfDay, parseISO, differenceInDays } from 'date-fns';
+import { format, subDays, addDays, startOfDay } from 'date-fns';
 
 export default function AppointmentForecast({ appointments }) {
     const { historyData, forecastData, combined, avgDaily, trend } = useMemo(() => {

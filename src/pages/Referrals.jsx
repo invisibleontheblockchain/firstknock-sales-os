@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Copy, DollarSign, Users, Gift, Link as LinkIcon, Share2, TrendingUp, CheckCircle2, Clock, Loader2 } from 'lucide-react';
+import { DollarSign, Gift, Loader2 } from 'lucide-react';
 import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
 import ReferralStats from '../components/referral/ReferralStats';
 import ReferralShareCard from '../components/referral/ReferralShareCard';

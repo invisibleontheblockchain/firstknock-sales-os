@@ -2,11 +2,8 @@ import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Check, Shield, Star, PlayCircle } from 'lucide-react';
-import { Badge } from "@/components/ui/badge";
+import { Check, Star } from 'lucide-react';
 import { toast } from "sonner";
-import { Link } from 'react-router-dom';
-import { createPageUrl } from '@/utils';
 import BetaUsageMeter from '../components/beta/BetaUsageMeter';
 
 const PLANS = [

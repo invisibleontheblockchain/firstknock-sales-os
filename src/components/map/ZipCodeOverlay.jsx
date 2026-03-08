@@ -1,12 +1,13 @@
+// @ts-nocheck
 import React, { useMemo } from 'react';
-import { Polygon, Tooltip } from 'react-leaflet';
+import { Source, Layer, Marker } from 'react-map-gl/maplibre';
 
 /**
  * Draws zip code boundary polygons derived from property locations.
  * Uses convex hull of properties in each zip to approximate boundaries.
  */
 
-// Simple convex hull (Graham scan)
+// Simple convex hull (Graham scan) expecting points as [lng, lat]
 function convexHull(points) {
     if (points.length < 3) return points;
 
@@ -31,7 +32,13 @@ function convexHull(points) {
 
     upper.pop();
     lower.pop();
-    return lower.concat(upper);
+    const hull = lower.concat(upper);
+    
+    // Ensure polygon is closed for GeoJSON
+    if (hull.length > 0) {
+        hull.push([...hull[0]]);
+    }
+    return hull;
 }
 
 const ZIP_COLORS = [
@@ -41,19 +48,21 @@ const ZIP_COLORS = [
 ];
 
 export default function ZipCodeOverlay({ properties = [] }) {
-    const zipPolygons = useMemo(() => {
+    const { geoData, labels } = useMemo(() => {
         // Group properties by zip
         const byZip = {};
         properties.forEach(p => {
             const zip = String(p.zip_code || '').trim().slice(0, 5);
             if (!zip || !p.lat || !p.lng) return;
             if (!byZip[zip]) byZip[zip] = [];
-            byZip[zip].push([p.lat, p.lng]);
+            byZip[zip].push([p.lng, p.lat]); // Store as [lng, lat] for MapLibre
         });
 
         // Build convex hull for each zip
-        const results = [];
+        const features = [];
+        const labelData = [];
         const zips = Object.keys(byZip).sort();
+        
         zips.forEach((zip, idx) => {
             const pts = byZip[zip];
             if (pts.length < 3) return;
@@ -62,61 +71,81 @@ export default function ZipCodeOverlay({ properties = [] }) {
             if (hull.length < 3) return;
 
             // Compute centroid for label
-            const centLat = pts.reduce((s, p) => s + p[0], 0) / pts.length;
-            const centLng = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+            const centLng = pts.reduce((s, p) => s + p[0], 0) / pts.length;
+            const centLat = pts.reduce((s, p) => s + p[1], 0) / pts.length;
+            const color = ZIP_COLORS[idx % ZIP_COLORS.length];
 
-            results.push({
+            features.push({
+                type: 'Feature',
+                geometry: {
+                    type: 'Polygon',
+                    coordinates: [hull]
+                },
+                properties: { zip, color }
+            });
+
+            labelData.push({
                 zip,
-                hull,
-                center: [centLat, centLng],
+                lng: centLng,
+                lat: centLat,
                 count: pts.length,
-                color: ZIP_COLORS[idx % ZIP_COLORS.length]
+                color
             });
         });
 
-        return results;
+        return { 
+            geoData: { type: 'FeatureCollection', features },
+            labels: labelData
+        };
     }, [properties]);
 
-    if (zipPolygons.length === 0) return null;
+    if (labels.length === 0) return null;
 
     return (
         <>
-            {zipPolygons.map(z => (
-                <Polygon
-                    key={z.zip}
-                    positions={z.hull}
-                    pathOptions={{
-                        color: z.color,
-                        weight: 2,
-                        fillColor: z.color,
-                        fillOpacity: 0.08,
-                        dashArray: '6,4'
+            <Source id="zip-boundaries-source" type="geojson" data={geoData}>
+                <Layer
+                    id="zip-boundaries-fill"
+                    type="fill"
+                    paint={{
+                        'fill-color': ['get', 'color'],
+                        'fill-opacity': 0.08
                     }}
-                >
-                    <Tooltip
-                        permanent
-                        direction="center"
-                        className="zip-label-tooltip"
-                    >
-                        <span style={{
-                            color: z.color,
+                />
+                <Layer
+                    id="zip-boundaries-line"
+                    type="line"
+                    paint={{
+                        'line-color': ['get', 'color'],
+                        'line-width': 2,
+                        'line-dasharray': [3, 2] // approx '6,4'
+                    }}
+                />
+            </Source>
+            
+            {labels.map(l => (
+                <Marker key={`zip-label-${l.zip}`} longitude={l.lng} latitude={l.lat} anchor="center">
+                    <div style={{ textAlign: 'center', pointerEvents: 'none' }}>
+                        <div style={{
+                            color: l.color,
                             fontWeight: 800,
                             fontSize: '13px',
                             textShadow: '0 0 6px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.7)',
-                            letterSpacing: '0.5px'
+                            letterSpacing: '0.5px',
+                            lineHeight: '1.2'
                         }}>
-                            {z.zip}
-                        </span>
-                        <br />
-                        <span style={{
-                            color: '#999',
-                            fontSize: '9px',
-                            fontWeight: 600
+                            {l.zip}
+                        </div>
+                        <div style={{
+                            color: '#e5e5e5',
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            textShadow: '0 1px 2px #000'
                         }}>
-                            {z.count.toLocaleString()} homes
-                        </span>
-                    </Tooltip>
-                </Polygon>
+                            {l.count.toLocaleString()} homes
+                        </div>
+                    </div>
+                </Marker>
             ))}
         </>
     );

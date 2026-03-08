@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useMapEvents, useMap, Polygon, CircleMarker, Tooltip } from 'react-leaflet';
-import L from 'leaflet';
+// @ts-nocheck
+import React, { useState, useEffect, useMemo } from 'react';
+import { useMap, Source, Layer, Marker } from 'react-map-gl/maplibre';
 
 export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPolygon, drawShape = 'circle', drawSizeMiles = 10 }) {
     const [points, setPoints] = useState([]);
-    const map = useMap();
-    const cursorLineRef = useRef(null);
+    const [previewPoints, setPreviewPoints] = useState([]);
+    const { current: map } = useMap();
 
     // Helper: generate shape points around a center
     const generateShape = (centerLatlng, shape, areaSqMiles) => {
@@ -49,8 +49,9 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
         return newPoints;
     };
 
-    // Change cursor when active — do NOT disable dragging (causes frozen map)
+    // Change cursor when active
     useEffect(() => {
+        if (!map) return;
         const container = map.getContainer();
         if (active) {
             container.style.cursor = 'crosshair';
@@ -58,101 +59,159 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
         } else {
             container.style.cursor = '';
             map.doubleClickZoom.enable();
+            setPreviewPoints([]);
         }
         return () => {
-            container.style.cursor = '';
-            map.doubleClickZoom.enable();
+            if (map) {
+                container.style.cursor = '';
+                map.doubleClickZoom.enable();
+            }
         };
     }, [active, map]);
 
-    useMapEvents({
-        click(e) {
-            if (!active) return;
-            const generated = generateShape(e.latlng, drawShape, drawSizeMiles);
+    // Handle map events
+    useEffect(() => {
+        if (!active || !map) return;
+
+        const onClick = (e) => {
+            const latlng = { lat: e.lngLat.lat, lng: e.lngLat.lng };
+            const generated = generateShape(latlng, drawShape, drawSizeMiles);
             setPoints(generated);
             if (onPointsUpdate) {
                 onPointsUpdate(generated);
             }
-            // Auto-confirm: immediately commit the shape so user doesn't need to press confirm
             if (onConfirm) {
                 onConfirm(generated);
             }
-        },
-        mousemove(e) {
-            if (!active) return;
+        };
 
-            // Show preview of the shape that will be dropped
-            const previewPoints = generateShape(e.latlng, drawShape, drawSizeMiles);
+        const onMouseMove = (e) => {
+            const latlng = { lat: e.lngLat.lat, lng: e.lngLat.lng };
+            setPreviewPoints(generateShape(latlng, drawShape, drawSizeMiles));
+        };
 
-            if (!cursorLineRef.current) {
-                cursorLineRef.current = L.polygon(previewPoints, {
-                    color: '#FFD93D',
-                    dashArray: '5,5',
-                    weight: 2,
-                    interactive: false,
-                    fillOpacity: 0.1
-                }).addTo(map);
-            } else {
-                cursorLineRef.current.setLatLngs(previewPoints);
-            }
-        }
-    });
+        map.on('click', onClick);
+        map.on('mousemove', onMouseMove);
+
+        return () => {
+            map.off('click', onClick);
+            map.off('mousemove', onMouseMove);
+        };
+    }, [active, map, drawShape, drawSizeMiles, onPointsUpdate, onConfirm]);
 
     useEffect(() => {
         if (!active) {
             setPoints([]);
-            if (cursorLineRef.current) {
-                try { cursorLineRef.current.remove(); } catch(e) {}
-                cursorLineRef.current = null;
-            }
+            setPreviewPoints([]);
         }
     }, [active]);
 
-    // Cleanup hover preview when unmounted or mode changes
-    useEffect(() => {
-        if (!active && cursorLineRef.current) {
-            cursorLineRef.current.remove();
-            cursorLineRef.current = null;
-        }
-    }, [active, drawShape, drawSizeMiles]);
-
-    useEffect(() => {
-        return () => {
-            if (cursorLineRef.current) {
-                cursorLineRef.current.remove();
-                cursorLineRef.current = null;
-            }
-        };
-    }, []);
-
     const displayPoints = active ? points : (drawnPolygon || []);
+    
+    // Convert to GeoJSON
+    const activePolygonGeoJSON = useMemo(() => {
+        if (displayPoints.length < 3) return null;
+        // Make sure it's closed
+        const coords = displayPoints.map(p => [p.lng, p.lat]);
+        coords.push([...coords[0]]);
+        return {
+            type: 'FeatureCollection',
+            features: [{
+                type: 'Feature',
+                geometry: { type: 'Polygon', coordinates: [coords] },
+                properties: {}
+            }]
+        };
+    }, [displayPoints]);
 
-    if (displayPoints.length === 0) return null;
+    const activePointsGeoJSON = useMemo(() => {
+        if (displayPoints.length === 0) return null;
+        return {
+            type: 'FeatureCollection',
+            features: displayPoints.map(p => ({
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+                properties: {}
+            }))
+        };
+    }, [displayPoints]);
 
-    const getAreaText = () => {
-        return `~${drawSizeMiles} sq mi`;
-    };
+    const previewGeoJSON = useMemo(() => {
+        if (!active || previewPoints.length < 3) return null;
+        const coords = previewPoints.map(p => [p.lng, p.lat]);
+        coords.push([...coords[0]]);
+        return {
+            type: 'FeatureCollection',
+            features: [{
+                type: 'Feature',
+                geometry: { type: 'Polygon', coordinates: [coords] },
+                properties: {}
+            }]
+        };
+    }, [active, previewPoints]);
+
+    // Centroid for label
+    const centroid = useMemo(() => {
+        if (displayPoints.length < 3) return null;
+        const sumLng = displayPoints.reduce((s, p) => s + p.lng, 0);
+        const sumLat = displayPoints.reduce((s, p) => s + p.lat, 0);
+        return { lng: sumLng / displayPoints.length, lat: sumLat / displayPoints.length };
+    }, [displayPoints]);
+
 
     return (
         <>
-            {displayPoints.length > 2 && (
-                <Polygon
-                    positions={displayPoints}
-                    pathOptions={{ fillColor: '#FFD93D', color: '#FFD93D', fillOpacity: 0.2, weight: active ? 0 : 2 }}
-                >
-                    <Tooltip permanent direction="center" className="bg-black/90 text-yellow-400 font-bold text-[10px] border border-yellow-500/50 rounded shadow-xl whitespace-nowrap text-center z-50">
-                        {getAreaText()}
-                    </Tooltip>
-                </Polygon>
+            {/* Draw Polygon Preview Follow Cursor */}
+            {previewGeoJSON && (
+                <Source id="draw-preview" type="geojson" data={previewGeoJSON}>
+                    <Layer
+                        id="draw-preview-fill"
+                        type="fill"
+                        paint={{ 'fill-color': '#FFD93D', 'fill-opacity': 0.1 }}
+                    />
+                    <Layer
+                        id="draw-preview-line"
+                        type="line"
+                        paint={{ 'line-color': '#FFD93D', 'line-width': 2, 'line-dasharray': [5, 5] }}
+                    />
+                </Source>
             )}
-            {displayPoints.map((p, i) => (
-                <CircleMarker
-                    key={i}
-                    center={p}
-                    radius={active ? 4 : 2}
-                    pathOptions={{ color: '#FFD93D', fillColor: '#000', fillOpacity: 1, weight: 1 }}
-                />
-            ))}
+
+            {/* Dropped Polygon */}
+            {activePolygonGeoJSON && (
+                <Source id="draw-active" type="geojson" data={activePolygonGeoJSON}>
+                    <Layer
+                        id="draw-active-fill"
+                        type="fill"
+                        paint={{ 'fill-color': '#FFD93D', 'fill-opacity': 0.2 }}
+                    />
+                    <Layer
+                        id="draw-active-line"
+                        type="line"
+                        paint={{ 'line-color': '#FFD93D', 'line-width': active ? 0 : 2 }}
+                    />
+                </Source>
+            )}
+
+            {/* Polygon Corner Nodes */}
+            {activePointsGeoJSON && (
+                <Source id="draw-active-points" type="geojson" data={activePointsGeoJSON}>
+                    <Layer
+                        id="draw-active-points-layer"
+                        type="circle"
+                        paint={{ 'circle-color': '#000', 'circle-radius': active ? 4 : 2, 'circle-stroke-color': '#FFD93D', 'circle-stroke-width': 1 }}
+                    />
+                </Source>
+            )}
+
+            {/* Label Tooltip */}
+            {centroid && (
+                <Marker longitude={centroid.lng} latitude={centroid.lat} anchor="center">
+                    <div className="bg-black/90 text-yellow-400 font-bold text-[10px] border border-yellow-500/50 rounded shadow-xl whitespace-nowrap text-center px-1.5 py-0.5">
+                        ~{drawSizeMiles} sq mi
+                    </div>
+                </Marker>
+            )}
         </>
     );
 }

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Clock, TrendingUp, Calendar, X } from 'lucide-react';
+import { Clock, TrendingUp, X } from 'lucide-react';
 import { getKnockWindowLabel, getNextBestWindow, getDailySchedule } from '../logic/knockTimeOptimizer';
 
 export default function KnockTimeBanner({ expanded = false, onToggle }) {

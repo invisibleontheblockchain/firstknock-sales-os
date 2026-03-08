@@ -1,5 +1,8 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Toaster } from "@/components/ui/toaster"
+import { setRegridToken } from '@/api/regridClient';
+import maplibregl from 'maplibre-gl';
+import { Protocol } from 'pmtiles';
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import NavigationTracker from '@/lib/NavigationTracker'
@@ -66,6 +69,14 @@ const AuthenticatedApp = () => {
 
 
 function App() {
+  useEffect(() => {
+    setRegridToken(import.meta.env.VITE_REGRID_TOKEN);
+    let protocol = new Protocol();
+    maplibregl.addProtocol("pmtiles", protocol.tile);
+    return () => {
+      maplibregl.removeProtocol("pmtiles");
+    };
+  }, []);
 
   return (
     <AuthProvider>

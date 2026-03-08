@@ -1,6 +1,4 @@
 import React, { useState, useMemo } from 'react';
-import { Slider } from '@/components/ui/slider';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Filter, DollarSign, Calendar, Home, X, ChevronDown, ChevronUp, UserX } from 'lucide-react';
 

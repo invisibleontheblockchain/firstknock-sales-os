@@ -2,13 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import {
-    LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
+import { Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip,
     ResponsiveContainer, Legend, AreaChart, Area, ComposedChart
 } from 'recharts';
-import { TrendingUp, Users, Clock, Zap, AlertCircle, Calendar } from 'lucide-react';
-import { format, parseISO, getHours, getDay } from 'date-fns';
+import { TrendingUp, Users, Clock, Zap, AlertCircle } from 'lucide-react';
+import { format, parseISO, getHours } from 'date-fns';
 
 const BRAND = {
     gold: '#FFD700',

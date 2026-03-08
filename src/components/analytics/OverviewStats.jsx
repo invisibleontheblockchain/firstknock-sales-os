@@ -1,6 +1,6 @@
 import React from 'react';
 import { TrendingUp, TrendingDown, Target, Users, Navigation, MapPin, CheckCircle2, Flame } from 'lucide-react';
-import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
+import { useTheme } from '@/components/theme/ThemeProvider';
 
 function StatCard({ label, value, subValue, icon: Icon, color, trend, featured }) {
     const { accent } = useTheme();

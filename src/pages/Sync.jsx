@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import CsvUploader from '../components/dashboard/CsvUploader';
 import SyncManager from '../components/dashboard/SyncManager';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Database, Upload, Download } from 'lucide-react';
+import { Upload, Download } from 'lucide-react';
 
 export default function SyncPage() {
     // Fetch Logs for SyncManager

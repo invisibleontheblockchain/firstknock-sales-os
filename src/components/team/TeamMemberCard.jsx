@@ -2,13 +2,9 @@ import React from 'react';
 import { useQueryClient, useMutation } from "@tanstack/react-query";
 import { base44 } from '@/api/base44Client';
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
-import { 
-    Map, CheckCircle2, AlertCircle, TrendingUp, 
-    Home, MessageSquare, DollarSign, ChevronRight, Zap, Trash2
+import { TrendingUp, ChevronRight, Zap, Trash2
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from 'react-router-dom';

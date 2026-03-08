@@ -3,7 +3,6 @@ import { motion } from 'framer-motion';
 import { Button } from "@/components/ui/button";
 import { Circle, Square, ArrowRight, Check, Lock, Map as MapIconLucide } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
-import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { Slider } from "@/components/ui/slider";
 

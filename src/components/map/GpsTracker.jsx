@@ -1,7 +1,9 @@
+// @ts-nocheck
 import React, { useState, useEffect, useMemo } from 'react';
-import { useMap, Circle, CircleMarker, Polyline, Tooltip } from 'react-leaflet';
-import { Navigation, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { Source, Layer, Marker } from 'react-map-gl/maplibre';
+import { Navigation, ChevronUp, ChevronDown } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
+import circle from '@turf/circle';
 
 const BRAND = { gold: '#FFD700', voidBlack: '#0A0A0A' };
 
@@ -68,54 +70,99 @@ function useGpsTracker(properties, isTracking) {
 function GpsMapLayer({ properties, isTracking, onSelectProperty }) {
     const { position, accuracy, nearbyProperties } = useGpsTracker(properties, isTracking);
 
+    const accuracyGeoJSON = useMemo(() => {
+        if (!position) return null;
+        if (accuracy && accuracy < 500) {
+            return circle([position.lng, position.lat], accuracy, { steps: 64, units: 'meters' });
+        }
+        return null; // hide if ridiculously large
+    }, [position, accuracy]);
+
+    const lineGeoJSON = useMemo(() => {
+        if (!position || nearbyProperties.length === 0) return null;
+        const features = nearbyProperties.slice(0, 3).map(p => ({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: [[position.lng, position.lat], [p.lng, p.lat]] },
+            properties: {}
+        }));
+        return { type: 'FeatureCollection', features };
+    }, [position, nearbyProperties]);
+
+    const dotsGeoJSON = useMemo(() => {
+        if (nearbyProperties.length === 0) return null;
+        return {
+            type: 'FeatureCollection',
+            features: nearbyProperties.map(p => ({
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+                properties: {
+                    color: STATUS_COLORS[p.effective_status] || '#6b7280'
+                }
+            }))
+        };
+    }, [nearbyProperties]);
+
     if (!position) return null;
 
     return (
         <>
             {/* Accuracy circle */}
-            <Circle
-                center={[position.lat, position.lng]}
-                radius={accuracy}
-                pathOptions={{ fillColor: BRAND.gold, fillOpacity: 0.08, color: BRAND.gold, weight: 1, dashArray: '4,4' }}
-            />
-            {/* GPS dot */}
-            <CircleMarker
-                center={[position.lat, position.lng]}
-                radius={8}
-                pathOptions={{ fillColor: BRAND.gold, fillOpacity: 1, color: '#000', weight: 3 }}
-            >
-                <Tooltip permanent direction="top" className="route-number-tooltip">
-                    <span style={{ color: BRAND.gold, fontWeight: '900', fontSize: '9px', textShadow: '0 0 4px #000' }}>YOU</span>
-                </Tooltip>
-            </CircleMarker>
+            {accuracyGeoJSON && (
+                <Source id="gps-accuracy" type="geojson" data={accuracyGeoJSON}>
+                    <Layer
+                        id="gps-accuracy-fill"
+                        type="fill"
+                        paint={{ 'fill-color': BRAND.gold, 'fill-opacity': 0.08 }}
+                    />
+                    <Layer
+                        id="gps-accuracy-line"
+                        type="line"
+                        paint={{ 'line-color': BRAND.gold, 'line-width': 1, 'line-dasharray': [4, 4] }}
+                    />
+                </Source>
+            )}
+
             {/* Lines to nearby properties */}
-            {nearbyProperties.slice(0, 3).map((p, i) => (
-                <Polyline
-                    key={`gps-line-${p.address_hash}-${i}`}
-                    positions={[[position.lat, position.lng], [p.lat, p.lng]]}
-                    pathOptions={{ color: BRAND.gold, weight: 1, opacity: 0.3, dashArray: '3,6' }}
-                />
-            ))}
+            {lineGeoJSON && (
+                <Source id="gps-lines" type="geojson" data={lineGeoJSON}>
+                    <Layer
+                        id="gps-lines-layer"
+                        type="line"
+                        paint={{ 'line-color': BRAND.gold, 'line-width': 1, 'line-opacity': 0.3, 'line-dasharray': [3, 6] }}
+                    />
+                </Source>
+            )}
+
             {/* Highlight nearby pins */}
+            {dotsGeoJSON && (
+                <Source id="gps-dots" type="geojson" data={dotsGeoJSON}>
+                    <Layer
+                        id="gps-dots-layer"
+                        type="circle"
+                        paint={{ 'circle-color': ['get', 'color'], 'circle-opacity': 0.95, 'circle-radius': 9, 'circle-stroke-width': 2, 'circle-stroke-color': BRAND.gold }}
+                    />
+                </Source>
+            )}
+
+            {/* GPS dot & Nearby Markers */}
+            <Marker longitude={position.lng} latitude={position.lat} anchor="center">
+                <div style={{
+                    width: '16px', height: '16px', borderRadius: '50%', backgroundColor: BRAND.gold, border: '3px solid #000',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                    <div style={{ position: 'absolute', top: '-18px', color: BRAND.gold, fontWeight: '900', fontSize: '9px', textShadow: '0 0 4px #000' }}>
+                        YOU
+                    </div>
+                </div>
+            </Marker>
+
             {nearbyProperties.map((p, i) => (
-                <CircleMarker
-                    key={`nearby-${p.address_hash}-${i}`}
-                    center={[p.lat, p.lng]}
-                    radius={9}
-                    pathOptions={{
-                        fillColor: STATUS_COLORS[p.effective_status] || '#6b7280',
-                        fillOpacity: 0.95,
-                        color: BRAND.gold,
-                        weight: 2
-                    }}
-                    eventHandlers={{ click: () => onSelectProperty(p) }}
-                >
-                    <Tooltip direction="right" className="route-number-tooltip">
-                        <span style={{ color: '#fff', fontSize: '9px', fontWeight: 'bold', textShadow: '0 0 3px #000' }}>
-                            {p.house_number} {p.street_name?.split(' ').slice(0, 2).join(' ')}
-                        </span>
-                    </Tooltip>
-                </CircleMarker>
+                <Marker key={`nearby-${p.address_hash}-${i}`} longitude={p.lng} latitude={p.lat} anchor="center" 
+                    onClick={e => { e.originalEvent.stopPropagation(); onSelectProperty(p); }}>
+                    <div style={{ position: 'absolute', left: '12px', top: '-10px', backgroundColor: 'rgba(0,0,0,0.7)', padding: '2px 4px', borderRadius: '4px', color: '#fff', fontSize: '9px', fontWeight: 'bold', textShadow: '0 0 3px #000', whiteSpace: 'nowrap', pointerEvents: 'none' }}>
+                        {p.house_number} {p.street_name?.split(' ').slice(0, 2).join(' ')}
+                    </div>
+                </Marker>
             ))}
         </>
     );

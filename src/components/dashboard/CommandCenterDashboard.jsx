@@ -1,10 +1,9 @@
 import React, { useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { BarChart, Bar, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid } from 'recharts';
-import { Users, MapPin, TrendingUp, DollarSign, Activity, Target, X, Globe, Calendar } from 'lucide-react';
-import { format, subDays, isAfter, startOfDay, parseISO } from 'date-fns';
+import { XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, CartesianGrid } from 'recharts';
+import { Users, MapPin, TrendingUp, Activity, Target, X, Globe } from 'lucide-react';
+import { format, subDays, parseISO } from 'date-fns';
 
 const COLORS = {
     gold: '#FFD700',
