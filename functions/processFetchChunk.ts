@@ -145,9 +145,8 @@ Deno.serve(async (req) => {
                     latitude: String(latitude), longitude: String(longitude),
                     radius: String(radius), limit: String(LIMIT), offset: String(offset),
                     propertyType: PROPERTY_TYPES,
+                    daysOldMax: String(daysOldMax), // Only pull properties sold within the user's window
                 });
-                // Don't filter by saleDateRange — we want ALL properties in the area
-                // The sold_date tagging happens post-fetch based on monthsBack
                 if (offset === 0 && includeTotal) params.set('includeTotalCount', 'true');
 
                 const url = `${RENTCAST_BASE}/properties?${params}`;
