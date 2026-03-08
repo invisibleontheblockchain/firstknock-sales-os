@@ -115,7 +115,7 @@ Deno.serve(async (req) => {
             }
         } catch (e) { console.warn('Could not fetch user prefs:', e.message); }
         
-        const daysOldMax = monthsBack * 30; // convert months to days for Rentcast filter
+        const daysBack = monthsBack * 30; // convert months to days for Rentcast filter
         const soldCutoff = new Date();
         soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
 
