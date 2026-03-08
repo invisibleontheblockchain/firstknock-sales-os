@@ -54,20 +54,9 @@ export default function RouteBuilderSettings({
     const [activePreset, setActivePreset] = useState(null);
     const [viewMode, setViewMode] = useState('simple'); // 'simple' or 'advanced'
 
-    // Auto-build when panel opens based on saved Map Settings or a one-time flag
+    // Clear any stale auto-build flag — we no longer auto-generate on open
     React.useEffect(() => {
-        try {
-            const pendingOnce = localStorage.getItem('fk_autobuild_next_open') === 'true';
-            if (pendingOnce && !routesGenerating) {
-                localStorage.removeItem('fk_autobuild_next_open');
-                // Delay enough for data to load — only auto-generate if we have a drawn area
-                const timer = setTimeout(() => {
-                    if (onGenerate) onGenerate();
-                }, 800);
-                return () => clearTimeout(timer);
-            }
-        } catch (e) { /* ignore */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        try { localStorage.removeItem('fk_autobuild_next_open'); } catch (e) { /* ignore */ }
     }, []);
 
     // Ensure simple mode has a default soldDateFilter set
