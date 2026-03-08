@@ -170,9 +170,8 @@ function LayoutInner({ children }) {
                 ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
                 ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
 
-                .leaflet-container { background: #0A0A0F !important; }
-                .route-number-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important; }
-                .route-number-tooltip::before { display: none !important; }
+                /* MapLibre GL canvas styling */
+                .maplibregl-map { background: #0A0A0F !important; }
             `}</style>
 
             {/* Header */}

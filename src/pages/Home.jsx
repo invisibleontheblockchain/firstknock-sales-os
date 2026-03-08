@@ -1,33 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Polyline, useMap, Circle, LayerGroup, FeatureGroup, Tooltip } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import Map, { Source, Layer } from 'react-map-gl/maplibre';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import maplibregl from 'maplibre-gl';
+import * as pmtiles from 'pmtiles';
 
-// Fix leaflet marker icons
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
-
-// Fix Leaflet unmount error during scroll wheel zoom
-const originalGetMapPanePos = L.Map.prototype._getMapPanePos;
-if (originalGetMapPanePos) {
-    L.Map.prototype._getMapPanePos = function () {
-        if (!this._mapPane) return L.point(0, 0);
-        return originalGetMapPanePos.call(this);
-    };
-}
-
-// Fix leaflet fast-unmount/interaction error
-const originalSetPosition = L.DomUtil.setPosition;
-if (originalSetPosition) {
-    L.DomUtil.setPosition = function (el, point) {
-        if (!el) return;
-        return originalSetPosition.call(this, el, point);
-    };
-}
+// Register PMTiles protocol for serverless tile hosting (Phase 5)
+const pmtilesProtocol = new pmtiles.Protocol();
+maplibregl.addProtocol('pmtiles', pmtilesProtocol.tile);
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
@@ -363,13 +342,13 @@ export default function Home() {
                 // This ensures we get the data regardless of who created it (e.g. system import)
                 if (user.territory_zip_codes && user.territory_zip_codes.length > 0) {
                     console.log(`[Home] Fetching properties for zips: ${user.territory_zip_codes.join(', ')}`);
-                    
+
                     // Chunk requests to avoid crashing the browser with too many concurrent requests
                     const zips = user.territory_zip_codes;
                     const chunkSize = 5;
                     let totalFetched = 0;
                     const MAX_PROPERTIES = 75000; // Increased limit to support larger drawn areas
-                    
+
                     for (let i = 0; i < zips.length; i += chunkSize) {
                         if (totalFetched >= MAX_PROPERTIES) {
                             console.log(`[Home] Reached max property limit (${MAX_PROPERTIES}), skipping remaining zips.`);
@@ -384,7 +363,7 @@ export default function Home() {
                         items = items.concat(newItems);
                         totalFetched += newItems.length;
                     }
-                    
+
                     if (items.length > MAX_PROPERTIES) {
                         items = items.slice(0, MAX_PROPERTIES);
                     }
@@ -898,7 +877,7 @@ export default function Home() {
             // Combine current available (memoized) with newly fetched dynamic props
             // Need to apply same processing (dedup, assigned filtering) to dynamicProps
             const assignedSet = assignedHashes; // closed over from render
-            
+
             const logsByAddress = new Map();
             logs.forEach(l => {
                 if (!l.address_hash) return;
@@ -1020,10 +999,10 @@ export default function Home() {
             setShowCompare(true);
 
             if (mapRef.current && workingSet.length > 0) {
-                const bounds = L.latLngBounds(workingSet.map(p => [p.lat, p.lng]));
-                if (bounds.isValid()) {
-                    try { if (mapRef.current._mapPane) mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 }); } catch (e) { }
-                }
+                try {
+                    const bounds = workingSet.reduce((b, p) => b.extend([p.lng, p.lat]), new maplibregl.LngLatBounds([workingSet[0].lng, workingSet[0].lat], [workingSet[0].lng, workingSet[0].lat]));
+                    mapRef.current.getMap().fitBounds(bounds, { padding: 50, maxZoom: 16 });
+                } catch (e) { }
             }
 
             // 5. GENERATE ROUTES
@@ -1116,13 +1095,13 @@ export default function Home() {
         if (filteredActiveRoute?.properties?.length > 0) {
             return filteredActiveRoute.properties
                 .filter(p => p && p.lat !== undefined && p.lng !== undefined)
-                .map(p => [p.lat, p.lng]);
+                .map(p => [p.lng, p.lat]);
         }
         if (availableProperties?.length > 0) {
             return availableProperties
                 .slice(0, 1000)
                 .filter(p => p && p.lat !== undefined && p.lng !== undefined)
-                .map(p => [p.lat, p.lng]);
+                .map(p => [p.lng, p.lat]);
         }
         return null;
     }, [filteredActiveRoute, availableProperties]);
@@ -1131,11 +1110,12 @@ export default function Home() {
     const hasCenteredRef = useRef(false);
     useEffect(() => {
         if (availableProperties.length > 0 && !hasCenteredRef.current && mapRef.current) {
-            const bounds = L.latLngBounds(availableProperties.slice(0, 1000).map(p => [p.lat, p.lng]));
-            if (bounds.isValid()) {
-                try { if (mapRef.current._mapPane) mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16, animate: false }); } catch (e) { }
+            try {
+                const props = availableProperties.slice(0, 1000);
+                const bounds = props.reduce((b, p) => b.extend([p.lng, p.lat]), new maplibregl.LngLatBounds([props[0].lng, props[0].lat], [props[0].lng, props[0].lat]));
+                mapRef.current.getMap().fitBounds(bounds, { padding: 50, maxZoom: 16, animate: false });
                 hasCenteredRef.current = true;
-            }
+            } catch (e) { }
         }
     }, [availableProperties]);
 
@@ -1221,36 +1201,24 @@ export default function Home() {
     return (
         <div className="h-full relative" style={{ background: BRAND.voidBlack }}>
             {/* Map */}
-            <MapContainer
-                center={center}
-                zoom={15}
+            <Map
+                ref={mapRef}
+                initialViewState={{
+                    longitude: center[1],
+                    latitude: center[0],
+                    zoom: 15
+                }}
+                mapStyle={
+                    mapTheme === 'satellite' || mapTheme === 'hybrid'
+                        ? "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+                        : mapTheme === 'light'
+                            ? "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+                            : "https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+                }
                 style={{ height: '100%', width: '100%' }}
-                zoomControl={false}
                 attributionControl={false}
-                preferCanvas={true}
             >
                 <MapRefHandler mapRef={mapRef} />
-                <TileLayer
-                    key={`basemap-${mapTheme}`}
-                    url={
-                        mapTheme === 'satellite'
-                            ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                            : mapTheme === 'hybrid'
-                                ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                                : mapTheme === 'light'
-                                    ? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-                                    : "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-                    }
-                    attribution={mapTheme === 'satellite' || mapTheme === 'hybrid' ? '&copy; Esri' : '&copy; CARTO'}
-                />
-                {(mapTheme === 'hybrid' || mapTheme === 'satellite') && (
-                    <TileLayer
-                        key={`basemap-labels-${mapTheme}`}
-                        url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
-                        attribution=""
-                        zIndex={100}
-                    />
-                )}
                 <LocationMarker autoCenter={availableProperties.length === 0} userLocation={userLocation} />
                 <DarkRoomManager />
                 <MapController
@@ -1314,7 +1282,40 @@ export default function Home() {
                     isTracking={gpsTracking}
                     onSelectProperty={setSelectedProperty}
                 />
-            </MapContainer>
+
+                {/* Overture Maps context layer via PMTiles (Phase 5) */}
+                {import.meta.env.VITE_PMTILES_URL && (
+                    <Source
+                        id="overture-buildings"
+                        type="vector"
+                        url={`pmtiles://${import.meta.env.VITE_PMTILES_URL}`}
+                    >
+                        <Layer
+                            id="overture-buildings-fill"
+                            type="fill"
+                            source="overture-buildings"
+                            source-layer="building"
+                            minzoom={13}
+                            paint={{
+                                'fill-color': '#6C5CE7',
+                                'fill-opacity': 0.15,
+                            }}
+                        />
+                        <Layer
+                            id="overture-buildings-outline"
+                            type="line"
+                            source="overture-buildings"
+                            source-layer="building"
+                            minzoom={13}
+                            paint={{
+                                'line-color': '#6C5CE7',
+                                'line-width': 0.5,
+                                'line-opacity': 0.3,
+                            }}
+                        />
+                    </Source>
+                )}
+            </Map>
 
             {/* Map UI Overlays extracted to MapToolbar */}
             <MapToolbar
@@ -1577,8 +1578,8 @@ export default function Home() {
                             } else {
                                 toast.info(res.data.message || "Up to date", { id: toastId });
                             }
-                        } catch (e) { 
-                            toast.error("Sync failed", { id: toastId }); 
+                        } catch (e) {
+                            toast.error("Sync failed", { id: toastId });
                         }
                     }}
                     onClearArea={async () => {

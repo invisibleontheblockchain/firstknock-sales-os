@@ -5,35 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, CircleMarker, Tooltip, LayerGroup } from 'react-leaflet';
-import { Search, Loader2, Home, MapPin, ArrowLeft, Navigation, Save, CheckCircle2, Download, SlidersHorizontal, ChevronDown, ChevronUp } from 'lucide-react';
-import { getConnection } from '../components/neonClient';
-import { createPageUrl } from '../utils';
-import { Link, useNavigate } from 'react-router-dom';
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
-import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
-import { base44 } from '@/api/base44Client';
-import { toast } from "sonner";
-
-// Fix leaflet marker icons
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
-
-// Component to move map to new center
-function MapMover({ center, zoom, searchId }) {
-  const map = useMap();
-  React.useEffect(() => {
-    if (center && searchId) {
-      map.flyTo(center, zoom || 14);
-    }
-  }, [searchId]);
-  return null;
-}
+import Map, { Source, Layer, Popup as MapPopup } from 'react-map-gl/maplibre';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import maplibregl from 'maplibre-gl';
+import { useMemo, useRef } from 'react';
 
 const ROUTE_COLORS = ['#FFD700', '#ec4899', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4', '#f97316', '#a855f7'];
 
@@ -794,7 +769,7 @@ export default function ZipCodeExplorer() {
                     {/* Route Path (only if active) */}
                     {isActive && (
                       <Polyline
-                        positions={route.properties.map(p => [p.lat, p.lng])}
+                        positions={route.properties.map(p => [p.lng, p.lat])}
                         pathOptions={{ color: color, weight: 3, opacity: 0.8, dashArray: '5, 10' }}
                       />
                     )}

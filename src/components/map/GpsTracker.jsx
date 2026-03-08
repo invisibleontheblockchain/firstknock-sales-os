@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useMap, Circle, CircleMarker, Polyline, Tooltip } from 'react-leaflet';
+import { Source, Layer, Marker } from 'react-map-gl/maplibre';
 import { Navigation, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 
@@ -68,54 +68,133 @@ function useGpsTracker(properties, isTracking) {
 function GpsMapLayer({ properties, isTracking, onSelectProperty }) {
     const { position, accuracy, nearbyProperties } = useGpsTracker(properties, isTracking);
 
+    const geojsonData = useMemo(() => {
+        if (!position) return null;
+
+        const features = [];
+        
+        // Lines to nearby properties
+        nearbyProperties.slice(0, 3).forEach((p) => {
+             features.push({
+                 type: 'Feature',
+                 geometry: {
+                     type: 'LineString',
+                     coordinates: [[position.lng, position.lat], [p.lng, p.lat]]
+                 },
+                 properties: {
+                     isGpsLine: true
+                 }
+             });
+        });
+
+        // Nearby pins highlight
+        nearbyProperties.forEach((p, idx) => {
+             features.push({
+                 type: 'Feature',
+                 geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+                 properties: {
+                     isNearbyHighlight: true,
+                     color: STATUS_COLORS[p.effective_status] || '#6b7280',
+                     houseNumber: p.house_number,
+                     streetName: p.street_name?.split(' ').slice(0, 2).join(' ')
+                 }
+             });
+        });
+
+        // Current Location (Accuracy Circle represented as a Point with larger scaled radius)
+        features.push({
+             type: 'Feature',
+             geometry: { type: 'Point', coordinates: [position.lng, position.lat] },
+             properties: {
+                 isAccuracyCircle: true,
+                 accuracyRadius: accuracy // Needs pixel conversion handled in style roughly
+             }
+        });
+
+        return { type: 'FeatureCollection', features };
+    }, [position, nearbyProperties, accuracy]);
+
     if (!position) return null;
 
     return (
         <>
-            {/* Accuracy circle */}
-            <Circle
-                center={[position.lat, position.lng]}
-                radius={accuracy}
-                pathOptions={{ fillColor: BRAND.gold, fillOpacity: 0.08, color: BRAND.gold, weight: 1, dashArray: '4,4' }}
-            />
-            {/* GPS dot */}
-            <CircleMarker
-                center={[position.lat, position.lng]}
-                radius={8}
-                pathOptions={{ fillColor: BRAND.gold, fillOpacity: 1, color: '#000', weight: 3 }}
-            >
-                <Tooltip permanent direction="top" className="route-number-tooltip">
-                    <span style={{ color: BRAND.gold, fontWeight: '900', fontSize: '9px', textShadow: '0 0 4px #000' }}>YOU</span>
-                </Tooltip>
-            </CircleMarker>
-            {/* Lines to nearby properties */}
-            {nearbyProperties.slice(0, 3).map((p, i) => (
-                <Polyline
-                    key={`gps-line-${p.address_hash}-${i}`}
-                    positions={[[position.lat, position.lng], [p.lat, p.lng]]}
-                    pathOptions={{ color: BRAND.gold, weight: 1, opacity: 0.3, dashArray: '3,6' }}
-                />
-            ))}
-            {/* Highlight nearby pins */}
+            <Source id="gps-tracker" type="geojson" data={geojsonData}>
+                 {/* Nearby Lines */}
+                 <Layer 
+                    id="gps-nearby-lines" 
+                    type="line" 
+                    filter={['==', ['get', 'isGpsLine'], true]}
+                    paint={{
+                        'line-color': BRAND.gold,
+                        'line-width': 1,
+                        'line-opacity': 0.3,
+                        'line-dasharray': [3, 6]
+                    }} 
+                 />
+
+                 {/* Accuracy Highlight (Approximation since we cant map meters to pixels easily without Turf.js) */}
+                 <Layer 
+                    id="gps-accuracy-circle" 
+                    type="circle" 
+                    filter={['==', ['get', 'isAccuracyCircle'], true]}
+                    paint={{
+                        'circle-radius': 40, // Base pixel size approximation
+                        'circle-color': BRAND.gold,
+                        'circle-opacity': 0.08,
+                        'circle-stroke-color': BRAND.gold,
+                        'circle-stroke-width': 1,
+                        'circle-stroke-opacity': 0.3
+                    }} 
+                 />
+                 
+                 {/* Nearby Highlights */}
+                 <Layer 
+                     id="gps-nearby-highlights" 
+                     type="circle" 
+                     filter={['==', ['get', 'isNearbyHighlight'], true]}
+                     paint={{
+                         'circle-radius': 9,
+                         'circle-color': ['get', 'color'],
+                         'circle-opacity': 0.95,
+                         'circle-stroke-color': BRAND.gold,
+                         'circle-stroke-width': 2
+                     }} 
+                 />
+
+                 <Layer
+                     id="gps-nearby-labels"
+                     type="symbol"
+                     filter={['==', ['get', 'isNearbyHighlight'], true]}
+                     layout={{
+                         'text-field': ['concat', ['get', 'houseNumber'], ' ', ['get', 'streetName']],
+                         'text-size': 9,
+                         'text-offset': [1, 0], // Offset to right
+                         'text-anchor': 'left',
+                         'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold']
+                     }}
+                     paint={{
+                         'text-color': '#FFFFFF',
+                         'text-halo-color': '#000000',
+                         'text-halo-width': 1
+                     }}
+                 />
+            </Source>
+            
+            {/* YOU dot Marker (Since we want a custom DOM element look) */}
+            <Marker longitude={position.lng} latitude={position.lat} anchor="center">
+                 <div className="relative flex items-center justify-center">
+                      <div className="absolute w-4 h-4 rounded-full border-2 border-black" style={{ backgroundColor: BRAND.gold, zIndex: 2 }}></div>
+                      <div className="absolute -top-4 whitespace-nowrap" style={{ color: BRAND.gold, fontWeight: '900', fontSize: '9px', textShadow: '0 0 4px #000', zIndex: 3 }}>
+                          YOU
+                      </div>
+                 </div>
+            </Marker>
+            
+            {/* Interactive invisible markers over nearby highlights for clicks */}
             {nearbyProperties.map((p, i) => (
-                <CircleMarker
-                    key={`nearby-${p.address_hash}-${i}`}
-                    center={[p.lat, p.lng]}
-                    radius={9}
-                    pathOptions={{
-                        fillColor: STATUS_COLORS[p.effective_status] || '#6b7280',
-                        fillOpacity: 0.95,
-                        color: BRAND.gold,
-                        weight: 2
-                    }}
-                    eventHandlers={{ click: () => onSelectProperty(p) }}
-                >
-                    <Tooltip direction="right" className="route-number-tooltip">
-                        <span style={{ color: '#fff', fontSize: '9px', fontWeight: 'bold', textShadow: '0 0 3px #000' }}>
-                            {p.house_number} {p.street_name?.split(' ').slice(0, 2).join(' ')}
-                        </span>
-                    </Tooltip>
-                </CircleMarker>
+                 <Marker key={`click-${p.address_hash}`} longitude={p.lng} latitude={p.lat} anchor="center" onClick={() => onSelectProperty(p)}>
+                      <div className="w-6 h-6 rounded-full cursor-pointer bg-transparent"></div>
+                 </Marker>
             ))}
         </>
     );

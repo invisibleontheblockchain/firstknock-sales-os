@@ -1,71 +1,79 @@
-import React, { useMemo, useCallback } from 'react';
-import { CircleMarker, Polyline, Circle, LayerGroup, Tooltip, useMap } from 'react-leaflet';
-import L from 'leaflet';
+import React, { useMemo } from 'react';
+import { Source, Layer, Popup } from 'react-map-gl/maplibre';
 import { DarkRoomClient } from '@/components/logic/neonClient';
 
-/**
- * ViewportCulledPins — Performance-optimized property pin layer.
- * Only renders pins within the current map viewport + a small buffer,
- * and caps the maximum rendered pins to prevent browser lag.
- */
-function ViewportCulledPins({
-    viewMode, zoomLevel, activeRoute, mode, showAllProperties,
-    effectiveProperties, assignedHashes, zipCodeFilter, drawnPolygon,
-    soldDateFilter, quickFilter, highlightRecentlySold, pinSize,
-    mapSettings, STATUS_COLORS, setSelectedProperty, isPointInPolygon,
-    subMonths, mapRef
+// Helper to reliably compute dynamic colors for mapbox data driven styling
+const getStatusColor = (statusColorsMap, defaultColor) => {
+    // We create a match expression based on status
+    const stops = [];
+    Object.keys(statusColorsMap).forEach(status => {
+        stops.push(status);
+        stops.push(statusColorsMap[status]);
+    });
+
+    return [
+        'match',
+        ['get', 'effective_status'],
+        ...stops,
+        defaultColor
+    ];
+};
+
+export default function ManagerMapLayers({
+    mode,
+    activeRoute,
+    zoomLevel,
+    viewMode,
+    hydratedSavedRoutes,
+    filteredRoutes,
+    ROUTE_COLORS,
+    effectiveProperties,
+    darkRoomProperties,
+    darkRoomClusters,
+    heatmapData,
+    previewRoute,
+    analyzeZipFilter,
+    quickFilter,
+    zipCodeFilter,
+    soldDateFilter,
+    drawnPolygon,
+    assignedHashes,
+    showAllProperties,
+    showRouteDetails,
+    showRouteLines,
+    highlightRecentlySold,
+    mapSettings,
+    pinSize,
+    STATUS_COLORS,
+    repColors,
+    BRAND,
+    setActiveRoute,
+    setSelectedProperty,
+    mapRef,
+    isPointInPolygon,
+    getHeatColor,
+    parseISO,
+    subMonths,
+    isAfter,
+    darkRoom,
 }) {
-    const map = useMap();
-    const [viewBounds, setViewBounds] = React.useState(null);
-
-    // Listen for map move/zoom to update visible pins
-    React.useEffect(() => {
-        const updateBounds = () => {
-            const b = map.getBounds();
-            setViewBounds({
-                north: b.getNorth(), south: b.getSouth(),
-                east: b.getEast(), west: b.getWest()
-            });
-        };
-        updateBounds(); // initial
-        map.on('moveend', updateBounds);
-        map.on('zoomend', updateBounds);
-        return () => {
-            map.off('moveend', updateBounds);
-            map.off('zoomend', updateBounds);
-        };
-    }, [map]);
-
-    const MAX_VISIBLE_PINS = 5000;
-
-    const visiblePins = useMemo(() => {
-        if (!viewBounds) return [];
-        if (viewMode !== 'pins' || zoomLevel < 13 || activeRoute || !(mode === 'generate' || showAllProperties)) {
-            return [];
+    // --------------------------------------------------------------------------------
+    // 1. FILTER PROPERTIES FOR VIEWPORT CULLING & GEOJSON CONVERSION
+    // --------------------------------------------------------------------------------
+    const pinsGeoJSON = useMemo(() => {
+        if (viewMode !== 'pins' || activeRoute || !(mode === 'generate' || showAllProperties)) {
+            return { type: 'FeatureCollection', features: [] };
         }
 
-        const latBuffer = (viewBounds.north - viewBounds.south) * 0.15;
-        const lngBuffer = (viewBounds.east - viewBounds.west) * 0.15;
-        const north = viewBounds.north + latBuffer;
-        const south = viewBounds.south - latBuffer;
-        const east = viewBounds.east + lngBuffer;
-        const west = viewBounds.west - lngBuffer;
-
-        let filtered = [];
         const targetZips = (mode === 'generate' && zipCodeFilter && zipCodeFilter.trim())
             ? zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean)
             : [];
         const cutoff = soldDateFilter !== null ? subMonths(new Date(), parseInt(soldDateFilter)) : null;
 
+        const features = [];
         for (let i = 0; i < effectiveProperties.length; i++) {
-            if (filtered.length >= MAX_VISIBLE_PINS) break;
-
             const p = effectiveProperties[i];
             if (p.is_dark_room) continue;
-
-            // Viewport culling
-            if (p.lat < south || p.lat > north || p.lng < west || p.lng > east) continue;
-
             if (mode === 'generate' && assignedHashes.has(p.address_hash)) continue;
             if (targetZips.length > 0) {
                 const pZip = String(p.zip_code || '').trim().slice(0, 5);
@@ -84,434 +92,464 @@ function ViewportCulledPins({
                 if (quickFilter === 'sold' && p.effective_status !== 'SOLD' && p.effective_status !== 'QUALIFIED') continue;
                 if (quickFilter === 'rejected' && p.effective_status !== 'HARD_NO') continue;
             }
-            filtered.push(p);
-        }
-        return filtered;
-    }, [viewBounds, viewMode, zoomLevel, activeRoute, mode, showAllProperties, effectiveProperties,
-        assignedHashes, zipCodeFilter, drawnPolygon, soldDateFilter, quickFilter, subMonths, isPointInPolygon]);
 
-    const oneMonthAgo = useMemo(() => subMonths(new Date(), 1), [subMonths]);
+            // Highlight recently sold logic handled gracefully by pushing properties
+            let isRecentlySold = false;
+            if (highlightRecentlySold && p.sold_date) {
+                isRecentlySold = new Date(p.sold_date) > subMonths(new Date(), 1);
+            }
 
-    if (visiblePins.length === 0) return null;
-
-    return (
-        <LayerGroup>
-            {visiblePins.map(p => {
-                let isRecentlySold = false;
-                if (highlightRecentlySold && p.sold_date) {
-                    isRecentlySold = new Date(p.sold_date) > oneMonthAgo;
+            features.push({
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+                properties: {
+                    ...p,
+                    isRecentlySold: isRecentlySold,
+                    isUnvisited: ['ELIGIBLE', 'NO_ANSWER', 'OTHER'].includes(p.effective_status),
+                    label: mapSettings.labelType === 'number' ? p.house_number : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0, 1) : (p.street_name || '').split(' ')[0]
                 }
-                const isUnvisited = ['ELIGIBLE', 'NO_ANSWER', 'OTHER'].includes(p.effective_status);
-                const fillColor = isRecentlySold ? '#FF00FF' : (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER);
+            });
+        }
+        return { type: 'FeatureCollection', features };
+    }, [viewMode, activeRoute, mode, showAllProperties, effectiveProperties, assignedHashes, zipCodeFilter, drawnPolygon, soldDateFilter, quickFilter, subMonths, isPointInPolygon, highlightRecentlySold, mapSettings.labelType]);
 
-                return (
-                    <CircleMarker
-                        key={p.address_hash || p.id}
-                        center={[p.lat, p.lng]}
-                        radius={isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize)}
-                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
-                        pathOptions={{
-                            fillColor,
-                            fillOpacity: isRecentlySold ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
-                            color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
-                            weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth))
-                        }}
-                    />
-                );
-            })}
-        </LayerGroup>
-    );
-}
 
-/**
- * ManagerMapLayers — extracted from Home.jsx
- * Renders all the map data layers: saved routes, generated routes, heatmap,
- * dark room clusters/pins, user property pins, active route, preview route.
- */
-export default function ManagerMapLayers({
-    // Mode & state
-    mode,
-    activeRoute,
-    zoomLevel,
-    viewMode,
+    // --------------------------------------------------------------------------------
+    // 2. SAVED ROUTES GEOJSON CONVERSION
+    // --------------------------------------------------------------------------------
+    const savedRoutesGeoJSON = useMemo(() => {
+        const features = [];
+        const lines = [];
 
-    // Route data
-    hydratedSavedRoutes,
-    filteredRoutes,
-    ROUTE_COLORS,
+        if ((mode === 'analyze' || mode === 'generate') && !activeRoute && hydratedSavedRoutes) {
+            hydratedSavedRoutes
+                .filter(route => {
+                    if (mode === 'generate') return true;
+                    if (analyzeZipFilter === 'all') return true;
+                    return route.properties.some(p => p.zip_code === analyzeZipFilter);
+                })
+                .forEach((route, routeIdx) => {
+                    const repColor = route.assigned_to
+                        ? (repColors[route.assigned_to] || '#3b82f6')
+                        : ROUTE_COLORS[routeIdx % ROUTE_COLORS.length];
 
-    // Property data
-    effectiveProperties,
-    darkRoomProperties,
-    darkRoomClusters,
-    heatmapData,
-    previewRoute,
-
-    // Filters
-    analyzeZipFilter,
-    quickFilter,
-    zipCodeFilter,
-    soldDateFilter,
-    drawnPolygon,
-    assignedHashes,
-    showAllProperties,
-    showRouteDetails,
-    showRouteLines,
-    highlightRecentlySold,
-
-    // Map settings
-    mapSettings,
-    pinSize,
-    lineDashArray,
-    STATUS_COLORS,
-    repColors,
-    BRAND,
-
-    // Handlers
-    setActiveRoute,
-    setSelectedProperty,
-    mapRef,
-
-    // Helpers
-    isPointInPolygon,
-    getHeatColor,
-
-    // Date utils
-    parseISO,
-    subMonths,
-    isAfter,
-
-    // darkRoom instance
-    darkRoom,
-}) {
-    return (
-        <>
-            {/* --- Existing Routes --- */}
-            <LayerGroup>
-                {(mode === 'analyze' || mode === 'generate') && !activeRoute && zoomLevel >= 8 && hydratedSavedRoutes
-                    .filter(route => {
-                        if (mode === 'generate') return true;
-                        if (analyzeZipFilter === 'all') return true;
-                        return route.properties.some(p => p.zip_code === analyzeZipFilter);
-                    })
-                    .map((route, routeIdx) => {
-                        const repColor = route.assigned_to
-                            ? (repColors[route.assigned_to] || '#3b82f6')
-                            : ROUTE_COLORS[routeIdx % ROUTE_COLORS.length];
-
-                        const isUnassigned = !route.assigned_to;
-                        const centerProp = route.properties[Math.floor(route.properties.length / 2)];
-
-                        return (
-                            <React.Fragment key={`saved-group-${route.id}`}>
-                                {centerProp && centerProp.lat && centerProp.lng && (
-                                    <CircleMarker
-                                        center={[centerProp.lat, centerProp.lng]}
-                                        radius={14}
-                                        pathOptions={{ fillColor: 'black', fillOpacity: 0.7, color: repColor, weight: 2 }}
-                                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
-                                    >
-                                        <Tooltip permanent direction="center" className="route-number-tooltip">
-                                            <span style={{ color: repColor, fontWeight: '900', fontSize: '10px' }}>#{routeIdx + 1}</span>
-                                        </Tooltip>
-                                    </CircleMarker>
-                                )}
-
-                                {showRouteDetails && route.properties
-                                    .filter(p => {
-                                        if (!p || p.lat === undefined || p.lng === undefined) return false;
-                                        if (quickFilter === 'all') return true;
-                                        if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
-                                        if (quickFilter === 'sold') return p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED';
-                                        if (quickFilter === 'rejected') return p.effective_status === 'HARD_NO';
-                                        return true;
-                                    })
-                                    .map((p, idx) => (
-                                        <CircleMarker
-                                            key={`saved-${route.id}-${p.address_hash || 'no-hash'}-${idx}`}
-                                            center={[p.lat, p.lng]}
-                                            radius={pinSize}
-                                            eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
-                                            pathOptions={{
-                                                fillColor: repColor,
-                                                fillOpacity: (isUnassigned ? 0.6 : 0.8) * mapSettings.pinOpacity,
-                                                color: mapSettings.fillStyle === 'outline' ? repColor : (mapSettings.pinBorderColor || '#000'),
-                                                weight: mapSettings.fillStyle === 'outline' ? 2 : mapSettings.pinBorderWidth
-                                            }}
-                                        >
-                                            {mapSettings.showLabels && (
-                                                <Tooltip permanent direction="center" className="route-number-tooltip">
-                                                    <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '8px', textShadow: '0 0 3px #000' }}>
-                                                        {mapSettings.labelType === 'number' ? p.house_number : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0, 1) : (p.street_name || '').split(' ')[0]}
-                                                    </span>
-                                                </Tooltip>
-                                            )}
-                                        </CircleMarker>
-                                    ))}
-                                {showRouteLines && route.properties.length > 1 && (
-                                    <Polyline
-                                        positions={route.properties.map(p => [p.lat, p.lng])}
-                                        pathOptions={{ color: repColor, weight: mapSettings.lineWidth, opacity: mapSettings.lineOpacity, dashArray: lineDashArray }}
-                                    />
-                                )}
-                            </React.Fragment>
-                        );
-                    })}
-            </LayerGroup>
-
-            {/* --- GENERATE MODE: New Routes --- */}
-            <LayerGroup>
-                {mode === 'generate' && !activeRoute && filteredRoutes.length > 0 && filteredRoutes.map((route, rIdx) => {
-                    const routeColor = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
+                    const isUnassigned = !route.assigned_to;
                     const centerProp = route.properties[Math.floor(route.properties.length / 2)];
 
-                    return (
-                        <React.Fragment key={`route-group-${route.id}`}>
-                            {centerProp && centerProp.lat && centerProp.lng && (
-                                <CircleMarker
-                                    center={[centerProp.lat, centerProp.lng]}
-                                    radius={16}
-                                    pathOptions={{ fillColor: 'black', fillOpacity: 0.8, color: routeColor, weight: 3 }}
-                                    eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
-                                >
-                                    <Tooltip permanent direction="center" className="route-number-tooltip">
-                                        <span style={{ color: routeColor, fontWeight: '900', fontSize: '14px' }}>#{rIdx + 1}</span>
-                                    </Tooltip>
-                                </CircleMarker>
-                            )}
+                    // Add Route Center Bubble
+                    if (centerProp && centerProp.lat && centerProp.lng && zoomLevel >= 8) {
+                        features.push({
+                            type: 'Feature',
+                            geometry: { type: 'Point', coordinates: [centerProp.lng, centerProp.lat] },
+                            properties: {
+                                isRouteCenter: true,
+                                routeId: route.id,
+                                routeNumber: `#${routeIdx + 1}`,
+                                color: repColor
+                            }
+                        });
+                    }
 
-                            {showRouteDetails && route.properties.filter(p => p && p.lat && p.lng).map((p, idx) => (
-                                <CircleMarker
-                                    key={`generated-${route.id}-${idx}`}
-                                    center={[p.lat, p.lng]}
-                                    radius={pinSize + 1}
-                                    eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
-                                    pathOptions={{
-                                        fillColor: routeColor,
-                                        fillOpacity: 0.6 * mapSettings.pinOpacity,
-                                        color: mapSettings.fillStyle === 'outline' ? routeColor : (mapSettings.pinBorderColor || '#000'),
-                                        weight: mapSettings.pinBorderWidth
-                                    }}
-                                />
-                            ))}
-                            {showRouteLines && route.properties.length > 1 && (
-                                <Polyline
-                                    positions={route.properties.map(p => [p.lat, p.lng])}
-                                    pathOptions={{ color: routeColor, weight: mapSettings.lineWidth, opacity: mapSettings.lineOpacity, dashArray: lineDashArray }}
-                                />
-                            )}
-                        </React.Fragment>
-                    );
-                })}
-            </LayerGroup>
+                    // Add Route Pins
+                    if (showRouteDetails) {
+                        route.properties.forEach((p, idx) => {
+                            features.push({
+                                type: 'Feature',
+                                geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+                                properties: {
+                                    isRoutePin: true,
+                                    routeId: route.id,
+                                    color: repColor,
+                                    isUnassigned: isUnassigned,
+                                    label: mapSettings.labelType === 'number' ? p.house_number : (p.street_name || '').split(' ')[0]
+                                }
+                            });
+                        });
+                    }
 
-            {/* HEATMAP LAYER (Only at Zoom >= 10) */}
-            {viewMode === 'heatmap' && zoomLevel >= 10 && heatmapData.map(cell => (
-                <Circle
-                    key={cell.id}
-                    center={[cell.lat, cell.lng]}
-                    radius={200}
-                    pathOptions={{
-                        fillColor: getHeatColor(cell.avgScore),
-                        fillOpacity: 0.5 + (cell.intensity * 0.3),
-                        color: 'transparent',
-                        weight: 0
+                    // Add Route Line
+                    if (showRouteLines && route.properties.length > 1) {
+                        lines.push({
+                            type: 'Feature',
+                            geometry: {
+                                type: 'LineString',
+                                coordinates: route.properties.map(p => [p.lng, p.lat])
+                            },
+                            properties: {
+                                color: repColor,
+                                routeId: route.id
+                            }
+                        });
+                    }
+                });
+        }
+
+        return {
+            points: { type: 'FeatureCollection', features },
+            lines: { type: 'FeatureCollection', features: lines }
+        };
+    }, [mode, activeRoute, hydratedSavedRoutes, analyzeZipFilter, repColors, ROUTE_COLORS, zoomLevel, showRouteDetails, showRouteLines, mapSettings.labelType]);
+
+
+    // --------------------------------------------------------------------------------
+    // 3. GENERATED ROUTES GEOJSON CONVERSION
+    // --------------------------------------------------------------------------------
+    const generatedRoutesGeoJSON = useMemo(() => {
+        const features = [];
+        const lines = [];
+
+        if (mode === 'generate' && !activeRoute && filteredRoutes.length > 0) {
+            filteredRoutes.forEach((route, rIdx) => {
+                const routeColor = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
+                const centerProp = route.properties[Math.floor(route.properties.length / 2)];
+
+                if (centerProp && centerProp.lat && centerProp.lng) {
+                    features.push({
+                        type: 'Feature',
+                        geometry: { type: 'Point', coordinates: [centerProp.lng, centerProp.lat] },
+                        properties: {
+                            isRouteCenter: true,
+                            routeId: route.id,
+                            routeNumber: `#${rIdx + 1}`,
+                            color: routeColor
+                        }
+                    });
+                }
+
+                if (showRouteDetails) {
+                    route.properties.forEach(p => {
+                        features.push({
+                            type: 'Feature',
+                            geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+                            properties: {
+                                isRoutePin: true,
+                                routeId: route.id,
+                                color: routeColor,
+                            }
+                        });
+                    });
+                }
+
+                if (showRouteLines && route.properties.length > 1) {
+                    lines.push({
+                        type: 'Feature',
+                        geometry: {
+                            type: 'LineString',
+                            coordinates: route.properties.map(p => [p.lng, p.lat])
+                        },
+                        properties: {
+                            color: routeColor,
+                            routeId: route.id
+                        }
+                    });
+                }
+            });
+        }
+
+        return {
+            points: { type: 'FeatureCollection', features },
+            lines: { type: 'FeatureCollection', features: lines }
+        };
+    }, [mode, activeRoute, filteredRoutes, ROUTE_COLORS, showRouteDetails, showRouteLines]);
+
+    // --------------------------------------------------------------------------------
+    // 4. ACTIVE ROUTE GEOJSON CONVERSION
+    // --------------------------------------------------------------------------------
+    const activeRouteGeoJSON = useMemo(() => {
+        if (!activeRoute) return { points: { type: 'FeatureCollection', features: [] }, line: null };
+        const points = [];
+        activeRoute.properties.forEach((p, idx) => {
+            points.push({
+                type: 'Feature',
+                geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+                properties: {
+                    ...p,
+                    index: idx,
+                    color: idx === 0 ? '#22c55e' : '#f97316'
+                }
+            });
+        });
+
+        const line = {
+            type: 'Feature',
+            geometry: {
+                type: 'LineString',
+                coordinates: activeRoute.properties.map(p => [p.lng, p.lat])
+            }
+        };
+
+        return {
+            points: { type: 'FeatureCollection', features: points },
+            line: { type: 'FeatureCollection', features: [line] }
+        };
+    }, [activeRoute]);
+
+
+    // --------------------------------------------------------------------------------
+    // 5. LAYER STYLES
+    // --------------------------------------------------------------------------------
+
+    // Base properties pins
+    const layerStyleProperties = {
+        id: 'user-properties-points',
+        type: 'circle',
+        source: 'user-properties',
+        paint: {
+            'circle-radius': [
+                'case',
+                ['get', 'isRecentlySold'], pinSize + 4,
+                ['get', 'isUnvisited'], Math.max(2, pinSize - 2),
+                pinSize
+            ],
+            'circle-color': [
+                'case',
+                ['get', 'isRecentlySold'], '#FF00FF',
+                getStatusColor(STATUS_COLORS, STATUS_COLORS.OTHER)
+            ],
+            'circle-opacity': [
+                'case',
+                ['get', 'isRecentlySold'], 1,
+                ['get', 'isUnvisited'], 0.3,
+                mode === 'generate' ? 0.9 * mapSettings.pinOpacity : 0.5 * mapSettings.pinOpacity
+            ],
+            'circle-stroke-color': [
+                'case',
+                ['get', 'isRecentlySold'], '#FFFFFF',
+                mapSettings.fillStyle === 'outline' ? getStatusColor(STATUS_COLORS, STATUS_COLORS.OTHER) : (['get', 'isUnvisited'] ? 'transparent' : (mapSettings.pinBorderColor || '#000'))
+            ],
+            'circle-stroke-width': [
+                'case',
+                ['get', 'isRecentlySold'], 2,
+                mapSettings.fillStyle === 'outline' ? 2 : (['get', 'isUnvisited'] ? 0 : mapSettings.pinBorderWidth)
+            ]
+        }
+    };
+
+    return (
+        <>
+            {/* 1. Base Properties */}
+            <Source id="user-properties" type="geojson" data={pinsGeoJSON}>
+                <Layer {...layerStyleProperties} />
+                {mapSettings.showLabels && (
+                    <Layer
+                        id="user-properties-labels"
+                        type="symbol"
+                        source="user-properties"
+                        layout={{
+                            'text-field': ['get', 'label'],
+                            'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
+                            'text-size': 10,
+                            'text-offset': [0, 1.2],
+                            'text-anchor': 'top'
+                        }}
+                        paint={{
+                            'text-color': '#FFFFFF',
+                            'text-halo-color': '#000000',
+                            'text-halo-width': 1
+                        }}
+                    />
+                )}
+            </Source>
+
+            {/* 2. Saved Routes Lines & Points */}
+            <Source id="saved-routes-lines" type="geojson" data={savedRoutesGeoJSON.lines}>
+                <Layer
+                    id="saved-routes-lines-layer"
+                    type="line"
+                    source="saved-routes-lines"
+                    paint={{
+                        'line-color': ['get', 'color'],
+                        'line-width': mapSettings.lineWidth || 3,
+                        'line-opacity': mapSettings.lineOpacity || 0.8,
+                        'line-dasharray': mapSettings.lineStyle === 'solid' ? [1] : [2, 2] // Simplified dash
                     }}
                 />
-            ))}
-
-            {/* DARK ROOM CLUSTER LAYER (Very Low Zoom Only) */}
-            <LayerGroup>
-                {zoomLevel < 10 && darkRoomClusters.map(cluster => (
-                    <CircleMarker
-                        key={cluster.id}
-                        center={[cluster.lat, cluster.lng]}
-                        radius={Math.min(25, 8 + Math.sqrt(cluster.count) * 2)}
-                        eventHandlers={{
-                            click: () => {
-                                if (mapRef.current) {
-                                    try { if (mapRef.current._mapPane) mapRef.current.setView([cluster.lat, cluster.lng], Math.min(zoomLevel + 3, 16)); } catch (e) { }
-                                }
-                            }
-                        }}
-                        pathOptions={{
-                            fillColor: DarkRoomClient.getScoreColor(cluster.avgScore),
-                            fillOpacity: 0.7,
-                            color: '#000',
-                            weight: 2
-                        }}
-                    >
-                        <Tooltip permanent direction="center" className="route-number-tooltip">
-                            <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '10px', textShadow: '0 0 3px #000' }}>
-                                {cluster.count}
-                            </span>
-                        </Tooltip>
-                    </CircleMarker>
-                ))}
-            </LayerGroup>
-
-            {/* DARK ROOM INDIVIDUAL PINS (Zoom 10+) */}
-            <LayerGroup>
-                {zoomLevel >= 10 && darkRoomProperties.map(p => (
-                    <CircleMarker
-                        key={p.id}
-                        center={[p.lat, p.lng]}
-                        radius={5}
-                        eventHandlers={{
-                            click: async (e) => {
-                                L.DomEvent.stopPropagation(e);
-                                const details = await darkRoom.fetchPropertyDetails(p.id);
-                                setSelectedProperty(details || p);
-                            }
-                        }}
-                        pathOptions={{
-                            fillColor: DarkRoomClient.getScoreColor(p.smart_score),
-                            fillOpacity: 0.85,
-                            color: '#000',
-                            weight: 1
-                        }}
-                    />
-                ))}
-            </LayerGroup>
-
-            {/* USER PROPERTIES PIN LAYER */}
-            <ViewportCulledPins
-                viewMode={viewMode}
-                zoomLevel={zoomLevel}
-                activeRoute={activeRoute}
-                mode={mode}
-                showAllProperties={showAllProperties}
-                effectiveProperties={effectiveProperties}
-                assignedHashes={assignedHashes}
-                zipCodeFilter={zipCodeFilter}
-                drawnPolygon={drawnPolygon}
-                soldDateFilter={soldDateFilter}
-                quickFilter={quickFilter}
-                highlightRecentlySold={highlightRecentlySold}
-                pinSize={pinSize}
-                mapSettings={mapSettings}
-                STATUS_COLORS={STATUS_COLORS}
-                setSelectedProperty={setSelectedProperty}
-                isPointInPolygon={isPointInPolygon}
-                subMonths={subMonths}
-                mapRef={mapRef}
-            />
-
-            {/* Legacy pin layer kept as hidden reference — replaced by ViewportCulledPins above */}
-            <LayerGroup>
-                {false && viewMode === 'pins' && zoomLevel >= 13 && !activeRoute && (mode === 'generate' || showAllProperties) && effectiveProperties
-                    .filter(p => !p.is_dark_room)
-                    .filter(p => {
-                        if (mode === 'generate' && assignedHashes.has(p.address_hash)) return false;
-                        if (mode === 'generate' && zipCodeFilter && zipCodeFilter.trim()) {
-                            const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
-                            const pZip = String(p.zip_code || '').trim().slice(0, 5);
-                            if (targetZips.length > 0 && !targetZips.includes(pZip)) return false;
-                        }
-                        if (mode === 'generate' && drawnPolygon && drawnPolygon.length > 2) {
-                            if (!isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon)) return false;
-                        }
-                        if (soldDateFilter !== null) {
-                            if (!p.sold_date) return false;
-                            try {
-                                const date = new Date(p.sold_date);
-                                const cutoff = subMonths(new Date(), parseInt(soldDateFilter));
-                                if (date < cutoff) return false;
-                            } catch (e) { return false; }
-                        }
-                        if (quickFilter === 'all') return true;
-                        if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
-                        if (quickFilter === 'sold') return p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED';
-                        if (quickFilter === 'rejected') return p.effective_status === 'HARD_NO';
-                        return true;
-                    })
-                    .map(p => {
-                        let isRecentlySold = false;
-                        if (highlightRecentlySold && p.sold_date) {
-                            try {
-                                isRecentlySold = new Date(p.sold_date) > subMonths(new Date(), 1);
-                            } catch (e) { }
-                        }
-
-                        const isUnvisited = ['ELIGIBLE', 'NO_ANSWER', 'OTHER'].includes(p.effective_status);
-
-                        return (
-                            <CircleMarker
-                                key={p.address_hash || p.id}
-                                center={[p.lat, p.lng]}
-                                radius={isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize)}
-                                eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
-                                pathOptions={{
-                                    fillColor: isRecentlySold ? '#FF00FF' : (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER),
-                                    fillOpacity: isRecentlySold ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
-                                    color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER) : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
-                                    weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth))
-                                }}
-                            >
-                                {mapSettings.showLabels && (
-                                    <Tooltip permanent direction="center" className="route-number-tooltip">
-                                        <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '8px', textShadow: '0 0 3px #000' }}>
-                                            {mapSettings.labelType === 'number' ? p.house_number : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0, 1) : (p.street_name || '').split(' ')[0]}
-                                        </span>
-                                    </Tooltip>
-                                )}
-                            </CircleMarker>
-                        );
-                    })}
-            </LayerGroup>
-
-            {/* Preview Route (hover/tap from list) */}
-            {previewRoute && !activeRoute && (
-                <Polyline
-                    positions={previewRoute.properties.filter(p => p && p.lat && p.lng).map(p => [p.lat, p.lng])}
-                    pathOptions={{ color: BRAND.gold, weight: 3, opacity: 0.6, dashArray: '5,10' }}
+            </Source>
+            <Source id="saved-routes-points" type="geojson" data={savedRoutesGeoJSON.points}>
+                <Layer
+                    id="saved-routes-points-layer"
+                    type="circle"
+                    source="saved-routes-points"
+                    filter={['==', ['get', 'isRoutePin'], true]}
+                    paint={{
+                        'circle-radius': pinSize,
+                        'circle-color': ['get', 'color'],
+                        'circle-opacity': [
+                            'case',
+                            ['get', 'isUnassigned'], 0.6 * mapSettings.pinOpacity,
+                            0.8 * mapSettings.pinOpacity
+                        ],
+                        'circle-stroke-color': mapSettings.fillStyle === 'outline' ? ['get', 'color'] : (mapSettings.pinBorderColor || '#000'),
+                        'circle-stroke-width': mapSettings.fillStyle === 'outline' ? 2 : mapSettings.pinBorderWidth
+                    }}
                 />
-            )}
+                <Layer
+                    id="saved-routes-centers-layer"
+                    type="circle"
+                    source="saved-routes-points"
+                    filter={['==', ['get', 'isRouteCenter'], true]}
+                    paint={{
+                        'circle-radius': 14,
+                        'circle-color': '#000000',
+                        'circle-opacity': 0.7,
+                        'circle-stroke-color': ['get', 'color'],
+                        'circle-stroke-width': 2
+                    }}
+                />
+                <Layer
+                    id="saved-routes-center-labels"
+                    type="symbol"
+                    source="saved-routes-points"
+                    filter={['==', ['get', 'isRouteCenter'], true]}
+                    layout={{
+                        'text-field': ['get', 'routeNumber'],
+                        'text-size': 10,
+                        'text-allow-overlap': true
+                    }}
+                    paint={{
+                        'text-color': ['get', 'color']
+                    }}
+                />
+            </Source>
 
-            {/* Active Route - Mail Carrier Style */}
+            {/* 3. Generated Routes Lines & Points */}
+            <Source id="generated-routes-lines" type="geojson" data={generatedRoutesGeoJSON.lines}>
+                <Layer
+                    id="generated-routes-lines-layer"
+                    type="line"
+                    source="generated-routes-lines"
+                    paint={{
+                        'line-color': ['get', 'color'],
+                        'line-width': mapSettings.lineWidth || 3,
+                        'line-opacity': mapSettings.lineOpacity || 0.8,
+                        'line-dasharray': mapSettings.lineStyle === 'solid' ? [1] : [2, 2]
+                    }}
+                />
+            </Source>
+            <Source id="generated-routes-points" type="geojson" data={generatedRoutesGeoJSON.points}>
+                <Layer
+                    id="generated-routes-points-layer"
+                    type="circle"
+                    source="generated-routes-points"
+                    filter={['==', ['get', 'isRoutePin'], true]}
+                    paint={{
+                        'circle-radius': pinSize + 1,
+                        'circle-color': ['get', 'color'],
+                        'circle-opacity': 0.6 * mapSettings.pinOpacity,
+                        'circle-stroke-color': mapSettings.fillStyle === 'outline' ? ['get', 'color'] : (mapSettings.pinBorderColor || '#000'),
+                        'circle-stroke-width': mapSettings.pinBorderWidth || 1
+                    }}
+                />
+                <Layer
+                    id="generated-routes-centers-layer"
+                    type="circle"
+                    source="generated-routes-points"
+                    filter={['==', ['get', 'isRouteCenter'], true]}
+                    paint={{
+                        'circle-radius': 16,
+                        'circle-color': '#000000',
+                        'circle-opacity': 0.8,
+                        'circle-stroke-color': ['get', 'color'],
+                        'circle-stroke-width': 3
+                    }}
+                />
+                <Layer
+                    id="generated-routes-center-labels"
+                    type="symbol"
+                    source="generated-routes-points"
+                    filter={['==', ['get', 'isRouteCenter'], true]}
+                    layout={{
+                        'text-field': ['get', 'routeNumber'],
+                        'text-size': 14,
+                        'text-allow-overlap': true
+                    }}
+                    paint={{
+                        'text-color': ['get', 'color']
+                    }}
+                />
+            </Source>
+
+            {/* 4. Active Route Lines & Points */}
             {activeRoute && (
                 <>
-                    <Polyline
-                        positions={activeRoute.properties.filter(p => p && p.lat && p.lng).map(p => [p.lat, p.lng])}
-                        pathOptions={{
-                            color: BRAND.gold,
-                            weight: mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4,
-                            opacity: mapSettings.lineOpacity ? Math.max(0.6, mapSettings.lineOpacity) : 0.8,
-                            dashArray: lineDashArray
-                        }}
-                    />
-                    {activeRoute.properties.map((p, idx) => (
-                        <CircleMarker
-                            key={p.address_hash}
-                            center={[p.lat, p.lng]}
-                            radius={5}
-                            eventHandlers={{
-                                click: (e) => {
-                                    L.DomEvent.stopPropagation(e);
-                                    setSelectedProperty(p);
-                                }
+                    <Source id="active-route-line" type="geojson" data={activeRouteGeoJSON.line}>
+                        <Layer
+                            id="active-route-line-layer"
+                            type="line"
+                            source="active-route-line"
+                            paint={{
+                                'line-color': BRAND.gold,
+                                'line-width': mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4,
+                                'line-opacity': mapSettings.lineOpacity ? Math.max(0.6, mapSettings.lineOpacity) : 0.8,
                             }}
-                            pathOptions={{
-                                fillColor: idx === 0 ? '#22c55e' : '#f97316',
-                                fillOpacity: 1,
-                                color: '#fff',
-                                weight: 1.5
+                        />
+                    </Source>
+                    <Source id="active-route-points" type="geojson" data={activeRouteGeoJSON.points}>
+                        <Layer
+                            id="active-route-points-layer"
+                            type="circle"
+                            source="active-route-points"
+                            paint={{
+                                'circle-radius': 5,
+                                'circle-color': ['get', 'color'],
+                                'circle-opacity': 1,
+                                'circle-stroke-color': '#ffffff',
+                                'circle-stroke-width': 1.5
                             }}
-                        >
-                            <Tooltip permanent direction="top" offset={[0, -6]} className="route-number-tooltip">
-                                <span style={{
-                                    color: '#fff',
-                                    fontWeight: 'bold',
-                                    fontSize: '11px',
-                                    textShadow: '0 1px 3px #000, 0 0 5px #000'
-                                }}>
-                                    {idx + 1}
-                                </span>
-                            </Tooltip>
-                        </CircleMarker>
-                    ))}
+                        />
+                    </Source>
                 </>
             )}
+
+            {/* 5. Draw Polygon (Placeholder / Manual handling) */}
+            {drawnPolygon && drawnPolygon.length > 2 && (
+                <Source id="drawn-polygon-source" type="geojson" data={{
+                    type: 'Feature',
+                    geometry: {
+                        type: 'Polygon',
+                        coordinates: [drawnPolygon.map(p => [p.lng, p.lat])]
+                    }
+                }}>
+                    <Layer
+                        id="drawn-polygon-fill"
+                        type="fill"
+                        paint={{
+                            'fill-color': '#FFD93D',
+                            'fill-opacity': 0.2
+                        }}
+                    />
+                    <Layer
+                        id="drawn-polygon-line"
+                        type="line"
+                        paint={{
+                            'line-color': '#FFD93D',
+                            'line-width': 2
+                        }}
+                    />
+                </Source>
+            )}
+
+            {/* 6. Martin Vector Tiles (Phase 3 Integration) */}
+            <Source
+                id="martin-tiles"
+                type="vector"
+                url={`${import.meta.env.VITE_MARTIN_URL || 'http://localhost:3000'}/public.properties`}
+            >
+                {/* Points */}
+                <Layer
+                    id="martin-points"
+                    type="circle"
+                    source="martin-tiles"
+                    source-layer="public.properties"
+                    paint={{
+                        'circle-radius': 4,
+                        'circle-color': '#6C5CE7',
+                        'circle-stroke-width': 1,
+                        'circle-stroke-color': '#ffffff'
+                    }}
+                />
+            </Source>
         </>
     );
 }
+
