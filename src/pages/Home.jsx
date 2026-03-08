@@ -64,6 +64,9 @@ import MapDrawTool from '../components/map/MapDrawTool';
 import ManagerMapLayers from '../components/map/ManagerMapLayers';
 import MapToolbar from '../components/map/MapToolbar';
 import ZipCodeOverlay from '../components/map/ZipCodeOverlay';
+import ServiceAreaOnboarding from '../components/onboarding/ServiceAreaOnboarding';
+import RouteFilterPanel from '../components/routes/RouteFilterPanel';
+import UpgradePrompt from '../components/upgrade/UpgradePrompt';
 
 // Brand Colors
 const BRAND = {
@@ -184,6 +187,14 @@ export default function Home() {
     const [showMapSettings, setShowMapSettings] = useState(false);
     const [showZipOverlay, setShowZipOverlay] = useState(false);
     const [navigationApp, setNavigationApp] = useState('apple');
+
+    // V2: Upgrade prompt state
+    const [showUpgradePrompt, setShowUpgradePrompt] = useState(false);
+    const [upgradeReason, setUpgradeReason] = useState(null); // 'marks', 'refresh', 'territory'
+    
+    // V2: Route filter panel state
+    const [showRouteFilterPanel, setShowRouteFilterPanel] = useState(false);
+    const [regridFilters, setRegridFilters] = useState({});
 
     // Persisted Map Settings
     const [mapTheme, setMapTheme] = useState(() => localStorage.getItem('fk_mapTheme_v2') || 'satellite');
@@ -857,34 +868,33 @@ export default function Home() {
                 const userGeneratedZips = user?.generated_zip_codes || [];
                 const ungeneratedZips = targetZips.filter(z => !userGeneratedZips.includes(z));
 
-                // If no properties found OR zip not generated yet, pull from RentCast via backend
+                // If no properties found OR zip not generated yet, pull via Regrid V2
                 if (flattened.length === 0 || ungeneratedZips.length > 0) {
-                    const zipsToFetch = ungeneratedZips.length > 0 ? ungeneratedZips : targetZips;
-                    console.log(`[Generate] Need to fetch zips from RentCast: ${zipsToFetch.join(', ')}`);
-                    toast.loading("Pulling property data...", { id: 'fetch-zip' });
+                    console.log(`[Generate] Fetching territory via Regrid V2 pipeline`);
+                    toast.loading("Pulling property data via Regrid...", { id: 'fetch-zip' });
 
-                    for (const zip of zipsToFetch) {
-                        try {
-                            const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zip });
-                            console.log(`[Generate] Fetch result for ${zip}:`, JSON.stringify(res.data));
+                    try {
+                        // Use drawn polygon if available, otherwise construct from territory bounds
+                        const fetchPolygon = drawnPolygon && drawnPolygon.length >= 3 ? drawnPolygon : null;
+                        if (fetchPolygon) {
+                            const res = await base44.functions.invoke('fetchRegridProperties', {
+                                polygon: fetchPolygon,
+                                months_back: 12
+                            });
+                            console.log(`[Generate] Regrid fetch result:`, JSON.stringify(res.data));
                             if (res.data?.error) {
                                 toast.error(res.data.message || res.data.error, { id: 'fetch-zip' });
-                                break;
+                            } else if (res.data?.status === 'started') {
+                                toast.success('Regrid property fetch started!', { id: 'fetch-zip' });
                             }
-                            // Log sold/MLS counts for debugging
-                            if (res.data?.sold_count !== undefined) {
-                                console.log(`[Generate] ${zip}: ${res.data.count} imported, ${res.data.sold_count} sold, ${res.data.mls_count} MLS`);
-                            }
-                        } catch (err) {
-                            console.warn(`Failed to fetch zip ${zip}`, err);
-                            const errData = err?.response?.data;
-                            if (errData?.error) {
-                                toast.error(errData.message || 'Failed to fetch zip data.', { id: 'fetch-zip' });
-                            }
+                        } else {
+                            toast.error('Draw a territory on the map first to fetch properties.', { id: 'fetch-zip' });
                         }
+                    } catch (err) {
+                        console.warn('Failed to fetch via Regrid', err);
+                        toast.error('Failed to fetch property data.', { id: 'fetch-zip' });
                     }
 
-                    // Backend now auto-adds zips to territory_zip_codes, refresh user
                     queryClient.invalidateQueries({ queryKey: ['user'] });
                     toast.success("Data synced!", { id: 'fetch-zip' });
 
@@ -1402,6 +1412,50 @@ export default function Home() {
                 }}
             />
 
+            {/* V2: Service Area Onboarding — first-time user flow */}
+            {!user?.has_pulled_data && !user?.has_defined_market && !activeRoute && !drawingMode && !(drawnPolygon && drawnPolygon.length > 2) && (
+                <ServiceAreaOnboarding
+                    onStartDrawing={(shape) => {
+                        if (shape === null) {
+                            // Cancel / redraw
+                            setDrawingMode(false);
+                            setDrawnPolygon(null);
+                            setDraftPolygon([]);
+                        } else {
+                            setDrawShape(shape);
+                            setDrawingMode(true);
+                        }
+                    }}
+                    onGenerate={(months) => {
+                        setSoldDateFilter(months);
+                        // Trigger fetch via TerritoryPrompt's handleFetchData equivalent
+                        if (drawnPolygon && drawnPolygon.length > 2) {
+                            // Polygon is drawn, trigger the fetch
+                            toast.info(`Pulling ${months} month${months > 1 ? 's' : ''} of leads...`);
+                        }
+                    }}
+                    isDrawing={drawingMode}
+                    hasDrawn={drawnPolygon && drawnPolygon.length > 2}
+                    isGenerating={false}
+                    drawnAreaSqMi={(() => {
+                        if (!drawnPolygon || drawnPolygon.length < 3) return 0;
+                        // Rough area calculation using shoelace formula
+                        let area = 0;
+                        for (let i = 0; i < drawnPolygon.length; i++) {
+                            const j = (i + 1) % drawnPolygon.length;
+                            const latAvg = (drawnPolygon[i].lat + drawnPolygon[j].lat) / 2;
+                            const dlat = (drawnPolygon[j].lat - drawnPolygon[i].lat) * 69.0;
+                            const dlng = (drawnPolygon[j].lng - drawnPolygon[i].lng) * 69.0 * Math.cos(latAvg * Math.PI / 180);
+                            area += drawnPolygon[i].lng * drawnPolygon[j].lat - drawnPolygon[j].lng * drawnPolygon[i].lat;
+                        }
+                        const latMid = drawnPolygon.reduce((s, p) => s + p.lat, 0) / drawnPolygon.length;
+                        const degToMi = 69.0;
+                        const lngToMi = degToMi * Math.cos(latMid * Math.PI / 180);
+                        return Math.abs(area) / 2 * degToMi * lngToMi;
+                    })()}
+                />
+            )}
+
             {/* MarketSetupPrompt removed — onboarding now handled by MarketOnboarding + TerritoryPrompt */}
 
 
@@ -1458,6 +1512,16 @@ export default function Home() {
                     streetCooldownDays={streetCooldownDays}
                     zipCodeFilter={zipCodeFilter}
                     housesPerRoute={housesPerRoute}
+                />
+            )}
+
+            {/* V2: Regrid Route Filter Panel (post-fetch filtering) */}
+            {showRouteFilterPanel && (
+                <RouteFilterPanel
+                    filters={regridFilters}
+                    onFiltersChange={setRegridFilters}
+                    totalCount={effectiveProperties.length}
+                    filteredCount={effectiveProperties.length}
                 />
             )}
 
@@ -1591,20 +1655,24 @@ export default function Home() {
                     onSelectRoute={(route) => { setActiveRoute(route); setShowCompare(false); }}
                     onClose={() => setShowCompare(false)}
                     onForceSync={async () => {
-                        if (!confirm(`Force sync properties for ${zipCodeFilter}?`)) return;
-                        const toastId = toast.loading("Syncing...");
+                        if (!confirm('Force sync properties for your territory?')) return;
+                        const toastId = toast.loading("Syncing via Regrid...");
                         try {
-                            const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zipCodeFilter, force_sync: true });
+                            const fetchPolygon = drawnPolygon && drawnPolygon.length >= 3 ? drawnPolygon : null;
+                            if (!fetchPolygon) {
+                                toast.error('Draw a territory first to sync properties.', { id: toastId });
+                                return;
+                            }
+                            const res = await base44.functions.invoke('fetchRegridProperties', {
+                                polygon: fetchPolygon,
+                                months_back: 12
+                            });
                             if (res.data?.error) {
                                 toast.error(res.data.message || res.data.error, { id: toastId });
                                 return;
                             }
-                            if (res.data.count > 0) {
-                                toast.success(`Synced ${res.data.count} new properties!`, { id: toastId });
-                                queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
-                            } else {
-                                toast.info(res.data.message || "Up to date", { id: toastId });
-                            }
+                            toast.success('Regrid sync started! Data will load in the background.', { id: toastId });
+                            queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
                         } catch (e) { 
                             toast.error("Sync failed", { id: toastId }); 
                         }
@@ -1714,6 +1782,29 @@ export default function Home() {
                 handleLogResult={handleLogResult}
                 toast={toast}
             />
+
+            {/* V2: Upgrade Prompt */}
+            {showUpgradePrompt && (
+                <UpgradePrompt
+                    trigger={upgradeReason}
+                    onDismiss={() => {
+                        setShowUpgradePrompt(false);
+                        setUpgradeReason(null);
+                    }}
+                    onUpgrade={async () => {
+                        try {
+                            const res = await base44.functions.invoke('createCheckoutSession', { plan: 'pro' });
+                            if (res.data?.url) {
+                                window.location.href = res.data.url;
+                            } else {
+                                toast.error('Failed to start checkout');
+                            }
+                        } catch (e) {
+                            toast.error('Checkout failed: ' + e.message);
+                        }
+                    }}
+                />
+            )}
         </div>
     );
 }

@@ -57,13 +57,19 @@ export default function TerritorySetupWizard({ user, onComplete }) {
             for (const zip of zips) {
                 try {
                     toast.loading(`Syncing ${zip}...`, { id: `sync-${zip}` });
-                    const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zip });
+                    // V2: Use fetchRegridProperties with a zip-based query
+                    // The serverless function handles polygon-based queries, but for the setup wizard
+                    // we can still pass zip codes and the backend will geocode them into boundaries
+                    const res = await base44.functions.invoke('fetchRegridProperties', {
+                        zip_code: zip,
+                        months_back: 12
+                    });
                     if (res.data?.error) {
                         toast.error(res.data.message || res.data.error, { id: `sync-${zip}` });
                         hitLimit = true;
                         break;
                     }
-                    toast.success(`${zip}: ${res.data?.count || 'Done'}`, { id: `sync-${zip}` });
+                    toast.success(`${zip}: Fetch started`, { id: `sync-${zip}` });
                 } catch (e) {
                     const errData = e?.response?.data;
                     if (errData?.error?.includes('limit')) {

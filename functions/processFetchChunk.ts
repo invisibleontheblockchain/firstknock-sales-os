@@ -20,10 +20,23 @@ function isPointInPolygon(point, vs) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+async function fetchWithRetry(url, options, maxRetries = 3) {
+    for (let i = 0; i < maxRetries; i++) {
+        const res = await fetch(url, options);
+        if (res.status === 429) {
+            console.warn(`[fetchWithRetry] Rate limit hit. Retrying in ${(i + 1) * 2000}ms...`);
+            await sleep((i + 1) * 2000);
+            continue;
+        }
+        return res;
+    }
+    return fetch(url, options);
+}
+
 // Chunk config — maximum throughput per invocation
 const PAGES_PER_CHUNK = 60;
 const LIMIT = 500;
-const MAX_PARALLEL = 15;
+const MAX_PARALLEL = 5;
 const PROPERTY_TYPES = 'Single Family|Townhouse|Condo|Multi-Family|Manufactured|Apartment|Land';
 
 Deno.serve(async (req) => {
@@ -88,22 +101,7 @@ Deno.serve(async (req) => {
             await base44.asServiceRole.entities.FetchJob.update(jobId, { status: 'running' });
         }
 
-        // Pre-compute H3 cells for polygon filtering
-        let polygonH3Cells = new Set();
-        let useH3Filter = false;
-        if (polygon && polygon.length >= 3) {
-            try {
-                const h3Polygon = polygon.map(p => [p.lat, p.lng]);
-                if (h3Polygon[0][0] !== h3Polygon[h3Polygon.length - 1][0] || h3Polygon[0][1] !== h3Polygon[h3Polygon.length - 1][1]) {
-                    h3Polygon.push([...h3Polygon[0]]);
-                }
-                const cells = polygonToCells(h3Polygon, 9);
-                polygonH3Cells = new Set(cells);
-                useH3Filter = cells.length > 0;
-            } catch (e) {
-                console.warn("[processFetchChunk] H3 failed:", e.message);
-            }
-        }
+        // (H3 mapping has been removed to preserve performance & accuracy of polygon edge bounds.)
 
         // Determine sold cutoff from user's preference (default 12 months)
         let monthsBack = 12;
@@ -115,9 +113,36 @@ Deno.serve(async (req) => {
             }
         } catch (e) { console.warn('Could not fetch user prefs:', e.message); }
         
-        const daysBack = monthsBack * 30; // convert months to days for Rentcast filter
+        let daysBack = 366;
+        if (monthsBack === 3) daysBack = 92;
+        else if (monthsBack === 6) daysBack = 184;
+        else if (monthsBack === 9) daysBack = 275;
+        else if (monthsBack === 12) daysBack = 366;
+        else daysBack = monthsBack * 30; // fallback
         const soldCutoff = new Date();
         soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
+
+        // Date Slicing Initialization
+        let date_slices = data.date_slices || [];
+        let current_slice_index = data.current_slice_index || 0;
+
+        if (!date_slices || date_slices.length === 0) {
+            date_slices = [];
+            let start = 1;
+            while (start <= daysBack) {
+                let end = start + 29; // 30 day chunks
+                if (end > daysBack) end = daysBack;
+                date_slices.push(`${start}:${end}`);
+                start = end + 1;
+            }
+            console.log(`[processFetchChunk] Initialized ${date_slices.length} date slices up to ${daysBack} days.`);
+            
+            // Persist the slices immediately just in case
+            await base44.asServiceRole.entities.FetchJob.update(jobId, { date_slices });
+        }
+
+        const currentSliceRange = date_slices[current_slice_index];
+        console.log(`[processFetchChunk] Active slice ${current_slice_index + 1}/${date_slices.length}: ${currentSliceRange}`);
 
         // =====================================================================
         // FETCH PHASE: Get PAGES_PER_CHUNK pages from RentCast
@@ -145,20 +170,21 @@ Deno.serve(async (req) => {
                     latitude: String(latitude), longitude: String(longitude),
                     radius: String(radius), limit: String(LIMIT), offset: String(offset),
                     propertyType: PROPERTY_TYPES,
-                    saleDateRange: `1:${daysBack}`, // Only pull properties sold within the user's window
                 });
+                
+                params.set('saleDateRange', currentSliceRange);
                 if (offset === 0 && includeTotal) params.set('includeTotalCount', 'true');
-
                 const url = `${RENTCAST_BASE}/properties?${params}`;
+
                 if (offset === 0) console.log(`[processFetchChunk] API URL: ${url}`);
 
-                return fetch(url, {
+                return fetchWithRetry(url, {
                     headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY }
                 }).then(async res => {
                     if (!res.ok) {
                         const errText = await res.text().catch(() => 'no body');
                         console.error(`[processFetchChunk] API error ${res.status} at offset ${offset}: ${errText}`);
-                        return { records: [], total: null };
+                        return { records: [], total: null, failed: true };
                     }
                     const total = res.headers.get('X-Total-Count');
                     const records = await res.json();
@@ -166,7 +192,7 @@ Deno.serve(async (req) => {
                     return { records: Array.isArray(records) ? records : [], total };
                 }).catch(e => {
                     console.error(`[processFetchChunk] Fetch error at offset ${offset}:`, e.message);
-                    return { records: [], total: null };
+                    return { records: [], total: null, failed: true };
                 });
             });
 
@@ -174,6 +200,9 @@ Deno.serve(async (req) => {
             requestCount += results.length;
 
             for (const r of results) {
+                if (r.failed) {
+                    continue; // Skip failed records, do not trigger reachedEnd because it was a failure
+                }
                 if (r.total && !totalExpected) {
                     totalExpected = parseInt(r.total, 10);
                     console.log(`[processFetchChunk] X-Total-Count: ${totalExpected}`);
@@ -183,7 +212,16 @@ Deno.serve(async (req) => {
             }
 
             if (reachedEnd) break;
-            if (i + MAX_PARALLEL < offsets.length) await sleep(50);
+            
+            // Rentcast API Hard Limit Safety Valve
+            // Rentcast refuses pagination past offset 10,000. If we hit this, gracefully conclude.
+            if (offsets[i] + LIMIT >= 10000) {
+                console.warn(`[processFetchChunk] Reached Rentcast hard limit of 10,000 records. Concluding fetch early.`);
+                reachedEnd = true;
+                break;
+            }
+
+            if (i + MAX_PARALLEL < offsets.length) await sleep(250);
 
         }
 
@@ -203,12 +241,6 @@ Deno.serve(async (req) => {
         for (const p of allRaw) {
             if (polygon && polygon.length >= 3) {
                 if (!p.latitude || !p.longitude) continue;
-                if (useH3Filter) {
-                    try {
-                        const cell = latLngToCell(p.latitude, p.longitude, 9);
-                        if (!polygonH3Cells.has(cell)) continue;
-                    } catch (e) { continue; }
-                }
                 if (!isPointInPolygon({ lat: p.latitude, lng: p.longitude }, polygon)) continue;
             }
 
@@ -219,11 +251,13 @@ Deno.serve(async (req) => {
             const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
             const street_name = addressMatch ? addressMatch[2] : (addressLine || "Unknown");
 
-            // Since we filter by daysOldMax, all returned properties are recently sold
+            // All properties returned by saleDateRange are confirmed deed transfers
             let original_status = 'SOLD';
+            let soldDate = p.lastSaleDate || null;
+
             // Double-check with date if available, fall back to ELIGIBLE if clearly old
-            if (p.lastSaleDate) {
-                const saleDate = new Date(p.lastSaleDate);
+            if (soldDate) {
+                const saleDate = new Date(soldDate);
                 if (!isNaN(saleDate) && saleDate <= soldCutoff) {
                     original_status = 'ELIGIBLE'; // older than cutoff, treat as eligible
                 }
@@ -247,7 +281,7 @@ Deno.serve(async (req) => {
                 beds: p.bedrooms || 0, baths: p.bathrooms || 0,
                 sqft: p.squareFootage || 0, lot_size: p.lotSize || 0,
                 year_built: p.yearBuilt || 0, price: p.lastSalePrice || p.price || 0,
-                sold_date: p.lastSaleDate || null, sale_type: 'Market',
+                sold_date: soldDate, sale_type: 'Market',
                 property_type: p.propertyType || 'Single Family',
                 mls_id: p.assessorID || null, url: null
             });
@@ -333,26 +367,45 @@ Deno.serve(async (req) => {
         const newTotalInserted = totalInserted + chunkInserted;
         const newTotalExisted = totalExisted + chunkExisted;
         const newTotalUpdated = totalUpdated + chunkUpdated;
-        const progressPct = totalExpected > 0
-            ? Math.min(99, Math.round((totalFetched / totalExpected) * 100))
-            : (reachedEnd ? 100 : 50);
+        
+        const isSliceDone = reachedEnd || (totalExpected > 0 && totalFetched >= totalExpected);
+        const isFullyDone = isSliceDone && (current_slice_index >= date_slices.length - 1);
+        
+        let nextOffset = newOffset;
+        let nextSliceIndex = current_slice_index;
+        let nextTotalExpected = totalExpected;
+        let nextTotalFetched = totalFetched;
 
-        const isDone = reachedEnd || (totalExpected > 0 && totalFetched >= totalExpected);
+        if (isSliceDone && !isFullyDone) {
+            console.log(`[processFetchChunk] Slice ${current_slice_index + 1}/${date_slices.length} complete. Moving to next slice.`);
+            nextSliceIndex++;
+            nextOffset = 0;
+            nextTotalExpected = 0;
+            nextTotalFetched = 0;
+        }
+
+        // Progress Math
+        const totalSlices = date_slices.length;
+        const completedSlices = current_slice_index;
+        const currentSlicePct = totalExpected > 0 ? Math.min(1, totalFetched / totalExpected) : (reachedEnd ? 1 : 0.5);
+        const overallProgressPct = Math.round(((completedSlices + currentSlicePct) / totalSlices) * 100);
 
         console.log(`[processFetchChunk] Chunk done: inserted=${chunkInserted}, existed=${chunkExisted}, updated=${chunkUpdated}`);
-        console.log(`[processFetchChunk] Totals: fetched=${totalFetched}/${totalExpected}, inserted=${newTotalInserted}, existed=${newTotalExisted}, done=${isDone}`);
+        console.log(`[processFetchChunk] Slice Totals: fetched=${totalFetched}/${totalExpected}, Global Ins/Exist: ${newTotalInserted}/${newTotalExisted}, fullyDone=${isFullyDone}`);
 
-        if (isDone) {
+        if (isFullyDone) {
             await base44.asServiceRole.entities.FetchJob.update(jobId, {
                 status: 'completed',
-                current_offset: newOffset,
-                total_expected: totalExpected,
-                total_fetched: totalFetched,
+                current_offset: nextOffset,
+                total_expected: nextTotalExpected,
+                total_fetched: nextTotalFetched,
                 total_inserted: newTotalInserted,
                 total_existed: newTotalExisted,
                 total_updated: newTotalUpdated,
                 progress_pct: 100,
-                zip_codes_found: zipCodesFound
+                zip_codes_found: zipCodesFound,
+                date_slices: date_slices,
+                current_slice_index: nextSliceIndex
             });
 
             // Update user's territory data
@@ -380,17 +433,19 @@ Deno.serve(async (req) => {
             const nextChunkNumber = (data.chunk_number || 0) + 1;
             await base44.asServiceRole.entities.FetchJob.update(jobId, {
                 status: 'running',
-                current_offset: newOffset,
-                total_expected: totalExpected,
-                total_fetched: totalFetched,
+                current_offset: nextOffset,
+                total_expected: nextTotalExpected,
+                total_fetched: nextTotalFetched,
                 total_inserted: newTotalInserted,
                 total_existed: newTotalExisted,
                 total_updated: newTotalUpdated,
-                progress_pct: progressPct,
+                progress_pct: Math.min(99, overallProgressPct),
                 zip_codes_found: zipCodesFound,
-                chunk_number: nextChunkNumber
+                chunk_number: nextChunkNumber,
+                date_slices: date_slices,
+                current_slice_index: nextSliceIndex
             });
-            console.log(`[processFetchChunk] Chunk #${nextChunkNumber} saved — immediately chaining next chunk`);
+            console.log(`[processFetchChunk] Chunk #${nextChunkNumber} saved (Slice ${nextSliceIndex + 1}/${totalSlices}) — instantly chaining next chunk`);
 
             // IMMEDIATELY chain the next chunk — fire-and-forget, don't wait
             try {
@@ -407,8 +462,8 @@ Deno.serve(async (req) => {
             chunk_fetched: allRaw.length,
             chunk_inserted: chunkInserted,
             chunk_existed: chunkExisted,
-            is_done: isDone,
-            progress_pct: isDone ? 100 : progressPct
+            is_fully_done: isFullyDone,
+            progress_pct: isFullyDone ? 100 : overallProgressPct
         });
 
     } catch (error) {

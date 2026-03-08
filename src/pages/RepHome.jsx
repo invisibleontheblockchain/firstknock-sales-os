@@ -344,7 +344,13 @@ export default function RepHome() {
                 return { ...p, effective_status: status };
             });
 
-        // Optimize sort based on time
+        // Sort by sold_date (newest homeowners first) then optimize by time-of-day
+        props.sort((a, b) => {
+            const dateA = a.sold_date ? new Date(a.sold_date).getTime() : 0;
+            const dateB = b.sold_date ? new Date(b.sold_date).getTime() : 0;
+            return dateB - dateA; // newest first
+        });
+
         return optimizeRouteForTime(props, new Date());
     }, [activeRoute, properties, logs]);
 

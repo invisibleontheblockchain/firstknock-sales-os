@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, Navigation } from 'lucide-react';
+import { Check, Navigation, Clock } from 'lucide-react';
 
 const STATUS_COLORS = {
     ELIGIBLE: '#FFD700',
@@ -10,9 +10,25 @@ const STATUS_COLORS = {
     QUALIFIED: '#3b82f6'
 };
 
+/** Returns { daysAgo, label, color, bgColor } for a sold_date */
+function getRecencyInfo(soldDate) {
+    if (!soldDate) return null;
+    const d = new Date(soldDate);
+    if (isNaN(d.getTime())) return null;
+    const daysAgo = Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24));
+    if (daysAgo < 0) return null;
+
+    if (daysAgo <= 30)  return { daysAgo, label: `${daysAgo}d ago`, color: '#22c55e', bgColor: '#22c55e18' };  // green — hot lead
+    if (daysAgo <= 60)  return { daysAgo, label: `${daysAgo}d ago`, color: '#eab308', bgColor: '#eab30818' };  // yellow — warm
+    if (daysAgo <= 90)  return { daysAgo, label: `${daysAgo}d ago`, color: '#f97316', bgColor: '#f9731618' };  // orange — cooling
+    if (daysAgo <= 180) return { daysAgo, label: `${daysAgo}d ago`, color: '#6b7280', bgColor: '#6b728018' };  // gray — old
+    return { daysAgo, label: `${daysAgo}d ago`, color: '#4b5563', bgColor: '#4b556318' };                      // dark gray — stale
+}
+
 export default function PropertyCard({ property, index, onSelect }) {
     const isDone = property.effective_status !== 'ELIGIBLE' && property.effective_status !== 'CALLBACK';
     const statusColor = STATUS_COLORS[property.effective_status] || '#555';
+    const recency = getRecencyInfo(property.sold_date);
 
     return (
         <button
@@ -36,23 +52,29 @@ export default function PropertyCard({ property, index, onSelect }) {
                 {isDone ? <Check className="w-4 h-4" /> : index + 1}
             </div>
 
-            {/* Address */}
+            {/* Address + Recency */}
             <div className="flex-1 min-w-0 text-left">
                 <p className={`text-[14px] font-bold truncate leading-tight transition-all duration-300 ${isDone ? 'line-through opacity-40 text-gray-500' : 'text-gray-200 group-hover:text-white group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]'}`}>
                     {property.house_number} {property.street_name}
                 </p>
-                {property.city && (
-                    <p className="text-[11px] truncate leading-tight mt-1 text-gray-600 transition-colors duration-300 group-hover:text-gray-400">
-                        {property.city}, {property.state} {property.zip_code}
-                    </p>
-                )}
+                <div className="flex items-center gap-2 mt-1">
+                    {property.city && (
+                        <p className="text-[11px] truncate leading-tight text-gray-600 transition-colors duration-300 group-hover:text-gray-400">
+                            {property.city}, {property.state}
+                        </p>
+                    )}
+                    {recency && !isDone && (
+                        <span
+                            className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-md shrink-0"
+                            style={{ background: recency.bgColor, color: recency.color }}
+                        >
+                            <Clock className="w-2.5 h-2.5" />
+                            {recency.label}
+                        </span>
+                    )}
+                </div>
                 {property.timeScore > 80 && !isDone && (
                     <p className="text-[9px] text-green-500 font-bold mt-0.5">⏰ BEST TIME</p>
-                )}
-                {property.sold_date && (
-                    <p className="text-[10px] text-yellow-500/80 font-medium mt-0.5">
-                        Sold: {new Date(property.sold_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </p>
                 )}
             </div>
 

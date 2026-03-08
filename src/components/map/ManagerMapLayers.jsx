@@ -90,31 +90,37 @@ function ViewportCulledPins({
     }, [viewBounds, viewMode, zoomLevel, activeRoute, mode, showAllProperties, effectiveProperties,
         assignedHashes, zipCodeFilter, drawnPolygon, soldDateFilter, quickFilter, subMonths, isPointInPolygon]);
 
-    const oneMonthAgo = useMemo(() => subMonths(new Date(), 1), [subMonths]);
 
     if (visiblePins.length === 0) return null;
 
     return (
         <LayerGroup>
             {visiblePins.map(p => {
-                let isRecentlySold = false;
-                if (highlightRecentlySold && p.sold_date) {
-                    isRecentlySold = new Date(p.sold_date) > oneMonthAgo;
-                }
                 const isUnvisited = ['ELIGIBLE', 'NO_ANSWER', 'OTHER'].includes(p.effective_status);
-                const fillColor = isRecentlySold ? '#FF00FF' : (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER);
+
+                // Graduated recency coloring (replaces binary magenta highlight)
+                let recencyColor = null;
+                let recencyRadius = 0;
+                if (highlightRecentlySold && p.sold_date) {
+                    const daysAgo = Math.floor((Date.now() - new Date(p.sold_date).getTime()) / (1000 * 60 * 60 * 24));
+                    if (daysAgo >= 0 && daysAgo <= 30)  { recencyColor = '#22c55e'; recencyRadius = 4; } // green — hot
+                    else if (daysAgo <= 60)              { recencyColor = '#eab308'; recencyRadius = 3; } // yellow — warm
+                    else if (daysAgo <= 90)              { recencyColor = '#f97316'; recencyRadius = 2; } // orange — cooling
+                }
+                const isRecent = recencyColor !== null;
+                const fillColor = isRecent ? recencyColor : (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER);
 
                 return (
                     <CircleMarker
                         key={p.address_hash || p.id}
                         center={[p.lat, p.lng]}
-                        radius={isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize)}
+                        radius={isRecent ? pinSize + recencyRadius : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize)}
                         eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
                         pathOptions={{
                             fillColor,
-                            fillOpacity: isRecentlySold ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
-                            color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
-                            weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth))
+                            fillOpacity: isRecent ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
+                            color: isRecent ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
+                            weight: isRecent ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth))
                         }}
                     />
                 );

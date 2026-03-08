@@ -15,28 +15,29 @@ import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 
 // ============================================
-// COST MODEL CONSTANTS
+// COST MODEL CONSTANTS — V2 Regrid Pipeline
 // ============================================
 
-// RentCast API (Updated with overage fees)
-const RENTCAST_PLANS = [
-    { name: 'Developer', calls: 50, price: 0, overage: 0.20 },
-    { name: 'Foundation', calls: 1000, price: 74, overage: 0.06 },
-    { name: 'Growth', calls: 5000, price: 199, overage: 0.03 },
-    { name: 'Scale', calls: 25000, price: 449, overage: 0.015 },
-    { name: 'Enterprise', calls: 50000, price: 899, overage: 0.01 },
-    { name: 'Enterprise+', calls: 200000, price: 3499, overage: 0.005 },
-    { name: 'Custom', calls: 1000000, price: 14999, overage: 0.002 },
+// Regrid API Pricing (estimated tiers based on contract structure)
+const REGRID_PLANS = [
+    { name: 'Standard API', lookups: 5000, price: 99, overage: 0.02 },
+    { name: 'Professional', lookups: 25000, price: 399, overage: 0.015 },
+    { name: 'Enterprise API', lookups: 100000, price: 999, overage: 0.008 },
+    { name: 'Bulk License', lookups: 500000, price: 2499, overage: 0.003 },
+    { name: 'Enterprise Bulk', lookups: 2000000, price: 7999, overage: 0.001 },
 ];
 
-// Average zip codes per user, API calls per zip fetch
-const AVG_ZIPS_PER_USER = 3;
-const API_CALLS_PER_ZIP = 4; // Up to 2000 props per zip (4 × 500)
-const CACHE_HIT_RATE = 0.85; // 85% of zips are re-used (cached in Base44 DB)
+// Regrid Enhanced Ownership add-on (daily-updated owner records via SFTP)
+const REGRID_EO_MONTHLY = 500; // Estimated EO add-on price
+
+// Parcels per territory (polygon-based, not zip-based)
+const AVG_TERRITORIES_PER_MANAGER = 2;
+const AVG_PARCELS_PER_TERRITORY = 3000;
+const CACHE_HIT_RATE = 0.90; // Higher with PostGIS local cache vs API-only
 
 // Base44 Platform
 const BASE44_FREE_TIER = 0;
-const BASE44_PRO = 29; // /mo estimate
+const BASE44_PRO = 29;
 const BASE44_GROWTH = 79;
 const BASE44_ENTERPRISE = 199;
 
@@ -44,15 +45,15 @@ const BASE44_ENTERPRISE = 199;
 const STRIPE_PERCENT = 2.9;
 const STRIPE_FIXED = 0.30;
 
-// App Store Fees (Apple/Google take 30% on in-app purchases, 15% for small business program)
-const APP_STORE_CUT_PERCENT = 30; // Default 30%
-const MOBILE_REVENUE_PERCENT = 0.40; // Estimated 40% of revenue comes through mobile app stores
+// App Store Fees
+const APP_STORE_CUT_PERCENT = 30;
+const MOBILE_REVENUE_PERCENT = 0.40;
 
 // Revenue model
 const BASE_PRICE = 49;
 const DISCOUNT_PER_USER = 1;
 const MIN_PRICE_PER_USER = 20;
-const AVG_TEAM_SIZE = 5; // Average team per paying manager
+const AVG_TEAM_SIZE = 5;
 
 const getPricePerUser = (teamSize) => Math.max(MIN_PRICE_PER_USER, BASE_PRICE - (teamSize - 1) * DISCOUNT_PER_USER);
 
@@ -61,9 +62,8 @@ const getPricePerUser = (teamSize) => Math.max(MIN_PRICE_PER_USER, BASE_PRICE - 
 // ============================================
 const USER_TIERS = [1, 10, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000];
 
-function getRentCastPlan(apiCalls) {
-    // Find the first plan that covers the API calls, or return the largest plan if none fit
-    return RENTCAST_PLANS.find(p => p.calls >= apiCalls) || RENTCAST_PLANS[RENTCAST_PLANS.length - 1];
+function getRegridPlan(lookups) {
+    return REGRID_PLANS.find(p => p.lookups >= lookups) || REGRID_PLANS[REGRID_PLANS.length - 1];
 }
 
 function getBase44Cost(users) {
@@ -74,73 +74,74 @@ function getBase44Cost(users) {
 }
 
 function computeMetrics(users) {
-    // Users are individual reps + managers. Assume 1 manager per AVG_TEAM_SIZE users
     const managers = Math.ceil(users / AVG_TEAM_SIZE);
-    const payingAccounts = managers; // Managers pay
+    const payingAccounts = managers;
 
     // Revenue
     const avgPricePerUser = getPricePerUser(AVG_TEAM_SIZE);
     const monthlyRevenue = payingAccounts * AVG_TEAM_SIZE * avgPricePerUser;
     const annualRevenue = monthlyRevenue * 12;
 
-    // RentCast: Only new zips cost API calls (cache handles the rest)
-    const totalZipsNeeded = managers * AVG_ZIPS_PER_USER;
-    const newZipsPerMonth = Math.ceil(totalZipsNeeded * (1 - CACHE_HIT_RATE)); // Only 15% need fresh API calls after initial
-    const monthlyApiCalls = newZipsPerMonth * API_CALLS_PER_ZIP;
+    // Regrid: Polygon-based queries, cached in PostGIS
+    const totalTerritories = managers * AVG_TERRITORIES_PER_MANAGER;
+    const totalParcels = totalTerritories * AVG_PARCELS_PER_TERRITORY;
+    const newLookupsPerMonth = Math.ceil(totalParcels * (1 - CACHE_HIT_RATE));
+    const monthlyLookups = newLookupsPerMonth;
     
-    const rentCastPlan = getRentCastPlan(monthlyApiCalls);
-    let rentCastCost = rentCastPlan.price;
+    const regridPlan = getRegridPlan(monthlyLookups);
+    let regridCost = regridPlan.price;
     
-    // Add overage if applicable
-    if (monthlyApiCalls > rentCastPlan.calls) {
-        rentCastCost += (monthlyApiCalls - rentCastPlan.calls) * rentCastPlan.overage;
+    if (monthlyLookups > regridPlan.lookups) {
+        regridCost += (monthlyLookups - regridPlan.lookups) * regridPlan.overage;
     }
+
+    // Add EO add-on for larger deployments (daily owner updates)
+    const eoCost = managers >= 10 ? REGRID_EO_MONTHLY : 0;
+    const totalRegridCost = regridCost + eoCost;
 
     // Base44
     const base44Cost = getBase44Cost(users);
 
-    // Stripe: ~2.9% + $0.30 per transaction
-    const monthlyTransactions = payingAccounts; // 1 sub charge per manager/mo
+    // Stripe
+    const monthlyTransactions = payingAccounts;
     const stripeFees = monthlyTransactions * (monthlyRevenue / monthlyTransactions * (STRIPE_PERCENT / 100) + STRIPE_FIXED);
 
-    // App Store Fees: 30% cut on mobile-originated revenue
+    // App Store Fees
     const mobileRevenue = monthlyRevenue * MOBILE_REVENUE_PERCENT;
     const appStoreFees = Math.round(mobileRevenue * (APP_STORE_CUT_PERCENT / 100));
 
-    // Database storage estimate
-    const propertiesPerZip = 1500; // avg
-    const totalProperties = totalZipsNeeded * propertiesPerZip;
-    const avgRecordSizeKb = 0.5; // ~500 bytes per property record
-    const dbSizeGb = (totalProperties * avgRecordSizeKb) / (1024 * 1024);
+    // Data estimates
+    const avgRecordSizeKb = 0.8; // Regrid parcels are richer = slightly larger
+    const dbSizeGb = (totalParcels * avgRecordSizeKb) / (1024 * 1024);
 
-    // Interaction logs (avg 20 logs per user per day)
+    // Interaction logs
     const dailyLogs = users * 20;
-    const monthlyLogs = dailyLogs * 22; // working days
-    const logStorageGb = (monthlyLogs * 0.3) / (1024 * 1024); // ~300 bytes per log
+    const monthlyLogs = dailyLogs * 22;
+    const logStorageGb = (monthlyLogs * 0.3) / (1024 * 1024);
 
-    // Infrastructure estimates (hosting, CDN, etc.)
-    const infraCost = users <= 100 ? 0 : users <= 1000 ? 50 : users <= 10000 ? 200 : users <= 100000 ? 1000 : 5000;
+    // Infrastructure (hosting, CDN, PMTiles, R2)
+    const infraCost = users <= 100 ? 0 : users <= 1000 ? 75 : users <= 10000 ? 300 : users <= 100000 ? 1500 : 6000;
 
     // Total costs
-    const totalMonthlyCost = rentCastCost + base44Cost + stripeFees + appStoreFees + infraCost;
+    const totalMonthlyCost = totalRegridCost + base44Cost + stripeFees + appStoreFees + infraCost;
     const totalAnnualCost = totalMonthlyCost * 12;
 
-    // Margins
     const monthlyProfit = monthlyRevenue - totalMonthlyCost;
     const profitMargin = monthlyRevenue > 0 ? (monthlyProfit / monthlyRevenue * 100) : 0;
 
     return {
-        users,
-        managers,
-        payingAccounts,
+        users, managers, payingAccounts,
         monthlyRevenue: Math.round(monthlyRevenue),
         annualRevenue: Math.round(annualRevenue),
         avgPricePerUser: Math.round(avgPricePerUser),
-        totalZipsNeeded,
-        newZipsPerMonth,
-        monthlyApiCalls,
-        rentCastPlan: rentCastPlan.name,
-        rentCastCost,
+        totalTerritories,
+        totalParcels: Math.round(totalParcels),
+        newLookupsPerMonth,
+        monthlyLookups,
+        regridPlan: regridPlan.name,
+        regridCost: Math.round(regridCost),
+        eoCost,
+        totalRegridCost: Math.round(totalRegridCost),
         base44Cost,
         stripeFees: Math.round(stripeFees),
         appStoreFees,
@@ -149,7 +150,6 @@ function computeMetrics(users) {
         totalAnnualCost: Math.round(totalAnnualCost),
         monthlyProfit: Math.round(monthlyProfit),
         profitMargin: Math.round(profitMargin * 10) / 10,
-        totalProperties: Math.round(totalProperties),
         dbSizeGb: Math.round(dbSizeGb * 100) / 100,
         monthlyLogs,
         logStorageGb: Math.round(logStorageGb * 100) / 100,
@@ -199,7 +199,6 @@ export default function CostProjections() {
     const allMetrics = useMemo(() => USER_TIERS.map(computeMetrics), []);
     const selected = useMemo(() => computeMetrics(selectedTier), [selectedTier]);
 
-    // Chart data
     const revenueVsCostData = allMetrics.map(m => ({
         name: m.users >= 1000 ? `${(m.users / 1000).toFixed(0)}K` : m.users.toString(),
         users: m.users,
@@ -210,7 +209,8 @@ export default function CostProjections() {
 
     const costBreakdownData = allMetrics.map(m => ({
         name: m.users >= 1000 ? `${(m.users / 1000).toFixed(0)}K` : m.users.toString(),
-        'RentCast': m.rentCastCost,
+        'Regrid API': m.regridCost,
+        'Regrid EO': m.eoCost,
         'Base44': m.base44Cost,
         'Stripe': m.stripeFees,
         'App Stores': m.appStoreFees,
@@ -233,7 +233,7 @@ export default function CostProjections() {
                         </div>
                         <div>
                             <h1 className="text-base font-extrabold text-white tracking-tight">Cost Projections</h1>
-                            <p className="text-[10px] text-gray-500">Scaling metrics from 1 to 1,000,000 users</p>
+                            <p className="text-[10px] text-gray-500">V2 Regrid Pipeline — Scaling from 1 to 1M users</p>
                         </div>
                     </div>
                     <Link to={createPageUrl('Billing')}>
@@ -264,17 +264,17 @@ export default function CostProjections() {
             <div className="flex-1 overflow-auto p-4 md:p-6">
                 <div className="max-w-7xl mx-auto space-y-5">
 
-                    {/* KPI Row for Selected Tier */}
+                    {/* KPI Row */}
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                         <MetricCard title="Total Users" value={selected.users.toLocaleString()} sub={`${selected.managers} paying managers`} icon={Users} color="text-blue-400" bg="bg-blue-500/10" />
                         <MetricCard title="Monthly Revenue" value={`$${selected.monthlyRevenue.toLocaleString()}`} sub={`$${selected.annualRevenue.toLocaleString()}/yr`} icon={DollarSign} color="text-green-400" bg="bg-green-500/10" />
                         <MetricCard title="Monthly Cost" value={`$${selected.totalMonthlyCost.toLocaleString()}`} sub={`$${selected.totalAnnualCost.toLocaleString()}/yr`} icon={Server} color="text-red-400" bg="bg-red-500/10" />
                         <MetricCard title="Profit Margin" value={`${selected.profitMargin}%`} sub={`$${selected.monthlyProfit.toLocaleString()}/mo profit`} icon={TrendingUp} color="text-yellow-400" bg="bg-yellow-500/10" />
-                        <MetricCard title="Properties" value={selected.totalProperties.toLocaleString()} sub={`${selected.dbSizeGb} GB storage`} icon={Database} color="text-purple-400" bg="bg-purple-500/10" />
-                        <MetricCard title="API Calls/Mo" value={selected.monthlyApiCalls.toLocaleString()} sub={`${selected.rentCastPlan} plan`} icon={Zap} color="text-cyan-400" bg="bg-cyan-500/10" />
+                        <MetricCard title="Parcels" value={selected.totalParcels.toLocaleString()} sub={`${selected.dbSizeGb} GB storage`} icon={Database} color="text-purple-400" bg="bg-purple-500/10" />
+                        <MetricCard title="API Lookups/Mo" value={selected.monthlyLookups.toLocaleString()} sub={`${selected.regridPlan}`} icon={Zap} color="text-cyan-400" bg="bg-cyan-500/10" />
                     </div>
 
-                    {/* Cost Breakdown for Selected Tier */}
+                    {/* Detailed Breakdown */}
                     <Card className="bg-[#151515] border-gray-800">
                         <CardHeader className="pb-2">
                             <CardTitle className="text-xs font-bold text-gray-400 uppercase flex items-center gap-2">
@@ -283,7 +283,6 @@ export default function CostProjections() {
                         </CardHeader>
                         <CardContent>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {/* Revenue Side */}
                                 <div className="space-y-3">
                                     <h4 className="text-[10px] font-bold text-green-400 uppercase tracking-wider">Revenue</h4>
                                     <div className="space-y-2">
@@ -295,35 +294,34 @@ export default function CostProjections() {
                                     </div>
                                 </div>
 
-                                {/* Cost Side */}
                                 <div className="space-y-3">
                                     <h4 className="text-[10px] font-bold text-red-400 uppercase tracking-wider">Costs</h4>
                                     <div className="space-y-2">
-                                        <Row label="RentCast API" value={`$${selected.rentCastCost}/mo`} sub={`${selected.rentCastPlan} — ${selected.monthlyApiCalls} calls`} />
+                                        <Row label="Regrid API" value={`$${selected.regridCost}/mo`} sub={`${selected.regridPlan} — ${selected.monthlyLookups} lookups`} />
+                                        {selected.eoCost > 0 && <Row label="Enhanced Ownership" value={`$${selected.eoCost}/mo`} sub="Daily owner updates via SFTP" />}
                                         <Row label="Base44 Platform" value={`$${selected.base44Cost}/mo`} />
                                         <Row label="Stripe Fees" value={`$${selected.stripeFees}/mo`} sub={`2.9% + $0.30 × ${selected.payingAccounts} txns`} />
                                         <Row label="App Store Fees" value={`$${selected.appStoreFees.toLocaleString()}/mo`} sub={`${APP_STORE_CUT_PERCENT}% cut on ${Math.round(MOBILE_REVENUE_PERCENT * 100)}% mobile revenue`} />
-                                        <Row label="Infrastructure" value={`$${selected.infraCost}/mo`} sub="Hosting, CDN, monitoring" />
+                                        <Row label="Infra (R2, PostGIS)" value={`$${selected.infraCost}/mo`} sub="Hosting, CDN, PMTiles, R2" />
                                         <Row label="Total Monthly" value={`$${selected.totalMonthlyCost.toLocaleString()}`} highlight="red" />
                                         <Row label="Net Profit/Mo" value={`$${selected.monthlyProfit.toLocaleString()}`} highlight={selected.monthlyProfit >= 0 ? 'green' : 'red'} />
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Data & Storage */}
                             <div className="mt-4 pt-4 border-t border-gray-800">
                                 <h4 className="text-[10px] font-bold text-purple-400 uppercase tracking-wider mb-2">Data & Storage</h4>
                                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                    <MiniStat label="Total Zips" value={selected.totalZipsNeeded.toLocaleString()} />
-                                    <MiniStat label="New Zips/Mo" value={selected.newZipsPerMonth.toLocaleString()} sub={`${Math.round(CACHE_HIT_RATE * 100)}% cache hit`} />
-                                    <MiniStat label="Properties" value={selected.totalProperties.toLocaleString()} sub={`${selected.dbSizeGb} GB`} />
+                                    <MiniStat label="Territories" value={selected.totalTerritories.toLocaleString()} />
+                                    <MiniStat label="New Lookups/Mo" value={selected.newLookupsPerMonth.toLocaleString()} sub={`${Math.round(CACHE_HIT_RATE * 100)}% cache hit`} />
+                                    <MiniStat label="Total Parcels" value={selected.totalParcels.toLocaleString()} sub={`${selected.dbSizeGb} GB`} />
                                     <MiniStat label="Daily Logs" value={selected.dailyLogs.toLocaleString()} sub={`${selected.logStorageGb} GB/mo`} />
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
 
-                    {/* Revenue vs Cost Chart */}
+                    {/* Charts */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
                         <Card className="bg-[#151515] border-gray-800">
                             <CardHeader className="pb-2">
@@ -384,7 +382,7 @@ export default function CostProjections() {
                         </Card>
                     </div>
 
-                    {/* Stacked Cost Breakdown */}
+                    {/* Cost Breakdown */}
                     <Card className="bg-[#151515] border-gray-800">
                         <CardHeader className="pb-2">
                             <CardTitle className="text-xs font-bold text-gray-400 uppercase">Cost Composition at Each Tier</CardTitle>
@@ -409,7 +407,8 @@ export default function CostProjections() {
                                         );
                                     }} />
                                     <Legend wrapperStyle={{ fontSize: '10px' }} />
-                                    <Bar dataKey="RentCast" stackId="a" fill="#f97316" />
+                                    <Bar dataKey="Regrid API" stackId="a" fill="#10b981" />
+                                    <Bar dataKey="Regrid EO" stackId="a" fill="#34d399" />
                                     <Bar dataKey="Base44" stackId="a" fill="#8b5cf6" />
                                     <Bar dataKey="Stripe" stackId="a" fill="#3b82f6" />
                                     <Bar dataKey="App Stores" stackId="a" fill="#ec4899" />
@@ -434,7 +433,8 @@ export default function CostProjections() {
                                             <th className="px-3 py-2 rounded-l-lg sticky left-0 bg-[#111]">Users</th>
                                             <th className="px-3 py-2">Managers</th>
                                             <th className="px-3 py-2 text-green-400">Revenue/Mo</th>
-                                            <th className="px-3 py-2 text-orange-400">RentCast</th>
+                                            <th className="px-3 py-2 text-emerald-400">Regrid</th>
+                                            <th className="px-3 py-2 text-teal-400">EO</th>
                                             <th className="px-3 py-2 text-purple-400">Base44</th>
                                             <th className="px-3 py-2 text-blue-400">Stripe</th>
                                             <th className="px-3 py-2 text-pink-400">App Stores</th>
@@ -442,8 +442,8 @@ export default function CostProjections() {
                                             <th className="px-3 py-2 text-red-400">Total Cost</th>
                                             <th className="px-3 py-2 text-green-400">Profit/Mo</th>
                                             <th className="px-3 py-2 text-yellow-400">Margin</th>
-                                            <th className="px-3 py-2 text-cyan-400">API Calls</th>
-                                            <th className="px-3 py-2 text-purple-400">Properties</th>
+                                            <th className="px-3 py-2 text-cyan-400">Lookups</th>
+                                            <th className="px-3 py-2 text-purple-400">Parcels</th>
                                             <th className="px-3 py-2 rounded-r-lg">DB Size</th>
                                         </tr>
                                     </thead>
@@ -459,7 +459,8 @@ export default function CostProjections() {
                                                 <td className="px-3 py-2.5 font-bold text-white sticky left-0 bg-[#151515]">{m.users.toLocaleString()}</td>
                                                 <td className="px-3 py-2.5 text-gray-400">{m.managers.toLocaleString()}</td>
                                                 <td className="px-3 py-2.5 text-green-400 font-bold">${m.monthlyRevenue.toLocaleString()}</td>
-                                                <td className="px-3 py-2.5 text-orange-400">${m.rentCastCost.toLocaleString()}</td>
+                                                <td className="px-3 py-2.5 text-emerald-400">${m.regridCost.toLocaleString()}</td>
+                                                <td className="px-3 py-2.5 text-teal-400">${m.eoCost.toLocaleString()}</td>
                                                 <td className="px-3 py-2.5 text-purple-400">${m.base44Cost}</td>
                                                 <td className="px-3 py-2.5 text-blue-400">${m.stripeFees.toLocaleString()}</td>
                                                 <td className="px-3 py-2.5 text-pink-400">${m.appStoreFees.toLocaleString()}</td>
@@ -477,8 +478,8 @@ export default function CostProjections() {
                                                         {m.profitMargin}%
                                                     </Badge>
                                                 </td>
-                                                <td className="px-3 py-2.5 text-cyan-400">{m.monthlyApiCalls.toLocaleString()}</td>
-                                                <td className="px-3 py-2.5 text-purple-300">{m.totalProperties.toLocaleString()}</td>
+                                                <td className="px-3 py-2.5 text-cyan-400">{m.monthlyLookups.toLocaleString()}</td>
+                                                <td className="px-3 py-2.5 text-purple-300">{m.totalParcels.toLocaleString()}</td>
                                                 <td className="px-3 py-2.5 text-gray-500">{m.dbSizeGb} GB</td>
                                             </tr>
                                         ))}
@@ -507,12 +508,12 @@ export default function CostProjections() {
                                     </ul>
                                 </div>
                                 <div>
-                                    <p className="font-bold text-gray-400 mb-1">API & Data</p>
+                                    <p className="font-bold text-gray-400 mb-1">Regrid Data Pipeline</p>
                                     <ul className="space-y-1">
-                                        <li>• {AVG_ZIPS_PER_USER} zip codes per manager avg</li>
-                                        <li>• {API_CALLS_PER_ZIP} API calls per new zip fetch</li>
-                                        <li>• {Math.round(CACHE_HIT_RATE * 100)}% cache hit rate (Base44 DB)</li>
-                                        <li>• ~1,500 properties per zip code avg</li>
+                                        <li>• {AVG_TERRITORIES_PER_MANAGER} territories per manager avg</li>
+                                        <li>• ~{AVG_PARCELS_PER_TERRITORY.toLocaleString()} parcels per territory</li>
+                                        <li>• {Math.round(CACHE_HIT_RATE * 100)}% cache hit rate (PostGIS local DB)</li>
+                                        <li>• Enhanced Ownership: ${REGRID_EO_MONTHLY}/mo (≥10 managers)</li>
                                     </ul>
                                 </div>
                                 <div>
@@ -520,9 +521,8 @@ export default function CostProjections() {
                                     <ul className="space-y-1">
                                         <li>• Stripe: {STRIPE_PERCENT}% + ${STRIPE_FIXED}/txn</li>
                                         <li>• App Stores: {APP_STORE_CUT_PERCENT}% on ~{Math.round(MOBILE_REVENUE_PERCENT * 100)}% of revenue</li>
-                                        <li>• RentCast plans scale by usage tier</li>
-                                        <li>• Infra costs increase with user count</li>
-                                        <li>• 20 interaction logs/user/day assumed</li>
+                                        <li>• Regrid plans scale by lookup volume</li>
+                                        <li>• Infra includes PMTiles/R2, PostGIS hosting</li>
                                     </ul>
                                 </div>
                             </div>

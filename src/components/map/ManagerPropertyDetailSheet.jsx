@@ -117,9 +117,20 @@ export default function ManagerPropertyDetailSheet({
                                     <p className="text-[10px] text-gray-500 uppercase mb-1 flex items-center gap-1">
                                         <User className="w-3 h-3" /> Last Sold
                                     </p>
-                                    <p className="font-bold text-white text-xs">
-                                        {selectedProperty.sold_date ? format(new Date(selectedProperty.sold_date), 'MMM d, yyyy') : '-'}
-                                    </p>
+                                    {selectedProperty.sold_date ? (() => {
+                                        const daysAgo = Math.floor((Date.now() - new Date(selectedProperty.sold_date).getTime()) / (1000 * 60 * 60 * 24));
+                                        const recColor = daysAgo <= 30 ? '#22c55e' : daysAgo <= 60 ? '#eab308' : daysAgo <= 90 ? '#f97316' : '#6b7280';
+                                        return (
+                                            <div>
+                                                <p className="font-bold text-white text-xs">
+                                                    {format(new Date(selectedProperty.sold_date), 'MMM d, yyyy')}
+                                                </p>
+                                                <p className="text-[10px] font-bold mt-0.5" style={{ color: recColor }}>
+                                                    {daysAgo}d ago
+                                                </p>
+                                            </div>
+                                        );
+                                    })() : <p className="font-bold text-white text-xs">-</p>}
                                 </div>
                                 {selectedProperty.beds && (
                                     <div className="p-3 bg-black/40 rounded-lg border border-gray-800">

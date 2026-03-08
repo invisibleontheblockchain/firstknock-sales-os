@@ -1,6 +1,12 @@
+/**
+ * @deprecated V1 RentCast-backed area property fetch.
+ * Use fetchRegridProperties.ts instead for the V2 Regrid pipeline.
+ * This function is kept for backward compatibility during migration.
+ */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 
 Deno.serve(async (req) => {
+    console.warn('[DEPRECATED] fetchAreaProperties called — migrate to fetchRegridProperties');
     try {
         const base44 = createClientFromRequest(req);
         const user = await base44.auth.me();
@@ -66,7 +72,9 @@ Deno.serve(async (req) => {
             total_updated: 0,
             user_email: user.email,
             progress_pct: 0,
-            zip_codes_found: []
+            zip_codes_found: [],
+            date_slices: [],
+            current_slice_index: 0
         });
 
         console.log(`[fetchAreaProperties] Created FetchJob ${job.id} for ${user.email}`);

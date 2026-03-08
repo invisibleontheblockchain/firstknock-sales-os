@@ -188,7 +188,10 @@ export default function TerritoryPrompt({
                     setEtaText(`Estimated ${estMins} min for ${expected.toLocaleString()} properties`);
                 }
                 
-                if (expected > 0) {
+                if (d.date_slices && d.date_slices.length > 1) {
+                    const sliceStr = `(Month ${d.current_slice_index + 1} of ${d.date_slices.length})`;
+                    setPullProgress(`Mining timeline... ${fetched.toLocaleString()} found globally so far ${sliceStr}`);
+                } else if (expected > 0) {
                     setPullProgress(`${fetched.toLocaleString()} / ${expected.toLocaleString()} properties fetched, ${inserted.toLocaleString()} new`);
                 } else {
                     setPullProgress(`${fetched.toLocaleString()} properties fetched so far...`);
@@ -251,8 +254,16 @@ export default function TerritoryPrompt({
             return;
         }
 
-        const centerLat = drawnPolygon.reduce((s, p) => s + p.lat, 0) / drawnPolygon.length;
-        const centerLng = drawnPolygon.reduce((s, p) => s + p.lng, 0) / drawnPolygon.length;
+        let minLat = Infinity, maxLat = -Infinity;
+        let minLng = Infinity, maxLng = -Infinity;
+        for (const p of drawnPolygon) {
+            if (p.lat < minLat) minLat = p.lat;
+            if (p.lat > maxLat) maxLat = p.lat;
+            if (p.lng < minLng) minLng = p.lng;
+            if (p.lng > maxLng) maxLng = p.lng;
+        }
+        const centerLat = (minLat + maxLat) / 2;
+        const centerLng = (minLng + maxLng) / 2;
 
         const R = 3959;
         const toRad = (v) => v * Math.PI / 180;
@@ -277,11 +288,9 @@ export default function TerritoryPrompt({
         pctHistoryRef.current = [];
 
         try {
-            const res = await base44.functions.invoke('fetchAreaProperties', {
-                latitude: centerLat,
-                longitude: centerLng,
-                radius: radius,
-                polygon: drawnPolygon
+            const res = await base44.functions.invoke('fetchRegridProperties', {
+                polygon: drawnPolygon,
+                months_back: 12
             });
             const d = res.data || {};
 
