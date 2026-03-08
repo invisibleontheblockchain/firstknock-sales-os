@@ -105,9 +105,8 @@ Deno.serve(async (req) => {
             }
         }
 
-        // Determine sold cutoff from user's preference (default 3 months)
-        // This is used ONLY for tagging status as SOLD — NOT as an API filter
-        let monthsBack = 3;
+        // Determine sold cutoff from user's preference (default 12 months)
+        let monthsBack = 12;
         try {
             const users = await base44.asServiceRole.entities.User.filter({ email: data.user_email }, null, 1);
             const userArr = Array.isArray(users) ? users : (users?.items || []);
@@ -116,6 +115,7 @@ Deno.serve(async (req) => {
             }
         } catch (e) { console.warn('Could not fetch user prefs:', e.message); }
         
+        const daysOldMax = monthsBack * 30; // convert months to days for Rentcast filter
         const soldCutoff = new Date();
         soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
 
