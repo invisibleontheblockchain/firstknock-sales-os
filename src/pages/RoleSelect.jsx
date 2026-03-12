@@ -171,7 +171,7 @@ export default function RoleSelect() {
     }
 
     return (
-        <div className="relative flex w-full h-screen bg-[#0A0A0A] overflow-hidden text-white font-sans items-center justify-center">
+        <div className="relative flex w-full min-h-[100dvh] h-screen bg-[#0A0A0A] overflow-auto text-white font-sans items-center justify-center">
             {/* Background Image Container */}
             <div className="absolute inset-0 z-0">
                 <img
@@ -184,7 +184,7 @@ export default function RoleSelect() {
             </div>
 
             {/* Content Container - No background, just a container for the cards */}
-            <div className="relative z-10 w-full max-w-md px-6 flex flex-col justify-center min-h-min mb-12 mt-12">
+            <div className="relative z-10 w-full max-w-md px-5 flex flex-col justify-center min-h-min my-auto py-8">
 
                 {/* Brand Header */}
                 <motion.div
