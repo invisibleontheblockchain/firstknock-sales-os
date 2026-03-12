@@ -64,6 +64,7 @@ import MapDrawTool from '../components/map/MapDrawTool';
 import ManagerMapLayers from '../components/map/ManagerMapLayers';
 import MapToolbar from '../components/map/MapToolbar';
 import ZipCodeOverlay from '../components/map/ZipCodeOverlay';
+import PolygonHistory, { savePolygonToHistory } from '../components/map/PolygonHistory';
 
 // Brand Colors
 const BRAND = {
