@@ -194,7 +194,7 @@ function LayoutInner({ children }) {
                         <Link to={createPageUrl('Billing')} className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white">PLANS</Link>
                         <button onClick={() => { if(confirm("Reset Role?")) base44.auth.updateMe({ app_role: null }).then(() => { window.location.href = createPageUrl('RoleSelect'); }); }} className="bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded">RESET</button>
                         <button onClick={async () => { try { await base44.auth.logout(window.location.origin); } catch { window.location.reload(); } queryClient.clear(); }} className="text-xs text-slate-400 hover:text-white">LOGOUT</button>
-                        {user?.app_role !== 'rep' && <Link to={createPageUrl('RepHome')} className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]">REP MODE</Link>}
+                        <Link to={createPageUrl('Referrals')} className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white"><Gift className="w-3 h-3 mr-1" />REFER</Link>
                         <Link to={createPageUrl('MobileApp')} className="flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]"><Smartphone className="w-4 h-4" /></Link>
                         <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
                     </div>
