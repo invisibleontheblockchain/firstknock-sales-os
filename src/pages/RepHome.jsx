@@ -235,13 +235,34 @@ export default function RepHome() {
     });
 
     // 3. Fetch Interaction Logs (History for this route)
+    // Checks both address_hash AND legacy_hash for backward compatibility with migrated records
     const { data: logs = [], isLoading: logsLoading } = useQuery({
         queryKey: ['routeLogs', activeRoute?.id],
         queryFn: async () => {
             if (activeRoute?.property_hashes?.length > 0) {
-                return await base44.entities.InteractionLog.filter({
+                // Fetch logs by current address_hash
+                const primaryLogs = await base44.entities.InteractionLog.filter({
                     address_hash: activeRoute.property_hashes
                 }, '-created_date', 1000);
+                const primary = Array.isArray(primaryLogs) ? primaryLogs : (primaryLogs?.items || []);
+
+                // Also check legacy_hash aliases for migrated properties
+                const legacyHashes = properties
+                    .filter(p => p.legacy_hash && p.legacy_hash !== p.address_hash)
+                    .map(p => p.legacy_hash);
+
+                if (legacyHashes.length > 0) {
+                    const legacyLogs = await base44.entities.InteractionLog.filter({
+                        address_hash: legacyHashes
+                    }, '-created_date', 500).catch(() => []);
+                    const legacy = Array.isArray(legacyLogs) ? legacyLogs : (legacyLogs?.items || []);
+                    // Dedup by id
+                    const seen = new Set(primary.map(l => l.id));
+                    const merged = [...primary, ...legacy.filter(l => !seen.has(l.id))];
+                    return merged;
+                }
+
+                return primary;
             }
             if (user?.email) {
                 return await base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 500);
