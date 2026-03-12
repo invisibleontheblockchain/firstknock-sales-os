@@ -3,10 +3,18 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 // One-time migration: Convert legacy Base64 hashes to RentCast address-string format,
 // merge duplicates, hydrate missing fields, mark unmatched as UNVERIFIED.
 
-function buildAddressHash(fullAddress) {
+function buildAddressHash(fullAddress, city, state, zipCode) {
     if (!fullAddress) return null;
+    // Build a full address string if the full_address doesn't include city/state
+    let addr = fullAddress;
+    // If full_address doesn't contain a comma (no city/state), append them
+    if (!addr.includes(',') && city) {
+        addr = `${addr}, ${city}`;
+        if (state) addr += `, ${state}`;
+        if (zipCode) addr += ` ${zipCode.split('-')[0]}`; // use 5-digit zip
+    }
     // Standardize to kebab-case format matching RentCast pipeline
-    return fullAddress
+    return addr
         .replace(/[^\w\s,-]/g, '')  // remove special chars except comma/hyphen
         .replace(/\s+/g, '-')       // spaces to hyphens
         .replace(/-+/g, '-')        // collapse multiple hyphens
@@ -94,8 +102,8 @@ Deno.serve(async (req) => {
             const oldHash = d.address_hash;
             const fullAddr = d.full_address;
 
-            // Build new standardized hash from full_address
-            const newHash = buildAddressHash(fullAddr);
+            // Build new standardized hash from full_address + city/state/zip
+            const newHash = buildAddressHash(fullAddr, d.city, d.state, d.zip_code);
             if (!newHash) {
                 stats.errors.push(`No address for record ${legacy.id}`);
                 continue;
@@ -150,8 +158,9 @@ Deno.serve(async (req) => {
                 }
             }
 
-            // Mark as UNVERIFIED unless it has a real sold status
-            if (d.original_status === 'ELIGIBLE' || !d.original_status) {
+            // Mark ALL legacy records as UNVERIFIED — CSV data is not courthouse-verified
+            // Preserve HARD_NO and DO_NOT_KNOCK since those are user-set statuses
+            if (d.original_status !== 'HARD_NO' && d.original_status !== 'DO_NOT_KNOCK') {
                 updateData.original_status = 'UNVERIFIED';
                 stats.marked_unverified++;
             }
