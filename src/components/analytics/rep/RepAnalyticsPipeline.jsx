@@ -1,37 +1,44 @@
 import React from 'react';
 
+const FUNNEL_COLORS = ['#ffffff', '#06b6d4', '#f59e0b', '#3b82f6', '#22c55e'];
+
 export default function RepAnalyticsPipeline({ metrics }) {
   const items = [
-    { label: 'Knocks', value: metrics.periodKnocks, note: 'total attempts', color: 'bg-white' },
-    { label: 'Contacts', value: metrics.contacts, note: `${metrics.contactRate}% contact rate`, color: 'bg-cyan-400' },
-    { label: 'Callbacks', value: metrics.callbacks, note: 'follow-up opportunities', color: 'bg-yellow-400' },
-    { label: 'Appointments', value: metrics.upcomingAppointments, note: 'future meetings set', color: 'bg-blue-400' },
-    { label: 'Wins', value: metrics.sales, note: 'sold or qualified', color: 'bg-green-400' },
+    { label: 'Knocks', value: metrics.periodKnocks, note: 'total attempts' },
+    { label: 'Contacts', value: metrics.contacts, note: `${metrics.contactRate}% rate` },
+    { label: 'Callbacks', value: metrics.callbacks, note: 'follow-ups' },
+    { label: 'Appointments', value: metrics.upcomingAppointments, note: 'meetings set' },
+    { label: 'Wins', value: metrics.sales, note: 'sold / qualified' },
   ];
-  const maxValue = Math.max(...items.map((item) => item.value), 1);
+  const maxValue = Math.max(...items.map((i) => i.value), 1);
 
   return (
-    <div className="rounded-2xl border border-white/5 bg-gradient-to-b from-[#151515] to-[#0A0A0A] p-5 shadow-2xl">
-      <div className="mb-4">
-        <h3 className="text-lg font-black text-white tracking-tight">Rep Funnel</h3>
-        <p className="text-sm text-gray-500">How your activity is turning into real opportunities</p>
-      </div>
+    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-5">
+      <h3 className="text-base font-black text-white tracking-tight mb-1">Sales Funnel</h3>
+      <p className="text-xs text-gray-500 mb-5">Activity → Opportunities → Wins</p>
 
       <div className="space-y-4">
-        {items.map((item) => (
-          <div key={item.label}>
-            <div className="flex items-end justify-between mb-2">
-              <div>
-                <div className="text-sm font-bold text-white">{item.label}</div>
-                <div className="text-xs text-gray-500">{item.note}</div>
+        {items.map((item, idx) => {
+          const pct = (item.value / maxValue) * 100;
+          const color = FUNNEL_COLORS[idx];
+          return (
+            <div key={item.label}>
+              <div className="flex items-baseline justify-between mb-1.5">
+                <span className="text-sm font-semibold text-gray-300">{item.label}</span>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-lg font-black text-white">{item.value}</span>
+                  <span className="text-[10px] text-gray-500">{item.note}</span>
+                </div>
               </div>
-              <div className="text-2xl font-black text-white">{item.value}</div>
+              <div className="h-2 rounded-full bg-white/[0.04] overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all duration-700 ease-out"
+                  style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${color}60, ${color})` }}
+                />
+              </div>
             </div>
-            <div className="h-2.5 rounded-full bg-white/5 overflow-hidden border border-white/5">
-              <div className={`h-full ${item.color} rounded-full`} style={{ width: `${(item.value / maxValue) * 100}%` }} />
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
