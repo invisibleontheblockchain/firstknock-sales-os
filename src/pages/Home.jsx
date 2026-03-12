@@ -1346,6 +1346,9 @@ export default function Home() {
                     <ZipCodeOverlay properties={effectiveProperties} />
                 )}
 
+                {/* Previous drawn area history */}
+                <PolygonHistory currentPolygon={drawnPolygon} />
+
                 {/* GPS TRACKER LAYERS */}
                 <GpsTrackerMapLayers
                     properties={effectiveProperties}
