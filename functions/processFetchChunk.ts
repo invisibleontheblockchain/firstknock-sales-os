@@ -268,7 +268,7 @@ Deno.serve(async (req) => {
                         base44.asServiceRole.entities.MasterProperty.filter({ zip_code: zip }, null, 5000)
                             .then(res => {
                                 const arr = Array.isArray(res) ? res : (res?.items || []);
-                                arr.forEach(p => existingHashToId.set(p.address_hash, { id: p.id, status: p.original_status }));
+                                arr.forEach(p => existingHashToId.set(p.address_hash, { id: p.id, status: p.original_status, dataSource: p.data_source }));
                             })
                             .catch(e => logError(`DB zip lookup ${zip} failed: ${e.message}`))
                     );
@@ -333,12 +333,22 @@ Deno.serve(async (req) => {
                     }
                 }
 
-                for (let i = 0; i < Math.min(soldUpdates.length, 50); i++) {
+                for (let i = 0; i < Math.min(soldUpdates.length, 100); i++) {
                     if (Date.now() - chunkStart > 58000) break;
                     try {
-                        await base44.asServiceRole.entities.MasterProperty.update(soldUpdates[i].id, {
-                            original_status: 'SOLD', sold_date: soldUpdates[i].sold_date, price: soldUpdates[i].price
-                        });
+                        const upd = soldUpdates[i];
+                        const updatePayload = { original_status: upd.original_status || 'SOLD', sold_date: upd.sold_date, price: upd.price };
+                        // Include hydration fields if present
+                        if (upd.data_source) updatePayload.data_source = upd.data_source;
+                        if (upd.sale_type) updatePayload.sale_type = upd.sale_type;
+                        if (upd.city) updatePayload.city = upd.city;
+                        if (upd.state) updatePayload.state = upd.state;
+                        if (upd.zip_code) updatePayload.zip_code = upd.zip_code;
+                        if (upd.beds) updatePayload.beds = upd.beds;
+                        if (upd.baths) updatePayload.baths = upd.baths;
+                        if (upd.sqft) updatePayload.sqft = upd.sqft;
+                        if (upd.property_type) updatePayload.property_type = upd.property_type;
+                        await base44.asServiceRole.entities.MasterProperty.update(upd.id, updatePayload);
                         chunkUpdated++;
                     } catch (e) { /* skip */ }
                 }
