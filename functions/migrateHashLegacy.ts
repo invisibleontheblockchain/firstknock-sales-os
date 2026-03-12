@@ -46,24 +46,14 @@ Deno.serve(async (req) => {
 
         console.log(`[migrate] chunk_offset=${chunk_offset} chunk_size=${chunk_size} dry_run=${dry_run}`);
 
-        // Step 1: Load a chunk of legacy records (sale_type is null AND data_source is not 'rentcast')
+        // Step 1: Load a chunk of legacy records
+        // Legacy = sale_type is null (CSV imports never set sale_type) AND not yet migrated (no legacy_hash)
         const batch = await base44.asServiceRole.entities.MasterProperty.filter(
-            { data_source: 'csv_import' }, '-created_date', chunk_size
+            { sale_type: null }, '-created_date', chunk_size
         );
         let legacyChunk = Array.isArray(batch) ? batch : (batch?.items || []);
-
-        // If no csv_import records, try sale_type null (original legacy format)
-        if (legacyChunk.length === 0) {
-            const batch2 = await base44.asServiceRole.entities.MasterProperty.filter(
-                { sale_type: null }, '-created_date', chunk_size
-            );
-            legacyChunk = Array.isArray(batch2) ? batch2 : (batch2?.items || []);
-            // Filter out any that already have data_source = 'rentcast'
-            legacyChunk = legacyChunk.filter(p => p.data_source !== 'rentcast');
-        }
-
-        // Also filter out records that already have legacy_hash set (already migrated)
-        legacyChunk = legacyChunk.filter(p => !p.legacy_hash);
+        // Filter out already-migrated records and RentCast records
+        legacyChunk = legacyChunk.filter(p => !p.legacy_hash && p.data_source !== 'rentcast');
 
         console.log(`[migrate] Found ${legacyChunk.length} unmigrated records in this chunk`);
 
