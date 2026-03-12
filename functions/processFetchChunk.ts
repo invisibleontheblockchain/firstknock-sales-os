@@ -110,8 +110,10 @@ Deno.serve(async (req) => {
         }
 
         // Sold cutoff — read from job, fallback to 12
+        // Add 2-month buffer to account for courthouse recording delays (2-6 weeks)
         const monthsBack = job.sold_months || 12;
-        const daysBack = monthsBack * 30;
+        const BUFFER_MONTHS = 2;
+        const daysBack = (monthsBack + BUFFER_MONTHS) * 30;
         const soldCutoff = new Date();
         soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
 
