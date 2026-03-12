@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 import { polygonToCells, latLngToCell } from 'npm:h3-js@4.1.0';
 
-// v3 — Adds MLS Phase 2, better error logging, timing metrics, crash protection
+// v4 — Adds MLS Phase 2, better error logging, timing metrics, crash protection, shared cache dedup
 
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
