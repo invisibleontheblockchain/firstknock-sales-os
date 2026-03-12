@@ -1289,6 +1289,7 @@ export default function Home() {
                     active={drawingMode}
                     onPointsUpdate={setDraftPolygon}
                     onConfirm={(polygon) => {
+                        savePolygonToHistory(polygon);
                         setDrawnPolygon(polygon);
                         setDraftPolygon([]);
                         setDrawingMode(false);
