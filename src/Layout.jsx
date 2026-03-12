@@ -209,7 +209,6 @@ function LayoutInner({ children }) {
                             <DropdownMenuContent align="end" className="w-56 bg-[#0A0A0A] border-slate-800 text-white shadow-xl">
                                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                                 <DropdownMenuSeparator className="bg-slate-800" />
-                                {user?.app_role !== 'rep' && <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('RepHome')} className="flex items-center w-full"><UserIcon className="mr-2 h-4 w-4" /><span>Switch to Rep Mode</span></Link></DropdownMenuItem>}
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('Setup')} className="flex items-center w-full"><Upload className="mr-2 h-4 w-4" /><span>Setup</span></Link></DropdownMenuItem>
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('Billing')} className="flex items-center w-full"><Sparkles className="mr-2 h-4 w-4" /><span>Plans</span></Link></DropdownMenuItem>
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('MobileApp')} className="flex items-center w-full"><Smartphone className="mr-2 h-4 w-4" /><span>Get Mobile App</span></Link></DropdownMenuItem>
@@ -259,7 +258,7 @@ function LayoutInner({ children }) {
                 ) : (
                     <div className="flex justify-around items-center h-16 max-w-full mx-auto">
                         <NavItem icon={Map} label="Map" to={createPageUrl('Home')} active={window.location.pathname.endsWith('Home') || window.location.pathname === '/'} accent={accent} />
-                        <NavItem icon={Navigation} label="Rep Mode" to={createPageUrl('RepHome')} active={window.location.pathname.includes('RepHome')} accent={accent} />
+                        <NavItem icon={Navigation} label="Knock" to={createPageUrl('RepHome')} active={window.location.pathname.includes('RepHome')} accent={accent} />
                         <NavItem icon={TrendingUp} label="Analytics" to={createPageUrl('List')} active={window.location.pathname.endsWith('List')} accent={accent} />
                         <NavItem icon={Calendar} label="Appts" to={createPageUrl('Appointments')} active={window.location.pathname.endsWith('Appointments')} accent={accent} />
                         <NavItem icon={Users} label="Team" to={createPageUrl('AdminTeam')} active={window.location.pathname.endsWith('AdminTeam')} accent={accent} />
