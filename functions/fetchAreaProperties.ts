@@ -100,6 +100,7 @@ Deno.serve(async (req) => {
             longitude: optimizedLng,
             radius: optimizedRadius,
             polygon: polygon || [],
+            sold_months: effectiveSoldMonths,
             current_offset: 0,
             total_expected: 0,
             total_fetched: 0,
