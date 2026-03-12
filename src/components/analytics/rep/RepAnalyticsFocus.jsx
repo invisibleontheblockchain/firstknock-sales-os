@@ -4,9 +4,9 @@ import { Calendar, Clock3, Map, Phone, Route } from 'lucide-react';
 export default function RepAnalyticsFocus({ metrics }) {
   const items = [
     { label: 'Best Hour', value: metrics.bestHourLabel, sub: `${metrics.bestHourRate}% contact rate`, icon: Clock3, color: 'text-yellow-400' },
-    { label: 'Open Callbacks', value: metrics.callbacks, sub: 'people to revisit', icon: PhoneForwarded, color: 'text-cyan-400' },
+    { label: 'Open Callbacks', value: metrics.callbacks, sub: 'people to revisit', icon: Phone, color: 'text-cyan-400' },
     { label: 'Active Routes', value: metrics.activeRoutes, sub: `${metrics.totalRoutes} total assigned`, icon: Route, color: 'text-green-400' },
-    { label: 'No-Show Rate', value: `${metrics.noShowRate}%`, sub: `${metrics.upcomingAppointments} upcoming appts`, icon: CalendarClock, color: 'text-red-400' },
+    { label: 'No-Show Rate', value: `${metrics.noShowRate}%`, sub: `${metrics.upcomingAppointments} upcoming appts`, icon: Calendar, color: 'text-red-400' },
   ];
 
   return (
