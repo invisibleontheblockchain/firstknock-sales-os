@@ -16,6 +16,10 @@ import { createPageUrl } from '../utils';
 import { toast } from "sonner";
 import TeamMemberCard from "@/components/team/TeamMemberCard";
 import RepPerformanceDetail from "@/components/team/RepPerformanceDetail";
+import TeamLeaderboard from '@/components/team/TeamLeaderboard';
+import TeamAnalyticsSummary from '@/components/analytics/team/TeamAnalyticsSummary';
+import TeamActivityTrend from '@/components/analytics/team/TeamActivityTrend';
+import TeamOutcomeBreakdown from '@/components/analytics/team/TeamOutcomeBreakdown';
 
 
 const BRAND = {
@@ -290,7 +294,10 @@ export default function AdminTeam() {
         };
     }, [teamTotals, metricsByRep]);
 
-
+    const analyticsMembers = useMemo(
+        () => filteredTeamMembers.filter(member => !member.isManagerSelf),
+        [filteredTeamMembers]
+    );
 
     const handleAddRep = () => {
         if (!newRep.name || !newRep.email) {
@@ -524,10 +531,21 @@ export default function AdminTeam() {
                 {/* Main Content Tabs */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
                     <TabsList className="bg-[#111] border border-gray-800 p-1 h-12 w-full flex overflow-x-auto no-scrollbar justify-start md:justify-start">
+                        <TabsTrigger value="analytics" className="flex-1 md:flex-none h-full px-4 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Analytics</TabsTrigger>
                         <TabsTrigger value="roster" className="flex-1 md:flex-none h-full px-4 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Roster</TabsTrigger>
                         <TabsTrigger value="logistics" className="flex-1 md:flex-none h-full px-4 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Routes</TabsTrigger>
                         <TabsTrigger value="access" className="flex-1 md:flex-none h-full px-4 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-xs uppercase tracking-wide">Codes</TabsTrigger>
                     </TabsList>
+
+                    {/* ANALYTICS TAB */}
+                    <TabsContent value="analytics" className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <TeamAnalyticsSummary members={analyticsMembers} logs={logs} routes={routes} />
+                        <div className="grid grid-cols-1 xl:grid-cols-[1.15fr,0.85fr] gap-6">
+                            <TeamActivityTrend logs={logs} />
+                            <TeamOutcomeBreakdown logs={logs} />
+                        </div>
+                        <TeamLeaderboard members={analyticsMembers} logs={logs} routes={routes} />
+                    </TabsContent>
 
                     {/* ROSTER TAB */}
                     <TabsContent value="roster" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
