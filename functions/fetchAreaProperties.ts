@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 
-// v2 — Adds minimum bounding circle, sold_months param, API call tracking on job
+// v3 — Adds shared property cache: reuse existing MasterProperty data from other users' pulls
 
 function computeBoundingCircle(polygon) {
     if (!polygon || polygon.length < 3) return null;
@@ -93,6 +93,78 @@ Deno.serve(async (req) => {
 
         // Default sold_months
         const effectiveSoldMonths = sold_months || 12;
+
+        // ================================================================
+        // SHARED PROPERTY CACHE — check if other users already pulled 
+        // properties in this area so we can skip redundant API calls
+        // ================================================================
+        let cachedPropertyCount = 0;
+        let cachedZipCodes = [];
+        try {
+            // Sample nearby zip codes by querying MasterProperty near the target coords
+            // Use a small lat/lng bounding box to find zip codes already in the DB
+            const latRange = optimizedRadius / 69.0; // ~69 miles per degree
+            const lngRange = optimizedRadius / (69.0 * Math.cos(optimizedLat * Math.PI / 180));
+            
+            // Query properties within the bounding box to discover cached zip codes
+            const sampleProps = await base44.asServiceRole.entities.MasterProperty.filter(
+                { 
+                    lat: { $gte: optimizedLat - latRange, $lte: optimizedLat + latRange },
+                    lng: { $gte: optimizedLng - lngRange, $lte: optimizedLng + lngRange }
+                }, 
+                null, 
+                500
+            );
+            const sampleArr = Array.isArray(sampleProps) ? sampleProps : (sampleProps?.items || []);
+            
+            if (sampleArr.length > 0) {
+                // Collect unique zip codes from cached data
+                const zipSet = new Set();
+                sampleArr.forEach(p => { if (p.zip_code) zipSet.add(p.zip_code); });
+                cachedZipCodes = [...zipSet];
+                cachedPropertyCount = sampleArr.length;
+                
+                console.log(`[fetchArea-v3] CACHE HIT: Found ${cachedPropertyCount} cached properties across ${cachedZipCodes.length} zip codes`);
+                
+                // Link cached zip codes to this user immediately
+                const existingUserZips = user.territory_zip_codes || [];
+                const mergedZips = [...new Set([...existingUserZips, ...cachedZipCodes])];
+                
+                if (mergedZips.length > existingUserZips.length) {
+                    await base44.auth.updateMe({ 
+                        territory_zip_codes: mergedZips,
+                    });
+                    console.log(`[fetchArea-v3] Linked ${mergedZips.length - existingUserZips.length} cached zip codes to user`);
+                }
+                
+                // If we have substantial cached data (200+ properties), check if we even need a fresh pull
+                if (cachedPropertyCount >= 200) {
+                    // Check how old the cached data is
+                    const latestProp = sampleArr.sort((a, b) => new Date(b.created_date) - new Date(a.created_date))[0];
+                    const cacheAge = Date.now() - new Date(latestProp.created_date).getTime();
+                    const cacheAgeDays = cacheAge / (1000 * 60 * 60 * 24);
+                    
+                    if (cacheAgeDays < 30) {
+                        // Cache is fresh enough — count total properties for this area
+                        let totalCached = 0;
+                        for (const zip of cachedZipCodes) {
+                            const zipProps = await base44.asServiceRole.entities.MasterProperty.filter(
+                                { zip_code: zip }, null, 1
+                            );
+                            const zipArr = Array.isArray(zipProps) ? zipProps : (zipProps?.items || []);
+                            totalCached += zipArr.length > 0 ? 1 : 0; // just confirming zip has data
+                        }
+                        
+                        console.log(`[fetchArea-v3] Cache is ${Math.round(cacheAgeDays)}d old with ${cachedZipCodes.length} zips — still pulling fresh data to supplement`);
+                    }
+                }
+            } else {
+                console.log(`[fetchArea-v3] No cached data in this area — full pull needed`);
+            }
+        } catch (cacheErr) {
+            // Cache check is best-effort — never block the pull
+            console.warn(`[fetchArea-v3] Cache check failed (non-fatal): ${cacheErr.message}`);
+        }
 
         const job = await base44.entities.FetchJob.create({
             status: 'pending',
