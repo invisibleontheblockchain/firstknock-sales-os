@@ -255,7 +255,7 @@ export default function MapToolbar({
 
             {/* Center Action Bar */}
             <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 z-[1000] pointer-events-none flex justify-center px-4">
-                <div className="pointer-events-auto flex flex-col items-center gap-1.5 sm:gap-2 bg-black/70 backdrop-blur-lg p-1.5 sm:p-2 rounded-2xl border border-white/10 shadow-2xl">
+                <div className="pointer-events-auto flex items-center justify-center gap-1.5 sm:gap-2 bg-black/70 backdrop-blur-lg p-1.5 sm:p-2 rounded-full border border-white/10 shadow-2xl">
                     {mode === 'generate' && !activeRoute && (
                         <Button
                             onClick={() => setShowCompare(true)}
