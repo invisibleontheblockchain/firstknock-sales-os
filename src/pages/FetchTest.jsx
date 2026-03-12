@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
-import { Loader2, MapPin, Zap, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
+import { Loader2, MapPin, Zap, AlertTriangle, CheckCircle2, Info, List } from 'lucide-react';
 
 // TINY test polygon — ~1 sq mile in downtown Charleston, SC
 // Just a few blocks around King Street — should have minimal sold homes
@@ -18,6 +18,7 @@ const TEST_RADIUS = 0.5; // 0.5 mile radius — very small
 export default function FetchTest() {
   const [results, setResults] = useState([]);
   const [running, setRunning] = useState(null);
+  const [pulledProperties, setPulledProperties] = useState([]);
 
   const log = (msg, type = 'info') => {
     setResults(prev => [...prev, { msg, type, time: new Date().toLocaleTimeString() }]);
@@ -113,6 +114,8 @@ export default function FetchTest() {
         if (job.status === 'completed') {
           log(`✅ JOB COMPLETE — ${job.total_inserted} inserted, ${job.total_existed} existed, ${job.total_updated || 0} updated, ${job.total_api_calls || '?'} API calls`, 'success');
           log(`Zip codes found: ${(job.zip_codes_found || []).join(', ')}`, 'info');
+          log('Loading pulled properties...', 'info');
+          loadProperties(job.zip_codes_found || []);
           setRunning(null);
           return;
         }
@@ -136,6 +139,22 @@ export default function FetchTest() {
     };
 
     poll();
+  };
+
+  const loadProperties = async (zipCodes) => {
+    try {
+      const zips = zipCodes.length > 0 ? zipCodes : ['29401'];
+      let allProps = [];
+      for (const zip of zips) {
+        const props = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 50);
+        const list = Array.isArray(props) ? props : (props?.items || []);
+        allProps = [...allProps, ...list];
+      }
+      setPulledProperties(allProps.slice(0, 50));
+      log(`Loaded ${allProps.length} properties for display`, 'success');
+    } catch (e) {
+      log(`Failed to load properties: ${e.message}`, 'error');
+    }
   };
 
   // Test 3: Check current RentCast usage
@@ -219,6 +238,65 @@ export default function FetchTest() {
             <span className="text-xs font-bold text-yellow-400">
               Running: {running === 'zip' ? 'Zip Fetch' : running === 'area' ? 'Area Fetch' : 'Usage Check'}...
             </span>
+          </div>
+        )}
+
+        {/* Manual load button */}
+        <button
+          onClick={() => loadProperties(['29401'])}
+          disabled={!!running}
+          className="w-full rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3 text-left hover:bg-white/[0.04] transition-all disabled:opacity-50 flex items-center gap-3"
+        >
+          <List className="w-5 h-5 text-cyan-400" />
+          <div>
+            <p className="text-sm font-bold text-white">Load Properties (29401)</p>
+            <p className="text-[10px] text-gray-500">View most recent 50 properties in this zip</p>
+          </div>
+        </button>
+
+        {/* Properties table */}
+        {pulledProperties.length > 0 && (
+          <div className="rounded-2xl border border-white/[0.06] bg-[#0c0c0e] overflow-hidden">
+            <div className="px-4 py-3 border-b border-white/[0.04] flex items-center justify-between">
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Pulled Properties ({pulledProperties.length})</span>
+              <button onClick={() => setPulledProperties([])} className="text-[10px] font-bold text-gray-600 hover:text-white transition-colors">Clear</button>
+            </div>
+            <div className="overflow-auto max-h-[400px]">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-[#0c0c0e]">
+                  <tr className="border-b border-white/[0.04] text-gray-500 text-left">
+                    <th className="px-3 py-2">Address</th>
+                    <th className="px-3 py-2">City</th>
+                    <th className="px-3 py-2">Zip</th>
+                    <th className="px-3 py-2">Status</th>
+                    <th className="px-3 py-2">Price</th>
+                    <th className="px-3 py-2">Sold Date</th>
+                    <th className="px-3 py-2">Beds/Bath</th>
+                    <th className="px-3 py-2">Sqft</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pulledProperties.map((p, i) => (
+                    <tr key={p.id || i} className="border-b border-white/[0.02] hover:bg-white/[0.02]">
+                      <td className="px-3 py-2 text-white font-medium truncate max-w-[200px]">{p.full_address || `${p.house_number} ${p.street_name}`}</td>
+                      <td className="px-3 py-2 text-gray-400">{p.city || '-'}</td>
+                      <td className="px-3 py-2 text-gray-400">{p.zip_code || '-'}</td>
+                      <td className="px-3 py-2">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          p.original_status === 'SOLD' ? 'bg-red-500/20 text-red-400' :
+                          p.original_status === 'ELIGIBLE' ? 'bg-green-500/20 text-green-400' :
+                          'bg-gray-500/20 text-gray-400'
+                        }`}>{p.original_status || '?'}</span>
+                      </td>
+                      <td className="px-3 py-2 text-gray-300">{p.price ? `$${p.price.toLocaleString()}` : '-'}</td>
+                      <td className="px-3 py-2 text-gray-400">{p.sold_date || '-'}</td>
+                      <td className="px-3 py-2 text-gray-400">{p.beds || '-'}/{p.baths || '-'}</td>
+                      <td className="px-3 py-2 text-gray-400">{p.sqft ? p.sqft.toLocaleString() : '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
