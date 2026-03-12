@@ -155,6 +155,21 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
 
     return (
         <>
+            {/* Small preview circle at map center when in drawing mode */}
+            {active && mapCenter && previewRadiusMeters > 0 && displayPoints.length === 0 && (
+                <Circle
+                    center={[mapCenter.lat, mapCenter.lng]}
+                    radius={previewRadiusMeters}
+                    pathOptions={{
+                        color: '#FFD93D',
+                        dashArray: '6,4',
+                        weight: 1.5,
+                        fillColor: '#FFD93D',
+                        fillOpacity: 0.08,
+                        interactive: false
+                    }}
+                />
+            )}
             {displayPoints.length > 2 && (
                 <Polygon
                     positions={displayPoints}
