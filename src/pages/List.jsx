@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart3, Loader2, Navigation } from 'lucide-react';
+import { BarChart3, Loader2, Navigation, Sparkles } from 'lucide-react';
 import { isAfter, startOfDay, subDays } from 'date-fns';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
 
@@ -13,6 +13,7 @@ import RepAnalyticsHeader from '@/components/analytics/rep/RepAnalyticsHeader';
 import RepAnalyticsKpis from '@/components/analytics/rep/RepAnalyticsKpis';
 import RepAnalyticsPipeline from '@/components/analytics/rep/RepAnalyticsPipeline';
 import RepAnalyticsFocus from '@/components/analytics/rep/RepAnalyticsFocus';
+import RepAdvancedAnalytics from '@/components/analytics/rep/RepAdvancedAnalytics';
 
 const SALES_STATUSES = ['SOLD', 'QUALIFIED'];
 const NON_CONTACT_STATUSES = ['NO_ANSWER', 'ELIGIBLE'];
@@ -138,11 +139,7 @@ export default function ListPage() {
         const hourBuckets = Array.from({ length: 13 }, (_, index) => index + 8).map((hour) => {
             const hourLogs = filteredLogs.filter((log) => new Date(log.created_date).getHours() === hour);
             const hourContacts = hourLogs.filter((log) => !NON_CONTACT_STATUSES.includes(log.parsed_status)).length;
-            return {
-                hour,
-                knocks: hourLogs.length,
-                contactRate: hourLogs.length ? Math.round((hourContacts / hourLogs.length) * 100) : 0,
-            };
+            return { hour, knocks: hourLogs.length, contactRate: hourLogs.length ? Math.round((hourContacts / hourLogs.length) * 100) : 0 };
         });
         const bestHour = [...hourBuckets].sort((a, b) => (b.contactRate - a.contactRate) || (b.knocks - a.knocks))[0] || { hour: 17, contactRate: 0 };
         const bestHourLabel = new Date(0, 0, 0, bestHour.hour, 0).toLocaleTimeString('en-US', { hour: 'numeric' });
@@ -153,22 +150,6 @@ export default function ListPage() {
             const day = startOfDay(subDays(new Date(), i)).getTime();
             if (activeDays.has(day)) streak += 1;
             else break;
-        }
-
-        let nextAction = {
-            title: 'Stay on your highest-converting blocks',
-            body: `Your best contact window is ${bestHourLabel}. Stack callbacks and fresh knocks around that time.`,
-        };
-        if (callbacks > 0) {
-            nextAction = {
-                title: 'Work your callback list first',
-                body: `You have ${callbacks} callback${callbacks === 1 ? '' : 's'} in the current window. Revisit those before starting cold doors.`,
-            };
-        } else if (todayLogs.length < 20) {
-            nextAction = {
-                title: 'Push today’s volume higher',
-                body: `You’re at ${todayLogs.length} knocks today. A stronger first block will lift the rest of your funnel.`,
-            };
         }
 
         return {
@@ -189,7 +170,6 @@ export default function ListPage() {
             bestHourLabel,
             bestHourRate: bestHour.contactRate,
             streak,
-            nextAction,
         };
     }, [logs, filteredLogs, filteredAppointments, effectiveProperties, savedRoutes]);
 
@@ -197,13 +177,15 @@ export default function ListPage() {
 
     const tabs = [
         { id: 'performance', label: 'Performance', icon: BarChart3 },
+        { id: 'advanced', label: 'Advanced', icon: Sparkles },
         { id: 'routes', label: 'Routes', icon: Navigation },
     ];
 
     return (
-        <div className="h-full flex flex-col bg-[#0A0A0F]">
-            <div className="px-4 md:px-6 pt-4 pb-2 border-b border-white/5 sticky top-0 z-20 backdrop-blur-xl bg-black/60 shadow-xl">
-                <div className="max-w-7xl mx-auto flex p-1 bg-black/40 rounded-2xl border border-white/5 overflow-x-auto no-scrollbar">
+        <div className="h-full flex flex-col bg-[#09090b]">
+            {/* Tab bar */}
+            <div className="px-4 md:px-6 pt-3 pb-2 border-b border-white/[0.04] sticky top-0 z-20 backdrop-blur-xl bg-[#09090b]/80">
+                <div className="max-w-7xl mx-auto flex p-1 bg-white/[0.03] rounded-xl border border-white/[0.05] overflow-x-auto no-scrollbar">
                     {tabs.map((tab) => {
                         const Icon = tab.icon;
                         const isActive = activeTab === tab.id;
@@ -211,9 +193,13 @@ export default function ListPage() {
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`flex-1 min-w-[120px] py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 flex items-center justify-center gap-2 ${isActive ? 'bg-white text-black shadow-[0_0_20px_rgba(255,255,255,0.25)]' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}
+                                className={`flex-1 min-w-[100px] py-2 px-3 rounded-lg text-xs font-bold transition-all duration-200 flex items-center justify-center gap-2 ${
+                                    isActive
+                                        ? 'bg-white text-black shadow-lg shadow-white/10'
+                                        : 'text-gray-500 hover:text-white hover:bg-white/5'
+                                }`}
                             >
-                                <Icon className={`w-4 h-4 ${isActive ? 'text-black' : ''}`} />
+                                <Icon className="w-3.5 h-3.5" />
                                 {tab.label}
                             </button>
                         );
@@ -224,39 +210,52 @@ export default function ListPage() {
             <div className="flex-1 overflow-auto">
                 {isLoading ? (
                     <div className="flex flex-col justify-center items-center py-24 gap-3">
-                        <Loader2 className="w-7 h-7 animate-spin text-white" />
-                        <span className="text-xs text-gray-500">Loading analytics...</span>
+                        <Loader2 className="w-6 h-6 animate-spin text-white/40" />
+                        <span className="text-xs text-gray-600">Loading analytics...</span>
                     </div>
                 ) : (
                     <>
+                        {/* Shared header for performance + advanced */}
+                        {(activeTab === 'performance' || activeTab === 'advanced') && (
+                            <RepAnalyticsHeader
+                                dateDays={dateDays}
+                                onChangeDays={setDateDays}
+                                streak={analytics.streak}
+                            />
+                        )}
+
                         {activeTab === 'performance' && (
-                            <>
-                                <RepAnalyticsHeader
-                                    dateDays={dateDays}
-                                    onChangeDays={setDateDays}
-                                    streak={analytics.streak}
-                                    nextAction={analytics.nextAction}
-                                />
-                                <div className="p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
-                                    <RepAnalyticsKpis metrics={analytics} dateDays={dateDays} />
+                            <div className="p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto pb-24">
+                                <RepAnalyticsKpis metrics={analytics} dateDays={dateDays} />
 
-                                    <div className="grid grid-cols-1 xl:grid-cols-[1.1fr,0.9fr] gap-4 md:gap-6">
-                                        <RepAnalyticsPipeline metrics={analytics} />
-                                        <RepAnalyticsFocus metrics={analytics} />
-                                    </div>
-
-                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-                                        <TimeOfDayEffectiveness logs={filteredLogs} />
-                                        <StatusBreakdown properties={effectiveProperties} />
-                                    </div>
-
-                                    <AppointmentTimeline appointments={filteredAppointments} days={dateDays} />
+                                <div className="grid grid-cols-1 xl:grid-cols-[1.1fr,0.9fr] gap-4 md:gap-6">
+                                    <RepAnalyticsPipeline metrics={analytics} />
+                                    <RepAnalyticsFocus metrics={analytics} />
                                 </div>
-                            </>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+                                    <TimeOfDayEffectiveness logs={filteredLogs} />
+                                    <StatusBreakdown properties={effectiveProperties} />
+                                </div>
+
+                                <AppointmentTimeline appointments={filteredAppointments} days={dateDays} />
+                            </div>
+                        )}
+
+                        {activeTab === 'advanced' && (
+                            <div className="p-4 md:p-6 max-w-7xl mx-auto pb-24">
+                                <RepAdvancedAnalytics
+                                    logs={logs}
+                                    filteredLogs={filteredLogs}
+                                    properties={effectiveProperties}
+                                    appointments={filteredAppointments}
+                                    dateDays={dateDays}
+                                />
+                            </div>
                         )}
 
                         {activeTab === 'routes' && (
-                            <div className="p-4 md:p-6 max-w-7xl mx-auto">
+                            <div className="p-4 md:p-6 max-w-7xl mx-auto pb-24">
                                 <RouteProgress routes={savedRoutes} logs={logs} />
                             </div>
                         )}
