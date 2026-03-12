@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useMapEvents, useMap, Polygon, CircleMarker, Tooltip } from 'react-leaflet';
+import { useMapEvents, useMap, Polygon, CircleMarker, Circle, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 
 export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPolygon, drawShape = 'circle', drawSizeMiles = 10 }) {
