@@ -259,10 +259,10 @@ function LayoutInner({ children }) {
                 ) : (
                     <div className="flex justify-around items-center h-16 max-w-full mx-auto">
                         <NavItem icon={Map} label="Map" to={createPageUrl('Home')} active={window.location.pathname.endsWith('Home') || window.location.pathname === '/'} accent={accent} />
+                        <NavItem icon={Navigation} label="Rep Mode" to={createPageUrl('RepHome')} active={window.location.pathname.includes('RepHome')} accent={accent} />
                         <NavItem icon={TrendingUp} label="Analytics" to={createPageUrl('List')} active={window.location.pathname.endsWith('List')} accent={accent} />
                         <NavItem icon={Calendar} label="Appts" to={createPageUrl('Appointments')} active={window.location.pathname.endsWith('Appointments')} accent={accent} />
                         <NavItem icon={Users} label="Team" to={createPageUrl('AdminTeam')} active={window.location.pathname.endsWith('AdminTeam')} accent={accent} />
-                        <NavItem icon={Navigation} label="Rep Mode" to={createPageUrl('RepHome')} active={window.location.pathname.includes('RepHome')} accent={accent} />
                     </div>
                 )}
             </nav>
