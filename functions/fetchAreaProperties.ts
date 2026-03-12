@@ -106,9 +106,16 @@ Deno.serve(async (req) => {
             total_inserted: 0,
             total_existed: 0,
             total_updated: 0,
+            total_api_calls: 0,
+            mls_fetched: 0,
+            mls_new: 0,
+            mls_api_calls: 0,
             user_email: user.email,
             progress_pct: 0,
-            zip_codes_found: []
+            zip_codes_found: [],
+            error_log: [],
+            chunk_timings: [],
+            phase: 'deed_records'
         });
 
         console.log(`[fetchArea-v2] Created FetchJob ${job.id} for ${user.email} | lat=${optimizedLat} lng=${optimizedLng} radius=${optimizedRadius}mi sold_months=${effectiveSoldMonths}`);
