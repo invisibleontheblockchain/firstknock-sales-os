@@ -1,5 +1,5 @@
 import React from 'react';
-import { CalendarClock, Clock3, Map, PhoneForwarded, Route } from 'lucide-react';
+import { Calendar, Clock3, Map, Phone, Route } from 'lucide-react';
 
 export default function RepAnalyticsFocus({ metrics }) {
   const items = [
