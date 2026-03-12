@@ -84,15 +84,16 @@ const DEFAULT_STATUS_COLORS = {
     CALLBACK: '#FFD93D', // Gold (follow-ups)
     NO_ANSWER: '#404040',// Dark Gray
     QUALIFIED: '#00F5A0',// Neon Green
+    UNVERIFIED: '#A855F6',// Purple (legacy CSV data)
     OTHER: '#404040'     // Dark Gray
 };
 
 const COLOR_SCHEME_MAP = {
     default: DEFAULT_STATUS_COLORS,
-    neon: { ELIGIBLE: '#00fff7', SOLD: '#39ff14', HARD_NO: '#ff073a', CALLBACK: '#ffed00', NO_ANSWER: '#00fff7', QUALIFIED: '#39ff14', OTHER: '#00fff7' },
-    pastel: { ELIGIBLE: '#a8b8c8', SOLD: '#77dd77', HARD_NO: '#b39ddb', CALLBACK: '#fff176', NO_ANSWER: '#a8b8c8', QUALIFIED: '#77dd77', OTHER: '#a8b8c8' },
-    heatmap: { ELIGIBLE: '#1e3a5f', SOLD: '#ff4500', HARD_NO: '#8b0000', CALLBACK: '#ff8c00', NO_ANSWER: '#1e3a5f', QUALIFIED: '#ff4500', OTHER: '#1e3a5f' },
-    monochrome: { ELIGIBLE: '#555', SOLD: '#fff', HARD_NO: '#888', CALLBACK: '#bbb', NO_ANSWER: '#555', QUALIFIED: '#fff', OTHER: '#555' },
+    neon: { ELIGIBLE: '#00fff7', SOLD: '#39ff14', HARD_NO: '#ff073a', CALLBACK: '#ffed00', NO_ANSWER: '#00fff7', QUALIFIED: '#39ff14', UNVERIFIED: '#bf5af2', OTHER: '#00fff7' },
+    pastel: { ELIGIBLE: '#a8b8c8', SOLD: '#77dd77', HARD_NO: '#b39ddb', CALLBACK: '#fff176', NO_ANSWER: '#a8b8c8', QUALIFIED: '#77dd77', UNVERIFIED: '#c4b5fd', OTHER: '#a8b8c8' },
+    heatmap: { ELIGIBLE: '#1e3a5f', SOLD: '#ff4500', HARD_NO: '#8b0000', CALLBACK: '#ff8c00', NO_ANSWER: '#1e3a5f', QUALIFIED: '#ff4500', UNVERIFIED: '#7c3aed', OTHER: '#1e3a5f' },
+    monochrome: { ELIGIBLE: '#555', SOLD: '#fff', HARD_NO: '#888', CALLBACK: '#bbb', NO_ANSWER: '#555', QUALIFIED: '#fff', UNVERIFIED: '#999', OTHER: '#555' },
 };
 
 const LINE_DASH_MAP = {
@@ -668,21 +669,15 @@ export default function Home() {
 
         return propsArray
             .filter(p => {
-                if (!p?.lat || !p?.lng || isNaN(p.lat) || isNaN(p.lng)) return false;
-                // Filter out Null Island (0,0) coordinates
-                if (Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001) return false;
-
-                // Apply territory filter only when appropriate (not when polygon/explicit zips are active)
-                if (applyTerritoryFilter) {
-                    const propZip = String(p.zip_code || '').trim().slice(0, 5);
-                    if (!territoryZips.includes(propZip)) return false;
-                }
-
-                return true;
+...
             })
             .map(p => {
                 const hash = p.address_hash || p.id;
-                const propLogs = logsByAddress.get(hash) || [];
+                // Support legacy_hash alias: check both current hash and legacy hash for logs
+                const propLogs = [
+                    ...(logsByAddress.get(hash) || []),
+                    ...(p.legacy_hash && p.legacy_hash !== hash ? (logsByAddress.get(p.legacy_hash) || []) : [])
+                ];
                 return {
                     ...p,
                     address_hash: hash,
