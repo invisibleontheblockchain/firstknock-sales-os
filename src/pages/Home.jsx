@@ -923,7 +923,10 @@ export default function Home() {
             // Convert dynamicProps to effective format (add lat/lng parse if needed, though filter returns entities)
             const processedDynamic = dynamicProps.map(p => {
                 const hash = p.address_hash || p.id;
-                const propLogs = logsByAddress.get(hash) || [];
+                const propLogs = [
+                    ...(logsByAddress.get(hash) || []),
+                    ...(p.legacy_hash && p.legacy_hash !== hash ? (logsByAddress.get(p.legacy_hash) || []) : [])
+                ];
                 return {
                     ...p,
                     address_hash: hash,
