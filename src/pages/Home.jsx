@@ -669,7 +669,17 @@ export default function Home() {
 
         return propsArray
             .filter(p => {
-...
+                if (!p?.lat || !p?.lng || isNaN(p.lat) || isNaN(p.lng)) return false;
+                // Filter out Null Island (0,0) coordinates
+                if (Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001) return false;
+
+                // Apply territory filter only when appropriate (not when polygon/explicit zips are active)
+                if (applyTerritoryFilter) {
+                    const propZip = String(p.zip_code || '').trim().slice(0, 5);
+                    if (!territoryZips.includes(propZip)) return false;
+                }
+
+                return true;
             })
             .map(p => {
                 const hash = p.address_hash || p.id;
