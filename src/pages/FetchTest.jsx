@@ -1,139 +1,245 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
-import { Loader2, MapPin, Zap, AlertTriangle, CheckCircle2, Info, List } from 'lucide-react';
+import { Loader2, MapPin, Zap, AlertTriangle, CheckCircle2, Info, List, Clock, Activity, BarChart3, Trash2 } from 'lucide-react';
+import TestMetricsPanel from '@/components/test/TestMetricsPanel';
+import TestPropertyTable from '@/components/test/TestPropertyTable';
 
-// TINY test polygon — ~1 sq mile in downtown Charleston, SC
-// Just a few blocks around King Street — should have minimal sold homes
-const TEST_POLYGON = [
-  { lat: 32.7850, lng: -79.9400 },
-  { lat: 32.7850, lng: -79.9300 },
-  { lat: 32.7770, lng: -79.9300 },
-  { lat: 32.7770, lng: -79.9400 },
-];
+// ==========================================
+// ANDERSON COUNTY TEST AREAS
+// ==========================================
 
-const TEST_CENTER = { lat: 32.781, lng: -79.935 };
-const TEST_RADIUS = 0.5; // 0.5 mile radius — very small
+const ANDERSON_TESTS = {
+  small: {
+    label: 'Anderson City Core',
+    description: '~5 sq mi — downtown Anderson',
+    center: { lat: 34.5034, lng: -82.6501 },
+    radius: 1.3,
+    polygon: [
+      { lat: 34.5150, lng: -82.6650 },
+      { lat: 34.5150, lng: -82.6350 },
+      { lat: 34.4920, lng: -82.6350 },
+      { lat: 34.4920, lng: -82.6650 },
+    ],
+    zip: '29621'
+  },
+  medium: {
+    label: 'Anderson + Suburbs',
+    description: '~25 sq mi — city + surrounding neighborhoods',
+    center: { lat: 34.51, lng: -82.65 },
+    radius: 3,
+    polygon: [
+      { lat: 34.5400, lng: -82.6900 },
+      { lat: 34.5400, lng: -82.6100 },
+      { lat: 34.4800, lng: -82.6100 },
+      { lat: 34.4800, lng: -82.6900 },
+    ],
+    zip: '29621'
+  },
+  large: {
+    label: 'North Anderson County',
+    description: '~80 sq mi — Anderson to Clemson corridor',
+    center: { lat: 34.55, lng: -82.72 },
+    radius: 5.5,
+    polygon: [
+      { lat: 34.6100, lng: -82.8200 },
+      { lat: 34.6100, lng: -82.6200 },
+      { lat: 34.4900, lng: -82.6200 },
+      { lat: 34.4900, lng: -82.8200 },
+    ],
+    zip: '29621'
+  }
+};
 
 export default function FetchTest() {
-  const [results, setResults] = useState([]);
+  const [logs, setLogs] = useState([]);
   const [running, setRunning] = useState(null);
-  const [pulledProperties, setPulledProperties] = useState([]);
+  const [activeJobId, setActiveJobId] = useState(null);
+  const [jobData, setJobData] = useState(null);
+  const [properties, setProperties] = useState([]);
+  const [metrics, setMetrics] = useState(null);
+  const [soldMonths, setSoldMonths] = useState(6);
+  const pollRef = useRef(null);
 
   const log = (msg, type = 'info') => {
-    setResults(prev => [...prev, { msg, type, time: new Date().toLocaleTimeString() }]);
+    setLogs(prev => [...prev, { msg, type, time: new Date().toLocaleTimeString() }]);
   };
 
-  const clearLogs = () => setResults([]);
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => { if (pollRef.current) clearTimeout(pollRef.current); };
+  }, []);
 
-  // Test 1: fetchZipProperties with sold_months param
-  const testZipFetch = async () => {
-    setRunning('zip');
-    log('Starting ZIP fetch test — zip=29401, sold_months=3');
-    log('This should ONLY fetch recently sold homes (no density fill)');
-    try {
-      const start = Date.now();
-      const res = await base44.functions.invoke('fetchZipProperties', {
-        zip_code: '29401',
-        sold_months: 3,
-        force_sync: true
-      });
-      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-      const d = res.data;
-      log(`✅ Completed in ${elapsed}s`, 'success');
-      log(`Status: ${d.status}`, 'success');
-      log(`Properties found: ${d.total_found || 0}`, 'info');
-      log(`Imported: ${d.count || 0}`, 'info');
-      log(`Sold: ${d.sold_count || 0}, MLS: ${d.mls_count || 0}`, 'info');
-      log(`API calls used: ${d.api_calls || '?'}`, d.api_calls > 20 ? 'warn' : 'success');
-      if (d.api_calls > 20) log('⚠️ API calls > 20 — may need further optimization', 'warn');
-      log(d.message || JSON.stringify(d));
-    } catch (e) {
-      log(`❌ Error: ${e.message}`, 'error');
-      if (e.response?.data) log(JSON.stringify(e.response.data), 'error');
-    }
-    setRunning(null);
-  };
+  // =====================
+  // AREA FETCH TEST
+  // =====================
+  const testAreaFetch = async (testKey) => {
+    const test = ANDERSON_TESTS[testKey];
+    if (!test) return;
 
-  // Test 2: fetchAreaProperties with small polygon
-  const testAreaFetch = async () => {
-    setRunning('area');
-    log('Starting AREA fetch test — tiny ~1 sq mi polygon, Charleston SC');
-    log(`Center: ${TEST_CENTER.lat}, ${TEST_CENTER.lng} | Radius: ${TEST_RADIUS}mi`);
-    log(`Polygon: ${TEST_POLYGON.length} points`);
+    setRunning(testKey);
+    setMetrics(null);
+    setProperties([]);
+    log(`🔄 Starting AREA FETCH — ${test.label}`, 'info');
+    log(`Center: ${test.center.lat}, ${test.center.lng} | Radius: ${test.radius}mi | Sold months: ${soldMonths}`);
+
+    const fetchStart = Date.now();
     try {
-      const start = Date.now();
       const res = await base44.functions.invoke('fetchAreaProperties', {
-        latitude: TEST_CENTER.lat,
-        longitude: TEST_CENTER.lng,
-        radius: TEST_RADIUS,
-        polygon: TEST_POLYGON,
-        sold_months: 3  // Only 3 months — minimal API usage
+        latitude: test.center.lat,
+        longitude: test.center.lng,
+        radius: test.radius,
+        polygon: test.polygon,
+        sold_months: soldMonths
       });
-      const elapsed = ((Date.now() - start) / 1000).toFixed(1);
       const d = res.data;
-      log(`✅ Job created in ${elapsed}s`, 'success');
-      log(`Status: ${d.status}`, 'info');
-      log(`Job ID: ${d.job_id || 'N/A'}`, 'info');
-      if (d.optimized_radius !== undefined) log(`Radius: ${d.original_radius}mi → ${d.optimized_radius}mi (optimized)`, d.optimized_radius < d.original_radius ? 'success' : 'info');
-      log(d.message || JSON.stringify(d));
+      const invokeTime = ((Date.now() - fetchStart) / 1000).toFixed(1);
+      log(`Job created in ${invokeTime}s — ID: ${d.job_id}`, 'success');
+
+      if (d.optimized_radius !== undefined) {
+        log(`Radius: ${d.original_radius}mi → ${d.optimized_radius}mi`, d.optimized_radius < d.original_radius ? 'success' : 'info');
+      }
 
       if (d.error) {
         log(`⚠️ ${d.error}: ${d.message}`, 'warn');
         setRunning(null);
-      } else if (d.job_id) {
-        log('Polling job status every 5s...');
-        pollJob(d.job_id);
+        return;
+      }
+
+      if (d.job_id) {
+        setActiveJobId(d.job_id);
+        setMetrics({ startTime: fetchStart, invokeMs: Date.now() - fetchStart });
+        pollJob(d.job_id, fetchStart);
       } else {
         setRunning(null);
       }
     } catch (e) {
-      log(`❌ Error: ${e.message}`, 'error');
+      log(`❌ CRASH: ${e.message}`, 'error');
       if (e.response?.data) log(JSON.stringify(e.response.data), 'error');
       setRunning(null);
     }
   };
 
-  const pollJob = async (jobId) => {
+  // =====================
+  // ZIP FETCH TEST
+  // =====================
+  const testZipFetch = async (zip) => {
+    setRunning('zip');
+    setMetrics(null);
+    setProperties([]);
+    log(`🔄 Starting ZIP FETCH — ${zip}, sold_months=${soldMonths}`);
+
+    const fetchStart = Date.now();
+    try {
+      const res = await base44.functions.invoke('fetchZipProperties', {
+        zip_code: zip, sold_months: soldMonths, force_sync: true
+      });
+      const elapsed = ((Date.now() - fetchStart) / 1000).toFixed(1);
+      const d = res.data;
+
+      log(`✅ Completed in ${elapsed}s`, 'success');
+      log(`Status: ${d.status} | Found: ${d.total_found || 0} | Imported: ${d.count || 0}`, 'info');
+      log(`Sold: ${d.sold_count || 0} | MLS: ${d.mls_count || 0} | API calls: ${d.api_calls || 0}`, 'info');
+
+      setMetrics({
+        startTime: fetchStart,
+        totalDurationMs: Date.now() - fetchStart,
+        apiCalls: d.api_calls || 0,
+        totalFound: d.total_found || 0,
+        inserted: d.count || 0,
+        soldCount: d.sold_count || 0,
+        mlsCount: d.mls_count || 0,
+        source: 'zip'
+      });
+
+      // Load properties for this zip
+      loadProperties([zip]);
+    } catch (e) {
+      log(`❌ CRASH: ${e.message}`, 'error');
+      if (e.response?.data) log(JSON.stringify(e.response.data), 'error');
+    }
+    setRunning(null);
+  };
+
+  // =====================
+  // POLL JOB
+  // =====================
+  const pollJob = async (jobId, startTime) => {
     let attempts = 0;
-    const maxAttempts = 60; // 5 minutes max
+    const maxAttempts = 120;
 
     const poll = async () => {
       attempts++;
       try {
         const jobs = await base44.entities.FetchJob.filter({ id: jobId }, null, 1);
         const arr = Array.isArray(jobs) ? jobs : (jobs?.items || []);
-        if (arr.length === 0) {
-          log('Job not found', 'error');
-          setRunning(null);
-          return;
-        }
-        const job = arr[0];
-        log(`[Poll ${attempts}] Status: ${job.status} | Progress: ${job.progress_pct}% | Fetched: ${job.total_fetched}/${job.total_expected} | Inserted: ${job.total_inserted} | Existed: ${job.total_existed} | API Calls: ${job.total_api_calls || '?'}`);
+        if (arr.length === 0) { log('Job not found', 'error'); setRunning(null); return; }
 
-        if (job.status === 'completed') {
-          log(`✅ JOB COMPLETE — ${job.total_inserted} inserted, ${job.total_existed} existed, ${job.total_updated || 0} updated, ${job.total_api_calls || '?'} API calls`, 'success');
-          log(`Zip codes found: ${(job.zip_codes_found || []).join(', ')}`, 'info');
-          log('Loading pulled properties...', 'info');
-          loadProperties(job.zip_codes_found || []);
+        const j = arr[0];
+        setJobData(j);
+
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(0);
+        log(`[${elapsed}s] ${j.phase || 'deed_records'} | ${j.progress_pct}% | Fetched: ${j.total_fetched}/${j.total_expected} | Ins: ${j.total_inserted} | Exist: ${j.total_existed} | MLS: ${j.mls_fetched || 0} | API: ${j.total_api_calls}`);
+
+        if (j.status === 'completed') {
+          const totalMs = Date.now() - startTime;
+          log(`✅ JOB COMPLETE in ${(totalMs / 1000).toFixed(1)}s`, 'success');
+          log(`Deed records: ${j.total_fetched} | MLS listings: ${j.mls_fetched || 0}`, 'success');
+          log(`Inserted: ${j.total_inserted} | Existed: ${j.total_existed} | Updated: ${j.total_updated || 0}`, 'success');
+          log(`Total API calls: ${j.total_api_calls} | MLS-only new: ${j.mls_new || 0}`, 'info');
+
+          if (j.error_log && j.error_log.length > 0) {
+            log(`⚠️ ${j.error_log.length} warnings/errors during job:`, 'warn');
+            j.error_log.forEach(e => log(`  ${e}`, 'warn'));
+          }
+
+          setMetrics({
+            startTime,
+            totalDurationMs: totalMs,
+            apiCalls: j.total_api_calls,
+            mlsApiCalls: j.mls_api_calls || 0,
+            totalFetched: j.total_fetched,
+            totalExpected: j.total_expected,
+            inserted: j.total_inserted,
+            existed: j.total_existed,
+            updated: j.total_updated || 0,
+            mlsFetched: j.mls_fetched || 0,
+            mlsNew: j.mls_new || 0,
+            chunkTimings: j.chunk_timings || [],
+            errorCount: (j.error_log || []).length,
+            errors: j.error_log || [],
+            source: 'area'
+          });
+
+          loadProperties(j.zip_codes_found || []);
           setRunning(null);
           return;
         }
-        if (job.status === 'failed') {
-          log(`❌ JOB FAILED: ${job.error_message}`, 'error');
+
+        if (j.status === 'failed') {
+          log(`❌ JOB FAILED: ${j.error_message}`, 'error');
+          if (j.error_log && j.error_log.length > 0) {
+            j.error_log.forEach(e => log(`  ${e}`, 'error'));
+          }
+          setMetrics({
+            startTime, totalDurationMs: Date.now() - startTime,
+            apiCalls: j.total_api_calls, errorCount: (j.error_log || []).length,
+            errors: j.error_log || [], failed: true, source: 'area'
+          });
           setRunning(null);
           return;
         }
+
         if (attempts >= maxAttempts) {
-          log('⚠️ Max poll attempts reached', 'warn');
+          log('⚠️ Max poll attempts reached (10 min)', 'warn');
           setRunning(null);
           return;
         }
 
-        setTimeout(poll, 5000);
+        pollRef.current = setTimeout(poll, 3000);
       } catch (e) {
         log(`Poll error: ${e.message}`, 'error');
-        if (attempts < maxAttempts) setTimeout(poll, 5000);
+        if (attempts < maxAttempts) pollRef.current = setTimeout(poll, 5000);
         else setRunning(null);
       }
     };
@@ -143,176 +249,150 @@ export default function FetchTest() {
 
   const loadProperties = async (zipCodes) => {
     try {
-      const zips = zipCodes.length > 0 ? zipCodes : ['29401'];
+      const zips = zipCodes.length > 0 ? zipCodes : ['29621'];
       let allProps = [];
       for (const zip of zips) {
-        const props = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 50);
+        const props = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 200);
         const list = Array.isArray(props) ? props : (props?.items || []);
         allProps = [...allProps, ...list];
       }
-      setPulledProperties(allProps.slice(0, 50));
+      setProperties(allProps);
       log(`Loaded ${allProps.length} properties for display`, 'success');
     } catch (e) {
       log(`Failed to load properties: ${e.message}`, 'error');
     }
   };
 
-  // Test 3: Check current RentCast usage
-  const testUsageCheck = async () => {
-    setRunning('usage');
-    log('Checking current zip usage...');
+  // Cancel / cleanup
+  const cancelJob = async () => {
+    if (!activeJobId) return;
     try {
-      const res = await base44.functions.invoke('fetchZipProperties', { check_usage_only: true });
-      const d = res.data;
-      log(`✅ Zips used: ${d.zips_used}`, 'success');
-      log(`Generated zips: ${(d.generated_zips || []).join(', ') || 'none'}`, 'info');
-    } catch (e) {
-      log(`❌ Error: ${e.message}`, 'error');
-    }
+      await base44.entities.FetchJob.update(activeJobId, { status: 'failed', error_message: 'Cancelled by user' });
+      log('Job cancelled', 'warn');
+    } catch (e) { log(`Cancel failed: ${e.message}`, 'error'); }
+    if (pollRef.current) clearTimeout(pollRef.current);
     setRunning(null);
+    setActiveJobId(null);
   };
 
   const typeStyles = {
-    info: 'text-gray-400',
-    success: 'text-green-400',
-    warn: 'text-yellow-400',
-    error: 'text-red-400',
+    info: 'text-gray-400', success: 'text-green-400',
+    warn: 'text-yellow-400', error: 'text-red-400',
   };
 
   return (
     <div className="h-full overflow-auto bg-[#09090b] text-white p-4 md:p-6">
-      <div className="max-w-3xl mx-auto space-y-6">
-        <div>
-          <h1 className="text-xl font-black tracking-tight">API Fetch Tester</h1>
-          <p className="text-sm text-gray-500 mt-1">Test RentCast API calls with conservative limits before scaling</p>
+      <div className="max-w-5xl mx-auto space-y-5">
+
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-black tracking-tight">Pipeline Tester v3</h1>
+            <p className="text-xs text-gray-500 mt-1">Anderson County SC — Deed Records + MLS Sold Listings</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] text-gray-500 font-bold">SOLD MONTHS:</label>
+            <select
+              value={soldMonths}
+              onChange={e => setSoldMonths(Number(e.target.value))}
+              className="bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1"
+            >
+              <option value={3}>3 months</option>
+              <option value={6}>6 months</option>
+              <option value={12}>12 months</option>
+              <option value={24}>24 months</option>
+            </select>
+          </div>
         </div>
 
-        {/* Info box */}
+        {/* Pipeline Info */}
         <div className="rounded-2xl border border-blue-500/20 bg-blue-500/5 p-4 flex gap-3">
           <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
-          <div className="text-xs text-blue-300/80 space-y-1">
-            <p><strong>v8 Changes:</strong> Removed Phase 3 (density fill). Now only fetches recently sold properties.</p>
-            <p><strong>processFetchChunk:</strong> Reduced from 60→20 pages/chunk and 15→5 parallel. API calls tracked on job.</p>
-            <p><strong>fetchAreaProperties:</strong> Now computes minimum bounding circle from polygon. Accepts sold_months param.</p>
-            <p><strong>Test area:</strong> TINY ~1 sq mi polygon near King St, Charleston SC. 3-month window. Should use &lt;10 API calls.</p>
+          <div className="text-[11px] text-blue-300/80 space-y-1">
+            <p><strong>v3 Pipeline:</strong> Phase 1 fetches deed records (/properties?saleDateRange). Phase 2 fetches MLS sold listings (/listings/sale?status=Inactive) to catch recent closings not yet in courthouse records.</p>
+            <p><strong>Metrics:</strong> Every chunk logs duration, API calls, insert/exist counts, and any errors. Watch for rate limits (429) and auth failures (401).</p>
           </div>
         </div>
 
-        {/* Test buttons */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <button
-            onClick={testUsageCheck}
-            disabled={!!running}
-            className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-left hover:bg-white/[0.04] transition-all disabled:opacity-50"
-          >
-            <MapPin className="w-5 h-5 text-purple-400 mb-2" />
-            <p className="text-sm font-bold text-white">Check Usage</p>
-            <p className="text-[10px] text-gray-500 mt-1">See current zip count</p>
-          </button>
-
-          <button
-            onClick={testZipFetch}
-            disabled={!!running}
-            className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-left hover:bg-white/[0.04] transition-all disabled:opacity-50"
-          >
-            <Zap className="w-5 h-5 text-yellow-400 mb-2" />
-            <p className="text-sm font-bold text-white">Test Zip Fetch</p>
-            <p className="text-[10px] text-gray-500 mt-1">29401 • 3 months • force sync</p>
-          </button>
-
-          <button
-            onClick={testAreaFetch}
-            disabled={!!running}
-            className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-left hover:bg-white/[0.04] transition-all disabled:opacity-50"
-          >
-            <MapPin className="w-5 h-5 text-green-400 mb-2" />
-            <p className="text-sm font-bold text-white">Test Area Fetch</p>
-            <p className="text-[10px] text-gray-500 mt-1">~1 sq mi • 3 months • bounding circle</p>
-          </button>
+        {/* Anderson County Area Tests */}
+        <div>
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Area Fetch Tests — Anderson County</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {Object.entries(ANDERSON_TESTS).map(([key, test]) => (
+              <button
+                key={key}
+                onClick={() => testAreaFetch(key)}
+                disabled={!!running}
+                className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-left hover:bg-white/[0.04] transition-all disabled:opacity-50"
+              >
+                <MapPin className={`w-5 h-5 mb-2 ${key === 'small' ? 'text-green-400' : key === 'medium' ? 'text-yellow-400' : 'text-red-400'}`} />
+                <p className="text-sm font-bold text-white">{test.label}</p>
+                <p className="text-[10px] text-gray-500 mt-1">{test.description}</p>
+                <p className="text-[10px] text-gray-600 mt-0.5">radius: {test.radius}mi</p>
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Running indicator */}
+        {/* Zip Fetch Tests */}
+        <div>
+          <h2 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3">Zip Fetch Tests — Compare</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {['29621', '29625', '29626', '29627'].map(zip => (
+              <button
+                key={zip}
+                onClick={() => testZipFetch(zip)}
+                disabled={!!running}
+                className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3 text-left hover:bg-white/[0.04] transition-all disabled:opacity-50"
+              >
+                <Zap className="w-4 h-4 text-yellow-400 mb-1" />
+                <p className="text-sm font-bold text-white">{zip}</p>
+                <p className="text-[10px] text-gray-500">Zip fetch</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Running indicator + cancel */}
         {running && (
-          <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
-            <Loader2 className="w-4 h-4 animate-spin text-yellow-400" />
-            <span className="text-xs font-bold text-yellow-400">
-              Running: {running === 'zip' ? 'Zip Fetch' : running === 'area' ? 'Area Fetch' : 'Usage Check'}...
-            </span>
+          <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
+            <div className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-yellow-400" />
+              <span className="text-xs font-bold text-yellow-400">
+                Running: {running === 'zip' ? 'Zip Fetch' : ANDERSON_TESTS[running]?.label || running}
+                {jobData && ` — ${jobData.phase || 'deed_records'} ${jobData.progress_pct || 0}%`}
+              </span>
+            </div>
+            <button onClick={cancelJob} className="text-[10px] font-bold text-red-400 hover:text-red-300">CANCEL</button>
           </div>
         )}
 
-        {/* Manual load button */}
-        <button
-          onClick={() => loadProperties(['29401'])}
-          disabled={!!running}
-          className="w-full rounded-2xl border border-white/[0.06] bg-white/[0.02] p-3 text-left hover:bg-white/[0.04] transition-all disabled:opacity-50 flex items-center gap-3"
-        >
-          <List className="w-5 h-5 text-cyan-400" />
-          <div>
-            <p className="text-sm font-bold text-white">Load Properties (29401)</p>
-            <p className="text-[10px] text-gray-500">View most recent 50 properties in this zip</p>
-          </div>
-        </button>
+        {/* Metrics Panel */}
+        {metrics && <TestMetricsPanel metrics={metrics} />}
 
-        {/* Properties table */}
-        {pulledProperties.length > 0 && (
-          <div className="rounded-2xl border border-white/[0.06] bg-[#0c0c0e] overflow-hidden">
-            <div className="px-4 py-3 border-b border-white/[0.04] flex items-center justify-between">
-              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Pulled Properties ({pulledProperties.length})</span>
-              <button onClick={() => setPulledProperties([])} className="text-[10px] font-bold text-gray-600 hover:text-white transition-colors">Clear</button>
-            </div>
-            <div className="overflow-auto max-h-[400px]">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-[#0c0c0e]">
-                  <tr className="border-b border-white/[0.04] text-gray-500 text-left">
-                    <th className="px-3 py-2">Address</th>
-                    <th className="px-3 py-2">City</th>
-                    <th className="px-3 py-2">Zip</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Price</th>
-                    <th className="px-3 py-2">Sold Date</th>
-                    <th className="px-3 py-2">Beds/Bath</th>
-                    <th className="px-3 py-2">Sqft</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pulledProperties.map((p, i) => (
-                    <tr key={p.id || i} className="border-b border-white/[0.02] hover:bg-white/[0.02]">
-                      <td className="px-3 py-2 text-white font-medium truncate max-w-[200px]">{p.full_address || `${p.house_number} ${p.street_name}`}</td>
-                      <td className="px-3 py-2 text-gray-400">{p.city || '-'}</td>
-                      <td className="px-3 py-2 text-gray-400">{p.zip_code || '-'}</td>
-                      <td className="px-3 py-2">
-                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                          p.original_status === 'SOLD' ? 'bg-red-500/20 text-red-400' :
-                          p.original_status === 'ELIGIBLE' ? 'bg-green-500/20 text-green-400' :
-                          'bg-gray-500/20 text-gray-400'
-                        }`}>{p.original_status || '?'}</span>
-                      </td>
-                      <td className="px-3 py-2 text-gray-300">{p.price ? `$${p.price.toLocaleString()}` : '-'}</td>
-                      <td className="px-3 py-2 text-gray-400">{p.sold_date || '-'}</td>
-                      <td className="px-3 py-2 text-gray-400">{p.beds || '-'}/{p.baths || '-'}</td>
-                      <td className="px-3 py-2 text-gray-400">{p.sqft ? p.sqft.toLocaleString() : '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+        {/* Properties Table */}
+        {properties.length > 0 && (
+          <TestPropertyTable
+            properties={properties}
+            onClear={() => setProperties([])}
+          />
         )}
 
-        {/* Log output */}
+        {/* Console Logs */}
         <div className="rounded-2xl border border-white/[0.06] bg-[#0c0c0e] overflow-hidden">
           <div className="px-4 py-3 border-b border-white/[0.04] flex items-center justify-between">
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Console Output</span>
-            <button onClick={clearLogs} className="text-[10px] font-bold text-gray-600 hover:text-white transition-colors">Clear</button>
+            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Console ({logs.length})</span>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setLogs([])} className="text-[10px] font-bold text-gray-600 hover:text-white">Clear</button>
+            </div>
           </div>
-          <div className="p-4 max-h-[400px] overflow-auto font-mono text-xs space-y-1">
-            {results.length === 0 ? (
+          <div className="p-3 max-h-[350px] overflow-auto font-mono text-[11px] space-y-0.5">
+            {logs.length === 0 ? (
               <p className="text-gray-600 italic">Run a test to see output...</p>
             ) : (
-              results.map((r, i) => (
-                <div key={i} className={`flex gap-2 ${typeStyles[r.type]}`}>
-                  <span className="text-gray-700 shrink-0">[{r.time}]</span>
+              logs.map((r, i) => (
+                <div key={i} className={`flex gap-2 ${typeStyles[r.type]} leading-tight`}>
+                  <span className="text-gray-700 shrink-0 w-16">{r.time}</span>
                   <span className="break-all">{r.msg}</span>
                 </div>
               ))
