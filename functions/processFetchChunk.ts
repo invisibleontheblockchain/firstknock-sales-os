@@ -240,16 +240,17 @@ Deno.serve(async (req) => {
                 if (pZip && !zipCodesFound.includes(pZip)) zipCodesFound.push(pZip);
 
                 mapped.push({
-                    address_hash: hash, house_number, street_name,
-                    full_address: p.formattedAddress || p.addressLine1,
-                    city: p.city || '', state: p.state || '', zip_code: pZip,
-                    lat: p.latitude, lng: p.longitude, original_status,
-                    beds: p.bedrooms || 0, baths: p.bathrooms || 0,
-                    sqft: p.squareFootage || 0, lot_size: p.lotSize || 0,
-                    year_built: p.yearBuilt || 0, price: p.lastSalePrice || p.price || 0,
-                    sold_date: p.lastSaleDate || null, sale_type: 'Deed',
-                    property_type: p.propertyType || 'Single Family',
-                    mls_id: p.assessorID || null, url: null
+                address_hash: hash, house_number, street_name,
+                full_address: p.formattedAddress || p.addressLine1,
+                city: p.city || '', state: p.state || '', zip_code: pZip,
+                lat: p.latitude, lng: p.longitude, original_status,
+                beds: p.bedrooms || 0, baths: p.bathrooms || 0,
+                sqft: p.squareFootage || 0, lot_size: p.lotSize || 0,
+                year_built: p.yearBuilt || 0, price: p.lastSalePrice || p.price || 0,
+                sold_date: p.lastSaleDate || null, sale_type: 'Deed',
+                property_type: p.propertyType || 'Single Family',
+                mls_id: p.assessorID || null, url: null,
+                data_source: 'rentcast'
                 });
             }
 
@@ -281,8 +282,29 @@ Deno.serve(async (req) => {
                     const existing = existingHashToId.get(p.address_hash);
                     if (existing) {
                         chunkExisted++;
+                        // Recency-wins: RentCast SOLD overrides any existing status
                         if (p.original_status === 'SOLD' && existing.status !== 'SOLD') {
                             soldUpdates.push({ id: existing.id, sold_date: p.sold_date, price: p.price });
+                        }
+                        // Hydrate: if existing record is UNVERIFIED or missing data, upgrade it
+                        if (existing.status === 'UNVERIFIED' || existing.dataSource === 'csv_import') {
+                            soldUpdates.push({
+                                id: existing.id,
+                                sold_date: p.sold_date,
+                                price: p.price,
+                                original_status: p.original_status,
+                                data_source: 'rentcast',
+                                sale_type: 'Deed',
+                                city: p.city,
+                                state: p.state,
+                                zip_code: p.zip_code,
+                                beds: p.beds,
+                                baths: p.baths,
+                                sqft: p.sqft,
+                                lot_size: p.lot_size,
+                                year_built: p.year_built,
+                                property_type: p.property_type
+                            });
                         }
                     } else {
                         toInsert.push(p);
@@ -481,7 +503,8 @@ Deno.serve(async (req) => {
                     year_built: l.yearBuilt || 0, price: l.price || 0,
                     sold_date: l.removedDate || l.listedDate || null, sale_type: 'MLS',
                     property_type: l.propertyType || 'Single Family',
-                    mls_id: l.id || null, url: null
+                    mls_id: l.id || null, url: null,
+                    data_source: 'rentcast'
                 });
             }
 
