@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
-import { Map, Upload, Navigation, LogIn, Users, HelpCircle, Sparkles, Smartphone, MoreVertical, LogOut, RefreshCw, User as UserIcon, TrendingUp, Paintbrush, Gift, Calendar, ChevronDown } from 'lucide-react';
+import { Map, Upload, Navigation, LogIn, Users, HelpCircle, Sparkles, Smartphone, MoreVertical, LogOut, RefreshCw, User as UserIcon, TrendingUp, Paintbrush, Gift, Calendar } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -192,38 +192,9 @@ function LayoutInner({ children }) {
                         <button onClick={() => setShowThemePicker(!showThemePicker)} className="flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]"><Paintbrush className="w-4 h-4" /></button>
                         <Link to={createPageUrl('Setup')} className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white">SETUP</Link>
                         <Link to={createPageUrl('Billing')} className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white">PLANS</Link>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <button className="flex items-center gap-2 px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.25)]">
-                                    <UserIcon className="w-3.5 h-3.5" />
-                                    <span>{user?.app_role === 'rep' ? 'REP WORKSPACE' : 'MANAGER WORKSPACE'}</span>
-                                    <ChevronDown className="w-3 h-3 opacity-70" />
-                                </button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-64 bg-[#0A0A0A] border-slate-800 text-white shadow-xl">
-                                <DropdownMenuLabel>Workspace</DropdownMenuLabel>
-                                <DropdownMenuSeparator className="bg-slate-800" />
-                                <div className="px-3 py-2 text-xs text-slate-400">
-                                    Current: {user?.app_role === 'rep' ? 'Rep workspace' : 'Manager workspace'}
-                                </div>
-                                {user?.app_role !== 'rep' && (
-                                    <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer">
-                                        <Link to={createPageUrl('RepHome')} className="flex items-center w-full">
-                                            <UserIcon className="mr-2 h-4 w-4" />
-                                            <span>Switch to Rep Workspace</span>
-                                        </Link>
-                                    </DropdownMenuItem>
-                                )}
-                                <DropdownMenuItem onClick={() => { if(confirm("Reset Role?")) base44.auth.updateMe({ app_role: null }).then(() => { window.location.href = createPageUrl('RoleSelect'); }); }} className="text-red-400 focus:text-red-400 focus:bg-red-900/20 cursor-pointer">
-                                    <RefreshCw className="mr-2 h-4 w-4" />
-                                    <span>Reset Role Selection</span>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={async () => { try { await base44.auth.logout(window.location.origin); } catch { window.location.reload(); } queryClient.clear(); }} className="focus:bg-slate-800 focus:text-white cursor-pointer">
-                                    <LogOut className="mr-2 h-4 w-4" />
-                                    <span>Logout</span>
-                                </DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                        <button onClick={() => { if(confirm("Reset Role?")) base44.auth.updateMe({ app_role: null }).then(() => { window.location.href = createPageUrl('RoleSelect'); }); }} className="bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded">RESET</button>
+                        <button onClick={async () => { try { await base44.auth.logout(window.location.origin); } catch { window.location.reload(); } queryClient.clear(); }} className="text-xs text-slate-400 hover:text-white">LOGOUT</button>
+                        {user?.app_role !== 'rep' && <Link to={createPageUrl('RepHome')} className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]">REP MODE</Link>}
                         <Link to={createPageUrl('MobileApp')} className="flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]"><Smartphone className="w-4 h-4" /></Link>
                         <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
                     </div>
@@ -238,11 +209,7 @@ function LayoutInner({ children }) {
                             <DropdownMenuContent align="end" className="w-56 bg-[#0A0A0A] border-slate-800 text-white shadow-xl">
                                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                                 <DropdownMenuSeparator className="bg-slate-800" />
-                                <DropdownMenuLabel>Workspace</DropdownMenuLabel>
-                                <div className="px-2 py-2 text-xs text-slate-400">Current: {user?.app_role === 'rep' ? 'Rep workspace' : 'Manager workspace'}</div>
-                                {user?.app_role !== 'rep' && <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('RepHome')} className="flex items-center w-full"><UserIcon className="mr-2 h-4 w-4" /><span>Switch to Rep Workspace</span></Link></DropdownMenuItem>}
-                                <DropdownMenuSeparator className="bg-slate-800" />
-                                <DropdownMenuLabel>Navigation</DropdownMenuLabel>
+                                {user?.app_role !== 'rep' && <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('RepHome')} className="flex items-center w-full"><UserIcon className="mr-2 h-4 w-4" /><span>Switch to Rep Mode</span></Link></DropdownMenuItem>}
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('Setup')} className="flex items-center w-full"><Upload className="mr-2 h-4 w-4" /><span>Setup</span></Link></DropdownMenuItem>
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('Billing')} className="flex items-center w-full"><Sparkles className="mr-2 h-4 w-4" /><span>Plans</span></Link></DropdownMenuItem>
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('MobileApp')} className="flex items-center w-full"><Smartphone className="mr-2 h-4 w-4" /><span>Get Mobile App</span></Link></DropdownMenuItem>

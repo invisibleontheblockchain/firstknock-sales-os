@@ -25,8 +25,6 @@ import LeadScoringEffectiveness from '@/components/analytics/LeadScoringEffectiv
 import RouteEfficiency from '@/components/analytics/RouteEfficiency';
 import AppointmentForecast from '@/components/analytics/AppointmentForecast';
 import AppointmentTimeline from '@/components/analytics/AppointmentTimeline';
-import AnalyticsSectionHeader from '@/components/analytics/AnalyticsSectionHeader';
-import NextBestActionBanner from '@/components/analytics/NextBestActionBanner';
 
 export default function ListPage() {
     const { accent } = useTheme();
@@ -184,86 +182,38 @@ export default function ListPage() {
                 ) : (
                     <>
                         {activeTab === 'overview' && (
-                            <div className="space-y-6 md:space-y-8 max-w-7xl mx-auto">
-                                <NextBestActionBanner logs={logs} appointments={filteredAppointments} properties={effectiveProperties} />
-
-                                <section className="space-y-4">
-                                    <AnalyticsSectionHeader
-                                        eyebrow="Leading indicators"
-                                        title={viewMode === 'essential' ? 'Daily pulse' : 'Top-of-funnel momentum'}
-                                        description={viewMode === 'essential'
-                                            ? 'A compact view of the numbers reps need most often while they are actively moving in the field.'
-                                            : 'These are the first numbers to scan before digging into efficiency, market coverage, and pipeline quality.'}
-                                    />
-                                    <OverviewStats routes={savedRoutes} logs={logs} properties={effectiveProperties} teamMembers={teamMembers} viewMode={viewMode} />
-                                </section>
+                            <div className="space-y-4 md:space-y-6 max-w-7xl mx-auto">
+                                <OverviewStats routes={savedRoutes} logs={logs} properties={effectiveProperties} teamMembers={teamMembers} viewMode={viewMode} />
                                 
                                 {viewMode === 'advanced' && (
-                                    <section className="space-y-4">
-                                        <AnalyticsSectionHeader
-                                            eyebrow="Pipeline quality"
-                                            title="Appointment and lead health"
-                                            description="This section turns your flat KPI row into a dedicated pipeline summary so conversion blockers stand out faster."
-                                        />
-                                        <KpiSummaryCards appointments={filteredAppointments} teamMembers={teamMembers} />
-                                    </section>
+                                    <KpiSummaryCards appointments={filteredAppointments} teamMembers={teamMembers} />
                                 )}
 
-                                <section className="space-y-4">
-                                    <AnalyticsSectionHeader
-                                        eyebrow="Execution"
-                                        title={viewMode === 'advanced' ? 'Timing and activity patterns' : 'Activity and territory snapshot'}
-                                        description={viewMode === 'advanced'
-                                            ? 'Use these charts to understand when your team is working best and how appointment flow is moving over time.'
-                                            : 'Keep the core screen light: one timeline and one territory status view for fast in-field reading.'}
-                                    />
-                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-                                        <AppointmentTimeline appointments={filteredAppointments} days={dateDays || 90} />
-                                        {viewMode === 'advanced' ? (
-                                            <TimeOfDayEffectiveness logs={logs} />
-                                        ) : (
-                                            <StatusBreakdown properties={effectiveProperties} />
-                                        )}
-                                    </div>
-                                </section>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+                                    <AppointmentTimeline appointments={filteredAppointments} days={dateDays || 90} />
+                                    {viewMode === 'advanced' ? (
+                                        <TimeOfDayEffectiveness logs={logs} />
+                                    ) : (
+                                        <StatusBreakdown properties={effectiveProperties} />
+                                    )}
+                                </div>
 
                                 {viewMode === 'advanced' && (
-                                    <div className="space-y-6 md:space-y-8">
-                                        <section className="space-y-4">
-                                            <AnalyticsSectionHeader
-                                                eyebrow="Process efficiency"
-                                                title="Where performance is leaking or compounding"
-                                                description="These views isolate rep-level effectiveness and industry-level conversion so coaching opportunities are easier to spot."
-                                            />
-                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-                                                <ConversionByIndustry appointments={filteredAppointments} />
-                                                <RepSuccessRate appointments={filteredAppointments} teamMembers={teamMembers} />
-                                            </div>
-                                        </section>
+                                    <div className="space-y-4 md:space-y-6">
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+                                            <ConversionByIndustry appointments={filteredAppointments} />
+                                            <RepSuccessRate appointments={filteredAppointments} teamMembers={teamMembers} />
+                                        </div>
 
-                                        <section className="space-y-4">
-                                            <AnalyticsSectionHeader
-                                                eyebrow="Forecasting"
-                                                title="Pipeline strength and future value"
-                                                description="Keep forward-looking metrics together so the dashboard feels predictive instead of purely historical."
-                                            />
-                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-                                                <AppointmentForecast appointments={appointments} />
-                                                <LeadScoringEffectiveness appointments={filteredAppointments} />
-                                            </div>
-                                        </section>
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+                                            <AppointmentForecast appointments={appointments} />
+                                            <LeadScoringEffectiveness appointments={filteredAppointments} />
+                                        </div>
 
-                                        <section className="space-y-4">
-                                            <AnalyticsSectionHeader
-                                                eyebrow="Territory saturation"
-                                                title="Route efficiency and market coverage"
-                                                description="This final section connects route design to what is happening on the ground across the territory."
-                                            />
-                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-                                                <RouteEfficiency routes={savedRoutes} appointments={filteredAppointments} logs={logs} />
-                                                <StatusBreakdown properties={effectiveProperties} />
-                                            </div>
-                                        </section>
+                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+                                            <RouteEfficiency routes={savedRoutes} appointments={filteredAppointments} logs={logs} />
+                                            <StatusBreakdown properties={effectiveProperties} />
+                                        </div>
                                     </div>
                                 )}
                             </div>
