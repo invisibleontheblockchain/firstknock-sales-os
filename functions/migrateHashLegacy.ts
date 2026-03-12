@@ -1,27 +1,28 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 
-// Chunked migration: Convert legacy Base64 hashes to RentCast address-string format,
+// One-time migration: Convert legacy Base64 hashes to RentCast address-string format,
 // merge duplicates, hydrate missing fields, mark unmatched as UNVERIFIED.
-// Processes in chunks of ~500 with delays to avoid rate limits.
-// Call repeatedly until it returns { complete: true }.
 
 function buildAddressHash(fullAddress, city, state, zipCode) {
     if (!fullAddress) return null;
+    // Build a full address string if the full_address doesn't include city/state
     let addr = fullAddress;
+    // If full_address doesn't contain a comma (no city/state), append them
     if (!addr.includes(',') && city) {
         addr = `${addr}, ${city}`;
         if (state) addr += `, ${state}`;
-        if (zipCode) addr += ` ${zipCode.split('-')[0]}`;
+        if (zipCode) addr += ` ${zipCode.split('-')[0]}`; // use 5-digit zip
     }
+    // Standardize to kebab-case format matching RentCast pipeline
     return addr
-        .replace(/[^\w\s,-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '');
+        .replace(/[^\w\s,-]/g, '')  // remove special chars except comma/hyphen
+        .replace(/\s+/g, '-')       // spaces to hyphens
+        .replace(/-+/g, '-')        // collapse multiple hyphens
+        .replace(/^-|-$/g, '');     // trim leading/trailing hyphens
 }
 
 function haversineDistance(lat1, lng1, lat2, lng2) {
-    const R = 3959;
+    const R = 3959; // miles
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLng = (lng2 - lng1) * Math.PI / 180;
     const a = Math.sin(dLat / 2) ** 2 +
@@ -29,8 +30,6 @@ function haversineDistance(lat1, lng1, lat2, lng2) {
         Math.sin(dLng / 2) ** 2;
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
-
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 Deno.serve(async (req) => {
     const startTime = Date.now();
@@ -42,54 +41,50 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Forbidden: Admin access required' }, { status: 403 });
         }
 
-        const { dry_run = true, chunk_offset = 0, chunk_size = 300 } = await req.json().catch(() => ({}));
+        const { dry_run = true, batch_size = 200 } = await req.json().catch(() => ({}));
 
-        console.log(`[migrate] chunk_offset=${chunk_offset} chunk_size=${chunk_size} dry_run=${dry_run}`);
+        console.log(`[migrate] Starting hash migration | dry_run=${dry_run}`);
 
-        // Step 1: Load a chunk of legacy records
-        // Legacy = sale_type is null (CSV imports never set sale_type) AND not yet migrated (no legacy_hash)
-        const batch = await base44.asServiceRole.entities.MasterProperty.filter(
-            { sale_type: null }, '-created_date', chunk_size
-        );
-        let legacyChunk = Array.isArray(batch) ? batch : (batch?.items || []);
-        // Filter out already-migrated records and RentCast records
-        legacyChunk = legacyChunk.filter(p => !p.legacy_hash && p.data_source !== 'rentcast');
-
-        console.log(`[migrate] Found ${legacyChunk.length} unmigrated records in this chunk`);
-
-        if (legacyChunk.length === 0) {
-            return Response.json({
-                complete: true,
-                dry_run,
-                message: 'No more legacy records to migrate',
-                duration_seconds: Math.round((Date.now() - startTime) / 1000)
-            });
-        }
-
-        // Step 2: Load RentCast records for dedup (only unique zips in this chunk)
-        const chunkZips = [...new Set(legacyChunk.map(p => p.zip_code).filter(Boolean))];
-        const rentcastHashes = new Map();
-
-        for (let i = 0; i < chunkZips.length; i += 5) {
-            const zipBatch = chunkZips.slice(i, i + 5);
-            const promises = zipBatch.map(zip =>
-                base44.asServiceRole.entities.MasterProperty.filter({ zip_code: zip, data_source: 'rentcast' }, null, 5000)
-                    .then(res => {
-                        const arr = Array.isArray(res) ? res : (res?.items || []);
-                        arr.forEach(r => rentcastHashes.set(r.address_hash, r));
-                    })
-                    .catch(() => {})
+        // Step 1: Load ALL legacy records (sale_type is null = CSV import)
+        const allLegacy = [];
+        let offset = 0;
+        while (true) {
+            const batch = await base44.asServiceRole.entities.MasterProperty.filter(
+                { sale_type: null }, null, 500
             );
-            await Promise.all(promises);
-            if (i + 5 < chunkZips.length) await sleep(200);
+            const arr = Array.isArray(batch) ? batch : (batch?.items || []);
+            allLegacy.push(...arr);
+            if (arr.length < 500) break;
+            offset += 500;
+            // Safety: max 10k legacy records
+            if (allLegacy.length >= 10000) break;
         }
 
-        console.log(`[migrate] Loaded ${rentcastHashes.size} RentCast records for dedup across ${chunkZips.length} zips`);
+        console.log(`[migrate] Found ${allLegacy.length} legacy records`);
 
+        // Step 2: Load ALL RentCast records for dedup lookup
+        const rentcastHashes = new Map(); // hash -> record
+        for (const saleType of ['Deed', 'MLS']) {
+            let rcOffset = 0;
+            while (true) {
+                const batch = await base44.asServiceRole.entities.MasterProperty.filter(
+                    { sale_type: saleType }, null, 500
+                );
+                const arr = Array.isArray(batch) ? batch : (batch?.items || []);
+                arr.forEach(r => rentcastHashes.set(r.address_hash, r));
+                if (arr.length < 500) break;
+                rcOffset += 500;
+                if (rcOffset >= 20000) break;
+            }
+        }
+
+        console.log(`[migrate] Loaded ${rentcastHashes.size} RentCast records for dedup`);
+
+        // Build spatial index from RentCast records for hydration
         const rcRecords = Array.from(rentcastHashes.values());
 
         const stats = {
-            chunk_processed: legacyChunk.length,
+            total_legacy: allLegacy.length,
             hash_converted: 0,
             merged_with_rentcast: 0,
             hydrated_fields: 0,
@@ -99,14 +94,15 @@ Deno.serve(async (req) => {
             errors: []
         };
 
-        const updates = [];
-        const toDelete = [];
+        const updates = []; // { id, data }
+        const toDelete = []; // ids of legacy records that are dupes
 
-        for (const legacy of legacyChunk) {
+        for (const legacy of allLegacy) {
             const d = legacy;
             const oldHash = d.address_hash;
             const fullAddr = d.full_address;
 
+            // Build new standardized hash from full_address + city/state/zip
             const newHash = buildAddressHash(fullAddr, d.city, d.state, d.zip_code);
             if (!newHash) {
                 stats.errors.push(`No address for record ${legacy.id}`);
@@ -114,30 +110,36 @@ Deno.serve(async (req) => {
             }
 
             const updateData = {
-                legacy_hash: oldHash,
+                legacy_hash: oldHash,  // preserve original hash
                 data_source: 'csv_import'
             };
 
+            // Normalize sold_date
             if (d.sold_date === 'OFF MARKET' || d.sold_date === 'off market') {
                 updateData.sold_date = null;
                 stats.date_normalized++;
             }
 
+            // Check if RentCast already has this address
             const rcMatch = rentcastHashes.get(newHash);
             if (rcMatch) {
+                // MERGE: RentCast wins — delete legacy, keep RentCast record
+                // But first, preserve any interaction-relevant data from legacy
                 toDelete.push(legacy.id);
                 stats.merged_with_rentcast++;
                 stats.deleted_dupes++;
                 continue;
             }
 
+            // No RentCast match — update hash and mark UNVERIFIED
             updateData.address_hash = newHash;
             stats.hash_converted++;
 
-            // Hydrate missing city/state/zip
+            // Hydrate missing city/state/zip from nearest RentCast record
             if ((!d.city || !d.zip_code || !d.state) && d.lat && d.lng) {
                 let nearest = null;
                 let nearestDist = Infinity;
+
                 for (const rc of rcRecords) {
                     if (!rc.lat || !rc.lng || !rc.city) continue;
                     const dist = haversineDistance(d.lat, d.lng, rc.lat, rc.lng);
@@ -146,6 +148,8 @@ Deno.serve(async (req) => {
                         nearest = rc;
                     }
                 }
+
+                // Only hydrate if within 0.5 miles
                 if (nearest && nearestDist < 0.5) {
                     if (!d.city && nearest.city) updateData.city = nearest.city;
                     if (!d.state && nearest.state) updateData.state = nearest.state;
@@ -154,7 +158,8 @@ Deno.serve(async (req) => {
                 }
             }
 
-            // Mark UNVERIFIED (preserve user-set statuses)
+            // Mark ALL legacy records as UNVERIFIED — CSV data is not courthouse-verified
+            // Preserve HARD_NO and DO_NOT_KNOCK since those are user-set statuses
             if (d.original_status !== 'HARD_NO' && d.original_status !== 'DO_NOT_KNOCK') {
                 updateData.original_status = 'UNVERIFIED';
                 stats.marked_unverified++;
@@ -164,56 +169,49 @@ Deno.serve(async (req) => {
         }
 
         console.log(`[migrate] Plan: ${updates.length} updates, ${toDelete.length} deletes`);
+        console.log(`[migrate] Stats:`, JSON.stringify(stats));
 
         if (!dry_run) {
+            // Execute updates in batches
             let updated = 0;
-            // Process in small batches with delays
-            for (let i = 0; i < updates.length; i++) {
-                const { id, data } = updates[i];
+            for (const { id, data } of updates) {
                 try {
                     await base44.asServiceRole.entities.MasterProperty.update(id, data);
                     updated++;
                 } catch (e) {
-                    stats.errors.push(`Update ${id}: ${e.message}`);
+                    stats.errors.push(`Update ${id} failed: ${e.message}`);
                 }
-                // Throttle: pause every 20 updates
-                if (updated % 20 === 0 && updated > 0) {
-                    await sleep(500);
-                    if (Date.now() - startTime > 50000) {
-                        console.log(`[migrate] Time limit approaching, stopping at ${updated}/${updates.length}`);
-                        break;
-                    }
+                // Throttle
+                if (updated % 50 === 0) {
+                    await new Promise(r => setTimeout(r, 200));
+                    console.log(`[migrate] Updated ${updated}/${updates.length}`);
                 }
             }
 
+            // Delete merged duplicates
             let deleted = 0;
-            for (let i = 0; i < toDelete.length; i++) {
+            for (const id of toDelete) {
                 try {
-                    await base44.asServiceRole.entities.MasterProperty.delete(toDelete[i]);
+                    await base44.asServiceRole.entities.MasterProperty.delete(id);
                     deleted++;
                 } catch (e) {
-                    stats.errors.push(`Delete ${toDelete[i]}: ${e.message}`);
+                    stats.errors.push(`Delete ${id} failed: ${e.message}`);
                 }
-                if (deleted % 20 === 0 && deleted > 0) await sleep(500);
+                if (deleted % 50 === 0) {
+                    await new Promise(r => setTimeout(r, 200));
+                }
             }
 
-            stats.actually_updated = updated;
-            stats.actually_deleted = deleted;
-            console.log(`[migrate] DONE chunk: updated=${updated} deleted=${deleted}`);
-
-            // Auto-chain next chunk
-            try {
-                base44.functions.invoke('migrateHashLegacy', { dry_run: false, chunk_offset: chunk_offset + chunk_size }).catch(() => {});
-            } catch (e) { /* caller can re-invoke manually */ }
+            console.log(`[migrate] DONE: Updated ${updated}, Deleted ${deleted}`);
         }
 
+        const duration = Math.round((Date.now() - startTime) / 1000);
+
         return Response.json({
-            complete: false,
             dry_run,
-            duration_seconds: Math.round((Date.now() - startTime) / 1000),
+            duration_seconds: duration,
             stats,
-            next_chunk_offset: chunk_offset + chunk_size,
-            sample_updates: updates.slice(0, 3).map(u => ({
+            sample_updates: updates.slice(0, 5).map(u => ({
                 id: u.id,
                 new_hash: u.data.address_hash,
                 legacy_hash: u.data.legacy_hash,

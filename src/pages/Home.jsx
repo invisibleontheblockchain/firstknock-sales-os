@@ -84,7 +84,6 @@ const DEFAULT_STATUS_COLORS = {
     CALLBACK: '#FFD93D', // Gold (follow-ups)
     NO_ANSWER: '#404040',// Dark Gray
     QUALIFIED: '#00F5A0',// Neon Green
-    UNVERIFIED: '#8B5CF6',// Purple (legacy CSV, not yet verified by RentCast)
     OTHER: '#404040'     // Dark Gray
 };
 
