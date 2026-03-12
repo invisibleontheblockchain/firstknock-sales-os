@@ -41,9 +41,9 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Latitude, longitude, and radius are required' }, { status: 400 });
         }
 
-        // Enforce pull limit
+        // Enforce pull limit (admins bypass)
         const pullCount = user.area_pulls_count || 0;
-        const isPaid = user.subscription_status === 'active' || user.is_owner;
+        const isPaid = user.subscription_status === 'active' || user.is_owner || user.role === 'admin';
         if (pullCount >= 5 && !isPaid) {
             return Response.json({
                 error: 'pull_limit_reached',

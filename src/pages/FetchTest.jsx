@@ -77,9 +77,14 @@ export default function FetchTest() {
       if (d.optimized_radius !== undefined) log(`Radius: ${d.original_radius}mi → ${d.optimized_radius}mi (optimized)`, d.optimized_radius < d.original_radius ? 'success' : 'info');
       log(d.message || JSON.stringify(d));
 
-      if (d.job_id) {
+      if (d.error) {
+        log(`⚠️ ${d.error}: ${d.message}`, 'warn');
+        setRunning(null);
+      } else if (d.job_id) {
         log('Polling job status every 5s...');
         pollJob(d.job_id);
+      } else {
+        setRunning(null);
       }
     } catch (e) {
       log(`❌ Error: ${e.message}`, 'error');
