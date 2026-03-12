@@ -76,13 +76,13 @@ export default function RouteBuilderSettings({
             name: 'FirstKnock Best',
             icon: <Zap className="w-4 h-4" />,
             desc: 'Ultra-optimized for newest homeowners. Starts at the most recently sold home and builds the route from there.',
-            criteria: 'Recent Sales First, 50 doors, All Residential',
+            criteria: 'Recent Sales First, 50 doors, Past 3mo',
             apply: () => {
                 setHousesPerRoute(50);
-                setMaxRouteDistance(8); // Increased distance to allow connecting sparse recent sales without breaking
+                setMaxRouteDistance(8);
                 setStreetCooldownDays(14);
                 setMinScore(20);
-                setSoldDateFilter(12); // Past 12 months
+                setSoldDateFilter(3); // Past 3 months
                 setSortBy('recent_sale');
                 setRouteConfig(prev => ({ ...prev, walkingPattern: 'recent_sale_first', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
                 toast.success("FirstKnock Best applied!");
