@@ -1,226 +1,264 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useQuery } from "@tanstack/react-query";
-import { Loader2, BarChart3, Navigation, Users } from 'lucide-react';
-import { subDays, startOfDay, isAfter } from 'date-fns';
+import { useQuery } from '@tanstack/react-query';
+import { BarChart3, Loader2, Navigation } from 'lucide-react';
+import { isAfter, startOfDay, subDays } from 'date-fns';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
-import { useTheme } from '@/components/theme/ThemeProvider';
-import { Link } from 'react-router-dom';
-import { createPageUrl } from '@/utils';
-import { Button } from '@/components/ui/button';
-import { INDUSTRIES } from '@/components/appointments/EligibilityScorer';
 
-import OverviewStats from '@/components/analytics/OverviewStats';
 import TimeOfDayEffectiveness from '@/components/analytics/TimeOfDayEffectiveness';
-import TeamPerformance from '@/components/analytics/TeamPerformance';
 import RouteProgress from '@/components/analytics/RouteProgress';
 import StatusBreakdown from '@/components/analytics/StatusBreakdown';
-
-import DateRangeFilter from '@/components/analytics/DateRangeFilter';
-import IndustryFilterBar from '@/components/analytics/IndustryFilterBar';
-import KpiSummaryCards from '@/components/analytics/KpiSummaryCards';
-import ConversionByIndustry from '@/components/analytics/ConversionByIndustry';
-import RepSuccessRate from '@/components/analytics/RepSuccessRate';
-import LeadScoringEffectiveness from '@/components/analytics/LeadScoringEffectiveness';
-import RouteEfficiency from '@/components/analytics/RouteEfficiency';
-import AppointmentForecast from '@/components/analytics/AppointmentForecast';
 import AppointmentTimeline from '@/components/analytics/AppointmentTimeline';
+import RepAnalyticsHeader from '@/components/analytics/rep/RepAnalyticsHeader';
+import RepAnalyticsKpis from '@/components/analytics/rep/RepAnalyticsKpis';
+import RepAnalyticsPipeline from '@/components/analytics/rep/RepAnalyticsPipeline';
+import RepAnalyticsFocus from '@/components/analytics/rep/RepAnalyticsFocus';
+
+const SALES_STATUSES = ['SOLD', 'QUALIFIED'];
+const NON_CONTACT_STATUSES = ['NO_ANSWER', 'ELIGIBLE'];
 
 export default function ListPage() {
-    const { accent } = useTheme();
-    const [activeTab, setActiveTab] = useState('overview');
-    const [viewMode, setViewMode] = useState('essential');
+    const [activeTab, setActiveTab] = useState('performance');
     const [dateDays, setDateDays] = useState(30);
-    const [industryFilter, setIndustryFilter] = useState('all');
 
-    const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
+    const { data: user } = useQuery({
+        queryKey: ['user'],
+        queryFn: () => base44.auth.me(),
+        retry: false,
+    });
 
-    const { data: teamMembers = [] } = useQuery({
-        queryKey: ['teamMembers', user?.id],
-        queryFn: () => user?.id 
-            ? base44.entities.TeamMember.filter({ manager_id: user.id }, '-created_date', 100)
-                .then(res => Array.isArray(res) ? res : (res?.items || []))
-            : [],
-        enabled: !!user?.id
+    const { data: currentTeamMember = null } = useQuery({
+        queryKey: ['currentTeamMember', user?.email],
+        queryFn: async () => {
+            if (!user?.email) return null;
+            const res = await base44.entities.TeamMember.filter({ email: user.email }, '-created_date', 1);
+            const items = Array.isArray(res) ? res : (res?.items || []);
+            return items[0] || null;
+        },
+        enabled: !!user?.email,
     });
 
     const { data: properties = [], isLoading: propsLoading } = useQuery({
-        queryKey: ['masterProperties', user?.email, user?.territory_zip_codes],
+        queryKey: ['masterProperties', user?.email, user?.territory_zip_codes, currentTeamMember?.assigned_zip_codes],
         queryFn: async () => {
             if (!user) return [];
-            if (user.territory_zip_codes?.length > 0) {
-                const promises = user.territory_zip_codes.map(zip =>
-                    base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000)
+            const zipCodes = currentTeamMember?.assigned_zip_codes?.length ? currentTeamMember.assigned_zip_codes : user.territory_zip_codes;
+            if (zipCodes?.length > 0) {
+                const results = await Promise.all(
+                    zipCodes.map((zip) => base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000))
                 );
-                const results = await Promise.all(promises);
-                return results.flatMap(r => Array.isArray(r) ? r : (r.items || []));
+                return results.flatMap((result) => Array.isArray(result) ? result : (result?.items || []));
             }
             const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 5000);
             return Array.isArray(result) ? result : (result?.items || []);
         },
-        enabled: !!user
+        enabled: !!user,
     });
 
     const { data: savedRoutesRaw = [], isLoading: routesLoading } = useQuery({
-        queryKey: ['savedRoutes', user?.id],
-        queryFn: () => user?.id ? base44.entities.SavedRoute.filter({ manager_id: user.id }, '-created_date', 500) : [],
-        enabled: !!user?.id
+        queryKey: ['savedRoutes', user?.id, currentTeamMember?.id],
+        queryFn: async () => {
+            if (currentTeamMember?.id) {
+                return await base44.entities.SavedRoute.filter({ assigned_to: currentTeamMember.id }, '-created_date', 500);
+            }
+            if (user?.id) {
+                return await base44.entities.SavedRoute.filter({ manager_id: user.id }, '-created_date', 500);
+            }
+            return [];
+        },
+        enabled: !!user,
     });
     const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
 
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs', user?.email],
-        queryFn: () => user ? base44.entities.InteractionLog.list('-created_date', 5000) : [],
-        enabled: !!user
+        queryFn: () => user?.email ? base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 5000) : [],
+        enabled: !!user?.email,
     });
     const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
 
     const { data: appointmentsRaw = [], isLoading: apptsLoading } = useQuery({
-        queryKey: ['appointments'],
-        queryFn: () => base44.entities.Appointment.list('-scheduled_date', 5000),
+        queryKey: ['appointments', user?.email],
+        queryFn: () => user ? base44.entities.Appointment.list('-scheduled_date', 5000) : [],
         enabled: !!user,
     });
     const appointments = Array.isArray(appointmentsRaw) ? appointmentsRaw : (appointmentsRaw?.items || []);
 
+    const personalAppointments = useMemo(() => {
+        return appointments.filter((appointment) => {
+            if (currentTeamMember?.id && appointment.assigned_rep === currentTeamMember.id) return true;
+            if (appointment.created_by === user?.email) return true;
+            if (!currentTeamMember?.id && appointment.assigned_rep_name && appointment.assigned_rep_name === user?.full_name) return true;
+            return false;
+        });
+    }, [appointments, currentTeamMember?.id, user?.email, user?.full_name]);
+
     const effectiveProperties = useMemo(() => {
         const propsArray = Array.isArray(properties) ? properties : (properties?.items || []);
         return propsArray
-            .filter(p => p?.lat && p?.lng && !isNaN(p.lat) && !isNaN(p.lng))
-            .map(p => {
-                const propLogs = logs.filter(l => l.address_hash === p.address_hash);
+            .filter((property) => property?.lat && property?.lng && !isNaN(property.lat) && !isNaN(property.lng))
+            .map((property) => {
+                const propertyLogs = logs.filter((log) => log.address_hash === property.address_hash);
                 return {
-                    ...p,
-                    lat: parseFloat(p.lat),
-                    lng: parseFloat(p.lng),
-                    effective_status: determineEffectiveStatus(p, propLogs)
+                    ...property,
+                    lat: parseFloat(property.lat),
+                    lng: parseFloat(property.lng),
+                    effective_status: determineEffectiveStatus(property, propertyLogs),
                 };
             });
     }, [properties, logs]);
 
-    const filteredAppointments = useMemo(() => {
-        let result = appointments;
-        if (dateDays !== null) {
-            const cutoff = startOfDay(subDays(new Date(), dateDays));
-            result = result.filter(a => {
-                if (!a.scheduled_date) return false;
-                return isAfter(new Date(a.scheduled_date), cutoff);
-            });
-        }
-        if (industryFilter !== 'all') {
-            result = result.filter(a => a.industry === industryFilter);
-        }
-        return result;
-    }, [appointments, dateDays, industryFilter]);
+    const filteredLogs = useMemo(() => {
+        const cutoff = startOfDay(subDays(new Date(), dateDays));
+        return logs.filter((log) => log.created_date && isAfter(new Date(log.created_date), cutoff));
+    }, [logs, dateDays]);
 
-    const activeIndustries = useMemo(() => {
-        const set = new Set(appointments.map(a => a.industry).filter(Boolean));
-        return INDUSTRIES.filter(i => set.has(i));
-    }, [appointments]);
+    const filteredAppointments = useMemo(() => {
+        const cutoff = startOfDay(subDays(new Date(), dateDays));
+        return personalAppointments.filter((appointment) => {
+            if (!appointment.scheduled_date) return false;
+            return isAfter(new Date(appointment.scheduled_date), cutoff);
+        });
+    }, [personalAppointments, dateDays]);
+
+    const analytics = useMemo(() => {
+        const today = startOfDay(new Date());
+        const weekCutoff = startOfDay(subDays(new Date(), 7));
+        const todayLogs = logs.filter((log) => log.created_date && isAfter(new Date(log.created_date), today));
+        const weekLogs = logs.filter((log) => log.created_date && isAfter(new Date(log.created_date), weekCutoff));
+        const sales = filteredLogs.filter((log) => SALES_STATUSES.includes(log.parsed_status)).length;
+        const contacts = filteredLogs.filter((log) => !NON_CONTACT_STATUSES.includes(log.parsed_status)).length;
+        const callbacks = filteredLogs.filter((log) => log.parsed_status === 'CALLBACK').length;
+        const upcomingAppointments = filteredAppointments.filter((appointment) => ['scheduled', 'confirmed'].includes(appointment.status)).length;
+        const noShows = filteredAppointments.filter((appointment) => appointment.status === 'no_show').length;
+        const workedDoors = new Set(logs.map((log) => log.address_hash).filter(Boolean)).size;
+        const totalDoors = effectiveProperties.length;
+        const activeRoutes = savedRoutes.filter((route) => ['ACTIVE', 'IN_PROGRESS'].includes(route.status)).length;
+
+        const hourBuckets = Array.from({ length: 13 }, (_, index) => index + 8).map((hour) => {
+            const hourLogs = filteredLogs.filter((log) => new Date(log.created_date).getHours() === hour);
+            const hourContacts = hourLogs.filter((log) => !NON_CONTACT_STATUSES.includes(log.parsed_status)).length;
+            return {
+                hour,
+                knocks: hourLogs.length,
+                contactRate: hourLogs.length ? Math.round((hourContacts / hourLogs.length) * 100) : 0,
+            };
+        });
+        const bestHour = [...hourBuckets].sort((a, b) => (b.contactRate - a.contactRate) || (b.knocks - a.knocks))[0] || { hour: 17, contactRate: 0 };
+        const bestHourLabel = new Date(0, 0, 0, bestHour.hour, 0).toLocaleTimeString('en-US', { hour: 'numeric' });
+
+        const activeDays = new Set(logs.map((log) => startOfDay(new Date(log.created_date)).getTime()));
+        let streak = 0;
+        for (let i = 0; i < 60; i++) {
+            const day = startOfDay(subDays(new Date(), i)).getTime();
+            if (activeDays.has(day)) streak += 1;
+            else break;
+        }
+
+        let nextAction = {
+            title: 'Stay on your highest-converting blocks',
+            body: `Your best contact window is ${bestHourLabel}. Stack callbacks and fresh knocks around that time.`,
+        };
+        if (callbacks > 0) {
+            nextAction = {
+                title: 'Work your callback list first',
+                body: `You have ${callbacks} callback${callbacks === 1 ? '' : 's'} in the current window. Revisit those before starting cold doors.`,
+            };
+        } else if (todayLogs.length < 20) {
+            nextAction = {
+                title: 'Push today’s volume higher',
+                body: `You’re at ${todayLogs.length} knocks today. A stronger first block will lift the rest of your funnel.`,
+            };
+        }
+
+        return {
+            todayKnocks: todayLogs.length,
+            weekKnocks: weekLogs.length,
+            periodKnocks: filteredLogs.length,
+            contacts,
+            callbacks,
+            sales,
+            upcomingAppointments,
+            conversionRate: filteredLogs.length ? Math.round((sales / filteredLogs.length) * 100) : 0,
+            contactRate: filteredLogs.length ? Math.round((contacts / filteredLogs.length) * 100) : 0,
+            noShowRate: filteredAppointments.length ? Math.round((noShows / filteredAppointments.length) * 100) : 0,
+            workedDoors,
+            coveragePct: totalDoors ? Math.round((workedDoors / totalDoors) * 100) : 0,
+            activeRoutes,
+            totalRoutes: savedRoutes.length,
+            bestHourLabel,
+            bestHourRate: bestHour.contactRate,
+            streak,
+            nextAction,
+        };
+    }, [logs, filteredLogs, filteredAppointments, effectiveProperties, savedRoutes]);
 
     const isLoading = propsLoading || logsLoading || routesLoading || apptsLoading;
 
     const tabs = [
-        { id: 'overview', label: 'Overview', icon: BarChart3 },
+        { id: 'performance', label: 'Performance', icon: BarChart3 },
         { id: 'routes', label: 'Routes', icon: Navigation },
     ];
 
     return (
-        <div className="h-full flex flex-col" style={{ background: '#0A0A0F' }}>
-            {/* Header */}
-            <div className="px-3 md:px-4 pt-3 md:pt-4 pb-2 md:pb-3 border-b border-white/5 sticky top-0 z-20 backdrop-blur-xl bg-black/60 shadow-xl">
-                <div className="flex items-center justify-between mb-3 md:mb-4">
-                    <div className="flex items-center gap-2 md:gap-3">
-                        <div className="w-8 h-8 md:w-12 md:h-12 rounded-xl md:rounded-2xl flex items-center justify-center transition-transform hover:scale-105 duration-300" style={{ background: `linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05))`, boxShadow: `0 0 20px rgba(255,255,255,0.1)`, border: '1px solid rgba(255,255,255,0.1)' }}>
-                            <BarChart3 className="w-4 h-4 md:w-6 md:h-6 text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]" />
-                        </div>
-                        <div>
-                            <h1 className="text-lg md:text-2xl font-black text-white tracking-tight drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">Analytics</h1>
-                            <p className="text-[9px] md:text-xs text-gray-400 font-medium tracking-wide mt-0 md:mt-0.5">Performance & territory insights</p>
-                        </div>
-                    </div>
-                </div>
-                <div className="flex p-1 bg-black/40 backdrop-blur-md rounded-xl md:rounded-2xl border border-white/5 mb-3 md:mb-4 shadow-xl overflow-x-auto no-scrollbar">
-                    {tabs.map(tab => {
+        <div className="h-full flex flex-col bg-[#0A0A0F]">
+            <div className="px-4 md:px-6 pt-4 pb-2 border-b border-white/5 sticky top-0 z-20 backdrop-blur-xl bg-black/60 shadow-xl">
+                <div className="max-w-7xl mx-auto flex p-1 bg-black/40 rounded-2xl border border-white/5 overflow-x-auto no-scrollbar">
+                    {tabs.map((tab) => {
                         const Icon = tab.icon;
                         const isActive = activeTab === tab.id;
                         return (
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`flex-1 min-w-[70px] md:min-w-[90px] py-1.5 px-2 md:py-2.5 md:px-3 rounded-lg md:rounded-xl text-[10px] md:text-[12px] font-bold transition-all duration-300 flex items-center justify-center gap-1.5 md:gap-2 ${
-                                    isActive ? 'bg-white text-black shadow-[0_0_20px_rgba(255,255,255,0.3)]' : 'text-gray-400 hover:text-white hover:bg-white/10'
-                                }`}
+                                className={`flex-1 min-w-[120px] py-2.5 px-3 rounded-xl text-xs font-bold transition-all duration-300 flex items-center justify-center gap-2 ${isActive ? 'bg-white text-black shadow-[0_0_20px_rgba(255,255,255,0.25)]' : 'text-gray-400 hover:text-white hover:bg-white/10'}`}
                             >
-                                <Icon className={`w-3 h-3 md:w-4 md:h-4 ${isActive ? 'text-black' : ''}`} />
+                                <Icon className={`w-4 h-4 ${isActive ? 'text-black' : ''}`} />
                                 {tab.label}
                             </button>
                         );
                     })}
                 </div>
-
-                {activeTab === 'overview' && (
-                    <div className="flex flex-col gap-2 mt-1 md:mt-2">
-                        <div className="flex overflow-x-auto no-scrollbar gap-2 pb-1">
-                            <DateRangeFilter selectedDays={dateDays} onChangeDays={setDateDays} accent={accent} />
-                            <IndustryFilterBar industries={activeIndustries} selected={industryFilter} onSelect={setIndustryFilter} accent={accent} />
-                        </div>
-                        <div className="flex items-center bg-black/50 backdrop-blur-md rounded-lg border border-white/10 p-0.5 w-full shadow-lg">
-                            <button onClick={() => setViewMode('essential')} className={`flex-1 px-2 py-1 md:py-1.5 rounded-md text-[9px] md:text-[10px] uppercase tracking-wider font-bold transition-all duration-200 ${viewMode === 'essential' ? 'bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.2)]' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>Essential</button>
-                            <button onClick={() => setViewMode('advanced')} className={`flex-1 px-2 py-1 md:py-1.5 rounded-md text-[9px] md:text-[10px] uppercase tracking-wider font-bold transition-all duration-200 ${viewMode === 'advanced' ? 'bg-white text-black shadow-[0_0_15px_rgba(255,255,255,0.2)]' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>Advanced</button>
-                        </div>
-                    </div>
-                )}
             </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-auto p-4 md:p-6 space-y-4 relative z-10">
+            <div className="flex-1 overflow-auto">
                 {isLoading ? (
-                    <div className="flex flex-col justify-center items-center py-20 gap-3">
-                        <Loader2 className="w-7 h-7 animate-spin" style={{ color: accent }} />
+                    <div className="flex flex-col justify-center items-center py-24 gap-3">
+                        <Loader2 className="w-7 h-7 animate-spin text-white" />
                         <span className="text-xs text-gray-500">Loading analytics...</span>
                     </div>
                 ) : (
                     <>
-                        {activeTab === 'overview' && (
-                            <div className="space-y-4 md:space-y-6 max-w-7xl mx-auto">
-                                <OverviewStats routes={savedRoutes} logs={logs} properties={effectiveProperties} teamMembers={teamMembers} viewMode={viewMode} />
-                                
-                                {viewMode === 'advanced' && (
-                                    <KpiSummaryCards appointments={filteredAppointments} teamMembers={teamMembers} />
-                                )}
+                        {activeTab === 'performance' && (
+                            <>
+                                <RepAnalyticsHeader
+                                    dateDays={dateDays}
+                                    onChangeDays={setDateDays}
+                                    streak={analytics.streak}
+                                    nextAction={analytics.nextAction}
+                                />
+                                <div className="p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto">
+                                    <RepAnalyticsKpis metrics={analytics} dateDays={dateDays} />
 
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-                                    <AppointmentTimeline appointments={filteredAppointments} days={dateDays || 90} />
-                                    {viewMode === 'advanced' ? (
-                                        <TimeOfDayEffectiveness logs={logs} />
-                                    ) : (
-                                        <StatusBreakdown properties={effectiveProperties} />
-                                    )}
-                                </div>
-
-                                {viewMode === 'advanced' && (
-                                    <div className="space-y-4 md:space-y-6">
-                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-                                            <ConversionByIndustry appointments={filteredAppointments} />
-                                            <RepSuccessRate appointments={filteredAppointments} teamMembers={teamMembers} />
-                                        </div>
-
-                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-                                            <AppointmentForecast appointments={appointments} />
-                                            <LeadScoringEffectiveness appointments={filteredAppointments} />
-                                        </div>
-
-                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-                                            <RouteEfficiency routes={savedRoutes} appointments={filteredAppointments} logs={logs} />
-                                            <StatusBreakdown properties={effectiveProperties} />
-                                        </div>
+                                    <div className="grid grid-cols-1 xl:grid-cols-[1.1fr,0.9fr] gap-4 md:gap-6">
+                                        <RepAnalyticsPipeline metrics={analytics} />
+                                        <RepAnalyticsFocus metrics={analytics} />
                                     </div>
-                                )}
-                            </div>
+
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+                                        <TimeOfDayEffectiveness logs={filteredLogs} />
+                                        <StatusBreakdown properties={effectiveProperties} />
+                                    </div>
+
+                                    <AppointmentTimeline appointments={filteredAppointments} days={dateDays} />
+                                </div>
+                            </>
                         )}
 
                         {activeTab === 'routes' && (
-                            <RouteProgress routes={savedRoutes} logs={logs} />
+                            <div className="p-4 md:p-6 max-w-7xl mx-auto">
+                                <RouteProgress routes={savedRoutes} logs={logs} />
+                            </div>
                         )}
                     </>
                 )}
