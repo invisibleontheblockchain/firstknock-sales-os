@@ -125,9 +125,14 @@ Deno.serve(async (req) => {
             await base44.auth.updateMe({ area_pulls_count: pullCount + 1 });
         } catch (e) { console.warn('Failed to update pull count:', e.message); }
 
-        // Fire-and-forget: kick off first chunk AFTER returning response
-        // We use setTimeout(0) to ensure the response goes out first
-        const responsePayload = {
+        // Fire-and-forget: kick off chunk processor without awaiting
+        setTimeout(() => {
+            base44.functions.invoke('processFetchChunk', {}).catch(e => {
+                console.warn('[fetchArea-v2] Background chunk invoke failed:', e.message);
+            });
+        }, 0);
+
+        return Response.json({
             status: 'started',
             job_id: job.id,
             optimized_radius: optimizedRadius,
