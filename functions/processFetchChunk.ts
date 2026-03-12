@@ -82,6 +82,7 @@ Deno.serve(async (req) => {
         let totalExisted = data.total_existed || 0;
         let totalUpdated = data.total_updated || 0;
         let zipCodesFound = data.zip_codes_found || [];
+        let totalApiCalls = data.total_api_calls || 0;
 
         // Mark job as running if it was pending
         if (data.status === 'pending') {
@@ -172,6 +173,7 @@ Deno.serve(async (req) => {
 
             const results = await Promise.all(promises);
             requestCount += results.length;
+            totalApiCalls += results.length;
 
             for (const r of results) {
                 if (r.total && !totalExpected) {
@@ -189,7 +191,7 @@ Deno.serve(async (req) => {
 
         const newOffset = currentOffset + allRaw.length;
         totalFetched += allRaw.length;
-        console.log(`[processFetchChunk] Fetched ${allRaw.length} records (${requestCount} calls), new offset=${newOffset}, totalFetched=${totalFetched}`);
+        console.log(`[processFetchChunk] Fetched ${allRaw.length} records (${requestCount} calls this chunk, ${totalApiCalls} total), new offset=${newOffset}, totalFetched=${totalFetched}`);
 
         // =====================================================================
         // MAP & FILTER PHASE
@@ -351,6 +353,7 @@ Deno.serve(async (req) => {
                 total_inserted: newTotalInserted,
                 total_existed: newTotalExisted,
                 total_updated: newTotalUpdated,
+                total_api_calls: totalApiCalls,
                 progress_pct: 100,
                 zip_codes_found: zipCodesFound
             });
@@ -386,6 +389,7 @@ Deno.serve(async (req) => {
                 total_inserted: newTotalInserted,
                 total_existed: newTotalExisted,
                 total_updated: newTotalUpdated,
+                total_api_calls: totalApiCalls,
                 progress_pct: progressPct,
                 zip_codes_found: zipCodesFound,
                 chunk_number: nextChunkNumber

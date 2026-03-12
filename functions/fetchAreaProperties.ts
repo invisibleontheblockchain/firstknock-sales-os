@@ -1,24 +1,49 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 
+// v2 — Adds minimum bounding circle, sold_months param, API call tracking on job
+
+function computeBoundingCircle(polygon) {
+    if (!polygon || polygon.length < 3) return null;
+    
+    // Find centroid
+    let sumLat = 0, sumLng = 0;
+    for (const p of polygon) { sumLat += p.lat; sumLng += p.lng; }
+    const centerLat = sumLat / polygon.length;
+    const centerLng = sumLng / polygon.length;
+    
+    // Find max distance from centroid to any vertex (in miles)
+    let maxDistMiles = 0;
+    for (const p of polygon) {
+        const dLat = (p.lat - centerLat) * 69.0; // ~69 miles per degree latitude
+        const dLng = (p.lng - centerLng) * 69.0 * Math.cos(centerLat * Math.PI / 180);
+        const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+        if (dist > maxDistMiles) maxDistMiles = dist;
+    }
+    
+    // Add 5% buffer to make sure we don't clip edges
+    return {
+        lat: centerLat,
+        lng: centerLng,
+        radius: Math.ceil((maxDistMiles * 1.05) * 10) / 10 // round up to 0.1 mi
+    };
+}
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
         const user = await base44.auth.me();
-        if (!user) {
-            return Response.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+        if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
         const body = await req.json();
-        const { latitude, longitude, radius, polygon } = body;
+        let { latitude, longitude, radius, polygon, sold_months } = body;
 
         if (!latitude || !longitude || !radius) {
             return Response.json({ error: 'Latitude, longitude, and radius are required' }, { status: 400 });
         }
 
-        // Enforce one free pull limit — check if user already used their pull
+        // Enforce pull limit
         const pullCount = user.area_pulls_count || 0;
         const isPaid = user.subscription_status === 'active' || user.is_owner;
-        
         if (pullCount >= 5 && !isPaid) {
             return Response.json({
                 error: 'pull_limit_reached',
@@ -26,37 +51,54 @@ Deno.serve(async (req) => {
             });
         }
 
-        // Check if there's already an active job for this user (running OR pending)
-        const runningJobs = await base44.entities.FetchJob.filter(
-            { user_email: user.email, status: 'running' }, null, 5
-        );
+        // Check for active jobs
+        const runningJobs = await base44.entities.FetchJob.filter({ user_email: user.email, status: 'running' }, null, 5);
         const runningList = Array.isArray(runningJobs) ? runningJobs : (runningJobs?.items || []);
         if (runningList.length > 0) {
             return Response.json({
-                status: 'already_running',
-                job_id: runningList[0].id,
+                status: 'already_running', job_id: runningList[0].id,
                 message: `A fetch job is already running (${runningList[0].progress_pct || 0}% complete). Please wait for it to finish.`
             });
         }
-        
-        const pendingJobs = await base44.entities.FetchJob.filter(
-            { user_email: user.email, status: 'pending' }, null, 5
-        );
+        const pendingJobs = await base44.entities.FetchJob.filter({ user_email: user.email, status: 'pending' }, null, 5);
         const pendingList = Array.isArray(pendingJobs) ? pendingJobs : (pendingJobs?.items || []);
         if (pendingList.length > 0) {
             return Response.json({
-                status: 'already_running',
-                job_id: pendingList[0].id,
-                message: `A fetch job is starting up. Please wait for it to finish.`
+                status: 'already_running', job_id: pendingList[0].id,
+                message: 'A fetch job is starting up. Please wait for it to finish.'
             });
         }
 
-        // Create the FetchJob
+        // === MINIMUM BOUNDING CIRCLE ===
+        // If polygon provided, compute tightest circle that covers it
+        let optimizedRadius = radius;
+        let optimizedLat = latitude;
+        let optimizedLng = longitude;
+        
+        if (polygon && polygon.length >= 3) {
+            const bounding = computeBoundingCircle(polygon);
+            if (bounding) {
+                console.log(`[fetchArea-v2] Bounding circle: center=${bounding.lat.toFixed(4)},${bounding.lng.toFixed(4)} radius=${bounding.radius}mi (original: ${radius}mi)`);
+                // Only use bounding circle if it's smaller than what was passed
+                if (bounding.radius < radius) {
+                    optimizedLat = bounding.lat;
+                    optimizedLng = bounding.lng;
+                    optimizedRadius = bounding.radius;
+                    console.log(`[fetchArea-v2] Using tighter bounding circle: ${optimizedRadius}mi (saved ${(radius - optimizedRadius).toFixed(1)}mi)`);
+                } else {
+                    console.log(`[fetchArea-v2] Keeping original radius (bounding=${bounding.radius}mi >= original=${radius}mi)`);
+                }
+            }
+        }
+
+        // Default sold_months
+        const effectiveSoldMonths = sold_months || 12;
+
         const job = await base44.entities.FetchJob.create({
             status: 'pending',
-            latitude,
-            longitude,
-            radius,
+            latitude: optimizedLat,
+            longitude: optimizedLng,
+            radius: optimizedRadius,
             polygon: polygon || [],
             current_offset: 0,
             total_expected: 0,
@@ -69,35 +111,31 @@ Deno.serve(async (req) => {
             zip_codes_found: []
         });
 
-        console.log(`[fetchAreaProperties] Created FetchJob ${job.id} for ${user.email}`);
+        console.log(`[fetchArea-v2] Created FetchJob ${job.id} for ${user.email} | lat=${optimizedLat} lng=${optimizedLng} radius=${optimizedRadius}mi sold_months=${effectiveSoldMonths}`);
 
         // Update user pull tracking
         try {
-            await base44.auth.updateMe({
-                area_pulls_count: pullCount + 1
-            });
-        } catch (e) {
-            console.warn('Failed to update pull count:', e.message);
-        }
+            await base44.auth.updateMe({ area_pulls_count: pullCount + 1 });
+        } catch (e) { console.warn('Failed to update pull count:', e.message); }
 
-        // IMMEDIATELY kick off the first chunk — don't wait for cron/entity automation
+        // Kick off first chunk
         try {
-            console.log(`[fetchAreaProperties] Immediately invoking processFetchChunk for job ${job.id}`);
             base44.functions.invoke('processFetchChunk', {}).catch(e => {
-                console.warn('[fetchAreaProperties] Background chunk invoke failed (automation will pick up):', e.message);
+                console.warn('[fetchArea-v2] Background chunk invoke failed:', e.message);
             });
-        } catch (e) {
-            console.warn('[fetchAreaProperties] Failed to invoke processFetchChunk:', e.message);
-        }
+        } catch (e) { console.warn('[fetchArea-v2] Failed to invoke chunk:', e.message); }
 
         return Response.json({
             status: 'started',
             job_id: job.id,
-            message: 'Property fetch started. This will run in the background — large areas may take a few minutes.'
+            optimized_radius: optimizedRadius,
+            original_radius: radius,
+            sold_months: effectiveSoldMonths,
+            message: `Property fetch started (radius: ${optimizedRadius}mi, sold: ${effectiveSoldMonths}mo). Running in background.`
         });
 
     } catch (error) {
-        console.error('[fetchAreaProperties] Fatal:', error);
+        console.error('[fetchArea-v2] Fatal:', error);
         return Response.json({ error: error.message }, { status: 500 });
     }
 });
