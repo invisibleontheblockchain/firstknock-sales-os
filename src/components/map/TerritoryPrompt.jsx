@@ -328,29 +328,32 @@ export default function TerritoryPrompt({
 
             {/* Active Drawing Controls */}
             {drawingMode && (
-                <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[2000] bg-black/90 backdrop-blur-md border border-yellow-500/50 rounded-2xl p-3 shadow-2xl flex items-center gap-3 animate-in slide-in-from-top-4 w-11/12 max-w-lg">
-                    <div className="w-8 h-8 rounded-full bg-yellow-500/20 flex items-center justify-center shrink-0">
-                        <Pencil className="w-4 h-4 text-yellow-500" />
-                    </div>
-                    <div className="flex-1">
-                        <p className="text-xs font-bold text-white uppercase tracking-wider">Tap anywhere on the map</p>
-                        <p className="text-[10px] text-gray-400">A {drawShape} area will be placed instantly</p>
-                    </div>
+                <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[2000] bg-black/85 backdrop-blur-md border border-yellow-500/40 rounded-xl px-2.5 py-1.5 shadow-xl flex items-center gap-2 animate-in slide-in-from-top-4 max-w-xs">
+                    <Pencil className="w-3 h-3 text-yellow-500 shrink-0" />
+                    <p className="text-[10px] font-bold text-white whitespace-nowrap">Tap map</p>
                     <select
-                        value={drawShape || 'circle'}
-                        onChange={(e) => setDrawShape(e.target.value)}
-                        className="bg-gray-900 border border-gray-700 text-white text-xs rounded-md px-2 py-1 h-8"
+                        value={drawShape === 'circle' && drawSizeMiles === 5 ? 'test' : (drawShape || 'circle')}
+                        onChange={(e) => {
+                            if (e.target.value === 'test') {
+                                setDrawShape('circle');
+                                setDrawSizeMiles(5);
+                            } else {
+                                setDrawShape(e.target.value);
+                                if (drawSizeMiles === 5) setDrawSizeMiles(10);
+                            }
+                        }}
+                        className="bg-gray-900 border border-gray-700 text-white text-[10px] rounded-md px-1.5 py-0.5 h-6"
                     >
+                        <option value="test">Test (5mi²)</option>
                         <option value="circle">Circle</option>
                         <option value="square">Square</option>
                     </select>
-                    <Button
-                        size="icon"
+                    <button
                         onClick={() => { setDrawingMode(false); setDraftPolygon([]); }}
-                        className="h-8 w-8 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white border-none shrink-0"
+                        className="w-5 h-5 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center shrink-0"
                     >
-                        <X className="w-4 h-4" />
-                    </Button>
+                        <X className="w-3 h-3" />
+                    </button>
                 </div>
             )}
 
