@@ -1,9 +1,8 @@
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { Upload, Download, Database } from 'lucide-react';
+import { Map, Upload, Download, Database, FileSpreadsheet, MapPin, ArrowRight } from 'lucide-react';
 import CsvUploader from '../components/dashboard/CsvUploader';
-import DataMarketplace from '../components/dashboard/DataMarketplace';
 import TerritoryFilter from '../components/setup/TerritoryFilter';
 import BetaUsageMeter from '../components/beta/BetaUsageMeter';
 import { createPageUrl } from '@/utils';
@@ -15,7 +14,6 @@ export default function Setup() {
     const navigate = useNavigate();
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
 
-    // User-specific properties
     const { data: userProperties = [], isLoading } = useQuery({
         queryKey: ['masterProperties', user?.email],
         queryFn: async () => {
@@ -26,7 +24,6 @@ export default function Setup() {
         enabled: !!user?.email
     });
 
-    // Fallback for mobile auth
     const { data: fallbackProperties = [] } = useQuery({
         queryKey: ['masterProperties', 'fallback'],
         queryFn: async () => {
@@ -35,15 +32,11 @@ export default function Setup() {
         }
     });
 
-    // Local Storage query (Offline support)
     const { data: localProperties = [] } = useQuery({
         queryKey: ['localProperties'],
-        queryFn: async () => {
-            return await storage.getProperties();
-        }
+        queryFn: async () => await storage.getProperties(),
     });
 
-    // Combine and deduplicate
     const properties = useMemo(() => {
         const combined = [...userProperties, ...fallbackProperties, ...localProperties];
         const seen = new Set();
@@ -54,120 +47,114 @@ export default function Setup() {
         });
     }, [userProperties, fallbackProperties, localProperties]);
 
-
-    const handleContinue = () => {
-        navigate(createPageUrl('Home'));
-    };
-
-    const [activeTab, setActiveTab] = React.useState('upload');
+    const handleContinue = () => navigate(createPageUrl('Home'));
 
     const handleExport = () => {
-        if (properties.length === 0) {
-            alert("No data to export");
-            return;
-        }
+        if (properties.length === 0) { alert("No data to export"); return; }
         const headers = Object.keys(properties[0]).join(',');
         const rows = properties.map(p => Object.values(p).map(v => `"${v}"`).join(',')).join('\n');
         const csvContent = "data:text/csv;charset=utf-8," + headers + "\n" + rows;
-        const encodedUri = encodeURI(csvContent);
         const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
+        link.setAttribute("href", encodeURI(csvContent));
         link.setAttribute("download", `property_export_${new Date().toISOString().split('T')[0]}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
     };
 
+    const [activeTab, setActiveTab] = React.useState('territory');
+
+    const tabs = [
+        { id: 'territory', label: 'Territory' },
+        { id: 'import', label: 'Import' },
+    ];
+
     return (
-        <div className="h-full overflow-auto bg-black text-white p-4 pb-8">
-            <div className="max-w-2xl w-full mx-auto bg-[#111] p-5 rounded-2xl border border-[#222] shadow-2xl">
-                <div className="text-center space-y-3 mb-6">
-                    <div className="flex justify-center">
-                        <div className="w-14 h-14 bg-yellow-500 rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(255,215,0,0.3)]">
-                            <Upload className="w-7 h-7 text-black" />
-                        </div>
+        <div className="h-full overflow-auto bg-[#09090b] text-white pb-24">
+            <div className="max-w-2xl w-full mx-auto p-4 md:p-6 space-y-5">
+
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-2xl font-black tracking-tight text-white">Data Center</h1>
+                        <p className="text-sm text-gray-500 mt-0.5">Manage territory data and imports</p>
                     </div>
-                    <h1 className="text-2xl font-bold tracking-tight text-white">Data Center</h1>
-                    <p className="text-gray-400 text-sm max-w-sm mx-auto">
-                        Manage your territory data. Upload lists or connect to national feeds.
-                    </p>
-                </div>
-
-                <div className="flex p-1 bg-[#0A0A0A] rounded-lg mb-6 border border-[#222]">
-                    <button
-                        onClick={() => setActiveTab('upload')}
-                        className={`flex-1 py-2 text-sm font-bold rounded-md transition-colors ${activeTab === 'upload' ? 'bg-[#222] text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
-                    >
-                        Data Settings
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('marketplace')}
-                        className={`flex-1 py-2 text-sm font-bold rounded-md transition-colors ${activeTab === 'marketplace' ? 'bg-[#222] text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
-                    >
-                        National Feeds
-                    </button>
-                </div>
-
-                <div className="space-y-4">
-                    {activeTab === 'upload' ? (
-                        <>
-                            <div className="p-4 rounded-xl bg-[#0A0A0A] border border-[#222] flex flex-col items-center justify-center text-center">
-                                <h3 className="text-base font-bold text-white mb-2">Pull Data Directly From Map</h3>
-                                <p className="text-sm text-gray-400 mb-4">
-                                    You no longer need to upload spreadsheets! Simply go to the map, draw your custom territory outline, and hit "Pull Data" to instantly fetch all homes in that area.
-                                </p>
-                                <Button 
-                                    onClick={handleContinue}
-                                    className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold h-10 px-6 rounded-full"
-                                >
-                                    Go Draw Territory
-                                </Button>
-                            </div>
-
-                            <div className="p-4 rounded-xl bg-[#0A0A0A] border border-[#222]">
-                                <h3 className="text-base font-bold text-white mb-2">Import from SalesRabbit / Spotio</h3>
-                                <p className="text-sm text-gray-400 mb-4">
-                                    Already have data? Upload your CSV export here to bring all your existing leads, pins, and history into FirstKnock instantly.
-                                </p>
-                                <CsvUploader onUploadComplete={() => queryClient.invalidateQueries({ queryKey: ['masterProperties'] })} />
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="p-3 rounded-xl bg-[#0A0A0A] border border-[#222]">
-                                    <h4 className="text-white font-bold flex items-center gap-2 text-sm">
-                                        <Database className="w-4 h-4 text-green-500" />
-                                        {isLoading ? '...' : properties.length.toLocaleString()} Records
-                                    </h4>
-                                    <p className="text-xs text-gray-500 mt-1">Saved in database</p>
-                                </div>
-                                <button
-                                    onClick={handleExport}
-                                    className="p-3 rounded-xl bg-[#0A0A0A] border border-[#222] text-left hover:bg-[#151515] transition-colors"
-                                >
-                                    <h4 className="text-white font-bold flex items-center gap-2 text-sm">
-                                        <Download className="w-4 h-4 text-blue-500" />
-                                        Export Data
-                                    </h4>
-                                    <p className="text-xs text-gray-500 mt-1">Download backup</p>
-                                </button>
-                            </div>
-
-                            {/* Territory Filter */}
-                            <TerritoryFilter user={user} properties={properties} />
-                        </>
-                    ) : (
-                        <DataMarketplace />
-                    )}
-
-                    <BetaUsageMeter className="mt-4" />
-
-                    <Button
-                        onClick={handleContinue}
-                        className="w-full h-12 text-base bg-yellow-500 text-black font-bold hover:bg-yellow-400 rounded-xl mt-4"
-                    >
-                        GO TO MAP
+                    <Button onClick={handleContinue} className="bg-white text-black font-bold hover:bg-gray-200 rounded-xl h-10 px-5 text-xs gap-2">
+                        Map <ArrowRight className="w-3.5 h-3.5" />
                     </Button>
                 </div>
+
+                {/* Quick stats */}
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-gray-500">Records</span>
+                            <Database className="w-3.5 h-3.5 text-green-400" />
+                        </div>
+                        <div className="text-2xl font-black text-white">{isLoading ? '...' : properties.length.toLocaleString()}</div>
+                        <p className="text-[10px] text-gray-500 mt-1">in database</p>
+                    </div>
+                    <button onClick={handleExport} className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4 text-left hover:bg-white/[0.04] transition-colors group">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-gray-500">Export</span>
+                            <Download className="w-3.5 h-3.5 text-blue-400 group-hover:text-blue-300" />
+                        </div>
+                        <div className="text-sm font-bold text-white">Download CSV</div>
+                        <p className="text-[10px] text-gray-500 mt-1">backup all data</p>
+                    </button>
+                </div>
+
+                {/* Pull from map CTA */}
+                <div className="rounded-2xl border border-white/[0.06] bg-gradient-to-br from-[#111113] to-[#0d0d12] p-5 relative overflow-hidden">
+                    <div className="absolute -top-16 -right-16 w-40 h-40 bg-yellow-500/5 blur-[60px] rounded-full pointer-events-none" />
+                    <div className="relative z-10 flex items-start gap-4">
+                        <div className="w-10 h-10 rounded-xl bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center shrink-0">
+                            <Map className="w-5 h-5 text-yellow-400" />
+                        </div>
+                        <div className="flex-1">
+                            <h3 className="text-sm font-bold text-white mb-1">Pull Data From Map</h3>
+                            <p className="text-xs text-gray-500 mb-3">Draw your territory on the map and pull all properties instantly — no spreadsheet needed.</p>
+                            <Button onClick={handleContinue} className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold h-9 px-5 rounded-xl text-xs">
+                                Go Draw Territory
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Tabs */}
+                <div className="flex gap-1 p-1 bg-white/[0.03] rounded-xl border border-white/[0.05]">
+                    {tabs.map(t => (
+                        <button key={t.id} onClick={() => setActiveTab(t.id)}
+                            className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${activeTab === t.id ? 'bg-white text-black' : 'text-gray-500 hover:text-white hover:bg-white/5'}`}
+                        >{t.label}</button>
+                    ))}
+                </div>
+
+                {/* Tab Content */}
+                {activeTab === 'territory' && (
+                    <div className="space-y-4">
+                        <TerritoryFilter user={user} properties={properties} />
+                        <BetaUsageMeter />
+                    </div>
+                )}
+
+                {activeTab === 'import' && (
+                    <div className="space-y-4">
+                        <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-5">
+                            <div className="flex items-center gap-3 mb-4">
+                                <div className="w-9 h-9 rounded-xl bg-green-500/10 border border-green-500/20 flex items-center justify-center">
+                                    <FileSpreadsheet className="w-4 h-4 text-green-400" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-white">Import from CSV / JSON</h3>
+                                    <p className="text-[11px] text-gray-500">SalesRabbit, Spotio, Redfin, or custom exports</p>
+                                </div>
+                            </div>
+                            <CsvUploader />
+                        </div>
+                    </div>
+                )}
+
             </div>
         </div>
     );
