@@ -125,9 +125,29 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
         };
     }, []);
 
+    // Small preview circle at map center when drawing mode is active (helps on mobile)
+    const [mapCenter, setMapCenter] = useState(null);
+    useEffect(() => {
+        if (active) {
+            setMapCenter(map.getCenter());
+            const onMove = () => setMapCenter(map.getCenter());
+            map.on('move', onMove);
+            return () => map.off('move', onMove);
+        } else {
+            setMapCenter(null);
+        }
+    }, [active, map]);
+
     const displayPoints = active ? points : (drawnPolygon || []);
 
-    if (displayPoints.length === 0) return null;
+    // Calculate preview radius in meters from drawSizeMiles
+    const previewRadiusMeters = React.useMemo(() => {
+        if (!active || !mapCenter) return 0;
+        const radiusMiles = drawShape === 'circle'
+            ? Math.sqrt(drawSizeMiles / Math.PI)
+            : Math.sqrt(drawSizeMiles / 4);
+        return radiusMiles * 1609.34; // miles to meters
+    }, [active, mapCenter, drawSizeMiles, drawShape]);
 
     const getAreaText = () => {
         return `~${drawSizeMiles} sq mi`;
