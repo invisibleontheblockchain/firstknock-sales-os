@@ -3,16 +3,17 @@ import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Loader2, MapPin, Zap, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
 
-// ~10 sq mile polygon around downtown Charleston, SC
+// TINY test polygon — ~1 sq mile in downtown Charleston, SC
+// Just a few blocks around King Street — should have minimal sold homes
 const TEST_POLYGON = [
-  { lat: 32.8100, lng: -79.9700 },
-  { lat: 32.8100, lng: -79.9100 },
-  { lat: 32.7600, lng: -79.9100 },
-  { lat: 32.7600, lng: -79.9700 },
+  { lat: 32.7850, lng: -79.9400 },
+  { lat: 32.7850, lng: -79.9300 },
+  { lat: 32.7770, lng: -79.9300 },
+  { lat: 32.7770, lng: -79.9400 },
 ];
 
-const TEST_CENTER = { lat: 32.785, lng: -79.940 };
-const TEST_RADIUS = 2; // ~2 mile radius ≈ ~12.5 sq miles
+const TEST_CENTER = { lat: 32.781, lng: -79.935 };
+const TEST_RADIUS = 0.5; // 0.5 mile radius — very small
 
 export default function FetchTest() {
   const [results, setResults] = useState([]);
@@ -56,7 +57,7 @@ export default function FetchTest() {
   // Test 2: fetchAreaProperties with small polygon
   const testAreaFetch = async () => {
     setRunning('area');
-    log('Starting AREA fetch test — Charleston SC ~10 sq mi polygon');
+    log('Starting AREA fetch test — tiny ~1 sq mi polygon, Charleston SC');
     log(`Center: ${TEST_CENTER.lat}, ${TEST_CENTER.lng} | Radius: ${TEST_RADIUS}mi`);
     log(`Polygon: ${TEST_POLYGON.length} points`);
     try {
@@ -65,13 +66,15 @@ export default function FetchTest() {
         latitude: TEST_CENTER.lat,
         longitude: TEST_CENTER.lng,
         radius: TEST_RADIUS,
-        polygon: TEST_POLYGON
+        polygon: TEST_POLYGON,
+        sold_months: 3  // Only 3 months — minimal API usage
       });
       const elapsed = ((Date.now() - start) / 1000).toFixed(1);
       const d = res.data;
       log(`✅ Job created in ${elapsed}s`, 'success');
       log(`Status: ${d.status}`, 'info');
       log(`Job ID: ${d.job_id || 'N/A'}`, 'info');
+      if (d.optimized_radius !== undefined) log(`Radius: ${d.original_radius}mi → ${d.optimized_radius}mi (optimized)`, d.optimized_radius < d.original_radius ? 'success' : 'info');
       log(d.message || JSON.stringify(d));
 
       if (d.job_id) {
@@ -100,10 +103,10 @@ export default function FetchTest() {
           return;
         }
         const job = arr[0];
-        log(`[Poll ${attempts}] Status: ${job.status} | Progress: ${job.progress_pct}% | Fetched: ${job.total_fetched}/${job.total_expected} | Inserted: ${job.total_inserted} | Existed: ${job.total_existed}`);
+        log(`[Poll ${attempts}] Status: ${job.status} | Progress: ${job.progress_pct}% | Fetched: ${job.total_fetched}/${job.total_expected} | Inserted: ${job.total_inserted} | Existed: ${job.total_existed} | API Calls: ${job.total_api_calls || '?'}`);
 
         if (job.status === 'completed') {
-          log(`✅ JOB COMPLETE — ${job.total_inserted} inserted, ${job.total_existed} existed, ${job.total_updated || 0} updated`, 'success');
+          log(`✅ JOB COMPLETE — ${job.total_inserted} inserted, ${job.total_existed} existed, ${job.total_updated || 0} updated, ${job.total_api_calls || '?'} API calls`, 'success');
           log(`Zip codes found: ${(job.zip_codes_found || []).join(', ')}`, 'info');
           setRunning(null);
           return;
@@ -165,8 +168,9 @@ export default function FetchTest() {
           <Info className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
           <div className="text-xs text-blue-300/80 space-y-1">
             <p><strong>v8 Changes:</strong> Removed Phase 3 (density fill). Now only fetches recently sold properties.</p>
-            <p><strong>processFetchChunk:</strong> Reduced from 60→20 pages/chunk and 15→5 parallel requests.</p>
-            <p><strong>Test area:</strong> ~10 sq mi polygon around downtown Charleston, SC (29401).</p>
+            <p><strong>processFetchChunk:</strong> Reduced from 60→20 pages/chunk and 15→5 parallel. API calls tracked on job.</p>
+            <p><strong>fetchAreaProperties:</strong> Now computes minimum bounding circle from polygon. Accepts sold_months param.</p>
+            <p><strong>Test area:</strong> TINY ~1 sq mi polygon near King St, Charleston SC. 3-month window. Should use &lt;10 API calls.</p>
           </div>
         </div>
 
@@ -199,7 +203,7 @@ export default function FetchTest() {
           >
             <MapPin className="w-5 h-5 text-green-400 mb-2" />
             <p className="text-sm font-bold text-white">Test Area Fetch</p>
-            <p className="text-[10px] text-gray-500 mt-1">Charleston ~10 sq mi polygon</p>
+            <p className="text-[10px] text-gray-500 mt-1">~1 sq mi • 3 months • bounding circle</p>
           </button>
         </div>
 
