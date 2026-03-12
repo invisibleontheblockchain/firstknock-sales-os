@@ -214,6 +214,7 @@ function LayoutInner({ children }) {
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('Billing')} className="flex items-center w-full"><Sparkles className="mr-2 h-4 w-4" /><span>Plans</span></Link></DropdownMenuItem>
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('MobileApp')} className="flex items-center w-full"><Smartphone className="mr-2 h-4 w-4" /><span>Get Mobile App</span></Link></DropdownMenuItem>
                                 <DropdownMenuItem onClick={() => setShowThemePicker(true)} className="focus:bg-slate-800 focus:text-white cursor-pointer"><Paintbrush className="mr-2 h-4 w-4" /><span>Theme Color</span></DropdownMenuItem>
+                                <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('Referrals')} className="flex items-center w-full"><Gift className="mr-2 h-4 w-4" /><span>Referrals</span></Link></DropdownMenuItem>
                                 <DropdownMenuSeparator className="bg-slate-800" />
                                 <DropdownMenuItem onClick={() => { if(confirm("Reset Role?")) base44.auth.updateMe({ app_role: null }).then(() => { window.location.href = createPageUrl('RoleSelect'); }); }} className="text-red-400 focus:text-red-400 focus:bg-red-900/20 cursor-pointer"><RefreshCw className="mr-2 h-4 w-4" /><span>Reset Role</span></DropdownMenuItem>
                                 <DropdownMenuItem onClick={async () => { try { await base44.auth.logout(window.location.origin); } catch { window.location.reload(); } queryClient.clear(); }} className="focus:bg-slate-800 focus:text-white cursor-pointer"><LogOut className="mr-2 h-4 w-4" /><span>Logout</span></DropdownMenuItem>
@@ -261,7 +262,7 @@ function LayoutInner({ children }) {
                         <NavItem icon={TrendingUp} label="Analytics" to={createPageUrl('List')} active={window.location.pathname.endsWith('List')} accent={accent} />
                         <NavItem icon={Calendar} label="Appts" to={createPageUrl('Appointments')} active={window.location.pathname.endsWith('Appointments')} accent={accent} />
                         <NavItem icon={Users} label="Team" to={createPageUrl('AdminTeam')} active={window.location.pathname.endsWith('AdminTeam')} accent={accent} />
-                        <NavItem icon={Gift} label="Refer" to={createPageUrl('Referrals')} active={window.location.pathname.endsWith('Referrals')} accent={accent} />
+                        <NavItem icon={Navigation} label="Rep Mode" to={createPageUrl('RepHome')} active={window.location.pathname.includes('RepHome')} accent={accent} />
                     </div>
                 )}
             </nav>

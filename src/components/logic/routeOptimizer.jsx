@@ -47,6 +47,7 @@ export function scoreProperty(property, logs = [], neighborhoodStats = {}, learn
 
     // 1. Status Scoring Logic
     if (property.effective_status === 'ELIGIBLE') score += 60; // Slightly higher priority for fresh doors
+    if (property.effective_status === 'UNVERIFIED') score += 40; // Legacy CSV data, treat as routable but lower confidence
     if (property.effective_status === 'CALLBACK') score += 100; // Top priority
     if (property.effective_status === 'NO_ANSWER') score += 30; // Worth another try
     if (property.effective_status === 'QUALIFIED') score += 80;
@@ -104,8 +105,11 @@ export function scoreProperty(property, logs = [], neighborhoodStats = {}, learn
     }
 
     // 5. Contact Frequency (Avoid Burnout, optimize 'when to knock')
+    // Support legacy_hash alias for interaction log lookups
     if (logs && logs.length > 0) {
-        const myLogs = logs.filter(l => l.address_hash === (property.address_hash || property.id));
+        const propHash = property.address_hash || property.id;
+        const legacyHash = property.legacy_hash;
+        const myLogs = logs.filter(l => l.address_hash === propHash || (legacyHash && l.address_hash === legacyHash));
 
         // Optimize for feedback from finished routes
         if (myLogs.length > 3) {
@@ -396,8 +400,8 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 
     // Double Dip Protection: Exclude Terminal Statuses
     // NOTE: 'SOLD' here means the property's original MLS sale record, NOT that a rep already sold them.
-    // When using sold-date-based filtering (e.g. FirstKnock Best), these are prime leads (new homeowners)
-    // so we only exclude HARD_NO / DO_NOT_KNOCK / COOLDOWN — NOT 'SOLD'.
+    // 'UNVERIFIED' = legacy CSV data, still actionable for routing (treated like ELIGIBLE)
+    // so we only exclude HARD_NO / DO_NOT_KNOCK / COOLDOWN — NOT 'SOLD' or 'UNVERIFIED'.
     if (excludeTerminal) {
         const terminalStatuses = ['HARD_NO', 'DO_NOT_KNOCK', 'COOLDOWN'];
         eligible = eligible.filter(p => !terminalStatuses.includes(p.effective_status));
@@ -408,7 +412,7 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
     // Pre-calculate Neighborhood Heat (Recent Sales count per H3 hexagon)
     const neighborhoodStats = {};
     eligible.forEach(p => {
-        if (p.lat && p.lng && (p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED')) {
+        if (p.lat && p.lng && (p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED' || p.effective_status === 'UNVERIFIED')) {
             try {
                 const h3Index = latLngToCell(p.lat, p.lng, 9);
                 // Add heat to the cell itself and its immediate neighbors (gridDisk radius 1)

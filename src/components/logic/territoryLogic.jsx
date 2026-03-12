@@ -28,6 +28,10 @@ export const determineEffectiveStatus = (masterProp, logs) => {
         if (['HARD_NO', 'DO_NOT_KNOCK'].includes(masterProp.original_status)) {
             return masterProp.original_status;
         }
+        // UNVERIFIED = legacy CSV data not yet confirmed by RentCast — still routable
+        if (masterProp.original_status === 'UNVERIFIED') {
+            return 'UNVERIFIED';
+        }
         return 'ELIGIBLE';
     }
 
@@ -194,9 +198,10 @@ export const expandToFullStreetSweep = (selectedProperties, allProperties) => {
             .filter(Boolean)
     );
 
-    // Get ALL properties on those streets (excluding HARD_NO and SOLD)
+    // Get ALL properties on those streets (excluding HARD_NO and DO_NOT_KNOCK)
     const fullSweep = allProperties.filter(p =>
-        p.street_name && targetStreets.has(p.street_name)
+        p.street_name && targetStreets.has(p.street_name) &&
+        !['HARD_NO', 'DO_NOT_KNOCK'].includes(p.original_status)
     );
 
     return fullSweep;
