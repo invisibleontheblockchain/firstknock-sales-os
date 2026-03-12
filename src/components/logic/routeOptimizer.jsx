@@ -51,6 +51,8 @@ export function scoreProperty(property, logs = [], neighborhoodStats = {}, learn
     if (property.effective_status === 'NO_ANSWER') score += 30; // Worth another try
     if (property.effective_status === 'QUALIFIED') score += 80;
     if (property.effective_status === 'HARD_NO') return 0;
+    // UNVERIFIED = legacy CSV, treat same as ELIGIBLE but slightly lower confidence
+    if (property.original_status === 'UNVERIFIED') score += 40;
     // 'SOLD' = recently sold home from MLS (new homeowner = prime lead), score based on recency
     if (property.effective_status === 'SOLD') {
         if (property.sold_date) {
@@ -396,8 +398,8 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 
     // Double Dip Protection: Exclude Terminal Statuses
     // NOTE: 'SOLD' here means the property's original MLS sale record, NOT that a rep already sold them.
-    // When using sold-date-based filtering (e.g. FirstKnock Best), these are prime leads (new homeowners)
-    // so we only exclude HARD_NO / DO_NOT_KNOCK / COOLDOWN — NOT 'SOLD'.
+    // 'UNVERIFIED' = legacy CSV data, treat as ELIGIBLE for routing purposes.
+    // We only exclude HARD_NO / DO_NOT_KNOCK / COOLDOWN — NOT 'SOLD' or 'UNVERIFIED'.
     if (excludeTerminal) {
         const terminalStatuses = ['HARD_NO', 'DO_NOT_KNOCK', 'COOLDOWN'];
         eligible = eligible.filter(p => !terminalStatuses.includes(p.effective_status));

@@ -23,10 +23,13 @@ export const determineEffectiveStatus = (masterProp, logs) => {
 
     // If no interaction logs, check master status first
     if (!logs || logs.length === 0) {
-        // Only exclude if it's a hard rejection. 'SOLD' in master data usually means MLS sold (Owner Occupied), 
-        // which is a valid target, not "We sold it".
+        // Hard rejections are permanent
         if (['HARD_NO', 'DO_NOT_KNOCK'].includes(masterProp.original_status)) {
             return masterProp.original_status;
+        }
+        // UNVERIFIED = legacy CSV data not yet confirmed by RentCast — treat as ELIGIBLE for routing
+        if (masterProp.original_status === 'UNVERIFIED') {
+            return 'ELIGIBLE';
         }
         return 'ELIGIBLE';
     }
