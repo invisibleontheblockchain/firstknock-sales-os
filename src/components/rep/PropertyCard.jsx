@@ -46,14 +46,7 @@ export default function PropertyCard({ property, index, onSelect }) {
                         {property.city}, {property.state} {property.zip_code}
                     </p>
                 )}
-                {property.timeScore > 80 && !isDone && (
-                    <p className="text-[9px] text-green-500 font-bold mt-0.5">⏰ BEST TIME</p>
-                )}
-                {property.sold_date && (
-                    <p className="text-[10px] text-yellow-500/80 font-medium mt-0.5">
-                        Sold: {new Date(property.sold_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </p>
-                )}
+
             </div>
 
             {/* Status tag */}
@@ -71,10 +64,9 @@ export default function PropertyCard({ property, index, onSelect }) {
                         e.stopPropagation();
                         window.open(`https://maps.apple.com/?daddr=${property.lat},${property.lng}&dirflg=w`, '_blank');
                     }}
-                    className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-all duration-300 shadow-[0_4px_12px_rgba(255,217,61,0.3)] hover:scale-105 active:scale-95 hover:shadow-[0_6px_16px_rgba(255,217,61,0.5)]"
-                    style={{ background: '#FFD93D' }}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all active:scale-95 bg-white/10 border border-white/10"
                 >
-                    <Navigation className="w-5 h-5 text-black fill-black" strokeWidth={2} />
+                    <Navigation className="w-3.5 h-3.5 text-gray-400" />
                 </button>
             )}
         </button>

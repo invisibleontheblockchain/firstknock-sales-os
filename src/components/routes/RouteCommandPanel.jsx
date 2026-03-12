@@ -6,8 +6,10 @@ import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
 import {
     Navigation, X, BarChart3, User, Shield, MapPin,
     ArrowRight, Flame, Plus, Clock, CheckCircle2,
-    AlertCircle, ChevronRight, Zap, Trash2, Scissors
+    AlertCircle, ChevronRight, Zap, Trash2, Scissors, Pencil, Check
 } from 'lucide-react';
+import { base44 } from '@/api/base44Client';
+import { useQueryClient } from "@tanstack/react-query";
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -634,6 +636,17 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave 
 }
 
 function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete }) {
+    const [editing, setEditing] = useState(false);
+    const [newName, setNewName] = useState(route.name);
+    const queryClient = useQueryClient();
+
+    const handleRename = async () => {
+        if (!newName.trim() || newName === route.name) { setEditing(false); return; }
+        await base44.entities.SavedRoute.update(route.id, { name: newName.trim() });
+        queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+        setEditing(false);
+    };
+
     return (
         <div className="relative group">
             <button
@@ -647,8 +660,31 @@ function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete }) {
                 }}
             >
                 <div className="flex items-center justify-between">
-                    <div>
-                        <span className="font-bold text-sm text-white block pr-6">{route.name}</span>
+                    <div className="flex-1 min-w-0 pr-12">
+                        {editing ? (
+                            <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                <input
+                                    value={newName}
+                                    onChange={e => setNewName(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setEditing(false); }}
+                                    className="bg-black/60 border border-gray-600 text-white text-sm font-bold rounded px-2 py-0.5 w-full"
+                                    autoFocus
+                                />
+                                <button onClick={handleRename} className="p-1 text-green-500 hover:text-green-400"><Check className="w-4 h-4" /></button>
+                                <button onClick={() => { setNewName(route.name); setEditing(false); }} className="p-1 text-gray-500 hover:text-white"><X className="w-4 h-4" /></button>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-sm text-white truncate">{route.name}</span>
+                                <button
+                                    onClick={e => { e.stopPropagation(); setEditing(true); }}
+                                    className="p-0.5 text-gray-600 hover:text-white transition-colors opacity-0 group-hover:opacity-100"
+                                    title="Rename"
+                                >
+                                    <Pencil className="w-3 h-3" />
+                                </button>
+                            </div>
+                        )}
                         {route.assigned_to_name && (
                             <span className="text-[10px] text-gray-500">{route.assigned_to_name}</span>
                         )}
