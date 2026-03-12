@@ -11,7 +11,7 @@ const EXEMPT_EMAILS = [
     'keven@reefenvironmental.com',
 ];
 
-const FREE_HOUSE_LIMIT = 50;
+const FREE_HOUSE_LIMIT = 25;
 
 export function shouldShowUpgradeGate(user, housesMarked) {
     if (!user) return false;
@@ -38,7 +38,7 @@ export default function UpgradeGate({ onClose }) {
                 </div>
                 
                 <h2 className="text-xl font-extrabold text-white text-center mb-2">
-                    You've Hit 50 Houses!
+                    You've Hit 25 Houses!
                 </h2>
                 <p className="text-gray-400 text-sm text-center mb-6 leading-relaxed">
                     You've been crushing it! Upgrade to FirstKnock Pro to keep logging results, get unlimited routes, and unlock your full territory.

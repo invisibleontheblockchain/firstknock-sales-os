@@ -104,12 +104,12 @@ export default function MapToolbar({
 
                 {/* Active Route Banner - Compact */}
                 {activeRoute && (
-                    <div className="pointer-events-auto rounded-full px-1 py-1 sm:px-1.5 sm:py-1.5 flex items-center gap-1 sm:gap-2 shadow-2xl border border-yellow-600/40 animate-in slide-in-from-top-2 backdrop-blur-md" style={{ background: 'rgba(10,10,10,0.92)' }}>
-                        <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: BRAND.gold }}>
-                            <Navigation className="w-3 h-3 sm:w-4 sm:h-4" style={{ color: BRAND.voidBlack }} />
+                    <div className="pointer-events-auto rounded-full px-0.5 py-0.5 sm:px-1.5 sm:py-1.5 flex items-center gap-0.5 sm:gap-2 shadow-2xl border border-yellow-600/40 animate-in slide-in-from-top-2 backdrop-blur-md" style={{ background: 'rgba(10,10,10,0.92)' }}>
+                        <div className="w-5 h-5 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: BRAND.gold }}>
+                            <Navigation className="w-2.5 h-2.5 sm:w-4 sm:h-4" style={{ color: BRAND.voidBlack }} />
                         </div>
-                        <span className="text-[10px] sm:text-sm font-bold truncate flex-1 min-w-0 max-w-[60px] sm:max-w-[120px]" style={{ color: BRAND.gold }}>{activeRoute.name}</span>
-                        <div onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} className="shrink-0 flex items-center gap-1">
+                        <span className="text-[9px] sm:text-sm font-bold truncate flex-1 min-w-0 max-w-[50px] sm:max-w-[120px]" style={{ color: BRAND.gold }}>{activeRoute.name}</span>
+                        <div onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} className="shrink-0 flex items-center gap-0.5 sm:gap-1">
                             {setActiveRouteSoldFilter && (
                                 <select
                                     value={activeRouteSoldFilter}
@@ -118,15 +118,15 @@ export default function MapToolbar({
                                         setActiveRouteSoldFilter(e.target.value);
                                     }}
                                     onPointerDown={(e) => e.stopPropagation()}
-                                    className="text-[9px] sm:text-xs font-medium bg-white/10 border border-white/10 rounded-full px-1.5 py-0.5 sm:px-3 sm:py-1.5 outline-none cursor-pointer hover:bg-white/15 transition-colors appearance-auto max-w-[70px] sm:max-w-none"
+                                    className="text-[8px] sm:text-xs font-medium bg-white/10 border border-white/10 rounded-full px-1 py-0.5 sm:px-3 sm:py-1.5 outline-none cursor-pointer hover:bg-white/15 transition-colors appearance-auto max-w-[55px] sm:max-w-none"
                                     style={{ color: '#ccc', WebkitAppearance: 'menulist' }}
                                 >
-                                    <option value="all">All Time</option>
-                                    <option value="3">3 Months</option>
-                                    <option value="6">6 Months</option>
-                                    <option value="12">1 Year</option>
-                                    <option value="24">2 Years</option>
-                                    <option value="36">3 Years</option>
+                                    <option value="all">All</option>
+                                    <option value="3">3M</option>
+                                    <option value="6">6M</option>
+                                    <option value="12">1Y</option>
+                                    <option value="24">2Y</option>
+                                    <option value="36">3Y</option>
                                 </select>
                             )}
                             <select
@@ -136,10 +136,10 @@ export default function MapToolbar({
                                     handleAssignRoute(activeRoute.id, e.target.value);
                                 }}
                                 onPointerDown={(e) => e.stopPropagation()}
-                                className="text-[9px] sm:text-xs font-medium bg-white/10 border border-white/10 rounded-full px-1.5 py-0.5 sm:px-3 sm:py-1.5 outline-none cursor-pointer hover:bg-white/15 transition-colors appearance-auto max-w-[70px] sm:max-w-none"
+                                className="text-[8px] sm:text-xs font-medium bg-white/10 border border-white/10 rounded-full px-1 py-0.5 sm:px-3 sm:py-1.5 outline-none cursor-pointer hover:bg-white/15 transition-colors appearance-auto max-w-[55px] sm:max-w-none"
                                 style={{ color: '#ccc', WebkitAppearance: 'menulist' }}
                             >
-                                <option value="">Unassigned</option>
+                                <option value="">—</option>
                                 <option value={user?.id || 'manager'}>Me</option>
                                 {teamMembers.map(m => (
                                     <option key={m.id} value={m.id}>{m.name}</option>
@@ -153,9 +153,9 @@ export default function MapToolbar({
                                     try { if (mapRef.current._mapPane) mapRef.current.setZoom(Math.max(13, mapRef.current.getZoom() - 2)); } catch (e) { }
                                 }
                             }}
-                            className="w-6 h-6 sm:w-8 sm:h-8 flex items-center justify-center hover:bg-white/10 active:bg-white/15 rounded-full transition-colors shrink-0"
+                            className="w-5 h-5 sm:w-8 sm:h-8 flex items-center justify-center hover:bg-white/10 active:bg-white/15 rounded-full transition-colors shrink-0"
                         >
-                            <X className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
+                            <X className="w-2.5 h-2.5 sm:w-4 sm:h-4 text-gray-400" />
                         </button>
                     </div>
                 )}
