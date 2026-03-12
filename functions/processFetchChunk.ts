@@ -109,16 +109,8 @@ Deno.serve(async (req) => {
             }
         }
 
-        // Sold cutoff
-        let monthsBack = 12;
-        try {
-            const users = await base44.asServiceRole.entities.User.filter({ email: job.user_email }, null, 1);
-            const userArr = Array.isArray(users) ? users : (users?.items || []);
-            if (userArr.length > 0 && userArr[0].pull_months_back) {
-                monthsBack = userArr[0].pull_months_back;
-            }
-        } catch (e) { logError(`User prefs fetch failed: ${e.message}`); }
-
+        // Sold cutoff — read from job, fallback to 12
+        const monthsBack = job.sold_months || 12;
         const daysBack = monthsBack * 30;
         const soldCutoff = new Date();
         soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
