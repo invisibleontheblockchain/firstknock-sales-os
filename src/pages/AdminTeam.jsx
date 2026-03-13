@@ -754,6 +754,7 @@ export default function AdminTeam() {
                                                     <Select onValueChange={(memberId) => handleAssign(route.id, memberId)}>
                                                         <SelectTrigger className="w-[90px] md:w-[160px] h-7 md:h-9 text-[9px] md:text-xs bg-[#000] border-gray-700">
                                                             <SelectValue placeholder="Assign" />
+                                                        </SelectTrigger>
                                                         <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
                                                             {filteredTeamMembers.map(m => (
                                                                 <SelectItem key={m.id} value={m.id}>{m.name} ({m.email})</SelectItem>
