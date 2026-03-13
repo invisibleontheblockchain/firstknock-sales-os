@@ -40,29 +40,7 @@ export default function RepHeader({ user, isOffline, activeRoute, stats, knockWi
                     </div>
                 </div>
 
-                {/* Action buttons */}
-                <div className="flex gap-1.5 shrink-0">
-                    <button
-                        onClick={onShowMap}
-                        className="h-8 px-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-1.5 hover:bg-white/10 active:scale-95 transition-all"
-                    >
-                        <MapPin className="w-3.5 h-3.5 text-[#00D2FF]" />
-                        <span className="text-[10px] font-bold text-[#F0F0F5]">MAP</span>
-                    </button>
-                    <button
-                        onClick={() => {
-                            if (routeProperties.length > 0) {
-                                const first = routeProperties[0];
-                                window.open(`https://maps.apple.com/?daddr=${first.lat},${first.lng}&dirflg=w`, '_blank');
-                            }
-                        }}
-                        className="h-8 px-2.5 rounded-xl flex items-center gap-1.5 active:scale-95 transition-all shadow-[0_0_10px_rgba(0,210,255,0.3)]"
-                        style={{ background: '#00D2FF', color: '#0A0A0F' }}
-                    >
-                        <Navigation className="w-3.5 h-3.5" />
-                        <span className="text-[10px] font-bold">START</span>
-                    </button>
-                </div>
+                {/* Action buttons removed as requested */}
             </div>
 
             {/* Progress */}
