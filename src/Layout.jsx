@@ -72,6 +72,12 @@ function LayoutInner({ children }) {
         updateLink('apple-touch-icon', LOGO_URL);
         updateLink('apple-touch-icon-precomposed', LOGO_URL);
 
+        // Prevent zoom on mobile inputs
+        const viewportMeta = document.querySelector('meta[name="viewport"]');
+        if (viewportMeta) {
+            viewportMeta.content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
+        }
+
         return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
     }, []);
 
@@ -192,9 +198,7 @@ function LayoutInner({ children }) {
                         <button onClick={() => setShowThemePicker(!showThemePicker)} className="flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]"><Paintbrush className="w-4 h-4" /></button>
                         <Link to={createPageUrl('Setup')} className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white">SETUP</Link>
                         <Link to={createPageUrl('Billing')} className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white">PLANS</Link>
-                        <button onClick={() => { if(confirm("Reset Role?")) base44.auth.updateMe({ app_role: null }).then(() => { window.location.href = createPageUrl('RoleSelect'); }); }} className="bg-red-600 text-white text-[10px] font-bold px-2 py-1 rounded">RESET</button>
                         <button onClick={async () => { try { await base44.auth.logout(window.location.origin); } catch { window.location.reload(); } queryClient.clear(); }} className="text-xs text-slate-400 hover:text-white">LOGOUT</button>
-                        {user?.app_role !== 'rep' && <Link to={createPageUrl('RepHome')} className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]">REP MODE</Link>}
                         <Link to={createPageUrl('MobileApp')} className="flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]"><Smartphone className="w-4 h-4" /></Link>
                         <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
                     </div>
@@ -215,7 +219,6 @@ function LayoutInner({ children }) {
                                 <DropdownMenuItem onClick={() => setShowThemePicker(true)} className="focus:bg-slate-800 focus:text-white cursor-pointer"><Paintbrush className="mr-2 h-4 w-4" /><span>Theme Color</span></DropdownMenuItem>
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('Referrals')} className="flex items-center w-full"><Gift className="mr-2 h-4 w-4" /><span>Referrals</span></Link></DropdownMenuItem>
                                 <DropdownMenuSeparator className="bg-slate-800" />
-                                <DropdownMenuItem onClick={() => { if(confirm("Reset Role?")) base44.auth.updateMe({ app_role: null }).then(() => { window.location.href = createPageUrl('RoleSelect'); }); }} className="text-red-400 focus:text-red-400 focus:bg-red-900/20 cursor-pointer"><RefreshCw className="mr-2 h-4 w-4" /><span>Reset Role</span></DropdownMenuItem>
                                 <DropdownMenuItem onClick={async () => { try { await base44.auth.logout(window.location.origin); } catch { window.location.reload(); } queryClient.clear(); }} className="focus:bg-slate-800 focus:text-white cursor-pointer"><LogOut className="mr-2 h-4 w-4" /><span>Logout</span></DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
