@@ -132,21 +132,21 @@ export default function Appointments() {
     return (
         <div className="h-full flex flex-col bg-[#09090b]">
             {/* Header */}
-            <div className="px-4 md:px-6 pt-4 pb-2 border-b border-white/[0.04] sticky top-0 z-20 backdrop-blur-xl bg-[#09090b]/90">
-                <div className="max-w-5xl mx-auto">
+            <div className="px-4 md:px-8 lg:px-10 pt-4 md:pt-6 pb-2 md:pb-3 border-b border-white/[0.04] sticky top-0 z-20 backdrop-blur-xl bg-[#09090b]/90">
+                <div className="max-w-7xl mx-auto">
                     {/* Title row */}
-                    <div className="flex items-center justify-between mb-3">
-                        <h1 className="text-lg font-black text-white tracking-tight">Appointments</h1>
+                    <div className="flex items-center justify-between mb-3 md:mb-4">
+                        <h1 className="text-lg md:text-2xl lg:text-3xl font-black text-white tracking-tight">Appointments</h1>
                         <Button
                             onClick={() => setShowAutoSchedule(!showAutoSchedule)}
-                            className="h-8 px-3 text-[10px] font-bold rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.08] gap-1.5"
+                            className="h-8 md:h-10 px-3 md:px-5 text-[10px] md:text-xs font-bold rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.08] gap-1.5"
                         >
-                            <Zap className="w-3 h-3 text-yellow-400" /> Auto-Schedule
+                            <Zap className="w-3 h-3 md:w-4 md:h-4 text-yellow-400" /> Auto-Schedule
                         </Button>
                     </div>
 
                     {/* Stats row - scrollable on mobile */}
-                    <div className="flex gap-2 mb-3 overflow-x-auto no-scrollbar -mx-4 px-4 md:mx-0 md:px-0">
+                    <div className="flex gap-2 md:gap-3 mb-3 md:mb-4 overflow-x-auto no-scrollbar -mx-4 px-4 md:mx-0 md:px-0">
                         <StatPill icon={CalendarDays} label="Upcoming" value={stats.upcoming} color="#3b82f6" />
                         <StatPill icon={Clock} label="Today" value={stats.today} color="#eab308" />
                         <StatPill icon={CheckCircle2} label="Done" value={stats.completed} color="#22c55e" />
@@ -154,10 +154,10 @@ export default function Appointments() {
                     </div>
 
                     {/* Time tabs */}
-                    <div className="flex gap-1 p-1 bg-white/[0.03] rounded-xl border border-white/[0.05] overflow-x-auto no-scrollbar">
+                    <div className="flex gap-1 md:gap-1.5 p-1 md:p-1.5 bg-white/[0.03] rounded-xl border border-white/[0.05] overflow-x-auto no-scrollbar">
                         {TIME_TABS.map(t => (
                             <button key={t.id} onClick={() => setTimeFilter(t.id)}
-                                className={`flex-shrink-0 py-1.5 px-3 rounded-lg text-[10px] font-bold transition-all whitespace-nowrap ${
+                                className={`flex-shrink-0 py-1.5 md:py-2 px-3 md:px-5 rounded-lg text-[10px] md:text-xs font-bold transition-all whitespace-nowrap ${
                                     timeFilter === t.id ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-white'
                                 }`}
                             >{t.label}</button>
@@ -165,10 +165,10 @@ export default function Appointments() {
                     </div>
 
                     {/* Status chips */}
-                    <div className="flex gap-1.5 mt-2 overflow-x-auto no-scrollbar -mx-4 px-4 md:mx-0 md:px-0 pb-2">
+                    <div className="flex gap-1.5 md:gap-2 mt-2 md:mt-3 overflow-x-auto no-scrollbar -mx-4 px-4 md:mx-0 md:px-0 pb-2">
                         {STATUS_CHIPS.map(s => (
                             <button key={s.id} onClick={() => setStatusFilter(s.id)}
-                                className={`flex-shrink-0 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all border ${
+                                className={`flex-shrink-0 px-2.5 md:px-4 py-1 md:py-1.5 rounded-full text-[10px] md:text-xs font-bold transition-all border ${
                                     statusFilter === s.id ? 'bg-white/[0.08] border-white/15 text-white' : 'border-white/[0.04] text-gray-600 hover:text-gray-400'
                                 }`}
                             >{s.label}</button>
@@ -179,7 +179,7 @@ export default function Appointments() {
 
             {/* Content */}
             <div className="flex-1 overflow-auto">
-                <div className="max-w-5xl mx-auto p-4 md:p-6 space-y-3">
+                <div className="max-w-7xl mx-auto p-4 md:p-8 lg:p-10 space-y-3 md:space-y-5">
                     {showAutoSchedule && (
                         <AutoSchedulePanel
                             properties={properties}
@@ -205,14 +205,14 @@ export default function Appointments() {
                     ) : (
                         grouped.map(([dateKey, appts]) => (
                             <div key={dateKey}>
-                                <div className="flex items-center gap-2 mb-2 mt-2">
-                                    <span className={`text-[11px] font-bold uppercase tracking-wider ${dateKey !== 'unscheduled' && isToday(parseISO(dateKey)) ? 'text-yellow-400' : 'text-gray-500'}`}>
+                                <div className="flex items-center gap-2 mb-2 md:mb-3 mt-2 md:mt-4">
+                                    <span className={`text-[11px] md:text-sm font-bold uppercase tracking-wider ${dateKey !== 'unscheduled' && isToday(parseISO(dateKey)) ? 'text-yellow-400' : 'text-gray-500'}`}>
                                         {formatDateLabel(dateKey)}
                                     </span>
-                                    <span className="text-[10px] text-gray-700 bg-white/[0.04] px-1.5 py-0.5 rounded-full font-bold">{appts.length}</span>
+                                    <span className="text-[10px] md:text-xs text-gray-700 bg-white/[0.04] px-1.5 md:px-2 py-0.5 md:py-1 rounded-full font-bold">{appts.length}</span>
                                     <div className="flex-1 h-px bg-white/[0.04]" />
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3">
                                     {appts.map(a => (
                                         <AppointmentCard key={a.id} appointment={a} onClick={setSelectedAppointment} />
                                     ))}
@@ -237,11 +237,11 @@ export default function Appointments() {
 
 function StatPill({ icon: Icon, label, value, color }) {
     return (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.05] shrink-0">
-            <Icon className="w-3.5 h-3.5" style={{ color }} />
+        <div className="flex items-center gap-2 md:gap-3 px-3 md:px-5 py-2 md:py-3 rounded-xl bg-white/[0.03] border border-white/[0.05] shrink-0">
+            <Icon className="w-3.5 h-3.5 md:w-5 md:h-5" style={{ color }} />
             <div>
-                <p className="text-sm font-black text-white leading-none">{value}</p>
-                <p className="text-[9px] text-gray-500 font-medium">{label}</p>
+                <p className="text-sm md:text-xl font-black text-white leading-none">{value}</p>
+                <p className="text-[9px] md:text-xs text-gray-500 font-medium">{label}</p>
             </div>
         </div>
     );
