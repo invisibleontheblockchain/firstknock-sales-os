@@ -1176,6 +1176,21 @@ export default function Home() {
     // Determine Map Center
     const [mapCenter, setMapCenter] = useState([34.0522, -118.2437]); // Default LA
 
+    // On first load, get user's GPS location as the initial map center
+    useEffect(() => {
+        if (!navigator.geolocation) return;
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const loc = [pos.coords.latitude, pos.coords.longitude];
+                setGpsInitialLocation(loc);
+                setMapCenter(loc);
+                setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+            },
+            () => { /* GPS denied/unavailable, keep default */ },
+            { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+        );
+    }, []);
+
     useEffect(() => {
         const updateCenter = async () => {
             if (filteredActiveRoute?.properties?.length > 0) {
@@ -1190,7 +1205,9 @@ export default function Home() {
         updateCenter();
     }, [filteredActiveRoute, availableProperties, user?.working_area]);
 
-    const center = availableProperties[0] && availableProperties[0].lat ? [availableProperties[0].lat, availableProperties[0].lng] : mapCenter;
+    const center = availableProperties[0] && availableProperties[0].lat
+        ? [availableProperties[0].lat, availableProperties[0].lng]
+        : (gpsInitialLocation || mapCenter);
 
     // Fetch full history for selected property (manager view)
     const { data: selectedPropertyLogs = [] } = useQuery({
