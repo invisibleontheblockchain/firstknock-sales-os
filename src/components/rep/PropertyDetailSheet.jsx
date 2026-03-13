@@ -16,12 +16,20 @@ export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUplo
     const [logNote, setLogNote] = useState('');
     const [callbackTime, setCallbackTime] = useState('');
     const [callbackPhone, setCallbackPhone] = useState('');
+    const [showSaleAmount, setShowSaleAmount] = useState(false);
+    const [saleAmount, setSaleAmount] = useState('');
 
     const handleMark = (status) => {
+        if (status === 'SOLD' && !showSaleAmount) {
+            setShowSaleAmount(true);
+            return;
+        }
+
         let noteText = `Marked as ${status}`;
         if (logNote) noteText += ` | Note: ${logNote}`;
         if (callbackPhone) noteText += ` | Phone: ${callbackPhone}`;
         if (callbackTime) noteText += ` | Time: ${callbackTime}`;
+        if (saleAmount) noteText += ` | Sale: $${saleAmount}`;
 
         let nextDate = null;
         if (status === 'CALLBACK' && callbackTime) {
@@ -31,12 +39,20 @@ export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUplo
             nextDate = today.toISOString();
         }
 
-        onLog({
+        const logData = {
             address_hash: property.address_hash,
             raw_input_text: noteText,
             parsed_status: status,
             next_eligible_date: nextDate
-        });
+        };
+
+        if (status === 'SOLD' && saleAmount) {
+            logData.sale_amount = parseFloat(saleAmount);
+        }
+
+        onLog(logData);
+        setShowSaleAmount(false);
+        setSaleAmount('');
     };
 
     return (
@@ -75,7 +91,7 @@ export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUplo
                             <button
                                 key={opt.id}
                                 onClick={() => handleMark(opt.id)}
-                                className="flex flex-col items-center gap-1 py-3 rounded-xl text-center transition-all active:scale-95"
+                                className={`flex flex-col items-center gap-1 py-3 rounded-xl text-center transition-all active:scale-95 ${showSaleAmount && opt.id === 'SOLD' ? 'ring-2 ring-green-500' : ''}`}
                                 style={{ background: opt.color + '15', border: `1px solid ${opt.color}25` }}
                             >
                                 <opt.icon className="w-5 h-5" style={{ color: opt.color }} />
@@ -83,6 +99,34 @@ export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUplo
                             </button>
                         ))}
                     </div>
+
+                    {showSaleAmount && (
+                        <div className="mt-2 flex gap-2 items-center animate-in slide-in-from-top-2 duration-200">
+                            <div className="flex-1 relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-green-400 text-sm font-bold">$</span>
+                                <input
+                                    type="number"
+                                    value={saleAmount}
+                                    onChange={(e) => setSaleAmount(e.target.value)}
+                                    placeholder="Sale amount"
+                                    autoFocus
+                                    className="w-full bg-black border border-green-500/30 rounded-lg pl-7 pr-3 py-2.5 text-sm text-white focus:border-green-500 focus:outline-none"
+                                />
+                            </div>
+                            <button
+                                onClick={() => handleMark('SOLD')}
+                                className="px-4 py-2.5 rounded-lg bg-green-500 text-black font-bold text-xs active:scale-95 transition-all"
+                            >
+                                Confirm
+                            </button>
+                            <button
+                                onClick={() => { setShowSaleAmount(false); setSaleAmount(''); }}
+                                className="px-3 py-2.5 rounded-lg bg-white/5 text-gray-400 font-bold text-xs"
+                            >
+                                Skip
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Navigate */}

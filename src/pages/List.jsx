@@ -135,6 +135,7 @@ export default function ListPage() {
         const workedDoors = new Set(logs.map((log) => log.address_hash).filter(Boolean)).size;
         const totalDoors = effectiveProperties.length;
         const activeRoutes = savedRoutes.filter((route) => ['ACTIVE', 'IN_PROGRESS'].includes(route.status)).length;
+        const totalRevenue = filteredLogs.reduce((sum, log) => sum + (log.sale_amount || 0), 0);
 
         const hourBuckets = Array.from({ length: 13 }, (_, index) => index + 8).map((hour) => {
             const hourLogs = filteredLogs.filter((log) => new Date(log.created_date).getHours() === hour);
@@ -170,6 +171,7 @@ export default function ListPage() {
             bestHourLabel,
             bestHourRate: bestHour.contactRate,
             streak,
+            totalRevenue,
         };
     }, [logs, filteredLogs, filteredAppointments, effectiveProperties, savedRoutes]);
 

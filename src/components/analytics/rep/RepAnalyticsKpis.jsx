@@ -2,13 +2,16 @@ import React from 'react';
 import { DoorOpen, PhoneCall, TrendingUp, MapPin, Target, Calendar } from 'lucide-react';
 
 export default function RepAnalyticsKpis({ metrics, dateDays }) {
+  const revenue = metrics.totalRevenue || 0;
+  const revenueDisplay = revenue >= 1000 ? `$${(revenue / 1000).toFixed(1)}k` : `$${revenue}`;
+
   const cards = [
     { label: 'Today', value: metrics.todayKnocks, sub: 'doors knocked', icon: DoorOpen, accent: '#3b82f6' },
     { label: `${dateDays}D Knocks`, value: metrics.periodKnocks, sub: 'total activity', icon: Calendar, accent: '#8b5cf6' },
     { label: 'Contact Rate', value: `${metrics.contactRate}%`, sub: `${metrics.contacts} contacts`, icon: PhoneCall, accent: '#06b6d4' },
     { label: 'Conversion', value: `${metrics.conversionRate}%`, sub: `${metrics.sales} wins`, icon: TrendingUp, accent: '#22c55e' },
+    { label: 'Revenue', value: revenueDisplay, sub: `${metrics.sales} sales`, icon: Target, accent: '#f59e0b' },
     { label: 'Coverage', value: `${metrics.coveragePct}%`, sub: `${metrics.workedDoors} doors`, icon: MapPin, accent: '#a855f7' },
-    { label: 'Upcoming', value: metrics.upcomingAppointments, sub: 'appointments', icon: Target, accent: '#f59e0b' },
   ];
 
   return (
