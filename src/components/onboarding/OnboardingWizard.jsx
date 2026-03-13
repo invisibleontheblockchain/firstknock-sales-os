@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { base44 } from '@/api/base44Client';
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Sparkles, Check, Smartphone, Share, PlusSquare, Menu, MonitorSmartphone, Apple } from 'lucide-react';
 import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
@@ -24,6 +25,7 @@ function InstallStep({ num, text, icon }) {
 }
 
 export default function OnboardingWizard({ user, onComplete }) {
+    const queryClient = useQueryClient();
     const [isOpen, setIsOpen] = useState(true);
     const [step, setStep] = useState(1);
     const [platform, setPlatform] = useState('ios');
@@ -43,7 +45,11 @@ export default function OnboardingWizard({ user, onComplete }) {
 
     const handleComplete = async () => {
         setIsOpen(false);
-        try { await base44.auth.updateMe({ has_seen_onboarding: true }); } catch {}
+        try { 
+            await base44.auth.updateMe({ has_seen_onboarding: true }); 
+            // Refresh user data so MarketOnboarding picks up immediately
+            queryClient.invalidateQueries({ queryKey: ['user'] });
+        } catch {}
         // For managers, the MarketOnboarding component will handle the next step
         if (onComplete) onComplete();
     };
