@@ -46,14 +46,14 @@ export default function RouteProgress({ routes, logs }) {
     return (
         <div className="bg-gradient-to-b from-[#151515] to-[#0A0A0A] border border-white/5 rounded-3xl overflow-hidden shadow-2xl relative">
             <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-            <div className="px-6 py-5 border-b border-white/5 flex items-center justify-between relative z-10">
-                <h3 className="text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight flex items-center gap-3">
-                    <div className="p-2 rounded-xl" style={{ background: `${accent}20`, border: `1px solid ${accent}40` }}>
-                        <Navigation className="w-5 h-5 drop-shadow-[0_0_10px_rgba(255,215,0,0.5)]" style={{ color: accent }} />
+            <div className="px-4 py-3 md:px-6 md:py-5 border-b border-white/5 flex items-center justify-between relative z-10">
+                <h3 className="text-sm md:text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight flex items-center gap-2 md:gap-3">
+                    <div className="p-1.5 md:p-2 rounded-lg md:rounded-xl" style={{ background: `${accent}20`, border: `1px solid ${accent}40` }}>
+                        <Navigation className="w-4 h-4 md:w-5 md:h-5 drop-shadow-[0_0_10px_rgba(255,215,0,0.5)]" style={{ color: accent }} />
                     </div>
                     Route Progress
                 </h3>
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest bg-white/5 px-3 py-1.5 rounded-lg border border-white/5 shadow-inner">{routeStats.length} routes</span>
+                <span className="text-[9px] md:text-[11px] font-bold text-gray-400 uppercase tracking-widest bg-white/5 px-2 py-1 md:px-3 md:py-1.5 rounded-lg border border-white/5 shadow-inner">{routeStats.length} routes</span>
             </div>
             
             <div className="divide-y divide-white/[0.02] max-h-[500px] overflow-y-auto">
@@ -63,25 +63,25 @@ export default function RouteProgress({ routes, logs }) {
                         <Link
                             key={route.id}
                             to={`${createPageUrl('Home')}?savedRoute=${route.id}`}
-                            className="group flex items-center gap-5 px-6 py-4 hover:bg-white/[0.03] transition-all duration-300 relative"
+                            className="group flex items-center gap-3 md:gap-5 px-4 py-3 md:px-6 md:py-4 hover:bg-white/[0.03] transition-all duration-300 relative"
                         >
                             <div className="absolute inset-0 bg-gradient-to-r from-white/[0.01] to-transparent opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity" />
                             
                             {/* Progress ring */}
-                            <div className="relative w-14 h-14 shrink-0 transition-transform duration-300 group-hover:scale-105">
-                                <svg className="w-14 h-14 -rotate-90 drop-shadow-[0_0_8px_rgba(0,0,0,0.5)]" viewBox="0 0 36 36">
+                            <div className="relative w-10 h-10 md:w-14 md:h-14 shrink-0 transition-transform duration-300 group-hover:scale-105">
+                                <svg className="w-10 h-10 md:w-14 md:h-14 -rotate-90 drop-shadow-[0_0_8px_rgba(0,0,0,0.5)]" viewBox="0 0 36 36">
                                     <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#222" strokeWidth="3" />
                                     <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={style.color} strokeWidth="3" strokeDasharray={`${route.percent}, 100`} strokeLinecap="round" className="transition-all duration-1000 ease-out" />
                                 </svg>
                                 <div className="absolute inset-0 flex items-center justify-center">
-                                    <span className="text-[11px] font-black text-white drop-shadow-md">{route.percent}%</span>
+                                    <span className="text-[9px] md:text-[11px] font-black text-white drop-shadow-md">{route.percent}%</span>
                                 </div>
                                 <div className="absolute inset-0 rounded-full blur-[10px] opacity-30 group-hover:opacity-60 transition-opacity duration-500" style={{ background: style.color, zIndex: -1 }} />
                             </div>
 
                             <div className="flex-1 min-w-0 z-10">
                                 <div className="flex items-center justify-between mb-1.5">
-                                    <p className="text-base font-bold text-white truncate drop-shadow-sm group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-gray-400 transition-all">{route.name}</p>
+                                    <p className="text-sm md:text-base font-bold text-white truncate drop-shadow-sm group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-white group-hover:to-gray-400 transition-all">{route.name}</p>
                                     <span className="text-[10px] font-bold px-2 py-1 rounded-md shrink-0 shadow-inner backdrop-blur-sm tracking-wide uppercase" style={{ background: style.bg, color: style.color, border: `1px solid ${style.border}` }}>
                                         {style.label}
                                     </span>

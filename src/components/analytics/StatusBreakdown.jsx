@@ -33,17 +33,17 @@ export default function StatusBreakdown({ properties }) {
     const maxVal = data.length > 0 ? data[0].value : 0;
 
     return (
-        <div className="bg-gradient-to-b from-[#151515] to-[#0A0A0A] border border-white/5 rounded-2xl p-5 shadow-2xl relative overflow-hidden">
+        <div className="bg-gradient-to-b from-[#151515] to-[#0A0A0A] border border-white/5 rounded-xl md:rounded-2xl p-3 md:p-5 shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
             
-            <div className="flex items-center justify-between mb-4 relative z-10">
-                <h3 className="text-base font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight">Status Breakdown</h3>
+            <div className="flex items-center justify-between mb-3 md:mb-4 relative z-10">
+                <h3 className="text-sm md:text-base font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 tracking-tight">Status Breakdown</h3>
                 <div className="bg-white/5 border border-white/10 px-2 py-1 rounded-md shadow-inner">
                     <span className="text-[10px] font-bold text-gray-400 tracking-wide">{properties.length.toLocaleString()} doors</span>
                 </div>
             </div>
             
-            <div className="space-y-3 relative z-10">
+            <div className="space-y-2 md:space-y-3 relative z-10">
                 {data.map(d => (
                     <div key={d.name} className="group">
                         <div className="flex items-center justify-between mb-2">

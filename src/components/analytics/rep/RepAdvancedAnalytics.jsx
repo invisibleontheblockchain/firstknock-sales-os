@@ -74,26 +74,26 @@ export default function RepAdvancedAnalytics({ logs, filteredLogs, properties, a
   return (
     <div className="space-y-4 md:space-y-6">
       {/* Top metrics row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
         {[
           { label: 'Avg / Active Day', value: avgPerDay, sub: 'knocks per day worked' },
           { label: 'Active Days', value: new Set(filteredLogs.map((l) => l.created_date?.split('T')[0]).filter(Boolean)).size, sub: `out of ${dateDays}` },
           { label: 'Unique Doors', value: new Set(filteredLogs.map((l) => l.address_hash).filter(Boolean)).size, sub: 'distinct properties' },
           { label: 'Repeat Visits', value: filteredLogs.length - new Set(filteredLogs.map((l) => l.address_hash).filter(Boolean)).size, sub: 'follow-up knocks' },
         ].map((m) => (
-          <div key={m.label} className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-gray-500">{m.label}</span>
-            <div className="text-2xl font-black text-white mt-2">{m.value}</div>
-            <p className="text-[10px] text-gray-500 mt-1">{m.sub}</p>
+          <div key={m.label} className="rounded-xl md:rounded-2xl border border-white/[0.06] bg-[#111113] p-2.5 md:p-4">
+            <span className="text-[8px] md:text-[10px] font-semibold uppercase tracking-[0.1em] text-gray-500 truncate">{m.label}</span>
+            <div className="text-lg md:text-2xl font-black text-white mt-1 md:mt-2">{m.value}</div>
+            <p className="text-[9px] md:text-[10px] text-gray-500 mt-0.5 md:mt-1 truncate">{m.sub}</p>
           </div>
         ))}
       </div>
 
       {/* Volume trend chart */}
-      <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-5">
-        <h3 className="text-base font-black text-white mb-1">Volume Trend</h3>
-        <p className="text-xs text-gray-500 mb-4">Daily knock volume, contacts, and sales</p>
-        <div className="h-[220px]">
+      <div className="rounded-xl md:rounded-2xl border border-white/[0.06] bg-[#111113] p-3 md:p-5">
+        <h3 className="text-sm md:text-base font-black text-white mb-0.5 md:mb-1">Volume Trend</h3>
+        <p className="text-[10px] md:text-xs text-gray-500 mb-3 md:mb-4">Daily knock volume, contacts, and sales</p>
+        <div className="h-[180px] md:h-[220px]">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={volumeTrend} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
               <defs>
@@ -118,12 +118,12 @@ export default function RepAdvancedAnalytics({ logs, filteredLogs, properties, a
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-6">
         {/* Day of week */}
-        <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-5">
-          <h3 className="text-base font-black text-white mb-1">Day-of-Week Performance</h3>
-          <p className="text-xs text-gray-500 mb-4">Which days yield the best results</p>
-          <div className="space-y-3">
+        <div className="rounded-xl md:rounded-2xl border border-white/[0.06] bg-[#111113] p-3 md:p-5">
+          <h3 className="text-sm md:text-base font-black text-white mb-0.5 md:mb-1">Day-of-Week Performance</h3>
+          <p className="text-[10px] md:text-xs text-gray-500 mb-3 md:mb-4">Which days yield the best results</p>
+          <div className="space-y-2 md:space-y-3">
             {dayOfWeek.map((d) => (
               <div key={d.day} className="flex items-center gap-3">
                 <span className="text-xs font-bold text-gray-400 w-8">{d.day}</span>
@@ -146,10 +146,10 @@ export default function RepAdvancedAnalytics({ logs, filteredLogs, properties, a
         </div>
 
         {/* Status velocity */}
-        <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-5">
-          <h3 className="text-base font-black text-white mb-1">Outcome Velocity</h3>
-          <p className="text-xs text-gray-500 mb-4">Result distribution for the period</p>
-          <div className="space-y-3">
+        <div className="rounded-xl md:rounded-2xl border border-white/[0.06] bg-[#111113] p-3 md:p-5">
+          <h3 className="text-sm md:text-base font-black text-white mb-0.5 md:mb-1">Outcome Velocity</h3>
+          <p className="text-[10px] md:text-xs text-gray-500 mb-3 md:mb-4">Result distribution for the period</p>
+          <div className="space-y-2 md:space-y-3">
             {statusVelocity.map((s) => (
               <div key={s.status}>
                 <div className="flex items-center justify-between mb-1.5">

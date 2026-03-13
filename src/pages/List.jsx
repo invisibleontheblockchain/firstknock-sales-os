@@ -243,7 +243,7 @@ export default function ListPage() {
                         )}
 
                         {activeTab === 'advanced' && (
-                            <div className="p-4 md:p-6 max-w-7xl mx-auto pb-24">
+                            <div className="p-3 md:p-6 max-w-7xl mx-auto pb-24">
                                 <RepAdvancedAnalytics
                                     logs={logs}
                                     filteredLogs={filteredLogs}
@@ -255,7 +255,7 @@ export default function ListPage() {
                         )}
 
                         {activeTab === 'routes' && (
-                            <div className="p-4 md:p-6 max-w-7xl mx-auto pb-24">
+                            <div className="p-3 md:p-6 max-w-7xl mx-auto pb-24">
                                 <RouteProgress routes={savedRoutes} logs={logs} />
                             </div>
                         )}
