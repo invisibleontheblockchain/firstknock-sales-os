@@ -11,7 +11,7 @@ const STATUS_COLORS = {
 };
 
 export default function PropertyCard({ property, index, onSelect }) {
-    const isDone = property.effective_status !== 'ELIGIBLE' && property.effective_status !== 'CALLBACK';
+    const isDone = property.effective_status !== 'ELIGIBLE';
     const statusColor = STATUS_COLORS[property.effective_status] || '#555';
 
     return (

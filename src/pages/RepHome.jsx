@@ -364,7 +364,7 @@ export default function RepHome() {
     // Stats
     const stats = useMemo(() => {
         if (!routeProperties.length) return { total: 0, done: 0, percent: 0 };
-        const done = routeProperties.filter(p => p.effective_status !== 'ELIGIBLE' && p.effective_status !== 'CALLBACK').length;
+        const done = routeProperties.filter(p => p.effective_status !== 'ELIGIBLE').length;
         return {
             total: routeProperties.length,
             done,
@@ -382,7 +382,7 @@ export default function RepHome() {
             }
 
             // Status filter
-            const isDone = p.effective_status !== 'ELIGIBLE' && p.effective_status !== 'CALLBACK';
+            const isDone = p.effective_status !== 'ELIGIBLE';
 
             if (filterStatus === 'todo') return !isDone;
             if (filterStatus === 'done') return isDone;
