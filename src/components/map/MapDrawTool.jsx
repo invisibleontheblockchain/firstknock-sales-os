@@ -126,13 +126,14 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
     }, []);
 
     // Small preview circle at map center when drawing mode is active (helps on mobile)
+    // Only update on moveend (not move) to prevent glitchy re-renders during zoom
     const [mapCenter, setMapCenter] = useState(null);
     useEffect(() => {
         if (active) {
             setMapCenter(map.getCenter());
-            const onMove = () => setMapCenter(map.getCenter());
-            map.on('move', onMove);
-            return () => map.off('move', onMove);
+            const onMoveEnd = () => setMapCenter(map.getCenter());
+            map.on('moveend', onMoveEnd);
+            return () => map.off('moveend', onMoveEnd);
         } else {
             setMapCenter(null);
         }
