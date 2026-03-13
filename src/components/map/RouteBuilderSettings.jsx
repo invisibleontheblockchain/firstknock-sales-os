@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
+import { base44 } from '@/api/base44Client';
 import { Badge } from "@/components/ui/badge";
 import {
     Navigation, Loader2, MapPin, RefreshCw, X, ChevronDown, ChevronUp,
     Zap, Route, Footprints, Clock, Shield, Flame, Target, Shuffle,
-    ArrowUpDown, GitBranch, ScanLine, Compass, Pencil, Layers
+    ArrowUpDown, GitBranch, ScanLine, Compass, Pencil, Layers,
+    User, Home as HomeIcon, DollarSign
 } from 'lucide-react';
 import { toast } from "sonner";
 
@@ -597,6 +599,7 @@ export default function RouteBuilderSettings({
                                         {[
                                             { id: 'street_sweep', label: 'Street Sweep', desc: 'Mailman style — one side, then the other', icon: Footprints },
                                             { id: 'recent_sale_first', label: 'Recent Sale First', desc: 'Start at the most recently sold home', icon: Flame },
+                                            { id: 'fisherman', label: 'The Fisherman', desc: 'Target neighbors of a specific recent sale', icon: Target },
                                             { id: 'nearest', label: 'Nearest Door', desc: 'Always go to the closest next house', icon: Target },
                                             { id: 'zigzag', label: 'Zig-Zag', desc: 'Cross street back & forth', icon: GitBranch },
                                             { id: 'cluster', label: 'Cluster Hop', desc: 'Hit dense pockets first, then expand', icon: Flame },
@@ -606,7 +609,7 @@ export default function RouteBuilderSettings({
                                             return (
                                                 <button
                                                     key={pattern.id}
-                                                    onClick={() => setRouteConfig(prev => ({ ...prev, walkingPattern: pattern.id }))}
+                                                    onClick={() => setRouteConfig(prev => ({ ...prev, walkingPattern: pattern.id, fishermanMode: pattern.id === 'fisherman' }))}
                                                     className={`p-3 rounded-lg text-left transition-all border ${isActive
                                                         ? 'bg-yellow-500/10 border-yellow-500 text-yellow-500'
                                                         : 'bg-[#1A1A1A] border-gray-800 text-gray-400 hover:border-gray-600'
@@ -620,6 +623,34 @@ export default function RouteBuilderSettings({
                                                 </button>
                                             );
                                         })}
+                                    </div>
+                                </div>
+
+                                {/* Propensity Filters */}
+                                <div className="space-y-3 pt-4 border-t border-gray-800/50">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase">Algorithm II: Propensity Filters</label>
+                                    <div className="grid grid-cols-1 gap-2">
+                                        <ToggleOption
+                                            label="Absentee Owners"
+                                            description="Target properties where owner lives elsewhere"
+                                            icon={<User className="w-4 h-4" />}
+                                            checked={routeConfig.propensityAbsentee}
+                                            onChange={(v) => setRouteConfig(prev => ({ ...prev, propensityAbsentee: v }))}
+                                        />
+                                        <ToggleOption
+                                            label="Vacant Properties"
+                                            description="Identify and target likely vacant homes"
+                                            icon={<HomeIcon className="w-4 h-4" />}
+                                            checked={routeConfig.propensityVacant}
+                                            onChange={(v) => setRouteConfig(prev => ({ ...prev, propensityVacant: v }))}
+                                        />
+                                        <ToggleOption
+                                            label="High Equity (70%+)"
+                                            description="Prioritize homes with significant payoff equity"
+                                            icon={<DollarSign className="w-4 h-4" />}
+                                            checked={routeConfig.propensityHighEquity}
+                                            onChange={(v) => setRouteConfig(prev => ({ ...prev, propensityHighEquity: v }))}
+                                        />
                                     </div>
                                 </div>
 

@@ -250,6 +250,10 @@ export default function Home() {
         maxPrice: null,
         minYearBuilt: null,
         maxYearBuilt: null,
+        propensityAbsentee: false,
+        propensityVacant: false,
+        propensityHighEquity: false,
+        fishermanMode: false
     });
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
@@ -1044,6 +1048,26 @@ export default function Home() {
                 workingSet = workingSet.filter(p => p.effective_status !== 'CALLBACK');
             }
 
+            // Algorithm II: Propensity Filters
+            if (routeConfig.propensityAbsentee) {
+                workingSet = workingSet.filter(p => p.absentee_owner === true);
+            }
+            if (routeConfig.propensityVacant) {
+                workingSet = workingSet.filter(p => p.is_vacant === true);
+            }
+            if (routeConfig.propensityHighEquity) {
+                workingSet = workingSet.filter(p => p.equity_percent > 0.7);
+            }
+
+            // Fisherman Mode: Search around selected property if exists
+            if (routeConfig.fishermanMode && selectedProperty) {
+                // We keep the selected property even if it doesn't match other filters
+                // to act as the anchor
+                if (!workingSet.find(p => p.address_hash === selectedProperty.address_hash)) {
+                    workingSet.unshift(selectedProperty);
+                }
+            }
+
             if (workingSet.length === 0) {
                 toast.error("No properties found with current filters/area.", { id: 'build-routes' });
                 setRoutesGenerating(false);
@@ -1076,7 +1100,7 @@ export default function Home() {
                     minimizeTurns: routeConfig.minimizeTurns,
                     use2Opt: routeConfig.use2Opt,
                     maxRouteDistance: maxRouteDistance > 0 ? maxRouteDistance : null,
-                    walkingPattern: routeConfig.walkingPattern,
+                    walkingPattern: routeConfig.fishermanMode ? 'fisherman' : routeConfig.walkingPattern,
                     returnToStart: routeConfig.returnToStart,
                     excludeTerminal: routeConfig.excludeTerminal,
                 },

@@ -102,19 +102,35 @@ function ViewportCulledPins({
                     isRecentlySold = new Date(p.sold_date) > oneMonthAgo;
                 }
                 const isUnvisited = ['ELIGIBLE', 'NO_ANSWER', 'OTHER'].includes(p.effective_status);
-                const fillColor = isRecentlySold ? '#FF00FF' : (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER);
+                
+                // Algorithm II Highlights
+                const isHighPropensity = p.is_vacant || p.absentee_owner || (p.equity_percent > 0.7);
+                
+                let fillColor = isRecentlySold ? '#FF00FF' : (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER);
+                let weight = isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth));
+                let color = isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000')));
+                let radius = isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize);
+                let fillOpacity = isRecentlySold ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity));
+
+                if (!isRecentlySold && isHighPropensity) {
+                    fillColor = '#F59E0B'; // Amber - Propensity Gold
+                    fillOpacity = 1;
+                    color = '#000';
+                    weight = 2;
+                    radius = pinSize + 2;
+                }
 
                 return (
                     <CircleMarker
                         key={p.address_hash || p.id}
                         center={[p.lat, p.lng]}
-                        radius={isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize)}
+                        radius={radius}
                         eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
                         pathOptions={{
                             fillColor,
-                            fillOpacity: isRecentlySold ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
-                            color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
-                            weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth))
+                            fillOpacity,
+                            color,
+                            weight
                         }}
                     />
                 );
@@ -480,36 +496,57 @@ export default function ManagerMapLayers({
                             dashArray: lineDashArray
                         }}
                     />
-                    {activeRoute.properties.map((p, idx) => (
-                        <CircleMarker
-                            key={p.address_hash}
-                            center={[p.lat, p.lng]}
-                            radius={5}
-                            eventHandlers={{
-                                click: (e) => {
-                                    L.DomEvent.stopPropagation(e);
-                                    setSelectedProperty(p);
-                                }
-                            }}
-                            pathOptions={{
-                                fillColor: idx === 0 ? '#22c55e' : '#f97316',
-                                fillOpacity: 1,
-                                color: '#fff',
-                                weight: 1.5
-                            }}
-                        >
-                            <Tooltip permanent direction="top" offset={[0, -6]} className="route-number-tooltip">
-                                <span style={{
+                    {activeRoute.properties.map((p, idx) => {
+                        if (p.isBreak) {
+                            return (
+                                <CircleMarker
+                                    key={`break-${idx}`}
+                                    center={[p.lat, p.lng]}
+                                    radius={12}
+                                    pathOptions={{
+                                        fillColor: '#FFFFFF',
+                                        fillOpacity: 1,
+                                        color: BRAND.gold,
+                                        weight: 2
+                                    }}
+                                >
+                                    <Tooltip permanent direction="center" className="route-number-tooltip">
+                                        <span style={{ fontSize: '12px' }}>☕</span>
+                                    </Tooltip>
+                                </CircleMarker>
+                            );
+                        }
+                        return (
+                            <CircleMarker
+                                key={p.address_hash || `prop-${idx}`}
+                                center={[p.lat, p.lng]}
+                                radius={5}
+                                eventHandlers={{
+                                    click: (e) => {
+                                        L.DomEvent.stopPropagation(e);
+                                        setSelectedProperty(p);
+                                    }
+                                }}
+                                pathOptions={{
+                                    fillColor: idx === 0 ? '#22c55e' : '#f97316',
+                                    fillOpacity: 1,
                                     color: '#fff',
-                                    fontWeight: 'bold',
-                                    fontSize: '11px',
-                                    textShadow: '0 1px 3px #000, 0 0 5px #000'
-                                }}>
-                                    {idx + 1}
-                                </span>
-                            </Tooltip>
-                        </CircleMarker>
-                    ))}
+                                    weight: 1.5
+                                }}
+                            >
+                                <Tooltip permanent direction="top" offset={[0, -6]} className="route-number-tooltip">
+                                    <span style={{
+                                        color: '#fff',
+                                        fontWeight: 'bold',
+                                        fontSize: '11px',
+                                        textShadow: '0 1px 3px #000, 0 0 5px #000'
+                                    }}>
+                                        {idx + 1}
+                                    </span>
+                                </Tooltip>
+                            </CircleMarker>
+                        );
+                    })}
                 </>
             )}
         </>

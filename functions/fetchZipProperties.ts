@@ -201,7 +201,18 @@ Deno.serve(async (req) => {
           year_built: p.yearBuilt || 0, price: p.lastSalePrice || 0,
           sold_date: p.lastSaleDate || null, sale_type: p._mlsSold ? 'MLS' : 'Market',
           property_type: p.propertyType || 'Single Family',
-          mls_id: p.assessorID || null, url: null
+          mls_id: p.assessorID || null, url: null,
+          // Algorithm II Propensity Tags
+          owner_occupied: p.ownerOccupied ?? null,
+          absentee_owner: p.ownerOccupied === false,
+          is_vacant: p.isVacant || false,
+          owner_mailing_address: p.owner?.mailingAddress || null,
+          // Calculate Out-of-State Absentee status
+          is_out_of_state_absentee: p.ownerOccupied === false && 
+                                   p.owner?.mailingAddress?.state && 
+                                   p.owner.mailingAddress.state !== (p.state || 'SC'),
+          // Equity Logic Placeholder (Simplified until batch AVM integrated)
+          equity_percent: (p.lastSalePrice && p.lastSaleDate) ? Math.min(1, ((Date.now() - new Date(p.lastSaleDate).getTime()) / (1000 * 60 * 60 * 24 * 365)) / 30) : 0
         };
       });
 
