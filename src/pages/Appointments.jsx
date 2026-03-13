@@ -131,7 +131,7 @@ export default function Appointments() {
         <div className="h-full flex flex-col bg-[#09090b]">
             {/* Header */}
             <div className="px-4 md:px-6 pt-4 pb-2 border-b border-white/[0.04] sticky top-0 z-20 backdrop-blur-xl bg-[#09090b]/90">
-                <div className="max-w-3xl mx-auto">
+                <div className="max-w-5xl mx-auto">
                     {/* Title row */}
                     <div className="flex items-center justify-between mb-3">
                         <h1 className="text-lg font-black text-white tracking-tight">Appointments</h1>
@@ -177,7 +177,7 @@ export default function Appointments() {
 
             {/* Content */}
             <div className="flex-1 overflow-auto">
-                <div className="max-w-3xl mx-auto p-4 md:p-6 space-y-3">
+                <div className="max-w-5xl mx-auto p-4 md:p-6 space-y-3">
                     {showAutoSchedule && (
                         <AutoSchedulePanel
                             properties={properties}

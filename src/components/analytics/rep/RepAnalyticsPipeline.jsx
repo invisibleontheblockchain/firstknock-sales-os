@@ -13,11 +13,11 @@ export default function RepAnalyticsPipeline({ metrics }) {
   const maxValue = Math.max(...items.map((i) => i.value), 1);
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-5">
-      <h3 className="text-base font-black text-white tracking-tight mb-1">Sales Funnel</h3>
-      <p className="text-xs text-gray-500 mb-5">Activity → Opportunities → Wins</p>
+    <div className="rounded-xl md:rounded-2xl border border-white/[0.06] bg-[#111113] p-3 md:p-5">
+      <h3 className="text-sm md:text-base font-black text-white tracking-tight mb-0.5 md:mb-1">Sales Funnel</h3>
+      <p className="text-[10px] md:text-xs text-gray-500 mb-3 md:mb-5">Activity → Opportunities → Wins</p>
 
-      <div className="space-y-4">
+      <div className="space-y-2.5 md:space-y-4">
         {items.map((item, idx) => {
           const pct = (item.value / maxValue) * 100;
           const color = FUNNEL_COLORS[idx];

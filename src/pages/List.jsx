@@ -225,7 +225,7 @@ export default function ListPage() {
                         )}
 
                         {activeTab === 'performance' && (
-                            <div className="p-4 md:p-6 space-y-4 md:space-y-6 max-w-7xl mx-auto pb-24">
+                            <div className="p-3 md:p-6 space-y-3 md:space-y-6 max-w-7xl mx-auto pb-24">
                                 <RepAnalyticsKpis metrics={analytics} dateDays={dateDays} />
 
                                 <div className="grid grid-cols-1 xl:grid-cols-[1.1fr,0.9fr] gap-4 md:gap-6">
