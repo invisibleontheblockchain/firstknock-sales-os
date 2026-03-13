@@ -11,7 +11,7 @@ const STATUS_OPTIONS = [
     { id: 'HARD_NO', label: 'Not Int.', icon: Ban, color: '#8B5CF6' },
 ];
 
-export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUpload, uploading, onClose }) {
+export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUpload, uploading, onClose, onViewOnMap }) {
     const [showMore, setShowMore] = useState(false);
     const [logNote, setLogNote] = useState('');
     const [callbackTime, setCallbackTime] = useState('');
@@ -86,15 +86,23 @@ export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUplo
                 </div>
 
                 {/* Navigate */}
-                <div className="px-5 pb-3">
+                <div className="px-5 pb-3 space-y-2">
+                    <button
+                        onClick={onViewOnMap}
+                        className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95"
+                        style={{ background: '#1A1A24', color: '#00D2FF', border: '1px solid rgba(0, 210, 255, 0.2)' }}
+                    >
+                        <MapPin className="w-3.5 h-3.5" />
+                        View on FirstKnock Map
+                    </button>
                     <a
                         href={`https://maps.apple.com/?daddr=${property.lat},${property.lng}&dirflg=w`}
                         target="_blank"
                         rel="noreferrer"
-                        className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-xl text-[11px] font-bold"
+                        className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95"
                         style={{ background: '#111', color: '#666' }}
                     >
-                        <MapPin className="w-3.5 h-3.5" />
+                        <Navigation className="w-3.5 h-3.5" />
                         Open in Apple Maps
                     </a>
                 </div>

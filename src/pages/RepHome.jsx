@@ -633,6 +633,10 @@ export default function RepHome() {
                     onPhotoUpload={handlePhotoUpload}
                     uploading={uploading}
                     onClose={() => setSelectedProperty(null)}
+                    onViewOnMap={() => {
+                        setSelectedProperty(null);
+                        setShowMap(true);
+                    }}
                 />
             )}
 
