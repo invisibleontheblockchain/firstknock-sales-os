@@ -181,11 +181,11 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
                     </Tooltip>
                 </Polygon>
             )}
-            {displayPoints.map((p, i) => (
+            {active && displayPoints.map((p, i) => (
                 <CircleMarker
                     key={i}
                     center={p}
-                    radius={active ? 4 : 2}
+                    radius={4}
                     pathOptions={{ color: '#FFD93D', fillColor: '#000', fillOpacity: 1, weight: 1 }}
                 />
             ))}
