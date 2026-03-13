@@ -1427,6 +1427,7 @@ export default function Home() {
 
             {/* Routes Panel - Refactored Command Panel */}
             {showRoutePanel && (
+                <React.Suspense fallback={null}>
                 <RouteCommandPanel
                     generatedRoutes={routes}
                     savedRoutes={hydratedSavedRoutes}
@@ -1478,6 +1479,7 @@ export default function Home() {
                     zipCodeFilter={zipCodeFilter}
                     housesPerRoute={housesPerRoute}
                 />
+                </React.Suspense>
             )}
 
             {/* Filter Panel - ANALYZE MODE */}
@@ -1562,6 +1564,7 @@ export default function Home() {
 
             {/* Route Builder Settings - GENERATE MODE */}
             {showCompare && mode === 'generate' && (
+                <React.Suspense fallback={null}>
                 <RouteBuilderSettings
                     onDraw={() => {
                         setShowCompare(false);
@@ -1640,6 +1643,7 @@ export default function Home() {
                     user={user}
                     hasDrawnArea={drawnPolygon && drawnPolygon.length > 2}
                 />
+                </React.Suspense>
             )}
 
             {/* GPS HUD Overlay */}
@@ -1658,6 +1662,7 @@ export default function Home() {
                         className="absolute top-0 right-0 bottom-0 w-full max-w-lg overflow-hidden shadow-2xl animate-in slide-in-from-right duration-300"
                         style={{ background: 'transparent' }}
                     >
+                        <React.Suspense fallback={null}>
                         <RouteChecklist
                             route={filteredActiveRoute}
                             logs={logs}
@@ -1667,21 +1672,25 @@ export default function Home() {
                             activeRouteSoldFilter={activeRouteSoldFilter}
                             setActiveRouteSoldFilter={setActiveRouteSoldFilter}
                         />
+                        </React.Suspense>
                     </div>
                 </div>
             )}
 
             {/* New Territory Setup Wizard */}
             {showSetupWizard && (
+                <React.Suspense fallback={null}>
                 <TerritorySetupWizard
                     user={user}
                     onComplete={handleWizardComplete}
                 />
+                </React.Suspense>
             )}
 
             {/* Property Details Drawer */}
             {/* Command Center Dashboard Overlay */}
             {showDashboard && (
+                <React.Suspense fallback={null}>
                 <CommandCenterDashboard
                     properties={effectiveProperties}
                     logs={logs}
@@ -1689,10 +1698,12 @@ export default function Home() {
                     teamMembers={teamMembers}
                     onClose={() => setShowDashboard(false)}
                 />
+                </React.Suspense>
             )}
 
             {/* Map Settings Panel */}
             {showMapSettings && (
+                <React.Suspense fallback={null}>
                 <MapSettingsPanel
                     mapTheme={mapTheme}
                     setMapTheme={setMapTheme}
@@ -1722,6 +1733,7 @@ export default function Home() {
                     showZipOverlay={showZipOverlay}
                     setShowZipOverlay={setShowZipOverlay}
                 />
+                </React.Suspense>
             )}
 
             <ManagerPropertyDetailSheet
