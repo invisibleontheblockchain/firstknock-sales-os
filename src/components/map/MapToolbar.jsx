@@ -54,7 +54,7 @@ export default function MapToolbar({
         <>
             {/* Top Stats Bar */}
             <div className="absolute top-1 left-1 right-1 sm:top-4 sm:left-4 sm:right-4 z-[1000] flex flex-col gap-1.5 sm:gap-2 pointer-events-none">
-                <div className="flex flex-nowrap items-center justify-between gap-1 sm:gap-2 w-full">
+                <div className="relative flex flex-nowrap items-center justify-between gap-1 sm:gap-2 w-full">
                     {/* DASHBOARD & SETTINGS TOGGLES */}
                     <div className="pointer-events-auto shrink-0 flex gap-1 sm:gap-2">
                         <Button
@@ -73,8 +73,8 @@ export default function MapToolbar({
                         </Button>
                     </div>
 
-                    {/* MODE TOGGLE - Centered */}
-                    <div className="pointer-events-auto bg-black/80 backdrop-blur-md rounded-lg sm:rounded-xl p-0.5 sm:p-1 border border-gray-800 flex gap-0.5 shadow-xl shrink-0">
+                    {/* MODE TOGGLE - Absolutely centered */}
+                    <div className="pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/80 backdrop-blur-md rounded-lg sm:rounded-xl p-0.5 sm:p-1 border border-gray-800 flex gap-0.5 shadow-xl">
                         <button
                             onClick={() => setMode('analyze')}
                             className={`px-2 py-1.5 sm:px-4 sm:py-2.5 rounded-md sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'analyze' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
