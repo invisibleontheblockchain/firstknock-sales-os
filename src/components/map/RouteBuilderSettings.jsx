@@ -73,7 +73,7 @@ export default function RouteBuilderSettings({
     // Ensure simple mode has a default soldDateFilter set
     React.useEffect(() => {
         if (viewMode === 'simple' && soldDateFilter === null) {
-            setSoldDateFilter(12);
+            setSoldDateFilter(3);
         }
     }, [viewMode]);
 
