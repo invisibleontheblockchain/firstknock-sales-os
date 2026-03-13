@@ -52,12 +52,23 @@ export default function RouteBuilderSettings({
 }) {
     const [expandedSection, setExpandedSection] = useState('presets');
     const [activePreset, setActivePreset] = useState(null);
-    const [viewMode, setViewMode] = useState('advanced'); // 'simple' or 'advanced'
+    const [viewMode, setViewMode] = useState('simple'); // 'simple' or 'advanced'
 
     // Clear any stale auto-build flag — we no longer auto-generate on open
     React.useEffect(() => {
         try { localStorage.removeItem('fk_autobuild_next_open'); } catch (e) { /* ignore */ }
     }, []);
+
+    // Auto-apply FirstKnock Best on initial load
+    React.useEffect(() => {
+        if (!activePreset) {
+            const bestStrategy = STRATEGIES.find(s => s.id === 'best');
+            if (bestStrategy) {
+                bestStrategy.apply(true);
+                setActivePreset('best');
+            }
+        }
+    }, [activePreset]);
 
     // Ensure simple mode has a default soldDateFilter set
     React.useEffect(() => {
