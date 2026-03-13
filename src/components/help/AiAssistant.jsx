@@ -45,6 +45,8 @@ export default function AiAssistant() {
         }
     };
 
+    if (isMapPage) return null;
+
     return (
         <>
             {/* Toggle Button */}
