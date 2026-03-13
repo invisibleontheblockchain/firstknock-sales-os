@@ -10,6 +10,7 @@
 
 import { filterByStreetCooldown, orderForStreetSweep, COOLDOWN_CONFIG } from './territoryLogic';
 import { latLngToCell, gridDisk } from 'h3-js';
+import { batchScoreProperties, ownershipDurationScore, SCORING_CONSTANTS } from './leadScoring';
 
 // Haversine distance in miles
 function calculateDistance(lat1, lng1, lat2, lng2) {
