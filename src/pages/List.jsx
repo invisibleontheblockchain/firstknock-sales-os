@@ -25,6 +25,7 @@ export default function ListPage() {
     const { data: user } = useQuery({
         queryKey: ['user'],
         queryFn: () => base44.auth.me(),
+        staleTime: 1000 * 60 * 5,
         retry: false,
     });
 
@@ -41,6 +42,7 @@ export default function ListPage() {
 
     const { data: properties = [], isLoading: propsLoading } = useQuery({
         queryKey: ['masterProperties', user?.email, user?.territory_zip_codes, currentTeamMember?.assigned_zip_codes],
+        staleTime: 1000 * 60 * 3,
         queryFn: async () => {
             if (!user) return [];
             const zipCodes = currentTeamMember?.assigned_zip_codes?.length ? currentTeamMember.assigned_zip_codes : user.territory_zip_codes;
@@ -73,6 +75,7 @@ export default function ListPage() {
 
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs', user?.email],
+        staleTime: 1000 * 60 * 2,
         queryFn: () => user?.email ? base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 5000) : [],
         enabled: !!user?.email,
     });
