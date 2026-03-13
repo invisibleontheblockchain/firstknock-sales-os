@@ -269,32 +269,6 @@ export default function MapSettingsPanel({
                 </div>
               </div>
 
-              {/* Labels */}
-              <div>
-                <SectionLabel>Labels & Overlays</SectionLabel>
-                <div className="space-y-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-                  {setShowZipOverlay && (
-                    <Row label="Zip Boundaries">
-                      <Switch checked={local.showZipOverlay} onCheckedChange={setLiveZip} />
-                    </Row>
-                  )}
-                  <Row label="Pin Labels">
-                    <Switch checked={ms.showLabels || false} onCheckedChange={v => updMs('showLabels', v)} />
-                  </Row>
-                  {ms.showLabels && (
-                    <Row label="Content">
-                      <div className="flex gap-1">
-                        {['number','address','status'].map(opt => (
-                          <button key={opt} onClick={() => updMs('labelType', opt)}
-                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${(ms.labelType||'number') === opt ? 'bg-white/10 border-white/20 text-white' : 'border-white/[0.06] text-gray-500'}`}
-                          >{opt === 'number' ? 'House #' : opt === 'address' ? 'Street' : 'Status'}</button>
-                        ))}
-                      </div>
-                    </Row>
-                  )}
-                </div>
-              </div>
-
               {/* Team Colors */}
               {teamMembers.length > 0 && (
                 <div>
