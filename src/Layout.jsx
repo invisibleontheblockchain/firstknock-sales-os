@@ -184,14 +184,14 @@ function LayoutInner({ children }) {
             {/* Header */}
             {!isRoleSelectPage && (
             <header className="bg-black border-b border-slate-800 px-4 pt-[env(safe-area-inset-top)] pb-3 z-20 shadow-md">
-                <div className="flex justify-between items-center max-w-7xl mx-auto w-full pt-3">
-                    <div className="flex items-center gap-3">
+                <div className="flex items-center max-w-7xl mx-auto w-full pt-3">
+                    <div className="flex items-center gap-3 mr-auto">
                         <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/4207f4197_ChatGPTImageFeb2202612_56_42AM.png" alt="FK" className="w-8 h-8 rounded-lg object-cover" />
                         <h1 className="text-lg font-bold tracking-tight text-white">FirstKnock</h1>
                     </div>
 
                     {/* Desktop */}
-                    <div className="hidden md:flex items-center gap-3">
+                    <div className="hidden md:flex items-center gap-3 ml-auto">
                         {!isOnline && <div className="flex items-center gap-1 bg-red-900/50 px-2 py-1 rounded text-[10px] text-red-200 border border-red-800"><div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />OFFLINE</div>}
 
                         <Link to={createPageUrl('Setup')} className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white">SETUP</Link>
