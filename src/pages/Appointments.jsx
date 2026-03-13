@@ -210,7 +210,7 @@ export default function Appointments() {
                                     <span className="text-[10px] text-gray-700 bg-white/[0.04] px-1.5 py-0.5 rounded-full font-bold">{appts.length}</span>
                                     <div className="flex-1 h-px bg-white/[0.04]" />
                                 </div>
-                                <div className="space-y-2">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                     {appts.map(a => (
                                         <AppointmentCard key={a.id} appointment={a} onClick={setSelectedAppointment} />
                                     ))}
