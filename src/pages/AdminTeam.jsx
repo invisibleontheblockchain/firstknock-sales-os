@@ -45,7 +45,8 @@ export default function AdminTeam() {
     // --- Queries ---
     const { data: user } = useQuery({
         queryKey: ['user'],
-        queryFn: () => base44.auth.me()
+        queryFn: () => base44.auth.me(),
+        staleTime: 1000 * 60 * 5
     });
 
     const { data: teamMembers = [], isLoading: teamLoading } = useQuery({
@@ -83,6 +84,7 @@ export default function AdminTeam() {
 
     const { data: logs = [] } = useQuery({
         queryKey: ['teamLogs'],
+        staleTime: 1000 * 60 * 2,
         queryFn: async () => {
             const res = await base44.entities.InteractionLog.list('-created_date', 5000);
             return Array.isArray(res) ? res : (res?.items || []);
