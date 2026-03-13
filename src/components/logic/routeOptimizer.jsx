@@ -158,25 +158,66 @@ export function scoreProperty(property, logs = [], neighborhoodStats = {}, learn
 }
 
 /**
- * K-means clustering for geographic grouping
+ * K-Means++ Initialization (§4.1)
+ * D²-weighted probabilistic seeding — ensures well-spread initial centroids.
+ * Reduces iterations 2-5× and improves WCSS 8-15% vs random init.
+ */
+function kMeansPlusPlusInit(items, numClusters) {
+    const centroids = [];
+    // First centroid: uniform random
+    const first = items[Math.floor(Math.random() * items.length)];
+    centroids.push({ lat: first.lat, lng: first.lng });
+
+    for (let c = 1; c < numClusters; c++) {
+        // Compute D² for each point to nearest centroid
+        const distances = items.map(p => {
+            let minD = Infinity;
+            centroids.forEach(cen => {
+                const d = calculateDistanceSquaredFast(p.lat, p.lng, cen.lat, cen.lng);
+                if (d < minD) minD = d;
+            });
+            return minD;
+        });
+        const totalD = distances.reduce((s, d) => s + d, 0);
+        if (totalD === 0) {
+            // Degenerate: all points at same location — pick random
+            const pick = items[Math.floor(Math.random() * items.length)];
+            centroids.push({ lat: pick.lat, lng: pick.lng });
+            continue;
+        }
+        // Weighted random selection
+        let r = Math.random() * totalD;
+        for (let i = 0; i < distances.length; i++) {
+            r -= distances[i];
+            if (r <= 0) {
+                centroids.push({ lat: items[i].lat, lng: items[i].lng });
+                break;
+            }
+        }
+        // Edge case: floating point didn't pick — take last
+        if (centroids.length <= c) {
+            centroids.push({ lat: items[items.length - 1].lat, lng: items[items.length - 1].lng });
+        }
+    }
+    return centroids;
+}
+
+/**
+ * K-Means++ clustering for geographic grouping (§4.1, §4.2)
+ * Uses K-Means++ init and propensity-weighted centroids.
  */
 function kMeansClustering(properties, numClusters) {
     if (properties.length <= numClusters) {
         return properties.map((p, i) => ({ ...p, cluster: i }));
     }
 
-    // Clone properties to avoid mutating React state objects in-place
     let items = properties.map(p => ({ ...p }));
 
-    // Initialize centroids randomly
-    let centroids = items
-        .slice()
-        .sort(() => 0.5 - Math.random())
-        .slice(0, numClusters)
-        .map(p => ({ lat: p.lat, lng: p.lng }));
+    // K-Means++ initialization (replaces random)
+    let centroids = kMeansPlusPlusInit(items, numClusters);
 
     let iterations = 0;
-    const maxIterations = 20; // Reduced to 20 to prevent main thread blocking on large datasets
+    const maxIterations = 20;
     let changed = true;
 
     while (changed && iterations < maxIterations) {
@@ -202,14 +243,21 @@ function kMeansClustering(properties, numClusters) {
             }
         });
 
-        // Recalculate centroids
+        // Propensity-weighted centroids (§4.2 Approach B)
         centroids = centroids.map((_, idx) => {
             const clusterProps = items.filter(p => p.cluster === idx);
             if (clusterProps.length === 0) return centroids[idx];
 
-            const avgLat = clusterProps.reduce((sum, p) => sum + p.lat, 0) / clusterProps.length;
-            const avgLng = clusterProps.reduce((sum, p) => sum + p.lng, 0) / clusterProps.length;
-            return { lat: avgLat, lng: avgLng };
+            let totalWeight = 0;
+            let wLat = 0;
+            let wLng = 0;
+            clusterProps.forEach(p => {
+                const w = Math.max(0.1, p.propensity || p.score / 400 || 0.5);
+                wLat += w * p.lat;
+                wLng += w * p.lng;
+                totalWeight += w;
+            });
+            return { lat: wLat / totalWeight, lng: wLng / totalWeight };
         });
     }
 
