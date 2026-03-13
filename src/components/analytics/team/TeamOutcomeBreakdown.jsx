@@ -26,12 +26,12 @@ export default function TeamOutcomeBreakdown({ logs }) {
   const max = items[0]?.value || 1;
 
   return (
-    <div className="rounded-2xl border border-white/5 bg-gradient-to-b from-[#151515] to-[#0A0A0A] p-5 shadow-2xl">
-      <div className="mb-4">
-        <h3 className="text-lg font-black text-white tracking-tight">Outcome Mix</h3>
-        <p className="text-sm text-gray-500">What your team is producing in the field</p>
+    <div className="rounded-xl md:rounded-2xl border border-white/5 bg-gradient-to-b from-[#151515] to-[#0A0A0A] p-3 md:p-5 shadow-2xl">
+      <div className="mb-3 md:mb-4">
+        <h3 className="text-sm md:text-lg font-black text-white tracking-tight">Outcome Mix</h3>
+        <p className="text-[10px] md:text-sm text-gray-500">What your team is producing</p>
       </div>
-      <div className="space-y-3">
+      <div className="space-y-2 md:space-y-3">
         {items.map((item) => (
           <div key={item.label}>
             <div className="flex items-center justify-between mb-1.5">

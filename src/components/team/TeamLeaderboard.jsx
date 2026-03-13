@@ -69,30 +69,30 @@ export default function TeamLeaderboard({ members, logs, routes }) {
     }, [members, logs, period]);
 
     const MetricCard = ({ rank, rep, type }) => (
-        <div className="flex items-center justify-between p-3 bg-[#1F1F1F] rounded-lg border border-gray-800 mb-2">
-            <div className="flex items-center gap-3">
-                <div className={`w-6 h-6 flex items-center justify-center rounded-full font-bold text-xs ${
+        <div className="flex items-center justify-between p-2 md:p-3 bg-[#1F1F1F] rounded-lg border border-gray-800 mb-1.5 md:mb-2">
+            <div className="flex items-center gap-2 md:gap-3 min-w-0">
+                <div className={`w-5 h-5 md:w-6 md:h-6 flex items-center justify-center rounded-full font-bold text-[10px] md:text-xs shrink-0 ${
                     rank === 1 ? 'bg-yellow-500 text-black' : 
                     rank === 2 ? 'bg-gray-400 text-black' : 
                     rank === 3 ? 'bg-orange-700 text-white' : 'bg-gray-800 text-gray-400'
                 }`}>
                     {rank}
                 </div>
-                <Avatar className="h-8 w-8 border border-gray-700">
+                <Avatar className="h-6 w-6 md:h-8 md:w-8 border border-gray-700 shrink-0">
                     <AvatarFallback style={{ backgroundColor: rep.color }}>{rep.name[0]}</AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-white truncate">{rep.name}</p>
-                    <p className="text-[10px] text-gray-500 truncate">{rep.role}</p>
+                    <p className="text-xs md:text-sm font-bold text-white truncate">{rep.name}</p>
+                    <p className="text-[9px] md:text-[10px] text-gray-500 truncate">{rep.role}</p>
                 </div>
             </div>
-            <div className="text-right">
-                <p className="text-lg font-bold text-white">
+            <div className="text-right shrink-0">
+                <p className="text-base md:text-lg font-bold text-white">
                     {type === 'sales' && rep.metrics.sales}
                     {type === 'conversion' && `${rep.metrics.conversion.toFixed(1)}%`}
                     {type === 'speed' && rep.metrics.doorsPerHour.toFixed(1)}
                 </p>
-                <div className="h-6 w-20">
+                <div className="h-5 w-16 md:h-6 md:w-20">
                     <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={rep.history}>
                             <Area type="monotone" dataKey="score" stroke={rep.color || '#FCD34D'} fill={rep.color || '#FCD34D'} fillOpacity={0.2} strokeWidth={2} />
@@ -105,10 +105,10 @@ export default function TeamLeaderboard({ members, logs, routes }) {
 
     return (
         <Card className="bg-[#111] border-gray-800 h-full">
-            <CardHeader className="pb-2 border-b border-gray-800">
+            <CardHeader className="pb-2 border-b border-gray-800 px-3 md:px-6">
                 <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-bold text-gray-400 uppercase flex items-center gap-2">
-                        <Trophy className="w-4 h-4 text-yellow-500" /> Team Leaderboard
+                    <CardTitle className="text-xs md:text-sm font-bold text-gray-400 uppercase flex items-center gap-2">
+                        <Trophy className="w-3.5 h-3.5 md:w-4 md:h-4 text-yellow-500" /> Leaderboard
                     </CardTitle>
                     <div className="flex gap-1 bg-gray-900 rounded-lg p-1">
                         {['week', 'month', 'all'].map(p => (
@@ -125,7 +125,7 @@ export default function TeamLeaderboard({ members, logs, routes }) {
                     </div>
                 </div>
             </CardHeader>
-            <CardContent className="p-4">
+            <CardContent className="p-2.5 md:p-4">
                 <Tabs defaultValue="sales" className="w-full">
                     <TabsList className="w-full bg-[#1F1F1F] mb-4">
                         <TabsTrigger value="sales" className="flex-1 text-xs">

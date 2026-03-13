@@ -20,15 +20,15 @@ export default function TeamActivityTrend({ logs }) {
   }, [logs]);
 
   return (
-    <div className="rounded-2xl border border-white/5 bg-gradient-to-b from-[#151515] to-[#0A0A0A] p-5 shadow-2xl">
-      <div className="flex items-center gap-2 mb-4">
-        <ActivitySquare className="w-4 h-4 text-cyan-400" />
+    <div className="rounded-xl md:rounded-2xl border border-white/5 bg-gradient-to-b from-[#151515] to-[#0A0A0A] p-3 md:p-5 shadow-2xl">
+      <div className="flex items-center gap-2 mb-3 md:mb-4">
+        <ActivitySquare className="w-3.5 h-3.5 md:w-4 md:h-4 text-cyan-400" />
         <div>
-          <h3 className="text-lg font-black text-white tracking-tight">Team Activity Trend</h3>
-          <p className="text-sm text-gray-500">14-day volume and wins across the team</p>
+          <h3 className="text-sm md:text-lg font-black text-white tracking-tight">Team Activity Trend</h3>
+          <p className="text-[10px] md:text-sm text-gray-500">14-day volume and wins</p>
         </div>
       </div>
-      <div className="h-[260px]">
+      <div className="h-[180px] md:h-[260px]">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={data} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />

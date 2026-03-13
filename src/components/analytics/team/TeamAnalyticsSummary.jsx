@@ -35,17 +35,17 @@ export default function TeamAnalyticsSummary({ members, logs, routes }) {
   ];
 
   return (
-    <div className="grid grid-cols-2 xl:grid-cols-6 gap-3">
+    <div className="grid grid-cols-3 xl:grid-cols-6 gap-2 md:gap-3">
       {cards.map((card) => {
         const Icon = card.icon;
         return (
-          <div key={card.label} className="rounded-2xl border border-white/5 bg-gradient-to-b from-[#16161D] to-[#0D0D12] p-4 shadow-xl">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500">{card.label}</span>
-              <Icon className={`w-4 h-4 ${card.color}`} />
+          <div key={card.label} className="rounded-xl md:rounded-2xl border border-white/5 bg-gradient-to-b from-[#16161D] to-[#0D0D12] p-2.5 md:p-4 shadow-xl">
+            <div className="flex items-center justify-between mb-1.5 md:mb-3">
+              <span className="text-[8px] md:text-[10px] font-bold uppercase tracking-[0.1em] text-gray-500 truncate">{card.label}</span>
+              <Icon className={`w-3 h-3 md:w-4 md:h-4 shrink-0 ${card.color}`} />
             </div>
-            <div className="text-3xl font-black text-white tracking-tight">{card.value}</div>
-            <p className="text-xs text-gray-500 mt-1">{card.sub}</p>
+            <div className="text-lg md:text-3xl font-black text-white tracking-tight">{card.value}</div>
+            <p className="text-[9px] md:text-xs text-gray-500 mt-0.5 md:mt-1 truncate">{card.sub}</p>
           </div>
         );
       })}

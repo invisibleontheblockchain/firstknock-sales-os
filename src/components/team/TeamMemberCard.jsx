@@ -44,34 +44,34 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
     return (
         <div className="bg-[#111] border border-gray-800 rounded-xl overflow-hidden hover:border-yellow-500/30 transition-all duration-300 shadow-lg group">
             {/* Header / Profile - Compact */}
-            <div className="p-3 md:p-4 border-b border-gray-800 bg-gradient-to-r from-[#151515] to-[#0A0A0A] relative">
+            <div className="p-2.5 md:p-4 border-b border-gray-800 bg-gradient-to-r from-[#151515] to-[#0A0A0A] relative">
                 <div className="flex justify-between items-center">
-                    <div className="flex gap-3 items-center min-w-0">
+                    <div className="flex gap-2 md:gap-3 items-center min-w-0">
                         <div className="relative flex-shrink-0">
-                            <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center text-black font-bold text-base md:text-lg">
+                            <div className="w-8 h-8 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center text-black font-bold text-sm md:text-lg">
                                 {member.name?.[0]?.toUpperCase() || '?'}
                             </div>
-                            <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-[#151515] rounded-full" />
+                            <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 md:w-3 md:h-3 bg-green-500 border-2 border-[#151515] rounded-full" />
                         </div>
                         
                         <div className="min-w-0">
-                            <h3 className="font-bold text-base md:text-lg text-white tracking-tight truncate">{member.name}</h3>
-                            <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="bg-white/5 border-white/10 text-[10px] font-medium text-gray-400 h-5">
+                            <h3 className="font-bold text-sm md:text-lg text-white tracking-tight truncate">{member.name}</h3>
+                            <div className="flex items-center gap-1.5 md:gap-2">
+                                <Badge variant="outline" className="bg-white/5 border-white/10 text-[8px] md:text-[10px] font-medium text-gray-400 h-4 md:h-5 px-1 md:px-2">
                                     {member.role?.toUpperCase()}
                                 </Badge>
-                                <div className="flex items-center gap-1 bg-yellow-500/10 border border-yellow-500/20 rounded-full px-2 h-5">
-                                    <TrendingUp className="w-3 h-3 text-yellow-500" />
-                                    <span className="text-[10px] font-bold text-yellow-500">{conversionRate}% Close Rate</span>
+                                <div className="flex items-center gap-0.5 md:gap-1 bg-yellow-500/10 border border-yellow-500/20 rounded-full px-1.5 md:px-2 h-4 md:h-5">
+                                    <TrendingUp className="w-2.5 h-2.5 md:w-3 md:h-3 text-yellow-500" />
+                                    <span className="text-[8px] md:text-[10px] font-bold text-yellow-500">{conversionRate}%</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3 flex-shrink-0">
+                    <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
                         <div className="text-right">
-                            <p className="text-2xl md:text-3xl font-bold text-white tracking-tighter">{metrics.sales}</p>
-                            <p className="text-[9px] text-gray-500 font-bold uppercase">Sales</p>
+                            <p className="text-xl md:text-3xl font-bold text-white tracking-tighter">{metrics.sales}</p>
+                            <p className="text-[8px] md:text-[9px] text-gray-500 font-bold uppercase">Sales</p>
                         </div>
                         {!member.isManagerSelf && onDelete && (
                             <button
@@ -88,22 +88,22 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
 
             {/* Metrics Grid - Compact */}
             <div className="grid grid-cols-3 divide-x divide-gray-800 border-b border-gray-800 bg-[#0F0F0F]">
-                <div className="p-2 md:p-3 text-center">
-                    <p className="text-lg md:text-xl font-bold text-white">{metrics.doorsKnocked}</p>
-                    <p className="text-[9px] font-bold text-gray-600 uppercase">Knocked</p>
+                <div className="py-1.5 md:p-3 text-center">
+                    <p className="text-sm md:text-xl font-bold text-white">{metrics.doorsKnocked}</p>
+                    <p className="text-[7px] md:text-[9px] font-bold text-gray-600 uppercase">Knocked</p>
                 </div>
-                <div className="p-2 md:p-3 text-center">
-                    <p className="text-lg md:text-xl font-bold text-white">{metrics.talkedTo}</p>
-                    <p className="text-[9px] font-bold text-gray-600 uppercase">Talked</p>
+                <div className="py-1.5 md:p-3 text-center">
+                    <p className="text-sm md:text-xl font-bold text-white">{metrics.talkedTo}</p>
+                    <p className="text-[7px] md:text-[9px] font-bold text-gray-600 uppercase">Talked</p>
                 </div>
-                <div className="p-2 md:p-3 text-center">
-                    <p className="text-lg md:text-xl font-bold text-blue-400">{routes.length}</p>
-                    <p className="text-[9px] font-bold text-gray-600 uppercase">Routes</p>
+                <div className="py-1.5 md:p-3 text-center">
+                    <p className="text-sm md:text-xl font-bold text-blue-400">{routes.length}</p>
+                    <p className="text-[7px] md:text-[9px] font-bold text-gray-600 uppercase">Routes</p>
                 </div>
             </div>
 
             {/* Routes Section - Compact */}
-            <div className="p-3 bg-[#0A0A0A]">
+            <div className="p-2 md:p-3 bg-[#0A0A0A]">
                 {/* Controls Row */}
                 <div className="flex items-center justify-between mb-3 px-1" onClick={(e) => e.stopPropagation()}>
                     {!member.isManagerSelf ? (
