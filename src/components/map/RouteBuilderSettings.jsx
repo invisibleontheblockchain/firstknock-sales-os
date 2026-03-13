@@ -88,15 +88,15 @@ export default function RouteBuilderSettings({
             icon: <Zap className="w-4 h-4" />,
             desc: 'Ultra-optimized for newest homeowners. Starts at the most recently sold home and builds the route from there.',
             criteria: 'Recent Sales First, 50 doors, Past 3mo',
-            apply: () => {
+            apply: (isInitial = false) => {
                 setHousesPerRoute(50);
                 setMaxRouteDistance(8);
                 setStreetCooldownDays(14);
                 setMinScore(20);
                 setSoldDateFilter(3); // Past 3 months
                 setSortBy('recent_sale');
-                setRouteConfig(prev => ({ ...prev, walkingPattern: 'recent_sale_first', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
-                toast.success("FirstKnock Best applied!");
+                setRouteConfig(prev => ({ ...prev, walkingPattern: 'recent_sale_first', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [], minBeds: null, minBaths: null, minSqft: null, maxSqft: null, minLotSize: null, maxLotSize: null }));
+                if (!isInitial) toast.success("FirstKnock Best applied!");
             }
         },
         {
@@ -445,6 +445,49 @@ export default function RouteBuilderSettings({
                                         <span className="text-gray-600 text-xs">to</span>
                                         <input type="number" placeholder="To" value={routeConfig.maxYearBuilt || ''}
                                             onChange={(e) => setRouteConfig(prev => ({ ...prev, maxYearBuilt: e.target.value ? parseInt(e.target.value) : null }))}
+                                            className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* RentCast Filters: Beds, Baths, Sqft, Lot Size */}
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase">Beds & Baths (Min)</label>
+                                    <div className="flex gap-2 items-center">
+                                        <input type="number" placeholder="Beds" value={routeConfig.minBeds || ''}
+                                            onChange={(e) => setRouteConfig(prev => ({ ...prev, minBeds: e.target.value ? parseInt(e.target.value) : null }))}
+                                            className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
+                                        />
+                                        <input type="number" placeholder="Baths" value={routeConfig.minBaths || ''}
+                                            onChange={(e) => setRouteConfig(prev => ({ ...prev, minBaths: e.target.value ? parseFloat(e.target.value) : null }))}
+                                            className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase">Square Footage</label>
+                                    <div className="flex gap-2 items-center">
+                                        <input type="number" placeholder="Min Sqft" value={routeConfig.minSqft || ''}
+                                            onChange={(e) => setRouteConfig(prev => ({ ...prev, minSqft: e.target.value ? parseInt(e.target.value) : null }))}
+                                            className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
+                                        />
+                                        <span className="text-gray-600 text-xs">to</span>
+                                        <input type="number" placeholder="Max Sqft" value={routeConfig.maxSqft || ''}
+                                            onChange={(e) => setRouteConfig(prev => ({ ...prev, maxSqft: e.target.value ? parseInt(e.target.value) : null }))}
+                                            className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase">Lot Size (Sqft)</label>
+                                    <div className="flex gap-2 items-center">
+                                        <input type="number" placeholder="Min Lot" value={routeConfig.minLotSize || ''}
+                                            onChange={(e) => setRouteConfig(prev => ({ ...prev, minLotSize: e.target.value ? parseInt(e.target.value) : null }))}
+                                            className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
+                                        />
+                                        <span className="text-gray-600 text-xs">to</span>
+                                        <input type="number" placeholder="Max Lot" value={routeConfig.maxLotSize || ''}
+                                            onChange={(e) => setRouteConfig(prev => ({ ...prev, maxLotSize: e.target.value ? parseInt(e.target.value) : null }))}
                                             className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
                                         />
                                     </div>

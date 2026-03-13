@@ -12,7 +12,6 @@ import AiAssistant from '@/components/help/AiAssistant';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 import MarketOnboarding from '@/components/onboarding/MarketOnboarding';
 import { ThemeProvider, useTheme, contrastText } from '@/components/theme/ThemeProvider';
-import ThemeColorPicker from '@/components/theme/ThemeColorPicker';
 
 class ErrorBoundary extends React.Component {
     constructor(props) { super(props); this.state = { hasError: false, error: null }; }
@@ -37,7 +36,6 @@ class ErrorBoundary extends React.Component {
 function LayoutInner({ children }) {
     const { accent } = useTheme();
     const accentText = contrastText(accent);
-    const [showThemePicker, setShowThemePicker] = React.useState(false);
 
     if (typeof window !== 'undefined' && window.location.pathname === '/login') {
         window.location.replace('/SignIn');
@@ -195,7 +193,7 @@ function LayoutInner({ children }) {
                     {/* Desktop */}
                     <div className="hidden md:flex items-center gap-3">
                         {!isOnline && <div className="flex items-center gap-1 bg-red-900/50 px-2 py-1 rounded text-[10px] text-red-200 border border-red-800"><div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />OFFLINE</div>}
-                        <button onClick={() => setShowThemePicker(!showThemePicker)} className="flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]"><Paintbrush className="w-4 h-4" /></button>
+
                         <Link to={createPageUrl('Setup')} className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white">SETUP</Link>
                         <Link to={createPageUrl('Billing')} className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white">PLANS</Link>
                         <button onClick={async () => { try { await base44.auth.logout(window.location.origin); } catch { window.location.reload(); } queryClient.clear(); }} className="text-xs text-slate-400 hover:text-white">LOGOUT</button>
@@ -216,7 +214,7 @@ function LayoutInner({ children }) {
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('Setup')} className="flex items-center w-full"><Upload className="mr-2 h-4 w-4" /><span>Setup</span></Link></DropdownMenuItem>
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('Billing')} className="flex items-center w-full"><Sparkles className="mr-2 h-4 w-4" /><span>Plans</span></Link></DropdownMenuItem>
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('MobileApp')} className="flex items-center w-full"><Smartphone className="mr-2 h-4 w-4" /><span>Get Mobile App</span></Link></DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => setShowThemePicker(true)} className="focus:bg-slate-800 focus:text-white cursor-pointer"><Paintbrush className="mr-2 h-4 w-4" /><span>Theme Color</span></DropdownMenuItem>
+
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('Referrals')} className="flex items-center w-full"><Gift className="mr-2 h-4 w-4" /><span>Referrals</span></Link></DropdownMenuItem>
                                 <DropdownMenuSeparator className="bg-slate-800" />
                                 <DropdownMenuItem onClick={async () => { try { await base44.auth.logout(window.location.origin); } catch { window.location.reload(); } queryClient.clear(); }} className="focus:bg-slate-800 focus:text-white cursor-pointer"><LogOut className="mr-2 h-4 w-4" /><span>Logout</span></DropdownMenuItem>
@@ -227,13 +225,7 @@ function LayoutInner({ children }) {
             </header>
             )}
 
-            {/* Theme Picker Popup */}
-            {showThemePicker && (
-                <div className="absolute top-16 right-4 z-50 bg-[#111] border border-gray-800 rounded-xl p-4 shadow-2xl animate-in slide-in-from-top-2">
-                    <ThemeColorPicker />
-                    <button onClick={() => setShowThemePicker(false)} className="mt-3 text-xs text-gray-500 hover:text-white w-full text-center">Done</button>
-                </div>
-            )}
+
 
             <main className="flex-1 relative overflow-hidden">
                 <ErrorBoundary>{children}</ErrorBoundary>
