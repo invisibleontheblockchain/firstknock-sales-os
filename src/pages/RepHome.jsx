@@ -304,11 +304,24 @@ export default function RepHome() {
             ...logData,
             route_id: activeRoute?.id || null,
         }),
-        onSuccess: () => {
+        onMutate: async (newLog) => {
+            await queryClient.cancelQueries({ queryKey: ['routeLogs', activeRoute?.id] });
+            const previousLogs = queryClient.getQueryData(['routeLogs', activeRoute?.id]);
+            queryClient.setQueryData(['routeLogs', activeRoute?.id], old => {
+                return [...(old || []), { ...newLog, created_date: new Date().toISOString() }];
+            });
+            setSelectedProperty(null);
+            return { previousLogs };
+        },
+        onError: (err, newLog, context) => {
+            queryClient.setQueryData(['routeLogs', activeRoute?.id], context?.previousLogs);
+        },
+        onSettled: () => {
             queryClient.invalidateQueries({ queryKey: ['myLogs'] });
             queryClient.invalidateQueries({ queryKey: ['routeLogs'] });
             queryClient.invalidateQueries({ queryKey: ['allMyLogs'] });
-            setSelectedProperty(null);
+        },
+        onSuccess: () => {
             // Check if user just hit the 50-house limit
             const newCount = (allMyLogs?.length || 0) + 1;
             if (shouldShowUpgradeGate(user, newCount)) {
