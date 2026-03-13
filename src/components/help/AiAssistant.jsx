@@ -6,6 +6,9 @@ import { base44 } from '@/api/base44Client';
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function AiAssistant() {
+    const path = typeof window !== 'undefined' ? window.location.pathname : '';
+    const isMapPage = path.endsWith('Home') || path === '/' || path.endsWith('RepHome');
+
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState([
         { role: 'system', content: 'Hi! I\'m your FirstKnock AI assistant. Ask me anything about using the platform, generating routes, or managing your team.' }
