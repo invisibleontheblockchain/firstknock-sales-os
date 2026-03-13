@@ -87,9 +87,9 @@ export default function RouteBuilderSettings({
             name: 'FirstKnock Best',
             icon: <Zap className="w-4 h-4" />,
             desc: 'Ultra-optimized for newest homeowners. Starts at the most recently sold home and builds the route from there.',
-            criteria: 'Recent Sales First, 50 doors, Past 3mo',
+            criteria: 'Recent Sales First, All in one route, Past 3mo',
             apply: (isInitial = false) => {
-                setHousesPerRoute(50);
+                setHousesPerRoute(10000);
                 setMaxRouteDistance(8);
                 setStreetCooldownDays(14);
                 setMinScore(20);
@@ -200,12 +200,23 @@ export default function RouteBuilderSettings({
                                 <div className="flex justify-between items-center">
                                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">2. Recently Sold</label>
                                     <span className="text-sm font-bold text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded">
-                                        {soldDateFilter ? `${soldDateFilter} Months` : '12 Months'}
+                                        {soldDateFilter ? `${soldDateFilter} Months` : '3 Months'}
                                     </span>
                                 </div>
                                 <Slider
-                                    value={[soldDateFilter || 12]}
-                                    onValueChange={([v]) => setSoldDateFilter(v)}
+                                    value={[soldDateFilter || 3]}
+                                    onValueChange={([v]) => {
+                                        if (v === 12) {
+                                            const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+                                            const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
+                                            if (!isPaid && !isOwner) {
+                                                toast.error("12 Months history requires a Pro subscription");
+                                                window.location.href = '/Billing';
+                                                return;
+                                            }
+                                        }
+                                        setSoldDateFilter(v);
+                                    }}
                                     min={3}
                                     max={12}
                                     step={3}
@@ -215,29 +226,49 @@ export default function RouteBuilderSettings({
                                     <span>3 Mo</span>
                                     <span>6 Mo</span>
                                     <span>9 Mo</span>
-                                    <span>12 Mo</span>
+                                    <span className="text-yellow-500/70">12 Mo (Pro)</span>
                                 </div>
                             </div>
 
-                            {/* Simple House Count */}
-                            <div className="space-y-4 pt-2">
-                                <div className="flex justify-between items-center">
-                                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">3. Houses per Route</label>
-                                    <span className="text-sm font-bold text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded">{housesPerRoute}</span>
+                            {/* Route Size */}
+                            <div className="space-y-3 pt-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">3. Route Size</label>
+                                <div className="flex p-1 bg-[#1A1A1A] rounded-xl border border-gray-800">
+                                    <button
+                                        onClick={() => setHousesPerRoute(10000)}
+                                        className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${housesPerRoute === 10000 ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}
+                                    >
+                                        ALL IN ONE ROUTE
+                                    </button>
+                                    <button
+                                        onClick={() => setHousesPerRoute(50)}
+                                        className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${housesPerRoute !== 10000 ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}
+                                    >
+                                        HOUSES PER ROUTE
+                                    </button>
                                 </div>
-                                <Slider
-                                    value={[housesPerRoute]}
-                                    onValueChange={([v]) => setHousesPerRoute(v)}
-                                    min={10}
-                                    max={200}
-                                    step={10}
-                                    className="w-full"
-                                />
-                                <div className="flex justify-between text-[10px] text-gray-600 font-medium px-1">
-                                    <span>Small (10)</span>
-                                    <span>Standard (60)</span>
-                                    <span>Large (200)</span>
-                                </div>
+                                
+                                {housesPerRoute !== 10000 && (
+                                    <div className="space-y-4 pt-4">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Houses per Route</span>
+                                            <span className="text-sm font-bold text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded">{housesPerRoute}</span>
+                                        </div>
+                                        <Slider
+                                            value={[housesPerRoute]}
+                                            onValueChange={([v]) => setHousesPerRoute(v)}
+                                            min={10}
+                                            max={200}
+                                            step={10}
+                                            className="w-full"
+                                        />
+                                        <div className="flex justify-between text-[10px] text-gray-600 font-medium px-1">
+                                            <span>Small (10)</span>
+                                            <span>Standard (60)</span>
+                                            <span>Large (200)</span>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Strategy Selection */}
@@ -307,6 +338,15 @@ export default function RouteBuilderSettings({
                                 <div className="space-y-2 pt-2 border-t border-gray-800/50">
                                     <label className="text-[10px] font-bold text-gray-500 uppercase">Houses Per Route</label>
                                     <div className="grid grid-cols-6 gap-1.5">
+                                        <button
+                                            onClick={() => setHousesPerRoute(10000)}
+                                            className={`py-2.5 rounded-lg text-xs font-bold transition-all col-span-6 mb-1 ${housesPerRoute === 10000
+                                                ? 'bg-yellow-500 text-black shadow-lg'
+                                                : 'bg-[#1F1F1F] text-gray-400 hover:bg-[#2a2a2a] border border-gray-800'
+                                                }`}
+                                        >
+                                            ALL IN ONE ROUTE
+                                        </button>
                                         {ROUTE_SIZE_OPTIONS.map(size => (
                                             <button
                                                 key={size}
@@ -369,11 +409,22 @@ export default function RouteBuilderSettings({
                                 <div className="space-y-4 mb-4 pt-2">
                                     <div className="flex justify-between items-center">
                                         <label className="text-[10px] font-bold text-gray-500 uppercase">Recently Sold</label>
-                                        <span className="text-xs font-bold text-yellow-500">{soldDateFilter ? `${soldDateFilter} Months` : '12 Months'}</span>
+                                        <span className="text-xs font-bold text-yellow-500">{soldDateFilter ? `${soldDateFilter} Months` : '3 Months'}</span>
                                     </div>
                                     <Slider
-                                        value={[soldDateFilter || 12]}
-                                        onValueChange={([v]) => setSoldDateFilter(v)}
+                                        value={[soldDateFilter || 3]}
+                                        onValueChange={([v]) => {
+                                            if (v === 12) {
+                                                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+                                                const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
+                                                if (!isPaid && !isOwner) {
+                                                    toast.error("12 Months history requires a Pro subscription");
+                                                    window.location.href = '/Billing';
+                                                    return;
+                                                }
+                                            }
+                                            setSoldDateFilter(v);
+                                        }}
                                         min={3}
                                         max={12}
                                         step={3}
@@ -383,7 +434,7 @@ export default function RouteBuilderSettings({
                                         <span>3 Mo</span>
                                         <span>6 Mo</span>
                                         <span>9 Mo</span>
-                                        <span>12 Mo</span>
+                                        <span className="text-yellow-500/70">12 Mo (Pro)</span>
                                     </div>
                                 </div>
 
