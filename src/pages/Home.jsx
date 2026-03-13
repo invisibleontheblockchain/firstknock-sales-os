@@ -236,6 +236,7 @@ export default function Home() {
     const [templateName, setTemplateName] = useState("");
     const [gpsTracking, setGpsTracking] = useState(false);
     const [userLocation, setUserLocation] = useState(null); // {lat, lng} from Center on Me
+    const [gpsInitialLocation, setGpsInitialLocation] = useState(null); // GPS on first load
     const [routeConfig, setRouteConfig] = useState({
         walkingPattern: 'street_sweep',
         minimizeTurns: true,
