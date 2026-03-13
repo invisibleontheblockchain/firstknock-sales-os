@@ -1,48 +1,27 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { X, TrendingUp, DoorOpen, Trophy, Clock, Flame, DollarSign, Target, Phone, Percent, Zap, Calendar, MapPin, Award } from 'lucide-react';
-import { format, subDays, isAfter, startOfDay, isToday } from 'date-fns';
-import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
+import React, { useMemo } from 'react';
+import { X, TrendingUp, DoorOpen, Trophy, Clock, Flame, DollarSign, Target, Phone, Award, Zap } from 'lucide-react';
+import { startOfDay, subDays, isToday } from 'date-fns';
 
 const SALES_STATUSES = ['SOLD', 'QUALIFIED'];
 const CONTACT_EXCLUDE = ['NO_ANSWER', 'ELIGIBLE'];
 
 export default function RepAnalytics({ logs, routeProperties, onClose }) {
-    const [commissionPct, setCommissionPct] = useState(() => {
-        const saved = localStorage.getItem('fk_commission_pct');
-        return saved ? parseFloat(saved) : 10;
-    });
-    const [dateDays, setDateDays] = useState(30);
-
-    useEffect(() => {
-        localStorage.setItem('fk_commission_pct', String(commissionPct));
-    }, [commissionPct]);
-
-    const analytics = useMemo(() => {
+    const stats = useMemo(() => {
         if (!logs?.length) return null;
-        const now = new Date();
-        const today = startOfDay(now);
-        const cutoff = subDays(today, dateDays);
-        const weekCutoff = subDays(today, 7);
+        const today = startOfDay(new Date());
 
-        const periodLogs = logs.filter(l => isAfter(new Date(l.created_date), cutoff));
         const todayLogs = logs.filter(l => isToday(new Date(l.created_date)));
-        const weekLogs = logs.filter(l => isAfter(new Date(l.created_date), weekCutoff));
-
         const countStatus = (arr, statuses) => arr.filter(l => statuses.includes(l.parsed_status)).length;
-        const contacts = (arr) => arr.filter(l => !CONTACT_EXCLUDE.includes(l.parsed_status)).length;
+        const contacts = todayLogs.filter(l => !CONTACT_EXCLUDE.includes(l.parsed_status)).length;
 
-        // Revenue
-        const totalRevenue = periodLogs.reduce((s, l) => s + (l.sale_amount || 0), 0);
-        const todayRevenue = todayLogs.reduce((s, l) => s + (l.sale_amount || 0), 0);
-        const weekRevenue = weekLogs.reduce((s, l) => s + (l.sale_amount || 0), 0);
-        const allTimeRevenue = logs.reduce((s, l) => s + (l.sale_amount || 0), 0);
-        const salesCount = countStatus(periodLogs, SALES_STATUSES);
-        const avgDeal = salesCount > 0 ? Math.round(totalRevenue / salesCount) : 0;
-
-        // Rates
-        const contactRate = periodLogs.length ? Math.round((contacts(periodLogs) / periodLogs.length) * 100) : 0;
-        const conversionRate = periodLogs.length ? ((salesCount / periodLogs.length) * 100).toFixed(1) : 0;
+        const knocks = todayLogs.length;
+        const sales = countStatus(todayLogs, SALES_STATUSES);
+        const callbacks = countStatus(todayLogs, ['CALLBACK']);
+        const noAnswer = countStatus(todayLogs, ['NO_ANSWER']);
+        const hardNo = countStatus(todayLogs, ['HARD_NO']);
+        const revenue = todayLogs.reduce((s, l) => s + (l.sale_amount || 0), 0);
+        const contactRate = knocks > 0 ? Math.round((contacts / knocks) * 100) : 0;
+        const convRate = knocks > 0 ? ((sales / knocks) * 100).toFixed(1) : '0.0';
 
         // Streak
         let streak = 0;
@@ -52,53 +31,23 @@ export default function RepAnalytics({ logs, routeProperties, onClose }) {
             else break;
         }
 
-        // Best hour
-        const hourBuckets = Array.from({ length: 13 }, (_, i) => i + 8).map(hour => {
-            const hLogs = periodLogs.filter(l => new Date(l.created_date).getHours() === hour);
-            const hContacts = contacts(hLogs);
-            return { hour, knocks: hLogs.length, rate: hLogs.length ? Math.round((hContacts / hLogs.length) * 100) : 0 };
-        });
-        const bestHour = [...hourBuckets].sort((a, b) => b.rate - a.rate || b.knocks - a.knocks)[0] || { hour: 17, rate: 0 };
-
-        // Daily breakdown (last 7 days)
-        const daily = [];
-        for (let i = 6; i >= 0; i--) {
-            const day = subDays(today, i);
-            const dLogs = logs.filter(l => startOfDay(new Date(l.created_date)).getTime() === day.getTime());
-            daily.push({
-                label: i === 0 ? 'Today' : format(day, 'EEE'),
-                knocks: dLogs.length,
-                sales: countStatus(dLogs, SALES_STATUSES),
-                revenue: dLogs.reduce((s, l) => s + (l.sale_amount || 0), 0),
-            });
-        }
-        const maxKnocks = Math.max(...daily.map(d => d.knocks), 1);
-
         // Route progress
         const totalProps = routeProperties?.length || 0;
         const doneProps = routeProperties?.filter(p => p.effective_status !== 'ELIGIBLE' && p.effective_status !== 'CALLBACK').length || 0;
 
-        // Active days
-        const activeDays = new Set(periodLogs.map(l => l.created_date?.split('T')[0]).filter(Boolean)).size;
-        const avgPerDay = activeDays > 0 ? Math.round(periodLogs.length / activeDays) : 0;
+        // Hourly breakdown for today
+        const hourly = [];
+        const nowHour = new Date().getHours();
+        for (let h = 8; h <= Math.max(nowHour, 20); h++) {
+            const hLogs = todayLogs.filter(l => new Date(l.created_date).getHours() === h);
+            hourly.push({ hour: h, count: hLogs.length });
+        }
+        const maxHourly = Math.max(...hourly.map(h => h.count), 1);
 
-        // Callbacks / no-answers
-        const callbacks = countStatus(periodLogs, ['CALLBACK']);
-        const noAnswer = countStatus(periodLogs, ['NO_ANSWER']);
-        const hardNo = countStatus(periodLogs, ['HARD_NO']);
+        return { knocks, sales, callbacks, noAnswer, hardNo, contacts, revenue, contactRate, convRate, streak, totalProps, doneProps, hourly, maxHourly };
+    }, [logs, routeProperties]);
 
-        return {
-            todayKnocks: todayLogs.length, todaySales: countStatus(todayLogs, SALES_STATUSES),
-            todayCallbacks: countStatus(todayLogs, ['CALLBACK']), todayNoAnswer: countStatus(todayLogs, ['NO_ANSWER']),
-            todayRevenue, weekKnocks: weekLogs.length, weekSales: countStatus(weekLogs, SALES_STATUSES), weekRevenue,
-            periodKnocks: periodLogs.length, salesCount, totalRevenue, allTimeRevenue, avgDeal,
-            contactRate, conversionRate, streak, bestHourLabel: format(new Date(0, 0, 0, bestHour.hour), 'ha'),
-            bestHourRate: bestHour.rate, daily, maxKnocks, totalProps, doneProps, activeDays, avgPerDay,
-            contacts: contacts(periodLogs), callbacks, noAnswer, hardNo,
-        };
-    }, [logs, routeProperties, dateDays]);
-
-    if (!analytics) {
+    if (!stats) {
         return (
             <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center" onClick={onClose}>
                 <div className="bg-[#111] rounded-2xl p-8 text-center border border-gray-800" onClick={e => e.stopPropagation()}>
@@ -109,9 +58,7 @@ export default function RepAnalytics({ logs, routeProperties, onClose }) {
         );
     }
 
-    const myCommission = Math.round(analytics.totalRevenue * (commissionPct / 100));
-    const allTimeCommission = Math.round(analytics.allTimeRevenue * (commissionPct / 100));
-    const fmt = (v) => v >= 1000000 ? `$${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.toLocaleString()}`;
+    const fmt = (v) => v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.toLocaleString()}`;
 
     return (
         <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col" onClick={onClose}>
@@ -123,8 +70,8 @@ export default function RepAnalytics({ logs, routeProperties, onClose }) {
                             <TrendingUp className="w-4 h-4 text-yellow-500" />
                         </div>
                         <div>
-                            <h2 className="font-bold text-base text-white tracking-tight">My Performance</h2>
-                            <p className="text-[9px] text-gray-500 font-medium uppercase tracking-wider">Revenue · Metrics · Motivation</p>
+                            <h2 className="font-bold text-base text-white tracking-tight">Today's Performance</h2>
+                            <p className="text-[9px] text-gray-500 font-medium uppercase tracking-wider">Daily Stats · {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</p>
                         </div>
                     </div>
                     <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center">
@@ -132,192 +79,89 @@ export default function RepAnalytics({ logs, routeProperties, onClose }) {
                     </button>
                 </div>
 
-                {/* Date range */}
-                <div className="px-4 pt-3 pb-1 flex items-center gap-1 bg-black/50">
-                    {[7, 30, 90].map(r => (
-                        <button key={r} onClick={() => setDateDays(r)}
-                            className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${dateDays === r ? 'bg-white text-black' : 'text-gray-500 bg-white/[0.03] hover:bg-white/5'}`}
-                        >{r}D</button>
-                    ))}
-                </div>
-
                 <div className="p-4 space-y-4">
-                    {/* REVENUE HERO */}
-                    <div className="rounded-2xl border border-green-500/20 bg-gradient-to-br from-green-500/[0.08] to-transparent p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-green-400">Account Value ({dateDays}D)</span>
+                    {/* Revenue Hero — Today */}
+                    <div className="rounded-2xl border border-green-500/20 bg-gradient-to-br from-green-500/[0.08] to-transparent p-4">
+                        <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-green-400">Today's Revenue</span>
                             <DollarSign className="w-4 h-4 text-green-400" />
                         </div>
-                        <div className="text-3xl font-black text-white tracking-tight">{fmt(analytics.totalRevenue)}</div>
-                        <div className="grid grid-cols-3 gap-2">
-                            <MiniStat label="Today" value={fmt(analytics.todayRevenue)} />
-                            <MiniStat label="7D" value={fmt(analytics.weekRevenue)} />
-                            <MiniStat label="All-Time" value={fmt(analytics.allTimeRevenue)} />
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                            <MiniStat label="Deals Closed" value={analytics.salesCount} />
-                            <MiniStat label="Avg Deal" value={fmt(analytics.avgDeal)} />
-                        </div>
-                    </div>
-
-                    {/* MY CUT — Commission */}
-                    <div className="rounded-2xl border border-purple-500/20 bg-gradient-to-br from-purple-500/[0.06] to-transparent p-4 space-y-3">
-                        <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">My Commission</span>
-                            <Percent className="w-4 h-4 text-purple-400" />
-                        </div>
-                        <div className="text-3xl font-black text-white tracking-tight">{fmt(myCommission)}</div>
-                        <p className="text-[10px] text-gray-500">at {commissionPct}% of {fmt(analytics.totalRevenue)} in {dateDays}D revenue</p>
-
-                        {/* Commission slider */}
-                        <div className="space-y-2 pt-1">
-                            <div className="flex items-center justify-between">
-                                <span className="text-[10px] text-gray-400">Commission Rate</span>
-                                <div className="flex items-center gap-1.5">
-                                    <Input
-                                        type="number"
-                                        value={commissionPct}
-                                        onChange={e => setCommissionPct(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
-                                        className="w-14 h-7 text-center text-xs bg-white/5 border-white/10 text-white px-1"
-                                    />
-                                    <span className="text-[10px] text-gray-500">%</span>
-                                </div>
-                            </div>
-                            <Slider
-                                value={[commissionPct]}
-                                onValueChange={([v]) => setCommissionPct(v)}
-                                min={1} max={50} step={0.5}
-                                className="w-full"
-                            />
-                            <div className="flex justify-between text-[9px] text-gray-600">
-                                <span>1%</span>
-                                <span>25%</span>
-                                <span>50%</span>
-                            </div>
-                        </div>
-                        <div className="bg-white/[0.03] rounded-xl p-2.5 flex items-center justify-between">
-                            <span className="text-[10px] text-gray-400">All-Time Commission</span>
-                            <span className="text-sm font-black text-purple-300">{fmt(allTimeCommission)}</span>
-                        </div>
+                        <div className="text-3xl font-black text-white tracking-tight">{fmt(stats.revenue)}</div>
+                        <p className="text-[10px] text-gray-500 mt-1">{stats.sales} deal{stats.sales !== 1 ? 's' : ''} closed today</p>
                     </div>
 
                     {/* Streak */}
-                    {analytics.streak > 0 && (
-                        <div className="bg-gradient-to-r from-orange-600/15 to-yellow-600/10 border border-orange-500/20 rounded-2xl p-3.5 flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center shrink-0">
-                                <Flame className="w-5 h-5 text-orange-500" />
+                    {stats.streak > 0 && (
+                        <div className="bg-gradient-to-r from-orange-600/15 to-yellow-600/10 border border-orange-500/20 rounded-2xl p-3 flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-full bg-orange-500/20 flex items-center justify-center shrink-0">
+                                <Flame className="w-4 h-4 text-orange-500" />
                             </div>
                             <div>
-                                <p className="text-xl font-black text-orange-400">{analytics.streak} Day Streak 🔥</p>
-                                <p className="text-[10px] text-gray-500">Consistency is the key to closing</p>
+                                <p className="text-lg font-black text-orange-400">{stats.streak} Day Streak 🔥</p>
+                                <p className="text-[9px] text-gray-500">Keep the momentum going</p>
                             </div>
                         </div>
                     )}
 
-                    {/* TODAY */}
-                    <SectionLabel>Today</SectionLabel>
+                    {/* Main KPIs */}
                     <div className="grid grid-cols-4 gap-2">
-                        <KpiCard icon={DoorOpen} label="Knocks" value={analytics.todayKnocks} accent="#3b82f6" />
-                        <KpiCard icon={Trophy} label="Sales" value={analytics.todaySales} accent="#22c55e" />
-                        <KpiCard icon={Clock} label="Callbacks" value={analytics.todayCallbacks} accent="#f59e0b" />
-                        <KpiCard icon={Target} label="No Answer" value={analytics.todayNoAnswer} accent="#6b7280" />
+                        <KpiCard icon={DoorOpen} label="Knocks" value={stats.knocks} accent="#3b82f6" />
+                        <KpiCard icon={Trophy} label="Sales" value={stats.sales} accent="#22c55e" />
+                        <KpiCard icon={Clock} label="Callbacks" value={stats.callbacks} accent="#f59e0b" />
+                        <KpiCard icon={Target} label="No Answer" value={stats.noAnswer} accent="#6b7280" />
                     </div>
 
-                    {/* CORE METRICS */}
-                    <SectionLabel>{dateDays}D Metrics</SectionLabel>
+                    {/* Rates */}
                     <div className="grid grid-cols-3 gap-2">
-                        <KpiCard icon={DoorOpen} label="Knocks" value={analytics.periodKnocks.toLocaleString()} accent="#8b5cf6" />
-                        <KpiCard icon={Phone} label="Contacts" value={analytics.contacts} accent="#06b6d4" />
-                        <KpiCard icon={TrendingUp} label="Conv %" value={`${analytics.conversionRate}%`} accent="#22c55e" />
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                        <KpiCard icon={Zap} label="Contact %" value={`${analytics.contactRate}%`} accent="#f59e0b" />
-                        <KpiCard icon={Calendar} label="Active Days" value={analytics.activeDays} accent="#ec4899" />
-                        <KpiCard icon={MapPin} label="Avg/Day" value={analytics.avgPerDay} accent="#a855f7" />
+                        <KpiCard icon={Phone} label="Contacts" value={stats.contacts} accent="#06b6d4" />
+                        <KpiCard icon={Zap} label="Contact %" value={`${stats.contactRate}%`} accent="#f59e0b" />
+                        <KpiCard icon={TrendingUp} label="Conv %" value={`${stats.convRate}%`} accent="#22c55e" />
                     </div>
 
-                    {/* FUNNEL */}
-                    <SectionLabel>Sales Funnel</SectionLabel>
-                    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4 space-y-3">
-                        <FunnelBar label="Knocks" value={analytics.periodKnocks} max={analytics.periodKnocks} color="#ffffff" />
-                        <FunnelBar label="Contacts" value={analytics.contacts} max={analytics.periodKnocks} color="#06b6d4" />
-                        <FunnelBar label="Callbacks" value={analytics.callbacks} max={analytics.periodKnocks} color="#f59e0b" />
-                        <FunnelBar label="Wins" value={analytics.salesCount} max={analytics.periodKnocks} color="#22c55e" />
-                    </div>
-
-                    {/* WEEKLY CHART */}
-                    <SectionLabel>Last 7 Days</SectionLabel>
+                    {/* Hourly Activity */}
                     <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-                        <div className="flex items-end gap-1.5 h-24 mb-2">
-                            {analytics.daily.map((day, i) => (
-                                <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                                    <div className="w-full flex flex-col items-center justify-end" style={{ height: '80px' }}>
-                                        {day.sales > 0 && (
-                                            <div className="w-full rounded-t bg-green-500 min-h-[4px]"
-                                                style={{ height: `${(day.sales / analytics.maxKnocks) * 80}px` }} />
-                                        )}
-                                        <div className="w-full bg-yellow-500/80 min-h-[2px]"
-                                            style={{
-                                                height: `${(Math.max(day.knocks - day.sales, 0) / analytics.maxKnocks) * 80}px`,
-                                                borderRadius: day.sales > 0 ? '0' : '4px 4px 0 0'
-                                            }} />
-                                    </div>
-                                    <span className="text-[8px] text-gray-500 font-bold">{day.label}</span>
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-3">Hourly Activity</p>
+                        <div className="flex items-end gap-1 h-16">
+                            {stats.hourly.map((h, i) => (
+                                <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+                                    <div className="w-full rounded-t bg-yellow-500/80 min-h-[2px]"
+                                        style={{ height: `${(h.count / stats.maxHourly) * 56}px`, borderRadius: '3px 3px 0 0' }} />
+                                    <span className="text-[7px] text-gray-600 font-bold">{h.hour > 12 ? h.hour - 12 : h.hour}{h.hour >= 12 ? 'p' : 'a'}</span>
                                 </div>
                             ))}
                         </div>
-                        <div className="flex items-center gap-3 text-[9px] text-gray-500 border-t border-white/5 pt-2">
-                            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-sm bg-yellow-500" /> Knocks</span>
-                            <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-sm bg-green-500" /> Sales</span>
-                        </div>
                     </div>
 
-                    {/* FOCUS SIGNALS */}
-                    <SectionLabel>Focus Signals</SectionLabel>
-                    <div className="grid grid-cols-2 gap-2">
-                        <FocusCard label="Best Hour" value={analytics.bestHourLabel} sub={`${analytics.bestHourRate}% contact rate`} icon={Clock} accent="#f59e0b" />
-                        <FocusCard label="Open Callbacks" value={analytics.callbacks} sub="people to revisit" icon={Phone} accent="#06b6d4" />
-                        <FocusCard label="Hard No's" value={analytics.hardNo} sub="not interested" icon={X} accent="#ef4444" />
-                        <FocusCard label="No Answers" value={analytics.noAnswer} sub="try different time" icon={Target} accent="#6b7280" />
+                    {/* Today's Funnel */}
+                    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4 space-y-2.5">
+                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Today's Funnel</p>
+                        <FunnelBar label="Knocks" value={stats.knocks} max={stats.knocks} color="#ffffff" />
+                        <FunnelBar label="Contacts" value={stats.contacts} max={stats.knocks} color="#06b6d4" />
+                        <FunnelBar label="Callbacks" value={stats.callbacks} max={stats.knocks} color="#f59e0b" />
+                        <FunnelBar label="Sales" value={stats.sales} max={stats.knocks} color="#22c55e" />
                     </div>
 
-                    {/* ROUTE PROGRESS */}
-                    {analytics.totalProps > 0 && (
-                        <>
-                            <SectionLabel>Route Progress</SectionLabel>
-                            <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-                                <div className="flex justify-between items-center mb-2">
-                                    <span className="text-xs text-gray-400">Properties Completed</span>
-                                    <span className="text-sm font-black text-white">{analytics.doneProps}/{analytics.totalProps}</span>
-                                </div>
-                                <div className="h-3 bg-white/[0.04] rounded-full overflow-hidden">
-                                    <div className="h-full bg-gradient-to-r from-yellow-500 to-green-500 rounded-full transition-all"
-                                        style={{ width: `${(analytics.doneProps / analytics.totalProps) * 100}%` }} />
-                                </div>
+                    {/* Route Progress */}
+                    {stats.totalProps > 0 && (
+                        <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="text-xs text-gray-400">Route Progress</span>
+                                <span className="text-sm font-black text-white">{stats.doneProps}/{stats.totalProps}</span>
                             </div>
-                        </>
+                            <div className="h-3 bg-white/[0.04] rounded-full overflow-hidden">
+                                <div className="h-full bg-gradient-to-r from-yellow-500 to-green-500 rounded-full transition-all"
+                                    style={{ width: `${(stats.doneProps / stats.totalProps) * 100}%` }} />
+                            </div>
+                        </div>
                     )}
 
-                    {/* Motivational footer */}
-                    <div className="text-center py-4">
-                        <Award className="w-6 h-6 text-yellow-500/40 mx-auto mb-2" />
-                        <p className="text-[10px] text-gray-600 font-medium">Every door is an opportunity. Keep grinding.</p>
+                    {/* Footer */}
+                    <div className="text-center py-3">
+                        <Award className="w-5 h-5 text-yellow-500/30 mx-auto mb-1" />
+                        <p className="text-[9px] text-gray-600">For detailed analytics & commission tracking, check the Analytics tab</p>
                     </div>
                 </div>
             </div>
-        </div>
-    );
-}
-
-function SectionLabel({ children }) {
-    return <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider pt-1">{children}</p>;
-}
-
-function MiniStat({ label, value }) {
-    return (
-        <div className="bg-white/[0.04] rounded-lg p-2 text-center">
-            <div className="text-sm font-black text-white">{value}</div>
-            <p className="text-[8px] text-gray-500 mt-0.5">{label}</p>
         </div>
     );
 }
@@ -340,27 +184,12 @@ function FunnelBar({ label, value, max, color }) {
         <div>
             <div className="flex items-baseline justify-between mb-1">
                 <span className="text-xs font-semibold text-gray-300">{label}</span>
-                <span className="text-sm font-black text-white">{value.toLocaleString()}</span>
+                <span className="text-sm font-black text-white">{value}</span>
             </div>
-            <div className="h-2.5 rounded-full bg-white/[0.04] overflow-hidden">
+            <div className="h-2 rounded-full bg-white/[0.04] overflow-hidden">
                 <div className="h-full rounded-full transition-all duration-700"
                     style={{ width: `${Math.max(pct, 2)}%`, background: `linear-gradient(90deg, ${color}60, ${color})` }} />
             </div>
-        </div>
-    );
-}
-
-function FocusCard({ label, value, sub, icon: Icon, accent }) {
-    return (
-        <div className="rounded-xl border border-white/[0.06] bg-[#111113] p-3">
-            <div className="flex items-center justify-between mb-2">
-                <span className="text-[8px] font-bold uppercase tracking-wider text-gray-500">{label}</span>
-                <div className="w-5 h-5 rounded-md flex items-center justify-center" style={{ background: `${accent}15` }}>
-                    <Icon className="w-2.5 h-2.5" style={{ color: accent }} />
-                </div>
-            </div>
-            <div className="text-lg font-black text-white leading-none">{value}</div>
-            <p className="text-[8px] text-gray-500 mt-1">{sub}</p>
         </div>
     );
 }

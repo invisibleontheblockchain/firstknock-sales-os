@@ -1,34 +1,42 @@
-import React from 'react';
-import { DoorOpen, PhoneCall, TrendingUp, MapPin, Target, Calendar, DollarSign, Zap } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { DoorOpen, PhoneCall, TrendingUp, MapPin, Target, Calendar, DollarSign, Zap, Percent } from 'lucide-react';
+import { Input } from "@/components/ui/input";
+import { Slider } from "@/components/ui/slider";
 
 export default function RepAnalyticsKpis({ metrics, dateDays }) {
+  const [commissionPct, setCommissionPct] = useState(() => {
+    const saved = localStorage.getItem('fk_commission_pct');
+    return saved ? parseFloat(saved) : 10;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('fk_commission_pct', String(commissionPct));
+  }, [commissionPct]);
+
   const revenue = metrics.totalRevenue || 0;
-  const revenueDisplay = revenue >= 1000000
-    ? `$${(revenue / 1000000).toFixed(1)}M`
-    : revenue >= 1000
-    ? `$${(revenue / 1000).toFixed(1)}k`
-    : `$${revenue.toLocaleString()}`;
+  const fmt = (v) => v >= 1000000 ? `$${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.toLocaleString()}`;
 
   const avgDealSize = metrics.sales > 0 ? Math.round(revenue / metrics.sales) : 0;
-  const avgDealDisplay = avgDealSize >= 1000 ? `$${(avgDealSize / 1000).toFixed(1)}k` : `$${avgDealSize}`;
+  const myCommission = Math.round(revenue * (commissionPct / 100));
 
   const primaryCards = [
-    { label: 'Revenue', value: revenueDisplay, sub: `${metrics.sales} closed deals`, icon: DollarSign, accent: '#22c55e', highlight: true },
-    { label: 'Today', value: metrics.todayKnocks, sub: 'doors knocked', icon: DoorOpen, accent: '#3b82f6' },
+    { label: 'Revenue', value: fmt(revenue), sub: `${metrics.sales} closed deals`, icon: DollarSign, accent: '#22c55e', highlight: true },
+    { label: 'My Cut', value: fmt(myCommission), sub: `${commissionPct}% commission`, icon: Percent, accent: '#a855f7', highlight: true },
     { label: `${dateDays}D Knocks`, value: metrics.periodKnocks.toLocaleString(), sub: 'total activity', icon: Calendar, accent: '#8b5cf6' },
   ];
 
   const secondaryCards = [
+    { label: 'Today', value: metrics.todayKnocks, sub: 'doors knocked', icon: DoorOpen, accent: '#3b82f6' },
     { label: 'Contact Rate', value: `${metrics.contactRate}%`, sub: `${metrics.contacts} contacts`, icon: PhoneCall, accent: '#06b6d4' },
     { label: 'Conversion', value: `${metrics.conversionRate}%`, sub: `${metrics.sales} wins`, icon: TrendingUp, accent: '#f59e0b' },
-    { label: 'Avg Deal', value: avgDealDisplay, sub: 'per closed sale', icon: Zap, accent: '#ec4899' },
+    { label: 'Avg Deal', value: fmt(avgDealSize), sub: 'per closed sale', icon: Zap, accent: '#ec4899' },
     { label: 'Coverage', value: `${metrics.coveragePct}%`, sub: `${metrics.workedDoors} doors`, icon: MapPin, accent: '#a855f7' },
     { label: 'Appointments', value: metrics.upcomingAppointments, sub: 'upcoming', icon: Target, accent: '#ef4444' },
   ];
 
   return (
     <div className="space-y-2 md:space-y-3">
-      {/* Primary row — revenue hero + today + period */}
+      {/* Primary row */}
       <div className="grid grid-cols-3 gap-2 md:gap-3">
         {primaryCards.map((card) => {
           const Icon = card.icon;
@@ -37,12 +45,12 @@ export default function RepAnalyticsKpis({ metrics, dateDays }) {
               key={card.label}
               className={`group relative rounded-2xl border bg-[#111113] overflow-hidden transition-all duration-300 ${
                 card.highlight
-                  ? 'border-green-500/20 p-3 md:p-5'
+                  ? card.accent === '#a855f7' ? 'border-purple-500/20 p-3 md:p-5' : 'border-green-500/20 p-3 md:p-5'
                   : 'border-white/[0.06] p-2.5 md:p-4 hover:border-white/10'
               }`}
             >
               {card.highlight && (
-                <div className="absolute inset-0 bg-gradient-to-br from-green-500/[0.06] to-transparent pointer-events-none" />
+                <div className="absolute inset-0 pointer-events-none" style={{ background: `linear-gradient(135deg, ${card.accent}10, transparent)` }} />
               )}
               <div
                 className="absolute -top-12 -right-12 w-24 h-24 rounded-full blur-[40px] opacity-0 group-hover:opacity-20 transition-opacity duration-500 pointer-events-none"
@@ -72,8 +80,35 @@ export default function RepAnalyticsKpis({ metrics, dateDays }) {
         })}
       </div>
 
-      {/* Secondary row — rates & metrics */}
-      <div className="grid grid-cols-3 md:grid-cols-5 gap-2 md:gap-3">
+      {/* Commission Config */}
+      <div className="rounded-xl md:rounded-2xl border border-purple-500/10 bg-[#111113] p-3 md:p-4">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[10px] md:text-xs font-bold text-gray-400">Commission Rate</span>
+          <div className="flex items-center gap-1.5">
+            <Input
+              type="number"
+              value={commissionPct}
+              onChange={e => setCommissionPct(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+              className="w-14 h-7 text-center text-xs bg-white/5 border-white/10 text-white px-1"
+            />
+            <span className="text-[10px] text-gray-500">%</span>
+          </div>
+        </div>
+        <Slider
+          value={[commissionPct]}
+          onValueChange={([v]) => setCommissionPct(v)}
+          min={1} max={50} step={0.5}
+          className="w-full"
+        />
+        <div className="flex justify-between text-[8px] md:text-[9px] text-gray-600 mt-1">
+          <span>1%</span>
+          <span>25%</span>
+          <span>50%</span>
+        </div>
+      </div>
+
+      {/* Secondary row */}
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
         {secondaryCards.map((card) => {
           const Icon = card.icon;
           return (
