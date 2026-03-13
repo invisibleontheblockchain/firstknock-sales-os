@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Activity, Phone, Route, TrendingUp, Users, Clock3 } from 'lucide-react';
+import { Activity, Phone, Route, TrendingUp, Users, DollarSign } from 'lucide-react';
 import { subDays } from 'date-fns';
 
 const SALES = ['SOLD', 'QUALIFIED'];
@@ -14,6 +14,7 @@ export default function TeamAnalyticsSummary({ members, logs, routes }) {
     const callbacks = recentLogs.filter((log) => log.parsed_status === 'CALLBACK').length;
     const activeReps = new Set(recentLogs.map((log) => log.created_by).filter(Boolean)).size;
     const activeRoutes = routes.filter((route) => ['ACTIVE', 'IN_PROGRESS'].includes(route.status)).length;
+    const totalRevenue = logs.reduce((sum, log) => sum + (log.sale_amount || 0), 0);
     return {
       reps: members.length,
       activeReps,
@@ -22,15 +23,18 @@ export default function TeamAnalyticsSummary({ members, logs, routes }) {
       conversion: recentLogs.length ? Math.round((sales / recentLogs.length) * 100) : 0,
       callbacks,
       activeRoutes,
+      totalRevenue,
     };
   }, [members, logs, routes]);
+
+  const revenueDisplay = stats.totalRevenue >= 1000 ? `$${(stats.totalRevenue / 1000).toFixed(1)}k` : `$${stats.totalRevenue}`;
 
   const cards = [
     { label: 'Team Size', value: stats.reps, sub: 'active roster', icon: Users, color: 'text-white' },
     { label: 'Active Reps', value: stats.activeReps, sub: 'worked in last 7d', icon: Activity, color: 'text-cyan-400' },
     { label: '7D Knocks', value: stats.knocks, sub: 'team activity', icon: TrendingUp, color: 'text-yellow-400' },
-    { label: 'Contact Rate', value: `${stats.contactRate}%`, sub: 'based on team logs', icon: Phone, color: 'text-green-400' },
-    { label: 'Open Callbacks', value: stats.callbacks, sub: 'follow-ups waiting', icon: Clock3, color: 'text-orange-400' },
+    { label: 'Revenue', value: revenueDisplay, sub: 'total generated', icon: DollarSign, color: 'text-green-400' },
+    { label: 'Contact Rate', value: `${stats.contactRate}%`, sub: 'team average', icon: Phone, color: 'text-orange-400' },
     { label: 'Active Routes', value: stats.activeRoutes, sub: `${stats.conversion}% conversion`, icon: Route, color: 'text-purple-400' },
   ];
 
