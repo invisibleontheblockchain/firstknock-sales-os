@@ -44,16 +44,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
 import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../components/logic/heatmapLogic';
-import RouteChecklist from '../components/routes/RouteChecklist';
-import RouteCommandPanel from '../components/routes/RouteCommandPanel';
+const RouteChecklist = React.lazy(() => import('../components/routes/RouteChecklist'));
+const RouteCommandPanel = React.lazy(() => import('../components/routes/RouteCommandPanel'));
 import KnockTimeBanner from '../components/timing/KnockTimeBanner';
 // MarketSetupPrompt removed — onboarding handled by MarketOnboarding + TerritoryPrompt
 import TerritoryPrompt from '../components/map/TerritoryPrompt';
 import { darkRoom, DarkRoomClient } from '@/components/logic/neonClient';
-import CommandCenterDashboard from '../components/dashboard/CommandCenterDashboard';
-import MapSettingsPanel from '../components/map/MapSettingsPanel';
-import RouteBuilderSettings from '../components/map/RouteBuilderSettings';
-import TerritorySetupWizard from '../components/manager/TerritorySetupWizard';
+const CommandCenterDashboard = React.lazy(() => import('../components/dashboard/CommandCenterDashboard'));
+const MapSettingsPanel = React.lazy(() => import('../components/map/MapSettingsPanel'));
+const RouteBuilderSettings = React.lazy(() => import('../components/map/RouteBuilderSettings'));
+const TerritorySetupWizard = React.lazy(() => import('../components/manager/TerritorySetupWizard'));
 import { LayoutDashboard, Settings, Crosshair } from 'lucide-react';
 import { openInMaps } from '../components/logic/navigation';
 import GpsTracker, { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../components/map/GpsTracker';
@@ -251,7 +251,7 @@ export default function Home() {
         maxYearBuilt: null,
     });
     const mapRef = useRef(null);
-    const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
+    const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
 
     // Load navigation preference from user settings on load
     useEffect(() => {
@@ -310,6 +310,7 @@ export default function Home() {
     // Fetch Team Members for Analysis & Coloring (Filtered by Manager)
     const { data: teamMembers = [] } = useQuery({
         queryKey: ['teamMembers', user?.id],
+        staleTime: 1000 * 60 * 5,
         queryFn: () => {
             if (!user?.id) return [];
             return base44.entities.TeamMember.filter({ manager_id: user.id }, '-created_date', 100)
@@ -373,6 +374,8 @@ export default function Home() {
     // Fetch Properties - support both user-specific and fallback for mobile auth
     const { data: userProperties = [], isLoading: propsLoading } = useQuery({
         queryKey: ['masterProperties', user?.email, user?.territory_zip_codes],
+        staleTime: 1000 * 60 * 3, // 3 min — avoid refetch on every tab switch
+        gcTime: 1000 * 60 * 10,
         queryFn: async () => {
             if (!user) return [];
 
@@ -452,6 +455,7 @@ export default function Home() {
 
     const { data: savedRoutesRaw = [] } = useQuery({
         queryKey: ['savedRoutes', user?.id],
+        staleTime: 1000 * 60 * 2,
         queryFn: () => {
             if (!user?.id) return [];
             return base44.entities.SavedRoute.filter({ manager_id: user.id }, '-created_date', 500);
@@ -514,6 +518,7 @@ export default function Home() {
 
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs', user?.email],
+        staleTime: 1000 * 60 * 2,
         // Manager sees ALL logs to track team progress
         queryFn: () => user ? base44.entities.InteractionLog.list('-created_date', 5000) : [],
         enabled: !!user
@@ -522,6 +527,7 @@ export default function Home() {
 
     const { data: leadScoringWeightsRaw = [] } = useQuery({
         queryKey: ['leadScoringWeights'],
+        staleTime: 1000 * 60 * 30,
         queryFn: () => base44.entities.LeadScoringWeights.list(),
     });
     const learnedWeights = leadScoringWeightsRaw[0]?.weights || null;
