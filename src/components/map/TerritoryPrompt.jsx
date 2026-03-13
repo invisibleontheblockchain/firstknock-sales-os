@@ -203,7 +203,7 @@ export default function TerritoryPrompt({
                     targetPctRef.current = 100;
 
                     const totalLoaded = (d.total_inserted || 0) + (d.total_existed || 0);
-                    toast.success(`Done! ${d.total_inserted?.toLocaleString()} new + ${d.total_existed?.toLocaleString()} existing properties.`);
+                    toast.success(`${totalLoaded.toLocaleString()} properties loaded! Tap "Generate Routes" to build your first route.`, { duration: 6000 });
 
                     // Update user status
                     try {
