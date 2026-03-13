@@ -715,8 +715,9 @@ export default function Home() {
     }, [mode, effectiveProperties.length === 0, drawnPolygon]);
 
     // When user returns and has data, auto-set to analyze mode so they see the map directly
+    // But skip this if the Route Builder is open (e.g. right after a data pull)
     useEffect(() => {
-        if (user?.has_pulled_data && effectiveProperties.length > 0 && !activeRoute && routes.length === 0) {
+        if (user?.has_pulled_data && effectiveProperties.length > 0 && !activeRoute && routes.length === 0 && !showCompare) {
             setModeRaw('analyze');
         }
     }, [user?.has_pulled_data, effectiveProperties.length > 0]);
