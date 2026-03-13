@@ -244,6 +244,13 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
                                         {idx + 1}
                                     </span>
                                 </Tooltip>
+                                {isNearby && (
+                                    <Tooltip direction="bottom" offset={[0, 5]} className="zip-label-tooltip">
+                                        <span style={{ color: '#fff', fontSize: '10px', fontWeight: '600' }}>
+                                            {p.house_number} {p.street_name}
+                                        </span>
+                                    </Tooltip>
+                                )}
                             </CircleMarker>
                         );
                     })}
