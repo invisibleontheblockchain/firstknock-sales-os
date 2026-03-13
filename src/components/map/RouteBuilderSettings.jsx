@@ -52,7 +52,7 @@ export default function RouteBuilderSettings({
 }) {
     const [expandedSection, setExpandedSection] = useState('presets');
     const [activePreset, setActivePreset] = useState(null);
-    const [viewMode, setViewMode] = useState('simple'); // 'simple' or 'advanced'
+    const [viewMode, setViewMode] = useState('advanced'); // 'simple' or 'advanced'
 
     // Clear any stale auto-build flag — we no longer auto-generate on open
     React.useEffect(() => {
