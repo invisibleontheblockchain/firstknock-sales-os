@@ -218,8 +218,8 @@ export default function AdminTeam() {
     const filteredTeamMembers = useMemo(() => {
         let members = [...teamMembers];
         
-        // Add Manager Self
-        if (user) {
+        // Add Manager Self — only if not already in TeamMember list
+        if (user && !members.some(m => m.email?.toLowerCase() === user.email?.toLowerCase())) {
             const manager = {
                 id: user.id,
                 name: `${user.full_name || 'Me'} (Manager)`,
@@ -304,10 +304,21 @@ export default function AdminTeam() {
             toast.error("Name and Email are required");
             return;
         }
+
+        const normalizedEmail = newRep.email.trim().toLowerCase();
+
+        // Duplicate check — don't add if email matches manager or existing member
+        if (normalizedEmail === user?.email?.toLowerCase()) {
+            toast.error("That's your own email — you're already on the team as Manager.");
+            return;
+        }
+        if (teamMembers.some(m => m.email?.toLowerCase() === normalizedEmail)) {
+            toast.error("A team member with this email already exists.");
+            return;
+        }
         
-        // Free Plan Check (If no active subscription, limit to 1 seat - just the manager)
+        // Free Plan Check
         const isActiveSub = user?.subscription_status === 'active';
-        // If paid, use total_seats (defaults to 1 if not set but active? shouldn't happen). If free, max 1.
         const effectiveLimit = isActiveSub ? (user.total_seats || 1) : 1;
         
         if (teamMembers.length >= effectiveLimit) {
@@ -325,8 +336,8 @@ export default function AdminTeam() {
 
         createRepMutation.mutate({
             ...newRep,
-            email: newRep.email.trim().toLowerCase(),
-            manager_id: user.id // Assign to current manager
+            email: normalizedEmail,
+            manager_id: user.id
         });
     };
 
@@ -648,20 +659,20 @@ export default function AdminTeam() {
                         {/* Unassigned Routes Summary */}
                         {routesByRep.unassigned.length > 0 && (
                             <Card className="bg-[#111] border-red-900/30">
-                                <CardHeader className="pb-3 border-b border-gray-800">
+                                <CardHeader className="pb-2 md:pb-3 px-3 md:px-6 border-b border-gray-800">
                                     <div className="flex justify-between items-center">
-                                        <CardTitle className="text-sm font-bold text-red-400 uppercase tracking-wide flex items-center gap-2">
-                                            <AlertCircle className="w-4 h-4" />
-                                            {routesByRep.unassigned.length} Unassigned Routes
+                                        <CardTitle className="text-xs md:text-sm font-bold text-red-400 uppercase tracking-wide flex items-center gap-2">
+                                            <AlertCircle className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                                            {routesByRep.unassigned.length} Unassigned
                                         </CardTitle>
                                     </div>
                                 </CardHeader>
-                                <CardContent className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                                <CardContent className="p-2.5 md:p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 md:gap-3">
                                     {routesByRep.unassigned.slice(0, 8).map(route => (
-                                        <div key={route.id} className="flex items-center justify-between p-3 bg-black/40 rounded border border-gray-800/50">
-                                            <div>
-                                                <p className="font-bold text-sm text-white">{route.name}</p>
-                                                <p className="text-[10px] text-gray-500">{route.metrics?.house_count || 0} homes</p>
+                                        <div key={route.id} className="flex items-center justify-between p-2 md:p-3 bg-black/40 rounded border border-gray-800/50">
+                                            <div className="min-w-0 mr-2">
+                                                <p className="font-bold text-xs md:text-sm text-white truncate">{route.name}</p>
+                                                <p className="text-[9px] md:text-[10px] text-gray-500">{route.metrics?.house_count || 0} homes</p>
                                             </div>
                                             <Select onValueChange={(memberId) => handleAssign(route.id, memberId)}>
                                                 <SelectTrigger className="w-[100px] h-7 text-[10px] bg-[#000] border-yellow-500/50 text-yellow-500">
@@ -685,35 +696,35 @@ export default function AdminTeam() {
                         )}
 
                         <Card className="bg-[#111] border-gray-800">
-                            <CardHeader className="border-b border-gray-800 flex flex-row items-center justify-between">
+                            <CardHeader className="border-b border-gray-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-2 px-3 md:px-6 py-3 md:py-4">
                                 <div>
-                                    <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
-                                        <Map className="w-5 h-5 text-blue-500" />
+                                    <CardTitle className="text-sm md:text-lg font-bold text-white flex items-center gap-2">
+                                        <Map className="w-4 h-4 md:w-5 md:h-5 text-blue-500" />
                                         Route Registry
                                     </CardTitle>
-                                    <CardDescription className="text-gray-400">Manage and assign all territory routes.</CardDescription>
+                                    <CardDescription className="text-gray-400 text-[10px] md:text-sm">Manage and assign routes.</CardDescription>
                                 </div>
-                                <div className="relative w-64">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                                <div className="relative w-full md:w-64">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 md:w-4 md:h-4 text-gray-500" />
                                     <Input 
                                         placeholder="Search routes..." 
                                         value={routeSearch}
                                         onChange={(e) => setRouteSearch(e.target.value)}
-                                        className="bg-black border-gray-700 pl-9"
+                                        className="bg-black border-gray-700 pl-8 md:pl-9 h-8 md:h-9 text-xs md:text-sm"
                                     />
                                 </div>
                             </CardHeader>
                             <CardContent className="p-0">
-                                <div className="divide-y divide-gray-800 max-h-[600px] overflow-y-auto">
+                                <div className="divide-y divide-gray-800 max-h-[500px] md:max-h-[600px] overflow-y-auto">
                                     {routes
                                         .filter(r => r.name.toLowerCase().includes(routeSearch.toLowerCase()))
                                         .map(route => (
-                                            <div key={route.id} className="p-4 flex items-center justify-between hover:bg-white/5 transition-colors">
-                                                <div className="flex items-center gap-4">
-                                                    <div className={`w-2 h-12 rounded-full ${route.assigned_to ? 'bg-green-500' : 'bg-red-500'}`} />
-                                                    <div>
-                                                        <h4 className="font-bold text-white text-base">{route.name}</h4>
-                                                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                                            <div key={route.id} className="p-2.5 md:p-4 flex items-center justify-between hover:bg-white/5 transition-colors">
+                                                <div className="flex items-center gap-2 md:gap-4 min-w-0">
+                                                    <div className={`w-1.5 md:w-2 h-8 md:h-12 rounded-full shrink-0 ${route.assigned_to ? 'bg-green-500' : 'bg-red-500'}`} />
+                                                    <div className="min-w-0">
+                                                        <h4 className="font-bold text-white text-xs md:text-base truncate">{route.name}</h4>
+                                                        <div className="flex items-center gap-2 md:gap-3 mt-0.5 md:mt-1 text-[9px] md:text-xs text-gray-400 flex-wrap">
                                                             <span className="flex items-center gap-1"><Home className="w-3 h-3" /> {route.metrics?.house_count || 0}</span>
                                                             <span className="flex items-center gap-1"><Map className="w-3 h-3" /> {route.metrics?.distance || 0} mi</span>
                                                             
@@ -730,20 +741,19 @@ export default function AdminTeam() {
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <div className="flex items-center gap-4">
+                                                <div className="flex items-center gap-2 md:gap-4 shrink-0">
                                                      {route.assigned_to_name ? (
                                                         <div className="text-right hidden sm:block">
-                                                            <p className="text-[10px] text-gray-500 uppercase font-bold">Assigned To</p>
-                                                            <p className="text-sm font-bold text-white">{route.assigned_to_name}</p>
+                                                            <p className="text-[9px] md:text-[10px] text-gray-500 uppercase font-bold">Assigned</p>
+                                                            <p className="text-xs md:text-sm font-bold text-white">{route.assigned_to_name}</p>
                                                         </div>
                                                     ) : (
-                                                        <Badge className="bg-red-900/20 text-red-400 hover:bg-red-900/30 border-0">UNASSIGNED</Badge>
+                                                        <Badge className="bg-red-900/20 text-red-400 hover:bg-red-900/30 border-0 text-[8px] md:text-xs hidden sm:inline-flex">UNASSIGNED</Badge>
                                                     )}
                                                     
                                                     <Select onValueChange={(memberId) => handleAssign(route.id, memberId)}>
-                                                        <SelectTrigger className="w-[160px] h-9 text-xs bg-[#000] border-gray-700">
-                                                            <SelectValue placeholder="Assign / Reassign" />
-                                                        </SelectTrigger>
+                                                        <SelectTrigger className="w-[90px] md:w-[160px] h-7 md:h-9 text-[9px] md:text-xs bg-[#000] border-gray-700">
+                                                            <SelectValue placeholder="Assign" />
                                                         <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
                                                             {filteredTeamMembers.map(m => (
                                                                 <SelectItem key={m.id} value={m.id}>{m.name} ({m.email})</SelectItem>
@@ -761,34 +771,33 @@ export default function AdminTeam() {
                     {/* ACCESS TAB */}
                     <TabsContent value="access" className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl mx-auto">
                         <Card className="bg-[#111] border-gray-800">
-                            <CardHeader className="border-b border-gray-800 flex flex-row items-center justify-between">
+                            <CardHeader className="border-b border-gray-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-2 px-3 md:px-6 py-3 md:py-4">
                                 <div>
-                                    <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
-                                        <Key className="w-5 h-5 text-yellow-500" />
+                                    <CardTitle className="text-sm md:text-lg font-bold text-white flex items-center gap-2">
+                                        <Key className="w-4 h-4 md:w-5 md:h-5 text-yellow-500" />
                                         Team Access
                                     </CardTitle>
-                                    <CardDescription className="text-gray-400">Manage invite codes for your team.</CardDescription>
+                                    <CardDescription className="text-gray-400 text-[10px] md:text-sm">Manage invite codes.</CardDescription>
                                 </div>
-                                <Button onClick={() => navigate(createPageUrl('Billing'))} variant="outline" size="sm" className="border-yellow-500 text-yellow-500 hover:bg-yellow-500/10">
-                                    Manage Seats ({teamMembers.length}/{user?.total_seats || 1})
+                                <Button onClick={() => navigate(createPageUrl('Billing'))} variant="outline" size="sm" className="border-yellow-500 text-yellow-500 hover:bg-yellow-500/10 text-[10px] md:text-xs h-7 md:h-8">
+                                    Seats ({teamMembers.length}/{user?.total_seats || 1})
                                 </Button>
                             </CardHeader>
-                            <CardContent className="p-6 space-y-8">
+                            <CardContent className="p-3 md:p-6 space-y-4 md:space-y-8">
                                 
                                 {/* PRIMARY TEAM CODE */}
                                 {inviteCodes.filter(c => c.linked_user_id === user?.id).map(code => (
-                                    <div key={code.id} className="bg-gradient-to-r from-yellow-900/20 to-black p-6 rounded-xl border border-yellow-500/30 flex items-center justify-between relative overflow-hidden">
+                                    <div key={code.id} className="bg-gradient-to-r from-yellow-900/20 to-black p-3 md:p-6 rounded-xl border border-yellow-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 relative overflow-hidden">
                                         <div className="absolute top-0 right-0 p-2 opacity-10">
-                                            <Sparkles className="w-24 h-24 text-yellow-500" />
+                                            <Sparkles className="w-16 md:w-24 h-16 md:h-24 text-yellow-500" />
                                         </div>
                                         <div>
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <Badge className="bg-yellow-500 text-black font-bold hover:bg-yellow-400">PRIMARY TEAM CODE</Badge>
-                                                <span className="text-xs text-gray-400">Auto-managed by subscription</span>
+                                            <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                                <Badge className="bg-yellow-500 text-black font-bold hover:bg-yellow-400 text-[9px] md:text-xs">PRIMARY CODE</Badge>
                                             </div>
-                                            <div className="text-4xl font-mono font-bold text-white tracking-wider my-2">{code.code}</div>
-                                            <p className="text-sm text-gray-400">
-                                                Used by {teamMembers.length} reps (Max {code.max_uses})
+                                            <div className="text-2xl md:text-4xl font-mono font-bold text-white tracking-wider my-1 md:my-2">{code.code}</div>
+                                            <p className="text-[10px] md:text-sm text-gray-400">
+                                                {teamMembers.length} reps (Max {code.max_uses})
                                             </p>
                                         </div>
                                         <Button 
@@ -796,16 +805,16 @@ export default function AdminTeam() {
                                                 navigator.clipboard.writeText(code.code);
                                                 toast.success("Code copied!");
                                             }}
-                                            className="bg-yellow-500 text-black font-bold hover:bg-yellow-400 z-10"
+                                            className="bg-yellow-500 text-black font-bold hover:bg-yellow-400 z-10 text-xs h-8 md:h-9 w-full md:w-auto"
                                         >
                                             Copy Code
                                         </Button>
                                     </div>
                                 ))}
 
-                                <div className="bg-black/40 p-5 rounded-xl border border-gray-800 space-y-4">
-                                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Generate Custom Code</h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="bg-black/40 p-3 md:p-5 rounded-xl border border-gray-800 space-y-3 md:space-y-4">
+                                    <h3 className="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wide">Generate Custom Code</h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-4">
                                         <div className="relative">
                                             <Input 
                                                 placeholder="Code (Auto or Custom)" 
@@ -873,14 +882,14 @@ export default function AdminTeam() {
                                     ) : (
                                         <div className="grid gap-2">
                                             {inviteCodes.map(code => (
-                                                <div key={code.id} className="flex items-center justify-between p-4 bg-[#0A0A0A] rounded-lg border border-gray-800 hover:border-gray-700 transition-colors">
-                                                    <div className="flex items-center gap-4">
-                                                        <div className="w-12 h-12 rounded-lg bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20">
-                                                            <span className="font-mono font-bold text-yellow-500 text-lg">{code.code}</span>
+                                                <div key={code.id} className="flex items-center justify-between p-2.5 md:p-4 bg-[#0A0A0A] rounded-lg border border-gray-800 hover:border-gray-700 transition-colors">
+                                                    <div className="flex items-center gap-2.5 md:gap-4 min-w-0">
+                                                        <div className="w-9 h-9 md:w-12 md:h-12 rounded-lg bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20 shrink-0">
+                                                            <span className="font-mono font-bold text-yellow-500 text-sm md:text-lg">{code.code}</span>
                                                         </div>
-                                                        <div>
-                                                            <p className="font-bold text-white text-sm">{code.label || 'Unlabeled Code'}</p>
-                                                            <Badge variant="outline" className="text-[10px] border-gray-700 text-gray-400 mt-1">{code.role.toUpperCase()}</Badge>
+                                                        <div className="min-w-0">
+                                                            <p className="font-bold text-white text-xs md:text-sm truncate">{code.label || 'Unlabeled'}</p>
+                                                            <Badge variant="outline" className="text-[8px] md:text-[10px] border-gray-700 text-gray-400 mt-0.5 md:mt-1">{code.role.toUpperCase()}</Badge>
                                                         </div>
                                                     </div>
                                                     <Button 

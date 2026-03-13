@@ -79,55 +79,55 @@ export default function RepPerformanceDetail({ member, logs, teamAverage, onClos
     });
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-3 md:space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+                    <h2 className="text-lg md:text-2xl font-bold text-white flex items-center gap-2">
                         {member.name}
-                        <Badge variant="outline" className="text-yellow-500 border-yellow-500">
+                        <Badge variant="outline" className="text-yellow-500 border-yellow-500 text-[9px] md:text-xs">
                             {member.role.toUpperCase()}
                         </Badge>
                     </h2>
-                    <p className="text-gray-400 text-sm">Performance Analysis</p>
+                    <p className="text-gray-400 text-xs md:text-sm">Performance Analysis</p>
                 </div>
-                <Button variant="ghost" onClick={onClose} className="text-gray-400">Close</Button>
+                <Button variant="ghost" onClick={onClose} className="text-gray-400 text-xs h-8">Close</Button>
             </div>
 
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-3 gap-2 md:gap-4">
                 <Card className="bg-[#111] border-gray-800">
-                    <CardContent className="p-4 flex items-center gap-4">
-                        <div className="p-3 bg-blue-500/10 rounded-full text-blue-500">
-                            <Target className="w-6 h-6" />
+                    <CardContent className="p-2.5 md:p-4 flex items-center gap-2 md:gap-4">
+                        <div className="p-2 md:p-3 bg-blue-500/10 rounded-full text-blue-500 shrink-0">
+                            <Target className="w-4 h-4 md:w-6 md:h-6" />
                         </div>
-                        <div>
-                            <p className="text-sm text-gray-400">Total Knocks</p>
-                            <p className="text-2xl font-bold text-white">{myStats.total}</p>
+                        <div className="min-w-0">
+                            <p className="text-[9px] md:text-sm text-gray-400 truncate">Knocks</p>
+                            <p className="text-lg md:text-2xl font-bold text-white">{myStats.total}</p>
                         </div>
                     </CardContent>
                 </Card>
                 <Card className="bg-[#111] border-gray-800">
-                    <CardContent className="p-4 flex items-center gap-4">
-                        <div className="p-3 bg-green-500/10 rounded-full text-green-500">
-                            <Award className="w-6 h-6" />
+                    <CardContent className="p-2.5 md:p-4 flex items-center gap-2 md:gap-4">
+                        <div className="p-2 md:p-3 bg-green-500/10 rounded-full text-green-500 shrink-0">
+                            <Award className="w-4 h-4 md:w-6 md:h-6" />
                         </div>
-                        <div>
-                            <p className="text-sm text-gray-400">Total Sales</p>
-                            <p className="text-2xl font-bold text-white">{myStats.sales}</p>
+                        <div className="min-w-0">
+                            <p className="text-[9px] md:text-sm text-gray-400 truncate">Sales</p>
+                            <p className="text-lg md:text-2xl font-bold text-white">{myStats.sales}</p>
                         </div>
                     </CardContent>
                 </Card>
                 <Card className="bg-[#111] border-gray-800">
-                    <CardContent className="p-4 flex items-center gap-4">
-                        <div className="p-3 bg-yellow-500/10 rounded-full text-yellow-500">
-                            <TrendingUp className="w-6 h-6" />
+                    <CardContent className="p-2.5 md:p-4 flex items-center gap-2 md:gap-4">
+                        <div className="p-2 md:p-3 bg-yellow-500/10 rounded-full text-yellow-500 shrink-0">
+                            <TrendingUp className="w-4 h-4 md:w-6 md:h-6" />
                         </div>
-                        <div>
-                            <p className="text-sm text-gray-400">Conversion Rate</p>
-                            <div className="flex items-baseline gap-2">
-                                <p className="text-2xl font-bold text-white">{myStats.conversion.toFixed(1)}%</p>
-                                <span className={`text-xs ${myStats.conversion >= teamAverage.conversion ? 'text-green-500' : 'text-red-500'}`}>
-                                    {myStats.conversion >= teamAverage.conversion ? 'Above' : 'Below'} Avg ({teamAverage.conversion.toFixed(1)}%)
+                        <div className="min-w-0">
+                            <p className="text-[9px] md:text-sm text-gray-400 truncate">Conv %</p>
+                            <div className="flex items-baseline gap-1 md:gap-2 flex-wrap">
+                                <p className="text-lg md:text-2xl font-bold text-white">{myStats.conversion.toFixed(1)}%</p>
+                                <span className={`text-[8px] md:text-xs hidden md:inline ${myStats.conversion >= teamAverage.conversion ? 'text-green-500' : 'text-red-500'}`}>
+                                    {myStats.conversion >= teamAverage.conversion ? '↑' : '↓'} Avg ({teamAverage.conversion.toFixed(1)}%)
                                 </span>
                             </div>
                         </div>
@@ -137,21 +137,21 @@ export default function RepPerformanceDetail({ member, logs, teamAverage, onClos
 
             {/* Progress Chart */}
             <Card className="bg-[#111] border-gray-800">
-                <CardHeader>
-                    <CardTitle className="text-sm font-bold text-gray-400 uppercase">Performance Trend (Last 30 Days)</CardTitle>
+                <CardHeader className="px-3 md:px-6 py-3 md:py-4">
+                    <CardTitle className="text-xs md:text-sm font-bold text-gray-400 uppercase">Performance Trend</CardTitle>
                 </CardHeader>
-                <CardContent className="h-[300px]">
+                <CardContent className="h-[200px] md:h-[300px] px-2 md:px-6">
                     <ResponsiveContainer width="100%" height="100%">
                         <LineChart data={chartData}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                            <XAxis dataKey="date" stroke="#666" fontSize={12} />
-                            <YAxis yAxisId="left" stroke="#666" fontSize={12} />
-                            <YAxis yAxisId="right" orientation="right" stroke="#666" fontSize={12} />
+                            <XAxis dataKey="date" stroke="#666" fontSize={10} interval="preserveStartEnd" />
+                            <YAxis yAxisId="left" stroke="#666" fontSize={10} />
+                            <YAxis yAxisId="right" orientation="right" stroke="#666" fontSize={10} />
                             <ReTooltip 
                                 contentStyle={{ backgroundColor: '#000', border: '1px solid #333' }}
                                 labelStyle={{ color: '#fff' }}
                             />
-                            <Legend />
+                            <Legend wrapperStyle={{ fontSize: '10px' }} />
                             <Line yAxisId="left" type="monotone" dataKey="knocks" stroke="#3b82f6" name="Knocks" strokeWidth={2} />
                             <Line yAxisId="right" type="monotone" dataKey="conversion" stroke="#22c55e" name="Conv %" strokeWidth={2} />
                         </LineChart>
@@ -161,21 +161,21 @@ export default function RepPerformanceDetail({ member, logs, teamAverage, onClos
 
             {/* AI Coaching */}
             <Card className="bg-gradient-to-br from-[#111] to-[#1a1a1a] border-yellow-500/30">
-                <CardHeader>
-                    <CardTitle className="text-sm font-bold text-yellow-500 uppercase flex items-center gap-2">
-                        <Lightbulb className="w-4 h-4" /> AI Coaching Insights
+                <CardHeader className="px-3 md:px-6 py-3 md:py-4">
+                    <CardTitle className="text-xs md:text-sm font-bold text-yellow-500 uppercase flex items-center gap-2">
+                        <Lightbulb className="w-3.5 h-3.5 md:w-4 md:h-4" /> AI Coaching
                     </CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="px-3 md:px-6 pb-3 md:pb-6">
                     {tipsLoading ? (
-                        <div className="flex items-center gap-2 text-gray-400">
-                            <Loader2 className="w-4 h-4 animate-spin" /> Analyzing performance patterns...
+                        <div className="flex items-center gap-2 text-gray-400 text-xs">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Analyzing...
                         </div>
                     ) : (
-                        <ul className="space-y-3">
+                        <ul className="space-y-2 md:space-y-3">
                             {coaching?.tips?.map((tip, idx) => (
-                                <li key={idx} className="flex gap-3 text-sm text-gray-300">
-                                    <span className="w-5 h-5 rounded-full bg-yellow-500/20 text-yellow-500 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                                <li key={idx} className="flex gap-2 md:gap-3 text-xs md:text-sm text-gray-300">
+                                    <span className="w-4 h-4 md:w-5 md:h-5 rounded-full bg-yellow-500/20 text-yellow-500 flex items-center justify-center text-[9px] md:text-xs font-bold flex-shrink-0">
                                         {idx + 1}
                                     </span>
                                     {tip}
@@ -188,22 +188,22 @@ export default function RepPerformanceDetail({ member, logs, teamAverage, onClos
 
             {/* Completed Routes History */}
             <Card className="bg-[#111] border-gray-800">
-                <CardHeader>
-                    <CardTitle className="text-sm font-bold text-gray-400 uppercase">Route History ({completedRoutes.length} Completed)</CardTitle>
+                <CardHeader className="px-3 md:px-6 py-3 md:py-4">
+                    <CardTitle className="text-xs md:text-sm font-bold text-gray-400 uppercase">Routes ({completedRoutes.length} Done)</CardTitle>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="px-3 md:px-6 pb-3 md:pb-6">
                     {completedRoutes.length === 0 ? (
-                        <p className="text-sm text-gray-500 italic">No completed routes yet.</p>
+                        <p className="text-xs text-gray-500 italic">No completed routes yet.</p>
                     ) : (
-                        <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                        <div className="space-y-1.5 md:space-y-2 max-h-[250px] md:max-h-[300px] overflow-y-auto">
                             {completedRoutes.map(route => (
-                                <div key={route.id} className="flex items-center justify-between p-3 bg-[#151515] rounded border border-gray-800">
-                                    <div>
-                                        <p className="text-sm font-bold text-white">{route.name}</p>
-                                        <p className="text-xs text-gray-500">{new Date(route.updated_date).toLocaleDateString()} • {route.metrics?.house_count} doors</p>
+                                <div key={route.id} className="flex items-center justify-between p-2 md:p-3 bg-[#151515] rounded border border-gray-800">
+                                    <div className="min-w-0">
+                                        <p className="text-xs md:text-sm font-bold text-white truncate">{route.name}</p>
+                                        <p className="text-[9px] md:text-xs text-gray-500">{new Date(route.updated_date).toLocaleDateString()} • {route.metrics?.house_count} doors</p>
                                     </div>
-                                    <Badge variant="outline" className="border-green-900 text-green-500 bg-green-900/10">
-                                        COMPLETED
+                                    <Badge variant="outline" className="border-green-900 text-green-500 bg-green-900/10 text-[8px] md:text-xs shrink-0">
+                                        DONE
                                     </Badge>
                                 </div>
                             ))}
