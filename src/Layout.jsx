@@ -184,7 +184,7 @@ function LayoutInner({ children }) {
             {/* Header */}
             {!isRoleSelectPage && (
             <header className="bg-black border-b border-slate-800 px-4 pt-[env(safe-area-inset-top)] pb-3 z-20 shadow-md">
-                <div className="flex items-center max-w-7xl mx-auto w-full pt-3">
+                <div className="flex items-center w-full pt-3">
                     <div className="flex items-center gap-3 mr-auto">
                         <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/4207f4197_ChatGPTImageFeb2202612_56_42AM.png" alt="FK" className="w-8 h-8 rounded-lg object-cover" />
                         <h1 className="text-lg font-bold tracking-tight text-white">FirstKnock</h1>
