@@ -35,16 +35,18 @@ export default function Appointments() {
     const [timeFilter, setTimeFilter] = useState('upcoming');
     const [showFilters, setShowFilters] = useState(false);
 
-    const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
+    const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
 
     const { data: appointments = [], isLoading } = useQuery({
         queryKey: ['appointments'],
+        staleTime: 1000 * 60 * 2,
         queryFn: () => base44.entities.Appointment.list('-scheduled_date', 500),
         initialData: [],
     });
 
     const { data: properties = [] } = useQuery({
         queryKey: ['masterProperties-appts', user?.email, user?.territory_zip_codes],
+        staleTime: 1000 * 60 * 5,
         queryFn: async () => {
             if (!user) return [];
             if (user.territory_zip_codes?.length > 0) {
