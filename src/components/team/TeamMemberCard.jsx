@@ -159,7 +159,7 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                         {activeRoutes.slice(0, 3).map(route => (
                             <Link 
                                 key={route.id} 
-                                to={createPageUrl('ZipCodeExplorer') + `?routeId=${route.id}`}
+                                to={createPageUrl('Home') + `?routeId=${route.id}`}
                                 className="flex items-center justify-between bg-[#151515] p-2 rounded-lg border border-gray-800 hover:border-yellow-500/50 transition-colors"
                             >
                                 <div className="flex items-center gap-2 min-w-0">
