@@ -402,7 +402,7 @@ export default function TerritoryPrompt({
 
             {/* Drawn Polygon Controls */}
             {!drawingMode && !pulling && drawnPolygon && drawnPolygon.length > 2 && (
-                <div className="absolute top-11 sm:top-16 right-1 sm:right-4 z-[1001] bg-black/90 backdrop-blur-md border border-gray-800 rounded-full px-3 py-1.5 sm:px-4 sm:py-2 shadow-2xl flex items-center gap-2 sm:gap-3 animate-in fade-in slide-in-from-top-2">
+                <div className="absolute top-11 sm:top-16 left-1 sm:left-4 z-[1001] bg-black/90 backdrop-blur-md border border-gray-800 rounded-full px-3 py-1.5 sm:px-4 sm:py-2 shadow-2xl flex items-center gap-2 sm:gap-3 animate-in fade-in slide-in-from-top-2">
                     <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
                     <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
                     {canPullAgain ? (
