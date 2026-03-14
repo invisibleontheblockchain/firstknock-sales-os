@@ -563,4 +563,4 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
             )}
         </>
     );
-}
+})
