@@ -171,7 +171,13 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'No API key' });
         }
 
-        const currentPhase = job.phase || 'deed_records';
+        // Migration: old jobs created before v8 may still have 'mls_listings' phase — redirect to deed_records
+        let currentPhase = job.phase || 'deed_records';
+        if (currentPhase === 'mls_listings') {
+            console.log(`[chunk-v8] Migrating old job from mls_listings -> deed_records`);
+            currentPhase = 'deed_records';
+            await base44.asServiceRole.entities.FetchJob.update(jobId, { phase: 'deed_records', current_offset: 0 });
+        }
         console.log(`[chunk-v8] Job ${jobId} | phase=${currentPhase} | offset=${job.current_offset} | delta=${isDeltaPull} | chunk#=${job.chunk_number || 0}`);
 
         const { latitude, longitude, radius, polygon } = job;
