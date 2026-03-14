@@ -855,6 +855,9 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
     return routes;
 }
 
+// Re-export lead scoring for external consumers
+export { batchScoreProperties, ownershipDurationScore, SCORING_CONSTANTS } from './leadScoring';
+
 /**
  * Export route to JSON format
  */
