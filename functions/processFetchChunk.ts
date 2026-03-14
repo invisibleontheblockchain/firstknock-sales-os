@@ -150,7 +150,7 @@ Deno.serve(async (req) => {
         }
 
         const currentPhase = job.phase || 'mls_listings';
-        console.log(`[chunk-v6] Job ${jobId} | phase=${currentPhase} | offset=${job.current_offset} | delta=${isDeltaPull} | chunk#=${job.chunk_number || 0}`);
+        console.log(`[chunk-v7] Job ${jobId} | phase=${currentPhase} | offset=${job.current_offset} | delta=${isDeltaPull} | chunk#=${job.chunk_number || 0}`);
 
         const { latitude, longitude, radius, polygon } = job;
         let currentOffset = job.current_offset || 0;
@@ -288,7 +288,7 @@ Deno.serve(async (req) => {
         // No active listings — those are people leaving, not knock targets
         // ======================================================================
         if (currentPhase === 'mls_listings') {
-            console.log(`[chunk-v6] ★ PRIMARY PHASE: MLS Listings — radius=${radius}mi delta=${isDeltaPull}`);
+            console.log(`[chunk-v7] ★ PRIMARY PHASE: MLS Listings — radius=${radius}mi delta=${isDeltaPull}`);
 
             const allMls = [];
             let mlsRequestCount = 0;
@@ -313,7 +313,7 @@ Deno.serve(async (req) => {
                     if (offset === 0 && currentOffset === 0) params.set('includeTotalCount', 'true');
 
                     const url = `${RENTCAST_BASE}/listings/sale?${params}`;
-                    if (offset === mlsOffsets[0] && i === 0) console.log(`[chunk-v6] MLS Sold URL: ${url}`);
+                    if (offset === mlsOffsets[0] && i === 0) console.log(`[chunk-v7] MLS Sold URL: ${url}`);
 
                     return fetchWithBackoff(url,
                         { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY },
@@ -364,7 +364,7 @@ Deno.serve(async (req) => {
             totalApiCalls += mlsRequestCount;
             mlsApiCalls += mlsRequestCount;
             mlsFetched += allMls.length;
-            console.log(`[chunk-v6] MLS Sold fetched ${allMls.length} listings (${mlsRequestCount} calls)`);
+            console.log(`[chunk-v7] MLS Sold fetched ${allMls.length} listings (${mlsRequestCount} calls)`);
 
             // Map MLS listings
             const mlsMapped = [];
@@ -410,7 +410,7 @@ Deno.serve(async (req) => {
                 });
             }
 
-            console.log(`[chunk-v6] MLS Sold mapped ${mlsMapped.length} from ${allMls.length} raw`);
+            console.log(`[chunk-v7] MLS Sold mapped ${mlsMapped.length} from ${allMls.length} raw`);
 
             // Write to DB
             const dbResult = await writeToDb(mlsMapped);
@@ -423,7 +423,7 @@ Deno.serve(async (req) => {
             const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
             chunkTimings.push(chunkDuration);
 
-            console.log(`[chunk-v6] MLS Sold chunk done in ${chunkDuration}s: ins=${dbResult.chunkInserted}, exist=${dbResult.chunkExisted}, upd=${dbResult.chunkUpdated}`);
+            console.log(`[chunk-v7] MLS Sold chunk done in ${chunkDuration}s: ins=${dbResult.chunkInserted}, exist=${dbResult.chunkExisted}, upd=${dbResult.chunkUpdated}`);
 
             if (mlsSoldDone) {
                 // Skip active listings — go straight to deed records for supplemental enrichment
@@ -471,7 +471,7 @@ Deno.serve(async (req) => {
         // Enriches MLS data with ownership, tax, and historical deed info
         // ======================================================================
         if (currentPhase === 'deed_records') {
-            console.log(`[chunk-v6] Phase 3 (supplemental): Deed Records`);
+            console.log(`[chunk-v7] Phase 3 (supplemental): Deed Records`);
 
             const allRaw = [];
             let requestCount = 0;
@@ -484,7 +484,7 @@ Deno.serve(async (req) => {
 
             for (let i = 0; i < offsets.length; i += MAX_PARALLEL) {
                 if (Date.now() - chunkStart > 45000) {
-                    console.warn(`[chunk-v6] Time budget hit at offset ${offsets[i]}`);
+                    console.warn(`[chunk-v7] Time budget hit at offset ${offsets[i]}`);
                     break;
                 }
 
@@ -503,12 +503,12 @@ Deno.serve(async (req) => {
                         watermarkDate.setDate(watermarkDate.getDate() - 1);
                         params.set('lastUpdated_gte', watermarkDate.toISOString().split('T')[0]);
                         if (offset === offsets[0] && i === 0) {
-                            console.log(`[chunk-v6] 🔄 DELTA FILTER: lastUpdated_gte=${watermarkDate.toISOString().split('T')[0]}`);
+                            console.log(`[chunk-v7] 🔄 DELTA FILTER: lastUpdated_gte=${watermarkDate.toISOString().split('T')[0]}`);
                         }
                     }
 
                     const url = `${RENTCAST_BASE}/properties?${params}`;
-                    if (offset === offsets[0] && i === 0) console.log(`[chunk-v6] Deed URL: ${url}`);
+                    if (offset === offsets[0] && i === 0) console.log(`[chunk-v7] Deed URL: ${url}`);
 
                     return fetchWithBackoff(url, { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY }, logError);
                 });
@@ -551,7 +551,7 @@ Deno.serve(async (req) => {
             }
 
             totalFetched += allRaw.length;
-            console.log(`[chunk-v6] Deed fetched ${allRaw.length} records (${requestCount} calls)`);
+            console.log(`[chunk-v7] Deed fetched ${allRaw.length} records (${requestCount} calls)`);
 
             // Map deed records
             const soldCutoff = new Date();
@@ -605,7 +605,7 @@ Deno.serve(async (req) => {
             }
 
             const dedupSaved = allRaw.length - mapped.length;
-            if (dedupSaved > 0) console.log(`[chunk-v6] Deed normalization caught ${dedupSaved} duplicates`);
+            if (dedupSaved > 0) console.log(`[chunk-v7] Deed normalization caught ${dedupSaved} duplicates`);
 
             const dbResult = await writeToDb(mapped);
             totalInserted += dbResult.chunkInserted;
@@ -617,7 +617,7 @@ Deno.serve(async (req) => {
             const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
             chunkTimings.push(chunkDuration);
 
-            console.log(`[chunk-v6] Deed chunk done in ${chunkDuration}s: ins=${dbResult.chunkInserted}, exist=${dbResult.chunkExisted}, upd=${dbResult.chunkUpdated}`);
+            console.log(`[chunk-v7] Deed chunk done in ${chunkDuration}s: ins=${dbResult.chunkInserted}, exist=${dbResult.chunkExisted}, upd=${dbResult.chunkUpdated}`);
 
             // Calculate delta savings
             let deltaSavings = job.delta_savings || null;
@@ -626,7 +626,7 @@ Deno.serve(async (req) => {
                 deltaSavings.savings_pct = deltaSavings.estimated_full_calls > 0 
                     ? Math.round((1 - totalApiCalls / deltaSavings.estimated_full_calls) * 100)
                     : 0;
-                console.log(`[chunk-v6] 📊 DELTA SAVINGS: ${deltaSavings.savings_pct}% (${deltaSavings.estimated_full_calls} → ${totalApiCalls} calls)`);
+                console.log(`[chunk-v7] 📊 DELTA SAVINGS: ${deltaSavings.savings_pct}% (${deltaSavings.estimated_full_calls} → ${totalApiCalls} calls)`);
             }
 
             if (phase3Done) {
@@ -659,7 +659,7 @@ Deno.serve(async (req) => {
                 } catch (e) { logError(`User update failed: ${e.message}`); }
 
                 const deltaMsg = isDeltaPull ? ` | DELTA savings: ${deltaSavings?.savings_pct || 0}%` : '';
-                console.log(`[chunk-v6] === JOB COMPLETE === mls_sold=${mlsFetched} deed=${totalFetched} inserted=${totalInserted} existed=${totalExisted} apiCalls=${totalApiCalls}${deltaMsg}`);
+                console.log(`[chunk-v7] === JOB COMPLETE === mls_sold=${mlsFetched} deed=${totalFetched} inserted=${totalInserted} existed=${totalExisted} apiCalls=${totalApiCalls}${deltaMsg}`);
             } else {
                 const progressPct = 60 + (totalExpected > 0
                     ? Math.min(39, Math.round((totalFetched / totalExpected) * 40))
@@ -689,7 +689,7 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Unknown phase', phase: currentPhase });
 
     } catch (error) {
-        console.error('[chunk-v6] FATAL CRASH:', error.message, error.stack);
+        console.error('[chunk-v7] FATAL CRASH:', error.message, error.stack);
         try {
             const base44 = createClientFromRequest(req);
             const runningJobs = await base44.asServiceRole.entities.FetchJob.filter({ status: 'running' }, '-updated_date', 1);
@@ -701,7 +701,7 @@ Deno.serve(async (req) => {
                     error_log: [...(arr[0].error_log || []), `[${new Date().toISOString()}] FATAL: ${error.message}\n${error.stack}`]
                 });
             }
-        } catch (e2) { console.error('[chunk-v6] Could not mark job failed:', e2.message); }
+        } catch (e2) { console.error('[chunk-v7] Could not mark job failed:', e2.message); }
         return Response.json({ error: error.message }, { status: 500 });
     }
 });
