@@ -716,7 +716,6 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         // For recent_sale_first: open-loop 2-opt starting at index 1 to lock the anchor
         if (use2Opt && walkingPattern !== 'street_sweep') {
             if (walkingPattern === 'recent_sale_first' && orderedProps.length > 2) {
-                // Lock index 0 (anchor), only optimize indices 1..N
                 const anchor = orderedProps[0];
                 const rest = apply2Opt(orderedProps.slice(1));
                 orderedProps = [anchor, ...rest];
@@ -724,6 +723,14 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
                 orderedProps = apply2Opt(orderedProps);
             }
         }
+
+        // Stage 3: Link Swap (§2.2) — ~50% of improvements in open-path TSP
+        if (walkingPattern !== 'street_sweep') {
+            orderedProps = applyLinkSwap(orderedProps);
+        }
+
+        // Stage 5: Fatigue-Aware Front-Loading (§2.3)
+        orderedProps = fatigueAwareFrontLoad(orderedProps);
 
         // Return to start: add first property at the end conceptually (affects distance calc)
         if (returnToStart && orderedProps.length > 1) {
