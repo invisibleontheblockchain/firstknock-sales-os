@@ -204,6 +204,7 @@ export function distressCompositeScore(property, h3MedianPrices) {
 
 // ─── §1.5 Master Propensity Score ───────────────────────────────────────
 // Default cold-start weights (Table 6)
+// Phase 3: These are overridden by Bayesian-learned feature_weights when available
 const DEFAULT_WEIGHTS = {
     ownership: 0.35,
     pqi: 0.20,
