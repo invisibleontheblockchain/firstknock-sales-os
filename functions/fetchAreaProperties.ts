@@ -1,6 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 
-// v4 — CDC Delta-Pull: detects previous pulls in the same area and only fetches changes
+// v8 — Deed-Only Architecture: uses ONLY /v1/properties?saleDateRange (county deed records)
+// MLS /listings/sale is permanently retired — Inactive status includes expired/withdrawn/cancelled
 
 function computeBoundingCircle(polygon) {
     if (!polygon || polygon.length < 3) return null;
