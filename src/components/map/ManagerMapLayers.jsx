@@ -1,7 +1,90 @@
-import React, { useMemo, useCallback } from 'react';
-import { CircleMarker, Polyline, Circle, LayerGroup, Tooltip, useMap } from 'react-leaflet';
+import React, { useMemo, useCallback, useEffect, useRef } from 'react';
+import { CircleMarker, Polyline, Circle, LayerGroup, Tooltip, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { DarkRoomClient } from '@/components/logic/neonClient';
+
+/**
+ * ActiveRouteLayer — High-performance active route renderer.
+ * Uses a single native Leaflet layer group added imperatively instead of
+ * hundreds of React-managed <CircleMarker> + <Tooltip permanent> combos.
+ * This eliminates the ~15s delay when activating a route with many stops.
+ */
+function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setSelectedProperty }) {
+    const map = useMap();
+    const layerRef = useRef(null);
+
+    useEffect(() => {
+        if (!map || !activeRoute?.properties?.length) return;
+
+        // Clean up previous layer
+        if (layerRef.current) {
+            map.removeLayer(layerRef.current);
+            layerRef.current = null;
+        }
+
+        const group = L.layerGroup();
+        const props = activeRoute.properties.filter(p => p && p.lat && p.lng);
+
+        // 1. Route line
+        if (props.length > 1) {
+            const line = L.polyline(
+                props.map(p => [p.lat, p.lng]),
+                {
+                    color: BRAND.gold,
+                    weight: mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4,
+                    opacity: mapSettings.lineOpacity ? Math.max(0.6, mapSettings.lineOpacity) : 0.8,
+                    dashArray: lineDashArray || null,
+                }
+            );
+            group.addLayer(line);
+        }
+
+        // 2. Property pins with number labels (DivIcon — much lighter than Tooltip permanent)
+        props.forEach((p, idx) => {
+            const isFirst = idx === 0;
+            const num = idx + 1;
+
+            // Circle pin (canvas-rendered, fast)
+            const circle = L.circleMarker([p.lat, p.lng], {
+                radius: 5,
+                fillColor: isFirst ? '#22c55e' : '#f97316',
+                fillOpacity: 1,
+                color: '#fff',
+                weight: 1.5,
+            });
+            circle.on('click', (e) => {
+                L.DomEvent.stopPropagation(e);
+                setSelectedProperty(p);
+            });
+            group.addLayer(circle);
+
+            // Number label (lightweight DivIcon marker)
+            const label = L.marker([p.lat, p.lng], {
+                icon: L.divIcon({
+                    className: '',
+                    html: `<div style="color:#fff;font-weight:bold;font-size:11px;text-shadow:0 1px 3px #000,0 0 5px #000;pointer-events:none;transform:translate(-50%,-100%);white-space:nowrap">${num}</div>`,
+                    iconSize: [0, 0],
+                    iconAnchor: [0, 6],
+                }),
+                interactive: false,
+                keyboard: false,
+            });
+            group.addLayer(label);
+        });
+
+        group.addTo(map);
+        layerRef.current = group;
+
+        return () => {
+            if (layerRef.current) {
+                map.removeLayer(layerRef.current);
+                layerRef.current = null;
+            }
+        };
+    }, [map, activeRoute, BRAND.gold, mapSettings.lineWidth, mapSettings.lineOpacity, lineDashArray, setSelectedProperty]);
+
+    return null; // Imperative layer — no React DOM output
+}
 
 /**
  * ViewportCulledPins — Performance-optimized property pin layer.
