@@ -152,6 +152,16 @@ export function scoreProperty(property, logs = [], neighborhoodStats = {}, learn
                 score *= learnedWeights.recent_sale_weight;
             }
         }
+
+        // Phase 3: High value weight (>$750k)
+        if (property.price > 750000 && learnedWeights.high_value_weight) {
+            score *= learnedWeights.high_value_weight;
+        }
+
+        // Phase 3: Large lot weight (>0.25 acre)
+        if (property.lot_size > 10890 && learnedWeights.large_lot_weight) {
+            score *= learnedWeights.large_lot_weight;
+        }
     }
 
     return Math.max(0, Math.round(score));
