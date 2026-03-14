@@ -1,11 +1,11 @@
 import React from 'react';
-import { Check, X as XIcon, Clock, Home } from 'lucide-react';
+import { Check, Home, Phone, Ban } from 'lucide-react';
 
 const ACTIONS = [
-    { id: 'SOLD', label: 'INTERESTED', icon: Check, bg: 'rgba(0, 245, 160, 0.1)', text: '#00F5A0', border: 'rgba(0, 245, 160, 0.2)' },
-    { id: 'NO_ANSWER', label: 'NOT HOME', icon: Home, bg: 'rgba(136, 136, 160, 0.1)', text: '#8888A0', border: 'rgba(136, 136, 160, 0.2)' },
-    { id: 'CALLBACK', label: 'FOLLOW UP', icon: Clock, bg: 'rgba(255, 217, 61, 0.1)', text: '#FFD93D', border: 'rgba(255, 217, 61, 0.2)' },
-    { id: 'HARD_NO', label: 'NOT INT.', icon: XIcon, bg: 'rgba(255, 107, 107, 0.1)', text: '#FF6B6B', border: 'rgba(255, 107, 107, 0.2)' },
+    { id: 'SOLD', label: 'SOLD', icon: Check, bg: 'rgba(34, 197, 94, 0.1)', text: '#22c55e', border: 'rgba(34, 197, 94, 0.2)' },
+    { id: 'NO_ANSWER', label: 'NO ANSWER', icon: Home, bg: 'rgba(59, 130, 246, 0.1)', text: '#3b82f6', border: 'rgba(59, 130, 246, 0.2)' },
+    { id: 'CALLBACK', label: 'CALLBACK', icon: Phone, bg: 'rgba(234, 179, 8, 0.1)', text: '#eab308', border: 'rgba(234, 179, 8, 0.2)' },
+    { id: 'HARD_NO', label: 'NOT INT.', icon: Ban, bg: 'rgba(139, 92, 246, 0.1)', text: '#8B5CF6', border: 'rgba(139, 92, 246, 0.2)' },
 ];
 
 export default function QuickMarkButtons({ onMark, disabled, size = 'normal' }) {
