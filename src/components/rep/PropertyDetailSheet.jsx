@@ -56,7 +56,7 @@ export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUplo
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/70 backdrop-blur-sm" onClick={onClose}>
+        <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/70 backdrop-blur-sm" onClick={onClose}>
             <div 
                 className="bg-[#0A0A0A] rounded-t-2xl border-t border-gray-800/50 max-h-[85vh] flex flex-col animate-in slide-in-from-bottom duration-300"
                 onClick={e => e.stopPropagation()}
