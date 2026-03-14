@@ -292,17 +292,49 @@ export function batchScoreProperties(properties, logs = [], learnedWeights = nul
         const heat = heatMap.get(hash) || 0;
         const distress = distressCompositeScore(p, h3MedianPrices);
 
-        // Weighted combination
+        // Weighted combination (channel weights from Bayesian training)
         const raw = weights.ownership * ownerScore +
                     weights.pqi * pqi +
                     weights.heat * heat +
                     weights.distress * distress;
 
+        // Phase 3: Bayesian posterior feature boost
+        // If we have learned posteriors, apply a small multiplicative boost
+        // based on which features this property matches
+        let bayesianBoost = 0;
+        if (posteriors) {
+            const currentYear = new Date().getFullYear();
+            const yearsOwned = p.sold_date
+                ? (Date.now() - new Date(p.sold_date).getTime()) / (1000 * 60 * 60 * 24 * 365)
+                : null;
+
+            // Each feature's posterior mean relative to global prior mean
+            // contributes a small additive boost (capped to prevent runaway)
+            if (p.year_built && (currentYear - p.year_built) > 10 && posteriors.age_gt_10) {
+                bayesianBoost += Math.max(-0.05, Math.min(0.05, (posteriors.age_gt_10.mean - priorMean) * 0.5));
+            }
+            if (p.price > 300000 && posteriors.price_gt_300k) {
+                bayesianBoost += Math.max(-0.05, Math.min(0.05, (posteriors.price_gt_300k.mean - priorMean) * 0.5));
+            }
+            if (p.property_type?.toLowerCase().includes('single') && posteriors.single_family) {
+                bayesianBoost += Math.max(-0.05, Math.min(0.05, (posteriors.single_family.mean - priorMean) * 0.5));
+            }
+            if (yearsOwned !== null && yearsOwned <= 3 && posteriors.recent_sale) {
+                bayesianBoost += Math.max(-0.05, Math.min(0.05, (posteriors.recent_sale.mean - priorMean) * 0.5));
+            }
+            if (p.price > 750000 && posteriors.high_value) {
+                bayesianBoost += Math.max(-0.05, Math.min(0.05, (posteriors.high_value.mean - priorMean) * 0.5));
+            }
+            if (p.lot_size > 10890 && posteriors.large_lot) {
+                bayesianBoost += Math.max(-0.05, Math.min(0.05, (posteriors.large_lot.mean - priorMean) * 0.5));
+            }
+        }
+
         // Contact penalty
         const penalty = contactPenalty(logs, hash, p.legacy_hash);
 
-        // Sigmoid normalization
-        const propensity = sigmoid(raw - penalty);
+        // Sigmoid normalization (with Bayesian boost)
+        const propensity = sigmoid(raw + bayesianBoost - penalty);
 
         result.set(hash, {
             propensity,
@@ -311,8 +343,9 @@ export function batchScoreProperties(properties, logs = [], learnedWeights = nul
                 pqi,
                 heat,
                 distress,
+                bayesianBoost,
                 contactPenalty: penalty,
-                raw,
+                raw: raw + bayesianBoost,
             },
         });
     });
