@@ -215,9 +215,15 @@ Deno.serve(async (req) => {
 
         console.log(`[trainLeadPredictor v3] Loaded ${logs.length} logs, ${properties.length} properties`);
 
-        // Build property lookup
+        // Build property lookup (support both current hash and legacy hash)
         const propMap = new Map();
-        properties.forEach(p => propMap.set(p.address_hash || p.id, p));
+        properties.forEach(p => {
+            const hash = p.address_hash || p.id;
+            propMap.set(hash, p);
+            if (p.legacy_hash && p.legacy_hash !== hash) {
+                propMap.set(p.legacy_hash, p);
+            }
+        });
 
         // ─── Step 1: Build time-ordered observations per feature ────────
         const featureObservations = {};
