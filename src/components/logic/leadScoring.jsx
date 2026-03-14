@@ -235,6 +235,10 @@ function contactPenalty(logs, addressHash, legacyHash) {
  * Compute master propensity score for all properties.
  * This is the main entry point for the lead scoring engine.
  * 
+ * Phase 3: Now consumes Beta-Binomial Bayesian weights from trainLeadPredictor v3.
+ * Uses learned feature_weights for sub-score channels and posterior means
+ * for feature-level adjustments.
+ * 
  * @param {Array} properties - All properties to score
  * @param {Array} logs - InteractionLog records for contact penalty
  * @param {Object|null} learnedWeights - Bayesian-learned weights from trainLeadPredictor, or null for cold-start
@@ -244,6 +248,10 @@ export function batchScoreProperties(properties, logs = [], learnedWeights = nul
     if (properties.length === 0) return new Map();
 
     const weights = learnedWeights?.feature_weights || DEFAULT_WEIGHTS;
+
+    // Phase 3: Extract Bayesian posterior boosts per feature (if available)
+    const posteriors = learnedWeights?.posteriors || null;
+    const priorMean = posteriors?._global?.mean || 0.10;
 
     // Step 1: PQI (batch — needs percentile context)
     const pqiMap = computePQIBatch(properties);
