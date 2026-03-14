@@ -335,6 +335,127 @@ function apply2Opt(route) {
 }
 
 /**
+ * Link Swap Operator / Or-Opt (§2.2, §2.3)
+ * Relocates single nodes and 2-node chains to better positions.
+ * Contributes ~50% of all improvements in open-path TSP for 40-60 nodes.
+ * Runs AFTER 2-Opt for additional refinement.
+ */
+function applyLinkSwap(route) {
+    if (route.length < 4) return route;
+    let improved = true;
+    let iterations = 0;
+    const maxIterations = 30;
+
+    const dist = (a, b) => {
+        if (!a || !b || a.isDummy || b.isDummy) return 0;
+        return calculateDistanceFast(a.lat, a.lng, b.lat, b.lng);
+    };
+
+    while (improved && iterations < maxIterations) {
+        improved = false;
+        iterations++;
+
+        // Try relocating each node to a better position
+        for (let segLen = 1; segLen <= 2; segLen++) {
+            for (let i = 1; i < route.length - segLen; i++) {
+                // Cost of removing segment [i..i+segLen-1]
+                const prev = route[i - 1];
+                const segEnd = route[i + segLen - 1];
+                const next = route[i + segLen] || null;
+
+                const removeCost = dist(prev, route[i]) +
+                    (next ? dist(segEnd, next) : 0);
+                const removeGain = next ? dist(prev, next) : 0;
+                const removalSaving = removeCost - removeGain;
+
+                // Try inserting this segment at every other position
+                for (let j = 0; j < route.length - 1; j++) {
+                    if (j >= i - 1 && j <= i + segLen - 1) continue;
+
+                    const insertCost = dist(route[j], route[i]) + dist(segEnd, route[j + 1]) - dist(route[j], route[j + 1]);
+
+                    if (removalSaving - insertCost > 0.001) {
+                        // Perform the move
+                        const segment = route.splice(i, segLen);
+                        const insertIdx = j < i ? j + 1 : j + 1 - segLen;
+                        route.splice(insertIdx, 0, ...segment);
+                        improved = true;
+                        break;
+                    }
+                }
+                if (improved) break;
+            }
+            if (improved) break;
+        }
+    }
+    return route;
+}
+
+/**
+ * Fatigue-Aware Front-Loading (§2.3)
+ * Moves top propensity stops into the first 22 positions.
+ * Constraint: max 12% distance increase.
+ */
+const FATIGUE_FRONT_LOAD_STOPS = 22;
+const FRONT_LOAD_PROPENSITY_PERCENTILE = 0.30;
+const DEFAULT_MAX_DISTANCE_INCREASE = 0.12;
+
+function fatigueAwareFrontLoad(route) {
+    if (route.length <= FATIGUE_FRONT_LOAD_STOPS) return route;
+
+    // Calculate baseline distance
+    const routeDist = (r) => {
+        let d = 0;
+        for (let i = 0; i < r.length - 1; i++) {
+            d += calculateDistanceFast(r[i].lat, r[i].lng, r[i + 1].lat, r[i + 1].lng);
+        }
+        return d;
+    };
+    const baselineDist = routeDist(route);
+
+    // Find top propensity stops
+    const scored = route.map((p, idx) => ({ idx, propensity: p.propensity || p.score || 0 }));
+    scored.sort((a, b) => b.propensity - a.propensity);
+    const topCount = Math.ceil(route.length * FRONT_LOAD_PROPENSITY_PERCENTILE);
+    const topIndices = new Set(scored.slice(0, topCount).map(s => s.idx));
+
+    // Identify high-propensity stops currently outside the front window
+    const toMove = [];
+    for (let i = FATIGUE_FRONT_LOAD_STOPS; i < route.length; i++) {
+        if (topIndices.has(i)) toMove.push(i);
+    }
+
+    if (toMove.length === 0) return route;
+
+    // Move them into the front section, respecting distance constraint
+    const result = [...route];
+    let insertPos = 1; // Keep index 0 (start) locked
+
+    for (const fromIdx of toMove) {
+        // Find current position of this element in result
+        const currentIdx = result.indexOf(route[fromIdx]);
+        if (currentIdx < 0 || currentIdx <= insertPos) continue;
+        if (insertPos >= FATIGUE_FRONT_LOAD_STOPS) break;
+
+        const item = result.splice(currentIdx, 1)[0];
+        result.splice(insertPos, 0, item);
+        insertPos++;
+
+        // Check distance constraint
+        const newDist = routeDist(result);
+        if ((newDist - baselineDist) / baselineDist > DEFAULT_MAX_DISTANCE_INCREASE) {
+            // Undo
+            result.splice(insertPos - 1, 1);
+            result.splice(currentIdx, 0, item);
+            insertPos--;
+            break;
+        }
+    }
+
+    return result;
+}
+
+/**
  * Nearest Neighbor TSP approximation for route ordering
  * Enhanced with weighted heuristics
  */
