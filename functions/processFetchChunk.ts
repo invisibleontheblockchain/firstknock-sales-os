@@ -1,10 +1,97 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 import { polygonToCells, latLngToCell } from 'npm:h3-js@4.1.0';
 
-// v4 — Adds MLS Phase 2, better error logging, timing metrics, crash protection, shared cache dedup
+// v5 — CDC Delta-Pull, Exponential Backoff + Jitter, Address Normalization, Rate Protection
 
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
+
+// ── Rate Limiting: Token Bucket with Exponential Backoff + Full Jitter ──
+const MAX_RETRIES = 3;
+const BASE_BACKOFF_MS = 1000;
+const MAX_BACKOFF_MS = 16000;
+
+async function fetchWithBackoff(url, headers, logError) {
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        const res = await fetch(url, { headers }).catch(e => {
+            logError(`Network error (attempt ${attempt + 1}): ${e.message}`);
+            return null;
+        });
+
+        if (!res) {
+            if (attempt < MAX_RETRIES) {
+                const backoff = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * Math.pow(2, attempt));
+                const jitter = Math.random() * backoff; // Full jitter
+                await sleep(jitter);
+                continue;
+            }
+            return { records: [], total: null, status: 0 };
+        }
+
+        if (res.status === 429) {
+            logError(`RATE LIMITED (429) — attempt ${attempt + 1}/${MAX_RETRIES + 1}`);
+            if (attempt < MAX_RETRIES) {
+                // Respect Retry-After header if present, otherwise exponential backoff
+                const retryAfter = res.headers.get('Retry-After');
+                const waitMs = retryAfter 
+                    ? parseInt(retryAfter) * 1000 
+                    : Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * Math.pow(2, attempt + 1));
+                const jitter = Math.random() * waitMs * 0.5;
+                console.log(`[backoff] Waiting ${Math.round(waitMs + jitter)}ms before retry`);
+                await sleep(waitMs + jitter);
+                continue;
+            }
+            return { records: [], total: null, status: 429 };
+        }
+
+        if (!res.ok) {
+            const errText = await res.text().catch(() => 'no body');
+            logError(`API ${res.status}: ${errText.slice(0, 200)}`);
+            if (res.status === 401) return { records: [], total: null, status: 401 };
+            // Retry on 5xx server errors
+            if (res.status >= 500 && attempt < MAX_RETRIES) {
+                const backoff = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * Math.pow(2, attempt));
+                await sleep(backoff + Math.random() * backoff);
+                continue;
+            }
+            return { records: [], total: null, status: res.status };
+        }
+
+        const total = res.headers.get('X-Total-Count');
+        const records = await res.json();
+        return { records: Array.isArray(records) ? records : [], total, status: 200 };
+    }
+    return { records: [], total: null, status: 0 };
+}
+
+// ── Address Normalization (lightweight USPS-style) ──
+const STREET_ABBREVIATIONS = {
+    'STREET': 'ST', 'AVENUE': 'AVE', 'BOULEVARD': 'BLVD', 'DRIVE': 'DR',
+    'LANE': 'LN', 'ROAD': 'RD', 'COURT': 'CT', 'CIRCLE': 'CIR',
+    'PLACE': 'PL', 'TERRACE': 'TER', 'WAY': 'WAY', 'TRAIL': 'TRL',
+    'PARKWAY': 'PKWY', 'HIGHWAY': 'HWY', 'NORTH': 'N', 'SOUTH': 'S',
+    'EAST': 'E', 'WEST': 'W', 'NORTHEAST': 'NE', 'NORTHWEST': 'NW',
+    'SOUTHEAST': 'SE', 'SOUTHWEST': 'SW', 'APARTMENT': 'APT', 'SUITE': 'STE',
+    'UNIT': 'UNIT', 'BUILDING': 'BLDG', 'FLOOR': 'FL'
+};
+
+function normalizeAddress(address) {
+    if (!address) return '';
+    let norm = address.toUpperCase().trim();
+    // Remove punctuation except hyphens in unit numbers
+    norm = norm.replace(/[.,#]/g, '').replace(/\s+/g, ' ');
+    // Apply abbreviations
+    for (const [full, abbr] of Object.entries(STREET_ABBREVIATIONS)) {
+        norm = norm.replace(new RegExp(`\\b${full}\\b`, 'g'), abbr);
+    }
+    return norm;
+}
+
+function generateNormalizedHash(addressLine, zipCode) {
+    const normAddr = normalizeAddress(addressLine);
+    const normZip = (zipCode || '00000').trim().slice(0, 5);
+    return `${normAddr}|${normZip}`;
+}
 
 function isPointInPolygon(point, vs) {
     if (!vs || vs.length < 3) return true;
@@ -13,8 +100,7 @@ function isPointInPolygon(point, vs) {
     for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
         let xi = vs[i].lng, yi = vs[i].lat;
         let xj = vs[j].lng, yj = vs[j].lat;
-        let intersect = ((yi > y) !== (yj > y))
-            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        let intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
         if (intersect) inside = !inside;
     }
     return inside;
@@ -22,10 +108,10 @@ function isPointInPolygon(point, vs) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// Chunk config
+// Chunk config — reduced parallel to be gentler on API
 const PAGES_PER_CHUNK = 20;
 const LIMIT = 500;
-const MAX_PARALLEL = 5;
+const MAX_PARALLEL = 3; // Reduced from 5 to 3 for rate safety
 
 Deno.serve(async (req) => {
     const chunkStart = Date.now();
@@ -45,19 +131,18 @@ Deno.serve(async (req) => {
             if (pendingArr.length > 0) job = pendingArr[0];
         }
 
-        if (!job) {
-            return Response.json({ idle: true, message: 'No active jobs' });
-        }
+        if (!job) return Response.json({ idle: true, message: 'No active jobs' });
 
         const jobId = job.id;
         const errorLog = job.error_log || [];
         const chunkTimings = job.chunk_timings || [];
+        const isDeltaPull = job.is_delta_pull || false;
+        const deltaWatermark = job.delta_watermark || null;
 
         const logError = (msg) => {
             const entry = `[${new Date().toISOString()}] ${msg}`;
             errorLog.push(entry);
             console.error(entry);
-            // Keep last 50 entries
             if (errorLog.length > 50) errorLog.splice(0, errorLog.length - 50);
         };
 
@@ -70,7 +155,7 @@ Deno.serve(async (req) => {
         }
 
         const currentPhase = job.phase || 'deed_records';
-        console.log(`[chunk-v3] Job ${jobId} | phase=${currentPhase} | offset=${job.current_offset} | chunk#=${job.chunk_number || 0}`);
+        console.log(`[chunk-v5] Job ${jobId} | phase=${currentPhase} | offset=${job.current_offset} | delta=${isDeltaPull} | chunk#=${job.chunk_number || 0}`);
 
         const { latitude, longitude, radius, polygon } = job;
         let currentOffset = job.current_offset || 0;
@@ -85,7 +170,6 @@ Deno.serve(async (req) => {
         let mlsNew = job.mls_new || 0;
         let mlsApiCalls = job.mls_api_calls || 0;
 
-        // Mark running + started_at
         if (job.status === 'pending') {
             await base44.asServiceRole.entities.FetchJob.update(jobId, {
                 status: 'running', started_at: new Date().toISOString()
@@ -109,15 +193,12 @@ Deno.serve(async (req) => {
             }
         }
 
-        // Sold cutoff — read from job, fallback to 12
-        // Add 2-month buffer to account for courthouse recording delays (2-6 weeks)
         const monthsBack = job.sold_months || 12;
         const BUFFER_MONTHS = 2;
         const daysBack = (monthsBack + BUFFER_MONTHS) * 30;
         const soldCutoff = new Date();
         soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
 
-        // Helper: filter point against polygon
         const filterPoint = (lat, lng) => {
             if (!polygon || polygon.length < 3) return true;
             if (useH3Filter) {
@@ -130,7 +211,7 @@ Deno.serve(async (req) => {
         };
 
         // ======================================================================
-        // PHASE 1: DEED RECORDS (paginated /properties endpoint)
+        // PHASE 1: DEED RECORDS
         // ======================================================================
         if (currentPhase === 'deed_records') {
             const allRaw = [];
@@ -144,7 +225,7 @@ Deno.serve(async (req) => {
 
             for (let i = 0; i < offsets.length; i += MAX_PARALLEL) {
                 if (Date.now() - chunkStart > 45000) {
-                    console.warn(`[chunk-v3] Time budget hit at offset ${offsets[i]}`);
+                    console.warn(`[chunk-v5] Time budget hit at offset ${offsets[i]}`);
                     break;
                 }
 
@@ -156,34 +237,29 @@ Deno.serve(async (req) => {
                         saleDateRange: `1:${daysBack}`,
                     });
                     if (offset === 0 && currentOffset === 0) params.set('includeTotalCount', 'true');
+                    
+                    // CDC Delta-Pull: add lastUpdated_gte filter to only fetch changed records
+                    if (isDeltaPull && deltaWatermark) {
+                        // Subtract 1 day buffer from watermark to catch edge cases
+                        const watermarkDate = new Date(deltaWatermark);
+                        watermarkDate.setDate(watermarkDate.getDate() - 1);
+                        const watermarkStr = watermarkDate.toISOString().split('T')[0];
+                        params.set('lastUpdated_gte', watermarkStr);
+                        if (offset === offsets[0] && i === 0) {
+                            console.log(`[chunk-v5] 🔄 DELTA FILTER: lastUpdated_gte=${watermarkStr}`);
+                        }
+                    }
 
                     const url = `${RENTCAST_BASE}/properties?${params}`;
-                    if (offset === offsets[0]) console.log(`[chunk-v3] Phase1 URL: ${url}`);
+                    if (offset === offsets[0] && i === 0) console.log(`[chunk-v5] Phase1 URL: ${url}`);
 
-                    return fetch(url, {
-                        headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY }
-                    }).then(async res => {
-                        if (!res.ok) {
-                            const errText = await res.text().catch(() => 'no body');
-                            logError(`API ${res.status} at offset ${offset}: ${errText}`);
-                            if (res.status === 429) logError('RATE LIMITED — too many requests');
-                            if (res.status === 401) logError('AUTH FAILED — check API key');
-                            return { records: [], total: null, status: res.status };
-                        }
-                        const total = res.headers.get('X-Total-Count');
-                        const records = await res.json();
-                        return { records: Array.isArray(records) ? records : [], total, status: 200 };
-                    }).catch(e => {
-                        logError(`Fetch crash at offset ${offset}: ${e.message}`);
-                        return { records: [], total: null, status: 0 };
-                    });
+                    return fetchWithBackoff(url, { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY }, logError);
                 });
 
                 const results = await Promise.all(promises);
                 requestCount += results.length;
                 totalApiCalls += results.length;
 
-                // Check for fatal errors (all requests failed)
                 const allFailed = results.every(r => r.status !== 200);
                 if (allFailed && results.some(r => r.status === 401)) {
                     logError('All requests returned 401 — aborting job');
@@ -192,27 +268,45 @@ Deno.serve(async (req) => {
                     });
                     return Response.json({ error: 'API auth failed' });
                 }
+                
+                // If we're getting rate-limited on all requests, pause and retry next chunk
+                if (allFailed && results.some(r => r.status === 429)) {
+                    logError('All requests rate-limited — pausing for next chunk cycle');
+                    const nextChunk = (job.chunk_number || 0) + 1;
+                    await base44.asServiceRole.entities.FetchJob.update(jobId, {
+                        status: 'running', phase: 'deed_records',
+                        current_offset: currentOffset, // Don't advance offset
+                        total_api_calls: totalApiCalls, chunk_number: nextChunk,
+                        error_log: errorLog
+                    });
+                    // Wait longer before next attempt
+                    await sleep(5000);
+                    try { base44.functions.invoke('processFetchChunk', {}).catch(() => {}); } catch (e) {}
+                    return Response.json({ paused: true, reason: 'rate_limited' });
+                }
 
                 for (const r of results) {
                     if (r.total && !totalExpected) {
                         totalExpected = parseInt(r.total, 10);
-                        console.log(`[chunk-v3] X-Total-Count: ${totalExpected}`);
+                        console.log(`[chunk-v5] X-Total-Count: ${totalExpected}`);
                     }
                     allRaw.push(...r.records);
                     if (r.records.length < LIMIT) reachedEnd = true;
                 }
 
                 if (reachedEnd) break;
-                if (i + MAX_PARALLEL < offsets.length) await sleep(50);
+                // Stagger requests to avoid rate spikes
+                if (i + MAX_PARALLEL < offsets.length) await sleep(150);
             }
 
             const newOffset = currentOffset + allRaw.length;
             totalFetched += allRaw.length;
-            console.log(`[chunk-v3] Phase1 fetched ${allRaw.length} records (${requestCount} calls), offset now ${newOffset}`);
+            console.log(`[chunk-v5] Phase1 fetched ${allRaw.length} records (${requestCount} calls), offset now ${newOffset}`);
 
-            // Map & filter
+            // Map & filter with normalized address dedup
             const mapped = [];
             const seenHashes = new Set();
+            const seenNormalized = new Set(); // Fuzzy dedup via normalized addresses
 
             for (const p of allRaw) {
                 if (!p.latitude || !p.longitude) continue;
@@ -227,31 +321,40 @@ Deno.serve(async (req) => {
                 let original_status = 'SOLD';
                 if (p.lastSaleDate) {
                     const saleDate = new Date(p.lastSaleDate);
-                    if (!isNaN(saleDate) && saleDate <= soldCutoff) {
-                        original_status = 'ELIGIBLE';
-                    }
+                    if (!isNaN(saleDate) && saleDate <= soldCutoff) original_status = 'ELIGIBLE';
                 }
 
                 const pZip = p.zipCode || '00000';
                 const hash = p.id || `${p.addressLine1}-${pZip}`;
+                
+                // Double dedup: exact hash + normalized address
                 if (seenHashes.has(hash)) continue;
+                const normKey = generateNormalizedHash(addressLine, pZip);
+                if (seenNormalized.has(normKey)) continue;
+                
                 seenHashes.add(hash);
+                seenNormalized.add(normKey);
 
                 if (pZip && !zipCodesFound.includes(pZip)) zipCodesFound.push(pZip);
 
                 mapped.push({
-                address_hash: hash, house_number, street_name,
-                full_address: p.formattedAddress || p.addressLine1,
-                city: p.city || '', state: p.state || '', zip_code: pZip,
-                lat: p.latitude, lng: p.longitude, original_status,
-                beds: p.bedrooms || 0, baths: p.bathrooms || 0,
-                sqft: p.squareFootage || 0, lot_size: p.lotSize || 0,
-                year_built: p.yearBuilt || 0, price: p.lastSalePrice || p.price || 0,
-                sold_date: p.lastSaleDate || null, sale_type: 'Deed',
-                property_type: p.propertyType || 'Single Family',
-                mls_id: p.assessorID || null, url: null,
-                data_source: 'rentcast'
+                    address_hash: hash, house_number, street_name,
+                    full_address: p.formattedAddress || p.addressLine1,
+                    city: p.city || '', state: p.state || '', zip_code: pZip,
+                    lat: p.latitude, lng: p.longitude, original_status,
+                    beds: p.bedrooms || 0, baths: p.bathrooms || 0,
+                    sqft: p.squareFootage || 0, lot_size: p.lotSize || 0,
+                    year_built: p.yearBuilt || 0, price: p.lastSalePrice || p.price || 0,
+                    sold_date: p.lastSaleDate || null, sale_type: 'Deed',
+                    property_type: p.propertyType || 'Single Family',
+                    mls_id: p.assessorID || null, url: null,
+                    data_source: 'rentcast'
                 });
+            }
+
+            const dedupSaved = allRaw.length - mapped.length;
+            if (dedupSaved > 0) {
+                console.log(`[chunk-v5] Address normalization caught ${dedupSaved} duplicates`);
             }
 
             // DB write
@@ -282,27 +385,16 @@ Deno.serve(async (req) => {
                     const existing = existingHashToId.get(p.address_hash);
                     if (existing) {
                         chunkExisted++;
-                        // Recency-wins: RentCast SOLD overrides any existing status
                         if (p.original_status === 'SOLD' && existing.status !== 'SOLD') {
                             soldUpdates.push({ id: existing.id, sold_date: p.sold_date, price: p.price });
                         }
-                        // Hydrate: if existing record is UNVERIFIED or missing data, upgrade it
                         if (existing.status === 'UNVERIFIED' || existing.dataSource === 'csv_import') {
                             soldUpdates.push({
-                                id: existing.id,
-                                sold_date: p.sold_date,
-                                price: p.price,
-                                original_status: p.original_status,
-                                data_source: 'rentcast',
-                                sale_type: 'Deed',
-                                city: p.city,
-                                state: p.state,
-                                zip_code: p.zip_code,
-                                beds: p.beds,
-                                baths: p.baths,
-                                sqft: p.sqft,
-                                lot_size: p.lot_size,
-                                year_built: p.year_built,
+                                id: existing.id, sold_date: p.sold_date, price: p.price,
+                                original_status: p.original_status, data_source: 'rentcast',
+                                sale_type: 'Deed', city: p.city, state: p.state,
+                                zip_code: p.zip_code, beds: p.beds, baths: p.baths,
+                                sqft: p.sqft, lot_size: p.lot_size, year_built: p.year_built,
                                 property_type: p.property_type
                             });
                         }
@@ -338,7 +430,6 @@ Deno.serve(async (req) => {
                     try {
                         const upd = soldUpdates[i];
                         const updatePayload = { original_status: upd.original_status || 'SOLD', sold_date: upd.sold_date, price: upd.price };
-                        // Include hydration fields if present
                         if (upd.data_source) updatePayload.data_source = upd.data_source;
                         if (upd.sale_type) updatePayload.sale_type = upd.sale_type;
                         if (upd.city) updatePayload.city = upd.city;
@@ -362,66 +453,63 @@ Deno.serve(async (req) => {
             const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
             chunkTimings.push(chunkDuration);
 
-            console.log(`[chunk-v3] Phase1 chunk done in ${chunkDuration}s: ins=${chunkInserted}, exist=${chunkExisted}, upd=${chunkUpdated}`);
+            console.log(`[chunk-v5] Phase1 chunk done in ${chunkDuration}s: ins=${chunkInserted}, exist=${chunkExisted}, upd=${chunkUpdated}`);
+
+            // Calculate delta savings if applicable
+            let deltaSavings = job.delta_savings || null;
+            if (isDeltaPull && phase1Done && deltaSavings) {
+                deltaSavings.actual_calls = totalApiCalls;
+                deltaSavings.savings_pct = deltaSavings.estimated_full_calls > 0 
+                    ? Math.round((1 - totalApiCalls / deltaSavings.estimated_full_calls) * 100)
+                    : 0;
+                console.log(`[chunk-v5] 📊 DELTA SAVINGS: ${deltaSavings.savings_pct}% (${deltaSavings.estimated_full_calls} → ${totalApiCalls} calls)`);
+            }
 
             if (phase1Done) {
-                // Transition to MLS phase
-                console.log(`[chunk-v3] Phase 1 COMPLETE — transitioning to MLS phase`);
+                console.log(`[chunk-v5] Phase 1 COMPLETE — transitioning to MLS phase`);
                 const nextChunk = (job.chunk_number || 0) + 1;
                 await base44.asServiceRole.entities.FetchJob.update(jobId, {
-                    phase: 'mls_listings',
-                    current_offset: 0,  // reset offset for MLS
-                    total_expected: totalExpected,
-                    total_fetched: totalFetched,
-                    total_inserted: totalInserted,
-                    total_existed: totalExisted,
-                    total_updated: totalUpdated,
-                    total_api_calls: totalApiCalls,
-                    progress_pct: 70,  // Phase 1 = 70% of work
-                    zip_codes_found: zipCodesFound,
-                    chunk_number: nextChunk,
-                    chunk_timings: chunkTimings,
-                    error_log: errorLog
+                    phase: 'mls_listings', current_offset: 0,
+                    total_expected: totalExpected, total_fetched: totalFetched,
+                    total_inserted: totalInserted, total_existed: totalExisted,
+                    total_updated: totalUpdated, total_api_calls: totalApiCalls,
+                    delta_savings: deltaSavings,
+                    progress_pct: 70, zip_codes_found: zipCodesFound,
+                    chunk_number: nextChunk, chunk_timings: chunkTimings, error_log: errorLog
                 });
-
-                // Chain next chunk for MLS phase
-                try {
-                    base44.functions.invoke('processFetchChunk', {}).catch(() => {});
-                } catch (e) { /* cron will pick up */ }
+                try { base44.functions.invoke('processFetchChunk', {}).catch(() => {}); } catch (e) {}
             } else {
                 const progressPct = totalExpected > 0
                     ? Math.min(69, Math.round((totalFetched / totalExpected) * 70))
                     : 35;
                 const nextChunk = (job.chunk_number || 0) + 1;
-
                 await base44.asServiceRole.entities.FetchJob.update(jobId, {
                     status: 'running', phase: 'deed_records',
                     current_offset: newOffset,
                     total_expected: totalExpected, total_fetched: totalFetched,
                     total_inserted: totalInserted, total_existed: totalExisted, total_updated: totalUpdated,
-                    total_api_calls: totalApiCalls, progress_pct: progressPct,
+                    total_api_calls: totalApiCalls, delta_savings: deltaSavings,
+                    progress_pct: progressPct,
                     zip_codes_found: zipCodesFound, chunk_number: nextChunk,
                     chunk_timings: chunkTimings, error_log: errorLog
                 });
-
-                try {
-                    base44.functions.invoke('processFetchChunk', {}).catch(() => {});
-                } catch (e) { /* cron will pick up */ }
+                try { base44.functions.invoke('processFetchChunk', {}).catch(() => {}); } catch (e) {}
             }
 
             return Response.json({
-                job_id: jobId, phase: 'deed_records',
+                job_id: jobId, phase: 'deed_records', is_delta: isDeltaPull,
                 chunk_fetched: allRaw.length, chunk_inserted: chunkInserted,
                 chunk_existed: chunkExisted, chunk_duration_s: chunkDuration,
+                dedup_saved: allRaw.length - mapped.length,
                 is_phase_done: phase1Done
             });
         }
 
         // ======================================================================
-        // PHASE 2: MLS SOLD LISTINGS (/listings/sale?status=Inactive)
+        // PHASE 2: MLS SOLD LISTINGS
         // ======================================================================
         if (currentPhase === 'mls_listings') {
-            console.log(`[chunk-v3] Starting MLS Phase 2 — searching radius=${radius}mi`);
+            console.log(`[chunk-v5] Starting MLS Phase 2 — radius=${radius}mi delta=${isDeltaPull}`);
 
             const allMls = [];
             let mlsRequestCount = 0;
@@ -443,26 +531,39 @@ Deno.serve(async (req) => {
                         status: 'Inactive', daysOld: `0:${daysBack}`
                     });
                     if (offset === 0 && currentOffset === 0) params.set('includeTotalCount', 'true');
+                    
+                    // Delta filter for MLS too
+                    if (isDeltaPull && deltaWatermark) {
+                        const watermarkDate = new Date(deltaWatermark);
+                        watermarkDate.setDate(watermarkDate.getDate() - 1);
+                        params.set('lastUpdated_gte', watermarkDate.toISOString().split('T')[0]);
+                    }
 
-                    return fetch(`${RENTCAST_BASE}/listings/sale?${params}`, {
-                        headers: { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY }
-                    }).then(async res => {
-                        if (!res.ok) {
-                            const errText = await res.text().catch(() => '');
-                            logError(`MLS API ${res.status} at offset ${offset}: ${errText}`);
-                            return { records: [], total: null };
-                        }
-                        const total = res.headers.get('X-Total-Count');
-                        const records = await res.json();
-                        return { records: Array.isArray(records) ? records : [], total };
-                    }).catch(e => {
-                        logError(`MLS fetch crash at offset ${offset}: ${e.message}`);
-                        return { records: [], total: null };
-                    });
+                    return fetchWithBackoff(
+                        `${RENTCAST_BASE}/listings/sale?${params}`,
+                        { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY },
+                        logError
+                    );
                 });
 
                 const results = await Promise.all(promises);
                 mlsRequestCount += results.length;
+
+                // Rate limit protection for MLS phase too
+                const allFailed = results.every(r => r.status !== 200);
+                if (allFailed && results.some(r => r.status === 429)) {
+                    logError('MLS phase rate-limited — pausing');
+                    const nextChunk = (job.chunk_number || 0) + 1;
+                    await base44.asServiceRole.entities.FetchJob.update(jobId, {
+                        status: 'running', phase: 'mls_listings',
+                        current_offset: currentOffset,
+                        total_api_calls: totalApiCalls + mlsRequestCount,
+                        chunk_number: nextChunk, error_log: errorLog
+                    });
+                    await sleep(5000);
+                    try { base44.functions.invoke('processFetchChunk', {}).catch(() => {}); } catch (e) {}
+                    return Response.json({ paused: true, reason: 'mls_rate_limited' });
+                }
 
                 let mlsTotalExpected = 0;
                 for (const r of results) {
@@ -472,17 +573,18 @@ Deno.serve(async (req) => {
                 }
 
                 if (mlsReachedEnd) break;
-                if (i + MAX_PARALLEL < mlsOffsets.length) await sleep(50);
+                if (i + MAX_PARALLEL < mlsOffsets.length) await sleep(150);
             }
 
             totalApiCalls += mlsRequestCount;
             mlsApiCalls += mlsRequestCount;
             mlsFetched += allMls.length;
-            console.log(`[chunk-v3] MLS fetched ${allMls.length} listings (${mlsRequestCount} calls)`);
+            console.log(`[chunk-v5] MLS fetched ${allMls.length} listings (${mlsRequestCount} calls)`);
 
-            // Map MLS listings — only those inside polygon
+            // Map MLS listings with normalized dedup
             const mlsMapped = [];
             const seenMlsHashes = new Set();
+            const seenMlsNormalized = new Set();
 
             for (const l of allMls) {
                 const lat = l.latitude;
@@ -499,7 +601,12 @@ Deno.serve(async (req) => {
                 const pZip = l.zipCode || '00000';
                 const hash = l.propertyId || l.id || `${addressLine}-${pZip}`;
                 if (seenMlsHashes.has(hash)) continue;
+                
+                const normKey = generateNormalizedHash(addressLine, pZip);
+                if (seenMlsNormalized.has(normKey)) continue;
+                
                 seenMlsHashes.add(hash);
+                seenMlsNormalized.add(normKey);
 
                 if (pZip && !zipCodesFound.includes(pZip)) zipCodesFound.push(pZip);
 
@@ -518,7 +625,7 @@ Deno.serve(async (req) => {
                 });
             }
 
-            console.log(`[chunk-v3] MLS mapped ${mlsMapped.length} from ${allMls.length} raw`);
+            console.log(`[chunk-v5] MLS mapped ${mlsMapped.length} from ${allMls.length} raw`);
 
             // Dedup against existing DB
             let mlsInserted = 0;
@@ -543,7 +650,7 @@ Deno.serve(async (req) => {
 
                 const toInsert = mlsMapped.filter(p => !existingHashes.has(p.address_hash));
                 mlsNew += toInsert.length;
-                console.log(`[chunk-v3] MLS: ${toInsert.length} new (${mlsMapped.length - toInsert.length} already existed)`);
+                console.log(`[chunk-v5] MLS: ${toInsert.length} new (${mlsMapped.length - toInsert.length} already existed)`);
 
                 for (let i = 0; i < toInsert.length; i += 1000) {
                     if (Date.now() - chunkStart > 55000) break;
@@ -567,19 +674,28 @@ Deno.serve(async (req) => {
             const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
             chunkTimings.push(chunkDuration);
 
+            // Final delta savings calc
+            let deltaSavings = job.delta_savings || null;
+            if (isDeltaPull && mlsPhaseDone && deltaSavings) {
+                deltaSavings.actual_calls = totalApiCalls;
+                deltaSavings.savings_pct = deltaSavings.estimated_full_calls > 0 
+                    ? Math.round((1 - totalApiCalls / deltaSavings.estimated_full_calls) * 100)
+                    : 0;
+                console.log(`[chunk-v5] 📊 FINAL DELTA SAVINGS: ${deltaSavings.savings_pct}% (${deltaSavings.estimated_full_calls} → ${totalApiCalls} calls)`);
+            }
+
             if (mlsPhaseDone) {
-                // JOB COMPLETE
                 const completedAt = new Date().toISOString();
                 await base44.asServiceRole.entities.FetchJob.update(jobId, {
                     status: 'completed', phase: 'complete',
                     current_offset: 0, total_inserted: totalInserted, total_existed: totalExisted,
                     total_updated: totalUpdated, total_api_calls: totalApiCalls,
                     mls_fetched: mlsFetched, mls_new: mlsNew, mls_api_calls: mlsApiCalls,
+                    delta_savings: deltaSavings,
                     progress_pct: 100, zip_codes_found: zipCodesFound,
                     completed_at: completedAt, chunk_timings: chunkTimings, error_log: errorLog
                 });
 
-                // Update user territory
                 try {
                     const users = await base44.asServiceRole.entities.User.filter({ email: job.user_email }, null, 1);
                     const userArr = Array.isArray(users) ? users : (users?.items || []);
@@ -594,7 +710,8 @@ Deno.serve(async (req) => {
                     }
                 } catch (e) { logError(`User update failed: ${e.message}`); }
 
-                console.log(`[chunk-v3] === JOB COMPLETE === deed=${totalFetched} mls=${mlsFetched} inserted=${totalInserted} existed=${totalExisted} apiCalls=${totalApiCalls}`);
+                const deltaMsg = isDeltaPull ? ` | DELTA savings: ${deltaSavings?.savings_pct || 0}%` : '';
+                console.log(`[chunk-v5] === JOB COMPLETE === deed=${totalFetched} mls=${mlsFetched} inserted=${totalInserted} existed=${totalExisted} apiCalls=${totalApiCalls}${deltaMsg}`);
             } else {
                 const newMlsOffset = currentOffset + allMls.length;
                 const nextChunk = (job.chunk_number || 0) + 1;
@@ -603,29 +720,26 @@ Deno.serve(async (req) => {
                     current_offset: newMlsOffset, total_inserted: totalInserted,
                     total_existed: totalExisted, total_updated: totalUpdated,
                     total_api_calls: totalApiCalls, mls_fetched: mlsFetched,
-                    mls_new: mlsNew, mls_api_calls: mlsApiCalls,
+                    mls_new: mlsNew, mls_api_calls: mlsApiCalls, delta_savings: deltaSavings,
                     progress_pct: Math.min(99, 70 + Math.round((allMls.length / Math.max(1, allMls.length)) * 30)),
                     zip_codes_found: zipCodesFound, chunk_number: nextChunk,
                     chunk_timings: chunkTimings, error_log: errorLog
                 });
-
-                try {
-                    base44.functions.invoke('processFetchChunk', {}).catch(() => {});
-                } catch (e) { /* cron picks up */ }
+                try { base44.functions.invoke('processFetchChunk', {}).catch(() => {}); } catch (e) {}
             }
 
             return Response.json({
-                job_id: jobId, phase: 'mls_listings',
+                job_id: jobId, phase: 'mls_listings', is_delta: isDeltaPull,
                 mls_fetched: allMls.length, mls_inserted: mlsInserted,
-                chunk_duration_s: chunkDuration, is_done: mlsPhaseDone
+                chunk_duration_s: chunkDuration, is_done: mlsPhaseDone,
+                delta_savings: deltaSavings
             });
         }
 
         return Response.json({ error: 'Unknown phase', phase: currentPhase });
 
     } catch (error) {
-        console.error('[chunk-v3] FATAL CRASH:', error.message, error.stack);
-        // Try to mark job as failed
+        console.error('[chunk-v5] FATAL CRASH:', error.message, error.stack);
         try {
             const base44 = createClientFromRequest(req);
             const runningJobs = await base44.asServiceRole.entities.FetchJob.filter({ status: 'running' }, '-updated_date', 1);
@@ -637,7 +751,7 @@ Deno.serve(async (req) => {
                     error_log: [...(arr[0].error_log || []), `[${new Date().toISOString()}] FATAL: ${error.message}\n${error.stack}`]
                 });
             }
-        } catch (e2) { console.error('[chunk-v3] Could not mark job failed:', e2.message); }
+        } catch (e2) { console.error('[chunk-v5] Could not mark job failed:', e2.message); }
         return Response.json({ error: error.message }, { status: 500 });
     }
 });
