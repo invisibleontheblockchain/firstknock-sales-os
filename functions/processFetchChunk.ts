@@ -283,8 +283,9 @@ Deno.serve(async (req) => {
         }
 
         // ======================================================================
-        // PHASE 1 (PRIMARY): MLS SOLD + ACTIVE LISTINGS via /listings/sale
-        // This is now the primary data source — live MLS feed updated daily
+        // PHASE 1 (PRIMARY): MLS SOLD HOMES via /listings/sale?status=Inactive
+        // This is THE default and only primary endpoint — confirmed sold homes only
+        // No active listings — those are people leaving, not knock targets
         // ======================================================================
         if (currentPhase === 'mls_listings') {
             console.log(`[chunk-v6] ★ PRIMARY PHASE: MLS Listings — radius=${radius}mi delta=${isDeltaPull}`);
