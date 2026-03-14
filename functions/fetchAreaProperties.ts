@@ -125,10 +125,23 @@ Deno.serve(async (req) => {
         // This is the single biggest API cost saver (~85% reduction on re-pulls)
         // ================================================================
         const deltaInfo = await findDeltaWatermark(base44, optimizedLat, optimizedLng, optimizedRadius);
-        const isDeltaPull = !!deltaInfo;
+        let isDeltaPull = !!deltaInfo;
+        
+        // Check if reconciliation flagged stale ZIPs — force full pull if so
+        const staleZips = user.stale_zips || [];
+        if (isDeltaPull && staleZips.length > 0) {
+            console.log(`[fetchArea-v4] ⚠️ Stale ZIPs detected (${staleZips.length}) from reconciliation — forcing FULL pull to catch silent deletes`);
+            isDeltaPull = false;
+            // Clear the stale flag since we're doing a full refresh
+            try {
+                await base44.auth.updateMe({ stale_zips: [] });
+            } catch (e) { console.warn('Failed to clear stale_zips:', e.message); }
+        }
         
         if (isDeltaPull) {
             console.log(`[fetchArea-v4] ✅ DELTA PULL — watermark=${deltaInfo.watermark} (${deltaInfo.ageDays}d ago). Previous pull used ${deltaInfo.previousApiCalls} API calls.`);
+        } else if (staleZips.length > 0) {
+            console.log(`[fetchArea-v4] Full pull (forced by reconciliation drift on ${staleZips.length} ZIPs)`);
         } else {
             console.log(`[fetchArea-v4] Full pull — no previous data found for this area`);
         }
