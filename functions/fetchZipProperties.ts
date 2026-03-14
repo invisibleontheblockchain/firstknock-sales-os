@@ -82,8 +82,9 @@ Deno.serve(async (req) => {
     }
 
     const zip = String(zip_code).trim();
-    const daysBack = Math.min(sold_months * 30, 365); // Cap at 1 year
-    console.log(`[FetchZip-v8] zip=${zip}, sold_months=${sold_months}, daysBack=${daysBack}`);
+    const DEED_LAG_DAYS = 90;
+    const saleDateRange = (sold_months * 30) + DEED_LAG_DAYS;
+    console.log(`[FetchZip-v8] zip=${zip}, sold_months=${sold_months}, saleDateRange=${saleDateRange} days (includes ${DEED_LAG_DAYS}d deed lag)`);
 
     // Auto-add to territory
     if (!territoryZips.includes(zip)) {
@@ -113,44 +114,23 @@ Deno.serve(async (req) => {
     if (!RENTCAST_API_KEY) return Response.json({ error: 'RENTCAST_API_KEY not configured' }, { status: 500 });
 
     let totalApiCalls = 0;
-    const allPropertiesMap = new Map();
 
-    // === PHASE 1: Recently Sold Properties (server-side filtered by saleDateRange) ===
-    const phase1Params = new URLSearchParams({ zipCode: zip, saleDateRange: `0:${daysBack}` });
-    const phase1 = await fetchAllPages(`${RENTCAST_BASE}/properties`, phase1Params, 'RecentSales', RENTCAST_API_KEY);
-    totalApiCalls += phase1.apiCalls;
+    // === SINGLE PHASE: Deed-confirmed sales via /properties?saleDateRange ===
+    // This is the ONLY data source — county deed records guarantee confirmed sales.
+    // MLS /listings/sale?status=Inactive is permanently retired — it returns
+    // expired/withdrawn/cancelled listings, NOT confirmed sales.
+    const params = new URLSearchParams({ zipCode: zip, saleDateRange: String(saleDateRange) });
+    const result = await fetchAllPages(`${RENTCAST_BASE}/properties`, params, 'DeedSales', RENTCAST_API_KEY);
+    totalApiCalls += result.apiCalls;
 
-    if (!phase1.ok && phase1.status === 401) {
+    if (!result.ok && result.status === 401) {
       return Response.json({ error: 'RentCast API key invalid or expired.' }, { status: 500 });
     }
-    phase1.items.forEach(p => allPropertiesMap.set(p.id, p));
-    console.log(`[FetchZip-v8] Phase 1: ${allPropertiesMap.size} recently sold (${phase1.apiCalls} calls)`);
 
-    // === PHASE 2: MLS Sold Listings (fills deed recording gap) ===
-    const phase2Params = new URLSearchParams({ zipCode: zip, status: 'Inactive', daysOld: `0:${daysBack}` });
-    const phase2 = await fetchAllPages(`${RENTCAST_BASE}/listings/sale`, phase2Params, 'MLSSold', RENTCAST_API_KEY);
-    totalApiCalls += phase2.apiCalls;
-
-    if (phase2.ok) {
-      let mlsMerged = 0;
-      phase2.items.forEach(l => {
-        const id = l.propertyId || l.id;
-        const existing = allPropertiesMap.get(id) || {};
-        allPropertiesMap.set(id, {
-          ...existing, ...l, id,
-          lastSaleDate: l.removedDate || l.listedDate || existing.lastSaleDate,
-          lastSalePrice: l.price || existing.lastSalePrice,
-          _mlsSold: true
-        });
-        mlsMerged++;
-      });
-      console.log(`[FetchZip-v8] Phase 2: Merged ${mlsMerged} MLS. Unique total: ${allPropertiesMap.size} (${phase2.apiCalls} calls)`);
-    }
-
-    // === NO PHASE 3 — no density fill. Only sold properties. ===
+    console.log(`[FetchZip-v8] Fetched ${result.items.length} deed-confirmed records (${result.apiCalls} API calls)`);
     console.log(`[FetchZip-v8] Total API calls used: ${totalApiCalls}`);
 
-    const allProperties = Array.from(allPropertiesMap.values());
+    const allProperties = result.items;
 
     // Track zip
     if (!generatedZips.includes(zip)) {
@@ -168,23 +148,32 @@ Deno.serve(async (req) => {
       existingHashes = new Set((Array.isArray(existingProps) ? existingProps : (existingProps?.items || [])).map(p => p.address_hash));
     } catch (e) { console.warn(`[FetchZip-v8] Dedup fetch failed:`, e.message); }
 
-    // Map to schema
+    // Compute sold cutoff for status classification
+    const soldCutoff = new Date();
+    soldCutoff.setMonth(soldCutoff.getMonth() - sold_months);
+
+    // Map to schema — deed-only, no MLS
     const mapped = allProperties
       .filter(p => p.latitude && p.longitude && p.addressLine1)
       .filter(p => !existingHashes.has(p.id))
+      .filter(p => {
+        // Data quality: require valid sale info
+        if (!p.lastSaleDate) return false;
+        if (p.lastSalePrice === null || p.lastSalePrice === undefined || p.lastSalePrice <= 100) return false;
+        const badTypes = ['Commercial', 'Industrial', 'Vacant Land', 'Agricultural'];
+        if (p.propertyType && badTypes.includes(p.propertyType)) return false;
+        return true;
+      })
       .map(p => {
         const addressMatch = (p.addressLine1 || "").match(/^(\d+)\s+(.*)$/);
         const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
         const street_name = addressMatch ? addressMatch[2] : (p.addressLine1 || "Unknown");
 
-        let original_status = 'ELIGIBLE';
-        if (p._mlsSold) {
-          original_status = 'SOLD';
-        } else if (p.lastSaleDate) {
+        // Determine status: SOLD if within target window, ELIGIBLE if older
+        let original_status = 'SOLD';
+        if (p.lastSaleDate) {
           const saleDate = new Date(p.lastSaleDate);
-          const cutoff = new Date();
-          cutoff.setDate(cutoff.getDate() - daysBack);
-          if (saleDate > cutoff) original_status = 'SOLD';
+          if (!isNaN(saleDate) && saleDate <= soldCutoff) original_status = 'ELIGIBLE';
         }
 
         let h3_index = null;
@@ -199,9 +188,10 @@ Deno.serve(async (req) => {
           beds: p.bedrooms || 0, baths: p.bathrooms || 0,
           sqft: p.squareFootage || 0, lot_size: p.lotSize || 0,
           year_built: p.yearBuilt || 0, price: p.lastSalePrice || 0,
-          sold_date: p.lastSaleDate || null, sale_type: p._mlsSold ? 'MLS' : 'Market',
+          sold_date: p.lastSaleDate || null, sale_type: 'Deed',
           property_type: p.propertyType || 'Single Family',
-          mls_id: p.assessorID || null, url: null
+          mls_id: p.assessorID || null, url: null,
+          data_source: 'rentcast'
         };
       });
 

@@ -165,6 +165,11 @@ export default function TerritoryPrompt({
                 const expected = d.total_expected || 0;
                 const inserted = d.total_inserted || 0;
                 setTotalExpected(expected);
+
+                // Detect delta pull from job status (important for resume)
+                if (d.is_delta_pull && !isDeltaPull) {
+                    setIsDeltaPull(true);
+                }
                 
                 // Track progress history for ETA calculation
                 pctHistoryRef.current.push({ pct, time: Date.now() });
@@ -216,7 +221,7 @@ export default function TerritoryPrompt({
                     const totalLoaded = (d.total_inserted || 0) + (d.total_existed || 0);
                     const deltaSavings = d.delta_savings;
                     const savingsMsg = deltaSavings?.savings_pct > 0 
-                        ? ` Saved ${deltaSavings.savings_pct}% on API calls!` 
+                        ? ` Saved ${deltaSavings.savings_pct}% on DB writes (${deltaSavings.records_skipped?.toLocaleString() || 0} unchanged records skipped)!` 
                         : '';
                     toast.success(`${totalLoaded.toLocaleString()} properties loaded!${savingsMsg} Tap "Generate Routes" to build your first route.`, { duration: 6000 });
 
@@ -296,7 +301,8 @@ export default function TerritoryPrompt({
                 latitude: centerLat,
                 longitude: centerLng,
                 radius: radius,
-                polygon: drawnPolygon
+                polygon: drawnPolygon,
+                sold_months: 12
             });
             const d = res.data || {};
 
@@ -407,8 +413,8 @@ export default function TerritoryPrompt({
                                     ? (displayPct < 30
                                         ? '⚡ Only fetching records that changed since your last pull — much faster!'
                                         : displayPct < 80
-                                            ? '🔄 Syncing changes and updating existing records. Using ~85% fewer API calls.'
-                                            : '✅ Delta sync almost complete! Only new & changed properties were processed.')
+                                            ? '🔄 Comparing against your existing data — unchanged records are skipped automatically.'
+                                            : '✅ Delta sync almost complete! Only new & changed properties were written.')
                                     : (displayPct < 5
                                         ? '🔍 Scanning your area for every property on record — this is a one-time setup that gives you the full picture.'
                                         : displayPct < 30

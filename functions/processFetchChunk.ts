@@ -338,16 +338,8 @@ Deno.serve(async (req) => {
                         saleDateRange: String(saleDateRange),
                     });
                     if (offset === 0 && currentOffset === 0) params.set('includeTotalCount', 'true');
-                    
-                    // CDC Delta-Pull filter
-                    if (isDeltaPull && deltaWatermark) {
-                        const watermarkDate = new Date(deltaWatermark);
-                        watermarkDate.setDate(watermarkDate.getDate() - 1);
-                        params.set('lastUpdated_gte', watermarkDate.toISOString().split('T')[0]);
-                        if (offset === offsets[0] && i === 0) {
-                            console.log(`[chunk-v8] DELTA FILTER: lastUpdated_gte=${watermarkDate.toISOString().split('T')[0]}`);
-                        }
-                    }
+                    // NOTE: RentCast does NOT support lastUpdated_gte or any server-side delta filter.
+                    // Delta savings are achieved post-fetch by skipping unchanged DB records.
 
                     const url = `${RENTCAST_BASE}/properties?${params}`;
                     if (offset === offsets[0] && i === 0) {
@@ -407,6 +399,36 @@ Deno.serve(async (req) => {
             const seenNormalized = new Set();
             let skippedValidation = 0;
             let skippedCorporate = 0;
+            let skippedDeltaUnchanged = 0;
+
+            // ── DELTA PRE-FILTER: Load existing DB records for comparison ──
+            // RentCast has no server-side delta filter, so we achieve delta savings
+            // by comparing fetched records against our DB and skipping unchanged ones.
+            let existingRecordMap = new Map();
+            if (isDeltaPull && deltaWatermark) {
+                try {
+                    const rawZips = [...new Set(allRaw.map(r => r.zipCode).filter(Boolean))];
+                    for (let zi = 0; zi < rawZips.length; zi += 20) {
+                        if (Date.now() - chunkStart > 40000) break;
+                        const zipBatch = rawZips.slice(zi, zi + 20);
+                        const lookups = zipBatch.map(z =>
+                            base44.asServiceRole.entities.MasterProperty.filter({ zip_code: z }, null, 5000)
+                                .then(res => {
+                                    const arr = Array.isArray(res) ? res : (res?.items || []);
+                                    arr.forEach(p => existingRecordMap.set(p.address_hash, {
+                                        soldDate: p.sold_date, price: p.price
+                                    }));
+                                })
+                                .catch(() => {})
+                        );
+                        await Promise.all(lookups);
+                    }
+                    console.log(`[chunk-v8] DELTA: Loaded ${existingRecordMap.size} existing records for comparison`);
+                } catch (e) {
+                    logError(`Delta pre-load failed (falling back to full): ${e.message}`);
+                    existingRecordMap = new Map();
+                }
+            }
 
             for (const p of allRaw) {
                 if (!p.latitude || !p.longitude) continue;
@@ -420,6 +442,23 @@ Deno.serve(async (req) => {
                 }
 
                 const addressLine = p.addressLine1 || (p.formattedAddress ? p.formattedAddress.split(',')[0] : "");
+                const pZip = p.zipCode || '00000';
+                const hash = p.id || `${addressLine}-${pZip}`;
+
+                // ── DELTA: Skip records that haven't changed since last pull ──
+                if (isDeltaPull && existingRecordMap.size > 0) {
+                    const existing = existingRecordMap.get(hash);
+                    if (existing) {
+                        const sameSoldDate = existing.soldDate === (p.lastSaleDate || null);
+                        const samePrice = existing.price === (p.lastSalePrice || 0);
+                        if (sameSoldDate && samePrice) {
+                            skippedDeltaUnchanged++;
+                            if (pZip && !zipCodesFound.includes(pZip)) zipCodesFound.push(pZip);
+                            continue;
+                        }
+                    }
+                }
+
                 const addressMatch = addressLine.match(/^(\d+)\s+(.*)$/);
                 const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
                 const street_name = addressMatch ? addressMatch[2] : (addressLine || "Unknown");
@@ -434,9 +473,6 @@ Deno.serve(async (req) => {
                 // Flag corporate owners but still include them (they get routed differently)
                 const corporateOwner = isCorporateOwner(p);
                 if (corporateOwner) skippedCorporate++;
-
-                const pZip = p.zipCode || '00000';
-                const hash = p.id || `${addressLine}-${pZip}`;
                 
                 if (seenHashes.has(hash)) continue;
                 const normKey = generateNormalizedHash(addressLine, pZip);
@@ -462,8 +498,9 @@ Deno.serve(async (req) => {
                 });
             }
 
-            const dedupSaved = allRaw.length - mapped.length - skippedValidation;
-            console.log(`[chunk-v8] Mapped ${mapped.length} from ${allRaw.length} raw | skipped: ${skippedValidation} validation, ${dedupSaved} dedup, ${skippedCorporate} corporate`);
+            const dedupSaved = allRaw.length - mapped.length - skippedValidation - skippedDeltaUnchanged;
+            const deltaMsg = isDeltaPull ? ` | delta_skipped=${skippedDeltaUnchanged}` : '';
+            console.log(`[chunk-v8] Mapped ${mapped.length} from ${allRaw.length} raw | skipped: ${skippedValidation} validation, ${dedupSaved} dedup, ${skippedCorporate} corporate${deltaMsg}`);
 
             const dbResult = await writeToDb(mapped);
             totalInserted += dbResult.chunkInserted;
@@ -471,20 +508,29 @@ Deno.serve(async (req) => {
             totalUpdated += dbResult.chunkUpdated;
 
             const newOffset = currentOffset + allRaw.length;
-            const phaseDone = reachedEnd || allRaw.length === 0 || (totalExpected > 0 && totalFetched >= totalExpected);
+            // A phase is done ONLY if we fetched everything expected, OR if we legitimately reached the end of the pages
+            const phaseDone = (totalExpected > 0 && totalFetched >= totalExpected) || 
+                              (reachedEnd && (newOffset >= totalExpected || totalExpected === 0)) ||
+                              (allRaw.length === 0 && newOffset >= totalExpected && totalExpected > 0);
+                              
             const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
             chunkTimings.push(chunkDuration);
 
             console.log(`[chunk-v8] Chunk done in ${chunkDuration}s: ins=${dbResult.chunkInserted}, exist=${dbResult.chunkExisted}, upd=${dbResult.chunkUpdated}`);
 
-            // Calculate delta savings
+            // Calculate delta savings — now based on DB writes saved, not API calls
             let deltaSavings = job.delta_savings || null;
-            if (isDeltaPull && phaseDone && deltaSavings) {
+            if (isDeltaPull && phaseDone) {
+                const totalRecordsProcessed = totalFetched;
+                const totalWritesSaved = skippedDeltaUnchanged + (job.delta_skipped_total || 0);
+                deltaSavings = deltaSavings || {};
                 deltaSavings.actual_calls = totalApiCalls;
-                deltaSavings.savings_pct = deltaSavings.estimated_full_calls > 0 
-                    ? Math.round((1 - totalApiCalls / deltaSavings.estimated_full_calls) * 100)
+                deltaSavings.records_skipped = totalWritesSaved;
+                deltaSavings.records_fetched = totalRecordsProcessed;
+                deltaSavings.savings_pct = totalRecordsProcessed > 0
+                    ? Math.round((totalWritesSaved / totalRecordsProcessed) * 100)
                     : 0;
-                console.log(`[chunk-v8] DELTA SAVINGS: ${deltaSavings.savings_pct}% (${deltaSavings.estimated_full_calls} -> ${totalApiCalls} calls)`);
+                console.log(`[chunk-v8] DELTA SAVINGS: ${deltaSavings.savings_pct}% DB writes saved (${totalWritesSaved}/${totalRecordsProcessed} records unchanged)`);
             }
 
             if (phaseDone) {
@@ -495,13 +541,13 @@ Deno.serve(async (req) => {
                     current_offset: 0, total_fetched: totalFetched,
                     total_inserted: totalInserted, total_existed: totalExisted,
                     total_updated: totalUpdated, total_api_calls: totalApiCalls,
-                    delta_savings: deltaSavings,
+                    delta_savings: deltaSavings, delta_skipped_total: (job.delta_skipped_total || 0) + skippedDeltaUnchanged,
                     progress_pct: 100, zip_codes_found: zipCodesFound,
                     completed_at: completedAt, chunk_timings: chunkTimings, error_log: errorLog
                 });
 
-                // Update user territory
                 try {
+                    // Update user territory
                     const users = await base44.asServiceRole.entities.User.filter({ email: job.user_email }, null, 1);
                     const userArr = Array.isArray(users) ? users : (users?.items || []);
                     if (userArr.length > 0) {
@@ -528,6 +574,7 @@ Deno.serve(async (req) => {
                     total_expected: totalExpected, total_fetched: totalFetched,
                     total_inserted: totalInserted, total_existed: totalExisted, total_updated: totalUpdated,
                     total_api_calls: totalApiCalls, delta_savings: deltaSavings,
+                    delta_skipped_total: (job.delta_skipped_total || 0) + skippedDeltaUnchanged,
                     progress_pct: Math.min(99, progressPct),
                     zip_codes_found: zipCodesFound, chunk_number: nextChunk,
                     chunk_timings: chunkTimings, error_log: errorLog

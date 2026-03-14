@@ -39,7 +39,9 @@ Deno.serve(async (req) => {
             total_existed: job.total_existed || 0,
             total_updated: job.total_updated || 0,
             zip_codes_found: job.zip_codes_found || [],
-            error_message: job.error_message || null
+            error_message: job.error_message || null,
+            is_delta_pull: job.is_delta_pull || false,
+            delta_savings: job.delta_savings || null
         });
 
     } catch (error) {
