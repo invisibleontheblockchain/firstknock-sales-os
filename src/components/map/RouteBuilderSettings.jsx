@@ -73,7 +73,7 @@ export default function RouteBuilderSettings({
     // Ensure simple mode has a default soldDateFilter set
     React.useEffect(() => {
         if (viewMode === 'simple' && soldDateFilter === null) {
-            setSoldDateFilter(3);
+            setSoldDateFilter(6);
         }
     }, [viewMode]);
 
@@ -87,13 +87,13 @@ export default function RouteBuilderSettings({
             name: 'FirstKnock Best',
             icon: <Zap className="w-4 h-4" />,
             desc: 'Ultra-optimized for newest homeowners. Starts at the most recently sold home and builds the route from there.',
-            criteria: 'Recent Sales First, All in one route, Past 3mo',
+            criteria: 'Recent Sales First, All in one route, Past 6mo',
             apply: (isInitial = false) => {
                 setHousesPerRoute(10000);
                 setMaxRouteDistance(8);
                 setStreetCooldownDays(14);
                 setMinScore(20);
-                setSoldDateFilter(3); // Past 3 months
+                setSoldDateFilter(6); // Past 6 months
                 setSortBy('recent_sale');
                 setRouteConfig(prev => ({ ...prev, walkingPattern: 'recent_sale_first', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [], minBeds: null, minBaths: null, minSqft: null, maxSqft: null, minLotSize: null, maxLotSize: null }));
                 if (!isInitial) toast.success("FirstKnock Best applied!");
@@ -200,11 +200,11 @@ export default function RouteBuilderSettings({
                                 <div className="flex justify-between items-center">
                                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">2. Recently Sold</label>
                                     <span className="text-sm font-bold text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded">
-                                        {soldDateFilter ? `${soldDateFilter} Months` : '3 Months'}
+                                        {soldDateFilter ? `${soldDateFilter} Months` : '6 Months'}
                                     </span>
                                 </div>
                                 <Slider
-                                    value={[soldDateFilter || 3]}
+                                    value={[soldDateFilter || 6]}
                                     onValueChange={([v]) => {
                                         if (v === 12) {
                                             const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
@@ -217,13 +217,12 @@ export default function RouteBuilderSettings({
                                         }
                                         setSoldDateFilter(v);
                                     }}
-                                    min={3}
+                                    min={6}
                                     max={12}
                                     step={3}
                                     className="w-full"
                                 />
                                 <div className="flex justify-between text-[10px] text-gray-600 font-medium px-1">
-                                    <span>3 Mo</span>
                                     <span>6 Mo</span>
                                     <span>9 Mo</span>
                                     <span className="text-yellow-500/70">12 Mo (Pro)</span>
@@ -409,10 +408,10 @@ export default function RouteBuilderSettings({
                                 <div className="space-y-4 mb-4 pt-2">
                                     <div className="flex justify-between items-center">
                                         <label className="text-[10px] font-bold text-gray-500 uppercase">Recently Sold</label>
-                                        <span className="text-xs font-bold text-yellow-500">{soldDateFilter ? `${soldDateFilter} Months` : '3 Months'}</span>
+                                        <span className="text-xs font-bold text-yellow-500">{soldDateFilter ? `${soldDateFilter} Months` : '6 Months'}</span>
                                     </div>
                                     <Slider
-                                        value={[soldDateFilter || 3]}
+                                        value={[soldDateFilter || 6]}
                                         onValueChange={([v]) => {
                                             if (v === 12) {
                                                 const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
@@ -425,13 +424,12 @@ export default function RouteBuilderSettings({
                                             }
                                             setSoldDateFilter(v);
                                         }}
-                                        min={3}
+                                        min={6}
                                         max={12}
                                         step={3}
                                         className="w-full"
                                     />
                                     <div className="flex justify-between text-[10px] text-gray-600 font-medium px-1">
-                                        <span>3 Mo</span>
                                         <span>6 Mo</span>
                                         <span>9 Mo</span>
                                         <span className="text-yellow-500/70">12 Mo (Pro)</span>

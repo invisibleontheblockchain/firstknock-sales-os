@@ -350,7 +350,10 @@ Deno.serve(async (req) => {
                     }
 
                     const url = `${RENTCAST_BASE}/properties?${params}`;
-                    if (offset === offsets[0] && i === 0) console.log(`[chunk-v8] URL: ${url}`);
+                    if (offset === offsets[0] && i === 0) {
+                        console.log(`[chunk-v8] RentCast Fetch: ${url}`);
+                        console.log(`[chunk-v8] Parameters: radius=${radius}mi, saleDateRange=${saleDateRange} days`);
+                    }
 
                     return fetchWithBackoff(url, { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY }, logError);
                 });

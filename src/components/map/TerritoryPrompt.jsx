@@ -456,6 +456,13 @@ export default function TerritoryPrompt({
                     >
                         <Trash2 className="w-3 h-3" />
                     </button>
+                    {canPullAgain && (
+                        <div className="absolute top-full left-0 mt-2 w-48 bg-black/90 border border-gray-800 rounded-lg p-2 shadow-xl animate-in fade-in slide-in-from-top-1">
+                            <p className="text-[9px] text-gray-400 leading-tight">
+                                <span className="text-blue-400 font-bold">Note:</span> Public records have a <span className="text-white">1-3 month recording lag</span>. Very recent sales may not appear until digitized by the county.
+                            </p>
+                        </div>
+                    )}
                 </div>
             )}
         </>

@@ -118,6 +118,15 @@ Deno.serve(async (req) => {
             }
         }
 
+        // RentCast Limit Enforcement (Max 100 miles)
+        if (optimizedRadius > 100) {
+            console.warn(`[fetchArea-v8] ⚠️ Radius ${optimizedRadius}mi exceeds RentCast 100mi limit. Capping.`);
+            return Response.json({ 
+                error: 'radius_too_large', 
+                message: 'Your search area results in a radius larger than 100 miles. Please redraw a smaller area to continue.' 
+            }, { status: 400 });
+        }
+
         const effectiveSoldMonths = sold_months || 12;
 
         // ================================================================
