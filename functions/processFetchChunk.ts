@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 import { polygonToCells, latLngToCell } from 'npm:h3-js@4.1.0';
 
-// v6 — MLS-First Architecture: /listings/sale is primary, /properties is supplemental enrichment
+// v7 — MLS Sold-Only Architecture: /listings/sale?status=Inactive (confirmed sold homes) is the PRIMARY and DEFAULT endpoint
 
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
