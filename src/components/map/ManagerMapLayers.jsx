@@ -563,4 +563,6 @@ export default React.memo(function ManagerMapLayers({
             )}
         </>
     );
-})
+});
+
+export default ManagerMapLayers;
