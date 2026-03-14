@@ -426,16 +426,16 @@ Deno.serve(async (req) => {
             console.log(`[chunk-v6] MLS Sold chunk done in ${chunkDuration}s: ins=${dbResult.chunkInserted}, exist=${dbResult.chunkExisted}, upd=${dbResult.chunkUpdated}`);
 
             if (mlsSoldDone) {
-                // Transition to MLS Active listings phase
-                console.log(`[chunk-v6] MLS Sold COMPLETE — transitioning to Active listings phase`);
+                // Skip active listings — go straight to deed records for supplemental enrichment
+                console.log(`[chunk-v7] MLS Sold COMPLETE (${mlsFetched} confirmed sold homes) — skipping active, going to deed records`);
                 const nextChunk = (job.chunk_number || 0) + 1;
                 await base44.asServiceRole.entities.FetchJob.update(jobId, {
-                    phase: 'mls_active', current_offset: 0,
+                    phase: 'deed_records', current_offset: 0,
                     total_expected: totalExpected, total_fetched: totalFetched + allMls.length,
                     total_inserted: totalInserted, total_existed: totalExisted,
                     total_updated: totalUpdated, total_api_calls: totalApiCalls,
                     mls_fetched: mlsFetched, mls_new: mlsNew, mls_api_calls: mlsApiCalls,
-                    progress_pct: 40, zip_codes_found: zipCodesFound,
+                    progress_pct: 50, zip_codes_found: zipCodesFound,
                     chunk_number: nextChunk, chunk_timings: chunkTimings, error_log: errorLog
                 });
                 try { base44.functions.invoke('processFetchChunk', {}).catch(() => {}); } catch (e) {}
