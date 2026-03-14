@@ -45,7 +45,7 @@ async function findDeltaWatermark(base44, lat, lng, radius) {
                 
                 // Only use as watermark if less than 90 days old
                 if (ageDays < 90) {
-                    console.log(`[fetchArea-v4] Found delta watermark from ${Math.round(ageDays)}d ago (job ${job.id})`);
+                    console.log(`[fetchArea-v8] Found delta watermark from ${Math.round(ageDays)}d ago (job ${job.id})`);
                     return {
                         watermark: job.completed_at,
                         previousJobId: job.id,
@@ -57,7 +57,7 @@ async function findDeltaWatermark(base44, lat, lng, radius) {
             }
         }
     } catch (e) {
-        console.warn(`[fetchArea-v4] Delta watermark check failed (non-fatal): ${e.message}`);
+        console.warn(`[fetchArea-v8] Delta watermark check failed (non-fatal): ${e.message}`);
     }
     return null;
 }
@@ -114,7 +114,7 @@ Deno.serve(async (req) => {
                 optimizedLat = bounding.lat;
                 optimizedLng = bounding.lng;
                 optimizedRadius = bounding.radius;
-                console.log(`[fetchArea-v4] Tighter bounding circle: ${optimizedRadius}mi (saved ${(radius - optimizedRadius).toFixed(1)}mi)`);
+                console.log(`[fetchArea-v8] Tighter bounding circle: ${optimizedRadius}mi (saved ${(radius - optimizedRadius).toFixed(1)}mi)`);
             }
         }
 
@@ -131,7 +131,7 @@ Deno.serve(async (req) => {
         // Check if reconciliation flagged stale ZIPs — force full pull if so
         const staleZips = user.stale_zips || [];
         if (isDeltaPull && staleZips.length > 0) {
-            console.log(`[fetchArea-v4] ⚠️ Stale ZIPs detected (${staleZips.length}) from reconciliation — forcing FULL pull to catch silent deletes`);
+            console.log(`[fetchArea-v8] ⚠️ Stale ZIPs detected (${staleZips.length}) from reconciliation — forcing FULL pull to catch silent deletes`);
             isDeltaPull = false;
             // Clear the stale flag since we're doing a full refresh
             try {
@@ -140,11 +140,11 @@ Deno.serve(async (req) => {
         }
         
         if (isDeltaPull) {
-            console.log(`[fetchArea-v4] ✅ DELTA PULL — watermark=${deltaInfo.watermark} (${deltaInfo.ageDays}d ago). Previous pull used ${deltaInfo.previousApiCalls} API calls.`);
+            console.log(`[fetchArea-v8] ✅ DELTA PULL — watermark=${deltaInfo.watermark} (${deltaInfo.ageDays}d ago). Previous pull used ${deltaInfo.previousApiCalls} API calls.`);
         } else if (staleZips.length > 0) {
-            console.log(`[fetchArea-v4] Full pull (forced by reconciliation drift on ${staleZips.length} ZIPs)`);
+            console.log(`[fetchArea-v8] Full pull (forced by reconciliation drift on ${staleZips.length} ZIPs)`);
         } else {
-            console.log(`[fetchArea-v4] Full pull — no previous data found for this area`);
+            console.log(`[fetchArea-v8] Full pull — no previous data found for this area`);
         }
 
         // === SHARED PROPERTY CACHE — link existing zips to user ===
@@ -169,10 +169,10 @@ Deno.serve(async (req) => {
                 if (mergedZips.length > existingUserZips.length) {
                     await base44.auth.updateMe({ territory_zip_codes: mergedZips });
                 }
-                console.log(`[fetchArea-v4] Cache: ${sampleArr.length} existing props across ${cachedZipCodes.length} zips`);
+                console.log(`[fetchArea-v8] Cache: ${sampleArr.length} existing props across ${cachedZipCodes.length} zips`);
             }
         } catch (cacheErr) {
-            console.warn(`[fetchArea-v4] Cache check failed (non-fatal): ${cacheErr.message}`);
+            console.warn(`[fetchArea-v8] Cache check failed (non-fatal): ${cacheErr.message}`);
         }
 
         // Create FetchJob with delta state
@@ -193,18 +193,16 @@ Deno.serve(async (req) => {
             total_existed: 0,
             total_updated: 0,
             total_api_calls: 0,
-            mls_fetched: 0,
-            mls_new: 0,
-            mls_api_calls: 0,
             user_email: user.email,
             progress_pct: 0,
             zip_codes_found: [],
             error_log: [],
             chunk_timings: [],
-            phase: 'mls_listings'
+            phase: 'deed_records'
         });
 
-        console.log(`[fetchArea-v6] Created FetchJob ${job.id} | delta=${isDeltaPull} | lat=${optimizedLat} lng=${optimizedLng} r=${optimizedRadius}mi | phase=mls_listings (MLS-first)`);
+        const computedSaleDateRange = (effectiveSoldMonths * 30) + 90;
+        console.log(`[fetchArea-v8] Created FetchJob ${job.id} | delta=${isDeltaPull} | lat=${optimizedLat} lng=${optimizedLng} r=${optimizedRadius}mi | saleDateRange=${computedSaleDateRange} | phase=deed_records (deed-only)`);
 
         try {
             await base44.auth.updateMe({ area_pulls_count: pullCount + 1 });
@@ -212,7 +210,7 @@ Deno.serve(async (req) => {
 
         setTimeout(() => {
             base44.functions.invoke('processFetchChunk', {}).catch(e => {
-                console.warn('[fetchArea-v4] Background chunk invoke failed:', e.message);
+                console.warn('[fetchArea-v8] Background chunk invoke failed:', e.message);
             });
         }, 0);
 
@@ -234,7 +232,7 @@ Deno.serve(async (req) => {
         });
 
     } catch (error) {
-        console.error('[fetchArea-v4] Fatal:', error);
+        console.error('[fetchArea-v8] Fatal:', error);
         return Response.json({ error: error.message }, { status: 500 });
     }
 });
