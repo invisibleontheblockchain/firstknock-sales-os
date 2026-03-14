@@ -225,7 +225,7 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
                             <CircleMarker
                                 key={p.address_hash}
                                 center={[p.lat, p.lng]}
-                                radius={isNearby ? 8 : 5}
+                                radius={isNearby ? 8 : 6}
                                 eventHandlers={{ click: () => onSelectProperty(p) }}
                                 pathOptions={{
                                     fillColor: idx === 0 ? '#22c55e' : color,
@@ -241,16 +241,9 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
                                         fontWeight: 'bold', 
                                         textShadow: '0 1px 3px #000, 0 0 5px #000' 
                                     }}>
-                                        {idx + 1}
+                                        {p.house_number || idx + 1}
                                     </span>
                                 </Tooltip>
-                                {isNearby && (
-                                    <Tooltip direction="bottom" offset={[0, 5]} className="zip-label-tooltip">
-                                        <span style={{ color: '#fff', fontSize: '10px', fontWeight: '600' }}>
-                                            {p.house_number} {p.street_name}
-                                        </span>
-                                    </Tooltip>
-                                )}
                             </CircleMarker>
                         );
                     })}
