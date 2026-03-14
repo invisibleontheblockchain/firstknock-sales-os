@@ -468,49 +468,15 @@ export default function ManagerMapLayers({
                 />
             )}
 
-            {/* Active Route - Mail Carrier Style */}
+            {/* Active Route - Mail Carrier Style (Canvas-optimized) */}
             {activeRoute && (
-                <>
-                    <Polyline
-                        positions={activeRoute.properties.filter(p => p && p.lat && p.lng).map(p => [p.lat, p.lng])}
-                        pathOptions={{
-                            color: BRAND.gold,
-                            weight: mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4,
-                            opacity: mapSettings.lineOpacity ? Math.max(0.6, mapSettings.lineOpacity) : 0.8,
-                            dashArray: lineDashArray
-                        }}
-                    />
-                    {activeRoute.properties.map((p, idx) => (
-                        <CircleMarker
-                            key={p.address_hash}
-                            center={[p.lat, p.lng]}
-                            radius={5}
-                            eventHandlers={{
-                                click: (e) => {
-                                    L.DomEvent.stopPropagation(e);
-                                    setSelectedProperty(p);
-                                }
-                            }}
-                            pathOptions={{
-                                fillColor: idx === 0 ? '#22c55e' : '#f97316',
-                                fillOpacity: 1,
-                                color: '#fff',
-                                weight: 1.5
-                            }}
-                        >
-                            <Tooltip permanent direction="top" offset={[0, -6]} className="route-number-tooltip">
-                                <span style={{
-                                    color: '#fff',
-                                    fontWeight: 'bold',
-                                    fontSize: '11px',
-                                    textShadow: '0 1px 3px #000, 0 0 5px #000'
-                                }}>
-                                    {idx + 1}
-                                </span>
-                            </Tooltip>
-                        </CircleMarker>
-                    ))}
-                </>
+                <ActiveRouteLayer
+                    activeRoute={activeRoute}
+                    BRAND={BRAND}
+                    mapSettings={mapSettings}
+                    lineDashArray={lineDashArray}
+                    setSelectedProperty={setSelectedProperty}
+                />
             )}
         </>
     );
