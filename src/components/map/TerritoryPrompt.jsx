@@ -96,12 +96,17 @@ export default function TerritoryPrompt({
                 }
                 
                 if (job && !cancelled && !pulling) {
+                    // If job already completed, skip resume
+                    if (job.status === 'completed') {
+                        console.log('[TerritoryPrompt] Job already completed, skipping resume');
+                        return;
+                    }
                     console.log('[TerritoryPrompt] Resuming running job:', job.id);
                     setPulling(true);
                     setPullProgress('Resuming data import...');
                     const pct = job.progress_pct || 0;
                     setPullPct(pct);
-                    setDisplayPct(0);
+                    setDisplayPct(Math.max(pct - 5, 0)); // Start close to real progress instead of 0
                     targetPctRef.current = pct;
                     setEtaText('Resuming...');
                     pctHistoryRef.current = [];
@@ -198,10 +203,15 @@ export default function TerritoryPrompt({
                 if (d.status === 'completed') {
                     clearInterval(pollRef.current);
                     pollRef.current = null;
-                    setPulling(false);
+                    // Immediately show 100% — skip animation
                     setPullPct(100);
-                    setDisplayPct(100);
                     targetPctRef.current = 100;
+                    setDisplayPct(100);
+                    setEtaText('');
+                    setPullProgress('Complete!');
+                    // Small delay so user sees 100% before we clear
+                    await new Promise(r => setTimeout(r, 800));
+                    setPulling(false);
 
                     const totalLoaded = (d.total_inserted || 0) + (d.total_existed || 0);
                     const deltaSavings = d.delta_savings;
