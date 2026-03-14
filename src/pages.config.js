@@ -54,6 +54,7 @@ import Billing from './pages/Billing';
 import CostProjections from './pages/CostProjections';
 import DatabaseDiagnostic from './pages/DatabaseDiagnostic';
 import DeleteAccount from './pages/DeleteAccount';
+import FetchTest from './pages/FetchTest';
 import Home from './pages/Home';
 import List from './pages/List';
 import MobileApp from './pages/MobileApp';
@@ -78,6 +79,7 @@ export const PAGES = {
     "CostProjections": CostProjections,
     "DatabaseDiagnostic": DatabaseDiagnostic,
     "DeleteAccount": DeleteAccount,
+    "FetchTest": FetchTest,
     "Home": Home,
     "List": List,
     "MobileApp": MobileApp,

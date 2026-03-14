@@ -619,12 +619,12 @@ export default function RepHome() {
             {showMap && (
                 <RepMapView
                     properties={routeProperties}
-                    onSelectProperty={(p) => { setSelectedProperty(p); setShowMap(false); }}
+                    onSelectProperty={(p) => setSelectedProperty(p)}
                     onClose={() => setShowMap(false)}
                 />
             )}
 
-            {/* Property Detail - Bottom Sheet */}
+            {/* Property Detail - Bottom Sheet (overlays map when map is open) */}
             {selectedProperty && (
                 <PropertyDetailSheet
                     property={selectedProperty}
