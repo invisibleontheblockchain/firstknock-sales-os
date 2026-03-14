@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 import { polygonToCells, latLngToCell } from 'npm:h3-js@4.1.0';
 
-// v5 — CDC Delta-Pull, Exponential Backoff + Jitter, Address Normalization, Rate Protection
+// v6 — MLS-First Architecture: /listings/sale is primary, /properties is supplemental enrichment
 
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
@@ -21,7 +21,7 @@ async function fetchWithBackoff(url, headers, logError) {
         if (!res) {
             if (attempt < MAX_RETRIES) {
                 const backoff = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * Math.pow(2, attempt));
-                const jitter = Math.random() * backoff; // Full jitter
+                const jitter = Math.random() * backoff;
                 await sleep(jitter);
                 continue;
             }
@@ -31,7 +31,6 @@ async function fetchWithBackoff(url, headers, logError) {
         if (res.status === 429) {
             logError(`RATE LIMITED (429) — attempt ${attempt + 1}/${MAX_RETRIES + 1}`);
             if (attempt < MAX_RETRIES) {
-                // Respect Retry-After header if present, otherwise exponential backoff
                 const retryAfter = res.headers.get('Retry-After');
                 const waitMs = retryAfter 
                     ? parseInt(retryAfter) * 1000 
@@ -48,7 +47,6 @@ async function fetchWithBackoff(url, headers, logError) {
             const errText = await res.text().catch(() => 'no body');
             logError(`API ${res.status}: ${errText.slice(0, 200)}`);
             if (res.status === 401) return { records: [], total: null, status: 401 };
-            // Retry on 5xx server errors
             if (res.status >= 500 && attempt < MAX_RETRIES) {
                 const backoff = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * Math.pow(2, attempt));
                 await sleep(backoff + Math.random() * backoff);
@@ -78,9 +76,7 @@ const STREET_ABBREVIATIONS = {
 function normalizeAddress(address) {
     if (!address) return '';
     let norm = address.toUpperCase().trim();
-    // Remove punctuation except hyphens in unit numbers
     norm = norm.replace(/[.,#]/g, '').replace(/\s+/g, ' ');
-    // Apply abbreviations
     for (const [full, abbr] of Object.entries(STREET_ABBREVIATIONS)) {
         norm = norm.replace(new RegExp(`\\b${full}\\b`, 'g'), abbr);
     }
@@ -108,10 +104,9 @@ function isPointInPolygon(point, vs) {
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-// Chunk config — reduced parallel to be gentler on API
 const PAGES_PER_CHUNK = 20;
 const LIMIT = 500;
-const MAX_PARALLEL = 3; // Reduced from 5 to 3 for rate safety
+const MAX_PARALLEL = 3;
 
 Deno.serve(async (req) => {
     const chunkStart = Date.now();
@@ -154,8 +149,8 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'No API key' });
         }
 
-        const currentPhase = job.phase || 'deed_records';
-        console.log(`[chunk-v5] Job ${jobId} | phase=${currentPhase} | offset=${job.current_offset} | delta=${isDeltaPull} | chunk#=${job.chunk_number || 0}`);
+        const currentPhase = job.phase || 'mls_listings';
+        console.log(`[chunk-v6] Job ${jobId} | phase=${currentPhase} | offset=${job.current_offset} | delta=${isDeltaPull} | chunk#=${job.chunk_number || 0}`);
 
         const { latitude, longitude, radius, polygon } = job;
         let currentOffset = job.current_offset || 0;
@@ -196,8 +191,6 @@ Deno.serve(async (req) => {
         const monthsBack = job.sold_months || 12;
         const BUFFER_MONTHS = 2;
         const daysBack = (monthsBack + BUFFER_MONTHS) * 30;
-        const soldCutoff = new Date();
-        soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
 
         const filterPoint = (lat, lng) => {
             if (!polygon || polygon.length < 3) return true;
@@ -210,10 +203,436 @@ Deno.serve(async (req) => {
             return isPointInPolygon({ lat, lng }, polygon);
         };
 
+        // Helper: write mapped properties to DB with dedup
+        async function writeToDb(mapped) {
+            let chunkInserted = 0, chunkExisted = 0, chunkUpdated = 0;
+            if (mapped.length === 0) return { chunkInserted, chunkExisted, chunkUpdated };
+
+            const uniqueZips = [...new Set(mapped.map(p => p.zip_code))];
+            const existingHashToId = new Map();
+
+            for (let i = 0; i < uniqueZips.length; i += 20) {
+                if (Date.now() - chunkStart > 50000) break;
+                const zipChunk = uniqueZips.slice(i, i + 20);
+                const promises = zipChunk.map(zip =>
+                    base44.asServiceRole.entities.MasterProperty.filter({ zip_code: zip }, null, 5000)
+                        .then(res => {
+                            const arr = Array.isArray(res) ? res : (res?.items || []);
+                            arr.forEach(p => existingHashToId.set(p.address_hash, { id: p.id, status: p.original_status, dataSource: p.data_source }));
+                        })
+                        .catch(e => logError(`DB zip lookup ${zip} failed: ${e.message}`))
+                );
+                await Promise.all(promises);
+            }
+
+            const toInsert = [];
+            const toUpdate = [];
+
+            for (const p of mapped) {
+                const existing = existingHashToId.get(p.address_hash);
+                if (existing) {
+                    chunkExisted++;
+                    // Update if we have newer/better data
+                    if (p.original_status === 'SOLD' && existing.status !== 'SOLD') {
+                        toUpdate.push({ id: existing.id, sold_date: p.sold_date, price: p.price, original_status: 'SOLD' });
+                    }
+                    if (existing.status === 'UNVERIFIED' || existing.dataSource === 'csv_import') {
+                        toUpdate.push({
+                            id: existing.id, sold_date: p.sold_date, price: p.price,
+                            original_status: p.original_status, data_source: 'rentcast',
+                            sale_type: p.sale_type, city: p.city, state: p.state,
+                            zip_code: p.zip_code, beds: p.beds, baths: p.baths,
+                            sqft: p.sqft, lot_size: p.lot_size, year_built: p.year_built,
+                            property_type: p.property_type
+                        });
+                    }
+                } else {
+                    toInsert.push(p);
+                }
+            }
+
+            // Bulk insert new records
+            for (let i = 0; i < toInsert.length; i += 1000) {
+                if (Date.now() - chunkStart > 55000) { logError('Time limit hit during DB writes'); break; }
+                const chunk = toInsert.slice(i, i + 1000);
+                try {
+                    await base44.asServiceRole.entities.MasterProperty.bulkCreate(chunk);
+                    chunkInserted += chunk.length;
+                } catch (e) {
+                    logError(`Bulk insert failed: ${e.message}`);
+                    for (let j = 0; j < chunk.length; j += 100) {
+                        const small = chunk.slice(j, j + 100);
+                        try { await base44.asServiceRole.entities.MasterProperty.bulkCreate(small); chunkInserted += small.length; } catch (e2) { logError(`Small chunk insert failed: ${e2.message}`); }
+                        await sleep(200);
+                    }
+                }
+            }
+
+            // Apply updates
+            for (let i = 0; i < Math.min(toUpdate.length, 100); i++) {
+                if (Date.now() - chunkStart > 58000) break;
+                try {
+                    const upd = toUpdate[i];
+                    const { id, ...updatePayload } = upd;
+                    await base44.asServiceRole.entities.MasterProperty.update(id, updatePayload);
+                    chunkUpdated++;
+                } catch (e) { /* skip */ }
+            }
+
+            return { chunkInserted, chunkExisted, chunkUpdated };
+        }
+
         // ======================================================================
-        // PHASE 1: DEED RECORDS
+        // PHASE 1 (PRIMARY): MLS SOLD + ACTIVE LISTINGS via /listings/sale
+        // This is now the primary data source — live MLS feed updated daily
+        // ======================================================================
+        if (currentPhase === 'mls_listings') {
+            console.log(`[chunk-v6] ★ PRIMARY PHASE: MLS Listings — radius=${radius}mi delta=${isDeltaPull}`);
+
+            const allMls = [];
+            let mlsRequestCount = 0;
+            let mlsReachedEnd = false;
+
+            const mlsOffsets = [];
+            for (let p = 0; p < PAGES_PER_CHUNK; p++) {
+                mlsOffsets.push(currentOffset + p * LIMIT);
+            }
+
+            for (let i = 0; i < mlsOffsets.length; i += MAX_PARALLEL) {
+                if (Date.now() - chunkStart > 45000) break;
+
+                const batch = mlsOffsets.slice(i, i + MAX_PARALLEL);
+                const promises = batch.map(offset => {
+                    const params = new URLSearchParams({
+                        latitude: String(latitude), longitude: String(longitude),
+                        radius: String(radius), limit: String(LIMIT), offset: String(offset),
+                        status: 'Inactive',
+                        daysOld: `0:${daysBack}`
+                    });
+                    if (offset === 0 && currentOffset === 0) params.set('includeTotalCount', 'true');
+
+                    const url = `${RENTCAST_BASE}/listings/sale?${params}`;
+                    if (offset === mlsOffsets[0] && i === 0) console.log(`[chunk-v6] MLS Sold URL: ${url}`);
+
+                    return fetchWithBackoff(url,
+                        { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY },
+                        logError
+                    );
+                });
+
+                const results = await Promise.all(promises);
+                mlsRequestCount += results.length;
+
+                const allFailed = results.every(r => r.status !== 200);
+                if (allFailed && results.some(r => r.status === 401)) {
+                    logError('All requests returned 401 — aborting job');
+                    await base44.asServiceRole.entities.FetchJob.update(jobId, {
+                        status: 'failed', error_message: 'RentCast API key invalid', error_log: errorLog, total_api_calls: totalApiCalls + mlsRequestCount
+                    });
+                    return Response.json({ error: 'API auth failed' });
+                }
+                
+                if (allFailed && results.some(r => r.status === 429)) {
+                    logError('MLS phase rate-limited — pausing');
+                    const nextChunk = (job.chunk_number || 0) + 1;
+                    await base44.asServiceRole.entities.FetchJob.update(jobId, {
+                        status: 'running', phase: 'mls_listings',
+                        current_offset: currentOffset,
+                        total_api_calls: totalApiCalls + mlsRequestCount,
+                        chunk_number: nextChunk, error_log: errorLog
+                    });
+                    await sleep(5000);
+                    try { base44.functions.invoke('processFetchChunk', {}).catch(() => {}); } catch (e) {}
+                    return Response.json({ paused: true, reason: 'rate_limited' });
+                }
+
+                let mlsTotalExpected = 0;
+                for (const r of results) {
+                    if (r.total) {
+                        mlsTotalExpected = parseInt(r.total, 10);
+                        if (!totalExpected) totalExpected = mlsTotalExpected;
+                    }
+                    allMls.push(...r.records);
+                    if (r.records.length < LIMIT) mlsReachedEnd = true;
+                }
+
+                if (mlsReachedEnd) break;
+                if (i + MAX_PARALLEL < mlsOffsets.length) await sleep(150);
+            }
+
+            totalApiCalls += mlsRequestCount;
+            mlsApiCalls += mlsRequestCount;
+            mlsFetched += allMls.length;
+            console.log(`[chunk-v6] MLS Sold fetched ${allMls.length} listings (${mlsRequestCount} calls)`);
+
+            // Map MLS listings
+            const mlsMapped = [];
+            const seenHashes = new Set();
+            const seenNormalized = new Set();
+
+            for (const l of allMls) {
+                const lat = l.latitude;
+                const lng = l.longitude;
+                if (!lat || !lng) continue;
+                if (!filterPoint(lat, lng)) continue;
+                if (!l.addressLine1 && !l.formattedAddress) continue;
+
+                const addressLine = l.addressLine1 || (l.formattedAddress ? l.formattedAddress.split(',')[0] : "");
+                const addressMatch = addressLine.match(/^(\d+)\s+(.*)$/);
+                const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
+                const street_name = addressMatch ? addressMatch[2] : (addressLine || "Unknown");
+
+                const pZip = l.zipCode || '00000';
+                const hash = l.id || l.propertyId || `${addressLine}-${pZip}`;
+                if (seenHashes.has(hash)) continue;
+                
+                const normKey = generateNormalizedHash(addressLine, pZip);
+                if (seenNormalized.has(normKey)) continue;
+                
+                seenHashes.add(hash);
+                seenNormalized.add(normKey);
+
+                if (pZip && !zipCodesFound.includes(pZip)) zipCodesFound.push(pZip);
+
+                mlsMapped.push({
+                    address_hash: hash, house_number, street_name,
+                    full_address: l.formattedAddress || l.addressLine1,
+                    city: l.city || '', state: l.state || '', zip_code: pZip,
+                    lat, lng, original_status: 'SOLD',
+                    beds: l.bedrooms || 0, baths: l.bathrooms || 0,
+                    sqft: l.squareFootage || 0, lot_size: l.lotSize || 0,
+                    year_built: l.yearBuilt || 0, price: l.price || 0,
+                    sold_date: l.removedDate || l.listedDate || null, sale_type: 'MLS',
+                    property_type: l.propertyType || 'Single Family',
+                    mls_id: l.mlsNumber || l.id || null, url: null,
+                    data_source: 'rentcast'
+                });
+            }
+
+            console.log(`[chunk-v6] MLS Sold mapped ${mlsMapped.length} from ${allMls.length} raw`);
+
+            // Write to DB
+            const dbResult = await writeToDb(mlsMapped);
+            mlsNew += dbResult.chunkInserted;
+            totalInserted += dbResult.chunkInserted;
+            totalExisted += dbResult.chunkExisted;
+            totalUpdated += dbResult.chunkUpdated;
+
+            const mlsSoldDone = mlsReachedEnd || allMls.length === 0;
+            const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
+            chunkTimings.push(chunkDuration);
+
+            console.log(`[chunk-v6] MLS Sold chunk done in ${chunkDuration}s: ins=${dbResult.chunkInserted}, exist=${dbResult.chunkExisted}, upd=${dbResult.chunkUpdated}`);
+
+            if (mlsSoldDone) {
+                // Transition to MLS Active listings phase
+                console.log(`[chunk-v6] MLS Sold COMPLETE — transitioning to Active listings phase`);
+                const nextChunk = (job.chunk_number || 0) + 1;
+                await base44.asServiceRole.entities.FetchJob.update(jobId, {
+                    phase: 'mls_active', current_offset: 0,
+                    total_expected: totalExpected, total_fetched: totalFetched + allMls.length,
+                    total_inserted: totalInserted, total_existed: totalExisted,
+                    total_updated: totalUpdated, total_api_calls: totalApiCalls,
+                    mls_fetched: mlsFetched, mls_new: mlsNew, mls_api_calls: mlsApiCalls,
+                    progress_pct: 40, zip_codes_found: zipCodesFound,
+                    chunk_number: nextChunk, chunk_timings: chunkTimings, error_log: errorLog
+                });
+                try { base44.functions.invoke('processFetchChunk', {}).catch(() => {}); } catch (e) {}
+            } else {
+                const newOffset = currentOffset + allMls.length;
+                const progressPct = totalExpected > 0
+                    ? Math.min(39, Math.round((mlsFetched / totalExpected) * 40))
+                    : 20;
+                const nextChunk = (job.chunk_number || 0) + 1;
+                await base44.asServiceRole.entities.FetchJob.update(jobId, {
+                    status: 'running', phase: 'mls_listings',
+                    current_offset: newOffset,
+                    total_expected: totalExpected, total_fetched: totalFetched + allMls.length,
+                    total_inserted: totalInserted, total_existed: totalExisted, total_updated: totalUpdated,
+                    total_api_calls: totalApiCalls, mls_fetched: mlsFetched,
+                    mls_new: mlsNew, mls_api_calls: mlsApiCalls,
+                    progress_pct: progressPct,
+                    zip_codes_found: zipCodesFound, chunk_number: nextChunk,
+                    chunk_timings: chunkTimings, error_log: errorLog
+                });
+                try { base44.functions.invoke('processFetchChunk', {}).catch(() => {}); } catch (e) {}
+            }
+
+            return Response.json({
+                job_id: jobId, phase: 'mls_listings', is_delta: isDeltaPull,
+                mls_fetched: allMls.length, mls_inserted: dbResult.chunkInserted,
+                chunk_duration_s: chunkDuration, is_phase_done: mlsSoldDone
+            });
+        }
+
+        // ======================================================================
+        // PHASE 2: MLS ACTIVE LISTINGS via /listings/sale?status=Active
+        // Hot leads — currently for-sale properties
+        // ======================================================================
+        if (currentPhase === 'mls_active') {
+            console.log(`[chunk-v6] Phase 2: Active MLS Listings`);
+
+            const allActive = [];
+            let activeRequestCount = 0;
+            let activeReachedEnd = false;
+
+            const activeOffsets = [];
+            for (let p = 0; p < PAGES_PER_CHUNK; p++) {
+                activeOffsets.push(currentOffset + p * LIMIT);
+            }
+
+            for (let i = 0; i < activeOffsets.length; i += MAX_PARALLEL) {
+                if (Date.now() - chunkStart > 45000) break;
+
+                const batch = activeOffsets.slice(i, i + MAX_PARALLEL);
+                const promises = batch.map(offset => {
+                    const params = new URLSearchParams({
+                        latitude: String(latitude), longitude: String(longitude),
+                        radius: String(radius), limit: String(LIMIT), offset: String(offset),
+                        status: 'Active'
+                    });
+                    if (offset === 0 && currentOffset === 0) params.set('includeTotalCount', 'true');
+
+                    const url = `${RENTCAST_BASE}/listings/sale?${params}`;
+                    if (offset === activeOffsets[0] && i === 0) console.log(`[chunk-v6] MLS Active URL: ${url}`);
+
+                    return fetchWithBackoff(url,
+                        { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY },
+                        logError
+                    );
+                });
+
+                const results = await Promise.all(promises);
+                activeRequestCount += results.length;
+
+                const allFailed = results.every(r => r.status !== 200);
+                if (allFailed && results.some(r => r.status === 429)) {
+                    logError('Active listings rate-limited — pausing');
+                    const nextChunk = (job.chunk_number || 0) + 1;
+                    await base44.asServiceRole.entities.FetchJob.update(jobId, {
+                        status: 'running', phase: 'mls_active',
+                        current_offset: currentOffset,
+                        total_api_calls: totalApiCalls + activeRequestCount,
+                        chunk_number: nextChunk, error_log: errorLog
+                    });
+                    await sleep(5000);
+                    try { base44.functions.invoke('processFetchChunk', {}).catch(() => {}); } catch (e) {}
+                    return Response.json({ paused: true, reason: 'active_rate_limited' });
+                }
+
+                for (const r of results) {
+                    allActive.push(...r.records);
+                    if (r.records.length < LIMIT) activeReachedEnd = true;
+                }
+
+                if (activeReachedEnd) break;
+                if (i + MAX_PARALLEL < activeOffsets.length) await sleep(150);
+            }
+
+            totalApiCalls += activeRequestCount;
+            mlsApiCalls += activeRequestCount;
+            console.log(`[chunk-v6] Active fetched ${allActive.length} listings (${activeRequestCount} calls)`);
+
+            // Map active listings — mark as ELIGIBLE (they're for sale, not sold yet)
+            const activeMapped = [];
+            const seenHashes = new Set();
+            const seenNormalized = new Set();
+
+            for (const l of allActive) {
+                const lat = l.latitude;
+                const lng = l.longitude;
+                if (!lat || !lng) continue;
+                if (!filterPoint(lat, lng)) continue;
+                if (!l.addressLine1 && !l.formattedAddress) continue;
+
+                const addressLine = l.addressLine1 || (l.formattedAddress ? l.formattedAddress.split(',')[0] : "");
+                const addressMatch = addressLine.match(/^(\d+)\s+(.*)$/);
+                const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
+                const street_name = addressMatch ? addressMatch[2] : (addressLine || "Unknown");
+
+                const pZip = l.zipCode || '00000';
+                const hash = l.id || l.propertyId || `${addressLine}-${pZip}`;
+                if (seenHashes.has(hash)) continue;
+                
+                const normKey = generateNormalizedHash(addressLine, pZip);
+                if (seenNormalized.has(normKey)) continue;
+                
+                seenHashes.add(hash);
+                seenNormalized.add(normKey);
+
+                if (pZip && !zipCodesFound.includes(pZip)) zipCodesFound.push(pZip);
+
+                activeMapped.push({
+                    address_hash: hash, house_number, street_name,
+                    full_address: l.formattedAddress || l.addressLine1,
+                    city: l.city || '', state: l.state || '', zip_code: pZip,
+                    lat, lng, original_status: 'ELIGIBLE',
+                    beds: l.bedrooms || 0, baths: l.bathrooms || 0,
+                    sqft: l.squareFootage || 0, lot_size: l.lotSize || 0,
+                    year_built: l.yearBuilt || 0, price: l.price || 0,
+                    sold_date: null, sale_type: 'MLS_Active',
+                    property_type: l.propertyType || 'Single Family',
+                    mls_id: l.mlsNumber || l.id || null, url: null,
+                    data_source: 'rentcast'
+                });
+            }
+
+            console.log(`[chunk-v6] Active mapped ${activeMapped.length} from ${allActive.length} raw`);
+
+            const dbResult = await writeToDb(activeMapped);
+            totalInserted += dbResult.chunkInserted;
+            totalExisted += dbResult.chunkExisted;
+            totalUpdated += dbResult.chunkUpdated;
+
+            const activeDone = activeReachedEnd || allActive.length === 0;
+            const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
+            chunkTimings.push(chunkDuration);
+
+            console.log(`[chunk-v6] Active chunk done in ${chunkDuration}s: ins=${dbResult.chunkInserted}, exist=${dbResult.chunkExisted}`);
+
+            if (activeDone) {
+                console.log(`[chunk-v6] Active listings COMPLETE — transitioning to deed records (supplemental)`);
+                const nextChunk = (job.chunk_number || 0) + 1;
+                await base44.asServiceRole.entities.FetchJob.update(jobId, {
+                    phase: 'deed_records', current_offset: 0,
+                    total_inserted: totalInserted, total_existed: totalExisted,
+                    total_updated: totalUpdated, total_api_calls: totalApiCalls,
+                    mls_fetched: mlsFetched + allActive.length, mls_new: mlsNew + dbResult.chunkInserted,
+                    mls_api_calls: mlsApiCalls,
+                    progress_pct: 60, zip_codes_found: zipCodesFound,
+                    chunk_number: nextChunk, chunk_timings: chunkTimings, error_log: errorLog
+                });
+                try { base44.functions.invoke('processFetchChunk', {}).catch(() => {}); } catch (e) {}
+            } else {
+                const newOffset = currentOffset + allActive.length;
+                const nextChunk = (job.chunk_number || 0) + 1;
+                await base44.asServiceRole.entities.FetchJob.update(jobId, {
+                    status: 'running', phase: 'mls_active',
+                    current_offset: newOffset,
+                    total_inserted: totalInserted, total_existed: totalExisted, total_updated: totalUpdated,
+                    total_api_calls: totalApiCalls, mls_fetched: mlsFetched + allActive.length,
+                    mls_new: mlsNew + dbResult.chunkInserted, mls_api_calls: mlsApiCalls,
+                    progress_pct: 50,
+                    zip_codes_found: zipCodesFound, chunk_number: nextChunk,
+                    chunk_timings: chunkTimings, error_log: errorLog
+                });
+                try { base44.functions.invoke('processFetchChunk', {}).catch(() => {}); } catch (e) {}
+            }
+
+            return Response.json({
+                job_id: jobId, phase: 'mls_active',
+                active_fetched: allActive.length, active_inserted: dbResult.chunkInserted,
+                chunk_duration_s: chunkDuration, is_phase_done: activeDone
+            });
+        }
+
+        // ======================================================================
+        // PHASE 3 (SUPPLEMENTAL): DEED RECORDS via /properties
+        // Enriches MLS data with ownership, tax, and historical deed info
         // ======================================================================
         if (currentPhase === 'deed_records') {
+            console.log(`[chunk-v6] Phase 3 (supplemental): Deed Records`);
+
             const allRaw = [];
             let requestCount = 0;
             let reachedEnd = false;
@@ -225,7 +644,7 @@ Deno.serve(async (req) => {
 
             for (let i = 0; i < offsets.length; i += MAX_PARALLEL) {
                 if (Date.now() - chunkStart > 45000) {
-                    console.warn(`[chunk-v5] Time budget hit at offset ${offsets[i]}`);
+                    console.warn(`[chunk-v6] Time budget hit at offset ${offsets[i]}`);
                     break;
                 }
 
@@ -238,20 +657,18 @@ Deno.serve(async (req) => {
                     });
                     if (offset === 0 && currentOffset === 0) params.set('includeTotalCount', 'true');
                     
-                    // CDC Delta-Pull: add lastUpdated_gte filter to only fetch changed records
+                    // CDC Delta-Pull filter
                     if (isDeltaPull && deltaWatermark) {
-                        // Subtract 1 day buffer from watermark to catch edge cases
                         const watermarkDate = new Date(deltaWatermark);
                         watermarkDate.setDate(watermarkDate.getDate() - 1);
-                        const watermarkStr = watermarkDate.toISOString().split('T')[0];
-                        params.set('lastUpdated_gte', watermarkStr);
+                        params.set('lastUpdated_gte', watermarkDate.toISOString().split('T')[0]);
                         if (offset === offsets[0] && i === 0) {
-                            console.log(`[chunk-v5] 🔄 DELTA FILTER: lastUpdated_gte=${watermarkStr}`);
+                            console.log(`[chunk-v6] 🔄 DELTA FILTER: lastUpdated_gte=${watermarkDate.toISOString().split('T')[0]}`);
                         }
                     }
 
                     const url = `${RENTCAST_BASE}/properties?${params}`;
-                    if (offset === offsets[0] && i === 0) console.log(`[chunk-v5] Phase1 URL: ${url}`);
+                    if (offset === offsets[0] && i === 0) console.log(`[chunk-v6] Deed URL: ${url}`);
 
                     return fetchWithBackoff(url, { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY }, logError);
                 });
@@ -262,51 +679,47 @@ Deno.serve(async (req) => {
 
                 const allFailed = results.every(r => r.status !== 200);
                 if (allFailed && results.some(r => r.status === 401)) {
-                    logError('All requests returned 401 — aborting job');
+                    logError('Deed records 401 — aborting');
                     await base44.asServiceRole.entities.FetchJob.update(jobId, {
                         status: 'failed', error_message: 'RentCast API key invalid', error_log: errorLog, total_api_calls: totalApiCalls
                     });
                     return Response.json({ error: 'API auth failed' });
                 }
                 
-                // If we're getting rate-limited on all requests, pause and retry next chunk
                 if (allFailed && results.some(r => r.status === 429)) {
-                    logError('All requests rate-limited — pausing for next chunk cycle');
+                    logError('Deed records rate-limited — pausing');
                     const nextChunk = (job.chunk_number || 0) + 1;
                     await base44.asServiceRole.entities.FetchJob.update(jobId, {
                         status: 'running', phase: 'deed_records',
-                        current_offset: currentOffset, // Don't advance offset
+                        current_offset: currentOffset,
                         total_api_calls: totalApiCalls, chunk_number: nextChunk,
                         error_log: errorLog
                     });
-                    // Wait longer before next attempt
                     await sleep(5000);
                     try { base44.functions.invoke('processFetchChunk', {}).catch(() => {}); } catch (e) {}
-                    return Response.json({ paused: true, reason: 'rate_limited' });
+                    return Response.json({ paused: true, reason: 'deed_rate_limited' });
                 }
 
                 for (const r of results) {
-                    if (r.total && !totalExpected) {
-                        totalExpected = parseInt(r.total, 10);
-                        console.log(`[chunk-v5] X-Total-Count: ${totalExpected}`);
-                    }
+                    if (r.total && !totalExpected) totalExpected = parseInt(r.total, 10);
                     allRaw.push(...r.records);
                     if (r.records.length < LIMIT) reachedEnd = true;
                 }
 
                 if (reachedEnd) break;
-                // Stagger requests to avoid rate spikes
                 if (i + MAX_PARALLEL < offsets.length) await sleep(150);
             }
 
-            const newOffset = currentOffset + allRaw.length;
             totalFetched += allRaw.length;
-            console.log(`[chunk-v5] Phase1 fetched ${allRaw.length} records (${requestCount} calls), offset now ${newOffset}`);
+            console.log(`[chunk-v6] Deed fetched ${allRaw.length} records (${requestCount} calls)`);
 
-            // Map & filter with normalized address dedup
+            // Map deed records
+            const soldCutoff = new Date();
+            soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
+
             const mapped = [];
             const seenHashes = new Set();
-            const seenNormalized = new Set(); // Fuzzy dedup via normalized addresses
+            const seenNormalized = new Set();
 
             for (const p of allRaw) {
                 if (!p.latitude || !p.longitude) continue;
@@ -327,7 +740,6 @@ Deno.serve(async (req) => {
                 const pZip = p.zipCode || '00000';
                 const hash = p.id || `${p.addressLine1}-${pZip}`;
                 
-                // Double dedup: exact hash + normalized address
                 if (seenHashes.has(hash)) continue;
                 const normKey = generateNormalizedHash(addressLine, pZip);
                 if (seenNormalized.has(normKey)) continue;
@@ -353,342 +765,37 @@ Deno.serve(async (req) => {
             }
 
             const dedupSaved = allRaw.length - mapped.length;
-            if (dedupSaved > 0) {
-                console.log(`[chunk-v5] Address normalization caught ${dedupSaved} duplicates`);
-            }
+            if (dedupSaved > 0) console.log(`[chunk-v6] Deed normalization caught ${dedupSaved} duplicates`);
 
-            // DB write
-            let chunkInserted = 0, chunkExisted = 0, chunkUpdated = 0;
+            const dbResult = await writeToDb(mapped);
+            totalInserted += dbResult.chunkInserted;
+            totalExisted += dbResult.chunkExisted;
+            totalUpdated += dbResult.chunkUpdated;
 
-            if (mapped.length > 0) {
-                const uniqueZips = [...new Set(mapped.map(p => p.zip_code))];
-                const existingHashToId = new Map();
-
-                for (let i = 0; i < uniqueZips.length; i += 20) {
-                    if (Date.now() - chunkStart > 52000) break;
-                    const zipChunk = uniqueZips.slice(i, i + 20);
-                    const promises = zipChunk.map(zip =>
-                        base44.asServiceRole.entities.MasterProperty.filter({ zip_code: zip }, null, 5000)
-                            .then(res => {
-                                const arr = Array.isArray(res) ? res : (res?.items || []);
-                                arr.forEach(p => existingHashToId.set(p.address_hash, { id: p.id, status: p.original_status, dataSource: p.data_source }));
-                            })
-                            .catch(e => logError(`DB zip lookup ${zip} failed: ${e.message}`))
-                    );
-                    await Promise.all(promises);
-                }
-
-                const toInsert = [];
-                const soldUpdates = [];
-
-                for (const p of mapped) {
-                    const existing = existingHashToId.get(p.address_hash);
-                    if (existing) {
-                        chunkExisted++;
-                        if (p.original_status === 'SOLD' && existing.status !== 'SOLD') {
-                            soldUpdates.push({ id: existing.id, sold_date: p.sold_date, price: p.price });
-                        }
-                        if (existing.status === 'UNVERIFIED' || existing.dataSource === 'csv_import') {
-                            soldUpdates.push({
-                                id: existing.id, sold_date: p.sold_date, price: p.price,
-                                original_status: p.original_status, data_source: 'rentcast',
-                                sale_type: 'Deed', city: p.city, state: p.state,
-                                zip_code: p.zip_code, beds: p.beds, baths: p.baths,
-                                sqft: p.sqft, lot_size: p.lot_size, year_built: p.year_built,
-                                property_type: p.property_type
-                            });
-                        }
-                    } else {
-                        toInsert.push(p);
-                    }
-                }
-
-                for (let i = 0; i < toInsert.length; i += 1000) {
-                    if (Date.now() - chunkStart > 55000) {
-                        logError('Time limit hit during DB writes');
-                        break;
-                    }
-                    const chunk = toInsert.slice(i, i + 1000);
-                    try {
-                        await base44.asServiceRole.entities.MasterProperty.bulkCreate(chunk);
-                        chunkInserted += chunk.length;
-                    } catch (e) {
-                        logError(`Bulk insert failed: ${e.message}`);
-                        for (let j = 0; j < chunk.length; j += 100) {
-                            const small = chunk.slice(j, j + 100);
-                            try {
-                                await base44.asServiceRole.entities.MasterProperty.bulkCreate(small);
-                                chunkInserted += small.length;
-                            } catch (e2) { logError(`Small chunk insert failed: ${e2.message}`); }
-                            await sleep(200);
-                        }
-                    }
-                }
-
-                for (let i = 0; i < Math.min(soldUpdates.length, 100); i++) {
-                    if (Date.now() - chunkStart > 58000) break;
-                    try {
-                        const upd = soldUpdates[i];
-                        const updatePayload = { original_status: upd.original_status || 'SOLD', sold_date: upd.sold_date, price: upd.price };
-                        if (upd.data_source) updatePayload.data_source = upd.data_source;
-                        if (upd.sale_type) updatePayload.sale_type = upd.sale_type;
-                        if (upd.city) updatePayload.city = upd.city;
-                        if (upd.state) updatePayload.state = upd.state;
-                        if (upd.zip_code) updatePayload.zip_code = upd.zip_code;
-                        if (upd.beds) updatePayload.beds = upd.beds;
-                        if (upd.baths) updatePayload.baths = upd.baths;
-                        if (upd.sqft) updatePayload.sqft = upd.sqft;
-                        if (upd.property_type) updatePayload.property_type = upd.property_type;
-                        await base44.asServiceRole.entities.MasterProperty.update(upd.id, updatePayload);
-                        chunkUpdated++;
-                    } catch (e) { /* skip */ }
-                }
-            }
-
-            totalInserted += chunkInserted;
-            totalExisted += chunkExisted;
-            totalUpdated += chunkUpdated;
-
-            const phase1Done = reachedEnd || (totalExpected > 0 && totalFetched >= totalExpected);
+            const newOffset = currentOffset + allRaw.length;
+            const phase3Done = reachedEnd || (totalExpected > 0 && totalFetched >= totalExpected);
             const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
             chunkTimings.push(chunkDuration);
 
-            console.log(`[chunk-v5] Phase1 chunk done in ${chunkDuration}s: ins=${chunkInserted}, exist=${chunkExisted}, upd=${chunkUpdated}`);
+            console.log(`[chunk-v6] Deed chunk done in ${chunkDuration}s: ins=${dbResult.chunkInserted}, exist=${dbResult.chunkExisted}, upd=${dbResult.chunkUpdated}`);
 
-            // Calculate delta savings if applicable
+            // Calculate delta savings
             let deltaSavings = job.delta_savings || null;
-            if (isDeltaPull && phase1Done && deltaSavings) {
+            if (isDeltaPull && phase3Done && deltaSavings) {
                 deltaSavings.actual_calls = totalApiCalls;
                 deltaSavings.savings_pct = deltaSavings.estimated_full_calls > 0 
                     ? Math.round((1 - totalApiCalls / deltaSavings.estimated_full_calls) * 100)
                     : 0;
-                console.log(`[chunk-v5] 📊 DELTA SAVINGS: ${deltaSavings.savings_pct}% (${deltaSavings.estimated_full_calls} → ${totalApiCalls} calls)`);
+                console.log(`[chunk-v6] 📊 DELTA SAVINGS: ${deltaSavings.savings_pct}% (${deltaSavings.estimated_full_calls} → ${totalApiCalls} calls)`);
             }
 
-            if (phase1Done) {
-                console.log(`[chunk-v5] Phase 1 COMPLETE — transitioning to MLS phase`);
-                const nextChunk = (job.chunk_number || 0) + 1;
-                await base44.asServiceRole.entities.FetchJob.update(jobId, {
-                    phase: 'mls_listings', current_offset: 0,
-                    total_expected: totalExpected, total_fetched: totalFetched,
-                    total_inserted: totalInserted, total_existed: totalExisted,
-                    total_updated: totalUpdated, total_api_calls: totalApiCalls,
-                    delta_savings: deltaSavings,
-                    progress_pct: 70, zip_codes_found: zipCodesFound,
-                    chunk_number: nextChunk, chunk_timings: chunkTimings, error_log: errorLog
-                });
-                try { base44.functions.invoke('processFetchChunk', {}).catch(() => {}); } catch (e) {}
-            } else {
-                const progressPct = totalExpected > 0
-                    ? Math.min(69, Math.round((totalFetched / totalExpected) * 70))
-                    : 35;
-                const nextChunk = (job.chunk_number || 0) + 1;
-                await base44.asServiceRole.entities.FetchJob.update(jobId, {
-                    status: 'running', phase: 'deed_records',
-                    current_offset: newOffset,
-                    total_expected: totalExpected, total_fetched: totalFetched,
-                    total_inserted: totalInserted, total_existed: totalExisted, total_updated: totalUpdated,
-                    total_api_calls: totalApiCalls, delta_savings: deltaSavings,
-                    progress_pct: progressPct,
-                    zip_codes_found: zipCodesFound, chunk_number: nextChunk,
-                    chunk_timings: chunkTimings, error_log: errorLog
-                });
-                try { base44.functions.invoke('processFetchChunk', {}).catch(() => {}); } catch (e) {}
-            }
-
-            return Response.json({
-                job_id: jobId, phase: 'deed_records', is_delta: isDeltaPull,
-                chunk_fetched: allRaw.length, chunk_inserted: chunkInserted,
-                chunk_existed: chunkExisted, chunk_duration_s: chunkDuration,
-                dedup_saved: allRaw.length - mapped.length,
-                is_phase_done: phase1Done
-            });
-        }
-
-        // ======================================================================
-        // PHASE 2: MLS SOLD LISTINGS
-        // ======================================================================
-        if (currentPhase === 'mls_listings') {
-            console.log(`[chunk-v5] Starting MLS Phase 2 — radius=${radius}mi delta=${isDeltaPull}`);
-
-            const allMls = [];
-            let mlsRequestCount = 0;
-            let mlsReachedEnd = false;
-
-            const mlsOffsets = [];
-            for (let p = 0; p < PAGES_PER_CHUNK; p++) {
-                mlsOffsets.push(currentOffset + p * LIMIT);
-            }
-
-            for (let i = 0; i < mlsOffsets.length; i += MAX_PARALLEL) {
-                if (Date.now() - chunkStart > 45000) break;
-
-                const batch = mlsOffsets.slice(i, i + MAX_PARALLEL);
-                const promises = batch.map(offset => {
-                    const params = new URLSearchParams({
-                        latitude: String(latitude), longitude: String(longitude),
-                        radius: String(radius), limit: String(LIMIT), offset: String(offset),
-                        status: 'Inactive', daysOld: `0:${daysBack}`
-                    });
-                    if (offset === 0 && currentOffset === 0) params.set('includeTotalCount', 'true');
-                    
-                    // Delta filter for MLS too
-                    if (isDeltaPull && deltaWatermark) {
-                        const watermarkDate = new Date(deltaWatermark);
-                        watermarkDate.setDate(watermarkDate.getDate() - 1);
-                        params.set('lastUpdated_gte', watermarkDate.toISOString().split('T')[0]);
-                    }
-
-                    return fetchWithBackoff(
-                        `${RENTCAST_BASE}/listings/sale?${params}`,
-                        { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY },
-                        logError
-                    );
-                });
-
-                const results = await Promise.all(promises);
-                mlsRequestCount += results.length;
-
-                // Rate limit protection for MLS phase too
-                const allFailed = results.every(r => r.status !== 200);
-                if (allFailed && results.some(r => r.status === 429)) {
-                    logError('MLS phase rate-limited — pausing');
-                    const nextChunk = (job.chunk_number || 0) + 1;
-                    await base44.asServiceRole.entities.FetchJob.update(jobId, {
-                        status: 'running', phase: 'mls_listings',
-                        current_offset: currentOffset,
-                        total_api_calls: totalApiCalls + mlsRequestCount,
-                        chunk_number: nextChunk, error_log: errorLog
-                    });
-                    await sleep(5000);
-                    try { base44.functions.invoke('processFetchChunk', {}).catch(() => {}); } catch (e) {}
-                    return Response.json({ paused: true, reason: 'mls_rate_limited' });
-                }
-
-                let mlsTotalExpected = 0;
-                for (const r of results) {
-                    if (r.total) mlsTotalExpected = parseInt(r.total, 10);
-                    allMls.push(...r.records);
-                    if (r.records.length < LIMIT) mlsReachedEnd = true;
-                }
-
-                if (mlsReachedEnd) break;
-                if (i + MAX_PARALLEL < mlsOffsets.length) await sleep(150);
-            }
-
-            totalApiCalls += mlsRequestCount;
-            mlsApiCalls += mlsRequestCount;
-            mlsFetched += allMls.length;
-            console.log(`[chunk-v5] MLS fetched ${allMls.length} listings (${mlsRequestCount} calls)`);
-
-            // Map MLS listings with normalized dedup
-            const mlsMapped = [];
-            const seenMlsHashes = new Set();
-            const seenMlsNormalized = new Set();
-
-            for (const l of allMls) {
-                const lat = l.latitude;
-                const lng = l.longitude;
-                if (!lat || !lng) continue;
-                if (!filterPoint(lat, lng)) continue;
-                if (!l.addressLine1 && !l.formattedAddress) continue;
-
-                const addressLine = l.addressLine1 || (l.formattedAddress ? l.formattedAddress.split(',')[0] : "");
-                const addressMatch = addressLine.match(/^(\d+)\s+(.*)$/);
-                const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
-                const street_name = addressMatch ? addressMatch[2] : (addressLine || "Unknown");
-
-                const pZip = l.zipCode || '00000';
-                const hash = l.propertyId || l.id || `${addressLine}-${pZip}`;
-                if (seenMlsHashes.has(hash)) continue;
-                
-                const normKey = generateNormalizedHash(addressLine, pZip);
-                if (seenMlsNormalized.has(normKey)) continue;
-                
-                seenMlsHashes.add(hash);
-                seenMlsNormalized.add(normKey);
-
-                if (pZip && !zipCodesFound.includes(pZip)) zipCodesFound.push(pZip);
-
-                mlsMapped.push({
-                    address_hash: hash, house_number, street_name,
-                    full_address: l.formattedAddress || l.addressLine1,
-                    city: l.city || '', state: l.state || '', zip_code: pZip,
-                    lat, lng, original_status: 'SOLD',
-                    beds: l.bedrooms || 0, baths: l.bathrooms || 0,
-                    sqft: l.squareFootage || 0, lot_size: l.lotSize || 0,
-                    year_built: l.yearBuilt || 0, price: l.price || 0,
-                    sold_date: l.removedDate || l.listedDate || null, sale_type: 'MLS',
-                    property_type: l.propertyType || 'Single Family',
-                    mls_id: l.id || null, url: null,
-                    data_source: 'rentcast'
-                });
-            }
-
-            console.log(`[chunk-v5] MLS mapped ${mlsMapped.length} from ${allMls.length} raw`);
-
-            // Dedup against existing DB
-            let mlsInserted = 0;
-
-            if (mlsMapped.length > 0) {
-                const uniqueZips = [...new Set(mlsMapped.map(p => p.zip_code))];
-                const existingHashes = new Set();
-
-                for (let i = 0; i < uniqueZips.length; i += 20) {
-                    if (Date.now() - chunkStart > 52000) break;
-                    const zipChunk = uniqueZips.slice(i, i + 20);
-                    const promises = zipChunk.map(zip =>
-                        base44.asServiceRole.entities.MasterProperty.filter({ zip_code: zip }, null, 5000)
-                            .then(res => {
-                                const arr = Array.isArray(res) ? res : (res?.items || []);
-                                arr.forEach(p => existingHashes.add(p.address_hash));
-                            })
-                            .catch(e => logError(`MLS DB lookup ${zip} failed: ${e.message}`))
-                    );
-                    await Promise.all(promises);
-                }
-
-                const toInsert = mlsMapped.filter(p => !existingHashes.has(p.address_hash));
-                mlsNew += toInsert.length;
-                console.log(`[chunk-v5] MLS: ${toInsert.length} new (${mlsMapped.length - toInsert.length} already existed)`);
-
-                for (let i = 0; i < toInsert.length; i += 1000) {
-                    if (Date.now() - chunkStart > 55000) break;
-                    const chunk = toInsert.slice(i, i + 1000);
-                    try {
-                        await base44.asServiceRole.entities.MasterProperty.bulkCreate(chunk);
-                        mlsInserted += chunk.length;
-                    } catch (e) {
-                        logError(`MLS bulk insert failed: ${e.message}`);
-                        for (let j = 0; j < chunk.length; j += 100) {
-                            const small = chunk.slice(j, j + 100);
-                            try { await base44.asServiceRole.entities.MasterProperty.bulkCreate(small); mlsInserted += small.length; } catch {}
-                            await sleep(200);
-                        }
-                    }
-                }
-            }
-
-            totalInserted += mlsInserted;
-            const mlsPhaseDone = mlsReachedEnd || allMls.length === 0;
-            const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
-            chunkTimings.push(chunkDuration);
-
-            // Final delta savings calc
-            let deltaSavings = job.delta_savings || null;
-            if (isDeltaPull && mlsPhaseDone && deltaSavings) {
-                deltaSavings.actual_calls = totalApiCalls;
-                deltaSavings.savings_pct = deltaSavings.estimated_full_calls > 0 
-                    ? Math.round((1 - totalApiCalls / deltaSavings.estimated_full_calls) * 100)
-                    : 0;
-                console.log(`[chunk-v5] 📊 FINAL DELTA SAVINGS: ${deltaSavings.savings_pct}% (${deltaSavings.estimated_full_calls} → ${totalApiCalls} calls)`);
-            }
-
-            if (mlsPhaseDone) {
+            if (phase3Done) {
+                // ALL DONE — complete the job
                 const completedAt = new Date().toISOString();
                 await base44.asServiceRole.entities.FetchJob.update(jobId, {
                     status: 'completed', phase: 'complete',
-                    current_offset: 0, total_inserted: totalInserted, total_existed: totalExisted,
+                    current_offset: 0, total_fetched: totalFetched,
+                    total_inserted: totalInserted, total_existed: totalExisted,
                     total_updated: totalUpdated, total_api_calls: totalApiCalls,
                     mls_fetched: mlsFetched, mls_new: mlsNew, mls_api_calls: mlsApiCalls,
                     delta_savings: deltaSavings,
@@ -696,6 +803,7 @@ Deno.serve(async (req) => {
                     completed_at: completedAt, chunk_timings: chunkTimings, error_log: errorLog
                 });
 
+                // Update user territory
                 try {
                     const users = await base44.asServiceRole.entities.User.filter({ email: job.user_email }, null, 1);
                     const userArr = Array.isArray(users) ? users : (users?.items || []);
@@ -711,17 +819,19 @@ Deno.serve(async (req) => {
                 } catch (e) { logError(`User update failed: ${e.message}`); }
 
                 const deltaMsg = isDeltaPull ? ` | DELTA savings: ${deltaSavings?.savings_pct || 0}%` : '';
-                console.log(`[chunk-v5] === JOB COMPLETE === deed=${totalFetched} mls=${mlsFetched} inserted=${totalInserted} existed=${totalExisted} apiCalls=${totalApiCalls}${deltaMsg}`);
+                console.log(`[chunk-v6] === JOB COMPLETE === mls_sold=${mlsFetched} deed=${totalFetched} inserted=${totalInserted} existed=${totalExisted} apiCalls=${totalApiCalls}${deltaMsg}`);
             } else {
-                const newMlsOffset = currentOffset + allMls.length;
+                const progressPct = 60 + (totalExpected > 0
+                    ? Math.min(39, Math.round((totalFetched / totalExpected) * 40))
+                    : 20);
                 const nextChunk = (job.chunk_number || 0) + 1;
                 await base44.asServiceRole.entities.FetchJob.update(jobId, {
-                    status: 'running', phase: 'mls_listings',
-                    current_offset: newMlsOffset, total_inserted: totalInserted,
-                    total_existed: totalExisted, total_updated: totalUpdated,
-                    total_api_calls: totalApiCalls, mls_fetched: mlsFetched,
-                    mls_new: mlsNew, mls_api_calls: mlsApiCalls, delta_savings: deltaSavings,
-                    progress_pct: Math.min(99, 70 + Math.round((allMls.length / Math.max(1, allMls.length)) * 30)),
+                    status: 'running', phase: 'deed_records',
+                    current_offset: newOffset,
+                    total_expected: totalExpected, total_fetched: totalFetched,
+                    total_inserted: totalInserted, total_existed: totalExisted, total_updated: totalUpdated,
+                    total_api_calls: totalApiCalls, delta_savings: deltaSavings,
+                    progress_pct: Math.min(99, progressPct),
                     zip_codes_found: zipCodesFound, chunk_number: nextChunk,
                     chunk_timings: chunkTimings, error_log: errorLog
                 });
@@ -729,17 +839,17 @@ Deno.serve(async (req) => {
             }
 
             return Response.json({
-                job_id: jobId, phase: 'mls_listings', is_delta: isDeltaPull,
-                mls_fetched: allMls.length, mls_inserted: mlsInserted,
-                chunk_duration_s: chunkDuration, is_done: mlsPhaseDone,
-                delta_savings: deltaSavings
+                job_id: jobId, phase: 'deed_records', is_delta: isDeltaPull,
+                chunk_fetched: allRaw.length, chunk_inserted: dbResult.chunkInserted,
+                chunk_existed: dbResult.chunkExisted, chunk_duration_s: chunkDuration,
+                dedup_saved: dedupSaved, is_phase_done: phase3Done
             });
         }
 
         return Response.json({ error: 'Unknown phase', phase: currentPhase });
 
     } catch (error) {
-        console.error('[chunk-v5] FATAL CRASH:', error.message, error.stack);
+        console.error('[chunk-v6] FATAL CRASH:', error.message, error.stack);
         try {
             const base44 = createClientFromRequest(req);
             const runningJobs = await base44.asServiceRole.entities.FetchJob.filter({ status: 'running' }, '-updated_date', 1);
@@ -751,7 +861,7 @@ Deno.serve(async (req) => {
                     error_log: [...(arr[0].error_log || []), `[${new Date().toISOString()}] FATAL: ${error.message}\n${error.stack}`]
                 });
             }
-        } catch (e2) { console.error('[chunk-v5] Could not mark job failed:', e2.message); }
+        } catch (e2) { console.error('[chunk-v6] Could not mark job failed:', e2.message); }
         return Response.json({ error: error.message }, { status: 500 });
     }
 });
