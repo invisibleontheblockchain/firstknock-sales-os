@@ -211,7 +211,7 @@ function ViewportCulledPins({
  * Renders all the map data layers: saved routes, generated routes, heatmap,
  * dark room clusters/pins, user property pins, active route, preview route.
  */
-const ManagerMapLayers = React.memo(function ManagerMapLayers({
+export default React.memo(function ManagerMapLayers({
     // Mode & state
     mode,
     activeRoute,
