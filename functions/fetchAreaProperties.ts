@@ -200,10 +200,10 @@ Deno.serve(async (req) => {
             zip_codes_found: [],
             error_log: [],
             chunk_timings: [],
-            phase: 'deed_records'
+            phase: 'mls_listings'
         });
 
-        console.log(`[fetchArea-v4] Created FetchJob ${job.id} | delta=${isDeltaPull} | lat=${optimizedLat} lng=${optimizedLng} r=${optimizedRadius}mi`);
+        console.log(`[fetchArea-v6] Created FetchJob ${job.id} | delta=${isDeltaPull} | lat=${optimizedLat} lng=${optimizedLng} r=${optimizedRadius}mi | phase=mls_listings (MLS-first)`);
 
         try {
             await base44.auth.updateMe({ area_pulls_count: pullCount + 1 });
