@@ -594,11 +594,20 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         }
     });
 
-    // Score all properties
-    const scored = eligible.map(p => ({
-        ...p,
-        score: scoreProperty(p, allLogs, neighborhoodStats, learnedWeights)
-    }));
+    // V2 Propensity scoring (§1.5)
+    const propensityMap = batchScoreProperties(eligible, allLogs, learnedWeights);
+
+    // Score all properties — propensity feeds into score for backward compat
+    const scored = eligible.map(p => {
+        const hash = p.address_hash || p.id;
+        const pData = propensityMap.get(hash);
+        const propensity = pData ? pData.propensity : 0.5;
+        return {
+            ...p,
+            propensity,
+            score: scoreProperty(p, allLogs, neighborhoodStats, learnedWeights),
+        };
+    });
 
     // Calculate number of routes
     const numRoutes = Math.ceil(scored.length / housesPerRoute);
