@@ -44,6 +44,20 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             const isFirst = idx === 0;
             const num = idx + 1;
 
+            // Transparent hitbox for mobile tapping
+            const hitbox = L.circleMarker([p.lat, p.lng], {
+                radius: 20,
+                color: 'transparent',
+                fillColor: 'transparent',
+                interactive: true,
+                stroke: false
+            });
+            hitbox.on('click', (e) => {
+                L.DomEvent.stopPropagation(e);
+                setSelectedProperty(p);
+            });
+            group.addLayer(hitbox);
+
             // Circle pin (canvas-rendered, fast)
             const circle = L.circleMarker([p.lat, p.lng], {
                 radius: 5,
@@ -188,18 +202,25 @@ function ViewportCulledPins({
                 const fillColor = isRecentlySold ? '#FF00FF' : (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER);
 
                 return (
-                    <CircleMarker
-                        key={p.address_hash || p.id}
-                        center={[p.lat, p.lng]}
-                        radius={isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize)}
-                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
-                        pathOptions={{
-                            fillColor,
-                            fillOpacity: isRecentlySold ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
-                            color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
-                            weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth))
-                        }}
-                    />
+                    <React.Fragment key={p.address_hash || p.id}>
+                        <CircleMarker
+                            center={[p.lat, p.lng]}
+                            radius={20}
+                            eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
+                            pathOptions={{ fillColor: 'transparent', color: 'transparent', interactive: true, stroke: false }}
+                        />
+                        <CircleMarker
+                            center={[p.lat, p.lng]}
+                            radius={isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize)}
+                            eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
+                            pathOptions={{
+                                fillColor,
+                                fillOpacity: isRecentlySold ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
+                                color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
+                                weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth))
+                            }}
+                        />
+                    </React.Fragment>
                 );
             })}
         </LayerGroup>
@@ -310,26 +331,33 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                                         return true;
                                     })
                                     .map((p, idx) => (
-                                        <CircleMarker
-                                            key={`saved-${route.id}-${p.address_hash || 'no-hash'}-${idx}`}
-                                            center={[p.lat, p.lng]}
-                                            radius={pinSize}
-                                            eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
-                                            pathOptions={{
-                                                fillColor: repColor,
-                                                fillOpacity: (isUnassigned ? 0.6 : 0.8) * mapSettings.pinOpacity,
-                                                color: mapSettings.fillStyle === 'outline' ? repColor : (mapSettings.pinBorderColor || '#000'),
-                                                weight: mapSettings.fillStyle === 'outline' ? 2 : mapSettings.pinBorderWidth
-                                            }}
-                                        >
-                                            {mapSettings.showLabels && (
-                                                <Tooltip permanent direction="center" className="route-number-tooltip">
-                                                    <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '8px', textShadow: '0 0 3px #000' }}>
-                                                        {mapSettings.labelType === 'number' ? p.house_number : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0, 1) : (p.street_name || '').split(' ')[0]}
-                                                    </span>
-                                                </Tooltip>
-                                            )}
-                                        </CircleMarker>
+                                        <React.Fragment key={`saved-${route.id}-${p.address_hash || 'no-hash'}-${idx}`}>
+                                            <CircleMarker
+                                                center={[p.lat, p.lng]}
+                                                radius={20}
+                                                eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
+                                                pathOptions={{ fillColor: 'transparent', color: 'transparent', interactive: true, stroke: false }}
+                                            />
+                                            <CircleMarker
+                                                center={[p.lat, p.lng]}
+                                                radius={pinSize}
+                                                eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
+                                                pathOptions={{
+                                                    fillColor: repColor,
+                                                    fillOpacity: (isUnassigned ? 0.6 : 0.8) * mapSettings.pinOpacity,
+                                                    color: mapSettings.fillStyle === 'outline' ? repColor : (mapSettings.pinBorderColor || '#000'),
+                                                    weight: mapSettings.fillStyle === 'outline' ? 2 : mapSettings.pinBorderWidth
+                                                }}
+                                            >
+                                                {mapSettings.showLabels && (
+                                                    <Tooltip permanent direction="center" className="route-number-tooltip">
+                                                        <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '8px', textShadow: '0 0 3px #000' }}>
+                                                            {mapSettings.labelType === 'number' ? p.house_number : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0, 1) : (p.street_name || '').split(' ')[0]}
+                                                        </span>
+                                                    </Tooltip>
+                                                )}
+                                            </CircleMarker>
+                                        </React.Fragment>
                                     ))}
                                 {showRouteLines && route.properties.length > 1 && (
                                     <Polyline
@@ -364,18 +392,25 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                             )}
 
                             {showRouteDetails && route.properties.filter(p => p && p.lat && p.lng).map((p, idx) => (
-                                <CircleMarker
-                                    key={`generated-${route.id}-${idx}`}
-                                    center={[p.lat, p.lng]}
-                                    radius={pinSize + 1}
-                                    eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
-                                    pathOptions={{
-                                        fillColor: routeColor,
-                                        fillOpacity: 0.6 * mapSettings.pinOpacity,
-                                        color: mapSettings.fillStyle === 'outline' ? routeColor : (mapSettings.pinBorderColor || '#000'),
-                                        weight: mapSettings.pinBorderWidth
-                                    }}
-                                />
+                                <React.Fragment key={`generated-${route.id}-${idx}`}>
+                                    <CircleMarker
+                                        center={[p.lat, p.lng]}
+                                        radius={20}
+                                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
+                                        pathOptions={{ fillColor: 'transparent', color: 'transparent', interactive: true, stroke: false }}
+                                    />
+                                    <CircleMarker
+                                        center={[p.lat, p.lng]}
+                                        radius={pinSize + 1}
+                                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
+                                        pathOptions={{
+                                            fillColor: routeColor,
+                                            fillOpacity: 0.6 * mapSettings.pinOpacity,
+                                            color: mapSettings.fillStyle === 'outline' ? routeColor : (mapSettings.pinBorderColor || '#000'),
+                                            weight: mapSettings.pinBorderWidth
+                                        }}
+                                    />
+                                </React.Fragment>
                             ))}
                             {showRouteLines && route.properties.length > 1 && (
                                 <Polyline
