@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
-import { polygonToCells, latLngToCell } from 'npm:h3-js@4.1.0';
+import { latLngToCell } from 'npm:h3-js@4.1.0';
 
 // v8 — Deed-Only Architecture: /v1/properties?saleDateRange is the ONLY endpoint
 // Per RentCast API audit: /listings/sale status=Inactive is a catch-all including
@@ -196,23 +196,6 @@ Deno.serve(async (req) => {
             });
         }
 
-        // Pre-compute H3 cells for polygon filtering
-        let polygonH3Cells = new Set();
-        let useH3Filter = false;
-        if (polygon && polygon.length >= 3) {
-            try {
-                const h3Polygon = polygon.map(p => [p.lat, p.lng]);
-                if (h3Polygon[0][0] !== h3Polygon[h3Polygon.length - 1][0] || h3Polygon[0][1] !== h3Polygon[h3Polygon.length - 1][1]) {
-                    h3Polygon.push([...h3Polygon[0]]);
-                }
-                const cells = polygonToCells(h3Polygon, 9);
-                polygonH3Cells = new Set(cells);
-                useH3Filter = cells.length > 0;
-            } catch (e) {
-                logError(`H3 polygon computation failed: ${e.message}`);
-            }
-        }
-
         // Compute saleDateRange with 90-day deed recording lag buffer
         const monthsBack = job.sold_months || 12;
         const DEED_LAG_DAYS = 90;
@@ -220,12 +203,6 @@ Deno.serve(async (req) => {
 
         const filterPoint = (lat, lng) => {
             if (!polygon || polygon.length < 3) return true;
-            if (useH3Filter) {
-                try {
-                    const cell = latLngToCell(lat, lng, 9);
-                    if (!polygonH3Cells.has(cell)) return false;
-                } catch (e) { return false; }
-            }
             return isPointInPolygon({ lat, lng }, polygon);
         };
 
