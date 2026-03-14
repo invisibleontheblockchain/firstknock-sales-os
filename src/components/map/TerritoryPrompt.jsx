@@ -38,6 +38,7 @@ export default function TerritoryPrompt({
     const [displayPct, setDisplayPct] = useState(0);
     const [etaText, setEtaText] = useState('');
     const [totalExpected, setTotalExpected] = useState(0);
+    const [isDeltaPull, setIsDeltaPull] = useState(false);
     const pollRef = useRef(null);
     const animRef = useRef(null);
     const pctHistoryRef = useRef([]);
@@ -203,7 +204,11 @@ export default function TerritoryPrompt({
                     targetPctRef.current = 100;
 
                     const totalLoaded = (d.total_inserted || 0) + (d.total_existed || 0);
-                    toast.success(`${totalLoaded.toLocaleString()} properties loaded! Tap "Generate Routes" to build your first route.`, { duration: 6000 });
+                    const deltaSavings = d.delta_savings;
+                    const savingsMsg = deltaSavings?.savings_pct > 0 
+                        ? ` Saved ${deltaSavings.savings_pct}% on API calls!` 
+                        : '';
+                    toast.success(`${totalLoaded.toLocaleString()} properties loaded!${savingsMsg} Tap "Generate Routes" to build your first route.`, { duration: 6000 });
 
                     // Update user status
                     try {
@@ -304,10 +309,14 @@ export default function TerritoryPrompt({
             }
 
             if (d.status === 'started' && d.job_id) {
-                toast.success('Pulling property data now!');
-                // Immediately bump to 5% for instant visual feedback
+                if (d.is_delta_pull) {
+                    setIsDeltaPull(true);
+                    toast.success('Smart refresh — only pulling changes since last import!');
+                } else {
+                    toast.success('Pulling property data now!');
+                }
                 targetPctRef.current = 5;
-                setPullProgress('Scanning property records...');
+                setPullProgress(d.is_delta_pull ? 'Delta sync — fetching only new & changed records...' : 'Scanning property records...');
                 startPolling(d.job_id);
             } else {
                 // Fallback for any other response shape
@@ -364,7 +373,9 @@ export default function TerritoryPrompt({
                         <div className="flex items-center gap-3 mb-2">
                             <Loader2 className="w-5 h-5 text-blue-400 animate-spin shrink-0" />
                             <div className="flex-1">
-                                <p className="text-xs font-bold text-white">Importing Property Data</p>
+                                <p className="text-xs font-bold text-white">
+                                    {isDeltaPull ? '⚡ Smart Refresh (Delta Sync)' : 'Importing Property Data'}
+                                </p>
                                 <p className="text-[10px] text-gray-400">{pullProgress}</p>
                             </div>
                             <span className="text-sm font-mono font-bold text-blue-400">{Math.round(displayPct)}%</span>
@@ -382,15 +393,21 @@ export default function TerritoryPrompt({
                         )}
                         <div className="mt-2 bg-gray-900/80 rounded-lg p-2.5 border border-gray-800">
                             <p className="text-[10px] text-gray-300 leading-relaxed text-center">
-                                {displayPct < 5
-                                    ? '🔍 Scanning your area for every property on record — this is a one-time setup that gives you the full picture.'
-                                    : displayPct < 30
-                                        ? '📦 Pulling property data in batches from public records. Larger areas have more homes to process.'
-                                        : displayPct < 70
-                                            ? '⚡ Deduplicating and writing to your database. You can close this page — it will keep running.'
-                                            : displayPct < 95
-                                                ? '🏁 Almost there! Writing final records and updating your territory map.'
-                                                : '✅ Wrapping up! Your territory will be ready in seconds.'}
+                                {isDeltaPull 
+                                    ? (displayPct < 30
+                                        ? '⚡ Only fetching records that changed since your last pull — much faster!'
+                                        : displayPct < 80
+                                            ? '🔄 Syncing changes and updating existing records. Using ~85% fewer API calls.'
+                                            : '✅ Delta sync almost complete! Only new & changed properties were processed.')
+                                    : (displayPct < 5
+                                        ? '🔍 Scanning your area for every property on record — this is a one-time setup that gives you the full picture.'
+                                        : displayPct < 30
+                                            ? '📦 Pulling property data in batches from public records. Larger areas have more homes to process.'
+                                            : displayPct < 70
+                                                ? '⚡ Deduplicating and writing to your database. You can close this page — it will keep running.'
+                                                : displayPct < 95
+                                                    ? '🏁 Almost there! Writing final records and updating your territory map.'
+                                                    : '✅ Wrapping up! Your territory will be ready in seconds.')}
                             </p>
                         </div>
                         <p className="text-[9px] text-gray-600 mt-1.5 text-center">
