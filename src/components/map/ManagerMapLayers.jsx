@@ -115,8 +115,10 @@ function ViewportCulledPins({
     const map = useMap();
     const [viewBounds, setViewBounds] = React.useState(null);
 
-    // Listen for map move/zoom to update visible pins
+    // Listen for map move/zoom to update visible pins safely deferring heavy math
     React.useEffect(() => {
+        let timeoutId = null;
+
         const updateBounds = () => {
             const b = map.getBounds();
             setViewBounds({
@@ -124,12 +126,23 @@ function ViewportCulledPins({
                 east: b.getEast(), west: b.getWest()
             });
         };
+
+        const debouncedUpdate = () => {
+            if (timeoutId) clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => {
+                updateBounds();
+            }, 150);
+        };
+
         updateBounds(); // initial
-        map.on('moveend', updateBounds);
-        map.on('zoomend', updateBounds);
+        
+        map.on('moveend', debouncedUpdate);
+        map.on('zoomend', debouncedUpdate);
+        
         return () => {
-            map.off('moveend', updateBounds);
-            map.off('zoomend', updateBounds);
+            if (timeoutId) clearTimeout(timeoutId);
+            map.off('moveend', debouncedUpdate);
+            map.off('zoomend', debouncedUpdate);
         };
     }, [map]);
 

@@ -110,25 +110,32 @@ export function MapController({ fitBounds, onZoomChange, onMoveEnd }) {
     useEffect(() => {
         if (!map) return;
         
+        let zoomTimeout;
+        let moveTimeout;
+
         const handleZoom = () => {
-            setTimeout(() => {
+            if (zoomTimeout) clearTimeout(zoomTimeout);
+            zoomTimeout = setTimeout(() => {
                 try {
                     if (map && map.getZoom) onZoomChange(map.getZoom());
                 } catch (e) { /* Map destroyed */ }
-            }, 0);
+            }, 100);
         };
         const handleMove = () => {
-            setTimeout(() => {
+            if (moveTimeout) clearTimeout(moveTimeout);
+            moveTimeout = setTimeout(() => {
                 try {
                     if (map && map.getBounds) onMoveEnd(map.getBounds());
                 } catch (e) { /* Map destroyed */ }
-            }, 0);
+            }, 100);
         };
         
         map.on('zoomend', handleZoom);
         map.on('moveend', handleMove);
         
         return () => {
+            if (zoomTimeout) clearTimeout(zoomTimeout);
+            if (moveTimeout) clearTimeout(moveTimeout);
             try {
                 map.off('zoomend', handleZoom);
                 map.off('moveend', handleMove);

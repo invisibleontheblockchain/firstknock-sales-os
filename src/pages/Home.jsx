@@ -175,7 +175,7 @@ export default function Home() {
             } else {
                 localStorage.removeItem('fk_drawnPolygon');
             }
-        } catch {}
+        } catch { }
     };
     const [draftPolygon, setDraftPolygon] = useState([]);
     const [drawShape, setDrawShape] = useState('circle');
@@ -386,13 +386,13 @@ export default function Home() {
                 // This ensures we get the data regardless of who created it (e.g. system import)
                 if (user.territory_zip_codes && user.territory_zip_codes.length > 0) {
                     console.log(`[Home] Fetching properties for zips: ${user.territory_zip_codes.join(', ')}`);
-                    
+
                     // Chunk requests to avoid crashing the browser with too many concurrent requests
                     const zips = user.territory_zip_codes;
                     const chunkSize = 5;
                     let totalFetched = 0;
                     const MAX_PROPERTIES = 50000; // Property fetch limit
-                    
+
                     for (let i = 0; i < zips.length; i += chunkSize) {
                         if (totalFetched >= MAX_PROPERTIES) {
                             console.log(`[Home] Reached max property limit (${MAX_PROPERTIES}), skipping remaining zips.`);
@@ -407,7 +407,7 @@ export default function Home() {
                         items = items.concat(newItems);
                         totalFetched += newItems.length;
                     }
-                    
+
                     if (items.length > MAX_PROPERTIES) {
                         items = items.slice(0, MAX_PROPERTIES);
                     }
@@ -929,7 +929,7 @@ export default function Home() {
             // Combine current available (memoized) with newly fetched dynamic props
             // Need to apply same processing (dedup, assigned filtering) to dynamicProps
             const assignedSet = assignedHashes; // closed over from render
-            
+
             const logsByAddress = new Map();
             logs.forEach(l => {
                 if (!l.address_hash) return;
@@ -1279,6 +1279,11 @@ export default function Home() {
                 zoomControl={false}
                 attributionControl={false}
                 preferCanvas={true}
+                wheelPxPerZoomLevel={120}
+                wheelDebounceTime={150}
+                zoomAnimation={true}
+                markerZoomAnimation={true}
+                fadeAnimation={true}
             >
                 <MapRefHandler mapRef={mapRef} />
                 <TileLayer
@@ -1447,57 +1452,57 @@ export default function Home() {
             {/* Routes Panel - Refactored Command Panel */}
             {showRoutePanel && (
                 <React.Suspense fallback={null}>
-                <RouteCommandPanel
-                    generatedRoutes={routes}
-                    savedRoutes={hydratedSavedRoutes}
-                    filteredRoutes={filteredRoutes}
-                    genStats={genStats}
-                    repColors={repColors}
-                    teamMembers={teamMembers}
-                    getRepRecommendations={getRepRecommendations}
-                    onSelectRoute={(route) => {
-                        setActiveRoute(route);
-                        setPreviewRoute(null);
-                        setShowRoutePanel(false);
-                    }}
-                    onSaveRoute={handleSaveRoute}
-                    onAutoAssignAll={handleAutoAssignAll}
-                    onDeleteAllRoutes={async () => {
-                        try {
-                            const ids = hydratedSavedRoutes.map(r => r.id);
-                            if (ids.length > 0) {
-                                await Promise.all(ids.map(id => base44.entities.SavedRoute.delete(id)));
-                                queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
-                                if (activeRoute && ids.includes(activeRoute.id)) {
-                                    setActiveRoute(null);
-                                }
-                                toast.success("All saved routes deleted");
-                            }
-                        } catch (e) {
-                            toast.error("Failed to delete routes");
-                        }
-                    }}
-                    onDeleteRoute={async (route) => {
-                        if (confirm(`Delete route "${route.name}"?`)) {
+                    <RouteCommandPanel
+                        generatedRoutes={routes}
+                        savedRoutes={hydratedSavedRoutes}
+                        filteredRoutes={filteredRoutes}
+                        genStats={genStats}
+                        repColors={repColors}
+                        teamMembers={teamMembers}
+                        getRepRecommendations={getRepRecommendations}
+                        onSelectRoute={(route) => {
+                            setActiveRoute(route);
+                            setPreviewRoute(null);
+                            setShowRoutePanel(false);
+                        }}
+                        onSaveRoute={handleSaveRoute}
+                        onAutoAssignAll={handleAutoAssignAll}
+                        onDeleteAllRoutes={async () => {
                             try {
-                                await base44.entities.SavedRoute.delete(route.id);
-                                queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
-                                if (activeRoute && activeRoute.id === route.id) {
-                                    setActiveRoute(null);
+                                const ids = hydratedSavedRoutes.map(r => r.id);
+                                if (ids.length > 0) {
+                                    await Promise.all(ids.map(id => base44.entities.SavedRoute.delete(id)));
+                                    queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+                                    if (activeRoute && ids.includes(activeRoute.id)) {
+                                        setActiveRoute(null);
+                                    }
+                                    toast.success("All saved routes deleted");
                                 }
-                                toast.success("Route deleted");
                             } catch (e) {
-                                toast.error("Failed to delete route");
+                                toast.error("Failed to delete routes");
                             }
-                        }
-                    }}
-                    onReplaceRoutes={(newRoutes) => setRoutes(newRoutes)}
-                    onClose={() => setShowRoutePanel(false)}
-                    activeRouteId={activeRoute?.id}
-                    streetCooldownDays={streetCooldownDays}
-                    zipCodeFilter={zipCodeFilter}
-                    housesPerRoute={housesPerRoute}
-                />
+                        }}
+                        onDeleteRoute={async (route) => {
+                            if (confirm(`Delete route "${route.name}"?`)) {
+                                try {
+                                    await base44.entities.SavedRoute.delete(route.id);
+                                    queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+                                    if (activeRoute && activeRoute.id === route.id) {
+                                        setActiveRoute(null);
+                                    }
+                                    toast.success("Route deleted");
+                                } catch (e) {
+                                    toast.error("Failed to delete route");
+                                }
+                            }
+                        }}
+                        onReplaceRoutes={(newRoutes) => setRoutes(newRoutes)}
+                        onClose={() => setShowRoutePanel(false)}
+                        activeRouteId={activeRoute?.id}
+                        streetCooldownDays={streetCooldownDays}
+                        zipCodeFilter={zipCodeFilter}
+                        housesPerRoute={housesPerRoute}
+                    />
                 </React.Suspense>
             )}
 
@@ -1584,84 +1589,84 @@ export default function Home() {
             {/* Route Builder Settings - GENERATE MODE */}
             {showCompare && mode === 'generate' && (
                 <React.Suspense fallback={null}>
-                <RouteBuilderSettings
-                    onDraw={() => {
-                        setShowCompare(false);
-                        setDrawingMode(true);
-                    }}
-                    housesPerRoute={housesPerRoute} setHousesPerRoute={setHousesPerRoute}
-                    maxRouteDistance={maxRouteDistance} setMaxRouteDistance={setMaxRouteDistance}
-                    streetCooldownDays={streetCooldownDays} setStreetCooldownDays={setStreetCooldownDays}
-                    minScore={minScore} setMinScore={setMinScore}
-                    zipCodeFilter={zipCodeFilter} setZipCodeFilter={setZipCodeFilter}
-                    startLocation={startLocation} setStartLocation={setStartLocation}
-                    startAddressInput={startAddressInput} setStartAddressInput={setStartAddressInput}
-                    sortBy={sortBy} setSortBy={setSortBy}
-                    soldDateFilter={soldDateFilter} setSoldDateFilter={setSoldDateFilter}
-                    routeConfig={routeConfig} setRouteConfig={setRouteConfig}
-                    onGenerate={generateRoutes} routesGenerating={routesGenerating}
-                    onReset={() => {
-                        if (confirm("Reset all generated routes?")) {
-                            setRoutes([]);
-                            setFetchedProperties([]);
-                            setDrawnPolygon(null); // Clear polygon on reset
-                            toast.success("Builder reset");
-                        }
-                    }}
-                    mapRef={mapRef}
-                    routeTemplates={routeTemplates}
-                    templateName={templateName} setTemplateName={setTemplateName}
-                    onSaveTemplate={() => {
-                        if (!templateName) return toast.error("Enter name");
-                        saveTemplateMutation.mutate({
-                            name: templateName,
-                            config: {
-                                houses_per_route: housesPerRoute,
-                                max_distance: maxRouteDistance,
-                                min_score: minScore,
-                                street_cooldown_days: streetCooldownDays,
-                                zip_code_filter: zipCodeFilter,
-                                start_location: startLocation,
-                                ...routeConfig
-                            },
-                            created_by: user?.email
-                        });
-                    }}
-                    onLoadTemplate={loadTemplate}
-                    filteredRoutes={filteredRoutes}
-                    onSelectRoute={(route) => { setActiveRoute(route); setShowCompare(false); }}
-                    onClose={() => setShowCompare(false)}
-                    onForceSync={async () => {
-                        if (!confirm(`Force sync properties for ${zipCodeFilter}?`)) return;
-                        const toastId = toast.loading("Syncing...");
-                        try {
-                            const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zipCodeFilter, force_sync: true });
-                            if (res.data?.error) {
-                                toast.error(res.data.message || res.data.error, { id: toastId });
-                                return;
+                    <RouteBuilderSettings
+                        onDraw={() => {
+                            setShowCompare(false);
+                            setDrawingMode(true);
+                        }}
+                        housesPerRoute={housesPerRoute} setHousesPerRoute={setHousesPerRoute}
+                        maxRouteDistance={maxRouteDistance} setMaxRouteDistance={setMaxRouteDistance}
+                        streetCooldownDays={streetCooldownDays} setStreetCooldownDays={setStreetCooldownDays}
+                        minScore={minScore} setMinScore={setMinScore}
+                        zipCodeFilter={zipCodeFilter} setZipCodeFilter={setZipCodeFilter}
+                        startLocation={startLocation} setStartLocation={setStartLocation}
+                        startAddressInput={startAddressInput} setStartAddressInput={setStartAddressInput}
+                        sortBy={sortBy} setSortBy={setSortBy}
+                        soldDateFilter={soldDateFilter} setSoldDateFilter={setSoldDateFilter}
+                        routeConfig={routeConfig} setRouteConfig={setRouteConfig}
+                        onGenerate={generateRoutes} routesGenerating={routesGenerating}
+                        onReset={() => {
+                            if (confirm("Reset all generated routes?")) {
+                                setRoutes([]);
+                                setFetchedProperties([]);
+                                setDrawnPolygon(null); // Clear polygon on reset
+                                toast.success("Builder reset");
                             }
-                            if (res.data.count > 0) {
-                                toast.success(`Synced ${res.data.count} new properties!`, { id: toastId });
+                        }}
+                        mapRef={mapRef}
+                        routeTemplates={routeTemplates}
+                        templateName={templateName} setTemplateName={setTemplateName}
+                        onSaveTemplate={() => {
+                            if (!templateName) return toast.error("Enter name");
+                            saveTemplateMutation.mutate({
+                                name: templateName,
+                                config: {
+                                    houses_per_route: housesPerRoute,
+                                    max_distance: maxRouteDistance,
+                                    min_score: minScore,
+                                    street_cooldown_days: streetCooldownDays,
+                                    zip_code_filter: zipCodeFilter,
+                                    start_location: startLocation,
+                                    ...routeConfig
+                                },
+                                created_by: user?.email
+                            });
+                        }}
+                        onLoadTemplate={loadTemplate}
+                        filteredRoutes={filteredRoutes}
+                        onSelectRoute={(route) => { setActiveRoute(route); setShowCompare(false); }}
+                        onClose={() => setShowCompare(false)}
+                        onForceSync={async () => {
+                            if (!confirm(`Force sync properties for ${zipCodeFilter}?`)) return;
+                            const toastId = toast.loading("Syncing...");
+                            try {
+                                const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zipCodeFilter, force_sync: true });
+                                if (res.data?.error) {
+                                    toast.error(res.data.message || res.data.error, { id: toastId });
+                                    return;
+                                }
+                                if (res.data.count > 0) {
+                                    toast.success(`Synced ${res.data.count} new properties!`, { id: toastId });
+                                    queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
+                                } else {
+                                    toast.info(res.data.message || "Up to date", { id: toastId });
+                                }
+                            } catch (e) {
+                                toast.error("Sync failed", { id: toastId });
+                            }
+                        }}
+                        onClearArea={async () => {
+                            if (!confirm(`DELETE ALL properties in zip ${zipCodeFilter}?`)) return;
+                            const toastId = toast.loading("Deleting...");
+                            try {
+                                const res = await base44.functions.invoke('cleanupDatabase', { action: 'cleanup', zip_code: zipCodeFilter });
+                                toast.success(`Deleted ${res.data.deleted} properties`, { id: toastId });
                                 queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
-                            } else {
-                                toast.info(res.data.message || "Up to date", { id: toastId });
-                            }
-                        } catch (e) { 
-                            toast.error("Sync failed", { id: toastId }); 
-                        }
-                    }}
-                    onClearArea={async () => {
-                        if (!confirm(`DELETE ALL properties in zip ${zipCodeFilter}?`)) return;
-                        const toastId = toast.loading("Deleting...");
-                        try {
-                            const res = await base44.functions.invoke('cleanupDatabase', { action: 'cleanup', zip_code: zipCodeFilter });
-                            toast.success(`Deleted ${res.data.deleted} properties`, { id: toastId });
-                            queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
-                        } catch (e) { toast.error("Failed", { id: toastId }); }
-                    }}
-                    user={user}
-                    hasDrawnArea={drawnPolygon && drawnPolygon.length > 2}
-                />
+                            } catch (e) { toast.error("Failed", { id: toastId }); }
+                        }}
+                        user={user}
+                        hasDrawnArea={drawnPolygon && drawnPolygon.length > 2}
+                    />
                 </React.Suspense>
             )}
 
@@ -1682,15 +1687,15 @@ export default function Home() {
                         style={{ background: 'transparent' }}
                     >
                         <React.Suspense fallback={null}>
-                        <RouteChecklist
-                            route={filteredActiveRoute}
-                            logs={logs}
-                            onLogResult={handleLogResult}
-                            onClose={() => setShowChecklist(false)}
-                            navigationApp={navigationApp}
-                            activeRouteSoldFilter={activeRouteSoldFilter}
-                            setActiveRouteSoldFilter={setActiveRouteSoldFilter}
-                        />
+                            <RouteChecklist
+                                route={filteredActiveRoute}
+                                logs={logs}
+                                onLogResult={handleLogResult}
+                                onClose={() => setShowChecklist(false)}
+                                navigationApp={navigationApp}
+                                activeRouteSoldFilter={activeRouteSoldFilter}
+                                setActiveRouteSoldFilter={setActiveRouteSoldFilter}
+                            />
                         </React.Suspense>
                     </div>
                 </div>
@@ -1699,10 +1704,10 @@ export default function Home() {
             {/* New Territory Setup Wizard */}
             {showSetupWizard && (
                 <React.Suspense fallback={null}>
-                <TerritorySetupWizard
-                    user={user}
-                    onComplete={handleWizardComplete}
-                />
+                    <TerritorySetupWizard
+                        user={user}
+                        onComplete={handleWizardComplete}
+                    />
                 </React.Suspense>
             )}
 
@@ -1710,48 +1715,48 @@ export default function Home() {
             {/* Command Center Dashboard Overlay */}
             {showDashboard && (
                 <React.Suspense fallback={null}>
-                <CommandCenterDashboard
-                    properties={effectiveProperties}
-                    logs={logs}
-                    routes={savedRoutes}
-                    teamMembers={teamMembers}
-                    onClose={() => setShowDashboard(false)}
-                />
+                    <CommandCenterDashboard
+                        properties={effectiveProperties}
+                        logs={logs}
+                        routes={savedRoutes}
+                        teamMembers={teamMembers}
+                        onClose={() => setShowDashboard(false)}
+                    />
                 </React.Suspense>
             )}
 
             {/* Map Settings Panel */}
             {showMapSettings && (
                 <React.Suspense fallback={null}>
-                <MapSettingsPanel
-                    mapTheme={mapTheme}
-                    setMapTheme={setMapTheme}
-                    teamMembers={teamMembers}
-                    repColors={repColors}
-                    onUpdateRepColor={handleUpdateRepColor}
-                    onClose={() => setShowMapSettings(false)}
-                    quickFilter={quickFilter}
-                    setQuickFilter={setQuickFilter}
-                    showRouteDetails={showRouteDetails}
-                    setShowRouteDetails={setShowRouteDetails}
-                    showAllProperties={showAllProperties}
-                    setShowAllProperties={setShowAllProperties}
-                    navigationApp={navigationApp}
-                    setNavigationApp={updateNavigationApp}
-                    pinSize={pinSize}
-                    setPinSize={setPinSize}
-                    showRouteLines={showRouteLines}
-                    setShowRouteLines={setShowRouteLines}
-                    mapSettings={mapSettings}
-                    setMapSettings={setMapSettings}
-                    soldDateFilter={soldDateFilter}
-                    setSoldDateFilter={setSoldDateFilter}
-                    highlightRecentlySold={highlightRecentlySold}
-                    setHighlightRecentlySold={setHighlightRecentlySold}
-                    onRequestGenerate={generateRoutes}
-                    showZipOverlay={showZipOverlay}
-                    setShowZipOverlay={setShowZipOverlay}
-                />
+                    <MapSettingsPanel
+                        mapTheme={mapTheme}
+                        setMapTheme={setMapTheme}
+                        teamMembers={teamMembers}
+                        repColors={repColors}
+                        onUpdateRepColor={handleUpdateRepColor}
+                        onClose={() => setShowMapSettings(false)}
+                        quickFilter={quickFilter}
+                        setQuickFilter={setQuickFilter}
+                        showRouteDetails={showRouteDetails}
+                        setShowRouteDetails={setShowRouteDetails}
+                        showAllProperties={showAllProperties}
+                        setShowAllProperties={setShowAllProperties}
+                        navigationApp={navigationApp}
+                        setNavigationApp={updateNavigationApp}
+                        pinSize={pinSize}
+                        setPinSize={setPinSize}
+                        showRouteLines={showRouteLines}
+                        setShowRouteLines={setShowRouteLines}
+                        mapSettings={mapSettings}
+                        setMapSettings={setMapSettings}
+                        soldDateFilter={soldDateFilter}
+                        setSoldDateFilter={setSoldDateFilter}
+                        highlightRecentlySold={highlightRecentlySold}
+                        setHighlightRecentlySold={setHighlightRecentlySold}
+                        onRequestGenerate={generateRoutes}
+                        showZipOverlay={showZipOverlay}
+                        setShowZipOverlay={setShowZipOverlay}
+                    />
                 </React.Suspense>
             )}
 
