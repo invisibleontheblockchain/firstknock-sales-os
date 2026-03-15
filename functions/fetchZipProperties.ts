@@ -191,7 +191,15 @@ Deno.serve(async (req) => {
           sold_date: p.lastSaleDate || null, sale_type: 'Deed',
           property_type: p.propertyType || 'Single Family',
           mls_id: p.assessorID || null, url: null,
-          data_source: 'rentcast'
+          data_source: 'rentcast',
+          // Algorithm II Extended Fields
+          tax_assessed_value: p.taxAssessedValue || (p.estimatedValue ? p.estimatedValue * 0.85 : 0),
+          monthly_rent_estimate: p.rentEstimate || 0,
+          owner_occupied_flag: p.ownerOccupied !== false ? 1 : 0, // Defaults to 1 if null (Table 21)
+          absentee_owner_flag: (p.ownerName && p.mailingAddress && p.addressLine1 && 
+                                p.mailingAddress.toLowerCase() !== p.addressLine1.toLowerCase()) ? 1 : 0,
+          estimated_value: p.estimatedValue || p.lastSalePrice || 0,
+          loan_amount: p.loanAmount || 0,
         };
       });
 
