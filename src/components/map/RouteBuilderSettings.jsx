@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
     Navigation, Loader2, MapPin, RefreshCw, X, ChevronDown, ChevronUp,
     Zap, Route, Footprints, Clock, Shield, Flame, Target, Shuffle,
-    ArrowUpDown, GitBranch, ScanLine, Compass, Pencil, Layers
+    ArrowUpDown, GitBranch, ScanLine, Compass, Pencil, Layers, Brain
 } from 'lucide-react';
 import { toast } from "sonner";
 
@@ -90,12 +90,12 @@ export default function RouteBuilderSettings({
             criteria: 'Recent Sales First, All in one route, Past 6mo',
             apply: (isInitial = false) => {
                 setHousesPerRoute(10000);
-                setMaxRouteDistance(8);
+                setMaxRouteDistance(15);
                 setStreetCooldownDays(14);
                 setMinScore(20);
                 setSoldDateFilter(6); // Past 6 months
                 setSortBy('recent_sale');
-                setRouteConfig(prev => ({ ...prev, walkingPattern: 'recent_sale_first', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [], minBeds: null, minBaths: null, minSqft: null, maxSqft: null, minLotSize: null, maxLotSize: null }));
+                setRouteConfig(prev => ({ ...prev, walkingPattern: 'recent_sale_first', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, excludeAssigned: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [], minBeds: null, minBaths: null, minSqft: null, maxSqft: null, minLotSize: null, maxLotSize: null }));
                 if (!isInitial) toast.success("FirstKnock Best applied!");
             }
         },
@@ -112,7 +112,7 @@ export default function RouteBuilderSettings({
                 setMinScore(0);
                 setSoldDateFilter(36); // Past 3 years (all data we pull)
                 setSortBy('score');
-                setRouteConfig(prev => ({ ...prev, walkingPattern: 'street_sweep', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
+                setRouteConfig(prev => ({ ...prev, walkingPattern: 'street_sweep', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, excludeAssigned: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
                 toast.success("Hot Market Sweep applied");
             }
         },
@@ -124,13 +124,30 @@ export default function RouteBuilderSettings({
             criteria: '60 doors, nearest door, no score filter',
             apply: () => {
                 setHousesPerRoute(60);
-                setMaxRouteDistance(3);
+                setMaxRouteDistance(5);
                 setStreetCooldownDays(0);
                 setMinScore(0);
                 setSoldDateFilter(null);
                 setSortBy('distance');
-                setRouteConfig(prev => ({ ...prev, walkingPattern: 'nearest', minimizeTurns: false, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: false, minPrice: null, maxPrice: null, propertyTypes: [] }));
+                setRouteConfig(prev => ({ ...prev, walkingPattern: 'nearest', minimizeTurns: false, use2Opt: true, returnToStart: false, excludeTerminal: true, excludeAssigned: true, includeCallbacks: false, minPrice: null, maxPrice: null, propertyTypes: [] }));
                 toast.success("Speed Blitz applied");
+            }
+        },
+        {
+            id: 'algorithm_ii',
+            name: 'Predictive Propensity',
+            icon: <Brain className="w-4 h-4" />,
+            desc: 'AI-powered: XGBoost scoring, propensity-weighted clusters, fatigue-aware ordering. Targets highest-probability conversions first.',
+            criteria: 'ML Propensity, Cluster Hop, Fatigue-Aware, All Data',
+            apply: () => {
+                setHousesPerRoute(10000);
+                setMaxRouteDistance(8);
+                setStreetCooldownDays(14);
+                setMinScore(0);
+                setSoldDateFilter(null);
+                setSortBy('score');
+                setRouteConfig(prev => ({ ...prev, walkingPattern: 'predictive_propensity', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, excludeAssigned: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
+                toast.success("Predictive Propensity (Algorithm II) applied!");
             }
         }
     ];
@@ -597,6 +614,7 @@ export default function RouteBuilderSettings({
                                             { id: 'recent_sale_first', label: 'Recent Sale First', desc: 'Start at the most recently sold home', icon: Flame },
                                             { id: 'nearest', label: 'Nearest Door', desc: 'Always go to the closest next house', icon: Target },
                                             { id: 'zigzag', label: 'Zig-Zag', desc: 'Cross street back & forth', icon: GitBranch },
+                                            { id: 'predictive_propensity', label: 'Predictive Propensity', desc: 'AI scoring — highest conversion probability first', icon: Brain },
                                             { id: 'cluster', label: 'Cluster Hop', desc: 'Hit dense pockets first, then expand', icon: Flame },
                                         ].map(pattern => {
                                             const Icon = pattern.icon;

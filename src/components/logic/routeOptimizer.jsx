@@ -506,7 +506,13 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null, minimi
 
         unvisited.forEach((prop, idx) => {
             const dist = calculateDistanceFast(current.lat, current.lng, prop.lat, prop.lng);
-            let score = dist;
+            let cost = dist;
+            
+            // Heuristic: Tie-break with Score/Propensity
+            // High score provides up to 10% distance discount. This forces paths through higher quality segments first.
+            const propScore = prop.propensity ? (prop.propensity * 1000) : (prop.score || 0);
+            const scoreDiscount = (propScore / 1000) * 0.10;
+            cost = cost * (1 - Math.min(0.10, Math.max(0, scoreDiscount)));
 
             // Heuristic: Minimize Turns
             if (minimizeTurns && currentBearing !== null) {
@@ -517,12 +523,12 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null, minimi
                 // Penalize sharp turns (e.g., 90-180 degrees)
                 // Add "virtual miles" to the distance for sharp turns
                 if (normalizedTurn > 45) {
-                    score += (normalizedTurn / 180) * 0.5; // Up to 0.5 miles penalty for u-turn
+                    cost += (normalizedTurn / 180) * 0.5; // Up to 0.5 miles penalty for u-turn
                 }
             }
 
-            if (score < bestScore) {
-                bestScore = score;
+            if (cost < bestScore) {
+                bestScore = cost;
                 bestIdx = idx;
             }
         });
@@ -714,6 +720,43 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
                 }
                 orderedProps.push(...result);
             });
+        } else if (walkingPattern === 'predictive_propensity') {
+            // Algorithm II: Predictive Propensity
+            // 1. Sort by propensity score descending — highest conversion probability first
+            // 2. Anchor on the top-propensity property
+            // 3. Use a blended cost function (distance × propensity weight) for next-stop selection
+            //    so we slightly favor high-propensity neighbours over pure nearest-door
+            const sorted = [...clusterProps].sort((a, b) =>
+                (b.propensity || b.score || 0) - (a.propensity || a.score || 0)
+            );
+            const anchor = sorted[0];
+
+            // Propensity-weighted nearest neighbor
+            const unvisited = sorted.slice(1);
+            orderedProps = [anchor];
+            let current = anchor;
+
+            while (unvisited.length > 0) {
+                let bestIdx = 0;
+                let bestCost = Infinity;
+
+                for (let j = 0; j < unvisited.length; j++) {
+                    const dist = calculateDistanceFast(current.lat, current.lng, unvisited[j].lat, unvisited[j].lng);
+                    // Blend: lower distance is better, higher propensity is better
+                    // propensityDiscount: properties with high propensity get up to 30% distance discount
+                    const propensity = unvisited[j].propensity || (unvisited[j].score || 0) / 1000;
+                    const propensityDiscount = 1.0 - (propensity * 0.30); // 0.70 for max propensity, 1.0 for zero
+                    const cost = dist * propensityDiscount;
+
+                    if (cost < bestCost) {
+                        bestCost = cost;
+                        bestIdx = j;
+                    }
+                }
+
+                current = unvisited.splice(bestIdx, 1)[0];
+                orderedProps.push(current);
+            }
         } else if (walkingPattern === 'cluster') {
             // Cluster hop: sort by score descending (hit high-density/high-score pockets first)
             orderedProps = [...clusterProps].sort((a, b) => (b.score || 0) - (a.score || 0));
