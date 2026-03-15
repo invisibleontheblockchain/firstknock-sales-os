@@ -86,8 +86,8 @@ export default function Billing() {
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-black text-white p-2 sm:p-6 lg:p-8 flex flex-col justify-center">
-            <div className="max-w-6xl w-full mx-auto space-y-3 sm:space-y-8 my-auto">
+    <div className="h-full overflow-y-auto bg-black text-white p-2 sm:p-6 lg:p-8 flex flex-col items-center">
+            <div className="max-w-6xl w-full mx-auto space-y-3 sm:space-y-8 py-4 sm:py-8">
                 
                 {/* Header */}
                 <div className="text-center space-y-1 sm:space-y-3">
@@ -176,6 +176,15 @@ export default function Billing() {
                         Secure payments via Stripe. Cancel anytime.
                     </p>
                 )}
+
+                <div className="text-center mt-4 sm:mt-6 pb-4">
+                    <p className="text-[10px] sm:text-xs text-gray-500">
+                        Need help? Contact support at{' '}
+                        <a href="mailto:firstknockhelp@gmail.com" className="text-yellow-500 hover:text-yellow-400 underline">
+                            firstknockhelp@gmail.com
+                        </a>
+                    </p>
+                </div>
 
             </div>
         </div>);
