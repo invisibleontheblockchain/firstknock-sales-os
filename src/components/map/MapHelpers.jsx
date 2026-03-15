@@ -106,29 +106,37 @@ export function MapRefHandler({ mapRef }) {
 export function MapController({ fitBounds, onZoomChange, onMoveEnd }) {
     const map = useMap();
     
-    // Track zoom & move
+    // Track zoom & move with heavy debounce to prevent map animation freezing
     useEffect(() => {
         if (!map) return;
         
+        let zoomTimeout;
+        let moveTimeout;
+
         const handleZoom = () => {
-            setTimeout(() => {
+            if (zoomTimeout) clearTimeout(zoomTimeout);
+            zoomTimeout = setTimeout(() => {
                 try {
                     if (map && map.getZoom) onZoomChange(map.getZoom());
                 } catch (e) { /* Map destroyed */ }
-            }, 0);
+            }, 150);
         };
+
         const handleMove = () => {
-            setTimeout(() => {
+            if (moveTimeout) clearTimeout(moveTimeout);
+            moveTimeout = setTimeout(() => {
                 try {
                     if (map && map.getBounds) onMoveEnd(map.getBounds());
                 } catch (e) { /* Map destroyed */ }
-            }, 0);
+            }, 150);
         };
         
         map.on('zoomend', handleZoom);
         map.on('moveend', handleMove);
         
         return () => {
+            if (zoomTimeout) clearTimeout(zoomTimeout);
+            if (moveTimeout) clearTimeout(moveTimeout);
             try {
                 map.off('zoomend', handleZoom);
                 map.off('moveend', handleMove);

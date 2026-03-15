@@ -115,21 +115,42 @@ function ViewportCulledPins({
     const map = useMap();
     const [viewBounds, setViewBounds] = React.useState(null);
 
-    // Listen for map move/zoom to update visible pins
+    // Listen for map move/zoom to update visible pins WITH DEBOUNCE to prevent animation hitching
     React.useEffect(() => {
-        const updateBounds = () => {
+        let timeoutId = null;
+        let animationFrameId = null;
+
+        const doUpdateBounds = () => {
             const b = map.getBounds();
             setViewBounds({
                 north: b.getNorth(), south: b.getSouth(),
                 east: b.getEast(), west: b.getWest()
             });
         };
-        updateBounds(); // initial
-        map.on('moveend', updateBounds);
-        map.on('zoomend', updateBounds);
+
+        const onMapMove = () => {
+            if (timeoutId) clearTimeout(timeoutId);
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+
+            // Debounce for 150ms to allow smooth zooming to finish before React nukes the CPU
+            timeoutId = setTimeout(() => {
+                animationFrameId = requestAnimationFrame(doUpdateBounds);
+            }, 150);
+        };
+
+        // Initial set (no debounce needed)
+        doUpdateBounds();
+
+        // Use 'move' (for dragging) and 'zoom' (for wheel) but debounce heavily
+        // 'moveend' / 'zoomend' can trigger rapidly on trackpads, we must throttle them
+        map.on('moveend', onMapMove);
+        map.on('zoomend', onMapMove);
+
         return () => {
-            map.off('moveend', updateBounds);
-            map.off('zoomend', updateBounds);
+            if (timeoutId) clearTimeout(timeoutId);
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            map.off('moveend', onMapMove);
+            map.off('zoomend', onMapMove);
         };
     }, [map]);
 
