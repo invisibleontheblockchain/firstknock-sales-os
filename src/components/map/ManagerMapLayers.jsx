@@ -100,6 +100,64 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
     return null; // Imperative layer — no React DOM output
 }
 
+const MemoizedPin = React.memo(function MemoizedPin({ p, highlightRecentlySold, oneMonthAgo, STATUS_COLORS, pinSize, mode, mapSettings, setSelectedProperty }) {
+    let isRecentlySold = false;
+    if (highlightRecentlySold && p.sold_date) {
+        isRecentlySold = new Date(p.sold_date) > oneMonthAgo;
+    }
+    const isUnvisited = ['ELIGIBLE', 'NO_ANSWER', 'OTHER'].includes(p.effective_status);
+    const fillColor = isRecentlySold ? '#FF00FF' : (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER);
+
+    const handleClick = useCallback((e) => {
+        L.DomEvent.stopPropagation(e);
+        setSelectedProperty(p);
+    }, [p, setSelectedProperty]);
+
+    // Fast static objects to avoid triggering Leaflet component updates on every pan
+    const hitAreaPath = useMemo(() => ({ fillColor: 'transparent', color: 'transparent', interactive: true, stroke: false }), []);
+    
+    // Strict visual object caching
+    const visualPath = useMemo(() => ({
+        fillColor,
+        fillOpacity: isRecentlySold ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
+        color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
+        weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth))
+    }), [fillColor, isRecentlySold, isUnvisited, mode, mapSettings.pinOpacity, mapSettings.fillStyle, mapSettings.pinBorderColor, mapSettings.pinBorderWidth]);
+
+    const hitEventHandlers = useMemo(() => ({ click: handleClick }), [handleClick]);
+
+    return (
+        <React.Fragment>
+            <CircleMarker
+                center={[p.lat, p.lng]}
+                radius={20}
+                eventHandlers={hitEventHandlers}
+                pathOptions={hitAreaPath}
+            />
+            <CircleMarker
+                center={[p.lat, p.lng]}
+                radius={isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize)}
+                eventHandlers={hitEventHandlers}
+                pathOptions={visualPath}
+            />
+        </React.Fragment>
+    );
+}, (prev, next) => {
+    // Highly aggressive equality check to completely block React from recursively parsing the 10,000 DOM elements on simple pans
+    return prev.p.id === next.p.id &&
+           prev.p.effective_status === next.p.effective_status &&
+           prev.p.sold_date === next.p.sold_date &&
+           prev.pinSize === next.pinSize &&
+           prev.mode === next.mode &&
+           prev.highlightRecentlySold === next.highlightRecentlySold &&
+           prev.mapSettings.pinOpacity === next.mapSettings.pinOpacity &&
+           prev.mapSettings.fillStyle === next.mapSettings.fillStyle &&
+           prev.mapSettings.pinBorderColor === next.mapSettings.pinBorderColor &&
+           prev.mapSettings.pinBorderWidth === next.mapSettings.pinBorderWidth &&
+           prev.STATUS_COLORS === next.STATUS_COLORS &&
+           prev.oneMonthAgo.getTime() === next.oneMonthAgo.getTime();
+});
+
 /**
  * ViewportCulledPins — Performance-optimized property pin layer.
  * Only renders pins within the current map viewport + a small buffer,
@@ -214,36 +272,19 @@ function ViewportCulledPins({
 
     return (
         <LayerGroup>
-            {visiblePins.map(p => {
-                let isRecentlySold = false;
-                if (highlightRecentlySold && p.sold_date) {
-                    isRecentlySold = new Date(p.sold_date) > oneMonthAgo;
-                }
-                const isUnvisited = ['ELIGIBLE', 'NO_ANSWER', 'OTHER'].includes(p.effective_status);
-                const fillColor = isRecentlySold ? '#FF00FF' : (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER);
-
-                return (
-                    <React.Fragment key={p.address_hash || p.id}>
-                        <CircleMarker
-                            center={[p.lat, p.lng]}
-                            radius={20}
-                            eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
-                            pathOptions={{ fillColor: 'transparent', color: 'transparent', interactive: true, stroke: false }}
-                        />
-                        <CircleMarker
-                            center={[p.lat, p.lng]}
-                            radius={isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize)}
-                            eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
-                            pathOptions={{
-                                fillColor,
-                                fillOpacity: isRecentlySold ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
-                                color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
-                                weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth))
-                            }}
-                        />
-                    </React.Fragment>
-                );
-            })}
+            {visiblePins.map(p => (
+                <MemoizedPin
+                    key={p.address_hash || p.id}
+                    p={p}
+                    highlightRecentlySold={highlightRecentlySold}
+                    oneMonthAgo={oneMonthAgo}
+                    STATUS_COLORS={STATUS_COLORS}
+                    pinSize={pinSize}
+                    mode={mode}
+                    mapSettings={mapSettings}
+                    setSelectedProperty={setSelectedProperty}
+                />
+            ))}
         </LayerGroup>
     );
 }
