@@ -144,38 +144,42 @@ export default function ManagerPropertyDetailSheet({
                             <PropertyHistory logs={selectedPropertyLogs} />
                         </div>
 
-                        {/* Quick Mark Buttons */}
-                        <div>
-                            <h4 className="text-xs font-bold text-gray-500 uppercase mb-3">Quick Log</h4>
-                            <QuickMarkButtons
-                                size="large"
-                                onMark={(status) => {
-                                    handleLogResult(selectedProperty, status);
-                                    setSelectedProperty(null);
-                                    toast.success(`Logged as ${status}`);
-                                }}
-                            />
-                        </div>
-
-                        {/* Map Link */}
-                        <Button 
-                            onClick={() => {
-                                let address = "";
-                                if (selectedProperty.full_address) {
-                                    address = selectedProperty.full_address;
-                                    if (selectedProperty.city) address += `, ${selectedProperty.city}`;
-                                    if (selectedProperty.state) address += `, ${selectedProperty.state}`;
-                                    if (selectedProperty.zip_code) address += ` ${selectedProperty.zip_code}`;
-                                }
-                                openInMaps(selectedProperty.lat, selectedProperty.lng, address, navigationApp);
-                            }}
-                            className="block w-full py-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-center font-bold text-sm text-white transition-colors flex items-center justify-center gap-2 h-auto"
-                        >
-                            <Navigation className="w-4 h-4 text-yellow-500" />
-                            Navigate ({navigationApp === 'google' ? 'Google Maps' : 'Apple Maps'})
-                        </Button>
                     </div>
                 </ScrollArea>
+
+                {/* Sticky Footer Actions */}
+                <div className="p-4 border-t border-gray-800 bg-[#0A0A0A] space-y-3 z-10 shrink-0 shadow-[0_-5px_15px_-5px_rgba(0,0,0,0.5)]">
+                    {/* Quick Mark Buttons */}
+                    <div>
+                        <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Quick Log</h4>
+                        <QuickMarkButtons
+                            size="large"
+                            onMark={(status) => {
+                                handleLogResult(selectedProperty, status);
+                                setSelectedProperty(null);
+                                toast.success(`Logged as ${status}`);
+                            }}
+                        />
+                    </div>
+
+                    {/* Map Link */}
+                    <Button 
+                        onClick={() => {
+                            let address = "";
+                            if (selectedProperty.full_address) {
+                                address = selectedProperty.full_address;
+                                if (selectedProperty.city) address += `, ${selectedProperty.city}`;
+                                if (selectedProperty.state) address += `, ${selectedProperty.state}`;
+                                if (selectedProperty.zip_code) address += ` ${selectedProperty.zip_code}`;
+                            }
+                            openInMaps(selectedProperty.lat, selectedProperty.lng, address, navigationApp);
+                        }}
+                        className="block w-full py-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-center font-bold text-sm text-white transition-colors flex items-center justify-center gap-2 h-auto shrink-0"
+                    >
+                        <Navigation className="w-4 h-4 text-yellow-500" />
+                        Navigate ({navigationApp === 'google' ? 'Google Maps' : 'Apple Maps'})
+                    </Button>
+                </div>
             </div>
         </div>
     );
