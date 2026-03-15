@@ -67,6 +67,7 @@ import SignIn from './pages/SignIn';
 import Sync from './pages/Sync';
 import Terms from './pages/Terms';
 import Tutorial from './pages/Tutorial';
+import FAQ from './pages/FAQ';
 import ZipCodeExplorer from './pages/ZipCodeExplorer';
 import __Layout from './Layout.jsx';
 
@@ -92,6 +93,7 @@ export const PAGES = {
     "Sync": Sync,
     "Terms": Terms,
     "Tutorial": Tutorial,
+    "FAQ": FAQ,
     "ZipCodeExplorer": ZipCodeExplorer,
 }
 

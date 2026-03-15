@@ -1,13 +1,14 @@
 import React, { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
-import { Map, Download, Database, FileSpreadsheet, ArrowRight, Rocket, Check, Clock, DollarSign } from 'lucide-react';
+import { Map, Download, Database, FileSpreadsheet, ArrowRight, Rocket, Check, Clock, DollarSign, HelpCircle } from 'lucide-react';
 import CsvUploader from '../components/dashboard/CsvUploader';
 import TerritoryFilter from '../components/setup/TerritoryFilter';
 import BetaUsageMeter from '../components/beta/BetaUsageMeter';
 import CompetitorSwitchBanner from '../components/setup/CompetitorSwitchBanner';
 import ImportGuide from '../components/setup/ImportGuide';
 import { createPageUrl } from '@/utils';
+import FAQ from './FAQ';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
@@ -70,6 +71,7 @@ export default function Setup() {
         { id: 'territory', label: 'Territory' },
         { id: 'import', label: 'Import Data' },
         { id: 'switch', label: '🔥 Switch Tool' },
+        { id: 'faq', label: 'Help & FAQ' },
     ];
 
     return (
@@ -179,6 +181,31 @@ export default function Setup() {
                             <Button onClick={() => setActiveTab('import')} className="bg-white text-black font-bold h-10 md:h-11 px-6 md:px-8 rounded-xl text-sm gap-2">
                                 <Rocket className="w-4 h-4" /> Import My Data Now
                             </Button>
+                        </div>
+                    </div>
+                )}
+
+                {activeTab === 'faq' && (
+                    <div className="space-y-5">
+                        <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-6 text-center">
+                            <HelpCircle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
+                            <h3 className="text-xl font-bold text-white mb-2">Need Help?</h3>
+                            <p className="text-gray-500 text-sm mb-6 max-w-sm mx-auto">Check out our frequently asked questions or visit the full tutorial for a deep dive.</p>
+                            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                                <Link to={createPageUrl('FAQ')} className="flex-1 max-w-[200px]">
+                                    <Button className="w-full bg-white text-black font-bold h-11 rounded-xl">
+                                        Open Full FAQ
+                                    </Button>
+                                </Link>
+                                <Link to={createPageUrl('Tutorial')} className="flex-1 max-w-[200px]">
+                                    <Button variant="outline" className="w-full border-white/10 text-white font-bold h-11 rounded-xl">
+                                        View Tutorial
+                                    </Button>
+                                </Link>
+                            </div>
+                        </div>
+                        <div className="mt-8">
+                            <FAQ />
                         </div>
                     </div>
                 )}

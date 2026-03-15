@@ -780,6 +780,11 @@ export default function RouteBuilderSettings({
                     <div className="flex gap-2">
                         <Button
                             onClick={async () => {
+                                if (!hasDrawnArea) {
+                                    onDraw();
+                                    return;
+                                }
+
                                 const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
                                 const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
                                 
@@ -799,6 +804,8 @@ export default function RouteBuilderSettings({
                         >
                             {routesGenerating ? (
                                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> BUILDING...</>
+                            ) : !hasDrawnArea ? (
+                                <><Pencil className="w-4 h-4 mr-2" /> DRAW ON MAP</>
                             ) : (
                                 <><Zap className="w-4 h-4 mr-2" /> GENERATE ROUTES</>
                             )}
