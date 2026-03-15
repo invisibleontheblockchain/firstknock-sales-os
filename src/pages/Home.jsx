@@ -1279,6 +1279,11 @@ export default function Home() {
                 zoomControl={false}
                 attributionControl={false}
                 preferCanvas={true}
+                wheelPxPerZoomLevel={120}
+                wheelDebounceTime={150}
+                zoomAnimation={true}
+                markerZoomAnimation={true}
+                fadeAnimation={true}
             >
                 <MapRefHandler mapRef={mapRef} />
                 <TileLayer

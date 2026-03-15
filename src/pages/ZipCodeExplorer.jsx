@@ -749,6 +749,12 @@ export default function ZipCodeExplorer() {
             zoom={mapZoom}
             className="h-full w-full absolute inset-0"
             style={{ height: '100%', width: '100%' }}
+            preferCanvas={true}
+            wheelPxPerZoomLevel={120}
+            wheelDebounceTime={150}
+            zoomAnimation={true}
+            markerZoomAnimation={true}
+            fadeAnimation={true}
           >
             <TileLayer
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
