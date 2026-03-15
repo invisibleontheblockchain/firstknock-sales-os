@@ -1,0 +1,41 @@
+Metadata-Version: 2.1
+Name: mgwr
+Version: 2.2.1
+Summary: multiscale geographically weighted regression
+Home-page: https://github.com/pysal/mgwr
+Maintainer: Taylor M. Oshan
+Maintainer-email: tayoshan@gmail.com
+License: 3-Clause BSD
+Keywords: spatial statistics
+Classifier: Development Status :: 5 - Production/Stable
+Classifier: Intended Audience :: Science/Research
+Classifier: Intended Audience :: Developers
+Classifier: Intended Audience :: Education
+Classifier: Topic :: Scientific/Engineering
+Classifier: Topic :: Scientific/Engineering :: GIS
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Programming Language :: Python
+Classifier: Programming Language :: Python :: 3.6
+Classifier: Programming Language :: Python :: 3.7
+Requires-Python: >3.5
+License-File: LICENSE
+Requires-Dist: scipy >=0.11
+Requires-Dist: numpy >=1.3
+Requires-Dist: libpysal >=4.0.0
+Requires-Dist: spglm >=1.0.6
+Requires-Dist: spreg
+Provides-Extra: docs
+Requires-Dist: sphinx >=1.4.3 ; extra == 'docs'
+Requires-Dist: sphinxcontrib-napoleon ; extra == 'docs'
+Requires-Dist: sphinx-gallery ; extra == 'docs'
+Requires-Dist: sphinxcontrib-bibtex ; extra == 'docs'
+Requires-Dist: sphinx-bootstrap-theme ; extra == 'docs'
+Requires-Dist: numpydoc ; extra == 'docs'
+Provides-Extra: tests
+Requires-Dist: nose ; extra == 'tests'
+Requires-Dist: nose-progressive ; extra == 'tests'
+Requires-Dist: nose-exclude ; extra == 'tests'
+Requires-Dist: coverage ==4.5.4 ; extra == 'tests'
+Requires-Dist: coveralls ; extra == 'tests'
+Requires-Dist: pandas ; extra == 'tests'
+

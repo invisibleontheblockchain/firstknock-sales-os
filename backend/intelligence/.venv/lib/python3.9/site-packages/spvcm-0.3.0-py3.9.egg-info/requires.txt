@@ -1,0 +1,6 @@
+numpy
+scipy
+libpysal
+spreg
+pandas
+seaborn

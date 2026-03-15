@@ -1,0 +1,52 @@
+Metadata-Version: 2.2
+Name: tobler
+Version: 0.12.1
+Summary: Tobler is a Python library for areal interpolation.
+Author-email: Eli Knaap <ek@knaaptime.com>, Serge Rey <sjsrey@gmail.com>
+Maintainer: pysal contributors
+License: BSD 3-Clause
+Project-URL: Home, https://github.com/pysal/tobler/
+Project-URL: Repository, https://github.com/pysal/tobler
+Keywords: dasymetric mapping, spatial analysis, interpolation, change of support
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: BSD License
+Classifier: Operating System :: OS Independent
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: GIS
+Requires-Python: >=3.9
+Description-Content-Type: text/x-rst
+License-File: LICENSE.txt
+Requires-Dist: numpy
+Requires-Dist: pandas
+Requires-Dist: geopandas>=0.13
+Requires-Dist: rasterio
+Requires-Dist: scipy
+Requires-Dist: statsmodels
+Requires-Dist: rasterstats
+Requires-Dist: libpysal
+Requires-Dist: tqdm
+Requires-Dist: joblib
+Provides-Extra: dev
+Requires-Dist: pre-commit; extra == "dev"
+Provides-Extra: docs
+Requires-Dist: nbsphinx; extra == "docs"
+Requires-Dist: numpydoc; extra == "docs"
+Requires-Dist: pandoc; extra == "docs"
+Requires-Dist: sphinx; extra == "docs"
+Requires-Dist: sphinxcontrib-bibtex; extra == "docs"
+Requires-Dist: sphinx_bootstrap_theme; extra == "docs"
+Requires-Dist: mkdocs-jupyter; extra == "docs"
+Requires-Dist: myst-parser; extra == "docs"
+Provides-Extra: tests
+Requires-Dist: codecov; extra == "tests"
+Requires-Dist: coverage; extra == "tests"
+Requires-Dist: pytest; extra == "tests"
+Requires-Dist: pytest-mpl; extra == "tests"
+Requires-Dist: pytest-cov; extra == "tests"
+Requires-Dist: pytest-xdist; extra == "tests"
+Requires-Dist: watermark; extra == "tests"
+Requires-Dist: h3; extra == "tests"
+Requires-Dist: astropy; extra == "tests"
+
+Spatial interpolation, Dasymetric Mapping, & Change of Support"
+
