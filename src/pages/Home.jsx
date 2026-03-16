@@ -120,7 +120,7 @@ export default function Home() {
         if (!activeRoute) return null;
         if (activeRouteSoldFilter === 'all') return activeRoute;
 
-        const cutoff = subMonths(new Date(), parseInt(activeRouteSoldFilter));
+        const cutoff = subMonths(new Date(), Number(activeRouteSoldFilter));
         const filteredProps = activeRoute.properties.filter(p => {
             if (!p.sold_date) return false;
             try {
@@ -403,7 +403,11 @@ export default function Home() {
                             base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000)
                         );
                         const results = await Promise.all(promises);
-                        const newItems = results.flatMap(r => Array.isArray(r) ? r : (r.items || []));
+                        const newItems = results.flatMap(r => {
+                            if (Array.isArray(r)) return r;
+                            const items = r?.items || [];
+                            return items;
+                        });
                         items = items.concat(newItems);
                         totalFetched += newItems.length;
                     }
@@ -742,7 +746,7 @@ export default function Home() {
 
                 // Apply soldDateFilter to saved routes if active
                 if (soldDateFilter !== null) {
-                    const cutoff = subMonths(new Date(), parseInt(soldDateFilter));
+                    const cutoff = subMonths(new Date(), Number(soldDateFilter));
                     routeProps = routeProps.filter(p => {
                         if (!p.sold_date) return false;
                         try {
@@ -966,6 +970,7 @@ export default function Home() {
             processedDynamic.forEach(p => combinedMap.set(p.address_hash, p));
 
             let workingSet = Array.from(combinedMap.values());
+            console.log(`[generateRoutes] Initial Properties: ${workingSet.length}`);
 
             // 3. FILTERING
             let targetZips = [];
@@ -980,11 +985,13 @@ export default function Home() {
                     const pZip = String(p.zip_code || '').trim().slice(0, 5);
                     return targetZips.includes(pZip);
                 });
+                console.log(`[generateRoutes] After Zip Filter (${targetZips.join(', ')}): ${workingSet.length}`);
             }
 
             // Apply Polygon Filter (Drawn Area)
             if (drawnPolygon && drawnPolygon.length > 2) {
                 workingSet = workingSet.filter(p => isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon));
+                console.log(`[generateRoutes] After Polygon Filter: ${workingSet.length}`);
             }
 
             const beforeSoldDateFilter = workingSet.length;
@@ -992,7 +999,8 @@ export default function Home() {
 
             // Apply Sold Date Filter (STRICT: If filter active, MUST have sold_date within range)
             if (soldDateFilter !== null) {
-                const cutoff = subMonths(new Date(), parseInt(soldDateFilter));
+                const cutoff = subMonths(new Date(), Number(soldDateFilter));
+                console.log(`[generateRoutes] Applying Sold Date Filter: ${soldDateFilter} months (Cutoff: ${cutoff.toISOString()})`);
                 workingSet = workingSet.filter(p => {
                     if (!p.sold_date) return false;
                     try {
@@ -1001,6 +1009,7 @@ export default function Home() {
                         return isAfter(date, cutoff);
                     } catch (e) { return false; }
                 });
+                console.log(`[generateRoutes] After Sold Date Filter: ${workingSet.length}`);
             }
 
             if (soldDateFilter !== null && beforeSoldDateFilter > 0 && workingSet.length === 0) {

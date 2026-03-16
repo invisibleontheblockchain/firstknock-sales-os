@@ -201,12 +201,16 @@ export default function RouteBuilderSettings({
                                 <div className="flex justify-between items-center">
                                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">2. Recently Sold</label>
                                     <span className="text-sm font-bold text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded">
-                                        {soldDateFilter ? `${soldDateFilter} Months` : '6 Months'}
+                                        {soldDateFilter === 0 ? 'All History' : (soldDateFilter ? `${soldDateFilter} Months` : '6 Months')}
                                     </span>
                                 </div>
                                 <Slider
-                                    value={[soldDateFilter || 6]}
+                                    value={[soldDateFilter === null ? 15 : (soldDateFilter || 6)]}
                                     onValueChange={([v]) => {
+                                        if (v === 15) {
+                                            setSoldDateFilter(null);
+                                            return;
+                                        }
                                         if (v === 12) {
                                             const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
                                             const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
@@ -219,14 +223,15 @@ export default function RouteBuilderSettings({
                                         setSoldDateFilter(v);
                                     }}
                                     min={6}
-                                    max={12}
+                                    max={15}
                                     step={3}
                                     className="w-full"
                                 />
                                 <div className="flex justify-between text-[10px] text-gray-600 font-medium px-1">
                                     <span>6 Mo</span>
                                     <span>9 Mo</span>
-                                    <span className="text-yellow-500/70">12 Mo (Pro)</span>
+                                    <span>12 Mo</span>
+                                    <span className="text-yellow-500/70">ALL HISTORY</span>
                                 </div>
                             </div>
 
@@ -409,11 +414,15 @@ export default function RouteBuilderSettings({
                                 <div className="space-y-4 mb-4 pt-2">
                                     <div className="flex justify-between items-center">
                                         <label className="text-[10px] font-bold text-gray-500 uppercase">Recently Sold</label>
-                                        <span className="text-xs font-bold text-yellow-500">{soldDateFilter ? `${soldDateFilter} Months` : '6 Months'}</span>
+                                        <span className="text-xs font-bold text-yellow-500">{soldDateFilter === null ? 'All History' : (soldDateFilter ? `${soldDateFilter} Months` : '6 Months')}</span>
                                     </div>
                                     <Slider
-                                        value={[soldDateFilter || 6]}
+                                        value={[soldDateFilter === null ? 15 : (soldDateFilter || 6)]}
                                         onValueChange={([v]) => {
+                                            if (v === 15) {
+                                                setSoldDateFilter(null);
+                                                return;
+                                            }
                                             if (v === 12) {
                                                 const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
                                                 const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
@@ -426,14 +435,15 @@ export default function RouteBuilderSettings({
                                             setSoldDateFilter(v);
                                         }}
                                         min={6}
-                                        max={12}
+                                        max={15}
                                         step={3}
                                         className="w-full"
                                     />
                                     <div className="flex justify-between text-[10px] text-gray-600 font-medium px-1">
                                         <span>6 Mo</span>
                                         <span>9 Mo</span>
-                                        <span className="text-yellow-500/70">12 Mo (Pro)</span>
+                                        <span>12 Mo</span>
+                                        <span className="text-yellow-500/70">ALL HISTORY</span>
                                     </div>
                                 </div>
 
