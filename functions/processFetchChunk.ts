@@ -1,11 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 import { latLngToCell } from 'npm:h3-js@4.1.0';
 
-// v8 — Deed-Only Architecture: /v1/properties?saleDateRange is the ONLY endpoint
-// Per RentCast API audit: /listings/sale status=Inactive is a catch-all including
-// expired/withdrawn/cancelled listings — NOT confirmed sales.
-// /properties with saleDateRange filters on lastSaleDate from official county deed records,
-// guaranteeing every returned record is a legally confirmed, closed transaction.
+// v9 — Grid Subdivision + Deed-Only Architecture
+// Large-radius queries to RentCast silently drop records (confirmed by RentCast support).
+// Areas >5mi are subdivided into overlapping ≤5mi sub-circles, each fetched independently.
+// /v1/properties?saleDateRange is the ONLY endpoint — county deed records guarantee
+// every returned record is a legally confirmed, closed transaction.
 // saleDateRange = (sold_months * 30) + 90 to account for 30–90 day county deed recording lag.
 
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
@@ -178,9 +178,21 @@ Deno.serve(async (req) => {
             currentPhase = 'deed_records';
             await base44.asServiceRole.entities.FetchJob.update(jobId, { phase: 'deed_records', current_offset: 0 });
         }
-        console.log(`[chunk-v8] Job ${jobId} | phase=${currentPhase} | offset=${job.current_offset} | delta=${isDeltaPull} | chunk#=${job.chunk_number || 0}`);
+        // === SUB-CIRCLE GRID SUPPORT ===
+        // Read the pre-computed sub-circles from the job (set by fetchAreaProperties v9)
+        const subCircles = job.sub_circles || [{ lat: job.latitude, lng: job.longitude, radius: job.radius }];
+        let currentSubCircle = job.current_sub_circle || 0;
+        const totalSubCircles = subCircles.length;
 
-        const { latitude, longitude, radius, polygon } = job;
+        console.log(`[chunk-v9] Job ${jobId} | phase=${currentPhase} | sub-circle=${currentSubCircle + 1}/${totalSubCircles} | offset=${job.current_offset} | delta=${isDeltaPull} | chunk#=${job.chunk_number || 0}`);
+
+        const { polygon } = job;
+        // Use current sub-circle's coordinates instead of job's original (potentially too-large) radius
+        const activeCircle = subCircles[currentSubCircle] || subCircles[0];
+        const fetchLat = activeCircle.lat;
+        const fetchLng = activeCircle.lng;
+        const fetchRadius = activeCircle.radius;
+
         let currentOffset = job.current_offset || 0;
         let totalExpected = job.total_expected || 0;
         let totalFetched = job.total_fetched || 0;
@@ -290,7 +302,7 @@ Deno.serve(async (req) => {
         // saleDateRange accounts for 30–90 day county recording lag.
         // ======================================================================
         if (currentPhase === 'deed_records') {
-            console.log(`[chunk-v8] ★ DEED RECORDS: /properties?saleDateRange=${saleDateRange} radius=${radius}mi delta=${isDeltaPull}`);
+            console.log(`[chunk-v9] ★ DEED RECORDS: sub-circle ${currentSubCircle + 1}/${totalSubCircles} | lat=${fetchLat} lng=${fetchLng} r=${fetchRadius}mi | saleDateRange=${saleDateRange} | delta=${isDeltaPull}`);
 
             const allRaw = [];
             let requestCount = 0;
@@ -303,15 +315,16 @@ Deno.serve(async (req) => {
 
             for (let i = 0; i < offsets.length; i += MAX_PARALLEL) {
                 if (Date.now() - chunkStart > 45000) {
-                    console.warn(`[chunk-v8] Time budget hit at offset ${offsets[i]}`);
+                    console.warn(`[chunk-v9] Time budget hit at offset ${offsets[i]}`);
                     break;
                 }
 
                 const batch = offsets.slice(i, i + MAX_PARALLEL);
                 const promises = batch.map(offset => {
+                    // Use the sub-circle's coordinates instead of the original large circle
                     const params = new URLSearchParams({
-                        latitude: String(latitude), longitude: String(longitude),
-                        radius: String(radius), limit: String(LIMIT), offset: String(offset),
+                        latitude: String(fetchLat), longitude: String(fetchLng),
+                        radius: String(fetchRadius), limit: String(LIMIT), offset: String(offset),
                         saleDateRange: String(saleDateRange),
                     });
                     if (offset === 0 && currentOffset === 0) params.set('includeTotalCount', 'true');
@@ -320,8 +333,8 @@ Deno.serve(async (req) => {
 
                     const url = `${RENTCAST_BASE}/properties?${params}`;
                     if (offset === offsets[0] && i === 0) {
-                        console.log(`[chunk-v8] RentCast Fetch: ${url}`);
-                        console.log(`[chunk-v8] Parameters: radius=${radius}mi, saleDateRange=${saleDateRange} days`);
+                        console.log(`[chunk-v9] RentCast Fetch: ${url}`);
+                        console.log(`[chunk-v9] Sub-circle ${currentSubCircle + 1}/${totalSubCircles}: lat=${fetchLat} lng=${fetchLng} r=${fetchRadius}mi, saleDateRange=${saleDateRange} days`);
                     }
 
                     return fetchWithBackoff(url, { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY }, logError);
@@ -346,6 +359,7 @@ Deno.serve(async (req) => {
                     await base44.asServiceRole.entities.FetchJob.update(jobId, {
                         status: 'running', phase: 'deed_records',
                         current_offset: currentOffset,
+                        current_sub_circle: currentSubCircle,
                         total_api_calls: totalApiCalls, chunk_number: nextChunk,
                         error_log: errorLog
                     });
@@ -365,7 +379,7 @@ Deno.serve(async (req) => {
             }
 
             totalFetched += allRaw.length;
-            console.log(`[chunk-v8] Fetched ${allRaw.length} records (${requestCount} API calls)`);
+            console.log(`[chunk-v9] Fetched ${allRaw.length} records (${requestCount} API calls) from sub-circle ${currentSubCircle + 1}/${totalSubCircles}`);
 
             // Map and validate deed records
             const soldCutoff = new Date();
@@ -477,7 +491,7 @@ Deno.serve(async (req) => {
 
             const dedupSaved = allRaw.length - mapped.length - skippedValidation - skippedDeltaUnchanged;
             const deltaMsg = isDeltaPull ? ` | delta_skipped=${skippedDeltaUnchanged}` : '';
-            console.log(`[chunk-v8] Mapped ${mapped.length} from ${allRaw.length} raw | skipped: ${skippedValidation} validation, ${dedupSaved} dedup, ${skippedCorporate} corporate${deltaMsg}`);
+            console.log(`[chunk-v9] Mapped ${mapped.length} from ${allRaw.length} raw | skipped: ${skippedValidation} validation, ${dedupSaved} dedup, ${skippedCorporate} corporate${deltaMsg}`);
 
             const dbResult = await writeToDb(mapped);
             totalInserted += dbResult.chunkInserted;
@@ -485,15 +499,30 @@ Deno.serve(async (req) => {
             totalUpdated += dbResult.chunkUpdated;
 
             const newOffset = currentOffset + allRaw.length;
-            // A phase is done ONLY if we fetched everything expected, OR if we legitimately reached the end of the pages
-            const phaseDone = (totalExpected > 0 && totalFetched >= totalExpected) || 
-                              (reachedEnd && (newOffset >= totalExpected || totalExpected === 0)) ||
-                              (allRaw.length === 0 && newOffset >= totalExpected && totalExpected > 0);
+
+            // Check if the CURRENT sub-circle is done (reached end of its pages)
+            const subCircleDone = reachedEnd || 
+                                  allRaw.length === 0 ||
+                                  (totalExpected > 0 && newOffset >= totalExpected);
+            
+            // Check if we should advance to next sub-circle
+            let nextSubCircle = currentSubCircle;
+            let nextOffset = newOffset;
+            if (subCircleDone && currentSubCircle < totalSubCircles - 1) {
+                // Move to next sub-circle — reset offset and totalExpected
+                nextSubCircle = currentSubCircle + 1;
+                nextOffset = 0;
+                totalExpected = 0; // Will be re-fetched from next sub-circle's first request
+                console.log(`[chunk-v9] Sub-circle ${currentSubCircle + 1}/${totalSubCircles} complete → advancing to sub-circle ${nextSubCircle + 1}`);
+            }
+
+            // Phase is done ONLY when the LAST sub-circle is also done
+            const phaseDone = subCircleDone && nextSubCircle >= totalSubCircles - 1;
                               
             const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
             chunkTimings.push(chunkDuration);
 
-            console.log(`[chunk-v8] Chunk done in ${chunkDuration}s: ins=${dbResult.chunkInserted}, exist=${dbResult.chunkExisted}, upd=${dbResult.chunkUpdated}`);
+            console.log(`[chunk-v9] Chunk done in ${chunkDuration}s: ins=${dbResult.chunkInserted}, exist=${dbResult.chunkExisted}, upd=${dbResult.chunkUpdated} | sub-circle=${currentSubCircle + 1}/${totalSubCircles} done=${subCircleDone}`);
 
             // Calculate delta savings — now based on DB writes saved, not API calls
             let deltaSavings = job.delta_savings || null;
@@ -507,7 +536,7 @@ Deno.serve(async (req) => {
                 deltaSavings.savings_pct = totalRecordsProcessed > 0
                     ? Math.round((totalWritesSaved / totalRecordsProcessed) * 100)
                     : 0;
-                console.log(`[chunk-v8] DELTA SAVINGS: ${deltaSavings.savings_pct}% DB writes saved (${totalWritesSaved}/${totalRecordsProcessed} records unchanged)`);
+                console.log(`[chunk-v9] DELTA SAVINGS: ${deltaSavings.savings_pct}% DB writes saved (${totalWritesSaved}/${totalRecordsProcessed} records unchanged)`);
             }
 
             if (phaseDone) {
@@ -539,15 +568,27 @@ Deno.serve(async (req) => {
                 } catch (e) { logError(`User update failed: ${e.message}`); }
 
                 const deltaMsg = isDeltaPull ? ` | DELTA savings: ${deltaSavings?.savings_pct || 0}%` : '';
-                console.log(`[chunk-v8] === JOB COMPLETE === fetched=${totalFetched} inserted=${totalInserted} existed=${totalExisted} updated=${totalUpdated} apiCalls=${totalApiCalls}${deltaMsg}`);
+                console.log(`[chunk-v9] === JOB COMPLETE === fetched=${totalFetched} inserted=${totalInserted} existed=${totalExisted} updated=${totalUpdated} apiCalls=${totalApiCalls} subCircles=${totalSubCircles}${deltaMsg}`);
             } else {
-                const progressPct = totalExpected > 0
-                    ? Math.min(99, Math.round((totalFetched / totalExpected) * 100))
-                    : Math.min(80, Math.round(totalFetched / 100));
+                // Progress: weight sub-circle index AND within-sub-circle progress
+                let progressPct;
+                if (totalSubCircles > 1) {
+                    // Multi-circle: base progress on sub-circle index, refined by page progress within current sub-circle
+                    const circleBasePct = (nextSubCircle / totalSubCircles) * 100;
+                    const withinCirclePct = totalExpected > 0
+                        ? (nextOffset / totalExpected) * (100 / totalSubCircles)
+                        : (totalFetched > 0 ? 5 : 0);
+                    progressPct = Math.min(99, Math.round(circleBasePct + withinCirclePct));
+                } else {
+                    progressPct = totalExpected > 0
+                        ? Math.min(99, Math.round((totalFetched / totalExpected) * 100))
+                        : Math.min(80, Math.round(totalFetched / 100));
+                }
                 const nextChunk = (job.chunk_number || 0) + 1;
                 await base44.asServiceRole.entities.FetchJob.update(jobId, {
                     status: 'running', phase: 'deed_records',
-                    current_offset: newOffset,
+                    current_offset: nextOffset,
+                    current_sub_circle: nextSubCircle,
                     total_expected: totalExpected, total_fetched: totalFetched,
                     total_inserted: totalInserted, total_existed: totalExisted, total_updated: totalUpdated,
                     total_api_calls: totalApiCalls, delta_savings: deltaSavings,

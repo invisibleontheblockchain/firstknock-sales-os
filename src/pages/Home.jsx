@@ -883,7 +883,10 @@ export default function Home() {
 
                     for (const zip of zipsToFetch) {
                         try {
-                            const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zip });
+                            const res = await base44.functions.invoke('fetchZipProperties', { 
+                                zip_code: zip, 
+                                sold_months: soldDateFilter === null ? 0 : (soldDateFilter || 12) 
+                            });
                             console.log(`[Generate] Fetch result for ${zip}:`, JSON.stringify(res.data));
                             if (res.data?.error) {
                                 toast.error(res.data.message || res.data.error, { id: 'fetch-zip' });
@@ -1663,7 +1666,11 @@ export default function Home() {
                             if (!confirm(`Force sync properties for ${zipCodeFilter}?`)) return;
                             const toastId = toast.loading("Syncing...");
                             try {
-                                const res = await base44.functions.invoke('fetchZipProperties', { zip_code: zipCodeFilter, force_sync: true });
+                                const res = await base44.functions.invoke('fetchZipProperties', { 
+                                    zip_code: zipCodeFilter, 
+                                    force_sync: true,
+                                    sold_months: soldDateFilter === null ? 0 : (soldDateFilter || 12) 
+                                });
                                 if (res.data?.error) {
                                     toast.error(res.data.message || res.data.error, { id: toastId });
                                     return;

@@ -34,6 +34,7 @@ export default function TerritoryPrompt({
     const queryClient = useQueryClient();
     const [pulling, setPulling] = useState(false);
     const [pullProgress, setPullProgress] = useState('');
+    const [fetchMonths, setFetchMonths] = useState(12);
     const [pullPct, setPullPct] = useState(0);
     const [displayPct, setDisplayPct] = useState(0);
     const [etaText, setEtaText] = useState('');
@@ -302,7 +303,7 @@ export default function TerritoryPrompt({
                 longitude: centerLng,
                 radius: radius,
                 polygon: drawnPolygon,
-                sold_months: 12
+                sold_months: fetchMonths
             });
             const d = res.data || {};
 
@@ -439,13 +440,27 @@ export default function TerritoryPrompt({
                     <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
                     <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
                     {canPullAgain ? (
-                        <Button
-                            disabled={pulling}
-                            onClick={handleFetchData}
-                            className="text-white text-[10px] h-6 px-2 py-0 rounded-md ml-2 bg-blue-600 hover:bg-blue-500"
-                        >
-                            Fetch data
-                        </Button>
+                        <div className="flex items-center gap-2 ml-2">
+                            <select
+                                value={fetchMonths}
+                                onChange={(e) => setFetchMonths(Number(e.target.value))}
+                                className="bg-gray-900 border border-gray-700 text-white text-[10px] rounded-md px-1.5 py-0.5 h-6"
+                                disabled={pulling}
+                            >
+                                <option value={6}>Past 6 Mo</option>
+                                <option value={9}>Past 9 Mo</option>
+                                <option value={12}>Past 12 Mo</option>
+                                <option value={24}>Past 24 Mo</option>
+                                <option value={36}>Past 36 Mo</option>
+                            </select>
+                            <Button
+                                disabled={pulling}
+                                onClick={handleFetchData}
+                                className="text-white text-[10px] h-6 px-2 py-0 rounded-md bg-blue-600 hover:bg-blue-500"
+                            >
+                                Fetch data
+                            </Button>
+                        </div>
                     ) : (
                         <Link
                             to={createPageUrl('Billing')}

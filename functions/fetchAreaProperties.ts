@@ -1,6 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 
-// v8 — Deed-Only Architecture: uses ONLY /v1/properties?saleDateRange (county deed records)
+// v9 — Grid Subdivision: breaks large areas into overlapping sub-circles (≤5mi)
+// per RentCast support guidance. Large-radius queries silently drop records.
+// Uses ONLY /v1/properties?saleDateRange (county deed records)
 // MLS /listings/sale is permanently retired — Inactive status includes expired/withdrawn/cancelled
 
 function computeBoundingCircle(polygon) {
@@ -17,6 +19,52 @@ function computeBoundingCircle(polygon) {
         if (dist > maxDistMiles) maxDistMiles = dist;
     }
     return { lat: centerLat, lng: centerLng, radius: Math.ceil((maxDistMiles * 1.05) * 10) / 10 };
+}
+
+/**
+ * Break a large circular area into smaller overlapping sub-circles.
+ * RentCast recommends radius ≤ 5mi for reliable results.
+ * Generates a hex-style grid of circles that fully cover the original area.
+ */
+const SUB_CIRCLE_RADIUS = 5; // miles — sweet spot per RentCast support
+const OVERLAP_FACTOR = 0.80; // 20% overlap to avoid boundary gaps
+
+function generateSubCircles(centerLat, centerLng, radiusMiles) {
+    if (radiusMiles <= SUB_CIRCLE_RADIUS) {
+        // No subdivision needed — single circle covers it
+        return [{ lat: centerLat, lng: centerLng, radius: radiusMiles }];
+    }
+
+    const step = SUB_CIRCLE_RADIUS * 2 * OVERLAP_FACTOR; // distance between centers in miles
+    const latStep = step / 69.0; // 1° lat ≈ 69 miles
+    const lngStep = step / (69.0 * Math.cos(centerLat * Math.PI / 180));
+
+    const circles = [];
+    // Grid extends to cover the full original radius
+    const gridExtent = radiusMiles + SUB_CIRCLE_RADIUS * 0.5; // slight overshoot to catch edges
+    const stepsNeeded = Math.ceil(gridExtent / step);
+
+    for (let row = -stepsNeeded; row <= stepsNeeded; row++) {
+        // Offset odd rows by half a step for better coverage (hex grid)
+        const lngOffset = (Math.abs(row) % 2 === 1) ? lngStep * 0.5 : 0;
+        for (let col = -stepsNeeded; col <= stepsNeeded; col++) {
+            const subLat = centerLat + row * latStep;
+            const subLng = centerLng + col * lngStep + lngOffset;
+
+            // Check if this sub-circle center is close enough to be useful
+            const dLat = (subLat - centerLat) * 69.0;
+            const dLng = (subLng - centerLng) * 69.0 * Math.cos(centerLat * Math.PI / 180);
+            const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+
+            // Include if the sub-circle would overlap with the original area
+            if (dist <= radiusMiles + SUB_CIRCLE_RADIUS * 0.3) {
+                circles.push({ lat: Math.round(subLat * 1e6) / 1e6, lng: Math.round(subLng * 1e6) / 1e6, radius: SUB_CIRCLE_RADIUS });
+            }
+        }
+    }
+
+    console.log(`[fetchArea-v9] Grid subdivision: ${radiusMiles}mi area → ${circles.length} sub-circles (r=${SUB_CIRCLE_RADIUS}mi each, ${Math.round(OVERLAP_FACTOR * 100)}% overlap)`);
+    return circles;
 }
 
 /**
@@ -184,7 +232,12 @@ Deno.serve(async (req) => {
             console.warn(`[fetchArea-v8] Cache check failed (non-fatal): ${cacheErr.message}`);
         }
 
-        // Create FetchJob with delta state
+        // === GRID SUBDIVISION ===
+        // RentCast support: large-radius queries silently drop records.
+        // Break into ≤5mi sub-circles and combine results.
+        const subCircles = generateSubCircles(optimizedLat, optimizedLng, optimizedRadius);
+
+        // Create FetchJob with delta state + sub-circles
         const job = await base44.entities.FetchJob.create({
             status: 'pending',
             latitude: optimizedLat,
@@ -207,11 +260,15 @@ Deno.serve(async (req) => {
             zip_codes_found: [],
             error_log: [],
             chunk_timings: [],
-            phase: 'deed_records'
+            phase: 'deed_records',
+            sub_circles: subCircles,
+            current_sub_circle: 0,
+            total_sub_circles: subCircles.length
         });
 
         const computedSaleDateRange = (effectiveSoldMonths * 30) + 90;
-        console.log(`[fetchArea-v8] Created FetchJob ${job.id} | delta=${isDeltaPull} | lat=${optimizedLat} lng=${optimizedLng} r=${optimizedRadius}mi | saleDateRange=${computedSaleDateRange} | phase=deed_records (deed-only)`);
+        const gridMsg = subCircles.length > 1 ? ` | GRID: ${subCircles.length} sub-circles (r=${SUB_CIRCLE_RADIUS}mi)` : ' | single circle';
+        console.log(`[fetchArea-v9] Created FetchJob ${job.id} | delta=${isDeltaPull} | lat=${optimizedLat} lng=${optimizedLng} r=${optimizedRadius}mi | saleDateRange=${computedSaleDateRange}${gridMsg}`);
 
         try {
             await base44.auth.updateMe({ area_pulls_count: pullCount + 1 });
@@ -235,9 +292,10 @@ Deno.serve(async (req) => {
                 age_days: deltaInfo.ageDays,
                 estimated_savings: '~85% fewer API calls'
             } : null,
+            sub_circles: subCircles.length,
             message: isDeltaPull 
                 ? `Delta pull started — only fetching changes since ${deltaInfo.ageDays}d ago. Estimated ~85% fewer API calls.`
-                : `Full property fetch started (radius: ${optimizedRadius}mi). Running in background.`
+                : `Full property fetch started (radius: ${optimizedRadius}mi, ${subCircles.length} grid cells). Running in background.`
         });
 
     } catch (error) {
