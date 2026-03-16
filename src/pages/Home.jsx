@@ -1045,7 +1045,15 @@ export default function Home() {
             }
 
             if (workingSet.length === 0) {
-                toast.error("No properties found with current filters/area.", { id: 'build-routes' });
+                let reason = "current filters or selected area";
+                if (soldDateFilter !== null) reason = `"Sold in last ${soldDateFilter} months" filter`;
+                if (drawnPolygon && drawnPolygon.length > 2) reason = "drawn area selection";
+                if (zipCodeFilter) reason = `filter for ${zipCodeFilter}`;
+
+                toast.error(`No properties found matching ${reason}. Check filters or clear area.`, { 
+                    id: 'build-routes',
+                    duration: 5000 
+                });
                 setRoutesGenerating(false);
                 return;
             }
@@ -1083,8 +1091,8 @@ export default function Home() {
                 learnedWeights
             );
 
-            if (generated._cooldownInfo) {
-                setCooldownInfo(generated._cooldownInfo);
+            if (generated['_cooldownInfo']) {
+                setCooldownInfo(generated['_cooldownInfo']);
             }
 
             setRoutes(generated);
@@ -1141,7 +1149,7 @@ export default function Home() {
         const highPotentialCount = routes.filter(r => r.competitivenessScore >= 100).length;
 
         // Count excluded if available from generation metadata
-        const excludedCount = routes._cooldownInfo ? routes._cooldownInfo.propertiesExcluded : 0;
+        const excludedCount = routes['_cooldownInfo'] ? routes['_cooldownInfo'].propertiesExcluded : 0;
 
         return { totalHouses, totalDist, avgScore, routeCount: routes.length, highPotentialCount, excludedCount };
     }, [routes]);
@@ -1610,6 +1618,7 @@ export default function Home() {
                         soldDateFilter={soldDateFilter} setSoldDateFilter={setSoldDateFilter}
                         routeConfig={routeConfig} setRouteConfig={setRouteConfig}
                         onGenerate={generateRoutes} routesGenerating={routesGenerating}
+                        onClearPolygon={() => setDrawnPolygon(null)}
                         onReset={() => {
                             if (confirm("Reset all generated routes?")) {
                                 setRoutes([]);
@@ -1659,15 +1668,6 @@ export default function Home() {
                             } catch (e) {
                                 toast.error("Sync failed", { id: toastId });
                             }
-                        }}
-                        onClearArea={async () => {
-                            if (!confirm(`DELETE ALL properties in zip ${zipCodeFilter}?`)) return;
-                            const toastId = toast.loading("Deleting...");
-                            try {
-                                const res = await base44.functions.invoke('cleanupDatabase', { action: 'cleanup', zip_code: zipCodeFilter });
-                                toast.success(`Deleted ${res.data.deleted} properties`, { id: toastId });
-                                queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
-                            } catch (e) { toast.error("Failed", { id: toastId }); }
                         }}
                         user={user}
                         hasDrawnArea={drawnPolygon && drawnPolygon.length > 2}

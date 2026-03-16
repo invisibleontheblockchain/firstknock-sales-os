@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
+import { base44 } from '@/api/base44Client';
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -44,7 +45,7 @@ export default function RouteBuilderSettings({
     onSelectRoute,
     onClose,
     // Sync functions
-    onForceSync, onClearArea,
+    onForceSync, onClearPolygon,
     onDraw, // New prop for enabling drawing mode
     // Data
     user,
@@ -810,6 +811,17 @@ export default function RouteBuilderSettings({
                                 <><Zap className="w-4 h-4 mr-2" /> GENERATE ROUTES</>
                             )}
                         </Button>
+
+                        {hasDrawnArea && !routesGenerating && (
+                            <Button
+                                onClick={onClearPolygon}
+                                className="h-12 px-4 bg-gray-600/20 text-gray-400 border border-gray-700 hover:bg-gray-600/40"
+                            >
+                                <X className="w-5 h-5" />
+                                <span className="ml-2 text-xs font-bold">CLEAR AREA</span>
+                            </Button>
+                        )}
+
                         <Button
                             onClick={onReset}
                             size="icon"
