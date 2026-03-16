@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
@@ -52,6 +52,12 @@ export default function MapToolbar({
 
     // Drawing state
     drawnPolygon,
+
+    // Route Visibility
+    showRouteDetails,
+    setShowRouteDetails,
+    showRouteLines,
+    setShowRouteLines,
 }) {
     const hasDrawnArea = drawnPolygon && drawnPolygon.length > 2;
     return (
@@ -96,6 +102,22 @@ export default function MapToolbar({
                     {/* DATA STATUS + FILTER BUTTON */}
                     <div className="pointer-events-auto shrink-0 flex items-center gap-1 sm:gap-2">
                         <DataStatusIndicator user={user} />
+                        <Button
+                            onClick={() => {
+                                const newVal = !showRouteDetails;
+                                setShowRouteDetails(newVal);
+                                setShowRouteLines(newVal);
+                                toast.success(newVal ? "Routes Visible" : "Routes Hidden");
+                            }}
+                            size="icon"
+                            className={`bg-black/80 hover:bg-black backdrop-blur-md border shadow-xl h-8 w-8 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl transition-all ${(!showRouteDetails && !showRouteLines) ? 'border-red-500/50' : 'border-gray-800'}`}
+                        >
+                            {(!showRouteDetails && !showRouteLines) ? (
+                                <EyeOff className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-red-500" />
+                            ) : (
+                                <Eye className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-blue-400" />
+                            )}
+                        </Button>
                         <Button
                             onClick={() => setShowCompare(true)}
                             size="icon"

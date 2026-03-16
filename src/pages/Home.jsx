@@ -1413,6 +1413,10 @@ export default function Home() {
                 BRAND={BRAND}
                 activeRouteSoldFilter={activeRouteSoldFilter}
                 setActiveRouteSoldFilter={setActiveRouteSoldFilter}
+                showRouteDetails={showRouteDetails}
+                setShowRouteDetails={setShowRouteDetails}
+                showRouteLines={showRouteLines}
+                setShowRouteLines={setShowRouteLines}
             />
 
             {/* Territory Prompt - Drawing Controls + Initial Prompt */}
