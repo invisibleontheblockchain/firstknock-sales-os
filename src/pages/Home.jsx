@@ -1399,6 +1399,7 @@ export default function Home() {
                 setShowCompare={setShowCompare}
                 setShowRoutePanel={setShowRoutePanel}
                 setShowChecklist={setShowChecklist}
+                drawnPolygon={drawnPolygon}
                 teamMembers={teamMembers}
                 hydratedSavedRoutes={hydratedSavedRoutes}
                 routes={routes}

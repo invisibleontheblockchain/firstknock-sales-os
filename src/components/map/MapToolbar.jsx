@@ -49,7 +49,11 @@ export default function MapToolbar({
     // Route Filter
     activeRouteSoldFilter,
     setActiveRouteSoldFilter,
+
+    // Drawing state
+    drawnPolygon,
 }) {
+    const hasDrawnArea = drawnPolygon && drawnPolygon.length > 2;
     return (
         <>
             {/* Top Stats Bar */}
@@ -265,8 +269,10 @@ export default function MapToolbar({
                         >
                             {routesGenerating ? (
                                 <><Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 animate-spin" /> BUILDING</>
-                            ) : (
+                            ) : hasDrawnArea ? (
                                 <><Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" /> GENERATE</>
+                            ) : (
+                                <><Navigation className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" /> DRAW</>
                             )}
                         </Button>
                     )}

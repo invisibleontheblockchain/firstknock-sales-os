@@ -369,7 +369,7 @@ export default function TerritoryPrompt({
                         }}
                         className="bg-gray-900 border border-gray-700 text-white text-[10px] rounded-md px-1.5 py-0.5 h-6"
                     >
-                        <option value="test">Test (5mi²)</option>
+                        {!hasPulledData && <option value="test">Test (5mi²)</option>}
                         <option value="circle">Circle</option>
                         <option value="square">Square</option>
                     </select>
