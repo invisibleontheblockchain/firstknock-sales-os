@@ -186,7 +186,7 @@ export default function Tutorial() {
                         <Link to={createPageUrl('Terms')} className="text-gray-400 hover:text-white flex items-center gap-2 text-xs"><FileSpreadsheet className="w-3 h-3" /> Terms of Service</Link>
                         <Link to={createPageUrl('DeleteAccount')} className="text-red-500 hover:text-red-400 flex items-center gap-2 text-xs"><Zap className="w-3 h-3" /> Delete Account</Link>
                     </div>
-                    <p className="text-center text-gray-600 text-[10px] mt-6">Need help? Email support@firstknock.app</p>
+                    <p className="text-center text-gray-600 text-[10px] mt-6">Need help? Email firstknockhelp@gmail.com</p>
                 </div>
             </div>
         </div>

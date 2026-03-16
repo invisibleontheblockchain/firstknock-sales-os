@@ -120,7 +120,7 @@ export default function FAQ() {
                     />
                     <Question 
                         q="I can't log in" 
-                        a="Ensure you are using the same email address that your manager invited. If you are a manager, check that your subscription hasn't expired. Contact support@firstknock.app if the issue persists." 
+                        a="Ensure you are using the same email address that your manager invited. If you are a manager, check that your subscription hasn't expired. Contact firstknockhelp@gmail.com if the issue persists." 
                     />
                     <Question 
                         q="How do I track my reps?" 
@@ -133,7 +133,7 @@ export default function FAQ() {
                     <h3 className="text-xl font-bold mb-2">Still have questions?</h3>
                     <p className="text-gray-500 text-sm mb-6">Our team is here to help you dominate your territory.</p>
                     <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                        <Button className="bg-white text-black font-bold h-11 px-8 rounded-xl" onClick={() => window.location.href='mailto:support@firstknock.app'}>
+                        <Button className="bg-white text-black font-bold h-11 px-8 rounded-xl" onClick={() => window.location.href='mailto:firstknockhelp@gmail.com'}>
                             <MessageSquare className="w-4 h-4 mr-2" />
                             <span>Email Support</span>
                         </Button>
