@@ -201,13 +201,13 @@ export default function RouteBuilderSettings({
                                 <div className="flex justify-between items-center">
                                     <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">2. Recently Sold</label>
                                     <span className="text-sm font-bold text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded">
-                                        {soldDateFilter === 0 ? 'All History' : (soldDateFilter ? `${soldDateFilter} Months` : '6 Months')}
+                                        {soldDateFilter ? `${soldDateFilter} Months` : '6 Months'}
                                     </span>
                                 </div>
                                 <Slider
-                                    value={[soldDateFilter === null ? 100 : (soldDateFilter <= 6 ? 0 : soldDateFilter <= 12 ? 25 : soldDateFilter <= 24 ? 50 : soldDateFilter <= 36 ? 75 : 100)]}
+                                    value={[soldDateFilter === null ? 75 : (soldDateFilter <= 6 ? 0 : soldDateFilter <= 12 ? 25 : soldDateFilter <= 24 ? 50 : 75)]}
                                     onValueChange={([v]) => {
-                                        let val = null;
+                                        let val = 6;
                                         if (v === 0) val = 6;
                                         else if (v === 25) val = 12;
                                         else if (v === 50) val = 24;
@@ -225,7 +225,7 @@ export default function RouteBuilderSettings({
                                         setSoldDateFilter(val);
                                     }}
                                     min={0}
-                                    max={100}
+                                    max={75}
                                     step={25}
                                     className="w-full"
                                 />
@@ -234,7 +234,6 @@ export default function RouteBuilderSettings({
                                     <span>12 Mo</span>
                                     <span>24 Mo</span>
                                     <span>36 Mo</span>
-                                    <span className="text-yellow-500/70">ALL HISTORY</span>
                                 </div>
                             </div>
 
@@ -417,12 +416,12 @@ export default function RouteBuilderSettings({
                                 <div className="space-y-4 mb-4 pt-2">
                                     <div className="flex justify-between items-center">
                                         <label className="text-[10px] font-bold text-gray-500 uppercase">Recently Sold</label>
-                                        <span className="text-xs font-bold text-yellow-500">{soldDateFilter === null ? 'All History' : (soldDateFilter ? `${soldDateFilter} Months` : '6 Months')}</span>
+                                        <span className="text-xs font-bold text-yellow-500">{soldDateFilter ? `${soldDateFilter} Months` : '6 Months'}</span>
                                     </div>
                                     <Slider
-                                        value={[soldDateFilter === null ? 100 : (soldDateFilter <= 6 ? 0 : soldDateFilter <= 12 ? 25 : soldDateFilter <= 24 ? 50 : soldDateFilter <= 36 ? 75 : 100)]}
+                                        value={[soldDateFilter === null ? 75 : (soldDateFilter <= 6 ? 0 : soldDateFilter <= 12 ? 25 : soldDateFilter <= 24 ? 50 : 75)]}
                                         onValueChange={([v]) => {
-                                            let val = null;
+                                            let val = 6;
                                             if (v === 0) val = 6;
                                             else if (v === 25) val = 12;
                                             else if (v === 50) val = 24;
@@ -440,7 +439,7 @@ export default function RouteBuilderSettings({
                                             setSoldDateFilter(val);
                                         }}
                                         min={0}
-                                        max={100}
+                                        max={75}
                                         step={25}
                                         className="w-full"
                                     />
@@ -449,7 +448,6 @@ export default function RouteBuilderSettings({
                                         <span>12 Mo</span>
                                         <span>24 Mo</span>
                                         <span>36 Mo</span>
-                                        <span className="text-yellow-500/70">ALL HISTORY</span>
                                     </div>
                                 </div>
 
