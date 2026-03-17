@@ -748,12 +748,12 @@ export default function Home() {
                 if (soldDateFilter !== null) {
                     const cutoff = subMonths(new Date(), Number(soldDateFilter));
                     routeProps = routeProps.filter(p => {
-                        if (!p.sold_date) return false;
+                        if (!p.sold_date) return true; // Include properties without a sold date
                         try {
                             const d = new Date(p.sold_date);
-                            if (isNaN(d.getTime())) return false;
+                            if (isNaN(d.getTime())) return true; // Include if date is unparseable
                             return isAfter(d, cutoff);
-                        } catch (e) { return false; }
+                        } catch (e) { return true; }
                     });
                 }
 
@@ -1010,12 +1010,14 @@ export default function Home() {
                     // Always include Pending/Recent Listing Bridge properties
                     if (p.original_status === 'PENDING') return true;
                     
-                    if (!p.sold_date) return false;
+                    // Include properties without a sold date (they're in territory data)
+                    if (!p.sold_date) return true;
                     try {
                         const date = new Date(p.sold_date);
-                        if (isNaN(date.getTime())) return false;
+                        if (isNaN(date.getTime())) return true; // Include if date is unparseable
+                        // Exclude only if sold_date is BEFORE the cutoff
                         return isAfter(date, cutoff);
-                    } catch (e) { return false; }
+                    } catch (e) { return true; }
                 });
                 console.log(`[generateRoutes] After Sold Date Filter: ${workingSet.length}`);
             }

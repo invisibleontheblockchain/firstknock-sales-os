@@ -185,9 +185,12 @@ function ViewportCulledPins({
                 if (!isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon)) continue;
             }
             if (cutoff !== null) {
-                if (!p.sold_date) continue;
-                const date = new Date(p.sold_date);
-                if (isNaN(date.getTime()) || date < cutoff) continue;
+                if (!p.sold_date) { /* Include properties without sold_date */ }
+                else {
+                    const date = new Date(p.sold_date);
+                    if (isNaN(date.getTime())) { /* Include if date is unparseable */ }
+                    else if (date < cutoff) continue; // Exclude only if sold BEFORE cutoff
+                }
             }
             if (quickFilter !== 'all') {
                 if (quickFilter === 'eligible' && p.effective_status !== 'ELIGIBLE' && p.effective_status !== 'NO_ANSWER') continue;
