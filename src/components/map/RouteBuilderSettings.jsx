@@ -205,32 +205,35 @@ export default function RouteBuilderSettings({
                                     </span>
                                 </div>
                                 <Slider
-                                    value={[soldDateFilter === null ? 15 : (soldDateFilter || 6)]}
+                                    value={[soldDateFilter === null ? 100 : (soldDateFilter <= 6 ? 0 : soldDateFilter <= 12 ? 25 : soldDateFilter <= 24 ? 50 : soldDateFilter <= 36 ? 75 : 100)]}
                                     onValueChange={([v]) => {
-                                        if (v === 15) {
-                                            setSoldDateFilter(null);
-                                            return;
-                                        }
-                                        if (v === 12) {
+                                        let val = null;
+                                        if (v === 0) val = 6;
+                                        else if (v === 25) val = 12;
+                                        else if (v === 50) val = 24;
+                                        else if (v === 75) val = 36;
+                                        
+                                        if (val >= 12) {
                                             const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
                                             const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
                                             if (!isPaid && !isOwner) {
-                                                toast.error("12 Months history requires a Pro subscription");
+                                                toast.error(`${val} Months history requires a Pro subscription`);
                                                 window.location.href = '/Billing';
                                                 return;
                                             }
                                         }
-                                        setSoldDateFilter(v);
+                                        setSoldDateFilter(val);
                                     }}
-                                    min={6}
-                                    max={15}
-                                    step={3}
+                                    min={0}
+                                    max={100}
+                                    step={25}
                                     className="w-full"
                                 />
                                 <div className="flex justify-between text-[10px] text-gray-600 font-medium px-1">
                                     <span>6 Mo</span>
-                                    <span>9 Mo</span>
                                     <span>12 Mo</span>
+                                    <span>24 Mo</span>
+                                    <span>36 Mo</span>
                                     <span className="text-yellow-500/70">ALL HISTORY</span>
                                 </div>
                             </div>
@@ -417,32 +420,35 @@ export default function RouteBuilderSettings({
                                         <span className="text-xs font-bold text-yellow-500">{soldDateFilter === null ? 'All History' : (soldDateFilter ? `${soldDateFilter} Months` : '6 Months')}</span>
                                     </div>
                                     <Slider
-                                        value={[soldDateFilter === null ? 15 : (soldDateFilter || 6)]}
+                                        value={[soldDateFilter === null ? 100 : (soldDateFilter <= 6 ? 0 : soldDateFilter <= 12 ? 25 : soldDateFilter <= 24 ? 50 : soldDateFilter <= 36 ? 75 : 100)]}
                                         onValueChange={([v]) => {
-                                            if (v === 15) {
-                                                setSoldDateFilter(null);
-                                                return;
-                                            }
-                                            if (v === 12) {
+                                            let val = null;
+                                            if (v === 0) val = 6;
+                                            else if (v === 25) val = 12;
+                                            else if (v === 50) val = 24;
+                                            else if (v === 75) val = 36;
+                                            
+                                            if (val >= 12) {
                                                 const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
                                                 const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
                                                 if (!isPaid && !isOwner) {
-                                                    toast.error("12 Months history requires a Pro subscription");
+                                                    toast.error(`${val} Months history requires a Pro subscription`);
                                                     window.location.href = '/Billing';
                                                     return;
                                                 }
                                             }
-                                            setSoldDateFilter(v);
+                                            setSoldDateFilter(val);
                                         }}
-                                        min={6}
-                                        max={15}
-                                        step={3}
+                                        min={0}
+                                        max={100}
+                                        step={25}
                                         className="w-full"
                                     />
                                     <div className="flex justify-between text-[10px] text-gray-600 font-medium px-1">
                                         <span>6 Mo</span>
-                                        <span>9 Mo</span>
                                         <span>12 Mo</span>
+                                        <span>24 Mo</span>
+                                        <span>36 Mo</span>
                                         <span className="text-yellow-500/70">ALL HISTORY</span>
                                     </div>
                                 </div>

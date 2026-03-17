@@ -334,13 +334,13 @@ export default function MapSettingsPanel({
                   <SectionLabel>Sold Date Window</SectionLabel>
                   <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-3">
                     <div className="flex justify-between text-[10px] font-bold text-gray-500">
-                      <span>3 Mo</span><span>6 Mo</span><span>1 Yr</span><span>2 Yr</span><span>All</span>
+                      <span>6 Mo</span><span>1 Yr</span><span>2 Yr</span><span>3 Yr</span><span>All</span>
                     </div>
                     <Slider
-                      value={[local.soldDateFilter === null ? 100 : local.soldDateFilter <= 3 ? 0 : local.soldDateFilter <= 6 ? 25 : local.soldDateFilter <= 12 ? 50 : local.soldDateFilter <= 24 ? 75 : 100]}
+                      value={[local.soldDateFilter === null ? 100 : local.soldDateFilter <= 6 ? 0 : local.soldDateFilter <= 12 ? 25 : local.soldDateFilter <= 24 ? 50 : local.soldDateFilter <= 36 ? 75 : 100]}
                       onValueChange={([v]) => {
                         let val = null;
-                        if (v === 0) val = 3; else if (v === 25) val = 6; else if (v === 50) val = 12; else if (v === 75) val = 24;
+                        if (v === 0) val = 6; else if (v === 25) val = 12; else if (v === 50) val = 24; else if (v === 75) val = 36;
                         setLiveSoldDateFilter(val);
                       }}
                       min={0} max={100} step={25} className="w-full"
