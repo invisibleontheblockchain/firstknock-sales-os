@@ -1001,10 +1001,15 @@ export default function Home() {
             const preSoldWorkingSet = workingSet.slice();
 
             // Apply Sold Date Filter (STRICT: If filter active, MUST have sold_date within range)
+            // EXCEPTION: 'PENDING' homes (from Listings API) bypass this because they are new movers
+            // that hasn't hit deed records yet.
             if (soldDateFilter !== null) {
                 const cutoff = subMonths(new Date(), Number(soldDateFilter));
                 console.log(`[generateRoutes] Applying Sold Date Filter: ${soldDateFilter} months (Cutoff: ${cutoff.toISOString()})`);
                 workingSet = workingSet.filter(p => {
+                    // Always include Pending/Recent Listing Bridge properties
+                    if (p.original_status === 'PENDING') return true;
+                    
                     if (!p.sold_date) return false;
                     try {
                         const date = new Date(p.sold_date);
