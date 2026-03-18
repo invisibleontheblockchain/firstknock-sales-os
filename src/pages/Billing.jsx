@@ -17,8 +17,8 @@ const PLANS = [
     priceId: 'price_1SwDXY2MvSNi6E8hZb5nSRDw',
     isPopular: true,
     features: [
-      '200 sq mi Service Area (Free: 2 pulls)',
-      'Unlimited Fresh Data Pulls',
+      '2 Free Data Pulls + 3 More with Pro',
+      'Up to 200 sq mi Service Area',
       'Unlimited Route Generation',
       'Filter by Price, Date, Property Type',
       'Live GPS Tracking & Proof of Visit',
@@ -46,8 +46,9 @@ export default function Billing() {
       return;
     }
 
+    const suffix = trialDays > 0 ? '_trial' : '_pay';
     try {
-      setLoadingPriceId(priceId);
+      setLoadingPriceId(priceId + suffix);
       const res = await base44.functions.invoke('createCheckoutSession', {
         priceId: priceId,
         quantity: 1,
@@ -67,6 +68,21 @@ export default function Billing() {
       setLoadingPriceId(null);
     }
   };
+
+  // Handle return from Stripe checkout
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('success') === 'true') {
+      toast.success("Payment successful! Your subscription is being activated. It may take a moment to reflect.", { duration: 6000 });
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname);
+      // Refetch user to get updated subscription_status
+      setTimeout(() => refetchUser(), 2000);
+    } else if (params.get('canceled') === 'true') {
+      toast.info("Checkout canceled. You can try again anytime.");
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   const isSubscribed = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
 

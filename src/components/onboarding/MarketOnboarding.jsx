@@ -55,7 +55,7 @@ export default function MarketOnboarding({ user, onComplete }) {
                                 Draw Your Service Area
                             </h2>
                             <p className="text-gray-400 text-sm leading-relaxed">
-                                Cover your <strong className="text-white">entire territory</strong> in one shape. We'll pull every recently sold home inside it — <strong className="text-white">one time, for free</strong>.
+                                Cover your <strong className="text-white">entire territory</strong> in one shape. We'll pull every recently sold home inside it — <strong className="text-white">2 free data pulls included</strong>.
                             </p>
                         </div>
 
@@ -115,11 +115,11 @@ export default function MarketOnboarding({ user, onComplete }) {
                             </div>
                             <div className="flex items-center gap-2">
                                 <Check className="w-4 h-4 text-yellow-500 shrink-0" />
-                                <span className="text-xs text-gray-300">One free pull — filter by price, type, date after</span>
+                                <span className="text-xs text-gray-300">Two free pulls — filter by price, type, date after</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Lock className="w-4 h-4 text-gray-600 shrink-0" />
-                                <span className="text-xs text-gray-500">Need fresh leads later? Upgrade to re-pull</span>
+                                <span className="text-xs text-gray-500">Need more pulls? Upgrade for 3 additional</span>
                             </div>
                         </div>
 

@@ -126,10 +126,15 @@ Deno.serve(async (req) => {
         // Enforce pull limit (admins bypass)
         const pullCount = user.area_pulls_count || 0;
         const isPaid = user.subscription_status === 'active' || user.is_owner || user.role === 'admin';
-        if (pullCount >= 5 && !isPaid) {
+        const isAdmin = user.role === 'admin' || user.is_owner;
+        const maxPulls = isAdmin ? 999 : (isPaid ? 5 : 2); // free=2, paid=5 (3 additional), admin=unlimited
+        if (pullCount >= maxPulls) {
+            const msg = isPaid
+                ? `You've used all ${maxPulls} data pulls included with your plan. Contact support for more.`
+                : 'You\'ve used your 2 free data pulls. Upgrade to FirstKnock Pro for 3 additional pulls.';
             return Response.json({
                 error: 'pull_limit_reached',
-                message: 'You\'ve used all 5 free data pulls. Upgrade to pull fresh leads for your territory.'
+                message: msg
             });
         }
 
