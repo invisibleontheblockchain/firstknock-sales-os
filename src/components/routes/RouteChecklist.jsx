@@ -5,6 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Check, X, Phone, Ban, Home, Navigation, Mic, MapPin } from 'lucide-react';
 import { getPropertyResultSummary } from '../logic/territoryLogic';
 import { openInMaps } from '../logic/navigation';
+import { formatPropertyAge } from '@/utils';
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -257,9 +258,16 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                                     </div>
 
                                     <div className="flex-1 min-w-0">
-                                        <p className={`text-[13px] font-semibold truncate leading-tight transition-all duration-300 ${isDone ? 'line-through opacity-40' : 'group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]'}`} style={{ color: BRAND.offWhite }}>
-                                            {prop.house_number} {prop.street_name}
-                                        </p>
+                                        <div className="flex items-center gap-2">
+                                            <p className={`text-[13px] font-semibold truncate leading-tight transition-all duration-300 ${isDone ? 'line-through opacity-40' : 'group-hover:drop-shadow-[0_0_8px_rgba(255,215,0,0.5)]'}`} style={{ color: BRAND.offWhite }}>
+                                                {prop.house_number} {prop.street_name}
+                                            </p>
+                                            {prop.sold_date && (
+                                                <span className="text-[9px] font-bold text-yellow-500/80 shrink-0">
+                                                    {formatPropertyAge(prop.sold_date)}
+                                                </span>
+                                            )}
+                                        </div>
                                         {prop.city && (
                                             <p className="text-[10px] truncate leading-tight mt-0.5" style={{ color: '#555' }}>
                                                 {prop.city}, {prop.state} {prop.zip_code}

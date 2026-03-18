@@ -1,5 +1,6 @@
 import React from 'react';
 import { Check, Navigation } from 'lucide-react';
+import { formatPropertyAge } from '@/utils';
 
 const STATUS_COLORS = {
     ELIGIBLE: '#FFD700',
@@ -14,6 +15,7 @@ const STATUS_COLORS = {
 export default function PropertyCard({ property, index, onSelect }) {
     const isDone = property.effective_status !== 'ELIGIBLE';
     const statusColor = STATUS_COLORS[property.effective_status] || '#555';
+    const age = formatPropertyAge(property.sold_date);
 
     return (
         <button
@@ -39,9 +41,16 @@ export default function PropertyCard({ property, index, onSelect }) {
 
             {/* Address */}
             <div className="flex-1 min-w-0 text-left">
-                <p className={`text-[14px] font-bold truncate leading-tight transition-all duration-300 ${isDone ? 'line-through opacity-40 text-gray-500' : 'text-gray-200 group-hover:text-white group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]'}`}>
-                    {property.house_number} {property.street_name}
-                </p>
+                <div className="flex items-center gap-2">
+                    <p className={`text-[14px] font-bold truncate leading-tight transition-all duration-300 ${isDone ? 'line-through opacity-40 text-gray-500' : 'text-gray-200 group-hover:text-white group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]'}`}>
+                        {property.house_number} {property.street_name}
+                    </p>
+                    {age && (
+                        <span className="text-[10px] font-bold text-yellow-500/80 shrink-0">
+                            {age}
+                        </span>
+                    )}
+                </div>
                 {property.city && (
                     <p className="text-[11px] truncate leading-tight mt-1 text-gray-600 transition-colors duration-300 group-hover:text-gray-400">
                         {property.city}, {property.state} {property.zip_code}
