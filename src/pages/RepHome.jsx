@@ -348,17 +348,32 @@ export default function RepHome() {
         if (!activeRoute || !properties.length) return [];
 
         // Map hashes to real properties
-        const props = (activeRoute.property_hashes || [])
+        const rawProps = (activeRoute.property_hashes || [])
             .map(hash => properties.find(p => p.address_hash === hash))
-            .filter(Boolean)
-            .map(p => {
-                const pLogs = logs.filter(l => l.address_hash === p.address_hash);
-                const status = determineEffectiveStatus(p, pLogs);
-                return { ...p, effective_status: status };
-            });
+            .filter(Boolean);
+
+        // Deduplicate properties by normalized address
+        const uniqueMap = new Map();
+        rawProps.forEach(p => {
+            const key = `${p.house_number || ''}_${p.street_name || ''}_${p.zip_code || ''}`.toLowerCase().trim();
+            // Optional: resolve conflicts by taking the one with the newest sold_date or just take the first one
+            if (!uniqueMap.has(key)) {
+                uniqueMap.set(key, p);
+            } else {
+                const existing = uniqueMap.get(key);
+                const isNewer = p.sold_date && (!existing.sold_date || new Date(p.sold_date) > new Date(existing.sold_date));
+                if (isNewer) uniqueMap.set(key, p);
+            }
+        });
+
+        const dedupedProps = Array.from(uniqueMap.values()).map(p => {
+            const pLogs = logs.filter(l => l.address_hash === p.address_hash);
+            const status = determineEffectiveStatus(p, pLogs);
+            return { ...p, effective_status: status };
+        });
 
         // Optimize sort based on time
-        return optimizeRouteForTime(props, new Date());
+        return optimizeRouteForTime(dedupedProps, new Date());
     }, [activeRoute, properties, logs]);
 
     // Stats
