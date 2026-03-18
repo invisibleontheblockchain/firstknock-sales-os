@@ -126,8 +126,8 @@ export default function TerritoryPrompt({
     const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
     const isPaid = user?.subscription_status === 'active' || user?.is_owner;
     const pullCount = user?.area_pulls_count || 0;
-    const maxPulls = user?.is_owner ? 9999 : (isPaid ? 5 : 2); // free=2, paid=5, owner=unlimited
-    const canPullAgain = pullCount < maxPulls;
+    const maxPulls = 9999; // Beta mode — unlimited pulls for all users
+    const canPullAgain = true; // Beta mode — no limits
     
     const showInitialPrompt = hasPulledData && hasDefinedMarket && mode === 'generate' && !activeRoute && !routesGenerating && !showCompare && !showRoutePanel && !drawingMode && (!drawnPolygon || drawnPolygon.length === 0);
 
@@ -268,10 +268,8 @@ export default function TerritoryPrompt({
         if (pulling) return;
         
         // Check pull limit on frontend too for instant feedback
-        if (!canPullAgain) {
-            toast.error("You've used your 2 free data pulls. Upgrade to Pro for 3 additional pulls.", { duration: 5000 });
-            return;
-        }
+        // Beta mode — no pull limits enforced on frontend
+        // if (!canPullAgain) { ... }
 
         const centerLat = drawnPolygon.reduce((s, p) => s + p.lat, 0) / drawnPolygon.length;
         const centerLng = drawnPolygon.reduce((s, p) => s + p.lng, 0) / drawnPolygon.length;
@@ -448,6 +446,7 @@ export default function TerritoryPrompt({
                                 className="bg-gray-900 border border-gray-700 text-white text-[10px] rounded-md px-1.5 py-0.5 h-6"
                                 disabled={pulling}
                             >
+                                <option value={0.25}>Past 1 Wk</option>
                                 <option value={6}>Past 6 Mo</option>
                                 <option value={12}>Past 12 Mo</option>
                                 <option value={24}>Past 24 Mo</option>
@@ -462,14 +461,13 @@ export default function TerritoryPrompt({
                             </Button>
                         </div>
                     ) : (
-                        <Link
-                            to={createPageUrl('Billing')}
-                            className="flex items-center gap-1.5 ml-2 text-[10px] font-bold text-yellow-500 hover:text-yellow-400 transition-colors bg-yellow-500/10 border border-yellow-500/30 rounded-md px-2 py-1"
+                        <Button
+                            disabled={pulling}
+                            onClick={handleFetchData}
+                            className="text-white text-[10px] h-6 px-2 py-0 rounded-md bg-blue-600 hover:bg-blue-500"
                         >
-                            <Lock className="w-3 h-3" />
-                            <span>Upgrade</span>
-                            <ArrowRight className="w-3 h-3" />
-                        </Link>
+                            Fetch data
+                        </Button>
                     )}
                     <button
                         onClick={() => { setDrawnPolygon(null); setDraftPolygon([]); }}

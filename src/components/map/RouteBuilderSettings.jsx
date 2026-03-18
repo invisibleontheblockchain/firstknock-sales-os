@@ -241,16 +241,7 @@ export default function RouteBuilderSettings({
                                         else if (v === 50) val = 6;
                                         else if (v === 75) val = 9;
                                         else if (v === 100) val = 12;
-                                        
-                                        if (val >= 12) {
-                                            const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                                            const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
-                                            if (!isPaid && !isOwner) {
-                                                toast.error(`${val} Months history requires a Pro subscription`);
-                                                window.location.href = '/Billing';
-                                                return;
-                                            }
-                                        }
+                                        // Beta mode — no paywall for sold date filter
                                         setSoldDateFilter(val);
                                     }}
                                     min={0}
@@ -376,42 +367,24 @@ export default function RouteBuilderSettings({
                                     <label className="text-[10px] font-bold text-gray-500 uppercase">Houses Per Route</label>
                                     <div className="grid grid-cols-6 gap-1.5">
                                         <button
-                                            onClick={() => {
-                                                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing' || user?.is_owner;
-                                                if (isPaid) setHousesPerRoute(10000);
-                                                else {
-                                                    toast.error("Upgrade to FirstKnock Pro to generate 'All-in-One' routes.");
-                                                    setTimeout(() => { if (onClose) onClose(); window.location.href = '/Billing'; }, 1500);
-                                                }
-                                            }}
+                                            onClick={() => setHousesPerRoute(10000)}
                                             className={`py-2.5 rounded-lg text-xs font-bold transition-all col-span-6 mb-1 flex items-center justify-center gap-2 ${housesPerRoute === 10000
                                                 ? 'bg-yellow-500 text-black shadow-lg'
                                                 : 'bg-[#1F1F1F] text-gray-400 hover:bg-[#2a2a2a] border border-gray-800'
                                                 }`}
                                         >
-                                            {!(user?.subscription_status === 'active' || user?.subscription_status === 'trialing' || user?.is_owner) && <Lock className="w-3 h-3" />}
                                             ALL IN ONE ROUTE
                                         </button>
                                         {ROUTE_SIZE_OPTIONS.map(size => {
-                                            const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing' || user?.is_owner;
-                                            const isLocked = !isPaid && size > 25;
                                             return (
                                                 <button
                                                     key={size}
-                                                    onClick={() => {
-                                                        if (isLocked) {
-                                                            toast.error("Free plan limit: 25 houses per route. Upgrade for more.");
-                                                            setTimeout(() => { if (onClose) onClose(); window.location.href = '/Billing'; }, 1500);
-                                                        } else {
-                                                            setHousesPerRoute(size);
-                                                        }
-                                                    }}
+                                                    onClick={() => setHousesPerRoute(size)}
                                                     className={`py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${housesPerRoute === size
                                                         ? 'bg-yellow-500 text-black shadow-lg'
-                                                        : isLocked ? 'bg-[#1F1F1F]/50 text-gray-600 border border-gray-800 overflow-hidden relative' : 'bg-[#1F1F1F] text-gray-400 hover:bg-[#2a2a2a] border border-gray-800'
+                                                        : 'bg-[#1F1F1F] text-gray-400 hover:bg-[#2a2a2a] border border-gray-800'
                                                         }`}
                                                 >
-                                                    {isLocked && <Lock className="w-2.5 h-2.5" />}
                                                     {size}
                                                 </button>
                                             );
@@ -486,16 +459,7 @@ export default function RouteBuilderSettings({
                                             else if (v === 50) val = 6;
                                             else if (v === 75) val = 9;
                                             else if (v === 100) val = 12;
-                                            
-                                            if (val >= 12) {
-                                                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                                                const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
-                                                if (!isPaid && !isOwner) {
-                                                    toast.error(`${val} Months history requires a Pro subscription`);
-                                                    window.location.href = '/Billing';
-                                                    return;
-                                                }
-                                            }
+                                            // Beta mode — no paywall for sold date filter
                                             setSoldDateFilter(val);
                                         }}
                                         min={0}
@@ -851,20 +815,8 @@ export default function RouteBuilderSettings({
                                     onDraw();
                                     return;
                                 }
-
-                                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                                const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
-                                
-                                if (!isPaid && !isOwner && user?.has_generated_routes) {
-                                    window.location.href = '/Billing';
-                                    return;
-                                }
-                                
+                                // Beta mode — no generation limits
                                 onGenerate();
-                                
-                                if (!isPaid && !isOwner && !user?.has_generated_routes) {
-                                    try { await base44.auth.updateMe({ has_generated_routes: true }); } catch(e) {}
-                                }
                             }}
                             disabled={routesGenerating}
                             className="flex-1 h-12 font-bold tracking-wide bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg"
