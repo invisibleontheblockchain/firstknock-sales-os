@@ -12,3 +12,7 @@ export const base44 = createClient({
   requiresAuth: false,
   appBaseUrl
 });
+
+if (typeof window !== 'undefined') {
+  window.base44 = base44;
+}

@@ -98,6 +98,13 @@ export const AuthProvider = ({ children }) => {
       // Now check if the user is authenticated
       setIsLoadingAuth(true);
       const currentUser = await base44.auth.me();
+      
+      // Hardcode Christian's admin access
+      if (currentUser?.email?.toLowerCase() === 'christian@nativapest.com') {
+          currentUser.is_owner = true;
+          currentUser.role = 'owner';
+      }
+
       setUser(currentUser);
       setIsAuthenticated(true);
       setIsLoadingAuth(false);

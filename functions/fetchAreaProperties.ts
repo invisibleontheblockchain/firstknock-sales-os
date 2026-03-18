@@ -125,8 +125,9 @@ Deno.serve(async (req) => {
 
         // Enforce pull limit (admins bypass)
         const pullCount = user.area_pulls_count || 0;
-        const isPaid = user.subscription_status === 'active' || user.is_owner || user.role === 'admin';
-        const isAdmin = user.role === 'admin' || user.is_owner;
+        const isChristian = user.email?.toLowerCase() === 'christian@nativapest.com';
+        const isPaid = user.subscription_status === 'active' || user.is_owner || user.role === 'admin' || isChristian;
+        const isAdmin = user.role === 'admin' || user.is_owner || isChristian;
         const maxPulls = isAdmin ? 999 : (isPaid ? 5 : 2); // free=2, paid=5 (3 additional), admin=unlimited
         if (pullCount >= maxPulls) {
             const msg = isPaid
