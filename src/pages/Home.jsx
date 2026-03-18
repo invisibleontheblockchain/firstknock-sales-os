@@ -1121,7 +1121,17 @@ export default function Home() {
             setRoutes(generated);
             setShowRoutePanel(true);
             setShowCompare(false); // Close builder to see the map
-            toast.success(`Built ${generated.length} route${generated.length === 1 ? '' : 's'}`, { id: 'build-routes' });
+            
+            let skippedDueToAssigned = 0;
+            if (routeConfig.excludeAssigned) {
+                skippedDueToAssigned = (effectiveProperties.length - availableProperties.length) + 
+                    (dynamicProps ? dynamicProps.filter(p => assignedHashes.has(p.address_hash || p.id)).length : 0);
+            }
+            
+            const routeWord = generated.length === 1 ? 'route' : 'routes';
+            const toastMsg = `Built ${generated.length} ${routeWord}` + (skippedDueToAssigned > 0 ? ` (${skippedDueToAssigned} skipped because they are already assigned)` : '');
+            
+            toast.success(toastMsg, { id: 'build-routes', duration: 5000 });
 
         } catch (e) {
             console.error("Route generation error:", e);

@@ -578,7 +578,7 @@ export default function RouteBuilderSettings({
 
                                     {/* Exclude Saved Routes */}
                                     <ToggleOption
-                                        label="Exclude Saved Routes"
+                                        label="Hide Houses Already in Routes"
                                         description="Don't build over properties already in a saved route"
                                         icon={<Layers className="w-4 h-4" />}
                                         checked={routeConfig.excludeAssigned !== false}

@@ -129,9 +129,10 @@ Deno.serve(async (req) => {
 
     // === STREAM B: Early Warning Radar (MLS Inactive) ===
     // Catch recently off-market homes before the county processes the deed. 
-    // We use daysOld=saleDateRange to cast a wide net (since daysOld is based on listedDate),
+    // We use daysOld=saleDateRange + 90 to cast a wide net (since daysOld is based on listedDate),
     // then filter them locally by removedDate.
-    const paramsB = new URLSearchParams({ zipCode: zip, status: 'Inactive', daysOld: String(saleDateRange) });
+    const mlsSearchDays = saleDateRange + 90; // Add 90 days listing buffer
+    const paramsB = new URLSearchParams({ zipCode: zip, status: 'Inactive', daysOld: String(mlsSearchDays) });
     const resultB = await fetchAllPages(`${RENTCAST_BASE}/listings/sale`, paramsB, 'MLS_Inactive', RENTCAST_API_KEY);
     totalApiCalls += resultB.apiCalls;
     
@@ -200,9 +201,6 @@ Deno.serve(async (req) => {
       existingHashes = new Set((Array.isArray(existingProps) ? existingProps : (existingProps?.items || [])).map(p => p.address_hash));
     } catch (e) { console.warn(`[FetchZip-v8] Dedup fetch failed:`, e.message); }
 
-    // Compute sold cutoff for status classification
-    const soldCutoff = new Date();
-    soldCutoff.setMonth(soldCutoff.getMonth() - sold_months);
 
     // Map to schema — deed-only, no MLS
     const mapped = allProperties
@@ -250,8 +248,10 @@ Deno.serve(async (req) => {
         let h3_index = null;
         try { h3_index = latLngToCell(p.latitude, p.longitude, 9); } catch (e) {}
 
+        const normalizedHash = `${(p.addressLine1 || '').toUpperCase().trim()}|${(p.zipCode || zip || '').trim().substring(0,5)}`;
+
         return {
-          address_hash: p.id || `${p.addressLine1}-${zip}`,
+          address_hash: normalizedHash,
           house_number, street_name,
           full_address: p.formattedAddress || p.addressLine1,
           city: p.city || '', state: p.state || '', zip_code: p.zipCode || zip,
