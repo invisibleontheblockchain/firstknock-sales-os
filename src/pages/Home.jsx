@@ -140,10 +140,10 @@ export default function Home() {
     const [showRoutePanel, setShowRoutePanel] = useState(false);
     const [showCompare, setShowCompare] = useState(false);
     const [housesPerRoute, setHousesPerRoute] = useState(999999); // Default: All-in-One route
-    const [maxRouteDistance, setMaxRouteDistance] = useState(10); // Default 10 miles
+    const [maxRouteDistance, setMaxRouteDistance] = useState(50); // Default Unlimited (50 miles)
     const ROUTE_SIZE_OPTIONS = [25, 50, 75, 100];
     const [sortBy, setSortBy] = useState('score'); // score, houses, distance
-    const [minScore, setMinScore] = useState(0);
+    const [minScore, setMinScore] = useState(0); // Default All Scores
     const [quickFilter, setQuickFilter] = useState('all'); // all, eligible, sold, rejected
     const [repFilter, setRepFilter] = useState('all');
     const [previewRoute, setPreviewRoute] = useState(null);
@@ -1106,7 +1106,7 @@ export default function Home() {
                     useStreetSweep: routeConfig.walkingPattern === 'street_sweep',
                     minimizeTurns: routeConfig.minimizeTurns,
                     use2Opt: routeConfig.use2Opt,
-                    maxRouteDistance: maxRouteDistance > 0 ? maxRouteDistance : null,
+                    maxRouteDistance: (maxRouteDistance > 0 && maxRouteDistance < 50) ? maxRouteDistance : null,
                     walkingPattern: routeConfig.walkingPattern,
                     returnToStart: routeConfig.returnToStart,
                     excludeTerminal: routeConfig.excludeTerminal,

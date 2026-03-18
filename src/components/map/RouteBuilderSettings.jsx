@@ -87,14 +87,14 @@ export default function RouteBuilderSettings({
             id: 'best',
             name: 'FirstKnock Best',
             icon: <Zap className="w-4 h-4" />,
-            desc: 'Ultra-optimized for newest homeowners. Starts at the most recently sold home and builds the route from there.',
-            criteria: 'Recent Sales First, All in one route, Past 6mo',
+            desc: 'Ultra-optimized for newest homeowners. Includes ALL active homes in your area.',
+            criteria: 'Unlimited distance, all scores included',
             apply: (isInitial = false) => {
-                setHousesPerRoute(10000);
-                setMaxRouteDistance(8);
+                setHousesPerRoute(10000); // Generates all in one connected route
+                setMaxRouteDistance(50);  // Unlimited Distance so no one is cut off
                 setStreetCooldownDays(14);
-                setMinScore(20);
-                setSoldDateFilter(6); // Past 6 months
+                setMinScore(0);           // 0 min score means nobody is hidden
+                setSoldDateFilter(12);    // Past 12 months
                 setSortBy('recent_sale');
                 setRouteConfig(prev => ({ ...prev, walkingPattern: 'recent_sale_first', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [], minBeds: null, minBaths: null, minSqft: null, maxSqft: null, minLotSize: null, maxLotSize: null }));
                 if (!isInitial) toast.success("FirstKnock Best applied!");
@@ -105,10 +105,10 @@ export default function RouteBuilderSettings({
             name: 'Hot Market Sweep',
             icon: <Flame className="w-4 h-4" />,
             desc: 'Sweeps entire streets that have high recent sales activity. Great for hitting dense pockets.',
-            criteria: 'Street Sweep, Past 36mo sales, 75 doors',
+            criteria: 'Street Sweep, Past 36mo sales, unlimited distance',
             apply: () => {
                 setHousesPerRoute(75);
-                setMaxRouteDistance(6);
+                setMaxRouteDistance(50); // Unlimited Distance
                 setStreetCooldownDays(14);
                 setMinScore(0);
                 setSoldDateFilter(36); // Past 3 years (all data we pull)
@@ -125,7 +125,7 @@ export default function RouteBuilderSettings({
             criteria: '60 doors, nearest door, no score filter',
             apply: () => {
                 setHousesPerRoute(60);
-                setMaxRouteDistance(3);
+                setMaxRouteDistance(50); // Unlimited
                 setStreetCooldownDays(0);
                 setMinScore(0);
                 setSoldDateFilter(null);
@@ -157,8 +157,8 @@ export default function RouteBuilderSettings({
             minSqft: null,
             maxSqft: null
         });
-        setMinScore(30);
-        setMaxRouteDistance(10);
+        setMinScore(0);
+        setMaxRouteDistance(50);
         setSoldDateFilter(6);
         toast.success("Filters reset to default routing settings.");
     };
@@ -667,7 +667,7 @@ export default function RouteBuilderSettings({
                                 <div className="space-y-2 pt-2 border-t border-gray-800/50">
                                     <div className="flex justify-between items-center">
                                         <label className="text-[10px] font-bold text-gray-500 uppercase">Max Walking Distance</label>
-                                        <span className="text-xs font-bold text-yellow-500">{maxRouteDistance} mi</span>
+                                        <span className="text-xs font-bold text-yellow-500">{maxRouteDistance >= 50 ? 'Unlimited' : `${maxRouteDistance} mi`}</span>
                                     </div>
                                     <Slider
                                         value={[maxRouteDistance]}

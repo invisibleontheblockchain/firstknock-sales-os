@@ -825,9 +825,8 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         // Density multiplier: up to 20% bonus for highly dense routes (e.g. 10+ houses in same hex)
         const densityMultiplier = 1 + Math.min(0.2, (maxDensity / 10) * 0.2);
 
-        // Competitiveness: Score (60%) + Efficiency (30%) - Commute Penalty (10%)
-        // Commute penalty: subtract 10 points per mile away?
-        const commutePenalty = distanceFromStart * 5;
+        // Competitiveness: Score (60%) + Efficiency (30%) - Commute Penalty (capped to prevent edge routes from dropping out)
+        const commutePenalty = Math.min(distanceFromStart * 2, 20);
 
         let competitivenessScore = Math.round(((avgScore * 0.6 + efficiency * 100 * 0.4) * densityMultiplier) - commutePenalty);
 
