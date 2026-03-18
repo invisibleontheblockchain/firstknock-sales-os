@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import {
     Navigation, Loader2, MapPin, RefreshCw, X, ChevronDown, ChevronUp,
     Zap, Route, Footprints, Clock, Shield, Flame, Target, Shuffle,
-    ArrowUpDown, GitBranch, ScanLine, Compass, Pencil, Layers
+    ArrowUpDown, GitBranch, ScanLine, Compass, Pencil, Layers, Lock
 } from 'lucide-react';
 import { toast } from "sonner";
 
@@ -122,9 +122,10 @@ export default function RouteBuilderSettings({
             name: 'Speed Blitz',
             icon: <Footprints className="w-4 h-4" />,
             desc: 'Max doors in minimum time. Shortest walking distance, no filters.',
-            criteria: '60 doors, nearest door, no score filter',
+            criteria: 'Maximum doors allowed by your plan',
             apply: () => {
-                setHousesPerRoute(60);
+                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+                setHousesPerRoute(isPaid ? 60 : 25);
                 setMaxRouteDistance(50); // Unlimited
                 setStreetCooldownDays(0);
                 setMinScore(0);
@@ -375,26 +376,46 @@ export default function RouteBuilderSettings({
                                     <label className="text-[10px] font-bold text-gray-500 uppercase">Houses Per Route</label>
                                     <div className="grid grid-cols-6 gap-1.5">
                                         <button
-                                            onClick={() => setHousesPerRoute(10000)}
-                                            className={`py-2.5 rounded-lg text-xs font-bold transition-all col-span-6 mb-1 ${housesPerRoute === 10000
+                                            onClick={() => {
+                                                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+                                                if (isPaid) setHousesPerRoute(10000);
+                                                else {
+                                                    toast.error("Upgrade to FirstKnock Pro to generate 'All-in-One' routes.");
+                                                    setTimeout(() => { if (onClose) onClose(); window.location.href = '/Billing'; }, 1500);
+                                                }
+                                            }}
+                                            className={`py-2.5 rounded-lg text-xs font-bold transition-all col-span-6 mb-1 flex items-center justify-center gap-2 ${housesPerRoute === 10000
                                                 ? 'bg-yellow-500 text-black shadow-lg'
                                                 : 'bg-[#1F1F1F] text-gray-400 hover:bg-[#2a2a2a] border border-gray-800'
                                                 }`}
                                         >
+                                            {!(user?.subscription_status === 'active' || user?.subscription_status === 'trialing') && <Lock className="w-3 h-3" />}
                                             ALL IN ONE ROUTE
                                         </button>
-                                        {ROUTE_SIZE_OPTIONS.map(size => (
-                                            <button
-                                                key={size}
-                                                onClick={() => setHousesPerRoute(size)}
-                                                className={`py-2.5 rounded-lg text-xs font-bold transition-all ${housesPerRoute === size
-                                                    ? 'bg-yellow-500 text-black shadow-lg'
-                                                    : 'bg-[#1F1F1F] text-gray-400 hover:bg-[#2a2a2a] border border-gray-800'
-                                                    }`}
-                                            >
-                                                {size}
-                                            </button>
-                                        ))}
+                                        {ROUTE_SIZE_OPTIONS.map(size => {
+                                            const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+                                            const isLocked = !isPaid && size > 25;
+                                            return (
+                                                <button
+                                                    key={size}
+                                                    onClick={() => {
+                                                        if (isLocked) {
+                                                            toast.error("Free plan limit: 25 houses per route. Upgrade for more.");
+                                                            setTimeout(() => { if (onClose) onClose(); window.location.href = '/Billing'; }, 1500);
+                                                        } else {
+                                                            setHousesPerRoute(size);
+                                                        }
+                                                    }}
+                                                    className={`py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1 ${housesPerRoute === size
+                                                        ? 'bg-yellow-500 text-black shadow-lg'
+                                                        : isLocked ? 'bg-[#1F1F1F]/50 text-gray-600 border border-gray-800 overflow-hidden relative' : 'bg-[#1F1F1F] text-gray-400 hover:bg-[#2a2a2a] border border-gray-800'
+                                                        }`}
+                                                >
+                                                    {isLocked && <Lock className="w-2.5 h-2.5" />}
+                                                    {size}
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 </div>
 

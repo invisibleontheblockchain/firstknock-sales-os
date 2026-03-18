@@ -6,14 +6,15 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, CircleMarker, Tooltip, LayerGroup } from 'react-leaflet';
-import { Search, Loader2, Home, MapPin, ArrowLeft, Navigation, Save, CheckCircle2, Download, SlidersHorizontal, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Loader2, Home, MapPin, ArrowLeft, Navigation, Save, CheckCircle2, Download, SlidersHorizontal, ChevronDown, ChevronUp, Lock } from 'lucide-react';
+import { base44 } from '@/api/base44Client';
+import { useQuery } from "@tanstack/react-query";
 import { getConnection } from '../components/neonClient';
 import { createPageUrl } from '../utils';
 import { Link, useNavigate } from 'react-router-dom';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
-import { base44 } from '@/api/base44Client';
 import { toast } from "sonner";
 
 // Fix leaflet marker icons
@@ -42,6 +43,12 @@ export default function ZipCodeExplorer() {
   const [zipCode, setZipCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [autoSearchTriggered, setAutoSearchTriggered] = useState(false);
+
+  const { data: user } = useQuery({
+    queryKey: ['user'],
+    queryFn: () => base44.auth.me()
+  });
+  const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
 
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -151,7 +158,7 @@ export default function ZipCodeExplorer() {
   // Route Filters
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState({
-    housesPerRoute: 50,
+    housesPerRoute: 25,
     maxRoutes: 10,
     minPrice: 0,
     maxPrice: 2000000,
@@ -322,7 +329,8 @@ export default function ZipCodeExplorer() {
         }
 
         // Generate routes with filtered properties and custom houses per route
-        let routes = generateOptimizedRoutes(filteredProps, filters.housesPerRoute, null, [], { streetCooldownDays: 0, useStreetSweep: true });
+        const finalHousesPerRoute = isPaid ? filters.housesPerRoute : Math.min(filters.housesPerRoute, 25);
+        let routes = generateOptimizedRoutes(filteredProps, finalHousesPerRoute, null, [], { streetCooldownDays: 0, useStreetSweep: true });
 
         // Limit number of routes
         if (routes.length > filters.maxRoutes) {
@@ -561,10 +569,30 @@ export default function ZipCodeExplorer() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="25">25 houses</SelectItem>
-                    <SelectItem value="50">50 houses</SelectItem>
-                    <SelectItem value="75">75 houses</SelectItem>
-                    <SelectItem value="100">100 houses</SelectItem>
-                    <SelectItem value="150">150 houses</SelectItem>
+                    <SelectItem value="50" disabled={!isPaid}>
+                      <div className="flex items-center gap-2">
+                        {!isPaid && <Lock className="w-3 h-3 text-yellow-500" />}
+                        50 houses
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="75" disabled={!isPaid}>
+                      <div className="flex items-center gap-2">
+                        {!isPaid && <Lock className="w-3 h-3 text-yellow-500" />}
+                        75 houses
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="100" disabled={!isPaid}>
+                      <div className="flex items-center gap-2">
+                        {!isPaid && <Lock className="w-3 h-3 text-yellow-500" />}
+                        100 houses
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="150" disabled={!isPaid}>
+                      <div className="flex items-center gap-2">
+                        {!isPaid && <Lock className="w-3 h-3 text-yellow-500" />}
+                        150 houses
+                      </div>
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>

@@ -17,7 +17,7 @@ const PLANS = [
     priceId: 'price_1SwDXY2MvSNi6E8hZb5nSRDw',
     isPopular: true,
     features: [
-      '200 sq mi Service Area (Free: 1 pull)',
+      '200 sq mi Service Area (Free: 2 pulls)',
       'Unlimited Fresh Data Pulls',
       'Unlimited Route Generation',
       'Filter by Price, Date, Property Type',

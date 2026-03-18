@@ -4,7 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
-import { MapPin, CheckCircle2, ArrowRight, Sparkles, Loader2, Save, AlertCircle } from 'lucide-react';
+import { MapPin, CheckCircle2, ArrowRight, Sparkles, Loader2, Save, AlertCircle, Lock } from 'lucide-react';
 import { toast } from "sonner";
 import { generateOptimizedRoutes } from '../logic/routeOptimizer';
 import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
@@ -20,6 +20,7 @@ export default function TerritorySetupWizard({ user, onComplete }) {
     const [fetchedProperties, setFetchedProperties] = useState([]);
     const { accent } = useTheme();
     const accentTxt = contrastText(accent);
+    const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
 
     const { data: leadScoringWeightsRaw = [] } = useQuery({
         queryKey: ['leadScoringWeights'],
@@ -31,7 +32,6 @@ export default function TerritorySetupWizard({ user, onComplete }) {
         if (!zipInput || zipInput.length < 5) { toast.error("Enter a valid zip code"); return; }
         
         // Front-end limit check (also enforced on backend)
-        const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
         const zipLimit = isPaid ? 10 : 3;
         const zips = zipInput.split(',').map(z => z.trim()).filter(z => /^\d{5}$/.test(z));
         
@@ -96,7 +96,6 @@ export default function TerritorySetupWizard({ user, onComplete }) {
     };
 
     const handleGenerate = async () => {
-        const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
         if (!isPaid && user?.has_generated_routes) {
             window.location.href = '/Billing';
             return;
@@ -105,7 +104,8 @@ export default function TerritorySetupWizard({ user, onComplete }) {
         setLoading(true);
         setTimeout(async () => {
             try {
-                const routes = generateOptimizedRoutes(fetchedProperties, housesPerRoute, null, [], { streetCooldownDays: 30, useStreetSweep: true }, learnedWeights);
+                const finalHousesPerRoute = isPaid ? housesPerRoute : Math.min(housesPerRoute, 25);
+                const routes = generateOptimizedRoutes(fetchedProperties, finalHousesPerRoute, null, [], { streetCooldownDays: 30, useStreetSweep: true }, learnedWeights);
                 setGeneratedRoutes(routes);
                 setStep(3);
                 
@@ -187,11 +187,23 @@ export default function TerritorySetupWizard({ user, onComplete }) {
                                 </div>
                                 <div className="bg-[#1A1A1A] p-5 rounded-xl border border-gray-800 space-y-3">
                                     <div className="flex justify-between items-center">
-                                        <label className="text-sm font-bold text-white">Homes per route</label>
-                                        <span className="font-mono font-bold" style={{ color: accent }}>{housesPerRoute}</span>
+                                        <label className="text-sm font-bold text-white flex items-center gap-2">
+                                            Homes per route
+                                            {!isPaid && <Lock className="w-3 h-3 text-yellow-500" />}
+                                        </label>
+                                        <span className="font-mono font-bold" style={{ color: accent }}>{isPaid ? housesPerRoute : Math.min(housesPerRoute, 25)}</span>
                                     </div>
-                                    <Slider value={[housesPerRoute]} onValueChange={([v]) => setHousesPerRoute(v)} min={20} max={150} step={10} className="py-4" />
-                                    <p className="text-[10px] text-gray-500">30-50 = evening shift &nbsp;|&nbsp; 75+ = full day</p>
+                                    <Slider 
+                                        value={[isPaid ? housesPerRoute : Math.min(housesPerRoute, 25)]} 
+                                        onValueChange={([v]) => setHousesPerRoute(isPaid ? v : Math.min(v, 25))} 
+                                        min={20} 
+                                        max={isPaid ? 150 : 25} 
+                                        step={5} 
+                                        className="py-4" 
+                                    />
+                                    <p className="text-[10px] text-gray-500">
+                                        {isPaid ? '30-50 = evening shift | 75+ = full day' : 'Free plan limit: 25 houses. Upgrade for more.'}
+                                    </p>
                                 </div>
                                 <Button onClick={handleGenerate} disabled={loading} className="w-full h-12 font-bold text-base" style={{ background: accent, color: accentTxt }}>
                                     {loading ? <><Loader2 className="animate-spin mr-2" /> Building Routes...</> : <><ArrowRight className="w-5 h-5 mr-2" /> Generate Routes</>}
