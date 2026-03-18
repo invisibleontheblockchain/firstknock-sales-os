@@ -1396,26 +1396,6 @@ export default function Home() {
 
                 {/* Map Controls Handlers */}
                 
-                {/* Secret Cleanup Button for Christian */}
-                {user?.email?.toLowerCase() === 'christian@nativapest.com' && (
-                    <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000]">
-                        <button 
-                            onClick={async () => {
-                                try {
-                                    toast.loading("Cleaning up duplicate routes...", { id: 'christian_cleanup' });
-                                    const res = await base44.functions.invoke('elevateAccount');
-                                    toast.success(res.data.message || "Done", { id: 'christian_cleanup', duration: 10000 });
-                                } catch (e) {
-                                    toast.error(e.message, { id: 'christian_cleanup' });
-                                }
-                            }}
-                            className="bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-6 rounded-full shadow-2xl border-2 border-red-400 animate-pulse text-sm flex items-center gap-2"
-                        >
-                            <span>⚠️ ADMIN: Clean Up My Duplicate Routes</span>
-                        </button>
-                    </div>
-                )}
-
                 <MapController
                     fitBounds={fitBounds}
                     onZoomChange={setZoomLevel}
