@@ -49,6 +49,8 @@ export default function Billing() {
     const suffix = trialDays > 0 ? '_trial' : '_pay';
     try {
       setLoadingPriceId(priceId + suffix);
+      console.log('[Billing] Starting checkout', { priceId, trialDays, suffix });
+      
       const res = await base44.functions.invoke('createCheckoutSession', {
         priceId: priceId,
         quantity: 1,
@@ -57,14 +59,23 @@ export default function Billing() {
         trialDays: trialDays
       });
 
-      if (res.data.url) {
-        window.location.href = res.data.url;
+      console.log('[Billing] Checkout response:', JSON.stringify(res));
+
+      // Handle different response shapes — SDK may wrap in .data or return directly
+      const checkoutUrl = res?.data?.url || res?.url;
+      const errorMsg = res?.data?.error || res?.error;
+
+      if (checkoutUrl) {
+        console.log('[Billing] Redirecting to:', checkoutUrl);
+        window.location.href = checkoutUrl;
       } else {
-        throw new Error(res.data.error || 'Failed to start checkout');
+        console.error('[Billing] No checkout URL in response:', res);
+        throw new Error(errorMsg || 'No checkout URL returned from Stripe. Check console for details.');
       }
     } catch (error) {
-      console.error("Checkout failed:", error);
-      toast.error("Checkout failed: " + error.message);
+      console.error("[Billing] Checkout failed:", error);
+      const msg = error?.response?.data?.error || error?.message || 'Unknown error';
+      toast.error("Checkout failed: " + msg, { duration: 6000 });
       setLoadingPriceId(null);
     }
   };
