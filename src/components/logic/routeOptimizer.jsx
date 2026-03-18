@@ -574,6 +574,27 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         !(Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001)
     );
 
+    // Deduplicate by normalized address (safety net for Phase1/Phase2 hash mismatch)
+    const addrMap = new Map();
+    eligible.forEach(p => {
+        const street = (p.street_name || '').toUpperCase().trim();
+        const num = p.house_number || 0;
+        const zip = String(p.zip_code || '').trim().slice(0, 5);
+        const key = `${num}|${street}|${zip}`;
+        const existing = addrMap.get(key);
+        if (!existing) {
+            addrMap.set(key, p);
+        } else {
+            const existDate = existing.sold_date ? new Date(existing.sold_date).getTime() : 0;
+            const newDate = p.sold_date ? new Date(p.sold_date).getTime() : 0;
+            if (newDate > existDate) addrMap.set(key, p);
+        }
+    });
+    if (addrMap.size < eligible.length) {
+        console.log(`[routeOptimizer] Deduped: ${eligible.length} → ${addrMap.size} (removed ${eligible.length - addrMap.size} duplicate addresses)`);
+    }
+    eligible = Array.from(addrMap.values());
+
     // Apply street cooldown filter if logs are provided
     let cooldownInfo = null;
     if (allLogs && allLogs.length > 0) {

@@ -287,7 +287,8 @@ Deno.serve(async (req) => {
                 if (!isValidSoldProperty(p)) continue;
                 const addressLine = p.addressLine1 || (p.formattedAddress ? p.formattedAddress.split(',')[0] : "");
                 const pZip = p.zipCode || '00000';
-                const hash = p.id || `${addressLine}-${pZip}`;
+                // Use normalized hash (matches Phase 2 listings) to prevent duplicate DB records
+                const hash = generateNormalizedHash(addressLine, pZip);
                 if (seenHashes.has(hash)) continue;
                 seenHashes.add(hash);
                 if (pZip && !zipCodesFound.includes(pZip)) zipCodesFound.push(pZip);

@@ -697,7 +697,7 @@ export default function Home() {
             logsByAddress.get(l.address_hash).push(l);
         });
 
-        return propsArray
+        const mapped = propsArray
             .filter(p => {
                 if (!p?.lat || !p?.lng || isNaN(p.lat) || isNaN(p.lng)) return false;
                 // Filter out Null Island (0,0) coordinates
@@ -726,6 +726,31 @@ export default function Home() {
                     effective_status: p.is_dark_room ? (p.effective_status || 'ELIGIBLE') : determineEffectiveStatus(p, propLogs)
                 };
             });
+
+        // Deduplicate by normalized address (catches Phase1/Phase2 hash mismatch duplicates)
+        const dedupMap = new Map();
+        mapped.forEach(p => {
+            const street = (p.street_name || '').toUpperCase().trim();
+            const num = p.house_number || 0;
+            const zip = String(p.zip_code || '').trim().slice(0, 5);
+            const dedupKey = `${num}|${street}|${zip}`;
+            const existing = dedupMap.get(dedupKey);
+            if (!existing) {
+                dedupMap.set(dedupKey, p);
+            } else {
+                // Keep whichever has the most recent sold_date
+                const existingDate = existing.sold_date ? new Date(existing.sold_date).getTime() : 0;
+                const newDate = p.sold_date ? new Date(p.sold_date).getTime() : 0;
+                if (newDate > existingDate) {
+                    dedupMap.set(dedupKey, p);
+                }
+            }
+        });
+        const deduped = Array.from(dedupMap.values());
+        if (deduped.length < mapped.length) {
+            console.log(`[Home] Deduped properties: ${mapped.length} → ${deduped.length} (removed ${mapped.length - deduped.length} duplicates)`);
+        }
+        return deduped;
     }, [properties, logs, user?.territory_zip_codes, user?.generated_zip_codes, zipCodeFilter, drawnPolygon]);
 
     // Smart Auto-Open/Close for Generate Mode
