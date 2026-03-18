@@ -139,21 +139,6 @@ export default function Home() {
         };
     }, [activeRoute, activeRouteSoldFilter]);
 
-    const handleSaveFilteredRoute = useCallback(() => {
-        if (!activeRoute || !filteredActiveRoute || activeRouteSoldFilter === 'all') return;
-        
-        const newRoute = {
-            ...filteredActiveRoute,
-            id: `route-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-            name: `${activeRoute.name} (${activeRouteSoldFilter}M Filter)`,
-        };
-
-        setRoutes(prev => [...prev, newRoute]);
-        setActiveRoute(newRoute);
-        setActiveRouteSoldFilter('all');
-        toast.success(`Saved filtered version as "${newRoute.name}"`, { id: 'save-filter' });
-    }, [activeRoute, filteredActiveRoute, activeRouteSoldFilter]);
-
     const [showRoutePanel, setShowRoutePanel] = useState(false);
     const [showCompare, setShowCompare] = useState(false);
     const [housesPerRoute, setHousesPerRoute] = useState(999999); // Default: All-in-One route
@@ -515,14 +500,18 @@ export default function Home() {
                 return localRoute;
             }
         },
-        onSuccess: () => {
+        onSuccess: (data, variables) => {
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
             queryClient.invalidateQueries({ queryKey: ['localRoutes'] }); // Ensure local readers update
-            toast.success("Route saved successfully!", { duration: 2000 });
+            // @ts-ignore - 'silent' is a dynamic property added for auto-save
+            if (!variables?.silent) {
+                toast.success("Route saved successfully!", { duration: 2000 });
+            }
         }
     });
 
-    const handleSaveRoute = (route, assignedRepId = null, assignedRepName = null) => {
+    const handleSaveRoute = (route, assignedRepId = null, assignedRepName = null, silent = false) => {
+        // @ts-ignore - 'mutate' incorrectly expects 'void' instead of the data object
         createRouteMutation.mutate({
             name: route.name,
             property_hashes: route.properties.map(p => p.address_hash),
@@ -535,9 +524,27 @@ export default function Home() {
             start_location: startLocation,
             assigned_to: assignedRepId,
             assigned_to_name: assignedRepName,
-            manager_id: user.id
+            manager_id: user.id,
+            silent // Pass silent flag to mutation
         });
     };
+
+    const handleSaveFilteredRoute = useCallback(() => {
+        if (!activeRoute || !filteredActiveRoute || activeRouteSoldFilter === 'all') return;
+        
+        const newRoute = {
+            ...filteredActiveRoute,
+            id: `route-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            name: `${activeRoute.name} (${activeRouteSoldFilter}M Filter)`,
+        };
+
+        // Auto-save to backend/local storage
+        handleSaveRoute(newRoute);
+        
+        setActiveRoute(newRoute);
+        setActiveRouteSoldFilter('all');
+        // toast.success moved to handleSaveRoute/createRouteMutation onSuccess
+    }, [activeRoute, filteredActiveRoute, activeRouteSoldFilter, handleSaveRoute]);
 
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs', user?.email],
@@ -1161,6 +1168,27 @@ export default function Home() {
             }
 
             setRoutes(generated);
+            
+            // AUTO-SAVE: Automatically persist all generated routes
+            if (generated.length > 0) {
+                console.log(`[Home] Auto-saving ${generated.length} generated routes...`);
+                // Use a single toast for the bulk save instead of multiple individual toasts
+                const bulkToastId = toast.loading(`Auto-saving ${generated.length} routes...`);
+                
+                generated.forEach(route => {
+                    handleSaveRoute(route, null, null, true); // true = silent (no individual toast)
+                });
+                
+                toast.success(`Automatically saved ${generated.length} routes`, { id: bulkToastId, duration: 3000 });
+
+                // Switch to analyze mode so we see the saved items properly
+                // and clear the transient routes state to prevent double-rendering
+                setTimeout(() => {
+                    setRoutes([]);
+                    setModeRaw('analyze');
+                }, 1000);
+            }
+
             setShowRoutePanel(true);
             setShowCompare(false); // Close builder to see the map
             
