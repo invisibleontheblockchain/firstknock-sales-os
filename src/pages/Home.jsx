@@ -86,15 +86,16 @@ const DEFAULT_STATUS_COLORS = {
     NO_ANSWER: '#404040',// Dark Gray
     QUALIFIED: '#00F5A0',// Neon Green
     UNVERIFIED: '#A855F6',// Purple (legacy CSV data)
+    RECENT_OFF_MARKET: '#FFD700', // Gold (early warning MLS radar)
     OTHER: '#404040'     // Dark Gray
 };
 
 const COLOR_SCHEME_MAP = {
     default: DEFAULT_STATUS_COLORS,
-    neon: { ELIGIBLE: '#00fff7', SOLD: '#39ff14', HARD_NO: '#ff073a', CALLBACK: '#ffed00', NO_ANSWER: '#00fff7', QUALIFIED: '#39ff14', UNVERIFIED: '#bf5af2', OTHER: '#00fff7' },
-    pastel: { ELIGIBLE: '#a8b8c8', SOLD: '#77dd77', HARD_NO: '#b39ddb', CALLBACK: '#fff176', NO_ANSWER: '#a8b8c8', QUALIFIED: '#77dd77', UNVERIFIED: '#c4b5fd', OTHER: '#a8b8c8' },
-    heatmap: { ELIGIBLE: '#1e3a5f', SOLD: '#ff4500', HARD_NO: '#8b0000', CALLBACK: '#ff8c00', NO_ANSWER: '#1e3a5f', QUALIFIED: '#ff4500', UNVERIFIED: '#7c3aed', OTHER: '#1e3a5f' },
-    monochrome: { ELIGIBLE: '#555', SOLD: '#fff', HARD_NO: '#888', CALLBACK: '#bbb', NO_ANSWER: '#555', QUALIFIED: '#fff', UNVERIFIED: '#999', OTHER: '#555' },
+    neon: { ELIGIBLE: '#00fff7', SOLD: '#39ff14', HARD_NO: '#ff073a', CALLBACK: '#ffed00', NO_ANSWER: '#00fff7', QUALIFIED: '#39ff14', UNVERIFIED: '#bf5af2', RECENT_OFF_MARKET: '#ffed00', OTHER: '#00fff7' },
+    pastel: { ELIGIBLE: '#a8b8c8', SOLD: '#77dd77', HARD_NO: '#b39ddb', CALLBACK: '#fff176', NO_ANSWER: '#a8b8c8', QUALIFIED: '#77dd77', UNVERIFIED: '#c4b5fd', RECENT_OFF_MARKET: '#fff176', OTHER: '#a8b8c8' },
+    heatmap: { ELIGIBLE: '#1e3a5f', SOLD: '#ff4500', HARD_NO: '#8b0000', CALLBACK: '#ff8c00', NO_ANSWER: '#1e3a5f', QUALIFIED: '#ff4500', UNVERIFIED: '#7c3aed', RECENT_OFF_MARKET: '#ff8c00', OTHER: '#1e3a5f' },
+    monochrome: { ELIGIBLE: '#555', SOLD: '#fff', HARD_NO: '#888', CALLBACK: '#bbb', NO_ANSWER: '#555', QUALIFIED: '#fff', UNVERIFIED: '#999', RECENT_OFF_MARKET: '#bbb', OTHER: '#555' },
 };
 
 const LINE_DASH_MAP = {
@@ -1010,7 +1011,7 @@ export default function Home() {
                 console.log(`[generateRoutes] Applying Sold Date Filter: ${soldDateFilter} months (Cutoff: ${cutoff.toISOString()})`);
                 workingSet = workingSet.filter(p => {
                     // Always include Pending/Recent Listing Bridge properties
-                    if (p.original_status === 'PENDING') return true;
+                    if (p.original_status === 'PENDING' || p.original_status === 'RECENT_OFF_MARKET') return true;
                     
                     // Properties with rep interaction statuses always stay in routes
                     const hasInteraction = ['CALLBACK', 'NO_ANSWER', 'QUALIFIED'].includes(p.effective_status);

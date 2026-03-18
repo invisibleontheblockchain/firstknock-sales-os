@@ -216,8 +216,13 @@ function ViewportCulledPins({
                     isRecentlySold = new Date(p.sold_date) > oneMonthAgo;
                 }
                 const isUnvisited = ['ELIGIBLE', 'NO_ANSWER', 'OTHER'].includes(p.effective_status);
-                const fillColor = isRecentlySold ? '#FF00FF' : (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER);
-
+                let effectiveColorStatus = p.effective_status;
+                if (p.effective_status === 'ELIGIBLE' && p.original_status) {
+                    if (p.original_status === 'SOLD' || p.original_status === 'RECENT_OFF_MARKET' || p.original_status === 'PENDING') {
+                        effectiveColorStatus = p.original_status;
+                    }
+                }
+                const fillColor = isRecentlySold ? '#FF00FF' : (STATUS_COLORS[effectiveColorStatus] || STATUS_COLORS.OTHER);
                 return (
                     <React.Fragment key={p.address_hash || p.id}>
                         <CircleMarker
@@ -569,6 +574,9 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                         }
 
                         const isUnvisited = ['ELIGIBLE', 'NO_ANSWER', 'OTHER'].includes(p.effective_status);
+                        const effColorStatus = p.effective_status === 'ELIGIBLE' && p.original_status && ['SOLD', 'RECENT_OFF_MARKET', 'PENDING'].includes(p.original_status)
+                            ? p.original_status
+                            : p.effective_status;
 
                         return (
                             <CircleMarker
@@ -577,9 +585,9 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                                 radius={isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize)}
                                 eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
                                 pathOptions={{
-                                    fillColor: isRecentlySold ? '#FF00FF' : (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER),
-                                    fillOpacity: isRecentlySold ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
-                                    color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? (STATUS_COLORS[p.effective_status] || STATUS_COLORS.OTHER) : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
+                                    fillColor: isRecentlySold ? '#FF00FF' : (STATUS_COLORS[effColorStatus] || STATUS_COLORS.OTHER),
+                                    fillOpacity: isRecentlySold ? 1 : ((isUnvisited && p.effective_status === 'ELIGIBLE' && effColorStatus === 'ELIGIBLE') ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
+                                    color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? (STATUS_COLORS[effColorStatus] || STATUS_COLORS.OTHER) : ((isUnvisited && p.effective_status === 'ELIGIBLE' && effColorStatus === 'ELIGIBLE') ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
                                     weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth))
                                 }}
                             >

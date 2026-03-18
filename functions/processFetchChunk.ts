@@ -338,9 +338,12 @@ Deno.serve(async (req) => {
         }
 
         // ======================================================================
-        // PHASE 2: LISTINGS RECORDS (Pending Bridge)
+        // PHASE 2: LISTINGS RECORDS (Early Warning Radar / MLS Inactive)
         // ======================================================================
         if (currentPhase === 'listings_records') {
+            const DEED_LAG_DAYS = 90;
+            const saleDateRange = (monthsBack * 30) + DEED_LAG_DAYS;
+            
             const allRaw = [];
             let reachedEnd = false;
             const offsets = [];
@@ -350,27 +353,38 @@ Deno.serve(async (req) => {
                 if (Date.now() - chunkStart > 40000) break;
                 const batch = offsets.slice(i, i + MAX_PARALLEL);
                 const promises = batch.map(offset => {
-                    const params = new URLSearchParams({ latitude: String(fetchLat), longitude: String(fetchLng), radius: String(fetchRadius), limit: String(LIMIT), offset: String(offset), status: 'Inactive' });
+                    // Fetch Inactive status, using daysOld to cast a wide net based on the listedDate
+                    const params = new URLSearchParams({ latitude: String(fetchLat), longitude: String(fetchLng), radius: String(fetchRadius), limit: String(LIMIT), offset: String(offset), status: 'Inactive', daysOld: String(saleDateRange) });
                     return fetchWithBackoff(`${RENTCAST_BASE}/listings/sale?${params}`, { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY }, logError);
                 });
                 const results = await Promise.all(promises);
                 totalApiCalls += results.length;
                 for (const r of results) {
-                    const pending = r.records.filter(l => ['Pending', 'Under Contract', 'Contract'].includes(l.status));
-                    allRaw.push(...pending);
+                    allRaw.push(...r.records);
                     if (r.records.length < LIMIT) reachedEnd = true;
                 }
                 if (reachedEnd) break;
                 await sleep(150);
             }
 
+            const soldCutoff = new Date();
+            soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
+
             const mapped = [];
             const seenHashes = new Set();
             for (const p of allRaw) {
                 if (!p.latitude || !p.longitude || !filterPoint(p.latitude, p.longitude)) continue;
+                
+                // Local filter: remove items where removedDate is too old
+                if (!p.removedDate) continue;
+                const removed = new Date(p.removedDate);
+                if (isNaN(removed.getTime()) || removed < soldCutoff) continue;
+
                 const addressLine = p.addressLine1 || (p.formattedAddress ? p.formattedAddress.split(',')[0] : "");
                 const pZip = p.zipCode || '00000';
-                const hash = p.id || `${addressLine}-${pZip}`;
+                
+                // Use normalized hash to match how fetchZipProperties.ts does deed deduplication
+                const hash = generateNormalizedHash(addressLine, pZip);
                 if (seenHashes.has(hash)) continue;
                 seenHashes.add(hash);
                 if (pZip && !zipCodesFound.includes(pZip)) zipCodesFound.push(pZip);
@@ -381,9 +395,9 @@ Deno.serve(async (req) => {
 
                 mapped.push({
                     address_hash: hash, house_number, street_name, city: p.city || '', state: p.state || '', zip_code: pZip,
-                    lat: p.latitude, lng: p.longitude, original_status: 'PENDING', beds: p.bedrooms || 0, baths: p.bathrooms || 0,
+                    lat: p.latitude, lng: p.longitude, original_status: 'RECENT_OFF_MARKET', beds: p.bedrooms || 0, baths: p.bathrooms || 0,
                     sqft: p.squareFootage || 0, lot_size: p.lotSize || 0, year_built: p.yearBuilt || 0, price: p.price || 0,
-                    sold_date: p.listedDate || null, sale_type: 'Listing', property_type: p.propertyType || 'Single Family', data_source: 'rentcast'
+                    sold_date: p.removedDate || p.listedDate || null, sale_type: 'MLS', property_type: p.propertyType || 'Single Family', data_source: 'rentcast'
                 });
             }
 

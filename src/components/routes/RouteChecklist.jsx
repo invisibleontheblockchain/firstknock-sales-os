@@ -26,7 +26,8 @@ const STATUS_COLORS = {
     HARD_NO: '#8B5CF6',
     CALLBACK: '#eab308',
     NO_ANSWER: '#6b7280',
-    QUALIFIED: '#3b82f6'
+    QUALIFIED: '#3b82f6',
+    RECENT_OFF_MARKET: '#FFD700'
 };
 
 export default function RouteChecklist({ route, logs, onLogResult, onClose, navigationApp = 'apple', activeRouteSoldFilter, setActiveRouteSoldFilter }) {

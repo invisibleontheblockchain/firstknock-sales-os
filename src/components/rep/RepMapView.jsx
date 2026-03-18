@@ -35,6 +35,7 @@ const STATUS_COLORS = {
     CALLBACK: '#FFD93D',
     NO_ANSWER: '#8888A0',
     QUALIFIED: '#00F5A0',
+    RECENT_OFF_MARKET: '#FFD93D',
 };
 
 function haversine(lat1, lng1, lat2, lng2) {
@@ -220,7 +221,10 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
                     {/* Property Pins */}
                     {properties?.map((p, idx) => {
                         const isNearby = nearbyProps.some(n => n.address_hash === p.address_hash);
-                        const color = STATUS_COLORS[p.effective_status] || '#6b7280';
+                        const effColorStatus = p.effective_status === 'ELIGIBLE' && p.original_status && ['SOLD', 'RECENT_OFF_MARKET', 'PENDING'].includes(p.original_status)
+                            ? p.original_status
+                            : p.effective_status;
+                        const color = STATUS_COLORS[effColorStatus] || '#6b7280';
                         return (
                             <CircleMarker
                                 key={p.address_hash}

@@ -12,6 +12,7 @@ const STATUS_COLORS = {
     CALLBACK: '#eab308',
     NO_ANSWER: '#6b7280',
     QUALIFIED: '#22c55e',
+    RECENT_OFF_MARKET: '#FFD700',
     OTHER: '#6b7280'
 };
 
@@ -156,23 +157,29 @@ function GpsHud({ properties, isTracking, onToggleTracking, onSelectProperty }) 
                 {/* Nearby List */}
                 {expanded && position && nearbyProperties.length > 0 && (
                     <div className="max-h-[180px] overflow-y-auto">
-                        {nearbyProperties.slice(0, 8).map((p, i) => (
-                            <button
-                                key={`hud-${p.address_hash}-${i}`}
-                                onClick={() => onSelectProperty(p)}
-                                className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-800/50 transition-colors border-b border-gray-800/50 last:border-0"
-                            >
-                                <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
-                                    style={{ background: STATUS_COLORS[p.effective_status] || '#333', color: '#fff' }}>
-                                    {i + 1}
-                                </div>
-                                <div className="flex-1 text-left min-w-0">
-                                    <p className="text-xs font-bold text-white truncate">{p.house_number} {p.street_name}</p>
-                                    <p className="text-[10px] text-gray-500">{p.effective_status} • {p._distFt}ft away</p>
-                                </div>
-                                <Navigation className="w-3.5 h-3.5 text-yellow-500 shrink-0" />
-                            </button>
-                        ))}
+                        {nearbyProperties.slice(0, 8).map((p, i) => {
+                            const effColorStatus = p.effective_status === 'ELIGIBLE' && p.original_status && ['SOLD', 'RECENT_OFF_MARKET', 'PENDING'].includes(p.original_status) 
+                                ? p.original_status 
+                                : p.effective_status;
+                                
+                            return (
+                                <button
+                                    key={`hud-${p.address_hash}-${i}`}
+                                    onClick={() => onSelectProperty(p)}
+                                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-800/50 transition-colors border-b border-gray-800/50 last:border-0"
+                                >
+                                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
+                                        style={{ background: STATUS_COLORS[effColorStatus] || '#333', color: '#fff' }}>
+                                        {i + 1}
+                                    </div>
+                                    <div className="flex-1 text-left min-w-0">
+                                        <p className="text-xs font-bold text-white truncate">{p.house_number} {p.street_name}</p>
+                                        <p className="text-[10px] text-gray-500">{effColorStatus} • {p._distFt}ft away</p>
+                                    </div>
+                                    <Navigation className="w-3.5 h-3.5 text-yellow-500 shrink-0" />
+                                </button>
+                            );
+                        })}
                     </div>
                 )}
 
