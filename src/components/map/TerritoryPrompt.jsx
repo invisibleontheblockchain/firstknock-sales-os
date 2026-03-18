@@ -126,7 +126,7 @@ export default function TerritoryPrompt({
     const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
     const isPaid = user?.subscription_status === 'active' || user?.is_owner;
     const pullCount = user?.area_pulls_count || 0;
-    const maxPulls = isPaid ? 5 : 2; // free=2, paid=5 (3 additional)
+    const maxPulls = user?.is_owner ? 9999 : (isPaid ? 5 : 2); // free=2, paid=5, owner=unlimited
     const canPullAgain = pullCount < maxPulls;
     
     const showInitialPrompt = hasPulledData && hasDefinedMarket && mode === 'generate' && !activeRoute && !routesGenerating && !showCompare && !showRoutePanel && !drawingMode && (!drawnPolygon || drawnPolygon.length === 0);

@@ -377,7 +377,7 @@ export default function RouteBuilderSettings({
                                     <div className="grid grid-cols-6 gap-1.5">
                                         <button
                                             onClick={() => {
-                                                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+                                                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing' || user?.is_owner;
                                                 if (isPaid) setHousesPerRoute(10000);
                                                 else {
                                                     toast.error("Upgrade to FirstKnock Pro to generate 'All-in-One' routes.");
@@ -389,11 +389,11 @@ export default function RouteBuilderSettings({
                                                 : 'bg-[#1F1F1F] text-gray-400 hover:bg-[#2a2a2a] border border-gray-800'
                                                 }`}
                                         >
-                                            {!(user?.subscription_status === 'active' || user?.subscription_status === 'trialing') && <Lock className="w-3 h-3" />}
+                                            {!(user?.subscription_status === 'active' || user?.subscription_status === 'trialing' || user?.is_owner) && <Lock className="w-3 h-3" />}
                                             ALL IN ONE ROUTE
                                         </button>
                                         {ROUTE_SIZE_OPTIONS.map(size => {
-                                            const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+                                            const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing' || user?.is_owner;
                                             const isLocked = !isPaid && size > 25;
                                             return (
                                                 <button

@@ -133,7 +133,7 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
             setMapCenter(map.getCenter());
             const onMoveEnd = () => setMapCenter(map.getCenter());
             map.on('moveend', onMoveEnd);
-            return () => map.off('moveend', onMoveEnd);
+            return () => { map.off('moveend', onMoveEnd); };
         } else {
             setMapCenter(null);
         }
@@ -169,7 +169,12 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
                         fillOpacity: 0.08,
                         interactive: false
                     }}
-                />
+                >
+                    <Tooltip permanent direction="center" className="bg-yellow-500 text-black font-bold text-[11px] border-none shadow-xl whitespace-nowrap text-center z-50 animate-pulse px-3 py-1.5 rounded-lg opacity-90">
+                        TAP TO CONFIRM
+                        <div className="text-[9px] opacity-70 mt-0.5 leading-none">{getAreaText()}</div>
+                    </Tooltip>
+                </Circle>
             )}
             {displayPoints.length > 2 && (
                 <Polygon
