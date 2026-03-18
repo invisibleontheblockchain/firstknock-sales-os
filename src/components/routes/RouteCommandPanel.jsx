@@ -180,17 +180,12 @@ export default function RouteCommandPanel({
                                                             <User className="w-3 h-3 mr-1" />
                                                             AUTO-DISPATCH
                                                         </Button>
-                                                        <Button
-                                                            onClick={() => {
-                                                                if (confirm("Save all generated routes without assigning?")) {
-                                                                    generatedRoutes.forEach(r => onSaveRoute(r, null, null));
-                                                                }
-                                                            }}
-                                                            size="sm"
-                                                            className="w-full h-8 bg-gray-700 hover:bg-gray-600 text-white font-bold text-[10px]"
-                                                        >
-                                                            SAVE ALL
-                                                        </Button>
+                                                        <div className="w-full flex items-center justify-center p-2 bg-green-500/10 border border-green-500/30 rounded-lg">
+                                                            <span className="text-[10px] font-bold text-green-500 flex items-center gap-1.5">
+                                                                <CheckCircle2 className="w-3 h-3" />
+                                                                AUTO-SAVING TO ACTIVE
+                                                            </span>
+                                                        </div>
                                                         {/* @ts-ignore */}
                                                         {generatedRoutes.length === 1 ? (
                                                             <SplitRouteButton
@@ -584,39 +579,11 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave 
                 </div>
             </button>
 
-            {/* Assignment Actions */}
-            <div className="mt-3 flex gap-2 min-w-0">
-                {/* @ts-ignore */}
-                <Button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onSave(recommendation?.id, recommendation?.name);
-                    }}
-                    size="sm"
-                    className="flex-1 h-8 text-[10px] font-bold bg-[#252525] hover:bg-green-600 text-white transition-all border border-gray-700"
-                >
-                    {recommendation ? (
-                        <div className="flex items-center justify-between w-full">
-                            <div className="flex items-center">
-                                <span className={`w-2 h-2 rounded-full mr-2 ${recommendation.isAvailable ? 'bg-green-500' : 'bg-yellow-500'}`} />
-                                <span>DISPATCH: {recommendation.name?.split(' ')[0]?.toUpperCase()}</span>
+                    <div className="flex items-center justify-center w-full py-2 bg-green-500/5 rounded-lg border border-green-500/20">
+                                <span className="text-[9px] font-bold text-green-500 uppercase tracking-tighter flex items-center gap-1">
+                                    <Zap className="w-3 h-3" /> Auto-Saving...
+                                </span>
                             </div>
-                            <span className="text-[9px] opacity-60">{recommendation.matchScore}%</span>
-                        </div>
-                    ) : 'SAVE ROUTE'}
-                </Button>
-                <Button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onSave(null, null);
-                    }}
-                    size="sm"
-                    className="h-8 w-8 p-0 bg-black hover:bg-gray-800 border border-gray-700 text-gray-400"
-                    title="Save Unassigned"
-                >
-                    <Shield className="w-3 h-3" />
-                </Button>
-            </div>
 
             {/* Rep Info */}
             {recommendation && (

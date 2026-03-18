@@ -510,9 +510,9 @@ export default function Home() {
         }
     });
 
-    const handleSaveRoute = (route, assignedRepId = null, assignedRepName = null, silent = false) => {
-        // @ts-ignore - 'mutate' incorrectly expects 'void' instead of the data object
-        createRouteMutation.mutate({
+    const handleSaveRoute = async (route, assignedRepId = null, assignedRepName = null, silent = false) => {
+        // @ts-ignore - 'mutateAsync' incorrectly expects 'void' instead of the data object
+        return await createRouteMutation.mutateAsync({
             name: route.name,
             property_hashes: route.properties.map(p => p.address_hash),
             metrics: {
@@ -1175,18 +1175,22 @@ export default function Home() {
                 // Use a single toast for the bulk save instead of multiple individual toasts
                 const bulkToastId = toast.loading(`Auto-saving ${generated.length} routes...`);
                 
-                generated.forEach(route => {
-                    handleSaveRoute(route, null, null, true); // true = silent (no individual toast)
-                });
-                
-                toast.success(`Automatically saved ${generated.length} routes`, { id: bulkToastId, duration: 3000 });
+                try {
+                    // Use Promise.all to wait for all routes to be saved before clearing state
+                    await Promise.all(generated.map(route => 
+                        handleSaveRoute(route, null, null, true) // true = silent (no individual toast)
+                    ));
+                    
+                    toast.success(`Automatically saved ${generated.length} routes`, { id: bulkToastId, duration: 3000 });
 
-                // Switch to analyze mode so we see the saved items properly
-                // and clear the transient routes state to prevent double-rendering
-                setTimeout(() => {
+                    // Switch to analyze mode so we see the saved items properly
+                    // and clear the transient routes state to prevent double-rendering
                     setRoutes([]);
                     setModeRaw('analyze');
-                }, 1000);
+                } catch (error) {
+                    console.error("[Home] Auto-save failed:", error);
+                    toast.error("Bulk auto-save failed. Some routes might not have been persisted.", { id: bulkToastId });
+                }
             }
 
             setShowRoutePanel(true);
