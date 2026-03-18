@@ -1475,6 +1475,7 @@ export default function Home() {
                 setShowRouteDetails={setShowRouteDetails}
                 showRouteLines={showRouteLines}
                 setShowRouteLines={setShowRouteLines}
+                onSaveFilteredRoute={handleSaveFilteredRoute}
             />
 
             {/* Territory Prompt - Drawing Controls + Initial Prompt */}

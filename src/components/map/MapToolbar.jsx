@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
@@ -137,8 +137,8 @@ export default function MapToolbar({
                         <div className="w-5 h-5 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: BRAND.gold }}>
                             <Navigation className="w-2.5 h-2.5 sm:w-4 sm:h-4" style={{ color: BRAND.voidBlack }} />
                         </div>
-                        <span className="text-[9px] sm:text-sm font-bold truncate flex-1 min-w-0 max-w-[50px] sm:max-w-[120px]" style={{ color: BRAND.gold }}>{activeRoute.name}</span>
-                        <div onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} className="shrink-0 flex items-center gap-0.5 sm:gap-1">
+                        <span className="text-[9px] sm:text-sm font-bold truncate flex-1 min-w-0 max-w-[70px] sm:max-w-[150px]" style={{ color: BRAND.gold }}>{activeRoute.name}</span>
+                        <div onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} className="shrink-0 flex items-center gap-1 sm:gap-2">
                             {setActiveRouteSoldFilter && (
                                 <select
                                     value={activeRouteSoldFilter}
@@ -181,9 +181,10 @@ export default function MapToolbar({
                                         onSaveFilteredRoute();
                                     }}
                                     size="sm"
-                                    className="h-6 sm:h-8 px-2 sm:px-3 text-[9px] sm:text-[11px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-full transition-all border border-blue-400/30 whitespace-nowrap"
+                                    className="h-6 sm:h-8 px-1.5 sm:px-3 text-[9px] sm:text-[11px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-full transition-all border border-blue-400/30 whitespace-nowrap flex items-center gap-1 shadow-lg shadow-blue-900/20"
                                 >
-                                    SAVE FILTER
+                                    <Save className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                                    <span className="hidden xs:inline">SAVE</span>
                                 </Button>
                             )}
                         </div>
