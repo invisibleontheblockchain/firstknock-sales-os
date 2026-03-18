@@ -133,10 +133,27 @@ export default function Home() {
 
         return {
             ...activeRoute,
+            _originalId: activeRoute.id, // Track original for filtering logic
             properties: filteredProps,
             houseCount: filteredProps.length
         };
     }, [activeRoute, activeRouteSoldFilter]);
+
+    const handleSaveFilteredRoute = useCallback(() => {
+        if (!activeRoute || !filteredActiveRoute || activeRouteSoldFilter === 'all') return;
+        
+        const newRoute = {
+            ...filteredActiveRoute,
+            id: `route-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            name: `${activeRoute.name} (${activeRouteSoldFilter}M Filter)`,
+        };
+
+        setRoutes(prev => [...prev, newRoute]);
+        setActiveRoute(newRoute);
+        setActiveRouteSoldFilter('all');
+        toast.success(`Saved filtered version as "${newRoute.name}"`, { id: 'save-filter' });
+    }, [activeRoute, filteredActiveRoute, activeRouteSoldFilter]);
+
     const [showRoutePanel, setShowRoutePanel] = useState(false);
     const [showCompare, setShowCompare] = useState(false);
     const [housesPerRoute, setHousesPerRoute] = useState(999999); // Default: All-in-One route
@@ -151,7 +168,7 @@ export default function Home() {
     const [startAddressInput, setStartAddressInput] = useState("");
     const [zipCodeFilter, setZipCodeFilter] = useState(''); // Comma separated string
     const [analyzeZipFilter, setAnalyzeZipFilter] = useState('all'); // Filter for Analyze mode
-    const [soldDateFilter, setSoldDateFilter] = useState(6); // Default: 6 months
+    const [soldDateFilter, setSoldDateFilter] = useState(12); // Default: 12 months
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'

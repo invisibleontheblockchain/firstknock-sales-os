@@ -205,48 +205,77 @@ function ViewportCulledPins({
         assignedHashes, zipCodeFilter, drawnPolygon, soldDateFilter, quickFilter, subMonths, isPointInPolygon]);
 
     const oneMonthAgo = useMemo(() => subMonths(new Date(), 1), [subMonths]);
+    const fastPinsMap = useMap();
+    const layerRef = useRef(null);
 
-    if (visiblePins.length === 0) return null;
+    useEffect(() => {
+        if (!fastPinsMap) return;
 
-    return (
-        <LayerGroup>
-            {visiblePins.map(p => {
-                let isRecentlySold = false;
-                if (highlightRecentlySold && p.sold_date) {
-                    isRecentlySold = new Date(p.sold_date) > oneMonthAgo;
+        // Clean up previous layer
+        if (layerRef.current) {
+            fastPinsMap.removeLayer(layerRef.current);
+            layerRef.current = null;
+        }
+
+        if (visiblePins.length === 0) return;
+
+        const group = L.layerGroup();
+
+        visiblePins.forEach(p => {
+            let isRecentlySold = false;
+            if (highlightRecentlySold && p.sold_date) {
+                isRecentlySold = new Date(p.sold_date) > oneMonthAgo;
+            }
+            const isUnvisited = ['ELIGIBLE', 'NO_ANSWER', 'OTHER'].includes(p.effective_status);
+            let effectiveColorStatus = p.effective_status;
+            if (p.effective_status === 'ELIGIBLE' && p.original_status) {
+                if (p.original_status === 'SOLD' || p.original_status === 'RECENT_OFF_MARKET' || p.original_status === 'PENDING') {
+                    effectiveColorStatus = p.original_status;
                 }
-                const isUnvisited = ['ELIGIBLE', 'NO_ANSWER', 'OTHER'].includes(p.effective_status);
-                let effectiveColorStatus = p.effective_status;
-                if (p.effective_status === 'ELIGIBLE' && p.original_status) {
-                    if (p.original_status === 'SOLD' || p.original_status === 'RECENT_OFF_MARKET' || p.original_status === 'PENDING') {
-                        effectiveColorStatus = p.original_status;
-                    }
-                }
-                const fillColor = isRecentlySold ? '#FF00FF' : (STATUS_COLORS[effectiveColorStatus] || STATUS_COLORS.OTHER);
-                return (
-                    <React.Fragment key={p.address_hash || p.id}>
-                        <CircleMarker
-                            center={[p.lat, p.lng]}
-                            radius={20}
-                            eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
-                            pathOptions={{ fillColor: 'transparent', color: 'transparent', interactive: true, stroke: false }}
-                        />
-                        <CircleMarker
-                            center={[p.lat, p.lng]}
-                            radius={isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize)}
-                            eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
-                            pathOptions={{
-                                fillColor,
-                                fillOpacity: isRecentlySold ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
-                                color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
-                                weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth))
-                            }}
-                        />
-                    </React.Fragment>
-                );
-            })}
-        </LayerGroup>
-    );
+            }
+            const fillColor = isRecentlySold ? '#FF00FF' : (STATUS_COLORS[effectiveColorStatus] || STATUS_COLORS.OTHER);
+            
+            // Transparent hitbox for mobile tapping
+            const hitbox = L.circleMarker([p.lat, p.lng], {
+                radius: 20,
+                color: 'transparent',
+                fillColor: 'transparent',
+                interactive: true,
+                stroke: false
+            });
+            hitbox.on('click', (e) => {
+                L.DomEvent.stopPropagation(e);
+                setSelectedProperty(p);
+            });
+            group.addLayer(hitbox);
+
+            // Visible pin
+            const circle = L.circleMarker([p.lat, p.lng], {
+                radius: isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize),
+                fillColor,
+                fillOpacity: isRecentlySold ? 1 : (isUnvisited ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
+                color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? fillColor : (isUnvisited ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
+                weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth))
+            });
+            circle.on('click', (e) => {
+                L.DomEvent.stopPropagation(e);
+                setSelectedProperty(p);
+            });
+            group.addLayer(circle);
+        });
+
+        group.addTo(fastPinsMap);
+        layerRef.current = group;
+
+        return () => {
+            if (layerRef.current) {
+                fastPinsMap.removeLayer(layerRef.current);
+                layerRef.current = null;
+            }
+        };
+    }, [fastPinsMap, visiblePins, highlightRecentlySold, oneMonthAgo, STATUS_COLORS, pinSize, mapSettings, mode, setSelectedProperty]);
+
+    return null; // Imperative layer — no React DOM output
 }
 
 /**

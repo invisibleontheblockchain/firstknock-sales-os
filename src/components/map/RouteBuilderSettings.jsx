@@ -74,7 +74,7 @@ export default function RouteBuilderSettings({
     // Ensure simple mode has a default soldDateFilter set
     React.useEffect(() => {
         if (viewMode === 'simple' && soldDateFilter === null) {
-            setSoldDateFilter(6);
+            setSoldDateFilter(12);
         }
     }, [viewMode]);
 
@@ -159,7 +159,7 @@ export default function RouteBuilderSettings({
         });
         setMinScore(0);
         setMaxRouteDistance(50);
-        setSoldDateFilter(6);
+        setSoldDateFilter(12);
         toast.success("Filters reset to default routing settings.");
     };
 
@@ -232,13 +232,14 @@ export default function RouteBuilderSettings({
                                     </span>
                                 </div>
                                 <Slider
-                                    value={[soldDateFilter === null ? 75 : (soldDateFilter <= 6 ? 0 : soldDateFilter <= 12 ? 25 : soldDateFilter <= 24 ? 50 : 75)]}
+                                    value={[soldDateFilter === null ? 100 : (soldDateFilter <= 1 ? 0 : soldDateFilter <= 3 ? 25 : soldDateFilter <= 6 ? 50 : soldDateFilter <= 9 ? 75 : 100)]}
                                     onValueChange={([v]) => {
                                         let val = 6;
-                                        if (v === 0) val = 6;
-                                        else if (v === 25) val = 12;
-                                        else if (v === 50) val = 24;
-                                        else if (v === 75) val = 36;
+                                        if (v === 0) val = 1;
+                                        else if (v === 25) val = 3;
+                                        else if (v === 50) val = 6;
+                                        else if (v === 75) val = 9;
+                                        else if (v === 100) val = 12;
                                         
                                         if (val >= 12) {
                                             const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
@@ -252,15 +253,16 @@ export default function RouteBuilderSettings({
                                         setSoldDateFilter(val);
                                     }}
                                     min={0}
-                                    max={75}
+                                    max={100}
                                     step={25}
                                     className="w-full"
                                 />
                                 <div className="flex justify-between text-[10px] text-gray-600 font-medium px-1">
+                                    <span>1 Mo</span>
+                                    <span>3 Mo</span>
                                     <span>6 Mo</span>
+                                    <span>9 Mo</span>
                                     <span>12 Mo</span>
-                                    <span>24 Mo</span>
-                                    <span>36 Mo</span>
                                 </div>
                             </div>
 
@@ -455,13 +457,14 @@ export default function RouteBuilderSettings({
                                         <span className="text-xs font-bold text-yellow-500">{soldDateFilter ? `${soldDateFilter} Months` : '6 Months'}</span>
                                     </div>
                                     <Slider
-                                        value={[soldDateFilter === null ? 75 : (soldDateFilter <= 6 ? 0 : soldDateFilter <= 12 ? 25 : soldDateFilter <= 24 ? 50 : 75)]}
+                                        value={[soldDateFilter === null ? 100 : (soldDateFilter <= 1 ? 0 : soldDateFilter <= 3 ? 25 : soldDateFilter <= 6 ? 50 : soldDateFilter <= 9 ? 75 : 100)]}
                                         onValueChange={([v]) => {
                                             let val = 6;
-                                            if (v === 0) val = 6;
-                                            else if (v === 25) val = 12;
-                                            else if (v === 50) val = 24;
-                                            else if (v === 75) val = 36;
+                                            if (v === 0) val = 1;
+                                            else if (v === 25) val = 3;
+                                            else if (v === 50) val = 6;
+                                            else if (v === 75) val = 9;
+                                            else if (v === 100) val = 12;
                                             
                                             if (val >= 12) {
                                                 const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
@@ -475,15 +478,16 @@ export default function RouteBuilderSettings({
                                             setSoldDateFilter(val);
                                         }}
                                         min={0}
-                                        max={75}
+                                        max={100}
                                         step={25}
                                         className="w-full"
                                     />
                                     <div className="flex justify-between text-[10px] text-gray-600 font-medium px-1">
+                                        <span>1 Mo</span>
+                                        <span>3 Mo</span>
                                         <span>6 Mo</span>
+                                        <span>9 Mo</span>
                                         <span>12 Mo</span>
-                                        <span>24 Mo</span>
-                                        <span>36 Mo</span>
                                     </div>
                                 </div>
 

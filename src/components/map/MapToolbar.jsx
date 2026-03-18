@@ -58,6 +58,9 @@ export default function MapToolbar({
     setShowRouteDetails,
     showRouteLines,
     setShowRouteLines,
+
+    // Filter Saving
+    onSaveFilteredRoute,
 }) {
     const hasDrawnArea = drawnPolygon && drawnPolygon.length > 2;
     return (
@@ -148,11 +151,11 @@ export default function MapToolbar({
                                     style={{ color: '#ccc', WebkitAppearance: 'menulist' }}
                                 >
                                     <option value="all">All</option>
+                                    <option value="1">1M</option>
                                     <option value="3">3M</option>
                                     <option value="6">6M</option>
+                                    <option value="9">9M</option>
                                     <option value="12">1Y</option>
-                                    <option value="24">2Y</option>
-                                    <option value="36">3Y</option>
                                 </select>
                             )}
                             <select
@@ -171,6 +174,18 @@ export default function MapToolbar({
                                     <option key={m.id} value={m.id}>{m.name}</option>
                                 ))}
                             </select>
+                            {activeRouteSoldFilter !== 'all' && onSaveFilteredRoute && (
+                                <Button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onSaveFilteredRoute();
+                                    }}
+                                    size="sm"
+                                    className="h-6 sm:h-8 px-2 sm:px-3 text-[9px] sm:text-[11px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-full transition-all border border-blue-400/30 whitespace-nowrap"
+                                >
+                                    SAVE FILTER
+                                </Button>
+                            )}
                         </div>
                         <button
                             onClick={() => {
