@@ -773,6 +773,10 @@ export default function Home() {
         }
     }, [mode, effectiveProperties.length === 0, drawnPolygon]);
 
+    // Generate routes with configurable houses per route - State moved above useEffects that depend on it
+    const [routes, setRoutes] = useState([]);
+    const [routesGenerating, setRoutesGenerating] = useState(false);
+
     // When user returns and has data, auto-set to analyze mode so they see the map directly
     // But skip this if the Route Builder is open (e.g. right after a data pull)
     useEffect(() => {
@@ -882,9 +886,7 @@ export default function Home() {
         }
     }, [savedRoutes, effectiveProperties, activeRoute]);
 
-    // Generate routes with configurable houses per route
-    const [routes, setRoutes] = useState([]);
-    const [routesGenerating, setRoutesGenerating] = useState(false);
+    // Generate routes state was moved up above to fix ReferenceError
 
     const [streetCooldownDays, setStreetCooldownDays] = useState(30);
     const [cooldownInfo, setCooldownInfo] = useState(null);
