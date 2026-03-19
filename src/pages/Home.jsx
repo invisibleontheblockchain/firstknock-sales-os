@@ -39,7 +39,7 @@ import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, Filter, 
 import { toast } from "sonner";
 import { determineEffectiveStatus, isPointInPolygon } from '../components/logic/territoryLogic';
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { format, subMonths, isAfter, parseISO } from 'date-fns';
+import { format, subMonths, subDays, isAfter, parseISO } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
@@ -121,7 +121,12 @@ export default function Home() {
         if (!activeRoute) return null;
         if (activeRouteSoldFilter === 'all') return activeRoute;
 
-        const cutoff = subMonths(new Date(), Number(activeRouteSoldFilter));
+        let cutoff;
+        if (activeRouteSoldFilter === '0.25') {
+            cutoff = subDays(new Date(), 7);
+        } else {
+            cutoff = subMonths(new Date(), Number(activeRouteSoldFilter));
+        }
         const filteredProps = activeRoute.properties.filter(p => {
             if (!p.sold_date) return false;
             try {
@@ -795,8 +800,15 @@ export default function Home() {
                     .filter(Boolean);
 
                 // Apply soldDateFilter to saved routes if active
-                if (soldDateFilter !== null) {
-                    const cutoff = subMonths(new Date(), Number(soldDateFilter));
+                if (soldDateFilter !== null && soldDateFilter !== 'all') {
+                    let cutoff;
+                    const now = new Date();
+                    if (soldDateFilter === 0.25 || soldDateFilter === '0.25') {
+                        cutoff = subDays(now, 7);
+                    } else {
+                        cutoff = subMonths(now, Number(soldDateFilter));
+                    }
+                    cutoff.setHours(0, 0, 0, 0);
                     routeProps = routeProps.filter(p => {
                         // Properties with rep interaction statuses always stay in routes
                         const hasInteraction = ['CALLBACK', 'NO_ANSWER', 'QUALIFIED', 'SOLD'].includes(p.effective_status);
@@ -804,7 +816,7 @@ export default function Home() {
                         try {
                             const d = new Date(p.sold_date);
                             if (isNaN(d.getTime())) return hasInteraction;
-                            return isAfter(d, cutoff);
+                            return d >= cutoff;
                         } catch (e) { return hasInteraction; }
                     });
                 }
@@ -1055,9 +1067,21 @@ export default function Home() {
             // Apply Sold Date Filter (STRICT: If filter active, MUST have sold_date within range)
             // EXCEPTION: 'PENDING' homes (from Listings API) bypass this because they are new movers
             // that hasn't hit deed records yet.
-            if (soldDateFilter !== null) {
-                const cutoff = subMonths(new Date(), Number(soldDateFilter));
-                console.log(`[generateRoutes] Applying Sold Date Filter: ${soldDateFilter} months (Cutoff: ${cutoff.toISOString()})`);
+            if (soldDateFilter !== null && soldDateFilter !== 'all') {
+                let cutoff;
+                const now = new Date();
+                // Set to end of day to be inclusive of properties sold today, 
+                // then subtract to get the start of the filter period.
+                if (soldDateFilter === 0.25 || soldDateFilter === '0.25') {
+                    cutoff = subDays(now, 7);
+                } else {
+                    cutoff = subMonths(now, Number(soldDateFilter));
+                }
+                
+                // Be inclusive of the entire start day
+                cutoff.setHours(0, 0, 0, 0);
+                
+                console.log(`[generateRoutes] Applying Sold Date Filter: ${soldDateFilter} months (Cutoff: ${cutoff instanceof Date && !isNaN(cutoff) ? cutoff.toISOString() : 'Invalid'})`);
                 workingSet = workingSet.filter(p => {
                     // Always include Pending/Recent Listing Bridge properties
                     if (p.original_status === 'PENDING' || p.original_status === 'RECENT_OFF_MARKET') return true;
@@ -1069,7 +1093,7 @@ export default function Home() {
                         const date = new Date(p.sold_date);
                         if (isNaN(date.getTime())) return hasInteraction;
                         // Exclude only if sold_date is BEFORE the cutoff
-                        return isAfter(date, cutoff);
+                        return date >= cutoff;
                     } catch (e) { return hasInteraction; }
                 });
                 console.log(`[generateRoutes] After Sold Date Filter: ${workingSet.length}`);
