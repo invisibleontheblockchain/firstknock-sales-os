@@ -10,5 +10,44 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+    
+    <!-- Force PWA Updates on Home Screen Resume -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        // 1. Reload when new SW takes control
+        let refreshing = false;
+        navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!refreshing) {
+            refreshing = true;
+            window.location.reload(true);
+          }
+        });
+
+        // 2. Force new service workers to skip waiting when installed
+        navigator.serviceWorker.getRegistration().then(reg => {
+          if (reg) {
+            reg.addEventListener('updatefound', () => {
+              const newWorker = reg.installing;
+              if (newWorker) {
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    newWorker.postMessage({ type: 'SKIP_WAITING' });
+                    // Provide a universal skip waiting fallback just in case
+                    newWorker.postMessage('skipWaiting');
+                  }
+                });
+              }
+            });
+          }
+        });
+
+        // 3. Check for updates every time app comes to foreground
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') {
+            navigator.serviceWorker.ready.then(reg => reg.update());
+          }
+        });
+      }
+    </script>
   </body>
 </html>
