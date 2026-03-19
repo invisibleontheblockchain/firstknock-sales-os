@@ -113,6 +113,10 @@ import { LocationMarker, MapRefHandler, MapController } from '../components/map/
 
 export default function Home() {
     const queryClient = useQueryClient();
+    const initializedUserRef = useRef(false);
+    const hasCenteredActiveRouteRef = useRef(false);
+    const activeRouteHashesRef = useRef(new Set());
+    const justPulledRef = useRef(false); // New ref to prevent auto-switching to analyze right after a pull
     const [activeRoute, setActiveRoute] = useState(null);
     const [activeRouteSoldFilter, setActiveRouteSoldFilter] = useState('all');
     const [showChecklist, setShowChecklist] = useState(false);
@@ -772,10 +776,11 @@ export default function Home() {
     // When user returns and has data, auto-set to analyze mode so they see the map directly
     // But skip this if the Route Builder is open (e.g. right after a data pull)
     useEffect(() => {
+        if (justPulledRef.current) return; // Prevent auto-switch right after fetching data
         if (user?.has_pulled_data && effectiveProperties.length > 0 && !activeRoute && routes.length === 0 && !showCompare) {
             setModeRaw('analyze');
         }
-    }, [user?.has_pulled_data, effectiveProperties.length > 0]);
+    }, [user?.has_pulled_data, effectiveProperties.length > 0, activeRoute, routes.length, showCompare]);
 
     // Filter out properties that are already in saved routes for generation
     const availableProperties = useMemo(() => {
@@ -1183,18 +1188,16 @@ export default function Home() {
                     
                     toast.success(`Automatically saved ${generated.length} routes`, { id: bulkToastId, duration: 3000 });
 
-                    // Switch to analyze mode so we see the saved items properly
-                    // and clear the transient routes state to prevent double-rendering
-                    setRoutes([]);
-                    setModeRaw('analyze');
+                    // Stay in generate mode so user can see the generated routes list in the builder panel
+                    // They can manually select a route or switch modes later.
                 } catch (error) {
                     console.error("[Home] Auto-save failed:", error);
                     toast.error("Bulk auto-save failed. Some routes might not have been persisted.", { id: bulkToastId });
                 }
             }
 
-            setShowRoutePanel(true);
-            setShowCompare(false); // Close builder to see the map
+            setShowRoutePanel(false); // Hide the bottom slide-up if it was open
+            setShowCompare(true); // Keep builder open so user sees top routes list
             
             let skippedDueToAssigned = 0;
             if (routeConfig.excludeAssigned) {
@@ -1562,11 +1565,16 @@ export default function Home() {
                 user={user}
                 setZipCodeFilter={setZipCodeFilter}
                 onPullComplete={() => {
+                    justPulledRef.current = true; // Block auto-mode switch
                     queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
                     queryClient.invalidateQueries({ queryKey: ['user'] });
                     localStorage.setItem('fk_autobuild_next_open', 'true');
+                    setModeRaw('generate'); // use Raw to bypass delays
                     setMode('generate');
                     setShowCompare(true);
+                    
+                    // Allow auto-switch again after a minute, so if they refresh, it behaves normally
+                    setTimeout(() => { justPulledRef.current = false; }, 60000);
                 }}
             />
 

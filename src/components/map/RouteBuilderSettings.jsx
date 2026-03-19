@@ -233,23 +233,25 @@ export default function RouteBuilderSettings({
                                     </span>
                                 </div>
                                 <Slider
-                                    value={[soldDateFilter === null ? 100 : (soldDateFilter <= 1 ? 0 : soldDateFilter <= 3 ? 25 : soldDateFilter <= 6 ? 50 : soldDateFilter <= 9 ? 75 : 100)]}
+                                    value={[soldDateFilter === null ? 100 : (soldDateFilter <= 0.25 ? 0 : soldDateFilter <= 1 ? 20 : soldDateFilter <= 3 ? 40 : soldDateFilter <= 6 ? 60 : soldDateFilter <= 9 ? 80 : 100)]}
                                     onValueChange={([v]) => {
                                         let val = 6;
-                                        if (v === 0) val = 1;
-                                        else if (v === 25) val = 3;
-                                        else if (v === 50) val = 6;
-                                        else if (v === 75) val = 9;
+                                        if (v === 0) val = 0.25;
+                                        else if (v === 20) val = 1;
+                                        else if (v === 40) val = 3;
+                                        else if (v === 60) val = 6;
+                                        else if (v === 80) val = 9;
                                         else if (v === 100) val = 12;
                                         // Beta mode — no paywall for sold date filter
                                         setSoldDateFilter(val);
                                     }}
                                     min={0}
                                     max={100}
-                                    step={25}
+                                    step={20}
                                     className="w-full"
                                 />
                                 <div className="flex justify-between text-[10px] text-gray-600 font-medium px-1">
+                                    <span>1 Wk</span>
                                     <span>1 Mo</span>
                                     <span>3 Mo</span>
                                     <span>6 Mo</span>
@@ -451,23 +453,25 @@ export default function RouteBuilderSettings({
                                         <span className="text-xs font-bold text-yellow-500">{soldDateFilter ? `${soldDateFilter} Months` : '6 Months'}</span>
                                     </div>
                                     <Slider
-                                        value={[soldDateFilter === null ? 100 : (soldDateFilter <= 1 ? 0 : soldDateFilter <= 3 ? 25 : soldDateFilter <= 6 ? 50 : soldDateFilter <= 9 ? 75 : 100)]}
+                                        value={[soldDateFilter === null ? 100 : (soldDateFilter <= 0.25 ? 0 : soldDateFilter <= 1 ? 20 : soldDateFilter <= 3 ? 40 : soldDateFilter <= 6 ? 60 : soldDateFilter <= 9 ? 80 : 100)]}
                                         onValueChange={([v]) => {
                                             let val = 6;
-                                            if (v === 0) val = 1;
-                                            else if (v === 25) val = 3;
-                                            else if (v === 50) val = 6;
-                                            else if (v === 75) val = 9;
+                                            if (v === 0) val = 0.25;
+                                            else if (v === 20) val = 1;
+                                            else if (v === 40) val = 3;
+                                            else if (v === 60) val = 6;
+                                            else if (v === 80) val = 9;
                                             else if (v === 100) val = 12;
                                             // Beta mode — no paywall for sold date filter
                                             setSoldDateFilter(val);
                                         }}
                                         min={0}
                                         max={100}
-                                        step={25}
+                                        step={20}
                                         className="w-full"
                                     />
                                     <div className="flex justify-between text-[10px] text-gray-600 font-medium px-1">
+                                        <span>1 Wk</span>
                                         <span>1 Mo</span>
                                         <span>3 Mo</span>
                                         <span>6 Mo</span>
