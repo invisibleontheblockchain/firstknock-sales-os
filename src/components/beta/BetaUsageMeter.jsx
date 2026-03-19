@@ -38,12 +38,14 @@ export default function BetaUsageMeter({ className = '' }) {
                     </div>
                 )}
 
-                {/* Beta mode — no limits */}
-                {hasPulledData && (
-                    <div className="flex items-center gap-2 p-2 rounded-lg bg-green-900/10 border border-green-800/30">
-                        <Crown className="w-3 h-3 text-green-500 shrink-0" />
-                        <span className="text-[10px] text-green-400/80">
-                            Beta — Unlimited data pulls
+                {/* Upgrade prompt for fresh data */}
+                {hasPulledData && !isSubscribed && (
+                    <div className="flex items-center gap-2 p-2 rounded-lg bg-yellow-900/10 border border-yellow-800/30">
+                        <Crown className="w-3 h-3 text-yellow-500 shrink-0" />
+                        <span className="text-[10px] text-yellow-400/80">
+                            {(user?.area_pulls_count || 0) >= 2
+                                ? 'Free pulls used — Upgrade for 3 more data pulls'
+                                : `${2 - (user?.area_pulls_count || 0)} free pull${2 - (user?.area_pulls_count || 0) === 1 ? '' : 's'} remaining • Upgrade for 3 more`}
                         </span>
                     </div>
                 )}
