@@ -39,7 +39,7 @@ import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, Filter, 
 import { toast } from "sonner";
 import { determineEffectiveStatus, isPointInPolygon } from '../components/logic/territoryLogic';
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { format, subDays, isAfter, parseISO } from 'date-fns';
+import { format, subMonths, isAfter, parseISO } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
@@ -113,25 +113,15 @@ import { LocationMarker, MapRefHandler, MapController } from '../components/map/
 
 export default function Home() {
     const queryClient = useQueryClient();
-    const initializedUserRef = useRef(false);
-    const hasCenteredActiveRouteRef = useRef(false);
-    const activeRouteHashesRef = useRef(new Set());
-    const justPulledRef = useRef(false); // New ref to prevent auto-switching to analyze right after a pull
     const [activeRoute, setActiveRoute] = useState(null);
     const [activeRouteSoldFilter, setActiveRouteSoldFilter] = useState('all');
     const [showChecklist, setShowChecklist] = useState(false);
-    
-    // Moved up to fix Temporal Dead Zone / ReferenceError issues
-    const [routes, setRoutes] = useState([]);
-    const [routesGenerating, setRoutesGenerating] = useState(false);
-    const [streetCooldownDays, setStreetCooldownDays] = useState(30);
-    const [cooldownInfo, setCooldownInfo] = useState(null);
 
     const filteredActiveRoute = useMemo(() => {
         if (!activeRoute) return null;
         if (activeRouteSoldFilter === 'all') return activeRoute;
 
-        const cutoff = subDays(new Date(), Math.round(Number(activeRouteSoldFilter) * 30.4));
+        const cutoff = subMonths(new Date(), Number(activeRouteSoldFilter));
         const filteredProps = activeRoute.properties.filter(p => {
             if (!p.sold_date) return false;
             try {
@@ -779,16 +769,13 @@ export default function Home() {
         }
     }, [mode, effectiveProperties.length === 0, drawnPolygon]);
 
-    // Generate routes with configurable houses per route - State moved above useEffects that depend on it
-
     // When user returns and has data, auto-set to analyze mode so they see the map directly
     // But skip this if the Route Builder is open (e.g. right after a data pull)
     useEffect(() => {
-        if (justPulledRef.current) return; // Prevent auto-switch right after fetching data
         if (user?.has_pulled_data && effectiveProperties.length > 0 && !activeRoute && routes.length === 0 && !showCompare) {
             setModeRaw('analyze');
         }
-    }, [user?.has_pulled_data, effectiveProperties.length > 0, activeRoute, routes.length, showCompare]);
+    }, [user?.has_pulled_data, effectiveProperties.length > 0]);
 
     // Filter out properties that are already in saved routes for generation
     const availableProperties = useMemo(() => {
@@ -809,7 +796,7 @@ export default function Home() {
 
                 // Apply soldDateFilter to saved routes if active
                 if (soldDateFilter !== null) {
-                    const cutoff = subDays(new Date(), Math.round(Number(soldDateFilter) * 30.4));
+                    const cutoff = subMonths(new Date(), Number(soldDateFilter));
                     routeProps = routeProps.filter(p => {
                         // Properties with rep interaction statuses always stay in routes
                         const hasInteraction = ['CALLBACK', 'NO_ANSWER', 'QUALIFIED', 'SOLD'].includes(p.effective_status);
@@ -890,7 +877,12 @@ export default function Home() {
         }
     }, [savedRoutes, effectiveProperties, activeRoute]);
 
-    // Generate routes state was moved up above to fix ReferenceError
+    // Generate routes with configurable houses per route
+    const [routes, setRoutes] = useState([]);
+    const [routesGenerating, setRoutesGenerating] = useState(false);
+
+    const [streetCooldownDays, setStreetCooldownDays] = useState(30);
+    const [cooldownInfo, setCooldownInfo] = useState(null);
 
     // Heatmap Data (High Zoom)
     const heatmapData = useMemo(() => {
@@ -1064,7 +1056,7 @@ export default function Home() {
             // EXCEPTION: 'PENDING' homes (from Listings API) bypass this because they are new movers
             // that hasn't hit deed records yet.
             if (soldDateFilter !== null) {
-                const cutoff = subDays(new Date(), Math.round(Number(soldDateFilter) * 30.4));
+                const cutoff = subMonths(new Date(), Number(soldDateFilter));
                 console.log(`[generateRoutes] Applying Sold Date Filter: ${soldDateFilter} months (Cutoff: ${cutoff.toISOString()})`);
                 workingSet = workingSet.filter(p => {
                     // Always include Pending/Recent Listing Bridge properties
@@ -1191,16 +1183,18 @@ export default function Home() {
                     
                     toast.success(`Automatically saved ${generated.length} routes`, { id: bulkToastId, duration: 3000 });
 
-                    // Stay in generate mode so user can see the generated routes list in the builder panel
-                    // They can manually select a route or switch modes later.
+                    // Switch to analyze mode so we see the saved items properly
+                    // and clear the transient routes state to prevent double-rendering
+                    setRoutes([]);
+                    setModeRaw('analyze');
                 } catch (error) {
                     console.error("[Home] Auto-save failed:", error);
                     toast.error("Bulk auto-save failed. Some routes might not have been persisted.", { id: bulkToastId });
                 }
             }
 
-            setShowRoutePanel(false); // Hide the bottom slide-up if it was open
-            setShowCompare(true); // Keep builder open so user sees top routes list
+            setShowRoutePanel(true);
+            setShowCompare(false); // Close builder to see the map
             
             let skippedDueToAssigned = 0;
             if (routeConfig.excludeAssigned) {
@@ -1491,7 +1485,7 @@ export default function Home() {
                     isPointInPolygon={isPointInPolygon}
                     getHeatColor={getHeatColor}
                     parseISO={parseISO}
-                    subDays={subDays}
+                    subMonths={subMonths}
                     isAfter={isAfter}
                     darkRoom={darkRoom}
                 />
@@ -1568,16 +1562,11 @@ export default function Home() {
                 user={user}
                 setZipCodeFilter={setZipCodeFilter}
                 onPullComplete={() => {
-                    justPulledRef.current = true; // Block auto-mode switch
                     queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
                     queryClient.invalidateQueries({ queryKey: ['user'] });
                     localStorage.setItem('fk_autobuild_next_open', 'true');
-                    setModeRaw('generate'); // use Raw to bypass delays
                     setMode('generate');
                     setShowCompare(true);
-                    
-                    // Allow auto-switch again after a minute, so if they refresh, it behaves normally
-                    setTimeout(() => { justPulledRef.current = false; }, 60000);
                 }}
             />
 

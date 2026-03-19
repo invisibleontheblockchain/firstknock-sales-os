@@ -447,11 +447,10 @@ export default function TerritoryPrompt({
                                 disabled={pulling}
                             >
                                 <option value={0.25}>Past 1 Wk</option>
-                                <option value={1}>Past 1 Mo</option>
-                                <option value={3}>Past 3 Mo</option>
                                 <option value={6}>Past 6 Mo</option>
-                                <option value={9}>Past 9 Mo</option>
                                 <option value={12}>Past 12 Mo</option>
+                                <option value={24}>Past 24 Mo</option>
+                                <option value={36}>Past 36 Mo</option>
                             </select>
                             <Button
                                 disabled={pulling}

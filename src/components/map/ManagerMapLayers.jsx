@@ -110,7 +110,7 @@ function ViewportCulledPins({
     effectiveProperties, assignedHashes, zipCodeFilter, drawnPolygon,
     soldDateFilter, quickFilter, highlightRecentlySold, pinSize,
     mapSettings, STATUS_COLORS, setSelectedProperty, isPointInPolygon,
-    subDays, mapRef
+    subMonths, mapRef
 }) {
     const map = useMap();
     const [viewBounds, setViewBounds] = React.useState(null);
@@ -165,7 +165,7 @@ function ViewportCulledPins({
         const targetZips = (mode === 'generate' && zipCodeFilter && zipCodeFilter.trim())
             ? zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean)
             : [];
-        const cutoff = soldDateFilter !== null ? subDays(new Date(), Math.round(Number(soldDateFilter) * 30.4)) : null;
+        const cutoff = soldDateFilter !== null ? subMonths(new Date(), parseInt(soldDateFilter)) : null;
 
         for (let i = 0; i < effectiveProperties.length; i++) {
             if (filtered.length >= MAX_VISIBLE_PINS) break;
@@ -202,9 +202,9 @@ function ViewportCulledPins({
         }
         return filtered;
     }, [viewBounds, viewMode, zoomLevel, activeRoute, mode, showAllProperties, effectiveProperties,
-        assignedHashes, zipCodeFilter, drawnPolygon, soldDateFilter, quickFilter, subDays, isPointInPolygon]);
+        assignedHashes, zipCodeFilter, drawnPolygon, soldDateFilter, quickFilter, subMonths, isPointInPolygon]);
 
-    const oneMonthAgo = useMemo(() => subDays(new Date(), 30), [subDays]);
+    const oneMonthAgo = useMemo(() => subMonths(new Date(), 1), [subMonths]);
     const fastPinsMap = useMap();
     const layerRef = useRef(null);
 
@@ -333,7 +333,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
 
     // Date utils
     parseISO,
-    subDays,
+    subMonths,
     isAfter,
 
     // darkRoom instance
@@ -562,7 +562,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                 STATUS_COLORS={STATUS_COLORS}
                 setSelectedProperty={setSelectedProperty}
                 isPointInPolygon={isPointInPolygon}
-                subDays={subDays}
+                subMonths={subMonths}
                 mapRef={mapRef}
             />
 
@@ -584,7 +584,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                             if (!p.sold_date) return false;
                             try {
                                 const date = new Date(p.sold_date);
-                                const cutoff = subDays(new Date(), Math.round(Number(soldDateFilter) * 30.4));
+                                const cutoff = subMonths(new Date(), parseInt(soldDateFilter));
                                 if (date < cutoff) return false;
                             } catch (e) { return false; }
                         }
@@ -598,7 +598,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                         let isRecentlySold = false;
                         if (highlightRecentlySold && p.sold_date) {
                             try {
-                                isRecentlySold = new Date(p.sold_date) > subDays(new Date(), 30);
+                                isRecentlySold = new Date(p.sold_date) > subMonths(new Date(), 1);
                             } catch (e) { }
                         }
 

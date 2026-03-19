@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
 
     // Compute sold cutoff (e.g., exactly 6 months ago)
     const soldCutoff = new Date();
-    soldCutoff.setDate(soldCutoff.getDate() - Math.round(sold_months * 30.4));
+    soldCutoff.setMonth(soldCutoff.getMonth() - sold_months);
 
     // Filter Stream B locally by removedDate to ensure they actually came off market recently
     const recentOffMarket = resultB.items.filter(p => {
