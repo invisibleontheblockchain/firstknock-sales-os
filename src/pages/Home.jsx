@@ -39,7 +39,7 @@ import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, Filter, 
 import { toast } from "sonner";
 import { determineEffectiveStatus, isPointInPolygon } from '../components/logic/territoryLogic';
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { format, subMonths, isAfter, parseISO } from 'date-fns';
+import { format, subDays, isAfter, parseISO } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
@@ -131,7 +131,7 @@ export default function Home() {
         if (!activeRoute) return null;
         if (activeRouteSoldFilter === 'all') return activeRoute;
 
-        const cutoff = subMonths(new Date(), Number(activeRouteSoldFilter));
+        const cutoff = subDays(new Date(), Math.round(Number(activeRouteSoldFilter) * 30.4));
         const filteredProps = activeRoute.properties.filter(p => {
             if (!p.sold_date) return false;
             try {
@@ -809,7 +809,7 @@ export default function Home() {
 
                 // Apply soldDateFilter to saved routes if active
                 if (soldDateFilter !== null) {
-                    const cutoff = subMonths(new Date(), Number(soldDateFilter));
+                    const cutoff = subDays(new Date(), Math.round(Number(soldDateFilter) * 30.4));
                     routeProps = routeProps.filter(p => {
                         // Properties with rep interaction statuses always stay in routes
                         const hasInteraction = ['CALLBACK', 'NO_ANSWER', 'QUALIFIED', 'SOLD'].includes(p.effective_status);
@@ -1064,7 +1064,7 @@ export default function Home() {
             // EXCEPTION: 'PENDING' homes (from Listings API) bypass this because they are new movers
             // that hasn't hit deed records yet.
             if (soldDateFilter !== null) {
-                const cutoff = subMonths(new Date(), Number(soldDateFilter));
+                const cutoff = subDays(new Date(), Math.round(Number(soldDateFilter) * 30.4));
                 console.log(`[generateRoutes] Applying Sold Date Filter: ${soldDateFilter} months (Cutoff: ${cutoff.toISOString()})`);
                 workingSet = workingSet.filter(p => {
                     // Always include Pending/Recent Listing Bridge properties
@@ -1491,7 +1491,7 @@ export default function Home() {
                     isPointInPolygon={isPointInPolygon}
                     getHeatColor={getHeatColor}
                     parseISO={parseISO}
-                    subMonths={subMonths}
+                    subDays={subDays}
                     isAfter={isAfter}
                     darkRoom={darkRoom}
                 />

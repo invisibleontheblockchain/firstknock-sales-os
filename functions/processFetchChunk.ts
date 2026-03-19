@@ -278,7 +278,7 @@ Deno.serve(async (req) => {
 
             totalFetched += allRaw.length;
             const soldCutoff = new Date();
-            soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
+            soldCutoff.setDate(soldCutoff.getDate() - Math.round(monthsBack * 30.4));
 
             const mapped = [];
             const seenHashes = new Set();
