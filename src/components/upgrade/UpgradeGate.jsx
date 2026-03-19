@@ -9,6 +9,7 @@ const EXEMPT_EMAILS = [
     'kevin@reefenvironmental.com',
     'christian@nativepestmanagement.com',
     'keven@reefenvironmental.com',
+    'justinhoskins44@gmail.com',
 ];
 
 const FREE_HOUSE_LIMIT = 25;

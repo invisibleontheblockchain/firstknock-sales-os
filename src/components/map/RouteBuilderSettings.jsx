@@ -241,16 +241,6 @@ export default function RouteBuilderSettings({
                                         else if (v === 50) val = 6;
                                         else if (v === 75) val = 9;
                                         else if (v === 100) val = 12;
-                                        
-                                        if (val >= 12) {
-                                            const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                                            const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
-                                            if (!isPaid && !isOwner) {
-                                                toast.error(`${val} Months history requires a Pro subscription`);
-                                                window.location.href = '/Billing';
-                                                return;
-                                            }
-                                        }
                                         setSoldDateFilter(val);
                                     }}
                                     min={0}
@@ -377,12 +367,7 @@ export default function RouteBuilderSettings({
                                     <div className="grid grid-cols-6 gap-1.5">
                                         <button
                                             onClick={() => {
-                                                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing' || user?.is_owner;
-                                                if (isPaid) setHousesPerRoute(10000);
-                                                else {
-                                                    toast.error("Upgrade to FirstKnock Pro to generate 'All-in-One' routes.");
-                                                    setTimeout(() => { if (onClose) onClose(); window.location.href = '/Billing'; }, 1500);
-                                                }
+                                                setHousesPerRoute(10000);
                                             }}
                                             className={`py-2.5 rounded-lg text-xs font-bold transition-all col-span-6 mb-1 flex items-center justify-center gap-2 ${housesPerRoute === 10000
                                                 ? 'bg-yellow-500 text-black shadow-lg'
@@ -393,8 +378,7 @@ export default function RouteBuilderSettings({
                                             ALL IN ONE ROUTE
                                         </button>
                                         {ROUTE_SIZE_OPTIONS.map(size => {
-                                            const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing' || user?.is_owner;
-                                            const isLocked = !isPaid && size > 25;
+                                            const isLocked = false; // Unlocked for testing
                                             return (
                                                 <button
                                                     key={size}
@@ -486,16 +470,6 @@ export default function RouteBuilderSettings({
                                             else if (v === 50) val = 6;
                                             else if (v === 75) val = 9;
                                             else if (v === 100) val = 12;
-                                            
-                                            if (val >= 12) {
-                                                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                                                const isOwner = user?.is_owner === true || user?.email?.toLowerCase().includes('christian');
-                                                if (!isPaid && !isOwner) {
-                                                    toast.error(`${val} Months history requires a Pro subscription`);
-                                                    window.location.href = '/Billing';
-                                                    return;
-                                                }
-                                            }
                                             setSoldDateFilter(val);
                                         }}
                                         min={0}

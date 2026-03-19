@@ -7,12 +7,18 @@ Deno.serve(async (req) => {
         }
 
         const base44 = createClientFromRequest(req);
+        const body = await req.json();
+        const { email } = body;
+
+        if (!email) {
+            return Response.json({ error: "Email is required." }, { status: 400 });
+        }
         
-        console.log("Looking up Christian's account...");
-        const users = await base44.asServiceRole.entities.User.filter({ email: "Christian@nativapest.com" });
+        console.log(`Looking up account for ${email}...`);
+        const users = await base44.asServiceRole.entities.User.filter({ email });
         
         if (!users || users.length === 0) {
-            return Response.json({ error: "Account not found." }, { status: 404 });
+            return Response.json({ error: `Account not found for ${email}.` }, { status: 404 });
         }
 
         const user = users[0];
@@ -25,10 +31,10 @@ Deno.serve(async (req) => {
             area_pulls_count: 0 // Reset their pulls as a courtesy
         });
         
-        let report = `✅ Elevated ${user.email} out of beta limits.\n`;
+        let report = `✅ Elevated ${user.email} to owner status.\n`;
 
         // 2. Clear duplicate routes
-        console.log("Looking for routes created by Christian...");
+        console.log(`Looking for routes created by ${email}...`);
         const routes = await base44.asServiceRole.entities.SavedRoute.filter({ created_by: user.id });
         
         let deletedCount = 0;

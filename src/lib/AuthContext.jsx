@@ -99,8 +99,9 @@ export const AuthProvider = ({ children }) => {
       setIsLoadingAuth(true);
       const currentUser = await base44.auth.me();
       
-      // Hardcode Christian's admin access
-      if (currentUser?.email?.toLowerCase() === 'christian@nativapest.com') {
+      // Hardcode admin access for whitelisted emails
+      const ownerEmails = ['christian@nativapest.com', 'justinhoskins44@gmail.com'];
+      if (currentUser?.email && ownerEmails.includes(currentUser.email.toLowerCase())) {
           currentUser.is_owner = true;
           currentUser.role = 'owner';
       }
