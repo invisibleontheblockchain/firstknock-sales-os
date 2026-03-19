@@ -120,6 +120,12 @@ export default function Home() {
     const [activeRoute, setActiveRoute] = useState(null);
     const [activeRouteSoldFilter, setActiveRouteSoldFilter] = useState('all');
     const [showChecklist, setShowChecklist] = useState(false);
+    
+    // Moved up to fix Temporal Dead Zone / ReferenceError issues
+    const [routes, setRoutes] = useState([]);
+    const [routesGenerating, setRoutesGenerating] = useState(false);
+    const [streetCooldownDays, setStreetCooldownDays] = useState(30);
+    const [cooldownInfo, setCooldownInfo] = useState(null);
 
     const filteredActiveRoute = useMemo(() => {
         if (!activeRoute) return null;
@@ -774,8 +780,6 @@ export default function Home() {
     }, [mode, effectiveProperties.length === 0, drawnPolygon]);
 
     // Generate routes with configurable houses per route - State moved above useEffects that depend on it
-    const [routes, setRoutes] = useState([]);
-    const [routesGenerating, setRoutesGenerating] = useState(false);
 
     // When user returns and has data, auto-set to analyze mode so they see the map directly
     // But skip this if the Route Builder is open (e.g. right after a data pull)
@@ -887,9 +891,6 @@ export default function Home() {
     }, [savedRoutes, effectiveProperties, activeRoute]);
 
     // Generate routes state was moved up above to fix ReferenceError
-
-    const [streetCooldownDays, setStreetCooldownDays] = useState(30);
-    const [cooldownInfo, setCooldownInfo] = useState(null);
 
     // Heatmap Data (High Zoom)
     const heatmapData = useMemo(() => {
