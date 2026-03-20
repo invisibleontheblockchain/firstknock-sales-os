@@ -6,7 +6,7 @@ import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
 import {
     Navigation, X, BarChart3, User, Shield, MapPin,
     ArrowRight, Flame, Plus, Clock, CheckCircle2,
-    AlertCircle, ChevronRight, Zap, Trash2, Scissors, Pencil, Check
+    AlertCircle, ChevronRight, Zap, Trash2, Scissors, Pencil, Check, RefreshCw
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from "@tanstack/react-query";
@@ -36,7 +36,10 @@ export default function RouteCommandPanel({
     activeRouteId,
     streetCooldownDays = 30,
     zipCodeFilter = '',
-    housesPerRoute = 50
+    housesPerRoute = 50,
+    logs = [],
+    onReoptimizeRoute,
+    routeConfig
 }) {
     const [activeTab, setActiveTab] = useState(generatedRoutes.length > 0 ? 'new' : 'active');
 
@@ -268,6 +271,7 @@ export default function RouteCommandPanel({
                                                     recommendation={getRepRecommendations?.(route.properties[0])?.[0]}
                                                     onSelect={() => onSelectRoute(route)}
                                                     onSave={(repId, repName) => onSaveRoute(route, repId, repName)}
+                                                    logs={logs}
                                                 />
                                             ))}
                                         </div>
@@ -307,6 +311,9 @@ export default function RouteCommandPanel({
                                         onSelectRoute={onSelectRoute}
                                         activeRouteId={activeRouteId}
                                         onDeleteRoute={onDeleteRoute}
+                                        logs={logs}
+                                        onReoptimize={onReoptimizeRoute}
+                                        routeConfig={routeConfig}
                                     />
                                 )}
 
@@ -320,6 +327,9 @@ export default function RouteCommandPanel({
                                         onSelectRoute={onSelectRoute}
                                         activeRouteId={activeRouteId}
                                         onDeleteRoute={onDeleteRoute}
+                                        logs={logs}
+                                        onReoptimize={onReoptimizeRoute}
+                                        routeConfig={routeConfig}
                                     />
                                 )}
 
@@ -333,6 +343,9 @@ export default function RouteCommandPanel({
                                         onSelectRoute={onSelectRoute}
                                         activeRouteId={activeRouteId}
                                         onDeleteRoute={onDeleteRoute}
+                                        logs={logs}
+                                        onReoptimize={onReoptimizeRoute}
+                                        routeConfig={routeConfig}
                                     />
                                 )}
 
@@ -347,6 +360,9 @@ export default function RouteCommandPanel({
                                         activeRouteId={activeRouteId}
                                         collapsed
                                         onDeleteRoute={onDeleteRoute}
+                                        logs={logs}
+                                        onReoptimize={onReoptimizeRoute}
+                                        routeConfig={routeConfig}
                                     />
                                 )}
 
@@ -389,6 +405,9 @@ export default function RouteCommandPanel({
                                                     isActive={activeRouteId === route.id}
                                                     onSelect={() => onSelectRoute(route)}
                                                     onDelete={() => onDeleteRoute && onDeleteRoute(route)}
+                                                    logs={logs}
+                                                    onReoptimize={onReoptimizeRoute}
+                                                    routeConfig={routeConfig}
                                                 />
                                             ))}
                                         </div>
@@ -413,6 +432,9 @@ export default function RouteCommandPanel({
                                                 isActive={activeRouteId === route.id}
                                                 onSelect={() => onSelectRoute(route)}
                                                 onDelete={() => onDeleteRoute && onDeleteRoute(route)}
+                                                logs={logs}
+                                                onReoptimize={onReoptimizeRoute}
+                                                routeConfig={routeConfig}
                                             />
                                         ))}
                                     </div>
@@ -512,7 +534,7 @@ function StatBox({ label, value, highlight = false, tooltip = undefined }) {
     );
 }
 
-function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRouteId, collapsed = false, onDeleteRoute }) {
+function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRouteId, collapsed = false, onDeleteRoute, logs = [], onReoptimize, routeConfig }) {
     const [isExpanded, setIsExpanded] = useState(!collapsed);
 
     return (
@@ -535,13 +557,24 @@ function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRou
                     isActive={activeRouteId === route.id}
                     onSelect={() => onSelectRoute(route)}
                     onDelete={() => onDeleteRoute && onDeleteRoute(route)}
+                    logs={logs}
+                    onReoptimize={onReoptimize}
+                    routeConfig={routeConfig}
                 />
             ))}
         </div>
     );
 }
 
-function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave }) {
+function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave, logs = [] }) {
+    // Compute knock stats from logs
+    const knockStats = useMemo(() => {
+        const hashes = new Set((route.properties || []).map(p => p.address_hash).filter(Boolean));
+        const routeLogs = logs.filter(l => hashes.has(l.address_hash));
+        const knockedHashes = new Set(routeLogs.map(l => l.address_hash));
+        return { knocked: knockedHashes.size, total: hashes.size };
+    }, [route.properties, logs]);
+
     return (
         <div
             className="p-4 rounded-xl border transition-all relative overflow-hidden w-full box-border"
@@ -576,7 +609,15 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave 
                     <span>{route.houseCount} doors</span>
                     <span>{route.streetCount || '?'} streets</span>
                     <span>{route.totalDistance} mi</span>
+                    {knockStats.knocked > 0 && (
+                        <span className="text-yellow-500 font-bold">{knockStats.knocked}/{knockStats.total} knocked</span>
+                    )}
                 </div>
+                {knockStats.total > 0 && (
+                    <div className="mt-1.5 h-1 rounded-full overflow-hidden" style={{ background: '#222' }}>
+                        <div className="h-full rounded-full transition-all" style={{ width: `${(knockStats.knocked / knockStats.total) * 100}%`, background: knockStats.knocked === knockStats.total ? '#22c55e' : '#FFD700' }} />
+                    </div>
+                )}
             </button>
 
                     <div className="flex items-center justify-center w-full py-2 bg-green-500/5 rounded-lg border border-green-500/20">
@@ -602,10 +643,20 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave 
     );
 }
 
-function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete }) {
+function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete, logs = [], onReoptimize, routeConfig }) {
     const [editing, setEditing] = useState(false);
     const [newName, setNewName] = useState(route.name);
     const queryClient = useQueryClient();
+
+    // Compute knock stats from logs
+    const knockStats = useMemo(() => {
+        const hashes = new Set(
+            (route.property_hashes || (route.properties || []).map(p => p.address_hash)).filter(Boolean)
+        );
+        const routeLogs = logs.filter(l => hashes.has(l.address_hash));
+        const knockedHashes = new Set(routeLogs.map(l => l.address_hash));
+        return { knocked: knockedHashes.size, total: hashes.size };
+    }, [route.property_hashes, route.properties, logs]);
 
     const handleRename = async () => {
         if (!newName.trim() || newName === route.name) { setEditing(false); return; }
@@ -667,7 +718,15 @@ function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete }) {
                 <div className="flex gap-3 text-[10px] text-gray-600 mt-1">
                     <span>{route.houseCount || route.metrics?.house_count} doors</span>
                     <span>{route.competitivenessScore || route.metrics?.score || 0} score</span>
+                    {knockStats.knocked > 0 && (
+                        <span className="text-yellow-500 font-bold">{knockStats.knocked}/{knockStats.total} knocked</span>
+                    )}
                 </div>
+                {knockStats.total > 0 && (
+                    <div className="mt-1.5 h-1 rounded-full overflow-hidden" style={{ background: '#222' }}>
+                        <div className="h-full rounded-full transition-all" style={{ width: `${(knockStats.knocked / knockStats.total) * 100}%`, background: knockStats.knocked === knockStats.total ? '#22c55e' : '#FFD700' }} />
+                    </div>
+                )}
             </button>
             {onDelete && (
                 <button
@@ -676,6 +735,15 @@ function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete }) {
                     title="Delete Route"
                 >
                     <Trash2 className="w-3.5 h-3.5" />
+                </button>
+            )}
+            {onReoptimize && (
+                <button
+                    onClick={(e) => { e.stopPropagation(); onReoptimize(route); }}
+                    className="absolute top-2 right-10 p-1.5 bg-blue-500/20 hover:bg-blue-500/40 text-blue-400 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    title={`Re-optimize order (${routeConfig?.walkingPattern?.replace(/_/g, ' ') || 'current pattern'})`}
+                >
+                    <RefreshCw className="w-3.5 h-3.5" />
                 </button>
             )}
         </div>

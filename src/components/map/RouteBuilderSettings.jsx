@@ -47,6 +47,8 @@ export default function RouteBuilderSettings({
     // Sync functions
     onForceSync, onClearPolygon,
     onDraw, // New prop for enabling drawing mode
+    // Reorder
+    onReorder, hasFrozenData,
     // Data
     user,
     hasDrawnArea
@@ -96,7 +98,7 @@ export default function RouteBuilderSettings({
                 setMinScore(0);           // 0 min score means nobody is hidden
                 setSoldDateFilter(12);    // Past 12 months
                 setSortBy('recent_sale');
-                setRouteConfig(prev => ({ ...prev, walkingPattern: 'recent_sale_first', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, excludeAssigned: true, excludeCommercial: true, excludeCondos: true, excludePreviouslyKnocked: true, minPrice: null, maxPrice: null, propertyTypes: [], minBeds: null, minBaths: null, minSqft: null, maxSqft: null, minLotSize: null, maxLotSize: null }));
+                setRouteConfig(prev => ({ ...prev, walkingPattern: 'recent_sale_first', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, excludeAssigned: true, excludeCommercial: true, excludeCondos: true, excludePreviouslyKnocked: true, excludeLand: true, minPrice: null, maxPrice: null, propertyTypes: [], minBeds: null, minBaths: null, minSqft: null, maxSqft: null, minLotSize: null, maxLotSize: null }));
                 if (!isInitial) toast.success("FirstKnock Best applied!");
             }
         },
@@ -113,7 +115,7 @@ export default function RouteBuilderSettings({
                 setMinScore(0);
                 setSoldDateFilter(36); // Past 3 years (all data we pull)
                 setSortBy('score');
-                setRouteConfig(prev => ({ ...prev, walkingPattern: 'street_sweep', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, excludeAssigned: true, excludeCommercial: true, excludeCondos: true, excludePreviouslyKnocked: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
+                setRouteConfig(prev => ({ ...prev, walkingPattern: 'street_sweep', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, excludeAssigned: true, excludeCommercial: true, excludeCondos: true, excludePreviouslyKnocked: true, excludeLand: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
                 toast.success("Hot Market Sweep applied");
             }
         },
@@ -131,7 +133,7 @@ export default function RouteBuilderSettings({
                 setMinScore(0);
                 setSoldDateFilter(null);
                 setSortBy('distance');
-                setRouteConfig(prev => ({ ...prev, walkingPattern: 'nearest', minimizeTurns: false, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: false, minPrice: null, maxPrice: null, propertyTypes: [] }));
+                setRouteConfig(prev => ({ ...prev, walkingPattern: 'nearest', minimizeTurns: false, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: false, excludeLand: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
                 toast.success("Speed Blitz applied");
             }
         }
@@ -149,6 +151,7 @@ export default function RouteBuilderSettings({
             excludeCommercial: true,
             excludeCondos: true,
             excludePreviouslyKnocked: true,
+            excludeLand: true,
             propertyTypes: [],
             minPrice: null,
             maxPrice: null,
@@ -639,6 +642,13 @@ export default function RouteBuilderSettings({
                                             onChange={(v) => setRouteConfig(prev => ({ ...prev, excludeCondos: v }))}
                                         />
                                         <ToggleOption
+                                            label="Exclude Vacant Land"
+                                            description="Filter out lots, vacant land, and acreage"
+                                            icon={<Layers className="w-4 h-4 text-emerald-400" />}
+                                            checked={routeConfig.excludeLand}
+                                            onChange={(v) => setRouteConfig(prev => ({ ...prev, excludeLand: v }))}
+                                        />
+                                        <ToggleOption
                                             label="Hide Knocked Doors"
                                             description="Never route a house you've already visited"
                                             icon={<Footprints className="w-4 h-4 text-green-400" />}
@@ -856,7 +866,7 @@ export default function RouteBuilderSettings({
                                 onGenerate();
                             }}
                             disabled={routesGenerating}
-                            className="flex-1 h-12 font-bold tracking-wide bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg"
+                            className={`${hasFrozenData ? 'flex-1' : 'flex-1'} h-12 font-bold tracking-wide bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg`}
                         >
                             {routesGenerating ? (
                                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> BUILDING...</>
@@ -866,6 +876,15 @@ export default function RouteBuilderSettings({
                                 <><Zap className="w-4 h-4 mr-2" /> GENERATE ROUTES</>
                             )}
                         </Button>
+
+                        {hasFrozenData && hasDrawnArea && !routesGenerating && (
+                            <Button
+                                onClick={onReorder}
+                                className="h-12 px-4 font-bold tracking-wide bg-blue-600 text-white hover:bg-blue-500 shadow-lg"
+                            >
+                                <RefreshCw className="w-4 h-4 mr-2" /> REORDER
+                            </Button>
+                        )}
 
                         {hasDrawnArea && !routesGenerating && (
                             <Button
