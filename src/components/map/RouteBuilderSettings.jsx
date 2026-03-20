@@ -86,60 +86,77 @@ export default function RouteBuilderSettings({
 
     const STRATEGIES = [
         {
-            id: 'best',
-            name: 'FirstKnock Best',
+            id: '12mo',
+            name: '12 Month Sweep',
             icon: <Zap className="w-4 h-4" />,
-            desc: 'Ultra-optimized for newest homeowners. Includes ALL active homes in your area.',
-            criteria: 'Unlimited distance, all scores included',
+            desc: 'The standard Mail Carrier route. All homes sold in the last 12 months, grouped into one clean sweep.',
+            criteria: '12mo, Street Sweep, Mail Carrier Style',
             apply: (isInitial = false) => {
-                setHousesPerRoute(10000); // Generates all in one connected route
-                setMaxRouteDistance(50);  // Unlimited Distance so no one is cut off
+                setHousesPerRoute(10000); 
+                setMaxRouteDistance(50);  
                 setStreetCooldownDays(14);
-                setMinScore(0);           // 0 min score means nobody is hidden
-                setSoldDateFilter(12);    // Past 12 months
-                setSortBy('recent_sale');
-                setRouteConfig(prev => ({ ...prev, walkingPattern: 'recent_sale_first', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, excludeAssigned: true, excludeCommercial: true, excludeCondos: true, excludePreviouslyKnocked: true, excludeLand: true, minPrice: null, maxPrice: null, propertyTypes: [], minBeds: null, minBaths: null, minSqft: null, maxSqft: null, minLotSize: null, maxLotSize: null }));
-                if (!isInitial) toast.success("FirstKnock Best applied!");
-            }
-        },
-        {
-            id: 'new_homeowners',
-            name: 'Hot Market Sweep',
-            icon: <Flame className="w-4 h-4" />,
-            desc: 'Sweeps entire streets that have high recent sales activity. Great for hitting dense pockets.',
-            criteria: 'Street Sweep, Past 36mo sales, unlimited distance',
-            apply: () => {
-                setHousesPerRoute(75);
-                setMaxRouteDistance(50); // Unlimited Distance
-                setStreetCooldownDays(14);
-                setMinScore(0);
-                setSoldDateFilter(36); // Past 3 years (all data we pull)
+                setMinScore(0);           
+                setSoldDateFilter(12);    
                 setSortBy('score');
-                setRouteConfig(prev => ({ ...prev, walkingPattern: 'street_sweep', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, excludeAssigned: true, excludeCommercial: true, excludeCondos: true, excludePreviouslyKnocked: true, excludeLand: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
-                toast.success("Hot Market Sweep applied");
+                setRouteConfig(prev => ({ ...prev, minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, excludeAssigned: true, excludeCommercial: true, excludeCondos: true, excludePreviouslyKnocked: true, excludeLand: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
+                if (!isInitial) toast.success("12 Month Sweep applied!");
             }
         },
         {
-            id: 'speed',
-            name: 'Speed Blitz',
-            icon: <Footprints className="w-4 h-4" />,
-            desc: 'Max doors in minimum time. Shortest walking distance, no filters.',
-            criteria: 'Maximum doors allowed by your plan',
+            id: '6mo',
+            name: '6 Month Sweep',
+            icon: <Flame className="w-4 h-4" />,
+            desc: 'Hotter market. Focused on homes sold in the last 6 months.',
+            criteria: '6mo, Street Sweep, Mail Carrier Style',
             apply: () => {
-                const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-                setHousesPerRoute(isPaid ? 60 : 25);
-                setMaxRouteDistance(50); // Unlimited
-                setStreetCooldownDays(0);
+                setHousesPerRoute(10000);
+                setMaxRouteDistance(50);
+                setStreetCooldownDays(14);
                 setMinScore(0);
-                setSoldDateFilter(null);
-                setSortBy('distance');
-                setRouteConfig(prev => ({ ...prev, walkingPattern: 'nearest', minimizeTurns: false, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: false, excludeLand: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
-                toast.success("Speed Blitz applied");
+                setSoldDateFilter(6);
+                setSortBy('score');
+                setRouteConfig(prev => ({ ...prev, minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, excludeAssigned: true, excludeCommercial: true, excludeCondos: true, excludePreviouslyKnocked: true, excludeLand: true }));
+                toast.success("6 Month Sweep applied");
+            }
+        },
+        {
+            id: '1mo',
+            name: '1 Month Sweep',
+            icon: <Zap className="w-4 h-4" />,
+            desc: 'Ultra fresh leads. Just the homes sold in the last 30 days.',
+            criteria: '1mo, Street Sweep, Mail Carrier Style',
+            apply: () => {
+                setHousesPerRoute(10000);
+                setMaxRouteDistance(50);
+                setStreetCooldownDays(7);
+                setMinScore(0);
+                setSoldDateFilter(1);
+                setSortBy('score');
+                setRouteConfig(prev => ({ ...prev, minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, excludeAssigned: true, excludeCommercial: true, excludeCondos: true, excludePreviouslyKnocked: true, excludeLand: true }));
+                toast.success("1 Month Sweep applied");
+            }
+        },
+        {
+            id: 'newest_first',
+            name: 'Newest Homes First',
+            icon: <Footprints className="w-4 h-4" />,
+            desc: 'Starts the Mail Carrier sweep at the most recently sold home in your area.',
+            criteria: '12mo, Start at Newest, Street Sweep',
+            apply: () => {
+                setHousesPerRoute(10000);
+                setMaxRouteDistance(50);
+                setStreetCooldownDays(14);
+                setMinScore(0);
+                setSoldDateFilter(12);
+                setSortBy('recent_sale'); // Hits logic to start at newest
+                setRouteConfig(prev => ({ ...prev, minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, excludeAssigned: true, excludeCommercial: true, excludeCondos: true, excludePreviouslyKnocked: true, excludeLand: true }));
+                toast.success("Newest Homes First applied");
             }
         }
     ];
 
     const resetFilters = () => {
+        setHousesPerRoute(10000);
         setRouteConfig({
             walkingPattern: 'street_sweep',
             minimizeTurns: true,
@@ -598,14 +615,7 @@ export default function RouteBuilderSettings({
                                     </div>
                                 </div>
 
-                                {/* Min Score */}
-                                <div className="space-y-2 pt-2 border-t border-gray-800/50">
-                                    <div className="flex justify-between items-center">
-                                        <label className="text-[10px] font-bold text-gray-500 uppercase">Minimum Property Score</label>
-                                        <span className="text-xs font-bold text-yellow-500">{minScore}</span>
-                                    </div>
-                                    <Slider value={[minScore]} onValueChange={([v]) => setMinScore(v)} min={0} max={200} step={5} className="w-full" />
-                                </div>
+
 
                                 <div className="pt-2 space-y-2 border-t border-gray-800/50">
                                     {/* Exclude Terminal Statuses */}
@@ -666,38 +676,7 @@ export default function RouteBuilderSettings({
                                 expanded={expandedSection === 'optimization'}
                                 onToggle={() => toggleSection('optimization')}
                             >
-                                {/* Walking Pattern */}
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase">Walking Pattern</label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {[
-                                            { id: 'street_sweep', label: 'Street Sweep', desc: 'Mailman style — one side, then the other', icon: Footprints },
-                                            { id: 'recent_sale_first', label: 'Recent Sale First', desc: 'Start at the most recently sold home', icon: Flame },
-                                            { id: 'nearest', label: 'Nearest Door', desc: 'Always go to the closest next house', icon: Target },
-                                            { id: 'zigzag', label: 'Zig-Zag', desc: 'Cross street back & forth', icon: GitBranch },
-                                            { id: 'cluster', label: 'Cluster Hop', desc: 'Hit dense pockets first, then expand', icon: Flame },
-                                        ].map(pattern => {
-                                            const Icon = pattern.icon;
-                                            const isActive = routeConfig.walkingPattern === pattern.id;
-                                            return (
-                                                <button
-                                                    key={pattern.id}
-                                                    onClick={() => setRouteConfig(prev => ({ ...prev, walkingPattern: pattern.id }))}
-                                                    className={`p-3 rounded-lg text-left transition-all border ${isActive
-                                                        ? 'bg-yellow-500/10 border-yellow-500 text-yellow-500'
-                                                        : 'bg-[#1A1A1A] border-gray-800 text-gray-400 hover:border-gray-600'
-                                                        }`}
-                                                >
-                                                    <div className="flex items-center gap-2 mb-1">
-                                                        <Icon className="w-3.5 h-3.5" />
-                                                        <span className="text-xs font-bold">{pattern.label}</span>
-                                                    </div>
-                                                    <p className="text-[9px] text-gray-500 leading-tight">{pattern.desc}</p>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
+
 
                                 {/* Max Route Distance */}
                                 <div className="space-y-2 pt-2 border-t border-gray-800/50">
@@ -769,25 +748,7 @@ export default function RouteBuilderSettings({
                                 expanded={expandedSection === 'templates' || expandedSection === 'display'}
                                 onToggle={() => toggleSection('templates')}
                             >
-                                <div className="space-y-2 mb-4">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase">Sort Routes By</label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {[
-                                            { id: 'score', label: 'SCORE', desc: 'Best leads first' },
-                                            { id: 'houses', label: 'SIZE', desc: 'Most houses' },
-                                            { id: 'distance', label: 'DISTANCE', desc: 'Shortest walk' },
-                                            { id: 'recent_sale', label: 'RECENT SALE', desc: 'Newest homeowners' },
-                                        ].map(opt => (
-                                            <button key={opt.id} onClick={() => setSortBy(opt.id)}
-                                                className={`py-3 rounded-lg text-center transition-all ${sortBy === opt.id ? 'bg-yellow-500 text-black' : 'bg-[#1F1F1F] text-gray-400 border border-gray-800'
-                                                    }`}
-                                            >
-                                                <span className="text-xs font-bold block">{opt.label}</span>
-                                                <span className="text-[8px] block mt-0.5 opacity-60">{opt.desc}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
+
 
                                 {routeTemplates.length > 0 && (
                                     <div className="space-y-2 pt-2 border-t border-gray-800/50">

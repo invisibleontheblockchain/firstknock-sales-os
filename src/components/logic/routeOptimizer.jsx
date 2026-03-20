@@ -561,7 +561,6 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         useStreetSweep = true,
         minimizeTurns = false,
         use2Opt = true,
-        walkingPattern = 'nearest',
         returnToStart = false,
         maxRouteDistance = null,
         excludeTerminal = true
@@ -647,40 +646,10 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         };
     });
 
-    // Calculate number of routes
-    const numRoutes = Math.ceil(scored.length / housesPerRoute);
-
-    // Cluster properties
-    // OPTIMIZATION: If multiple zip codes are present, cluster by Zip Code first to respect boundaries
-    let clustered = [];
-
-    // Group by Zip Code if we have enough properties and variance
-    const uniqueZips = [...new Set(scored.map(p => p.zip_code).filter(Boolean))];
-    // Disable zip clustering to prevent tiny routes in sparse zips - prefer pure geographic clustering
-    const useZipClustering = false;
-
-    if (useZipClustering) {
-        let routeOffset = 0;
-        uniqueZips.forEach(zip => {
-            const zipProps = scored.filter(p => p.zip_code === zip);
-            // Determine routes needed for this zip
-            const zipRoutesCount = Math.max(1, Math.ceil(zipProps.length / housesPerRoute));
-
-            // Sub-cluster this zip
-            const zipClustered = kMeansClustering(zipProps, zipRoutesCount);
-
-            // Apply global cluster IDs
-            zipClustered.forEach(p => {
-                p.cluster = p.cluster + routeOffset;
-            });
-
-            clustered = clustered.concat(zipClustered);
-            routeOffset += zipRoutesCount;
-        });
-    } else {
-        // Standard K-Means for single area
-        clustered = kMeansClustering(scored, numRoutes);
-    }
+    // MAIL CARRIER: Always generate a single route — all properties in one contiguous sweep
+    // Skip K-Means clustering entirely for single-route generation
+    const numRoutes = 1;
+    let clustered = scored.map(p => ({ ...p, cluster: 0 }));
 
     // Generate routes
     const routes = [];
@@ -693,91 +662,21 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         const clusterProps = clustered.filter(p => p.cluster === i);
         if (clusterProps.length === 0) continue;
 
-        // Use walking pattern to determine ordering
-        let orderedProps;
-        if (walkingPattern === 'recent_sale_first') {
-            // Sort by sold_date descending so index 0 = most recent sale
-            const sorted = [...clusterProps].sort((a, b) => {
-                const dateA = a.sold_date ? new Date(a.sold_date).getTime() : 0;
-                const dateB = b.sold_date ? new Date(b.sold_date).getTime() : 0;
-                return dateB - dateA;
-            });
-            
-            const anchor = sorted[0]; // Stop #1 Lock: most recent sale is fixed start
-            
-            // Route remaining properties with nearest neighbor from anchor
-            orderedProps = optimizeRouteOrder(
-                sorted,
-                anchor.lat,
-                anchor.lng,
-                minimizeTurns
-            );
-            
-            // Ensure anchor is locked at index 0 (nearest neighbor may have moved it)
-            const anchorIdx = orderedProps.findIndex(p => p.address_hash === anchor.address_hash);
-            if (anchorIdx > 0) {
-                orderedProps.splice(anchorIdx, 1);
-                orderedProps.unshift(anchor);
-            }
-        } else if (walkingPattern === 'street_sweep' || (useStreetSweep && walkingPattern !== 'nearest' && walkingPattern !== 'zigzag' && walkingPattern !== 'cluster' && walkingPattern !== 'recent_sale_first')) {
-            orderedProps = orderForStreetSweep(clusterProps);
-        } else if (walkingPattern === 'zigzag') {
-            // Zig-zag: sort by street, then alternate odd/even within each street
-            const byStreet = {};
-            clusterProps.forEach(p => {
-                const s = p.street_name || 'unknown';
-                if (!byStreet[s]) byStreet[s] = [];
-                byStreet[s].push(p);
-            });
-            orderedProps = [];
-            Object.values(byStreet).forEach(streetProps => {
-                streetProps.sort((a, b) => a.house_number - b.house_number);
-                // Interleave: take one from start, one from end
-                const result = [];
-                let left = 0, right = streetProps.length - 1;
-                let fromLeft = true;
-                while (left <= right) {
-                    result.push(fromLeft ? streetProps[left++] : streetProps[right--]);
-                    fromLeft = !fromLeft;
-                }
-                orderedProps.push(...result);
-            });
-        } else if (walkingPattern === 'cluster') {
-            // Cluster hop: sort by score descending (hit high-density/high-score pockets first)
-            orderedProps = [...clusterProps].sort((a, b) => (b.score || 0) - (a.score || 0));
-            // Then apply nearest neighbor from top-scored property
-            if (orderedProps.length > 0) {
-                orderedProps = optimizeRouteOrder(orderedProps, orderedProps[0].lat, orderedProps[0].lng, minimizeTurns);
-            }
-        } else {
-            // Nearest neighbor (default fallback)
-            orderedProps = optimizeRouteOrder(
-                clusterProps,
-                startLocation?.lat,
-                startLocation?.lng,
-                minimizeTurns
-            );
+        // MAIL CARRIER: Always use street sweep ordering
+        // Every street is fully completed before moving to the next
+        let orderedProps = orderForStreetSweep(clusterProps);
+
+        // Apply 2-opt post-optimization to smooth crossovers between streets
+        if (use2Opt) {
+            orderedProps = apply2Opt(orderedProps);
         }
 
-        // Apply 2-opt post-optimization for smoother paths (if enabled)
-        // For recent_sale_first: open-loop 2-opt starting at index 1 to lock the anchor
-        if (use2Opt && walkingPattern !== 'street_sweep') {
-            if (walkingPattern === 'recent_sale_first' && orderedProps.length > 2) {
-                const anchor = orderedProps[0];
-                const rest = apply2Opt(orderedProps.slice(1));
-                orderedProps = [anchor, ...rest];
-            } else {
-                orderedProps = apply2Opt(orderedProps);
-            }
-        }
+        // Link Swap for additional smoothing
+        orderedProps = applyLinkSwap(orderedProps);
 
-        // Stage 3: Link Swap (§2.2) — ~50% of improvements in open-path TSP
-        if (walkingPattern !== 'street_sweep') {
-            orderedProps = applyLinkSwap(orderedProps);
-        }
-
-        // Stage 5: Fatigue-Aware Front-Loading (§2.3)
-        orderedProps = fatigueAwareFrontLoad(orderedProps);
+        // NOTE: Fatigue front-loading is DISABLED for mail carrier routes
+        // to preserve the geographic postal order
+        // orderedProps = fatigueAwareFrontLoad(orderedProps);
 
         // Return to start: add first property at the end conceptually (affects distance calc)
         if (returnToStart && orderedProps.length > 1) {

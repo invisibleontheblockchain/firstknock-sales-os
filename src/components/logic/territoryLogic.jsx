@@ -36,7 +36,7 @@ export const determineEffectiveStatus = (masterProp, logs) => {
     }
 
     // Sort logs by timestamp desc
-    const sortedLogs = [...logs].sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
+    const sortedLogs = [...logs].sort((a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime());
     const latestLog = sortedLogs[0];
 
     // HARD_NO and SOLD are permanent exclusions from routing
@@ -85,12 +85,12 @@ export const getStreetCooldownStatus = (streetName, streetLogs, cooldownDays = C
     }
 
     const sortedLogs = [...noAnswerLogs].sort((a, b) =>
-        new Date(b.created_date) - new Date(a.created_date)
+        new Date(b.created_date).getTime() - new Date(a.created_date).getTime()
     );
 
     const lastVisit = new Date(sortedLogs[0].created_date);
     const now = new Date();
-    const daysSince = (now - lastVisit) / (1000 * 60 * 60 * 24);
+    const daysSince = (now.getTime() - lastVisit.getTime()) / (1000 * 60 * 60 * 24);
     const daysRemaining = Math.max(0, Math.ceil(cooldownDays - daysSince));
 
     return {
@@ -131,7 +131,7 @@ export const filterByStreetCooldown = (properties, allLogs, cooldownDays = COOLD
 
         const noAnswerLogs = streetLogs.filter(l => l.parsed_status === 'NO_ANSWER');
         if (noAnswerLogs.length > 0) {
-            const sorted = noAnswerLogs.sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
+            const sorted = noAnswerLogs.sort((a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime());
             const existingDate = streetLastNoAnswer[prop.street_name];
             const newDate = new Date(sorted[0].created_date);
             if (!existingDate || newDate > existingDate) {
@@ -144,7 +144,7 @@ export const filterByStreetCooldown = (properties, allLogs, cooldownDays = COOLD
 
     // Log-based cooldowns
     Object.entries(streetLastNoAnswer).forEach(([street, lastDate]) => {
-        const daysSince = (now - lastDate) / (1000 * 60 * 60 * 24);
+        const daysSince = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
         if (daysSince < cooldownDays) {
             cooldownStreets.add(street);
         }
@@ -161,7 +161,7 @@ export const filterByStreetCooldown = (properties, allLogs, cooldownDays = COOLD
         cooldownStreets: Array.from(cooldownStreets),
         streetCooldownInfo: [
             ...Object.entries(streetLastNoAnswer).map(([street, date]) => {
-                const daysSince = (now - date) / (1000 * 60 * 60 * 24);
+                const daysSince = (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24);
                 return {
                     street,
                     lastVisit: date,
@@ -171,7 +171,7 @@ export const filterByStreetCooldown = (properties, allLogs, cooldownDays = COOLD
                 };
             }),
             ...Object.entries(streetCsvCooldowns).map(([street, date]) => {
-                const daysRemaining = Math.max(0, Math.ceil((date - now) / (1000 * 60 * 60 * 24)));
+                const daysRemaining = Math.max(0, Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
                 return {
                     street,
                     lastVisit: null,
@@ -280,13 +280,12 @@ export const orderForStreetSweep = (properties) => {
 
         const unvisited = [...streetCentroids];
         let current = unvisited.splice(currentIdx, 1)[0];
-        sortedStreets.push(current.name);
+        sortedStreets.push(current);
 
         while (unvisited.length > 0) {
             let nearestIdx = -1;
             let minDist = Infinity;
             unvisited.forEach((s, i) => {
-                // Euclidean distance is fine for local sorting
                 const d = Math.pow(s.lat - current.lat, 2) + Math.pow(s.lng - current.lng, 2);
                 if (d < minDist) {
                     minDist = d;
@@ -294,12 +293,39 @@ export const orderForStreetSweep = (properties) => {
                 }
             });
             current = unvisited.splice(nearestIdx, 1)[0];
-            sortedStreets.push(current.name);
+            sortedStreets.push(current);
+        }
+
+        // 2b. Apply 2-Opt on the street centroid sequence to eliminate remaining crossovers
+        // This is cheap — runs on ~10-30 street centroids, not thousands of houses
+        let improved = true;
+        let iterations = 0;
+        const maxIter = 50;
+        const distSq = (a, b) => Math.pow(a.lat - b.lat, 2) + Math.pow(a.lng - b.lng, 2);
+
+        while (improved && iterations < maxIter) {
+            improved = false;
+            iterations++;
+            for (let i = 0; i < sortedStreets.length - 2; i++) {
+                for (let j = i + 2; j < sortedStreets.length - 1; j++) {
+                    const a = sortedStreets[i], b = sortedStreets[i + 1];
+                    const c = sortedStreets[j], d = sortedStreets[j + 1];
+                    const currentDist = distSq(a, b) + distSq(c, d);
+                    const newDist = distSq(a, c) + distSq(b, d);
+                    if (newDist < currentDist) {
+                        // Reverse segment from i+1 to j
+                        const segment = sortedStreets.slice(i + 1, j + 1).reverse();
+                        sortedStreets.splice(i + 1, segment.length, ...segment);
+                        improved = true;
+                    }
+                }
+            }
         }
     }
 
     // 3. Process each street in order
-    sortedStreets.forEach(streetName => {
+    const streetOrder = sortedStreets.map(s => s.name);
+    streetOrder.forEach(streetName => {
         const streetProps = streetGroups[streetName];
         
         // Sort by house number
@@ -345,7 +371,7 @@ export const getPropertyResultSummary = (logs) => {
         return { hasResult: false, latestResult: null, resultText: null, status: 'ELIGIBLE' };
     }
 
-    const sortedLogs = [...logs].sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
+    const sortedLogs = [...logs].sort((a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime());
     const latest = sortedLogs[0];
 
     return {

@@ -520,7 +520,6 @@ function StatBox({ label, value, highlight = false, tooltip = undefined }) {
                     <TooltipProvider>
                         <Tooltip>
                             <TooltipTrigger><HelpCircle className="w-3 h-3 text-gray-500" /></TooltipTrigger>
-                            {/* @ts-ignore */}
                             <TooltipContent className="bg-black border border-gray-800 text-white text-xs max-w-[200px]">
                                 <p>{tooltip}</p>
                             </TooltipContent>
@@ -575,6 +574,16 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave,
         return { knocked: knockedHashes.size, total: hashes.size };
     }, [route.properties, logs]);
 
+    const dateRange = useMemo(() => {
+        const dates = (route.properties || [])
+            .map(p => p.sold_date ? new Date(p.sold_date).getTime() : null)
+            .filter(Boolean);
+        if (dates.length === 0) return null;
+        const min = new Date(Math.min(...dates));
+        const max = new Date(Math.max(...dates));
+        return formatDateRange(min, max);
+    }, [route.properties]);
+
     return (
         <div
             className="p-4 rounded-xl border transition-all relative overflow-hidden w-full box-border"
@@ -585,7 +594,7 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave,
         >
             {/* Rank Ribbon */}
             {rank <= 3 && (
-                <div className={`absolute top-0 left-0 w-12 h-12 flex items-center justify-center rounded-br-2xl text-black font-bold text-lg shadow-lg z-10 ${rank === 1 ? 'bg-yellow-400' : rank === 2 ? 'bg-gray-300' : 'bg-orange-700'
+                <div className={`absolute top-0 left-0 w-12 h-12 flex items-center justify-center rounded-br-2xl text-black font-bold text-lg shadow-lg z-10 ${rank === 1 ? 'bg-yellow-400' : rank === 2 ? 'bg-gray-300' : rank === 3 ? 'bg-orange-700' : ''
                     }`}>
                     #{rank}
                 </div>
@@ -597,13 +606,20 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave,
                         {rank > 3 && <span className="text-gray-500 text-xs">#{rank}</span>}
                         <span className="truncate">{route.name}</span>
                     </span>
-                    <Badge variant="default" className="shrink-0" style={{
-                        background: route.competitivenessScore >= 150 ? '#22c55e' :
-                            route.competitivenessScore >= 100 ? '#eab308' : '#666',
-                        color: '#000'
-                    }}>
-                        Score: {route.competitivenessScore}
-                    </Badge>
+                    <div className="flex items-center gap-2 shrink-0">
+                        {dateRange && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                                {dateRange}
+                            </span>
+                        )}
+                        <Badge variant="default" className="shrink-0" style={{
+                            background: route.competitivenessScore >= 150 ? '#22c55e' :
+                                route.competitivenessScore >= 100 ? '#eab308' : '#666',
+                            color: '#000'
+                        }}>
+                            {route.competitivenessScore || 0}
+                        </Badge>
+                    </div>
                 </div>
                 <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
                     <span>{route.houseCount} doors</span>
@@ -619,12 +635,6 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave,
                     </div>
                 )}
             </button>
-
-                    <div className="flex items-center justify-center w-full py-2 bg-green-500/5 rounded-lg border border-green-500/20">
-                                <span className="text-[9px] font-bold text-green-500 uppercase tracking-tighter flex items-center gap-1">
-                                    <Zap className="w-3 h-3" /> Auto-Saving...
-                                </span>
-                            </div>
 
             {/* Rep Info */}
             {recommendation && (
@@ -657,6 +667,17 @@ function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete, logs = 
         const knockedHashes = new Set(routeLogs.map(l => l.address_hash));
         return { knocked: knockedHashes.size, total: hashes.size };
     }, [route.property_hashes, route.properties, logs]);
+
+    const dateRange = useMemo(() => {
+        const props = route.properties || [];
+        const dates = props
+            .map(p => p.sold_date ? new Date(p.sold_date).getTime() : null)
+            .filter(Boolean);
+        if (dates.length === 0) return null;
+        const min = new Date(Math.min(...dates));
+        const max = new Date(Math.max(...dates));
+        return formatDateRange(min, max);
+    }, [route.properties]);
 
     const handleRename = async () => {
         if (!newName.trim() || newName === route.name) { setEditing(false); return; }
@@ -707,13 +728,20 @@ function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete, logs = 
                             <span className="text-[10px] text-gray-500">{route.assigned_to_name}</span>
                         )}
                     </div>
-                    <Badge variant="default" className="shrink-0" style={{
-                        background: route.status === 'COMPLETED' ? '#22c55e' :
-                            route.status === 'IN_PROGRESS' ? '#3b82f6' : '#333',
-                        color: '#fff'
-                    }}>
-                        {route.status}
-                    </Badge>
+                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                        {dateRange && (
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 leading-none">
+                                {dateRange}
+                            </span>
+                        )}
+                        <Badge variant="default" className="shrink-0" style={{
+                            background: route.status === 'COMPLETED' ? '#22c55e' :
+                                route.status === 'IN_PROGRESS' ? '#3b82f6' : '#333',
+                            color: '#fff'
+                        }}>
+                            {route.status}
+                        </Badge>
+                    </div>
                 </div>
                 <div className="flex gap-3 text-[10px] text-gray-600 mt-1">
                     <span>{route.houseCount || route.metrics?.house_count} doors</span>
@@ -749,3 +777,18 @@ function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete, logs = 
         </div>
     );
 }
+
+function formatDateRange(min, max) {
+    if (!min || !max) return null;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const minM = months[min.getMonth()];
+    const minY = min.getFullYear();
+    const maxM = months[max.getMonth()];
+    const maxY = max.getFullYear();
+
+    if (minY === maxY && minM === maxM) return `${minM} ${minY}`;
+    if (minY === maxY) return `${minM} – ${maxM} ${minY}`;
+    return `${minM} ${minY} – ${maxM} ${maxY}`;
+}
+
+export default RouteCommandPanel;
