@@ -54,8 +54,12 @@ Deno.serve(async (req: Request) => {
         try {
              event = await stripe.webhooks.constructEventAsync(body, signature, endpointSecret);
         } catch (err: any) {
-            console.error(`Webhook signature verification failed: ${err.message}`);
-            return Response.json({ error: `Webhook Error: ${err.message || 'Verification failed'}` }, { status: 400 });
+            const secretHint = endpointSecret ? `...${endpointSecret.slice(-4)}` : 'MISSING';
+            console.error(`Webhook signature verification failed (Using secret ${secretHint}): ${err.message}`);
+            return Response.json({ 
+                error: `Webhook Error: ${err.message || 'Verification failed'}`,
+                hint: `Your app is using a secret ending in ${secretHint}. Check this against your Stripe Webhook Signing Secret.`
+            }, { status: 400 });
         }
 
         console.log(`Received Webhook Event: ${event.type} [${event.id}]`);
