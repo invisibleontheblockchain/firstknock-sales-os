@@ -830,6 +830,11 @@ export default function Home() {
                     });
                 }
 
+                // Route is completed if all properties have been knocked (non-ELIGIBLE status)
+                const isCompleted = routeProps.length > 0 && routeProps.every(p => 
+                    p.effective_status !== 'ELIGIBLE' && p.effective_status !== 'OTHER'
+                );
+
                 return {
                     ...route,
                     id: route.id,
@@ -837,7 +842,8 @@ export default function Home() {
                     houseCount: routeProps.length,
                     totalDistance: route.metrics?.distance || 0,
                     competitivenessScore: route.metrics?.score || 0,
-                    isSaved: true
+                    isSaved: true,
+                    isCompleted
                 };
             }).filter(r => r.properties.length > 0)
             .sort((a, b) => (b.competitivenessScore || 0) - (a.competitivenessScore || 0));

@@ -16,6 +16,9 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
     useEffect(() => {
         if (!map || !activeRoute?.properties?.length) return;
 
+        const isCompleted = activeRoute.isCompleted;
+        const routeColor = isCompleted ? '#6b7280' : BRAND.gold;
+
         // Clean up previous layer
         if (layerRef.current) {
             map.removeLayer(layerRef.current);
@@ -30,7 +33,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             const line = L.polyline(
                 props.map(p => [p.lat, p.lng]),
                 {
-                    color: BRAND.gold,
+                    color: routeColor,
                     weight: mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4,
                     opacity: mapSettings.lineOpacity ? Math.max(0.6, mapSettings.lineOpacity) : 0.8,
                     dashArray: lineDashArray || null,
@@ -61,7 +64,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             // Circle pin (canvas-rendered, fast)
             const circle = L.circleMarker([p.lat, p.lng], {
                 radius: 5,
-                fillColor: isFirst ? '#22c55e' : '#f97316',
+                fillColor: isFirst ? '#22c55e' : (isCompleted ? '#6b7280' : '#f97316'),
                 fillOpacity: 1,
                 color: '#fff',
                 weight: 1.5,
@@ -350,9 +353,14 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                         return route.properties.some(p => p.zip_code === analyzeZipFilter);
                     })
                     .map((route, routeIdx) => {
-                        const repColor = route.assigned_to
+                        let repColor = route.assigned_to
                             ? (repColors[route.assigned_to] || '#3b82f6')
                             : ROUTE_COLORS[routeIdx % ROUTE_COLORS.length];
+                        
+                        // If route is completed, override with gray
+                        if (route.isCompleted) {
+                            repColor = '#6b7280';
+                        }
 
                         const isUnassigned = !route.assigned_to;
                         const centerProp = route.properties[Math.floor(route.properties.length / 2)];
