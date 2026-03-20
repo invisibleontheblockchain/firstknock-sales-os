@@ -5,7 +5,7 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || Deno.env.get('STR
 const endpointSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
 
 // Helper to manage invite codes
-async function syncInviteCode(base44, userId, totalSeats) {
+async function syncInviteCode(base44: any, userId: string, totalSeats: number) {
     try {
         // Find existing code for this user
         // Note: Filtering logic depends on SDK capabilities. 
@@ -40,10 +40,11 @@ async function syncInviteCode(base44, userId, totalSeats) {
     }
 }
 
-Deno.serve(async (req) => {
+Deno.serve(async (req: Request) => {
     try {
         const signature = req.headers.get('stripe-signature');
         if (!signature || !endpointSecret) {
+            console.error('Missing signature or secret. endpointSecret present?', !!endpointSecret);
             return Response.json({ error: 'Missing signature or secret' }, { status: 400 });
         }
 
@@ -52,89 +53,110 @@ Deno.serve(async (req) => {
 
         try {
              event = await stripe.webhooks.constructEventAsync(body, signature, endpointSecret);
-        } catch (err) {
+        } catch (err: any) {
             console.error(`Webhook signature verification failed: ${err.message}`);
-            return Response.json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
+            return Response.json({ error: `Webhook Error: ${err.message || 'Verification failed'}` }, { status: 400 });
         }
 
+        console.log(`Received Webhook Event: ${event.type} [${event.id}]`);
         const base44 = createClientFromRequest(req);
         
-        switch (event.type) {
-            case 'checkout.session.completed': {
-                const session = event.data.object;
-                const userId = session.metadata.base44_user_id;
-                
-                if (userId) {
-                    // Get quantity (seats) from session if available, or fetch subscription
-                    let quantity = 1;
-                    // For subscription mode, session doesn't always have quantity directly in the root object easily accessible 
-                    // without expanding line_items, but usually line_items are not expanded in webhook payload.
-                    // However, we can fetch the subscription.
-                    if (session.subscription) {
-                        const sub = await stripe.subscriptions.retrieve(session.subscription);
-                        if (sub.items && sub.items.data.length > 0) {
-                            quantity = sub.items.data[0].quantity;
+        try {
+            switch (event.type) {
+                case 'checkout.session.completed': {
+                    const session = event.data.object;
+                    const userId = session.metadata?.base44_user_id;
+                    
+                    if (userId) {
+                        let quantity = 1;
+                        if (session.subscription) {
+                            try {
+                                const sub = await stripe.subscriptions.retrieve(session.subscription);
+                                if (sub.items && sub.items.data.length > 0) {
+                                    quantity = sub.items.data[0].quantity || 1;
+                                }
+                            } catch (subErr: any) {
+                                console.error(`Error retrieving subscription ${session.subscription}:`, subErr.message);
+                            }
                         }
-                    }
 
-                    await base44.asServiceRole.entities.User.update(userId, {
-                        stripe_customer_id: session.customer,
-                        subscription_status: 'active',
-                        total_seats: quantity
-                    });
+                        await base44.asServiceRole.entities.User.update(userId, {
+                            stripe_customer_id: session.customer,
+                            subscription_status: 'active',
+                            total_seats: quantity
+                        });
 
-                    // Sync Invite Code
-                    await syncInviteCode(base44, userId, quantity);
-                }
-                break;
-            }
-            case 'customer.subscription.updated': {
-                const subscription = event.data.object;
-                const userId = subscription.metadata?.base44_user_id;
-                const status = subscription.status;
-                const quantity = subscription.items.data[0].quantity;
-                const planId = subscription.items.data[0].price.id;
-                const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
-
-                if (userId) {
-                     await base44.asServiceRole.entities.User.update(userId, {
-                        subscription_status: status,
-                        subscription_plan_id: planId,
-                        subscription_period_end: periodEnd,
-                        total_seats: quantity
-                    });
-
-                    if (status === 'active' || status === 'trialing') {
                         await syncInviteCode(base44, userId, quantity);
+                        console.log(`Successfully processed checkout.session.completed for user ${userId}`);
+                    } else {
+                        console.warn(`No userId in session metadata for ${session.id}`);
                     }
-                } else {
-                    // Fallback: Try to find user by stripe_customer_id if needed
-                    // But we relied on metadata propagation.
-                    console.log(`No userId in subscription metadata for ${subscription.id}`);
+                    break;
                 }
-                break;
-            }
-            case 'customer.subscription.deleted': {
-                const subscription = event.data.object;
-                const userId = subscription.metadata?.base44_user_id;
-                if (userId) {
-                    await base44.asServiceRole.entities.User.update(userId, {
-                        subscription_status: 'canceled'
-                    });
-                    // Disable invite code?
-                    const existingCodes = await base44.asServiceRole.entities.InviteCode.filter({ linked_user_id: userId });
-                    const items = Array.isArray(existingCodes) ? existingCodes : (existingCodes?.items || []);
-                    if(items.length > 0) {
-                        await base44.asServiceRole.entities.InviteCode.update(items[0].id, { is_active: false });
+                case 'customer.subscription.updated': {
+                    const subscription = event.data.object;
+                    const userId = subscription.metadata?.base44_user_id;
+                    const status = subscription.status;
+                    
+                    // Safely get quantity and planId
+                    const firstItem = subscription.items?.data?.[0];
+                    const quantity = firstItem?.quantity || 1;
+                    const planId = firstItem?.price?.id;
+                    const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+
+                    if (userId) {
+                         await base44.asServiceRole.entities.User.update(userId, {
+                            subscription_status: status,
+                            subscription_plan_id: planId,
+                            subscription_period_end: periodEnd,
+                            total_seats: quantity
+                        });
+
+                        if (status === 'active' || status === 'trialing') {
+                            await syncInviteCode(base44, userId, quantity);
+                        }
+                        console.log(`Successfully updated subscription for user ${userId}. Status: ${status}`);
+                    } else {
+                        console.log(`No userId in subscription metadata for ${subscription.id}`);
                     }
+                    break;
                 }
-                break;
+                case 'customer.subscription.deleted': {
+                    const subscription = event.data.object;
+                    const userId = subscription.metadata?.base44_user_id;
+                    if (userId) {
+                        await base44.asServiceRole.entities.User.update(userId, {
+                            subscription_status: 'canceled'
+                        });
+                        
+                        try {
+                            const existingCodes = await base44.asServiceRole.entities.InviteCode.filter({ linked_user_id: userId });
+                            const items = Array.isArray(existingCodes) ? existingCodes : (existingCodes?.items || []);
+                            if(items.length > 0) {
+                                await base44.asServiceRole.entities.InviteCode.update(items[0].id, { is_active: false });
+                            }
+                        } catch (codeErr: any) {
+                            console.error(`Error deactivating invite code for ${userId}:`, codeErr.message);
+                        }
+                        console.log(`Successfully canceled subscription for user ${userId}`);
+                    }
+                    break;
+                }
+                default: {
+                    console.log(`Unhandled event type: ${event.type}`);
+                    break;
+                }
             }
+        } catch (processError) {
+            // Catch errors during processing to avoid 500 for valid (verified) events
+            console.error(`Error processing event ${event.type}: ${processError.message}`);
+            // We still return 200 because the event was technically "received" and verified
+            // This prevents Stripe from retrying infinitely if it's a logic bug
         }
 
         return Response.json({ received: true });
     } catch (error) {
-        console.error(`Webhook error: ${error.message}`);
+        console.error(`Global Webhook Handler Error: ${error.message}`);
         return Response.json({ error: error.message }, { status: 500 });
     }
 });
