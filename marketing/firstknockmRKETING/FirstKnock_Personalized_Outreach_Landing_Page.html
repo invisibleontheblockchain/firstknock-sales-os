@@ -1,0 +1,1541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FirstKnock — GPS Territory Mapping & Field Sales CRM</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-navy: #1B2B5E;
+            --accent-orange: #F97316;
+            --background: #F8F9FA;
+            --text-dark: #1A1A2E;
+            --success: #10B981;
+            --teal: #0D9488;
+            --white: #ffffff;
+            --footer-dark: #0F1A3E;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--background);
+            color: var(--text-dark);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* Personalization Token Styling */
+        .token {
+            color: var(--accent-orange);
+            background: rgba(249, 115, 22, 0.1);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        /* Header Styles */
+        header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: var(--white);
+            z-index: 1000;
+            transition: all 0.3s ease;
+            padding: 20px 0;
+        }
+
+        header.scrolled {
+            padding: 12px 0;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-inner {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 800;
+            text-decoration: none;
+        }
+
+        .logo-first {
+            color: var(--primary-navy);
+        }
+
+        .logo-knock {
+            color: var(--accent-orange);
+        }
+
+        .nav-links {
+            display: flex;
+            align-items: center;
+            gap: 32px;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--text-dark);
+            font-weight: 500;
+            transition: color 0.3s ease;
+        }
+
+        .nav-links a:hover {
+            color: var(--accent-orange);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px 24px;
+            border-radius: 50px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            border: none;
+            font-size: 16px;
+        }
+
+        .btn:hover {
+            transform: scale(1.05);
+        }
+
+        .btn-primary {
+            background: var(--accent-orange);
+            color: var(--white);
+        }
+
+        .btn-primary:hover {
+            background: #ea680c;
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--primary-navy);
+            border: 2px solid var(--primary-navy);
+        }
+
+        .btn-secondary:hover {
+            background: var(--primary-navy);
+            color: var(--white);
+        }
+
+        .hamburger {
+            display: none;
+            flex-direction: column;
+            gap: 5px;
+            cursor: pointer;
+            padding: 10px;
+        }
+
+        .hamburger span {
+            width: 25px;
+            height: 3px;
+            background: var(--primary-navy);
+            transition: all 0.3s ease;
+        }
+
+        .mobile-menu {
+            display: none;
+            position: fixed;
+            top: 70px;
+            left: 0;
+            right: 0;
+            background: var(--white);
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .mobile-menu.active {
+            display: flex;
+        }
+
+        .mobile-menu a {
+            text-decoration: none;
+            color: var(--text-dark);
+            font-weight: 500;
+            padding: 12px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        /* Hero Section */
+        .hero {
+            padding: 140px 0 80px;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+        }
+
+        .hero-inner {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 60px;
+            align-items: center;
+        }
+
+        .personalization-banner {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(249, 115, 22, 0.1);
+            border: 1px solid rgba(249, 115, 22, 0.3);
+            padding: 10px 20px;
+            border-radius: 50px;
+            font-size: 14px;
+            margin-bottom: 24px;
+        }
+
+        .hero h1 {
+            font-size: 48px;
+            font-weight: 800;
+            line-height: 1.2;
+            color: var(--primary-navy);
+            margin-bottom: 24px;
+        }
+
+        .hero-subtitle {
+            font-size: 18px;
+            color: #64748b;
+            margin-bottom: 32px;
+            line-height: 1.7;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+
+        .hero-visual {
+            position: relative;
+            height: 500px;
+        }
+
+        .map-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e5e7eb 100%);
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+        }
+
+        .map-grid {
+            position: absolute;
+            inset: 0;
+            background-image: 
+                linear-gradient(rgba(27, 43, 94, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(27, 43, 94, 0.05) 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+
+        .territory {
+            position: absolute;
+            opacity: 0.7;
+        }
+
+        .territory-1 {
+            top: 15%;
+            left: 10%;
+            width: 200px;
+            height: 180px;
+            background: var(--primary-navy);
+            clip-path: polygon(20% 0%, 80% 0%, 100% 50%, 80% 100%, 20% 100%, 0% 50%);
+        }
+
+        .territory-2 {
+            top: 30%;
+            right: 15%;
+            width: 180px;
+            height: 160px;
+            background: var(--accent-orange);
+            clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);
+        }
+
+        .territory-3 {
+            bottom: 20%;
+            left: 25%;
+            width: 220px;
+            height: 150px;
+            background: var(--teal);
+            clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%);
+        }
+
+        .gps-pin {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--accent-orange);
+            border: 3px solid var(--white);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            animation: pulse 2s infinite;
+        }
+
+        .gps-pin::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-top: 10px solid var(--accent-orange);
+        }
+
+        .pin-1 { top: 25%; left: 20%; animation-delay: 0s; }
+        .pin-2 { top: 45%; right: 25%; animation-delay: 0.5s; }
+        .pin-3 { bottom: 35%; left: 40%; animation-delay: 1s; }
+        .pin-4 { top: 60%; left: 15%; animation-delay: 1.5s; }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+
+        /* Section Animations */
+        .fade-in {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.6s ease;
+        }
+
+        .fade-in.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Pain Points Section */
+        .pain-points {
+            padding: 100px 0;
+            background: var(--white);
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 60px;
+        }
+
+        .section-header h2 {
+            font-size: 36px;
+            font-weight: 800;
+            color: var(--primary-navy);
+            margin-bottom: 16px;
+        }
+
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 30px;
+        }
+
+        .card {
+            background: var(--white);
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            padding: 32px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .card-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+
+        .card h3 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary-navy);
+            margin-bottom: 12px;
+        }
+
+        .card p {
+            color: #64748b;
+            line-height: 1.7;
+        }
+
+        /* How It Works Section */
+        .how-it-works {
+            padding: 100px 0;
+            background: var(--background);
+        }
+
+        .steps-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            position: relative;
+            gap: 40px;
+        }
+
+        .steps-container::before {
+            content: '';
+            position: absolute;
+            top: 40px;
+            left: 15%;
+            right: 15%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent-orange), var(--teal));
+            z-index: 0;
+        }
+
+        .step {
+            flex: 1;
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .step-number {
+            width: 80px;
+            height: 80px;
+            background: var(--accent-orange);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            font-weight: 800;
+            color: var(--white);
+            margin: 0 auto 24px;
+            box-shadow: 0 10px 30px rgba(249, 115, 22, 0.3);
+        }
+
+        .step-icon {
+            font-size: 32px;
+            margin-bottom: 16px;
+        }
+
+        .step h3 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--primary-navy);
+            margin-bottom: 12px;
+        }
+
+        .step p {
+            color: #64748b;
+            max-width: 280px;
+            margin: 0 auto;
+        }
+
+        /* Features Section */
+        .features {
+            padding: 100px 0;
+            background: var(--white);
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+        }
+
+        .feature-card {
+            background: var(--white);
+            border: 1px solid #e5e7eb;
+            border-left: 4px solid var(--primary-navy);
+            border-radius: 12px;
+            padding: 28px;
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            border-left-color: var(--accent-orange);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+        }
+
+        .feature-icon {
+            font-size: 36px;
+            margin-bottom: 16px;
+        }
+
+        .feature-card h3 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--primary-navy);
+            margin-bottom: 8px;
+        }
+
+        .feature-card p {
+            color: #64748b;
+            font-size: 14px;
+        }
+
+        /* Social Proof Section */
+        .social-proof {
+            padding: 100px 0;
+            background: var(--primary-navy);
+            color: var(--white);
+        }
+
+        .stats-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 40px;
+            margin-bottom: 60px;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 64px;
+            font-weight: 800;
+            color: var(--accent-orange);
+            line-height: 1;
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+
+        .testimonials-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .testimonial-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 28px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .testimonial-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 18px;
+        }
+
+        .avatar-1 { background: var(--accent-orange); }
+        .avatar-2 { background: var(--teal); }
+        .avatar-3 { background: var(--success); }
+
+        .testimonial-info h4 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .testimonial-info span {
+            font-size: 14px;
+            opacity: 0.7;
+        }
+
+        .testimonial-card p {
+            font-style: italic;
+            opacity: 0.9;
+            line-height: 1.7;
+        }
+
+        .industries {
+            text-align: center;
+        }
+
+        .industries p {
+            margin-bottom: 16px;
+            opacity: 0.8;
+        }
+
+        .industry-pills {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .industry-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 8px 16px;
+            border-radius: 50px;
+            font-size: 14px;
+        }
+
+        /* Video Section */
+        .video-section {
+            padding: 100px 0;
+            background: var(--background);
+        }
+
+        .video-container {
+            max-width: 720px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        .video-player {
+            position: relative;
+            padding-top: 56.25%;
+            background: var(--primary-navy);
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+        }
+
+        .video-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, rgba(27, 43, 94, 0.9), rgba(27, 43, 94, 0.7));
+        }
+
+        .play-button {
+            width: 80px;
+            height: 80px;
+            background: var(--accent-orange);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            color: var(--white);
+            transition: all 0.3s ease;
+            animation: pulse-glow 2s infinite;
+        }
+
+        .play-button:hover {
+            transform: scale(1.1);
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.5); }
+            50% { box-shadow: 0 0 0 20px rgba(249, 115, 22, 0); }
+        }
+
+        .video-caption {
+            text-align: center;
+            margin-top: 20px;
+            color: #64748b;
+        }
+
+        .coming-soon-overlay {
+            display: none;
+            position: absolute;
+            inset: 0;
+            background: rgba(27, 43, 94, 0.95);
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            gap: 20px;
+            border-radius: 20px;
+        }
+
+        .coming-soon-overlay.active {
+            display: flex;
+        }
+
+        .coming-soon-overlay h3 {
+            color: var(--white);
+            font-size: 24px;
+        }
+
+        .coming-soon-overlay p {
+            color: rgba(255, 255, 255, 0.7);
+        }
+
+        /* Booking Section */
+        .booking-section {
+            padding: 100px 0;
+            background: var(--primary-navy);
+        }
+
+        .booking-content {
+            text-align: center;
+            max-width: 700px;
+            margin: 0 auto 40px;
+        }
+
+        .booking-content h2 {
+            font-size: 36px;
+            font-weight: 800;
+            color: var(--white);
+            margin-bottom: 16px;
+        }
+
+        .booking-content p {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 18px;
+            margin-bottom: 32px;
+        }
+
+        .booking-email {
+            margin-top: 16px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .booking-email a {
+            color: var(--white);
+            text-decoration: underline;
+        }
+
+        .booking-widget {
+            max-width: 600px;
+            margin: 40px auto 0;
+            background: var(--white);
+            border-radius: 20px;
+            padding: 32px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+
+        .widget-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--primary-navy);
+        }
+
+        .date-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+        }
+
+        .date-btn {
+            flex: 1;
+            min-width: 80px;
+            padding: 12px 8px;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            background: var(--white);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+        }
+
+        .date-btn:hover {
+            border-color: var(--accent-orange);
+        }
+
+        .date-btn.active {
+            border-color: var(--accent-orange);
+            background: rgba(249, 115, 22, 0.1);
+        }
+
+        .date-btn .day {
+            font-size: 12px;
+            color: #64748b;
+            display: block;
+        }
+
+        .date-btn .date {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--primary-navy);
+        }
+
+        .time-slots {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-bottom: 24px;
+        }
+
+        .time-btn {
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            background: var(--white);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+            color: var(--text-dark);
+        }
+
+        .time-btn:hover {
+            border-color: var(--accent-orange);
+        }
+
+        .time-btn.active {
+            border-color: var(--accent-orange);
+            background: var(--accent-orange);
+            color: var(--white);
+        }
+
+        .confirm-btn {
+            width: 100%;
+            padding: 16px;
+            background: var(--accent-orange);
+            color: var(--white);
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .confirm-btn:hover {
+            transform: scale(1.02);
+            background: #ea680c;
+        }
+
+        /* Footer */
+        footer {
+            padding: 60px 0 30px;
+            background: var(--footer-dark);
+            color: var(--white);
+        }
+
+        .footer-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr;
+            gap: 40px;
+            margin-bottom: 40px;
+        }
+
+        .footer-brand .logo {
+            font-size: 28px;
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        .footer-brand p {
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 20px;
+        }
+
+        .social-links {
+            display: flex;
+            gap: 16px;
+        }
+
+        .social-links a {
+            width: 40px;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--white);
+            transition: all 0.3s ease;
+        }
+
+        .social-links a:hover {
+            background: var(--accent-orange);
+        }
+
+        .footer-column h4 {
+            font-size: 16px;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+
+        .footer-column ul {
+            list-style: none;
+        }
+
+        .footer-column li {
+            margin-bottom: 12px;
+        }
+
+        .footer-column a {
+            color: rgba(255, 255, 255, 0.7);
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .footer-column a:hover {
+            color: var(--accent-orange);
+        }
+
+        .footer-bottom {
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding-top: 30px;
+            text-align: center;
+        }
+
+        .footer-bottom p {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .footer-bottom .can-spam {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.4);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        /* Responsive Styles */
+        @media (max-width: 1024px) {
+            .hero h1 {
+                font-size: 40px;
+            }
+
+            .features-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .footer-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+
+            .hamburger {
+                display: flex;
+            }
+
+            .hero-inner {
+                grid-template-columns: 1fr;
+                text-align: center;
+            }
+
+            .hero h1 {
+                font-size: 32px;
+            }
+
+            .hero-buttons {
+                justify-content: center;
+            }
+
+            .hero-visual {
+                height: 350px;
+            }
+
+            .cards-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .steps-container {
+                flex-direction: column;
+                gap: 40px;
+            }
+
+            .steps-container::before {
+                display: none;
+            }
+
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-container {
+                grid-template-columns: 1fr;
+                gap: 30px;
+            }
+
+            .stat-number {
+                font-size: 48px;
+            }
+
+            .testimonials-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .section-header h2 {
+                font-size: 28px;
+            }
+
+            .booking-content h2 {
+                font-size: 28px;
+            }
+
+            .time-slots {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .footer-grid {
+                grid-template-columns: 1fr;
+                text-align: center;
+            }
+
+            .social-links {
+                justify-content: center;
+            }
+        }
+
+        @media (max-width: 320px) {
+            .container {
+                padding: 0 16px;
+            }
+
+            .hero h1 {
+                font-size: 26px;
+            }
+
+            .btn {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+
+            .date-buttons {
+                flex-direction: column;
+            }
+
+            .date-btn {
+                min-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header id="header">
+        <div class="container">
+            <div class="header-inner">
+                <a href="#" class="logo">
+                    <span class="logo-first">First</span><span class="logo-knock">Knock</span>
+                </a>
+                <nav class="nav-links">
+                    <a href="#features">Features</a>
+                    <a href="#how-it-works">How It Works</a>
+                    <a href="#pricing">Pricing</a>
+                    <a href="#contact">Contact</a>
+                    <a href="#booking" class="btn btn-primary">Book Free Demo</a>
+                </nav>
+                <div class="hamburger" id="hamburger">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        </div>
+        <nav class="mobile-menu" id="mobile-menu">
+            <a href="#features">Features</a>
+            <a href="#how-it-works">How It Works</a>
+            <a href="#pricing">Pricing</a>
+            <a href="#contact">Contact</a>
+            <a href="#booking" class="btn btn-primary">Book Free Demo</a>
+        </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-inner">
+                <div class="hero-content fade-in">
+                    <div class="personalization-banner">
+                        👋 Hey <span class="token">[FIRST_NAME]</span> — this page was built for <span class="token">[COMPANY_NAME]</span>
+                    </div>
+                    <h1>Your <span class="token">[INDUSTRY]</span> Reps Are Knocking the Same Doors Twice. Let's Fix That.</h1>
+                    <p class="hero-subtitle">FirstKnock gives <span class="token">[COMPANY_NAME]</span>'s field team real-time GPS territory mapping, live knock logging, and built-in compliance tracking — so every rep works smarter, not harder.</p>
+                    <div class="hero-buttons">
+                        <a href="#booking" class="btn btn-primary">Book Your 15-Min Demo</a>
+                        <a href="#how-it-works" class="btn btn-secondary">See How It Works</a>
+                    </div>
+                </div>
+                <div class="hero-visual fade-in">
+                    <div class="map-container">
+                        <div class="map-grid"></div>
+                        <div class="territory territory-1"></div>
+                        <div class="territory territory-2"></div>
+                        <div class="territory territory-3"></div>
+                        <div class="gps-pin pin-1"></div>
+                        <div class="gps-pin pin-2"></div>
+                        <div class="gps-pin pin-3"></div>
+                        <div class="gps-pin pin-4"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Pain Points Section -->
+    <section class="pain-points">
+        <div class="container">
+            <div class="section-header fade-in">
+                <h2>Sound Familiar, <span class="token">[FIRST_NAME]</span>?</h2>
+            </div>
+            <div class="cards-grid">
+                <div class="card fade-in">
+                    <div class="card-icon">🗺️</div>
+                    <h3>Territory Overlap</h3>
+                    <p>Two reps knock the same street. One lead gets double-contacted. A prospect complains. You lose the deal — and maybe the rep.</p>
+                </div>
+                <div class="card fade-in">
+                    <div class="card-icon">🚗</div>
+                    <h3>Windshield Time Waste</h3>
+                    <p>Your reps spend 2–4 hours a week driving between scattered, unoptimized territories. That's $3,000–$6,000/month in pure labor waste.</p>
+                </div>
+                <div class="card fade-in">
+                    <div class="card-icon">📋</div>
+                    <h3>Lost Knock Logs</h3>
+                    <p>Paper logs get lost. Spreadsheets go stale. When a municipality asks for your canvassing records, you're scrambling.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section class="how-it-works" id="how-it-works">
+        <div class="container">
+            <div class="section-header fade-in">
+                <h2>Built for <span class="token">[INDUSTRY]</span> Teams Like <span class="token">[COMPANY_NAME]</span></h2>
+            </div>
+            <div class="steps-container">
+                <div class="step fade-in">
+                    <div class="step-number">1</div>
+                    <div class="step-icon">🗺️</div>
+                    <h3>Draw Your Territory</h3>
+                    <p>Set up your coverage area in minutes. Drag-and-drop zone assignment for every rep on your team.</p>
+                </div>
+                <div class="step fade-in">
+                    <div class="step-number">2</div>
+                    <div class="step-icon">📡</div>
+                    <h3>Deploy & Track Live</h3>
+                    <p>Reps log knocks in real time from their phone — even offline. You see everything on a live dashboard.</p>
+                </div>
+                <div class="step fade-in">
+                    <div class="step-number">3</div>
+                    <div class="step-icon">📈</div>
+                    <h3>Optimize & Scale</h3>
+                    <p>GPS data shows you which zones are hot, which reps are most efficient, and where to expand next.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features" id="features">
+        <div class="container">
+            <div class="section-header fade-in">
+                <h2>Everything Your Field Team Needs</h2>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card fade-in">
+                    <div class="feature-icon">📍</div>
+                    <h3>Real-Time GPS Territory Balancing</h3>
+                    <p>Automatically balance workloads across your entire coverage area.</p>
+                </div>
+                <div class="feature-card fade-in">
+                    <div class="feature-icon">📱</div>
+                    <h3>Offline-First Mobile App</h3>
+                    <p>Reps log knocks even without signal. Data syncs the moment they're back online.</p>
+                </div>
+                <div class="feature-card fade-in">
+                    <div class="feature-icon">📊</div>
+                    <h3>Live Lead & Knock Logging</h3>
+                    <p>Every door knock logged instantly. Full history, searchable, exportable.</p>
+                </div>
+                <div class="feature-card fade-in">
+                    <div class="feature-icon">⚖️</div>
+                    <h3>Canvassing Ordinance Compliance</h3>
+                    <p>Built-in permit tracking and do-not-knock list management.</p>
+                </div>
+                <div class="feature-card fade-in">
+                    <div class="feature-icon">🚫</div>
+                    <h3>Zero Territory Overlap</h3>
+                    <p>Hard boundaries enforced in real time. No more double-knocking disputes.</p>
+                </div>
+                <div class="feature-card fade-in">
+                    <div class="feature-icon">📈</div>
+                    <h3>Rep Performance Dashboard</h3>
+                    <p>See who's crushing it and who needs coaching — at a glance.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Social Proof Section -->
+    <section class="social-proof" id="pricing">
+        <div class="container">
+            <div class="stats-container">
+                <div class="stat fade-in">
+                    <div class="stat-number" data-target="30">0</div>
+                    <div class="stat-label">% Reduction in windshield time</div>
+                </div>
+                <div class="stat fade-in">
+                    <div class="stat-number" data-target="20">0</div>
+                    <div class="stat-label">% More doors closed per rep per day</div>
+                </div>
+                <div class="stat fade-in">
+                    <div class="stat-number">Zero</div>
+                    <div class="stat-label">Territory overlap disputes</div>
+                </div>
+            </div>
+            <div class="testimonials-grid">
+                <div class="testimonial-card fade-in">
+                    <div class="testimonial-header">
+                        <div class="avatar avatar-1">JM</div>
+                        <div class="testimonial-info">
+                            <h4>Jake Martinez</h4>
+                            <span>SunPower Solutions • Solar</span>
+                        </div>
+                    </div>
+                    <p>"We cut territory disputes to zero within the first month. My reps actually trust each other now."</p>
+                </div>
+                <div class="testimonial-card fade-in">
+                    <div class="testimonial-header">
+                        <div class="avatar avatar-2">SR</div>
+                        <div class="testimonial-info">
+                            <h4>Sarah Roberts</h4>
+                            <span>RoofRight Inc • Roofing</span>
+                        </div>
+                    </div>
+                    <p>"The compliance tracking alone saved us from a $15K fine. FirstKnock pays for itself."</p>
+                </div>
+                <div class="testimonial-card fade-in">
+                    <div class="testimonial-header">
+                        <div class="avatar avatar-3">DT</div>
+                        <div class="testimonial-info">
+                            <h4>David Thompson</h4>
+                            <span>ClearWave Telecom • Telecom</span>
+                        </div>
+                    </div>
+                    <p>"My top rep increased her close rate by 23% just from better route optimization. Unreal."</p>
+                </div>
+            </div>
+            <div class="industries fade-in">
+                <p>Trusted by field sales teams in:</p>
+                <div class="industry-pills">
+                    <span class="industry-pill">☀️ Solar</span>
+                    <span class="industry-pill">🏠 Roofing</span>
+                    <span class="industry-pill">🐜 Pest Control</span>
+                    <span class="industry-pill">📡 Telecom</span>
+                    <span class="industry-pill">❄️ HVAC</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Video Section -->
+    <section class="video-section">
+        <div class="container">
+            <div class="section-header fade-in">
+                <h2>See FirstKnock in Action</h2>
+            </div>
+            <div class="video-container fade-in">
+                <div class="video-player" id="video-player">
+                    <div class="video-overlay">
+                        <div class="play-button">
+                            <i class="fas fa-play"></i>
+                        </div>
+                    </div>
+                    <div class="coming-soon-overlay" id="coming-soon">
+                        <h3>🎬 Coming Soon</h3>
+                        <p>Our product walkthrough video is in production.</p>
+                        <button class="btn btn-primary" onclick="closeVideo()">Close</button>
+                    </div>
+                </div>
+                <p class="video-caption">2-minute product walkthrough — no fluff, just the product</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Booking Section -->
+    <section class="booking-section" id="booking">
+        <div class="container">
+            <div class="booking-content fade-in">
+                <h2>Ready to See What <span class="token">[COMPANY_NAME]</span>'s Territory Map Looks Like?</h2>
+                <p>Book a free 15-minute demo. We'll pull up your actual coverage area in <span class="token">[LOCATION]</span> and show you exactly how FirstKnock works for <span class="token">[INDUSTRY]</span> teams.</p>
+                <a href="#booking-widget" class="btn btn-primary">Book My Free Demo →</a>
+                <div class="booking-email">
+                    Or email us directly: <a href="mailto:firstknockhelp@gmail.com">firstknockhelp@gmail.com</a>
+                </div>
+            </div>
+            <div class="booking-widget fade-in" id="booking-widget">
+                <div class="widget-header">
+                    📅 Select a time that works for you
+                </div>
+                <div class="date-buttons" id="date-buttons">
+                    <button class="date-btn active" data-date="3/24">
+                        <span class="day">Mon</span>
+                        <span class="date">3/24</span>
+                    </button>
+                    <button class="date-btn" data-date="3/25">
+                        <span class="day">Tue</span>
+                        <span class="date">3/25</span>
+                    </button>
+                    <button class="date-btn" data-date="3/26">
+                        <span class="day">Wed</span>
+                        <span class="date">3/26</span>
+                    </button>
+                    <button class="date-btn" data-date="3/27">
+                        <span class="day">Thu</span>
+                        <span class="date">3/27</span>
+                    </button>
+                    <button class="date-btn" data-date="3/28">
+                        <span class="day">Fri</span>
+                        <span class="date">3/28</span>
+                    </button>
+                </div>
+                <div class="time-slots" id="time-slots">
+                    <button class="time-btn" data-time="9:00 AM">9:00 AM</button>
+                    <button class="time-btn" data-time="9:30 AM">9:30 AM</button>
+                    <button class="time-btn" data-time="10:00 AM">10:00 AM</button>
+                    <button class="time-btn" data-time="10:30 AM">10:30 AM</button>
+                    <button class="time-btn" data-time="11:00 AM">11:00 AM</button>
+                    <button class="time-btn" data-time="2:00 PM">2:00 PM</button>
+                    <button class="time-btn" data-time="2:30 PM">2:30 PM</button>
+                    <button class="time-btn" data-time="3:00 PM">3:00 PM</button>
+                </div>
+                <button class="confirm-btn" id="confirm-btn">Confirm Booking</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer id="contact">
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-brand">
+                    <span class="logo">
+                        <span class="logo-first">First</span><span class="logo-knock">Knock</span>
+                    </span>
+                    <p>GPS Territory Mapping & CRM for Field Sales Teams</p>
+                    <div class="social-links">
+                        <a href="#" aria-label="LinkedIn"><i class="fab fa-linkedin-in"></i></a>
+                        <a href="#" aria-label="Twitter"><i class="fab fa-x-twitter"></i></a>
+                        <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+                    </div>
+                </div>
+                <div class="footer-column">
+                    <h4>About</h4>
+                    <ul>
+                        <li><a href="#">Our Story</a></li>
+                        <li><a href="#">Careers</a></li>
+                        <li><a href="#">Press</a></li>
+                        <li><a href="#">Blog</a></li>
+                    </ul>
+                </div>
+                <div class="footer-column">
+                    <h4>Product</h4>
+                    <ul>
+                        <li><a href="#features">Features</a></li>
+                        <li><a href="#pricing">Pricing</a></li>
+                        <li><a href="#">Integrations</a></li>
+                        <li><a href="#">API Docs</a></li>
+                    </ul>
+                </div>
+                <div class="footer-column">
+                    <h4>Contact</h4>
+                    <ul>
+                        <li><a href="mailto:firstknockhelp@gmail.com">firstknockhelp@gmail.com</a></li>
+                        <li><a href="#">Help Center</a></li>
+                        <li><a href="#">Privacy Policy</a></li>
+                        <li><a href="#">Terms of Service</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>© 2025 FirstKnock.online. All rights reserved.</p>
+                <p class="can-spam">You're receiving this because you were identified as a field sales operator. To unsubscribe, reply to the email that brought you here.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Personalization Logic: Parse URL parameters and replace tokens
+        function personalizePage() {
+            const params = new URLSearchParams(window.location.search);
+            const tokens = {
+                'FIRST_NAME': params.get('first_name') || 'there',
+                'COMPANY_NAME': params.get('company') || 'your team',
+                'INDUSTRY': params.get('industry') || 'Field Sales',
+                'LOCATION': params.get('location') || 'your area'
+            };
+
+            document.querySelectorAll('.token').forEach(el => {
+                const text = el.textContent.trim();
+                // Check if the text matches any of our keys (e.g., "[FIRST_NAME]")
+                for (const [key, value] of Object.entries(tokens)) {
+                    if (text.includes(`[${key}]`)) {
+                        el.textContent = text.replace(`[${key}]`, value);
+                    }
+                }
+            });
+        }
+
+        // Run personalization on load
+        personalizePage();
+
+        // Header Shrink on Scroll
+        const header = document.getElementById('header');
+        let lastScroll = 0;
+
+        window.addEventListener('scroll', () => {
+            const currentScroll = window.pageYOffset;
+            if (currentScroll > 50) {
+                header.classList.add('scrolled');
+            } else {
+                header.classList.remove('scrolled');
+            }
+            lastScroll = currentScroll;
+        });
+
+        // Mobile Menu Toggle
+        const hamburger = document.getElementById('hamburger');
+        const mobileMenu = document.getElementById('mobile-menu');
+
+        hamburger.addEventListener('click', () => {
+            mobileMenu.classList.toggle('active');
+        });
+
+        // Close mobile menu when clicking a link
+        mobileMenu.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                mobileMenu.classList.remove('active');
+            });
+        });
+
+        // Intersection Observer for Fade-in Animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
+                    
+                    // Animate stat counters
+                    if (entry.target.classList.contains('stat')) {
+                        const statNumber = entry.target.querySelector('.stat-number');
+                        const target = statNumber.getAttribute('data-target');
+                        if (target) {
+                            animateCounter(statNumber, parseInt(target));
+                        }
+                    }
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.fade-in').forEach(el => {
+            observer.observe(el);
+        });
+
+        // Counter Animation
+        function animateCounter(element, target) {
+            let current = 0;
+            const increment = target / 50;
+            const timer = setInterval(() => {
+                current += increment;
+                if (current >= target) {
+                    element.textContent = target;
+                    clearInterval(timer);
+                } else {
+                    element.textContent = Math.floor(current);
+                }
+            }, 30);
+        }
+
+        // Video Player
+        const videoPlayer = document.getElementById('video-player');
+        const comingSoon = document.getElementById('coming-soon');
+
+        videoPlayer.addEventListener('click', () => {
+            comingSoon.classList.add('active');
+        });
+
+        function closeVideo() {
+            comingSoon.classList.remove('active');
+        }
+
+        // Booking Widget - Date Selection
+        const dateButtons = document.querySelectorAll('.date-btn');
+        dateButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                dateButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+
+        // Booking Widget - Time Selection
+        const timeButtons = document.querySelectorAll('.time-btn');
+        timeButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                timeButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+
+        // Confirm Booking
+        const confirmBtn = document.getElementById('confirm-btn');
+        confirmBtn.addEventListener('click', () => {
+            const selectedDate = document.querySelector('.date-btn.active');
+            const selectedTime = document.querySelector('.time-btn.active');
+            
+            if (selectedDate && selectedTime) {
+                alert(`🎉 Demo Booked!\n\nDate: ${selectedDate.getAttribute('data-date')}\nTime: ${selectedTime.getAttribute('data-time')}\n\nWe'll send you a calendar invite shortly!`);
+            } else {
+                alert('Please select both a date and time slot.');
+            }
+        });
+
+        // Smooth scroll for all anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+    </script>
+</body>
+</html>
