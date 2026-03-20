@@ -96,7 +96,7 @@ export default function RouteBuilderSettings({
                 setMinScore(0);           // 0 min score means nobody is hidden
                 setSoldDateFilter(12);    // Past 12 months
                 setSortBy('recent_sale');
-                setRouteConfig(prev => ({ ...prev, walkingPattern: 'recent_sale_first', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [], minBeds: null, minBaths: null, minSqft: null, maxSqft: null, minLotSize: null, maxLotSize: null }));
+                setRouteConfig(prev => ({ ...prev, walkingPattern: 'recent_sale_first', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, excludeAssigned: true, excludeCommercial: true, excludeCondos: true, excludePreviouslyKnocked: true, minPrice: null, maxPrice: null, propertyTypes: [], minBeds: null, minBaths: null, minSqft: null, maxSqft: null, minLotSize: null, maxLotSize: null }));
                 if (!isInitial) toast.success("FirstKnock Best applied!");
             }
         },
@@ -113,7 +113,7 @@ export default function RouteBuilderSettings({
                 setMinScore(0);
                 setSoldDateFilter(36); // Past 3 years (all data we pull)
                 setSortBy('score');
-                setRouteConfig(prev => ({ ...prev, walkingPattern: 'street_sweep', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
+                setRouteConfig(prev => ({ ...prev, walkingPattern: 'street_sweep', minimizeTurns: true, use2Opt: true, returnToStart: false, excludeTerminal: true, includeCallbacks: true, excludeAssigned: true, excludeCommercial: true, excludeCondos: true, excludePreviouslyKnocked: true, minPrice: null, maxPrice: null, propertyTypes: [] }));
                 toast.success("Hot Market Sweep applied");
             }
         },
@@ -146,6 +146,9 @@ export default function RouteBuilderSettings({
             excludeTerminal: true,
             includeCallbacks: true,
             excludeAssigned: true,
+            excludeCommercial: true,
+            excludeCondos: true,
+            excludePreviouslyKnocked: true,
             propertyTypes: [],
             minPrice: null,
             maxPrice: null,
@@ -619,6 +622,30 @@ export default function RouteBuilderSettings({
                                         checked={routeConfig.includeCallbacks}
                                         onChange={(v) => setRouteConfig(prev => ({ ...prev, includeCallbacks: v }))}
                                     />
+
+                                    <div className="pt-2 mt-2 border-t border-gray-800/30 space-y-2">
+                                        <ToggleOption
+                                            label="Exclude Commercial"
+                                            description="Filter out businesses, offices, and retail"
+                                            icon={<Shield className="w-4 h-4 text-orange-400" />}
+                                            checked={routeConfig.excludeCommercial}
+                                            onChange={(v) => setRouteConfig(prev => ({ ...prev, excludeCommercial: v }))}
+                                        />
+                                        <ToggleOption
+                                            label="Exclude Condos"
+                                            description="Filter out apartments and condo units"
+                                            icon={<Layers className="w-4 h-4 text-blue-400" />}
+                                            checked={routeConfig.excludeCondos}
+                                            onChange={(v) => setRouteConfig(prev => ({ ...prev, excludeCondos: v }))}
+                                        />
+                                        <ToggleOption
+                                            label="Hide Knocked Doors"
+                                            description="Never route a house you've already visited"
+                                            icon={<Footprints className="w-4 h-4 text-green-400" />}
+                                            checked={routeConfig.excludePreviouslyKnocked}
+                                            onChange={(v) => setRouteConfig(prev => ({ ...prev, excludePreviouslyKnocked: v }))}
+                                        />
+                                    </div>
                                 </div>
                             </SettingsSection>
 

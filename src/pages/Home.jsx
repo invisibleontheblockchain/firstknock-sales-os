@@ -253,6 +253,9 @@ export default function Home() {
         excludeTerminal: true,
         includeCallbacks: true,
         excludeAssigned: true,
+        excludeCommercial: true,
+        excludeCondos: true,
+        excludePreviouslyKnocked: true,
         propertyTypes: [],
         minPrice: null,
         maxPrice: null,
@@ -1117,6 +1120,37 @@ export default function Home() {
                     if (!p.property_type) return true;
                     const pt = p.property_type.toLowerCase();
                     return routeConfig.propertyTypes.some(t => pt.includes(t.toLowerCase()));
+                });
+            }
+
+            // Exclude Commercial properties (if enabled)
+            if (routeConfig.excludeCommercial) {
+                const commKeywords = ['commercial', 'industrial', 'retail', 'office', 'warehouse', 'business', 'shopping'];
+                workingSet = workingSet.filter(p => {
+                    if (!p.property_type) return true;
+                    const pt = p.property_type.toLowerCase();
+                    return !commKeywords.some(kw => pt.includes(kw));
+                });
+            }
+
+            // Exclude Condos/Apartments (if enabled)
+            if (routeConfig.excludeCondos) {
+                const condoKeywords = ['condo', 'apartment', 'co-op', 'coop', 'multifamily', 'multi family', 'multi-family'];
+                workingSet = workingSet.filter(p => {
+                    if (!p.property_type) return true;
+                    const pt = p.property_type.toLowerCase();
+                    return !condoKeywords.some(kw => pt.includes(kw));
+                });
+            }
+
+            // Exclude Previously Knocked doors (if enabled)
+            if (routeConfig.excludePreviouslyKnocked) {
+                workingSet = workingSet.filter(p => {
+                    const hash = p.address_hash || p.id;
+                    const propLogs = logsByAddress.get(hash);
+                    // Force include if it's a CALLBACK status, otherwise exclude if any logs exist
+                    if (p.effective_status === 'CALLBACK') return true;
+                    return !propLogs || propLogs.length === 0;
                 });
             }
 
