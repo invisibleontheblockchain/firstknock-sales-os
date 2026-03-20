@@ -382,7 +382,7 @@ export default function Home() {
 
     // Fetch Properties - support both user-specific and fallback for mobile auth
     const { data: userProperties = [], isLoading: propsLoading } = useQuery({
-        queryKey: ['masterProperties', user?.email, user?.territory_zip_codes],
+        queryKey: ['masterProperties', user?.email, user?.territory_zip_codes, user?.generated_zip_codes],
         staleTime: 1000 * 60 * 3, // 3 min — avoid refetch on every tab switch
         gcTime: 1000 * 60 * 10,
         queryFn: async () => {
@@ -392,11 +392,13 @@ export default function Home() {
                 let items = [];
                 // If user has configured territory zip codes, fetch properties for those zips
                 // This ensures we get the data regardless of who created it (e.g. system import)
-                if (user.territory_zip_codes && user.territory_zip_codes.length > 0) {
-                    console.log(`[Home] Fetching properties for zips: ${user.territory_zip_codes.join(', ')}`);
+                const allZips = Array.from(new Set([...(user.territory_zip_codes || []), ...(user.generated_zip_codes || [])]));
+
+                if (allZips.length > 0) {
+                    console.log(`[Home] Fetching properties for zips: ${allZips.join(', ')}`);
 
                     // Chunk requests to avoid crashing the browser with too many concurrent requests
-                    const zips = user.territory_zip_codes;
+                    const zips = allZips;
                     const chunkSize = 5;
                     let totalFetched = 0;
                     const MAX_PROPERTIES = 50000; // Property fetch limit
@@ -717,6 +719,10 @@ export default function Home() {
 
                 // Apply territory filter only when appropriate (not when polygon/explicit zips are active)
                 if (applyTerritoryFilter) {
+                    const hash = p.address_hash || p.id;
+                    // ALWAYS keep properties that are part of a saved route to prevent them from disappearing
+                    if (assignedHashes.has(hash)) return true;
+
                     const propZip = String(p.zip_code || '').trim().slice(0, 5);
                     if (!territoryZips.includes(propZip)) return false;
                 }
