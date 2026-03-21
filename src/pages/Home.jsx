@@ -147,7 +147,6 @@ export default function Home() {
     const [showRoutePanel, setShowRoutePanel] = useState(false);
     const [showCompare, setShowCompare] = useState(false);
     const [housesPerRoute, setHousesPerRoute] = useState(999999); // Default: All-in-One route
-    const [maxRouteDistance, setMaxRouteDistance] = useState(50); // Default Unlimited (50 miles)
     const ROUTE_SIZE_OPTIONS = [25, 50, 75, 100];
     const [sortBy, setSortBy] = useState('score'); // score, houses, distance
     const [minScore, setMinScore] = useState(0); // Default All Scores
@@ -302,7 +301,6 @@ export default function Home() {
         
         // Restore base settings (default 10000 = all-in-one route)
         setHousesPerRoute(template.config.houses_per_route || 10000);
-        if (template.config.max_distance) setMaxRouteDistance(template.config.max_distance);
         if (template.config.min_score) setMinScore(template.config.min_score);
         if (template.config.street_cooldown_days) setStreetCooldownDays(template.config.street_cooldown_days);
         if (template.config.zip_code_filter) setZipCodeFilter(template.config.zip_code_filter);
@@ -996,7 +994,7 @@ export default function Home() {
                         try {
                             const res = await base44.functions.invoke('fetchZipProperties', { 
                                 zip_code: zip, 
-                                sold_months: soldDateFilter === null ? 0 : (soldDateFilter || 12) 
+                                sold_months: 12 // Always fetch 12 months; UI slider filters locally
                             });
                             console.log(`[Generate] Fetch result for ${zip}:`, JSON.stringify(res.data));
                             if (res.data?.error) {
@@ -1270,7 +1268,6 @@ export default function Home() {
                     useStreetSweep: routeConfig.walkingPattern === 'street_sweep',
                     minimizeTurns: routeConfig.minimizeTurns,
                     use2Opt: routeConfig.use2Opt,
-                    maxRouteDistance: (maxRouteDistance > 0 && maxRouteDistance < 50) ? maxRouteDistance : null,
                     walkingPattern: routeConfig.walkingPattern,
                     returnToStart: routeConfig.returnToStart,
                     excludeTerminal: routeConfig.excludeTerminal,
@@ -1328,7 +1325,7 @@ export default function Home() {
         } finally {
             setRoutesGenerating(false);
         }
-    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, maxRouteDistance, soldDateFilter, drawnPolygon]);
+    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon]);
 
     // Reorder: re-run filtering + routing on frozen data without re-fetching
     const handleReorder = useCallback(async () => {
@@ -1472,7 +1469,6 @@ export default function Home() {
                     useStreetSweep: routeConfig.walkingPattern === 'street_sweep',
                     minimizeTurns: routeConfig.minimizeTurns,
                     use2Opt: routeConfig.use2Opt,
-                    maxRouteDistance: (maxRouteDistance > 0 && maxRouteDistance < 50) ? maxRouteDistance : null,
                     walkingPattern: routeConfig.walkingPattern,
                     returnToStart: routeConfig.returnToStart,
                     excludeTerminal: routeConfig.excludeTerminal,
@@ -1507,7 +1503,7 @@ export default function Home() {
         } finally {
             setRoutesGenerating(false);
         }
-    }, [frozenWorkingSet, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, routeConfig, maxRouteDistance, soldDateFilter, drawnPolygon]);
+    }, [frozenWorkingSet, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, routeConfig, soldDateFilter, drawnPolygon]);
 
     // Re-optimize a single saved route's order in-place (preserves route ID + outcomes)
     const handleReoptimizeRoute = useCallback(async (route) => {
@@ -2092,7 +2088,6 @@ export default function Home() {
                             setDrawingMode(true);
                         }}
                         housesPerRoute={housesPerRoute} setHousesPerRoute={setHousesPerRoute}
-                        maxRouteDistance={maxRouteDistance} setMaxRouteDistance={setMaxRouteDistance}
                         streetCooldownDays={streetCooldownDays} setStreetCooldownDays={setStreetCooldownDays}
                         minScore={minScore} setMinScore={setMinScore}
                         zipCodeFilter={zipCodeFilter} setZipCodeFilter={setZipCodeFilter}
@@ -2123,7 +2118,6 @@ export default function Home() {
                                 name: templateName,
                                 config: {
                                     houses_per_route: housesPerRoute,
-                                    max_distance: maxRouteDistance,
                                     min_score: minScore,
                                     street_cooldown_days: streetCooldownDays,
                                     zip_code_filter: zipCodeFilter,
@@ -2144,7 +2138,7 @@ export default function Home() {
                                 const res = await base44.functions.invoke('fetchZipProperties', { 
                                     zip_code: zipCodeFilter, 
                                     force_sync: true,
-                                    sold_months: soldDateFilter === null ? 0 : (soldDateFilter || 12) 
+                                    sold_months: 12 // Always fetch 12 months; UI slider filters locally
                                 });
                                 if (res.data?.error) {
                                     toast.error(res.data.message || res.data.error, { id: toastId });

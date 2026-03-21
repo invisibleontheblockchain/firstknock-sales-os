@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import {
     Navigation, Loader2, MapPin, RefreshCw, X, ChevronDown, ChevronUp,
@@ -20,7 +21,6 @@ const ROUTE_SIZE_OPTIONS = [20, 50, 100, 200, 500, 1000];
 export default function RouteBuilderSettings({
     // State values
     housesPerRoute, setHousesPerRoute,
-    maxRouteDistance, setMaxRouteDistance,
     streetCooldownDays, setStreetCooldownDays,
     minScore, setMinScore,
     zipCodeFilter, setZipCodeFilter,
@@ -95,7 +95,6 @@ export default function RouteBuilderSettings({
             maxSqft: null
         });
         setMinScore(0);
-        setMaxRouteDistance(50);
         setSoldDateFilter(12);
         setSortBy('score');
         toast.success("Filters reset to defaults.");
@@ -344,22 +343,6 @@ export default function RouteBuilderSettings({
                             expanded={expandedSection === 'routing'}
                             onToggle={() => toggleSection('routing')}
                         >
-                            {/* Max Route Distance */}
-                            <div className="space-y-2">
-                                <div className="flex justify-between items-center">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase">Max Walking Distance</label>
-                                    <span className="text-xs font-bold text-yellow-500">{maxRouteDistance >= 50 ? 'Unlimited' : `${maxRouteDistance} mi`}</span>
-                                </div>
-                                <Slider
-                                    value={[maxRouteDistance]}
-                                    onValueChange={([v]) => setMaxRouteDistance(v)}
-                                    min={1}
-                                    max={50}
-                                    step={1}
-                                    className="w-full"
-                                />
-                            </div>
-
                             {/* Street Cooldown */}
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center">

@@ -442,21 +442,12 @@ export default function TerritoryPrompt({
                     <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
                     {canPullAgain ? (
                         <div className="flex items-center gap-2 ml-2">
-                            <select
-                                value={fetchMonths}
-                                onChange={(e) => setFetchMonths(Number(e.target.value))}
-                                className="bg-gray-900 border border-gray-700 text-white text-[10px] rounded-md px-1.5 py-0.5 h-6"
-                                disabled={pulling}
-                            >
-                                <option value={6}>Past 6 Mo</option>
-                                <option value={12}>Past 12 Mo</option>
-                            </select>
                             <Button
                                 disabled={pulling}
                                 onClick={handleFetchData}
-                                className="text-white text-[10px] h-6 px-2 py-0 rounded-md bg-blue-600 hover:bg-blue-500"
+                                className="text-white text-[10px] h-6 px-3 py-0 rounded-md bg-blue-600 hover:bg-blue-500 font-bold tracking-wide shadow-[0_0_15px_rgba(37,99,235,0.4)]"
                             >
-                                Fetch data
+                                Fetch 12 Months
                             </Button>
                         </div>
                     ) : (
