@@ -82,9 +82,8 @@ Deno.serve(async (req) => {
     }
 
     const zip = String(zip_code).trim();
-    const DEED_LAG_DAYS = 90;
-    const saleDateRange = (sold_months * 30) + DEED_LAG_DAYS;
-    console.log(`[FetchZip-v8] zip=${zip}, sold_months=${sold_months}, saleDateRange=${saleDateRange} days (includes ${DEED_LAG_DAYS}d deed lag)`);
+    const saleDateRange = Math.min(sold_months * 30, 365);
+    console.log(`[FetchZip-v8] zip=${zip}, sold_months=${sold_months}, saleDateRange=${saleDateRange} days`);
 
     // Auto-add to territory
     if (!territoryZips.includes(zip)) {
@@ -131,7 +130,7 @@ Deno.serve(async (req) => {
     // Catch recently off-market homes before the county processes the deed. 
     // We use daysOld=saleDateRange + 90 to cast a wide net (since daysOld is based on listedDate),
     // then filter them locally by removedDate.
-    const mlsSearchDays = saleDateRange + 90; // Add 90 days listing buffer
+    const mlsSearchDays = Math.min(saleDateRange, 365); // Cap at 365
     const paramsB = new URLSearchParams({ zipCode: zip, status: 'Inactive', daysOld: String(mlsSearchDays) });
     const resultB = await fetchAllPages(`${RENTCAST_BASE}/listings/sale`, paramsB, 'MLS_Inactive', RENTCAST_API_KEY);
     totalApiCalls += resultB.apiCalls;

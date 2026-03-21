@@ -248,8 +248,7 @@ Deno.serve(async (req) => {
         // PHASE 1: DEED RECORDS
         // ======================================================================
         if (currentPhase === 'deed_records') {
-            const DEED_LAG_DAYS = 90;
-            const saleDateRange = (monthsBack * 30) + DEED_LAG_DAYS;
+            const saleDateRange = Math.min(monthsBack * 30, 365);
             const allRaw = [];
             let reachedEnd = false;
 
@@ -342,8 +341,7 @@ Deno.serve(async (req) => {
         // PHASE 2: LISTINGS RECORDS (Early Warning Radar / MLS Inactive)
         // ======================================================================
         if (currentPhase === 'listings_records') {
-            const DEED_LAG_DAYS = 90;
-            const saleDateRange = (monthsBack * 30) + DEED_LAG_DAYS;
+            const saleDateRange = Math.min(monthsBack * 30, 365);
             
             const allRaw = [];
             let reachedEnd = false;
