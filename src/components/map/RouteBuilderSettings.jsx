@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
+import { Slider } from "@/components/ui/slider";
 import {
     Navigation, Loader2, MapPin, RefreshCw, X, ChevronDown, ChevronUp,
     Zap, Route, Footprints, Clock, Shield, Target,
