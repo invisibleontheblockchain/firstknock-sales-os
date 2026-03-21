@@ -653,7 +653,6 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 
     // Generate routes
     const routes = [];
-    const totalClusters = useZipClustering ? Math.ceil(scored.length / housesPerRoute) + uniqueZips.length : numRoutes; // Approximate upper bound for loop
 
     // We iterate through all unique cluster IDs found
     const clusterIds = [...new Set(clustered.map(p => p.cluster))];
