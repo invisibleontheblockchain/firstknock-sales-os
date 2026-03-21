@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import {
     Navigation, Loader2, MapPin, RefreshCw, X, ChevronDown, ChevronUp,
     Zap, Route, Footprints, Clock, Shield, Target,
-    Shuffle, Compass, Pencil, Layers, Lock, ScanLine
+    Shuffle, Compass, Pencil, Lock, ScanLine
 } from 'lucide-react';
 import { toast } from "sonner";
 
@@ -241,174 +241,91 @@ export default function RouteBuilderSettings({
                             )}
                         </div>
 
-                        {/* ═══ COLLAPSIBLE: PROPERTY FILTERS ═══ */}
+                        {/* ═══ COLLAPSIBLE: FILTERS ═══ */}
                         <CollapsibleSection
-                            title="Property Filters"
+                            title="Filters"
                             icon={<Shield className="w-4 h-4" />}
                             expanded={expandedSection === 'filters'}
                             onToggle={() => toggleSection('filters')}
                             badge={routeConfig.propertyTypes?.length > 0 || routeConfig.minPrice || routeConfig.maxPrice ? 'Active' : null}
                         >
-                            {/* Property Type Filter */}
+                            {/* Property Type — pick what to include */}
                             <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-gray-500 uppercase">Property Types</label>
+                                <label className="text-[10px] font-bold text-gray-500 uppercase">Include Property Types</label>
                                 <div className="grid grid-cols-3 gap-1.5">
-                                    {['All', 'Single Family', 'Condo', 'Townhouse', 'Multi-Family', 'Other'].map(type => {
-                                        const isActive = routeConfig.propertyTypes.includes(type) || (type === 'All' && routeConfig.propertyTypes.length === 0);
+                                    {[
+                                        { label: 'All', key: 'all' },
+                                        { label: 'Single Family', key: 'Single Family' },
+                                        { label: 'Townhouse', key: 'Townhouse' },
+                                        { label: 'Condo', key: 'Condo' },
+                                        { label: 'Multi-Family', key: 'Multi-Family' },
+                                        { label: 'Other', key: 'Other' },
+                                    ].map(type => {
+                                        const isAll = type.key === 'all';
+                                        const isActive = isAll
+                                            ? routeConfig.propertyTypes.length === 0
+                                            : routeConfig.propertyTypes.includes(type.key);
                                         return (
-                                            <button key={type} onClick={() => {
-                                                if (type === 'All') {
-                                                    setRouteConfig(prev => ({ ...prev, propertyTypes: [] }));
+                                            <button key={type.key} onClick={() => {
+                                                if (isAll) {
+                                                    setRouteConfig(prev => ({ ...prev, propertyTypes: [], excludeCommercial: false, excludeCondos: false, excludeLand: false }));
                                                 } else {
                                                     setRouteConfig(prev => {
                                                         const current = prev.propertyTypes;
-                                                        const updated = current.includes(type) ? current.filter(t => t !== type) : [...current, type];
+                                                        const updated = current.includes(type.key) ? current.filter(t => t !== type.key) : [...current, type.key];
                                                         return { ...prev, propertyTypes: updated };
                                                     });
                                                 }
                                             }}
-                                                className={`py-2 rounded-lg text-[9px] font-bold transition-all ${isActive ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/50' : 'bg-[#1A1A1A] text-gray-500 border border-gray-800'
+                                                className={`py-2.5 rounded-lg text-[9px] font-bold transition-all ${isActive ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/50' : 'bg-[#1A1A1A] text-gray-500 border border-gray-800'
                                                     }`}
-                                            >{type}</button>
+                                            >{type.label}</button>
                                         );
                                     })}
                                 </div>
                             </div>
 
                             {/* Price Range */}
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-gray-500 uppercase">Price Range</label>
-                                <div className="flex gap-2 items-center">
-                                    <input type="number" placeholder="Min" value={routeConfig.minPrice || ''}
-                                        onChange={(e) => setRouteConfig(prev => ({ ...prev, minPrice: e.target.value ? parseInt(e.target.value) : null }))}
-                                        className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
-                                    />
-                                    <span className="text-gray-600 text-xs">to</span>
-                                    <input type="number" placeholder="Max" value={routeConfig.maxPrice || ''}
-                                        onChange={(e) => setRouteConfig(prev => ({ ...prev, maxPrice: e.target.value ? parseInt(e.target.value) : null }))}
-                                        className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
-                                    />
-                                </div>
-                            </div>
+                            <ChipFilter
+                                label="Price Range"
+                                options={[
+                                    { label: 'Any', min: null, max: null },
+                                    { label: 'Under $200k', min: null, max: 200000 },
+                                    { label: '$200–400k', min: 200000, max: 400000 },
+                                    { label: '$400–600k', min: 400000, max: 600000 },
+                                    { label: '$600k–1M', min: 600000, max: 1000000 },
+                                    { label: '$1M+', min: 1000000, max: null },
+                                ]}
+                                currentMin={routeConfig.minPrice}
+                                currentMax={routeConfig.maxPrice}
+                                onChange={(min, max) => setRouteConfig(prev => ({ ...prev, minPrice: min, maxPrice: max }))}
+                            />
 
-                            {/* Year Built Range */}
-                            <div className="space-y-2">
-                                <div className="flex justify-between items-center">
-                                    <label className="text-[10px] font-bold text-gray-500 uppercase">Year Built</label>
-                                    <span className="text-[10px] text-gray-600">
-                                        {routeConfig.minYearBuilt || 'Any'} – {routeConfig.maxYearBuilt || 'Any'}
-                                    </span>
-                                </div>
-                                <div className="flex gap-2 items-center">
-                                    <input type="number" placeholder="From" value={routeConfig.minYearBuilt || ''}
-                                        onChange={(e) => setRouteConfig(prev => ({ ...prev, minYearBuilt: e.target.value ? parseInt(e.target.value) : null }))}
-                                        className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
-                                    />
-                                    <span className="text-gray-600 text-xs">to</span>
-                                    <input type="number" placeholder="To" value={routeConfig.maxYearBuilt || ''}
-                                        onChange={(e) => setRouteConfig(prev => ({ ...prev, maxYearBuilt: e.target.value ? parseInt(e.target.value) : null }))}
-                                        className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
-                                    />
-                                </div>
+                            {/* Skip rules */}
+                            <div className="pt-2 border-t border-gray-800/50 space-y-2">
+                                <label className="text-[10px] font-bold text-gray-500 uppercase">Skip Rules</label>
+                                <ToggleOption
+                                    label="Exclude Sold & Hard No"
+                                    description="Skip properties already marked sold or hard no"
+                                    icon={<Shield className="w-4 h-4" />}
+                                    checked={routeConfig.excludeTerminal}
+                                    onChange={(v) => setRouteConfig(prev => ({ ...prev, excludeTerminal: v }))}
+                                />
+                                <ToggleOption
+                                    label="Include Callbacks"
+                                    description="Add callback properties back into new routes"
+                                    icon={<Clock className="w-4 h-4" />}
+                                    checked={routeConfig.includeCallbacks}
+                                    onChange={(v) => setRouteConfig(prev => ({ ...prev, includeCallbacks: v }))}
+                                />
+                                <ToggleOption
+                                    label="Hide Knocked Doors"
+                                    description="Never route a house you've already visited"
+                                    icon={<Footprints className="w-4 h-4 text-green-400" />}
+                                    checked={routeConfig.excludePreviouslyKnocked}
+                                    onChange={(v) => setRouteConfig(prev => ({ ...prev, excludePreviouslyKnocked: v }))}
+                                />
                             </div>
-
-                            {/* Beds & Baths */}
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-gray-500 uppercase">Beds & Baths (Min)</label>
-                                <div className="flex gap-2 items-center">
-                                    <input type="number" placeholder="Beds" value={routeConfig.minBeds || ''}
-                                        onChange={(e) => setRouteConfig(prev => ({ ...prev, minBeds: e.target.value ? parseInt(e.target.value) : null }))}
-                                        className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
-                                    />
-                                    <input type="number" placeholder="Baths" value={routeConfig.minBaths || ''}
-                                        onChange={(e) => setRouteConfig(prev => ({ ...prev, minBaths: e.target.value ? parseFloat(e.target.value) : null }))}
-                                        className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Square Footage */}
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-gray-500 uppercase">Square Footage</label>
-                                <div className="flex gap-2 items-center">
-                                    <input type="number" placeholder="Min Sqft" value={routeConfig.minSqft || ''}
-                                        onChange={(e) => setRouteConfig(prev => ({ ...prev, minSqft: e.target.value ? parseInt(e.target.value) : null }))}
-                                        className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
-                                    />
-                                    <span className="text-gray-600 text-xs">to</span>
-                                    <input type="number" placeholder="Max Sqft" value={routeConfig.maxSqft || ''}
-                                        onChange={(e) => setRouteConfig(prev => ({ ...prev, maxSqft: e.target.value ? parseInt(e.target.value) : null }))}
-                                        className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Lot Size */}
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-bold text-gray-500 uppercase">Lot Size (Sqft)</label>
-                                <div className="flex gap-2 items-center">
-                                    <input type="number" placeholder="Min Lot" value={routeConfig.minLotSize || ''}
-                                        onChange={(e) => setRouteConfig(prev => ({ ...prev, minLotSize: e.target.value ? parseInt(e.target.value) : null }))}
-                                        className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
-                                    />
-                                    <span className="text-gray-600 text-xs">to</span>
-                                    <input type="number" placeholder="Max Lot" value={routeConfig.maxLotSize || ''}
-                                        onChange={(e) => setRouteConfig(prev => ({ ...prev, maxLotSize: e.target.value ? parseInt(e.target.value) : null }))}
-                                        className="flex-1 px-2 py-2 rounded-lg text-base bg-[#1F1F1F] text-white border border-[#333] text-center"
-                                    />
-                                </div>
-                            </div>
-                        </CollapsibleSection>
-
-                        {/* ═══ COLLAPSIBLE: EXCLUSIONS ═══ */}
-                        <CollapsibleSection
-                            title="Exclusions"
-                            icon={<Shield className="w-4 h-4" />}
-                            expanded={expandedSection === 'exclusions'}
-                            onToggle={() => toggleSection('exclusions')}
-                        >
-                            <ToggleOption
-                                label="Exclude Sold & Hard No"
-                                description="Skip properties already marked sold or hard no"
-                                icon={<Shield className="w-4 h-4" />}
-                                checked={routeConfig.excludeTerminal}
-                                onChange={(v) => setRouteConfig(prev => ({ ...prev, excludeTerminal: v }))}
-                            />
-                            <ToggleOption
-                                label="Include Callbacks"
-                                description="Add callback properties back into new routes"
-                                icon={<Clock className="w-4 h-4" />}
-                                checked={routeConfig.includeCallbacks}
-                                onChange={(v) => setRouteConfig(prev => ({ ...prev, includeCallbacks: v }))}
-                            />
-                            <ToggleOption
-                                label="Exclude Commercial"
-                                description="Filter out businesses, offices, and retail"
-                                icon={<Shield className="w-4 h-4 text-orange-400" />}
-                                checked={routeConfig.excludeCommercial}
-                                onChange={(v) => setRouteConfig(prev => ({ ...prev, excludeCommercial: v }))}
-                            />
-                            <ToggleOption
-                                label="Exclude Condos"
-                                description="Filter out apartments and condo units"
-                                icon={<Layers className="w-4 h-4 text-blue-400" />}
-                                checked={routeConfig.excludeCondos}
-                                onChange={(v) => setRouteConfig(prev => ({ ...prev, excludeCondos: v }))}
-                            />
-                            <ToggleOption
-                                label="Exclude Vacant Land"
-                                description="Filter out lots, vacant land, and acreage"
-                                icon={<Layers className="w-4 h-4 text-emerald-400" />}
-                                checked={routeConfig.excludeLand}
-                                onChange={(v) => setRouteConfig(prev => ({ ...prev, excludeLand: v }))}
-                            />
-                            <ToggleOption
-                                label="Hide Knocked Doors"
-                                description="Never route a house you've already visited"
-                                icon={<Footprints className="w-4 h-4 text-green-400" />}
-                                checked={routeConfig.excludePreviouslyKnocked}
-                                onChange={(v) => setRouteConfig(prev => ({ ...prev, excludePreviouslyKnocked: v }))}
-                            />
                         </CollapsibleSection>
 
                         {/* ═══ COLLAPSIBLE: ROUTING BEHAVIOR ═══ */}
@@ -643,6 +560,35 @@ function ToggleOption({ label, description, icon, checked, onChange }) {
                 <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all shadow ${checked ? 'left-5' : 'left-1'
                     }`} />
             </button>
+        </div>
+    );
+}
+
+function ChipFilter({ label, options, currentMin, currentMax, onChange }) {
+    const isMatch = (opt) => {
+        return (opt.min === (currentMin || null)) && (opt.max === (currentMax || null));
+    };
+
+    return (
+        <div className="space-y-2">
+            <label className="text-[10px] font-bold text-gray-500 uppercase">{label}</label>
+            <div className="flex flex-wrap gap-1.5">
+                {options.map(opt => {
+                    const active = isMatch(opt);
+                    return (
+                        <button
+                            key={opt.label}
+                            onClick={() => onChange(opt.min, opt.max)}
+                            className={`px-3 py-2 rounded-lg text-[10px] font-bold transition-all ${active
+                                ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/50'
+                                : 'bg-[#1A1A1A] text-gray-500 border border-gray-800 active:bg-[#252525]'
+                                }`}
+                        >
+                            {opt.label}
+                        </button>
+                    );
+                })}
+            </div>
         </div>
     );
 }
