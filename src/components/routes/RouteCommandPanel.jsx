@@ -790,5 +790,3 @@ function formatDateRange(min, max) {
     if (minY === maxY) return `${minM} – ${maxM} ${minY}`;
     return `${minM} ${minY} – ${maxM} ${maxY}`;
 }
-
-export default RouteCommandPanel;
