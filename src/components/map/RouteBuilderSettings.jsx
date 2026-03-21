@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import {
     Navigation, Loader2, MapPin, RefreshCw, X, ChevronDown, ChevronUp,
@@ -154,35 +153,22 @@ export default function RouteBuilderSettings({
                         </div>
 
                         {/* ═══ 2. RECENTLY SOLD ═══ */}
-                        <div className="space-y-4">
-                            <div className="flex justify-between items-center">
-                                <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">2. Recently Sold</label>
-                                <span className="text-sm font-bold text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded">
-                                    {soldDateFilter ? `${soldDateFilter} Months` : '12 Months'}
-                                </span>
-                            </div>
-                            <Slider
-                                value={[soldDateFilter === null ? 100 : (soldDateFilter <= 1 ? 0 : soldDateFilter <= 3 ? 25 : soldDateFilter <= 6 ? 50 : soldDateFilter <= 9 ? 75 : 100)]}
-                                onValueChange={([v]) => {
-                                    let val = 12;
-                                    if (v === 0) val = 1;
-                                    else if (v === 25) val = 3;
-                                    else if (v === 50) val = 6;
-                                    else if (v === 75) val = 9;
-                                    else if (v === 100) val = 12;
-                                    setSoldDateFilter(val);
-                                }}
-                                min={0}
-                                max={100}
-                                step={25}
-                                className="w-full"
-                            />
-                            <div className="flex justify-between text-[10px] text-gray-600 font-medium px-1">
-                                <span>1 Mo</span>
-                                <span>3 Mo</span>
-                                <span>6 Mo</span>
-                                <span>9 Mo</span>
-                                <span>12 Mo</span>
+                        <div className="space-y-3">
+                            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">2. Recently Sold</label>
+                            <div className="flex gap-1.5">
+                                {[{ label: '1 Mo', val: 1 }, { label: '3 Mo', val: 3 }, { label: '6 Mo', val: 6 }, { label: '9 Mo', val: 9 }, { label: '12 Mo', val: 12 }].map(opt => (
+                                    <button
+                                        key={opt.val}
+                                        onClick={() => setSoldDateFilter(opt.val)}
+                                        className={`flex-1 py-3 rounded-lg text-xs font-bold transition-all ${
+                                            (soldDateFilter || 12) === opt.val
+                                                ? 'bg-yellow-500 text-black shadow-lg'
+                                                : 'bg-[#1A1A1A] text-gray-500 border border-gray-800 active:bg-[#252525]'
+                                        }`}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                ))}
                             </div>
                         </div>
 
@@ -286,20 +272,43 @@ export default function RouteBuilderSettings({
                             </div>
 
                             {/* Price Range */}
-                            <ChipFilter
-                                label="Price Range"
-                                options={[
-                                    { label: 'Any', min: null, max: null },
-                                    { label: 'Under $200k', min: null, max: 200000 },
-                                    { label: '$200–400k', min: 200000, max: 400000 },
-                                    { label: '$400–600k', min: 400000, max: 600000 },
-                                    { label: '$600k–1M', min: 600000, max: 1000000 },
-                                    { label: '$1M+', min: 1000000, max: null },
-                                ]}
-                                currentMin={routeConfig.minPrice}
-                                currentMax={routeConfig.maxPrice}
-                                onChange={(min, max) => setRouteConfig(prev => ({ ...prev, minPrice: min, maxPrice: max }))}
-                            />
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase">Price Range</label>
+                                    {(routeConfig.minPrice || routeConfig.maxPrice) && (
+                                        <button onClick={() => setRouteConfig(prev => ({ ...prev, minPrice: null, maxPrice: null }))}
+                                            className="text-[9px] font-bold text-gray-500 hover:text-white"
+                                        >Clear</button>
+                                    )}
+                                </div>
+                                <div className="flex gap-2 items-center">
+                                    <div className="flex-1 relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
+                                        <input
+                                            type="text" inputMode="numeric" placeholder="Min"
+                                            value={routeConfig.minPrice ? routeConfig.minPrice.toLocaleString() : ''}
+                                            onChange={(e) => {
+                                                const raw = e.target.value.replace(/[^0-9]/g, '');
+                                                setRouteConfig(prev => ({ ...prev, minPrice: raw ? parseInt(raw) : null }));
+                                            }}
+                                            className="w-full pl-7 pr-2 py-3 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333] focus:border-yellow-500 focus:outline-none"
+                                        />
+                                    </div>
+                                    <span className="text-gray-600 text-xs">to</span>
+                                    <div className="flex-1 relative">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
+                                        <input
+                                            type="text" inputMode="numeric" placeholder="Max"
+                                            value={routeConfig.maxPrice ? routeConfig.maxPrice.toLocaleString() : ''}
+                                            onChange={(e) => {
+                                                const raw = e.target.value.replace(/[^0-9]/g, '');
+                                                setRouteConfig(prev => ({ ...prev, maxPrice: raw ? parseInt(raw) : null }));
+                                            }}
+                                            className="w-full pl-7 pr-2 py-3 rounded-lg text-sm bg-[#1F1F1F] text-white border border-[#333] focus:border-yellow-500 focus:outline-none"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
 
                             {/* Skip rules */}
                             <div className="pt-2 border-t border-gray-800/50 space-y-2">

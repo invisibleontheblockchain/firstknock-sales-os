@@ -280,11 +280,13 @@ export default function Home() {
     };
 
     // Fetch Route Templates
-    const { data: routeTemplates = [], refetch: refetchTemplates } = useQuery({
-        queryKey: ['routeTemplates', user?.id],
-        queryFn: () => user ? base44.entities.RouteTemplate.list('-created_date') : [],
-        enabled: !!user
+    const { data: routeTemplatesRaw = [], refetch: refetchTemplates } = useQuery({
+        queryKey: ['routeTemplates', user?.email],
+        queryFn: () => user ? base44.entities.RouteTemplate.filter({ created_by: user.email }, '-created_date', 100) : [],
+        enabled: !!user,
+        staleTime: 1000 * 60 * 5,
     });
+    const routeTemplates = Array.isArray(routeTemplatesRaw) ? routeTemplatesRaw : (routeTemplatesRaw?.items || []);
 
     const saveTemplateMutation = useMutation({
         mutationFn: (data) => base44.entities.RouteTemplate.create(data),
@@ -297,12 +299,32 @@ export default function Home() {
 
     const loadTemplate = (template) => {
         if (!template.config) return;
-        if (template.config.houses_per_route) setHousesPerRoute(template.config.houses_per_route);
+        
+        // Restore base settings (default 10000 = all-in-one route)
+        setHousesPerRoute(template.config.houses_per_route || 10000);
         if (template.config.max_distance) setMaxRouteDistance(template.config.max_distance);
         if (template.config.min_score) setMinScore(template.config.min_score);
         if (template.config.street_cooldown_days) setStreetCooldownDays(template.config.street_cooldown_days);
         if (template.config.zip_code_filter) setZipCodeFilter(template.config.zip_code_filter);
         if (template.config.start_location) setStartLocation(template.config.start_location);
+
+        // Restore routeConfig fields
+        setRouteConfig(prev => ({
+            ...prev,
+            walkingPattern: template.config.walkingPattern || 'street_sweep',
+            minimizeTurns: template.config.minimizeTurns ?? true,
+            use2Opt: template.config.use2Opt ?? true,
+            returnToStart: template.config.returnToStart ?? false,
+            excludeTerminal: template.config.excludeTerminal ?? true,
+            includeCallbacks: template.config.includeCallbacks ?? true,
+            excludeCommercial: template.config.excludeCommercial ?? true,
+            excludeCondos: template.config.excludeCondos ?? true,
+            excludeLand: template.config.excludeLand ?? true,
+            excludePreviouslyKnocked: template.config.excludePreviouslyKnocked ?? true,
+            propertyTypes: template.config.propertyTypes || [],
+            minPrice: template.config.minPrice || null,
+            maxPrice: template.config.maxPrice || null
+        }));
 
         toast.success(`Loaded template: ${template.name}`);
     };
@@ -927,6 +949,14 @@ export default function Home() {
     }, [effectiveProperties, zoomLevel, activeRoute]);
 
     const generateRoutes = useCallback(async () => {
+        // If we already have frozen data, and user is just hitting GENERATE again (maybe after changing slider or routing rules),
+        // we can just re-run the filtering via handleReorder instead of doing a full re-fetch.
+        if (frozenWorkingSet && frozenWorkingSet.length > 0) {
+            console.log(`[generateRoutes] Frozen data exists (${frozenWorkingSet.length} props). Using handleReorder to skip refetch.`);
+            handleReorder();
+            return;
+        }
+
         setRoutesGenerating(true);
         const toastId = toast.loading("Building routes...", { id: 'build-routes' });
 
@@ -2080,6 +2110,7 @@ export default function Home() {
                                 setRoutes([]);
                                 setFetchedProperties([]);
                                 setDrawnPolygon(null); // Clear polygon on reset
+                                setFrozenWorkingSet(null); // Clear frozen data so next generate refetches
                                 toast.success("Builder reset");
                             }
                         }}
