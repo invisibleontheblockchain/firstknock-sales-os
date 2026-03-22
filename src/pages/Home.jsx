@@ -580,12 +580,17 @@ export default function Home() {
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs', user?.email],
         staleTime: 1000 * 60 * 2,
-        // Manager sees ALL logs to track team progress
         queryFn: () => user ? base44.entities.InteractionLog.list('-created_date', 5000) : [],
         enabled: !!user
     });
-    const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
-
+    
+    // CRITICAL: Filter logs to only show interactions from this user's organization to prevent cross-account leaks
+    const logs = useMemo(() => {
+        const rawArray = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
+        if (!user) return [];
+        const validEmails = new Set([user.email, ...(teamMembers || []).map(m => m.email)].map(e => e.toLowerCase()));
+        return rawArray.filter(l => l.created_by && validEmails.has(l.created_by.toLowerCase()));
+    }, [logsRaw, user, teamMembers]);
     const { data: leadScoringWeightsRaw = [] } = useQuery({
         queryKey: ['leadScoringWeights'],
         staleTime: 1000 * 60 * 30,
