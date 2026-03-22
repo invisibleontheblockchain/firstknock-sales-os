@@ -63,6 +63,9 @@ export default function MapToolbar({
 
     // Filter Saving
     onSaveFilteredRoute,
+    
+    // Route Optimization
+    onReoptimizeRoute,
 }) {
     const queryClient = useQueryClient();
     const hasDrawnArea = drawnPolygon && drawnPolygon.length > 2;
@@ -244,6 +247,20 @@ export default function MapToolbar({
                                 >
                                     <Save className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                                     <span className="hidden xs:inline">SAVE</span>
+                                </Button>
+                            )}
+                            {onReoptimizeRoute && (
+                                <Button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onReoptimizeRoute(activeRoute);
+                                    }}
+                                    size="sm"
+                                    className="h-6 sm:h-8 px-1.5 sm:px-3 text-[9px] sm:text-[11px] font-bold bg-yellow-500 hover:bg-yellow-400 text-black rounded-full transition-all border border-yellow-400/30 whitespace-nowrap flex items-center gap-1 shadow-lg shadow-yellow-900/20"
+                                    title="Re-optimize route pathing"
+                                >
+                                    <Zap className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                                    <span className="hidden xs:inline">OPTIMIZE</span>
                                 </Button>
                             )}
                         </div>

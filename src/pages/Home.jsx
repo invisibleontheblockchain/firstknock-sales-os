@@ -1907,6 +1907,7 @@ export default function Home() {
                 showRouteLines={showRouteLines}
                 setShowRouteLines={setShowRouteLines}
                 onSaveFilteredRoute={handleSaveFilteredRoute}
+                onReoptimizeRoute={handleReoptimizeRoute}
             />
 
             {/* Territory Prompt - Drawing Controls + Initial Prompt */}
