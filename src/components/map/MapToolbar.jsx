@@ -199,20 +199,17 @@ export default function MapToolbar({
                                 <Pencil className="w-2 h-2 sm:w-3 sm:h-3 text-gray-500 opacity-0 group-hover/name:opacity-100 transition-opacity shrink-0" />
                             </button>
                         )}
-                        {onReoptimizeRoute && (
-                            <Button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onReoptimizeRoute(activeRoute);
-                                }}
-                                size="sm"
-                                className="h-6 sm:h-8 px-1.5 sm:px-3 text-[9px] sm:text-[11px] font-bold bg-yellow-500 hover:bg-yellow-400 text-black rounded-full transition-all border border-yellow-400/30 whitespace-nowrap flex items-center gap-1 shadow-lg shadow-yellow-900/20"
-                                title="Re-optimize route pathing"
-                            >
-                                <Zap className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                                <span className="hidden xs:inline">OPTIMIZE</span>
-                            </Button>
-                        )}
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                if (onReoptimizeRoute) onReoptimizeRoute(activeRoute);
+                            }}
+                            className="h-6 sm:h-8 px-1.5 sm:px-3 text-[9px] sm:text-[11px] font-bold bg-yellow-500 hover:bg-yellow-400 text-black rounded-full transition-all border border-yellow-400/30 whitespace-nowrap flex items-center gap-1 shadow-lg shadow-yellow-900/20"
+                            title="Re-optimize route pathing"
+                        >
+                            <Zap className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                            <span className="hidden xs:inline">OPTIMIZE</span>
+                        </button>
                         <div onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} className="shrink-0 flex items-center gap-1 sm:gap-2">
                             {setActiveRouteSoldFilter && (
                                 <select
