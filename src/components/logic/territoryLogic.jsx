@@ -246,6 +246,23 @@ export const generateSweepRoute = (properties) => {
     return routePoints;
 };
 
+const normalizeStreet = (name) => {
+    if (!name) return 'Unknown';
+    let s = String(name).toLowerCase().trim();
+    // Strip common trailing street suffixes
+    s = s.replace(/\b(dr|drive|st|street|ln|lane|rd|road|ave|avenue|ct|court|blvd|boulevard|ci|circle|way|pl|place|sq|square|tr|trail|pkwy|parkway)\.?$/i, '').trim();
+    // Strip standalone directionals at start or end
+    s = s.replace(/^(n|s|e|w|north|south|east|west)\b\s*/i, '');
+    s = s.replace(/\s*\b(n|s|e|w|north|south|east|west)$/i, '');
+    return s.replace(/[^a-z0-9]/g, '') || 'Unknown'; // remove all punctuation/spaces for robust grouping
+};
+
+const extractHouseNum = (str) => {
+    if (!str) return 0;
+    const match = String(str).match(/\d+/);
+    return match ? parseInt(match[0], 10) : 0;
+};
+
 /**
  * Order properties for optimal street sweep walking pattern
  * Returns properties ordered: street by street, odd side then even side
@@ -255,8 +272,16 @@ export const orderForStreetSweep = (properties) => {
 
     // Group by street
     const streetGroups = {};
+    let unknownCounter = 0;
+
     properties.forEach(prop => {
-        const street = prop.street_name || 'Unknown';
+        let street = normalizeStreet(prop.street_name);
+        
+        // If we still don't know the street, isolate it so it doesn't zigzag across the map with other unknowns
+        if (street === 'Unknown') {
+            street = `Unknown_${unknownCounter++}`;
+        }
+        
         if (!streetGroups[street]) streetGroups[street] = [];
         streetGroups[street].push(prop);
     });
@@ -267,15 +292,15 @@ export const orderForStreetSweep = (properties) => {
     const streetCentroids = Object.entries(streetGroups).map(([name, props]) => {
         const avgLat = props.reduce((sum, p) => sum + (p.lat||0), 0) / props.length;
         const avgLng = props.reduce((sum, p) => sum + (p.lng||0), 0) / props.length;
-        return { name, lat: avgLat, lng: avgLng };
+        return { name, lat: avgLat, lng: avgLng, props };
     });
 
     // 2. Sort Streets by Nearest Neighbor (to prevent jumping across map)
     const sortedStreets = [];
     if (streetCentroids.length > 0) {
-        // Start with street of the first property (usually closest to cluster center/start)
-        const startStreet = properties[0].street_name || 'Unknown';
-        let currentIdx = streetCentroids.findIndex(s => s.name === startStreet);
+        // Find the street of the first property provided (serves as the anchor)
+        const anchorName = normalizeStreet(properties[0].street_name);
+        let currentIdx = streetCentroids.findIndex(s => s.name === anchorName);
         if (currentIdx === -1) currentIdx = 0;
 
         const unvisited = [...streetCentroids];
@@ -286,9 +311,9 @@ export const orderForStreetSweep = (properties) => {
             let nearestIdx = -1;
             let minDist = Infinity;
             unvisited.forEach((s, i) => {
-                const d = Math.pow(s.lat - current.lat, 2) + Math.pow(s.lng - current.lng, 2);
-                if (d < minDist) {
-                    minDist = d;
+                const dSq = Math.pow(s.lat - current.lat, 2) + Math.pow(s.lng - current.lng, 2);
+                if (dSq < minDist) {
+                    minDist = dSq;
                     nearestIdx = i;
                 }
             });
@@ -324,21 +349,21 @@ export const orderForStreetSweep = (properties) => {
     }
 
     // 3. Process each street in order
-    const streetOrder = sortedStreets.map(s => s.name);
-    streetOrder.forEach(streetName => {
-        const streetProps = streetGroups[streetName];
+    sortedStreets.forEach(streetObj => {
+        const streetProps = streetObj.props;
+        const originalName = streetProps[0]?.street_name || 'Unknown';
         
-        // Sort by house number
-        streetProps.sort((a, b) => (a.house_number || 0) - (b.house_number || 0));
+        // Sort by robust integer house number
+        streetProps.sort((a, b) => extractHouseNum(a.house_number) - extractHouseNum(b.house_number));
 
-        // Separate odd and even
-        const odds = streetProps.filter(p => (p.house_number || 0) % 2 !== 0);
-        const evens = streetProps.filter(p => (p.house_number || 0) % 2 === 0);
+        // Separate odd and even using robust integer extract
+        const odds = streetProps.filter(p => extractHouseNum(p.house_number) % 2 !== 0);
+        const evens = streetProps.filter(p => extractHouseNum(p.house_number) % 2 === 0);
 
         // Walk up odd side (ascending), then back down even side (descending)
-        // This creates a U-shape loop for the street
-        odds.forEach(p => orderedProperties.push({ ...p, _sweepSide: 'odd', _streetName: streetName }));
-        evens.reverse().forEach(p => orderedProperties.push({ ...p, _sweepSide: 'even', _streetName: streetName }));
+        // This creates a U-shape loop for the street block
+        odds.forEach(p => orderedProperties.push({ ...p, _sweepSide: 'odd', _streetName: originalName, _normalizedStreet: streetObj.name }));
+        evens.reverse().forEach(p => orderedProperties.push({ ...p, _sweepSide: 'even', _streetName: originalName, _normalizedStreet: streetObj.name }));
     });
 
     return orderedProperties;
