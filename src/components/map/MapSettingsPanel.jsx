@@ -9,7 +9,7 @@ import { X, Sun, Moon, Globe, Mountain, Eye, EyeOff, Circle, Square, Diamond, La
 const REP_COLOR_OPTIONS = ['#FFD700','#ef4444','#22c55e','#3b82f6','#ec4899','#f97316','#8b5cf6','#06b6d4','#eab308','#14b8a6'];
 
 const COLOR_SCHEMES = [
-  { id: 'default', label: 'Default', colors: { ELIGIBLE:'#404040', SOLD:'#22c55e', HARD_NO:'#8B5CF6', CALLBACK:'#eab308', NO_ANSWER:'#404040' } },
+  { id: 'default', label: 'Default', colors: { ELIGIBLE:'#404040', SOLD:'#00F5A0', HARD_NO:'#FF6B6B', CALLBACK:'#FFD93D', NO_ANSWER:'#404040' } },
   { id: 'neon', label: 'Neon', colors: { ELIGIBLE:'#00fff7', SOLD:'#39ff14', HARD_NO:'#ff073a', CALLBACK:'#ffed00', NO_ANSWER:'#00fff7' } },
   { id: 'pastel', label: 'Pastel', colors: { ELIGIBLE:'#a8b8c8', SOLD:'#77dd77', HARD_NO:'#b39ddb', CALLBACK:'#fff176', NO_ANSWER:'#a8b8c8' } },
   { id: 'heatmap', label: 'Heat', colors: { ELIGIBLE:'#1e3a5f', SOLD:'#ff4500', HARD_NO:'#8b0000', CALLBACK:'#ff8c00', NO_ANSWER:'#1e3a5f' } },
@@ -26,8 +26,8 @@ const LINE_STYLES = [
 const STATUS_FILTERS = [
   { id: 'all', label: 'All', color: '#E5E5E5' },
   { id: 'eligible', label: 'Not Visited', color: '#404040' },
-  { id: 'sold', label: 'Sold', color: '#22c55e' },
-  { id: 'rejected', label: 'Undecided', color: '#8B5CF6' },
+  { id: 'sold', label: 'Sold', color: '#00F5A0' },
+  { id: 'rejected', label: 'Undecided', color: '#FF6B6B' },
 ];
 
 const MAP_STYLES = [
@@ -77,8 +77,8 @@ export default function MapSettingsPanel({
   const setLiveSoldDateFilter = (v) => {
     upd('soldDateFilter', v);
     setSoldDateFilter?.(v);
-    if (v !== null) {
-      const confirmed = window.confirm(`Build routes now using "Sold in last ${v} months"?`);
+    if (v !== null && v !== 'all') {
+      const confirmed = window.confirm(`Update filtering to "Sold in last ${v} months"?`);
       if (confirmed && onRequestGenerate) onRequestGenerate();
     }
   };
@@ -332,22 +332,21 @@ export default function MapSettingsPanel({
               {setSoldDateFilter && (
                 <div>
                   <SectionLabel>Sold Date Window</SectionLabel>
-                  <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-3">
-                    <div className="flex justify-between text-[10px] font-bold text-gray-500">
-                      <span>6 Mo</span><span>1 Yr</span><span>2 Yr</span><span>3 Yr</span><span>All</span>
-                    </div>
-                    <Slider
-                      value={[local.soldDateFilter === null ? 100 : local.soldDateFilter <= 6 ? 0 : local.soldDateFilter <= 12 ? 25 : local.soldDateFilter <= 24 ? 50 : local.soldDateFilter <= 36 ? 75 : 100]}
-                      onValueChange={([v]) => {
-                        let val = null;
-                        if (v === 0) val = 6; else if (v === 25) val = 12; else if (v === 50) val = 24; else if (v === 75) val = 36;
-                        setLiveSoldDateFilter(val);
-                      }}
-                      min={0} max={100} step={25} className="w-full"
-                    />
-                    <p className="text-center text-xs font-bold text-white">
-                      {local.soldDateFilter ? `Sold within last ${local.soldDateFilter} months` : 'All Sales History'}
-                    </p>
+                  <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                    <select
+                      value={local.soldDateFilter || 'all'}
+                      onChange={(e) => setLiveSoldDateFilter(e.target.value === 'all' ? null : parseInt(e.target.value))}
+                      className="w-full h-10 px-3 text-xs font-bold bg-black/40 border border-white/5 text-white rounded-xl outline-none focus:border-white/15 cursor-pointer [color-scheme:dark]"
+                    >
+                      <option value="all">All Time (No Filter)</option>
+                      <option value="1">Last 1 Month</option>
+                      <option value="3">Last 3 Months</option>
+                      <option value="6">Last 6 Months</option>
+                      <option value="9">Last 9 Months</option>
+                      <option value="12">Last 1 Year</option>
+                      <option value="24">Last 2 Years</option>
+                      <option value="36">Last 3 Years</option>
+                    </select>
                   </div>
                 </div>
               )}
@@ -391,7 +390,7 @@ export default function MapSettingsPanel({
 }
 
 /* ── helper: row ── */
-function Row({ label, sub, value, children }) {
+function Row({ label, sub = null, value = null, children }) {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
