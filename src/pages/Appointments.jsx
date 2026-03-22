@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Calendar, Loader2, Plus, Zap, Filter, ChevronDown, Clock, CheckCircle2, XCircle, AlertTriangle, CalendarDays } from 'lucide-react';
+import { Calendar, Loader2, Plus, Zap, Filter, ChevronDown, Clock, CheckCircle2, XCircle, AlertTriangle, CalendarDays, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format, isToday, isTomorrow, isThisWeek, parseISO, isPast } from 'date-fns';
 
@@ -31,6 +31,7 @@ export default function Appointments() {
     const queryClient = useQueryClient();
     const [selectedAppointment, setSelectedAppointment] = useState(null);
     const [showAutoSchedule, setShowAutoSchedule] = useState(false);
+    const [showNewForm, setShowNewForm] = useState(false);
     const [statusFilter, setStatusFilter] = useState('all');
     const [timeFilter, setTimeFilter] = useState('upcoming');
     const [showFilters, setShowFilters] = useState(false);
@@ -137,12 +138,20 @@ export default function Appointments() {
                     {/* Title row */}
                     <div className="flex items-center justify-between mb-3 md:mb-4">
                         <h1 className="text-lg md:text-2xl lg:text-3xl font-black text-white tracking-tight">Appointments</h1>
-                        <Button
-                            onClick={() => setShowAutoSchedule(!showAutoSchedule)}
-                            className="h-8 md:h-10 px-3 md:px-5 text-[10px] md:text-xs font-bold rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.08] gap-1.5"
-                        >
-                            <Zap className="w-3 h-3 md:w-4 md:h-4 text-yellow-400" /> Auto-Schedule
-                        </Button>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                onClick={() => { setShowNewForm(!showNewForm); setShowAutoSchedule(false); }}
+                                className="h-8 md:h-10 px-3 md:px-5 text-[10px] md:text-xs font-bold rounded-lg bg-white text-black hover:bg-gray-200 gap-1.5"
+                            >
+                                <Plus className="w-3 h-3 md:w-4 md:h-4" /> New
+                            </Button>
+                            <Button
+                                onClick={() => { setShowAutoSchedule(!showAutoSchedule); setShowNewForm(false); }}
+                                className="h-8 md:h-10 px-3 md:px-5 text-[10px] md:text-xs font-bold rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.08] gap-1.5"
+                            >
+                                <Zap className="w-3 h-3 md:w-4 md:h-4 text-yellow-400" /> Auto-Schedule
+                            </Button>
+                        </div>
                     </div>
 
                     {/* Stats row - scrollable on mobile */}
@@ -180,6 +189,13 @@ export default function Appointments() {
             {/* Content */}
             <div className="flex-1 overflow-auto">
                 <div className="max-w-7xl mx-auto p-4 md:p-8 lg:p-10 space-y-3 md:space-y-5">
+                    {showNewForm && (
+                        <NewAppointmentForm
+                            onSave={() => { handleRefresh(); setShowNewForm(false); }}
+                            onCancel={() => setShowNewForm(false)}
+                        />
+                    )}
+
                     {showAutoSchedule && (
                         <AutoSchedulePanel
                             properties={properties}
@@ -242,6 +258,115 @@ function StatPill({ icon: Icon, label, value, color }) {
             <div>
                 <p className="text-sm md:text-xl font-black text-white leading-none">{value}</p>
                 <p className="text-[9px] md:text-xs text-gray-500 font-medium">{label}</p>
+            </div>
+        </div>
+    );
+}
+
+function NewAppointmentForm({ onSave, onCancel }) {
+    const [saving, setSaving] = useState(false);
+    const [form, setForm] = useState({
+        full_address: '',
+        homeowner_name: '',
+        phone: '',
+        scheduled_date: '',
+        notes: '',
+    });
+
+    const handleCreate = async () => {
+        if (!form.full_address.trim()) return;
+        setSaving(true);
+        try {
+            await base44.entities.Appointment.create({
+                full_address: form.full_address.trim(),
+                homeowner_name: form.homeowner_name.trim() || null,
+                phone: form.phone.trim() || null,
+                scheduled_date: form.scheduled_date ? new Date(form.scheduled_date).toISOString() : new Date().toISOString(),
+                notes: form.notes.trim() || null,
+                status: 'scheduled',
+            });
+            onSave?.();
+        } catch (e) {
+            console.error('Failed to create appointment', e);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 space-y-4 animate-in slide-in-from-top-2">
+            <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Plus className="w-4 h-4 text-yellow-400" /> New Appointment
+                </h3>
+                <button onClick={onCancel} className="text-gray-500 hover:text-white transition-colors">
+                    <X className="w-4 h-4" />
+                </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="md:col-span-2">
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">Address *</label>
+                    <input
+                        value={form.full_address}
+                        onChange={e => setForm({ ...form, full_address: e.target.value })}
+                        placeholder="123 Main St, City, ST 12345"
+                        className="w-full h-9 px-3 text-sm bg-black/40 border border-white/[0.08] rounded-xl text-white placeholder:text-gray-600 outline-none focus:border-white/20"
+                    />
+                </div>
+                <div>
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">Homeowner</label>
+                    <input
+                        value={form.homeowner_name}
+                        onChange={e => setForm({ ...form, homeowner_name: e.target.value })}
+                        placeholder="John Doe"
+                        className="w-full h-9 px-3 text-sm bg-black/40 border border-white/[0.08] rounded-xl text-white placeholder:text-gray-600 outline-none focus:border-white/20"
+                    />
+                </div>
+                <div>
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">Phone</label>
+                    <input
+                        type="tel"
+                        value={form.phone}
+                        onChange={e => setForm({ ...form, phone: e.target.value })}
+                        placeholder="(555) 123-4567"
+                        className="w-full h-9 px-3 text-sm bg-black/40 border border-white/[0.08] rounded-xl text-white placeholder:text-gray-600 outline-none focus:border-white/20"
+                    />
+                </div>
+                <div>
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">Date & Time</label>
+                    <input
+                        type="datetime-local"
+                        value={form.scheduled_date}
+                        onChange={e => setForm({ ...form, scheduled_date: e.target.value })}
+                        className="w-full h-9 px-3 text-sm bg-black/40 border border-white/[0.08] rounded-xl text-white outline-none focus:border-white/20 [color-scheme:dark]"
+                    />
+                </div>
+                <div>
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 block uppercase tracking-wider">Notes</label>
+                    <input
+                        value={form.notes}
+                        onChange={e => setForm({ ...form, notes: e.target.value })}
+                        placeholder="Optional notes..."
+                        className="w-full h-9 px-3 text-sm bg-black/40 border border-white/[0.08] rounded-xl text-white placeholder:text-gray-600 outline-none focus:border-white/20"
+                    />
+                </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+                <button
+                    onClick={handleCreate}
+                    disabled={saving || !form.full_address.trim()}
+                    className="flex-1 h-10 rounded-xl text-xs font-bold transition-all disabled:opacity-40 bg-white text-black hover:bg-gray-200"
+                >
+                    {saving ? 'Creating...' : 'Create Appointment'}
+                </button>
+                <button
+                    onClick={onCancel}
+                    className="h-10 px-5 rounded-xl text-xs font-bold text-gray-500 bg-white/[0.04] border border-white/[0.06] hover:bg-white/[0.08] transition-all"
+                >
+                    Cancel
+                </button>
             </div>
         </div>
     );

@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Navigation, CheckCircle2, Search, X, TrendingUp, MessageCircle } from 'lucide-react';
+import { Loader2, Navigation, CheckCircle2, Search, X, TrendingUp, MessageCircle, ChevronDown, CalendarDays } from 'lucide-react';
 import localforage from 'localforage';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,7 @@ export default function RepHome() {
     const [showAnalytics, setShowAnalytics] = useState(false);
     const [showChat, setShowChat] = useState(false);
     const [showUpgradeGate, setShowUpgradeGate] = useState(false);
+    const [soldDateFilter, setSoldDateFilter] = useState('all');
 
     // Offline Listener
     React.useEffect(() => {
@@ -396,6 +397,25 @@ export default function RepHome() {
                 if (!address.includes(searchLower)) return false;
             }
 
+            // Sold date filter — filter by how recently the property was sold
+            if (soldDateFilter !== 'all' && p.sold_date) {
+                const soldDate = new Date(p.sold_date);
+                if (!isNaN(soldDate.getTime())) {
+                    const now = new Date();
+                    let cutoff;
+                    switch (soldDateFilter) {
+                        case '1w': cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); break;
+                        case '1m': cutoff = new Date(now.setMonth(now.getMonth() - 1)); break;
+                        case '3m': cutoff = new Date(new Date().setMonth(new Date().getMonth() - 3)); break;
+                        case '6m': cutoff = new Date(new Date().setMonth(new Date().getMonth() - 6)); break;
+                        case '9m': cutoff = new Date(new Date().setMonth(new Date().getMonth() - 9)); break;
+                        case '1y': cutoff = new Date(new Date().setFullYear(new Date().getFullYear() - 1)); break;
+                        default: cutoff = null;
+                    }
+                    if (cutoff && soldDate < cutoff) return false;
+                }
+            }
+
             // Status filter
             const isDone = p.effective_status !== 'ELIGIBLE';
 
@@ -403,7 +423,7 @@ export default function RepHome() {
             if (filterStatus === 'done') return isDone;
             return true;
         });
-    }, [routeProperties, filterStatus, searchQuery]);
+    }, [routeProperties, filterStatus, searchQuery, soldDateFilter]);
 
     const knockWindow = getKnockWindowLabel(new Date());
 
@@ -528,6 +548,24 @@ export default function RepHome() {
                                 {tab.label}
                             </button>
                         ))}
+                    </div>
+
+                    {/* Sold Date Filter */}
+                    <div className="relative">
+                        <select
+                            value={soldDateFilter}
+                            onChange={(e) => setSoldDateFilter(e.target.value)}
+                            className="appearance-none h-8 pl-2 pr-6 text-[10px] font-bold bg-black/40 border border-white/5 text-white rounded-xl outline-none focus:border-white/15 cursor-pointer [color-scheme:dark]"
+                        >
+                            <option value="all">All Time</option>
+                            <option value="1w">1 Week</option>
+                            <option value="1m">1 Month</option>
+                            <option value="3m">3 Months</option>
+                            <option value="6m">6 Months</option>
+                            <option value="9m">9 Months</option>
+                            <option value="1y">1 Year</option>
+                        </select>
+                        <CalendarDays className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[#8888A0] pointer-events-none" />
                     </div>
 
                     {/* Inline search */}
