@@ -131,14 +131,14 @@ export default function CommandCenterDashboard({ properties, logs, routes, teamM
     return (
         <div className="fixed inset-0 z-[5000] flex flex-col bg-[#050505] text-white overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3 sm:px-6 py-2 sm:py-3 border-b border-white/[0.04] bg-[#0A0A0A] shrink-0 gap-3">
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-yellow-400/20 to-yellow-600/5 border border-yellow-500/20 flex items-center justify-center shadow-[0_0_10px_rgba(250,204,21,0.1)]">
-                        <Globe className="w-4 h-4 text-yellow-400" />
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3 sm:px-6 lg:px-8 py-2 sm:py-3 lg:py-4 border-b border-white/[0.04] bg-[#0A0A0A] shrink-0 gap-3">
+                <div className="flex items-center gap-2 lg:gap-3">
+                    <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-lg bg-gradient-to-br from-yellow-400/20 to-yellow-600/5 border border-yellow-500/20 flex items-center justify-center shadow-[0_0_10px_rgba(250,204,21,0.1)]">
+                        <Globe className="w-4 h-4 lg:w-5 lg:h-5 text-yellow-400" />
                     </div>
                     <div>
-                        <h1 className="text-sm font-black tracking-tight text-white flex items-center gap-1.5">Command Center</h1>
-                        <p className="text-[9px] text-gray-500 font-medium">Analytics & Team Performance</p>
+                        <h1 className="text-sm lg:text-base font-black tracking-tight text-white flex items-center gap-1.5">Command Center</h1>
+                        <p className="text-[9px] lg:text-[11px] text-gray-500 font-medium">Analytics & Team Performance</p>
                     </div>
                 </div>
 
@@ -148,7 +148,7 @@ export default function CommandCenterDashboard({ properties, logs, routes, teamM
                             <button
                                 key={f.id}
                                 onClick={() => setTimeFilter(f.id)}
-                                className={`px-2.5 py-1 rounded-md text-[10px] font-bold whitespace-nowrap transition-all ${
+                                className={`px-2.5 py-1 lg:px-3 lg:py-1.5 rounded-md text-[10px] lg:text-xs font-bold whitespace-nowrap transition-all ${
                                     timeFilter === f.id 
                                         ? 'bg-white text-black shadow-sm' 
                                         : 'text-gray-500 hover:text-white hover:bg-white/[0.05]'
@@ -158,75 +158,75 @@ export default function CommandCenterDashboard({ properties, logs, routes, teamM
                             </button>
                         ))}
                     </div>
-                    <Button variant="ghost" size="icon" onClick={onClose} className="rounded-lg hover:bg-white/[0.08] ml-1 shrink-0 bg-white/[0.03] border border-white/[0.05] w-7 h-7">
-                        <X className="w-3.5 h-3.5 text-gray-400" />
+                    <Button variant="ghost" size="icon" onClick={onClose} className="rounded-lg hover:bg-white/[0.08] ml-1 shrink-0 bg-white/[0.03] border border-white/[0.05] w-7 h-7 lg:w-8 lg:h-8">
+                        <X className="w-3.5 h-3.5 lg:w-4 lg:h-4 text-gray-400" />
                     </Button>
                 </div>
             </div>
 
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto custom-scrollbar">
-                {/* Removed max-w to zoom out and utilize full width, reduced padding */}
-                <div className="w-full mx-auto p-3 flex flex-col gap-3 pb-20">
+                {/* Setting a relaxed max width and padding on desktop to create a happy medium zoom */}
+                <div className="w-full mx-auto p-3 lg:p-5 lg:max-w-7xl flex flex-col gap-3 lg:gap-5 pb-20">
 
                     {/* KPI Cards */}
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 lg:gap-4">
                         {kpis.map(k => (
-                            <div key={k.label} className="relative overflow-hidden rounded-xl border border-white/[0.06] bg-[#0D0D11] p-3 group">
-                                <div className={`absolute -right-6 -top-6 w-20 h-20 bg-gradient-to-br ${k.bg} blur-xl rounded-full opacity-50 group-hover:opacity-100 transition-opacity`} />
-                                <div className="relative z-10 flex items-start justify-between mb-1.5">
-                                    <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">{k.label}</span>
-                                    <div className="w-6 h-6 rounded-md flex items-center justify-center bg-[#15151A] border border-white/[0.05] shadow-inner">
-                                        <k.icon className="w-3 h-3" style={{ color: k.color }} />
+                            <div key={k.label} className="relative overflow-hidden rounded-xl lg:rounded-2xl border border-white/[0.06] bg-[#0D0D11] p-3 lg:p-5 group">
+                                <div className={`absolute -right-6 -top-6 w-20 h-20 lg:w-24 lg:h-24 bg-gradient-to-br ${k.bg} blur-xl rounded-full opacity-50 group-hover:opacity-100 transition-opacity`} />
+                                <div className="relative z-10 flex items-start justify-between mb-1.5 lg:mb-2">
+                                    <span className="text-[9px] lg:text-[11px] font-bold uppercase tracking-wider text-gray-400">{k.label}</span>
+                                    <div className="w-6 h-6 lg:w-8 lg:h-8 rounded-md flex items-center justify-center bg-[#15151A] border border-white/[0.05] shadow-inner">
+                                        <k.icon className="w-3 h-3 lg:w-4 lg:h-4" style={{ color: k.color }} />
                                     </div>
                                 </div>
-                                <p className="relative z-10 text-xl font-black text-white tracking-tight">{k.value}</p>
+                                <p className="relative z-10 text-xl lg:text-2xl font-black text-white tracking-tight">{k.value}</p>
                             </div>
                         ))}
                     </div>
 
                     {/* Row 1: Leaderboard (wider) + Status Mix + Active Routes */}
-                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-3 lg:gap-4">
                         
                         {/* Rep Leaderboard */}
-                        <div className="lg:col-span-2 rounded-xl border border-white/[0.06] bg-[#0A0A0E] overflow-hidden shadow-lg flex flex-col">
-                            <div className="px-3 py-2 border-b border-white/[0.04] flex items-center gap-1.5 bg-[#0D0D12]">
-                                <Trophy className="w-3.5 h-3.5 text-yellow-500" />
-                                <span className="text-[10px] font-bold text-white uppercase tracking-wider">Rep Leaderboard</span>
+                        <div className="lg:col-span-2 rounded-xl lg:rounded-2xl border border-white/[0.06] bg-[#0A0A0E] overflow-hidden shadow-lg flex flex-col">
+                            <div className="px-3 py-2 lg:px-4 lg:py-3 border-b border-white/[0.04] flex items-center gap-1.5 lg:gap-2 bg-[#0D0D12]">
+                                <Trophy className="w-3.5 h-3.5 lg:w-4 lg:h-4 text-yellow-500" />
+                                <span className="text-[10px] lg:text-xs font-bold text-white uppercase tracking-wider">Rep Leaderboard</span>
                             </div>
                             
                             {stats.leaderboard.length === 0 ? (
                                 <div className="p-6 text-center text-gray-500 opacity-60">
-                                    <p className="text-[11px] font-bold">No activity in this timeframe</p>
+                                    <p className="text-[11px] lg:text-xs font-bold">No activity in this timeframe</p>
                                 </div>
                             ) : (
                                 <div className="flex-1 overflow-x-auto custom-scrollbar">
                                     <table className="w-full text-left whitespace-nowrap min-w-[400px]">
-                                        <thead className="text-[9px] text-gray-500 uppercase bg-[#08080C] border-b border-white/[0.04]">
+                                        <thead className="text-[9px] lg:text-[11px] text-gray-500 uppercase bg-[#08080C] border-b border-white/[0.04]">
                                             <tr>
-                                                <th className="px-3 py-2 font-bold w-10">Rank</th>
-                                                <th className="px-3 py-2 font-bold">Rep Name</th>
-                                                <th className="px-3 py-2 font-bold">Knocks</th>
-                                                <th className="px-3 py-2 font-bold">Sales</th>
-                                                <th className="px-3 py-2 font-bold">Conv %</th>
+                                                <th className="px-3 py-2 lg:px-4 lg:py-2.5 font-bold w-10">Rank</th>
+                                                <th className="px-3 py-2 lg:px-4 lg:py-2.5 font-bold">Rep Name</th>
+                                                <th className="px-3 py-2 lg:px-4 lg:py-2.5 font-bold">Knocks</th>
+                                                <th className="px-3 py-2 lg:px-4 lg:py-2.5 font-bold">Sales</th>
+                                                <th className="px-3 py-2 lg:px-4 lg:py-2.5 font-bold">Conv %</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-white/[0.04]">
                                             {stats.leaderboard.map((rep, idx) => (
                                                 <tr key={rep.email} className="hover:bg-white/[0.02] transition-colors">
-                                                    <td className="px-3 py-1.5">
-                                                        {idx === 0 ? <Medal className="w-4 h-4 text-yellow-400" /> : 
-                                                         idx === 1 ? <Medal className="w-4 h-4 text-gray-300" /> : 
-                                                         idx === 2 ? <Medal className="w-4 h-4 text-[#cd7f32]" /> : 
-                                                         <span className="text-[10px] font-bold text-gray-600 pl-1">{idx + 1}</span>}
+                                                    <td className="px-3 py-1.5 lg:px-4 lg:py-3">
+                                                        {idx === 0 ? <Medal className="w-4 h-4 lg:w-4.5 lg:h-4.5 text-yellow-400" /> : 
+                                                         idx === 1 ? <Medal className="w-4 h-4 lg:w-4.5 lg:h-4.5 text-gray-300" /> : 
+                                                         idx === 2 ? <Medal className="w-4 h-4 lg:w-4.5 lg:h-4.5 text-[#cd7f32]" /> : 
+                                                         <span className="text-[10px] lg:text-xs font-bold text-gray-600 pl-1">{idx + 1}</span>}
                                                     </td>
-                                                    <td className="px-3 py-1.5">
-                                                        <p className="text-[11px] font-bold text-white capitalize">{rep.name}</p>
-                                                        <p className="text-[9px] text-gray-600 truncate max-w-[100px]">{rep.email}</p>
+                                                    <td className="px-3 py-1.5 lg:px-4 lg:py-3">
+                                                        <p className="text-[11px] lg:text-[13px] font-bold text-white capitalize">{rep.name}</p>
+                                                        <p className="text-[9px] lg:text-[11px] text-gray-600 truncate max-w-[100px] lg:max-w-[150px]">{rep.email}</p>
                                                     </td>
-                                                    <td className="px-3 py-1.5 text-[11px] font-bold text-blue-400">{rep.knocks}</td>
-                                                    <td className="px-3 py-1.5 text-[11px] font-bold text-green-400">{rep.sales}</td>
-                                                    <td className="px-3 py-1.5 text-[10px] font-bold text-gray-400">{rep.conversion}%</td>
+                                                    <td className="px-3 py-1.5 lg:px-4 lg:py-3 text-[11px] lg:text-[13px] font-bold text-blue-400">{rep.knocks}</td>
+                                                    <td className="px-3 py-1.5 lg:px-4 lg:py-3 text-[11px] lg:text-[13px] font-bold text-green-400">{rep.sales}</td>
+                                                    <td className="px-3 py-1.5 lg:px-4 lg:py-3 text-[10px] lg:text-xs font-bold text-gray-400">{rep.conversion}%</td>
                                                 </tr>
                                             ))}
                                         </tbody>
@@ -236,12 +236,12 @@ export default function CommandCenterDashboard({ properties, logs, routes, teamM
                         </div>
 
                         {/* Status Mix Pie Chart */}
-                        <div className="rounded-xl border border-white/[0.06] bg-[#0A0A0E] p-3 flex flex-col shadow-lg">
-                            <div className="flex items-center gap-1.5 mb-2">
-                                <PieChartIcon className="w-3.5 h-3.5 text-blue-400" />
-                                <span className="text-[10px] font-bold text-white uppercase tracking-wider">Status Mix</span>
+                        <div className="rounded-xl lg:rounded-2xl border border-white/[0.06] bg-[#0A0A0E] p-3 lg:p-4 flex flex-col shadow-lg">
+                            <div className="flex items-center gap-1.5 lg:gap-2 mb-2 lg:mb-3">
+                                <PieChartIcon className="w-3.5 h-3.5 lg:w-4 lg:h-4 text-blue-400" />
+                                <span className="text-[10px] lg:text-xs font-bold text-white uppercase tracking-wider">Status Mix</span>
                             </div>
-                            <div className="flex-1 min-h-[160px] relative mt-1">
+                            <div className="flex-1 min-h-[160px] lg:min-h-[180px] relative mt-1">
                                 {stats.pieData.length === 0 ? (
                                     <div className="absolute inset-0 flex items-center justify-center text-[10px] text-gray-500 font-bold">No logs</div>
                                 ) : (
@@ -263,18 +263,18 @@ export default function CommandCenterDashboard({ properties, logs, routes, teamM
                                 {stats.pieData.length > 0 && (
                                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                         <div className="text-center">
-                                            <p className="text-sm font-black text-white">{stats.knocks.toLocaleString()}</p>
-                                            <p className="text-[7px] font-bold text-gray-500 tracking-wider">KNOCKS</p>
+                                            <p className="text-sm lg:text-xl font-black text-white">{stats.knocks.toLocaleString()}</p>
+                                            <p className="text-[7px] lg:text-[9px] font-bold text-gray-500 tracking-wider">KNOCKS</p>
                                         </div>
                                     </div>
                                 )}
                             </div>
                             {/* Scrollable mini legend */}
-                            <div className="grid grid-cols-2 gap-x-2 gap-y-1 mt-2 max-h-[40px] overflow-y-auto custom-scrollbar pr-1">
+                            <div className="grid grid-cols-2 gap-x-2 lg:gap-x-3 gap-y-1 lg:gap-y-1.5 mt-2 lg:mt-3 max-h-[40px] lg:max-h-[60px] overflow-y-auto custom-scrollbar pr-1">
                                 {stats.pieData.map((d, i) => (
-                                    <div key={d.name} className="flex items-center gap-1 text-[8px] font-medium text-gray-400">
-                                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
-                                        <span className="truncate max-w-[50px]">{d.name}</span>
+                                    <div key={d.name} className="flex items-center gap-1 lg:gap-1.5 text-[8px] lg:text-[10px] font-medium text-gray-400">
+                                        <span className="w-1.5 h-1.5 lg:w-2 lg:h-2 rounded-full shrink-0" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
+                                        <span className="truncate max-w-[50px] lg:max-w-[70px]">{d.name}</span>
                                         <span className="ml-auto font-bold text-gray-300">{d.value}</span>
                                     </div>
                                 ))}
@@ -282,18 +282,18 @@ export default function CommandCenterDashboard({ properties, logs, routes, teamM
                         </div>
 
                         {/* Active Routes Panel */}
-                        <div className="rounded-xl border border-white/[0.06] bg-[#0A0A0E] p-3 flex flex-col shadow-lg">
-                            <div className="flex items-center gap-1.5 mb-3">
-                                <MapPin className="w-3.5 h-3.5 text-purple-400" />
-                                <span className="text-[10px] font-bold text-white uppercase tracking-wider">Active Routes</span>
-                                <span className="ml-auto text-[9px] font-bold text-gray-500 bg-white/[0.05] px-1.5 py-0.5 rounded-md">{stats.activeRoutes.length}</span>
+                        <div className="rounded-xl lg:rounded-2xl border border-white/[0.06] bg-[#0A0A0E] p-3 lg:p-4 flex flex-col shadow-lg">
+                            <div className="flex items-center gap-1.5 lg:gap-2 mb-3 lg:mb-4">
+                                <MapPin className="w-3.5 h-3.5 lg:w-4 lg:h-4 text-purple-400" />
+                                <span className="text-[10px] lg:text-xs font-bold text-white uppercase tracking-wider">Active Routes</span>
+                                <span className="ml-auto text-[9px] lg:text-[11px] font-bold text-gray-500 bg-white/[0.05] px-1.5 py-0.5 lg:px-2 lg:py-1 rounded-md">{stats.activeRoutes.length}</span>
                             </div>
                             
-                            <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar min-h-[140px] max-h-[160px]">
+                            <div className="flex-1 overflow-y-auto space-y-2 lg:space-y-3 pr-1 custom-scrollbar min-h-[140px] lg:min-h-[160px] max-h-[160px] lg:max-h-[200px]">
                                 {stats.activeRoutes.length === 0 ? (
                                     <div className="h-full flex flex-col items-center justify-center text-center p-2 opacity-50">
-                                        <Clock className="w-5 h-5 text-gray-500 mb-1" />
-                                        <p className="text-[10px] font-bold text-gray-400">No active routes</p>
+                                        <Clock className="w-5 h-5 lg:w-6 lg:h-6 text-gray-500 mb-1 lg:mb-2" />
+                                        <p className="text-[10px] lg:text-[11px] font-bold text-gray-400">No active routes</p>
                                     </div>
                                 ) : (
                                     stats.activeRoutes.map(route => {
@@ -302,15 +302,15 @@ export default function CommandCenterDashboard({ properties, logs, routes, teamM
                                         const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
                                         
                                         return (
-                                            <div key={route.id} className="p-2 rounded-xl bg-[#121216] border border-white/[0.03] hover:border-white/[0.08] transition-colors group cursor-pointer">
-                                                <div className="flex justify-between items-start mb-1.5">
+                                            <div key={route.id} className="p-2 lg:p-3 rounded-xl lg:rounded-2xl bg-[#121216] border border-white/[0.03] hover:border-white/[0.08] transition-colors group cursor-pointer">
+                                                <div className="flex justify-between items-start mb-1.5 lg:mb-2">
                                                     <div className="overflow-hidden pr-2">
-                                                        <h4 className="text-[10px] font-bold text-white truncate max-w-[120px]">{route.name}</h4>
-                                                        <p className="text-[8px] text-purple-400/80 font-medium">Rep: {route.assigned_to_name || 'Unassigned'}</p>
+                                                        <h4 className="text-[10px] lg:text-[13px] font-bold text-white truncate max-w-[120px] lg:max-w-[160px]">{route.name}</h4>
+                                                        <p className="text-[8px] lg:text-[10px] text-purple-400/80 font-medium">Rep: {route.assigned_to_name || 'Unassigned'}</p>
                                                     </div>
-                                                    <span className="text-[9px] font-bold text-gray-400 shrink-0">{pct}%</span>
+                                                    <span className="text-[9px] lg:text-[11px] font-bold text-gray-400 shrink-0">{pct}%</span>
                                                 </div>
-                                                <div className="h-1 w-full bg-black rounded-full overflow-hidden">
+                                                <div className="h-1 lg:h-1.5 w-full bg-black rounded-full overflow-hidden mt-0.5 lg:mt-1.5">
                                                     <div className="h-full bg-purple-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
                                                 </div>
                                             </div>
@@ -323,38 +323,38 @@ export default function CommandCenterDashboard({ properties, logs, routes, teamM
                     </div>
 
                     {/* Row 2: Top Zip Codes (spans 4 on lg) or maybe just 2 */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
                         {/* Top Zip Codes Table */}
-                        <div className="rounded-xl border border-white/[0.06] bg-[#0A0A0E] overflow-hidden shadow-lg flex flex-col">
-                            <div className="px-3 py-2 border-b border-white/[0.04] flex items-center gap-1.5 bg-[#0D0D12]">
-                                <Globe className="w-3.5 h-3.5 text-emerald-500" />
-                                <span className="text-[10px] font-bold text-white uppercase tracking-wider">Top Territories</span>
+                        <div className="rounded-xl lg:rounded-2xl border border-white/[0.06] bg-[#0A0A0E] overflow-hidden shadow-lg flex flex-col">
+                            <div className="px-3 py-2 lg:px-4 lg:py-3 border-b border-white/[0.04] flex items-center gap-1.5 lg:gap-2 bg-[#0D0D12]">
+                                <Globe className="w-3.5 h-3.5 lg:w-4 lg:h-4 text-emerald-500" />
+                                <span className="text-[10px] lg:text-xs font-bold text-white uppercase tracking-wider">Top Territories</span>
                             </div>
                             
                             <div className="flex-1 overflow-x-auto custom-scrollbar">
                                 <table className="w-full text-left whitespace-nowrap min-w-[300px]">
-                                    <thead className="text-[9px] text-gray-500 uppercase bg-[#08080C] border-b border-white/[0.04]">
+                                    <thead className="text-[9px] lg:text-[11px] text-gray-500 uppercase bg-[#08080C] border-b border-white/[0.04]">
                                         <tr>
-                                            <th className="px-3 py-2 font-bold">Zip Code</th>
-                                            <th className="px-3 py-2 font-bold">Total Doors</th>
-                                            <th className="px-3 py-2 font-bold">Penetration</th>
-                                            <th className="px-3 py-2 font-bold">Sales</th>
+                                            <th className="px-3 py-2 lg:px-4 lg:py-2.5 font-bold">Zip Code</th>
+                                            <th className="px-3 py-2 lg:px-4 lg:py-2.5 font-bold">Total Doors</th>
+                                            <th className="px-3 py-2 lg:px-4 lg:py-2.5 font-bold">Penetration</th>
+                                            <th className="px-3 py-2 lg:px-4 lg:py-2.5 font-bold">Sales</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-white/[0.04]">
                                         {stats.zipData.map((z, idx) => (
                                             <tr key={z.zip} className="hover:bg-white/[0.02] transition-colors">
-                                                <td className="px-3 py-1.5 text-[11px] font-bold text-white">{z.zip}</td>
-                                                <td className="px-3 py-1.5 text-[10px] font-medium text-gray-400">{z.total.toLocaleString()}</td>
-                                                <td className="px-3 py-1.5">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-12 h-1 bg-[#1A1A22] rounded-full overflow-hidden shrink-0">
+                                                <td className="px-3 py-1.5 lg:px-4 lg:py-3 text-[11px] lg:text-[13px] font-bold text-white">{z.zip}</td>
+                                                <td className="px-3 py-1.5 lg:px-4 lg:py-3 text-[10px] lg:text-[12px] font-medium text-gray-400">{z.total.toLocaleString()}</td>
+                                                <td className="px-3 py-1.5 lg:px-4 lg:py-3">
+                                                    <div className="flex items-center gap-2 lg:gap-3">
+                                                        <div className="w-12 h-1 lg:w-16 lg:h-1.5 bg-[#1A1A22] rounded-full overflow-hidden shrink-0">
                                                             <div className="h-full bg-blue-500 rounded-full" style={{ width: `${z.penetration}%` }} />
                                                         </div>
-                                                        <span className="text-[9px] font-bold text-blue-400">{z.penetration}%</span>
+                                                        <span className="text-[9px] lg:text-[11px] font-bold text-blue-400">{z.penetration}%</span>
                                                     </div>
                                                 </td>
-                                                <td className="px-3 py-1.5 text-[11px] font-bold text-green-400">{z.sales}</td>
+                                                <td className="px-3 py-1.5 lg:px-4 lg:py-3 text-[11px] lg:text-[13px] font-bold text-green-400">{z.sales}</td>
                                             </tr>
                                         ))}
                                     </tbody>
