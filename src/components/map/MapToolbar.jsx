@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
+import { base44 } from '@/api/base44Client';
+import { useQueryClient } from "@tanstack/react-query";
 
 /**
  * MapToolbar — extracted from Home.jsx
@@ -62,7 +64,37 @@ export default function MapToolbar({
     // Filter Saving
     onSaveFilteredRoute,
 }) {
+    const queryClient = useQueryClient();
     const hasDrawnArea = drawnPolygon && drawnPolygon.length > 2;
+
+    // Inline route name editing state
+    const [editingName, setEditingName] = useState(false);
+    const [draftName, setDraftName] = useState('');
+
+    const handleStartRename = (e) => {
+        e.stopPropagation();
+        setDraftName(activeRoute?.name || '');
+        setEditingName(true);
+    };
+
+    const handleSaveRename = async () => {
+        if (!draftName.trim() || draftName === activeRoute?.name) {
+            setEditingName(false);
+            return;
+        }
+        try {
+            await base44.entities.SavedRoute.update(activeRoute.id, { name: draftName.trim() });
+            queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+            // Update local active route state immediately
+            if (setActiveRoute) {
+                setActiveRoute(prev => prev ? { ...prev, name: draftName.trim() } : prev);
+            }
+            setEditingName(false);
+        } catch (e) {
+            toast.error("Failed to rename route");
+        }
+    };
+
     return (
         <>
             {/* Top Stats Bar */}
@@ -137,7 +169,33 @@ export default function MapToolbar({
                         <div className="w-5 h-5 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: BRAND.gold }}>
                             <Navigation className="w-2.5 h-2.5 sm:w-4 sm:h-4" style={{ color: BRAND.voidBlack }} />
                         </div>
-                        <span className="text-[9px] sm:text-sm font-bold truncate flex-1 min-w-0 max-w-[70px] sm:max-w-[150px]" style={{ color: BRAND.gold }}>{activeRoute.name}</span>
+                        {/* Inline Editable Route Name */}
+                        {editingName ? (
+                            <div className="flex items-center gap-1 min-w-0" onClick={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
+                                <input
+                                    value={draftName}
+                                    onChange={e => setDraftName(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter') handleSaveRename(); if (e.key === 'Escape') setEditingName(false); }}
+                                    className="bg-black/60 border border-yellow-500/50 text-yellow-500 text-[10px] sm:text-sm font-bold rounded-full px-2 py-0.5 w-[80px] sm:w-[130px] outline-none"
+                                    autoFocus
+                                />
+                                <button onClick={handleSaveRename} className="p-0.5 text-green-500 hover:text-green-400">
+                                    <Check className="w-3 h-3 sm:w-4 sm:h-4" />
+                                </button>
+                                <button onClick={() => setEditingName(false)} className="p-0.5 text-gray-500 hover:text-white">
+                                    <X className="w-3 h-3 sm:w-4 sm:h-4" />
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={handleStartRename}
+                                className="group/name flex items-center gap-1 min-w-0 max-w-[90px] sm:max-w-[160px]"
+                                title="Click to rename"
+                            >
+                                <span className="text-[9px] sm:text-sm font-bold truncate" style={{ color: BRAND.gold }}>{activeRoute.name}</span>
+                                <Pencil className="w-2 h-2 sm:w-3 sm:h-3 text-gray-500 opacity-0 group-hover/name:opacity-100 transition-opacity shrink-0" />
+                            </button>
+                        )}
                         <div onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} className="shrink-0 flex items-center gap-1 sm:gap-2">
                             {setActiveRouteSoldFilter && (
                                 <select

@@ -663,19 +663,12 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 
         // MAIL CARRIER: Always use street sweep ordering
         // Every street is fully completed before moving to the next
+        // NOTE: orderForStreetSweep already applies nearest-neighbor + 2-opt
+        // on the STREET CENTROID sequence to minimize inter-street travel.
+        // We intentionally do NOT apply global apply2Opt/applyLinkSwap here
+        // because those destroy the street grouping — causing routes to
+        // bounce between streets instead of completing one before the next.
         let orderedProps = orderForStreetSweep(clusterProps);
-
-        // Apply 2-opt post-optimization to smooth crossovers between streets
-        if (use2Opt) {
-            orderedProps = apply2Opt(orderedProps);
-        }
-
-        // Link Swap for additional smoothing
-        orderedProps = applyLinkSwap(orderedProps);
-
-        // NOTE: Fatigue front-loading is DISABLED for mail carrier routes
-        // to preserve the geographic postal order
-        // orderedProps = fatigueAwareFrontLoad(orderedProps);
 
         // Return to start: add first property at the end conceptually (affects distance calc)
         if (returnToStart && orderedProps.length > 1) {
