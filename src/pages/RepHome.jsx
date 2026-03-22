@@ -531,56 +531,58 @@ export default function RepHome() {
             />
 
             {/* Filter tabs + search */}
-            <div className="px-4 pt-2 pb-3 space-y-2 bg-[#12121A] border-b border-white/5">
-                <div className="flex items-center gap-2">
-                    <div className="flex bg-black/40 p-0.5 rounded-xl border border-white/5 flex-1">
-                        {[
-                            { id: 'todo', label: `Todo ${routeProperties.length - stats.done}` },
-                            { id: 'done', label: `Done ${stats.done}` },
-                            { id: 'all', label: 'All' },
-                        ].map(tab => (
-                            <button
-                                key={tab.id}
-                                onClick={() => setFilterStatus(tab.id)}
-                                className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold tracking-wide transition-all ${filterStatus === tab.id ? 'bg-white text-black shadow-md' : 'text-[#8888A0] hover:text-white'
-                                    }`}
-                            >
-                                {tab.label}
-                            </button>
-                        ))}
-                    </div>
+            <div className="px-4 pt-2 pb-3 space-y-2.5 bg-[#12121A] border-b border-white/5">
+                {/* Top Row: Segmented Control */}
+                <div className="flex bg-black/40 p-0.5 rounded-xl border border-white/5">
+                    {[
+                        { id: 'todo', label: `Todo ${routeProperties.length - stats.done}` },
+                        { id: 'done', label: `Done ${stats.done}` },
+                        { id: 'all', label: 'All' },
+                    ].map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => setFilterStatus(tab.id)}
+                            className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold tracking-wide transition-all whitespace-nowrap ${filterStatus === tab.id ? 'bg-white text-black shadow-md' : 'text-[#8888A0] hover:text-white'
+                                }`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
 
+                {/* Bottom Row: Date Filter & Search */}
+                <div className="flex items-center gap-2">
                     {/* Sold Date Filter */}
-                    <div className="relative">
+                    <div className="relative flex-1">
                         <select
                             value={soldDateFilter}
                             onChange={(e) => setSoldDateFilter(e.target.value)}
-                            className="appearance-none h-8 pl-2 pr-6 text-[10px] font-bold bg-black/40 border border-white/5 text-white rounded-xl outline-none focus:border-white/15 cursor-pointer [color-scheme:dark]"
+                            className="appearance-none w-full h-8 pl-3 pr-8 text-[11px] font-bold bg-black/40 border border-white/5 text-white rounded-xl outline-none focus:border-white/15 cursor-pointer [color-scheme:dark]"
                         >
-                            <option value="all">All Time</option>
-                            <option value="1w">1 Week</option>
-                            <option value="1m">1 Month</option>
-                            <option value="3m">3 Months</option>
-                            <option value="6m">6 Months</option>
-                            <option value="9m">9 Months</option>
-                            <option value="1y">1 Year</option>
+                            <option value="all">Sale: All Time</option>
+                            <option value="1w">Sale: 1 Week</option>
+                            <option value="1m">Sale: 1 Month</option>
+                            <option value="3m">Sale: 3 Months</option>
+                            <option value="6m">Sale: 6 Months</option>
+                            <option value="9m">Sale: 9 Months</option>
+                            <option value="1y">Sale: 1 Year</option>
                         </select>
-                        <CalendarDays className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[#8888A0] pointer-events-none" />
+                        <CalendarDays className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#8888A0] pointer-events-none" />
                     </div>
 
                     {/* Inline search */}
                     {routeProperties.length > 8 && (
-                        <div className="relative w-28">
-                            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-[#8888A0]" />
+                        <div className="relative flex-1">
+                            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#8888A0]" />
                             <Input
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Search"
-                                className="h-8 pl-6 pr-6 text-[10px] bg-black/40 border border-white/5 text-white placeholder:text-[#8888A0] focus:border-[#6C5CE7]/50 rounded-xl"
+                                placeholder="Search address..."
+                                className="h-8 w-full pl-8 pr-8 text-[11px] bg-black/40 border border-white/5 text-white placeholder:text-[#8888A0] focus:border-[#6C5CE7]/50 rounded-xl"
                             />
                             {searchQuery && (
-                                <button onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2">
-                                    <X className="w-3 h-3 text-[#8888A0]" />
+                                <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                                    <X className="w-3.5 h-3.5 text-[#8888A0]" />
                                 </button>
                             )}
                         </div>
