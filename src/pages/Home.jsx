@@ -124,6 +124,8 @@ export default function Home() {
         let cutoff;
         if (activeRouteSoldFilter === '0.25') {
             cutoff = subDays(new Date(), 7);
+        } else if (activeRouteSoldFilter === '0.5') {
+            cutoff = subDays(new Date(), 14);
         } else {
             cutoff = subMonths(new Date(), Number(activeRouteSoldFilter));
         }

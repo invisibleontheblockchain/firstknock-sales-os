@@ -224,6 +224,7 @@ export default function MapToolbar({
                                 >
                                     <option value="all">All</option>
                                     <option value="0.25">1W</option>
+                                    <option value="0.5">2W</option>
                                     <option value="1">1M</option>
                                     <option value="3">3M</option>
                                     <option value="6">6M</option>

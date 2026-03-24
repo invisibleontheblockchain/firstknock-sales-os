@@ -405,6 +405,7 @@ export default function RepHome() {
                     let cutoff;
                     switch (soldDateFilter) {
                         case '1w': cutoff = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); break;
+                        case '2w': cutoff = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000); break;
                         case '1m': cutoff = new Date(now.setMonth(now.getMonth() - 1)); break;
                         case '3m': cutoff = new Date(new Date().setMonth(new Date().getMonth() - 3)); break;
                         case '6m': cutoff = new Date(new Date().setMonth(new Date().getMonth() - 6)); break;
@@ -561,6 +562,7 @@ export default function RepHome() {
                         >
                             <option value="all">Sale: All Time</option>
                             <option value="1w">Sale: 1 Week</option>
+                            <option value="2w">Sale: 2 Weeks</option>
                             <option value="1m">Sale: 1 Month</option>
                             <option value="3m">Sale: 3 Months</option>
                             <option value="6m">Sale: 6 Months</option>
