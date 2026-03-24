@@ -25,20 +25,31 @@
 
         // 2. Force new service workers to skip waiting when installed
         navigator.serviceWorker.getRegistration().then(reg => {
-          if (reg) {
-            reg.addEventListener('updatefound', () => {
-              const newWorker = reg.installing;
-              if (newWorker) {
-                newWorker.addEventListener('statechange', () => {
-                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    newWorker.postMessage({ type: 'SKIP_WAITING' });
-                    // Provide a universal skip waiting fallback just in case
-                    newWorker.postMessage('skipWaiting');
-                  }
-                });
-              }
-            });
+          if (!reg) return;
+
+          const handleUpdate = (worker) => {
+            if (worker) {
+              worker.addEventListener('statechange', () => {
+                if (worker.state === 'installed' && navigator.serviceWorker.controller) {
+                  worker.postMessage({ type: 'SKIP_WAITING' });
+                  worker.postMessage('skipWaiting');
+                }
+              });
+            }
+          };
+
+          if (reg.waiting) {
+            reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+            reg.waiting.postMessage('skipWaiting');
           }
+
+          if (reg.installing) {
+            handleUpdate(reg.installing);
+          }
+
+          reg.addEventListener('updatefound', () => {
+            handleUpdate(reg.installing);
+          });
         });
 
         // 3. Check for updates every time app comes to foreground
