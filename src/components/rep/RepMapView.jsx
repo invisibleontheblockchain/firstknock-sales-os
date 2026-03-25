@@ -56,6 +56,22 @@ function MapRefCapture({ mapRef }) {
     return null;
 }
 
+function FlyToProperty({ focusProperty }) {
+    const map = useMap();
+    const hasFocused = useRef(false);
+    useEffect(() => {
+        if (focusProperty && map && !hasFocused.current) {
+            try {
+                map.setView([focusProperty.lat, focusProperty.lng], 18, { animate: true });
+                hasFocused.current = true;
+            } catch (e) {
+                console.warn('FlyToProperty error', e);
+            }
+        }
+    }, [focusProperty, map]);
+    return null;
+}
+
 function GpsLayer({ position, accuracy }) {
     if (!position) return null;
     return (
@@ -72,7 +88,7 @@ function GpsLayer({ position, accuracy }) {
     );
 }
 
-export default function RepMapView({ properties, onSelectProperty, onClose }) {
+export default function RepMapView({ properties, onSelectProperty, onClose, focusProperty }) {
     const mapRef = useRef(null);
     const [position, setPosition] = useState(null);
     const [accuracy, setAccuracy] = useState(50);
@@ -109,9 +125,10 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
         return () => { if (watchId !== null) navigator.geolocation.clearWatch(watchId); };
     }, []);
 
-    // Center map on GPS when first acquired
+    // Center map on GPS when first acquired (skip if focusing on a specific property)
     const hasCentered = useRef(false);
     useEffect(() => {
+        if (focusProperty) return; // Don't auto-center on GPS when viewing a specific property
         if (position && mapRef.current && !hasCentered.current) {
             try {
                 mapRef.current.setView([position.lat, position.lng], 18, { animate: false });
@@ -120,7 +137,7 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
                 console.warn('Map not ready yet for setView', e);
             }
         }
-    }, [position]);
+    }, [position, focusProperty]);
 
     // Calculate nearby properties
     const nearbyProps = useMemo(() => {
@@ -136,12 +153,14 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
             .slice(0, 15);
     }, [position, properties]);
 
-    // Map center fallback
-    const center = position
-        ? [position.lat, position.lng]
-        : properties?.[0]
-            ? [properties[0].lat, properties[0].lng]
-            : [32.78, -79.93];
+    // Map center: prioritize focused property, then GPS, then first property
+    const center = focusProperty
+        ? [focusProperty.lat, focusProperty.lng]
+        : position
+            ? [position.lat, position.lng]
+            : properties?.[0]
+                ? [properties[0].lat, properties[0].lng]
+                : [32.78, -79.93];
 
     return (
         <div className="fixed inset-0 z-50 bg-black flex flex-col">
@@ -184,6 +203,7 @@ export default function RepMapView({ properties, onSelectProperty, onClose }) {
                     attributionControl={false}
                 >
                     <MapRefCapture mapRef={mapRef} />
+                    {focusProperty && <FlyToProperty focusProperty={focusProperty} />}
                     <TileLayer
                         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                         attribution="&copy; Esri"

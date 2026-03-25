@@ -72,7 +72,7 @@ export default function PropertyCard({ property, index, onSelect }) {
                 <button
                     onClick={(e) => {
                         e.stopPropagation();
-                        window.open(`https://maps.apple.com/?daddr=${property.lat},${property.lng}&dirflg=w`, '_blank');
+                        window.location.href = `https://maps.apple.com/?daddr=${property.lat},${property.lng}&dirflg=w`;
                     }}
                     className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all active:scale-95 bg-white/10 border border-white/10"
                 >

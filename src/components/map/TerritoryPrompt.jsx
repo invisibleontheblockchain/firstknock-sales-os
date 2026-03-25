@@ -237,7 +237,7 @@ export default function TerritoryPrompt({
                     } catch (e) { console.warn('Failed to update pull status', e); }
 
                     if (onPullComplete) {
-                        onPullComplete();
+                        onPullComplete(fetchMonths);
                         setShowCompare(true);
                     } else {
                         queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
@@ -441,13 +441,28 @@ export default function TerritoryPrompt({
                     <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
                     <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
                     {canPullAgain ? (
-                        <div className="flex items-center gap-2 ml-2">
+                        <div className="flex items-center gap-1.5 ml-2">
+                            {/* Pull mode toggle */}
+                            <div className="flex bg-gray-900 rounded-lg border border-gray-700 overflow-hidden">
+                                <button
+                                    onClick={() => setFetchMonths(12)}
+                                    className={`px-2 py-1 text-[9px] font-bold transition-all ${fetchMonths === 12 ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                                >
+                                    40mi² 12Mo
+                                </button>
+                                <button
+                                    onClick={() => setFetchMonths(1)}
+                                    className={`px-2 py-1 text-[9px] font-bold transition-all ${fetchMonths === 1 ? 'bg-cyan-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                                >
+                                    300mi² 1Mo
+                                </button>
+                            </div>
                             <Button
                                 disabled={pulling}
                                 onClick={handleFetchData}
-                                className="text-white text-[10px] h-6 px-3 py-0 rounded-md bg-blue-600 hover:bg-blue-500 font-bold tracking-wide shadow-[0_0_15px_rgba(37,99,235,0.4)]"
+                                className={`text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide ${fetchMonths === 1 ? 'bg-cyan-600 hover:bg-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]'}`}
                             >
-                                Fetch 12 Months
+                                {fetchMonths === 1 ? 'Pull 300mi²' : 'Pull 40mi²'}
                             </Button>
                         </div>
                     ) : (

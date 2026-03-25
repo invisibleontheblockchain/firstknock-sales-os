@@ -47,7 +47,7 @@ export default function NearbyHotLeads({ properties, radiusMiles = 1, maxLeads =
         const url = query 
             ? `https://maps.apple.com/?daddr=${encodeURIComponent(query)}&dirflg=d`
             : `https://maps.apple.com/?daddr=${prop.lat},${prop.lng}&dirflg=d`;
-        window.open(url, '_blank');
+        window.location.href = url;
     };
 
     // Watch user's location

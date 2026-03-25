@@ -28,6 +28,7 @@ export default function RouteBuilderSettings({
     startAddressInput, setStartAddressInput,
     sortBy, setSortBy,
     soldDateFilter, setSoldDateFilter,
+    lastPullMode,
     // New advanced options
     routeConfig, setRouteConfig,
     // Callbacks
@@ -154,21 +155,35 @@ export default function RouteBuilderSettings({
                         {/* ═══ 2. RECENTLY SOLD ═══ */}
                         <div className="space-y-3">
                             <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">2. Recently Sold</label>
-                            <div className="flex gap-1.5">
-                                {[{ label: '1 Mo', val: 1 }, { label: '3 Mo', val: 3 }, { label: '6 Mo', val: 6 }, { label: '9 Mo', val: 9 }, { label: '12 Mo', val: 12 }].map(opt => (
-                                    <button
-                                        key={opt.val}
-                                        onClick={() => setSoldDateFilter(opt.val)}
-                                        className={`flex-1 py-3 rounded-lg text-xs font-bold transition-all ${
-                                            (soldDateFilter || 12) === opt.val
-                                                ? 'bg-yellow-500 text-black shadow-lg'
-                                                : 'bg-[#1A1A1A] text-gray-500 border border-gray-800 active:bg-[#252525]'
-                                        }`}
-                                    >
-                                        {opt.label}
-                                    </button>
-                                ))}
-                            </div>
+                            {lastPullMode === '300mi' ? (
+                                <>
+                                    <div className="flex gap-1.5">
+                                        <div className="flex-1 py-3 rounded-lg text-xs font-bold bg-yellow-500 text-black shadow-lg text-center">
+                                            1 Mo
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[9px] text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 rounded-lg px-2 py-1.5">
+                                        <Lock className="w-3 h-3 shrink-0" />
+                                        <span>Locked to 1 month — 300mi² pull only contains 1 month of data</span>
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="flex gap-1.5">
+                                    {[{ label: '1 Mo', val: 1 }, { label: '3 Mo', val: 3 }, { label: '6 Mo', val: 6 }, { label: '9 Mo', val: 9 }, { label: '12 Mo', val: 12 }].map(opt => (
+                                        <button
+                                            key={opt.val}
+                                            onClick={() => setSoldDateFilter(opt.val)}
+                                            className={`flex-1 py-3 rounded-lg text-xs font-bold transition-all ${
+                                                (soldDateFilter || 12) === opt.val
+                                                    ? 'bg-yellow-500 text-black shadow-lg'
+                                                    : 'bg-[#1A1A1A] text-gray-500 border border-gray-800 active:bg-[#252525]'
+                                            }`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
                         </div>
 
                         {/* ═══ 3. ROUTE SIZE ═══ */}

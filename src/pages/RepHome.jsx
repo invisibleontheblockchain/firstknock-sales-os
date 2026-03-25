@@ -24,6 +24,7 @@ export default function RepHome() {
     const [uploading, setUploading] = useState(false);
     const [isOffline, setIsOffline] = useState(!navigator.onLine);
     const [showMap, setShowMap] = useState(false);
+    const [focusProperty, setFocusProperty] = useState(null);
     const [showAnalytics, setShowAnalytics] = useState(false);
     const [showChat, setShowChat] = useState(false);
     const [showUpgradeGate, setShowUpgradeGate] = useState(false);
@@ -677,7 +678,8 @@ export default function RepHome() {
                 <RepMapView
                     properties={routeProperties}
                     onSelectProperty={(p) => setSelectedProperty(p)}
-                    onClose={() => setShowMap(false)}
+                    onClose={() => { setShowMap(false); setFocusProperty(null); }}
+                    focusProperty={focusProperty}
                 />
             )}
 
@@ -691,7 +693,9 @@ export default function RepHome() {
                     uploading={uploading}
                     onClose={() => setSelectedProperty(null)}
                     onViewOnMap={() => {
+                        const prop = selectedProperty;
                         setSelectedProperty(null);
+                        setFocusProperty(prop);
                         setShowMap(true);
                     }}
                 />

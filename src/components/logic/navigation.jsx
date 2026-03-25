@@ -14,5 +14,5 @@ export function getNavigationUrl(lat, lng, address, app = 'apple') {
 
 export function openInMaps(lat, lng, address, app = 'apple') {
     const url = getNavigationUrl(lat, lng, address, app);
-    window.open(url, '_blank');
+    window.location.href = url;
 }

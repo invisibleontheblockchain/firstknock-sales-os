@@ -139,16 +139,16 @@ export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUplo
                         <MapPin className="w-3.5 h-3.5" />
                         View on FirstKnock Map
                     </button>
-                    <a
-                        href={`https://maps.apple.com/?daddr=${property.lat},${property.lng}&dirflg=w`}
-                        target="_blank"
-                        rel="noreferrer"
+                    <button
+                        onClick={() => {
+                            window.location.href = `https://maps.apple.com/?daddr=${property.lat},${property.lng}&dirflg=w`;
+                        }}
                         className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95"
                         style={{ background: '#111', color: '#666' }}
                     >
                         <Navigation className="w-3.5 h-3.5" />
                         Open in Apple Maps
-                    </a>
+                    </button>
                 </div>
 
                 {/* Scrollable extras */}

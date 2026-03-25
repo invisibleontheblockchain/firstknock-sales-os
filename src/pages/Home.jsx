@@ -160,6 +160,7 @@ export default function Home() {
     const [zipCodeFilter, setZipCodeFilter] = useState(''); // Comma separated string
     const [analyzeZipFilter, setAnalyzeZipFilter] = useState('all'); // Filter for Analyze mode
     const [soldDateFilter, setSoldDateFilter] = useState(12); // Default: 12 months
+    const [lastPullMode, setLastPullMode] = useState(null); // '40mi' or '300mi' — tracks which pull mode was last used
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
@@ -1114,6 +1115,16 @@ export default function Home() {
             if (drawnPolygon && drawnPolygon.length > 2) {
                 workingSet = workingSet.filter(p => isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon));
                 console.log(`[generateRoutes] After Polygon Filter: ${workingSet.length}`);
+
+                // If drawn area has 0 properties, user hasn't fetched data yet — guide them
+                if (workingSet.length === 0) {
+                    toast.error(
+                        "No property data in this area yet! Close Route Builder, then use the \"Pull 40mi²\" or \"Pull 300mi²\" button in the territory bar to fetch data first.",
+                        { id: 'build-routes', duration: 8000 }
+                    );
+                    setRoutesGenerating(false);
+                    return;
+                }
             }
 
             const beforeSoldDateFilter = workingSet.length;
@@ -1934,12 +1945,20 @@ export default function Home() {
                 setDrawSizeMiles={setDrawSizeMiles}
                 user={user}
                 setZipCodeFilter={setZipCodeFilter}
-                onPullComplete={() => {
+                onPullComplete={(pullFetchMonths) => {
                     queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
                     queryClient.invalidateQueries({ queryKey: ['user'] });
                     localStorage.setItem('fk_autobuild_next_open', 'true');
                     setMode('generate');
                     setShowCompare(true);
+                    // Track pull mode and lock sold date filter accordingly
+                    if (pullFetchMonths === 1) {
+                        setLastPullMode('300mi');
+                        setSoldDateFilter(1);
+                    } else {
+                        setLastPullMode('40mi');
+                        setSoldDateFilter(12);
+                    }
                 }}
             />
 
@@ -2103,6 +2122,7 @@ export default function Home() {
                         startAddressInput={startAddressInput} setStartAddressInput={setStartAddressInput}
                         sortBy={sortBy} setSortBy={setSortBy}
                         soldDateFilter={soldDateFilter} setSoldDateFilter={setSoldDateFilter}
+                        lastPullMode={lastPullMode}
                         routeConfig={routeConfig} setRouteConfig={setRouteConfig}
                         onGenerate={generateRoutes} routesGenerating={routesGenerating}
                         onReorder={handleReorder}
