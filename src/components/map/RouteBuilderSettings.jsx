@@ -348,6 +348,13 @@ export default function RouteBuilderSettings({
                                     checked={routeConfig.excludePreviouslyKnocked}
                                     onChange={(v) => setRouteConfig(prev => ({ ...prev, excludePreviouslyKnocked: v }))}
                                 />
+                                <ToggleOption
+                                    label="Include Unverified Sales"
+                                    description="Show properties that may be expired listings, not confirmed sales"
+                                    icon={<Target className="w-4 h-4 text-orange-400" />}
+                                    checked={routeConfig.includeUnverifiedSales}
+                                    onChange={(v) => setRouteConfig(prev => ({ ...prev, includeUnverifiedSales: v }))}
+                                />
                             </div>
                         </CollapsibleSection>
 

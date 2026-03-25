@@ -264,6 +264,7 @@ export default function Home() {
         maxPrice: null,
         minYearBuilt: null,
         maxYearBuilt: null,
+        includeUnverifiedSales: false,
     });
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
@@ -1208,6 +1209,15 @@ export default function Home() {
                     const pt = p.property_type.toLowerCase();
                     return !landKeywords.some(kw => pt.includes(kw));
                 });
+            }
+
+            // Skip low-confidence "sold" properties (likely expired/withdrawn listings, not real sales)
+            if (!routeConfig.includeUnverifiedSales) {
+                const before = workingSet.length;
+                workingSet = workingSet.filter(p => p.sale_confidence !== 'low');
+                if (before > workingSet.length) {
+                    console.log(`[generateRoutes] Removed ${before - workingSet.length} low-confidence properties`);
+                }
             }
 
             // Exclude Previously Knocked doors (if enabled)

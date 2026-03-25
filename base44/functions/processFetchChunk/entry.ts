@@ -107,10 +107,25 @@ const CORPORATE_KEYWORDS = ['LLC', 'INC', 'TRUST', 'HOLDINGS', 'BANK', 'PROPERTI
 
 function isValidSoldProperty(p) {
     if (!p.lastSaleDate) return false;
-    if (p.lastSalePrice === null || p.lastSalePrice === undefined || p.lastSalePrice <= 100) return false;
+    // Reject non-sale deed transfers: quit claims, tax sales, foreclosure filings typically < $10K
+    if (p.lastSalePrice === null || p.lastSalePrice === undefined || p.lastSalePrice < 10000) return false;
     const badTypes = ['Commercial', 'Industrial', 'Vacant Land', 'Agricultural'];
     if (p.propertyType && badTypes.includes(p.propertyType)) return false;
+    // Reject if sale price is suspiciously low vs assessed value (likely transfer, not a real sale)
+    if (p.assessedValue && p.assessedValue > 0 && p.lastSalePrice < p.assessedValue * 0.3) return false;
     return true;
+}
+
+/**
+ * Compute sale confidence: high = genuine sale, medium = possible, low = likely not a real sale
+ */
+function computeSaleConfidence(p, isCorporate) {
+    // Corporate buyer (bank, LLC, trust) = likely foreclosure or investment transfer
+    if (isCorporate) return 'medium';
+    // Very low price relative to assessed value = likely non-arm's-length transfer
+    if (p.assessedValue && p.assessedValue > 0 && p.lastSalePrice < p.assessedValue * 0.5) return 'medium';
+    // Strong signal: realistic price, personal buyer
+    return 'high';
 }
 
 function isCorporateOwner(p) {
@@ -302,11 +317,15 @@ Deno.serve(async (req) => {
                     if (!isNaN(saleDate.getTime()) && saleDate <= soldCutoff) original_status = 'ELIGIBLE';
                 }
 
+                const corporate = isCorporateOwner(p);
+                const confidence = computeSaleConfidence(p, corporate);
+
                 mapped.push({
                     address_hash: hash, house_number, street_name, city: p.city || '', state: p.state || '', zip_code: pZip,
                     lat: p.latitude, lng: p.longitude, original_status, beds: p.bedrooms || 0, baths: p.bathrooms || 0,
                     sqft: p.squareFootage || 0, lot_size: p.lotSize || 0, year_built: p.yearBuilt || 0, price: p.lastSalePrice || 0,
-                    sold_date: p.lastSaleDate || null, sale_type: 'Deed', property_type: p.propertyType || 'Single Family', data_source: 'rentcast'
+                    sold_date: p.lastSaleDate || null, sale_type: corporate ? 'Corporate' : 'Deed', property_type: p.propertyType || 'Single Family', data_source: 'rentcast',
+                    sale_confidence: confidence
                 });
             }
 
@@ -392,11 +411,16 @@ Deno.serve(async (req) => {
                 const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
                 const street_name = addressMatch ? addressMatch[2] : (addressLine || "Unknown");
 
+                // MLS Inactive = could be sold, expired, withdrawn, cancelled
+                // Without explicit sold confirmation, tag as low confidence
+                const mlsConfidence = (p.status && p.status.toLowerCase().includes('sold')) ? 'medium' : 'low';
+
                 mapped.push({
                     address_hash: hash, house_number, street_name, city: p.city || '', state: p.state || '', zip_code: pZip,
                     lat: p.latitude, lng: p.longitude, original_status: 'RECENT_OFF_MARKET', beds: p.bedrooms || 0, baths: p.bathrooms || 0,
                     sqft: p.squareFootage || 0, lot_size: p.lotSize || 0, year_built: p.yearBuilt || 0, price: p.price || 0,
-                    sold_date: p.removedDate || p.listedDate || null, sale_type: 'MLS', property_type: p.propertyType || 'Single Family', data_source: 'rentcast'
+                    sold_date: p.removedDate || p.listedDate || null, sale_type: 'MLS', property_type: p.propertyType || 'Single Family', data_source: 'rentcast',
+                    sale_confidence: mlsConfidence
                 });
             }
 
