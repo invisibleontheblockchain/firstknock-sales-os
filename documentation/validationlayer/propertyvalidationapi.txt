@@ -1,0 +1,1282 @@
+Real Estate Property Validation API
+
+Comprehensive Technical Research Report — Engineering Reference
+
+2025
+
+
+Key Takeaway: For high-velocity property validation (100–500 addresses in <45 seconds) with a requirement for 7–14 day caching, BatchData emerges as the strongest primary solution. However, standard API Terms of Service universally prohibit local caching — a commercial license negotiation is mandatory before production deployment.
+
+
+45 sec Achievable TARGET SLA (100–500 ADDRESSES) 3,200+ Primary Pick BATCHDATA AGGREGATED SOURCES 0 days ToS Risk ATTOM DEFAULT CACHE ALLOWANCE 30–90d High Risk DEED RECORDING LAG (PUBLIC RECORDS)
+
+
+
+Executive Summary & Key Findings
+
+Top-Line Verdict on Best Provider Stack
+
+After evaluating throughput benchmarks, data freshness pipelines, unit economics, and legal compliance requirements, the recommended production stack is BatchData as the primary provider, supplemented by RentCast for anomaly verification and cost arbitrage at scale. BatchData's aggregation of 3,200+ sources — including daily MLS feeds and near-real-time assessor data — combined with built-in USPS address normalization makes it the most operationally complete single-vendor solution. RentCast's $5/month base tier provides a low-cost secondary validation layer for active sales and rental listings nationwide.
+
+For organizations requiring maximum throughput beyond BatchData's capacity, RealEstateAPI offers a theoretical ceiling of 220,000 addresses/second (2,200 queries/second at 100 addresses/query), making it a viable overflow or burst-traffic provider. PropAPIS delivers the lowest
+
+raw cost at scale ($0.003/call at 100,000 monthly volume) but lacks the data architecture depth of BatchData.
+
+Critical Risks
+
+· ToS Caching Prohibition (CRITICAL): Standard click-wrap agreements across all major providers universally prohibit local data caching. The 7–14 day TTL requirement cannot be legally implemented under self-serve tiers — commercial license negotiation is a hard prerequisite for production.
+
+· ATTOM explicitly prohibits caching (0 days allowed); any storage is a breach of terms
+
+· BatchData restricts MLS data to personal, non-commercial use under standard terms
+
+· All providers require sales-team engagement for a Commercial License Agreement granting internal caching rights
+
+· MLS Lag Risk: Deed-based public record pipelines carry a 30–90 day lag for 'sold' statuses depending on county recording speeds. Providers relying on web crawls introduce days-to-weeks of additional staleness.
+
+· Only MLS-direct providers (ATTOM, BatchData) reliably bridge this gap with daily or sub-daily refresh cycles
+
+· Web-crawl providers like Datafiniti capture only 4% of new MLS listings within 24 hours
+
+· API Drift: With 500+ fragmented MLS boards across the US, schema inconsistencies and field-level drift are a persistent integration risk. No single aggregator achieves 100% MLS coverage.
+
+· RESO Web API Transition: The industry is migrating from legacy RETS (deprecated 2018) to RESO Web API standard, mandatory for MLSs by April 2025. This reduces integration time by 92% but introduces a transition window where some boards may be mid-migration.
+
+Performance Feasibility Assessment — 45-Second SLA
+
+The 45-second SLA for 100–500 addresses is highly achievable with the correct architectural approach. BatchData's bulk endpoint supports up to 2,000 results per request with pagination, meaning a 500-address batch can be cleared in a single API call. With sub-second response times and a 99.99% uptime SLA, BatchData comfortably satisfies the latency requirement. The primary risk to SLA compliance is upstream address normalization failures — malformed or ambiguous inputs that require fallback resolution add latency and must be handled in a pre-processing layer before the primary API call.
+
+TABLE 1 — THROUGHPUT FEASIBILITY ASSESSMENT BY PROVIDER
+
+Provider Batch Size Limit Est. Time (100 Addr) Est. Time (500 Addr) 45s SLA Feasible?
+
+BatchData 2,000/request <1 second <1 second Yes — single call
+
+RealEstateAPI 100/query <1 second ~5 seconds (5 calls) Yes — parallel calls
+
+RevAddress 50/call ~2 seconds (2 calls) ~10 seconds (10 calls) Yes — parallel calls
+
+RentCast Batch supported ~5–10 seconds ~20–30 seconds Yes — with parallelism
+
+ATTOM Data Enterprise bulk Negotiated SLA Negotiated SLA Yes — enterprise tier
+
+
+
+Section 1: MLS Integration vs. Deed-Based Lag Analysis
+
+The single most consequential architectural decision in a property status validation system is the choice of upstream data pipeline. MLS-direct integrations provide near-real-time listing status updates, while deed-based public record pipelines introduce a structural 30–90 day lag that makes them unsuitable for any use case requiring current active/pending/sold status. The following section provides a provider-by-provider breakdown of data source architecture and update cadence.
+
+Provider-by-Provider Pipeline Breakdown
+
+ATTOM Data
+
+· Data Source: MLS-direct + public records + assessor data
+
+· Pipeline Architecture: Real-time Snowflake delivery; 90 million listings, 45+ million MLS sales in database
+
+· Update Cadence: Daily MLS monitoring; 95% of top real estate systems update pending statuses within 24 hours
+
+· Deed Lag Bridged: Yes — MLS-direct pipeline bypasses public record recording delays
+
+· Key Limitation: Enterprise pricing wall; strict ToS negotiation required; 0-day default caching allowance
+
+BatchData
+
+· Data Source: 3,200+ aggregated sources including daily MLS updates and near-real-time assessor data
+
+· Pipeline Architecture: Built-in USPS address normalization; bulk endpoint with 2,000 results/request
+
+· Update Cadence: Daily MLS feeds; some MLSs refresh as frequently as every 15 minutes
+
+· Deed Lag Bridged: Yes — MLS-direct component eliminates deed recording lag for active/pending statuses
+
+· Key Advantage: USPS normalization reduces duplicate queries and improves match rates at scale
+
+RentCast
+
+· Data Source: Nationwide active sales and rental listings; MLS-aggregated
+
+· Pipeline Architecture: Batch processing supported; REST API with standard JSON responses
+
+· Update Cadence: Regular batch updates; cadence less transparent than BatchData or ATTOM
+
+· Deed Lag Bridged: Partially — active listing data is MLS-sourced, but historical sold data may carry lag
+
+· Key Advantage: Lowest entry cost at $5/month base; best supplemental/verification provider
+
+Datafiniti
+
+· Data Source: Web crawl aggregation across real estate portals
+
+· Pipeline Architecture: Crawl-based; no direct MLS integration
+
+· Update Cadence: Days to weeks lag; captures only 4% of new MLS listings within 24 hours
+
+· Deed Lag Bridged: No — web crawl introduces additional lag on top of portal update delays
+
+· Key Risk: Unsuitable as a primary source for time-sensitive listing status validation
+
+Estated
+
+· Data Source: Public records, assessor data, deed records
+
+· Pipeline Architecture: Property-level data aggregation; strong for ownership and parcel data
+
+· Update Cadence: Public record cadence — subject to 30–90 day deed recording lag
+
+· Deed Lag Bridged: No — primarily deed/assessor based; not suitable for active listing status
+
+· Best Use Case: Ownership verification, parcel data enrichment — not listing status validation
+
+Realty Mole (RentCast rebranded)
+
+· Data Source: MLS-aggregated listing data; now operating under RentCast brand
+
+· Pipeline Architecture: Equivalent to RentCast; batch API supported
+
+· Update Cadence: Regular updates; cadence aligned with RentCast infrastructure
+
+· Deed Lag Bridged: Partially — same assessment as RentCast above
+
+TABLE 2 — PROVIDER DATA SOURCE, UPDATE CADENCE & DEED LAG ASSESSMENT
+
+Provider Data Source Type Update Cadence Deed Lag Bridged? MLS-Direct?
+
+ATTOM Data MLS + Public Records + Assessor Daily / Real-time (Snowflake) Yes Yes
+
+BatchData 3,200+ Sources incl. MLS + Assessor Daily / Up to 15-min refresh Yes Yes
+
+RentCast MLS-Aggregated (Sales + Rentals) Regular batch updates Partially Partial
+
+Realty Mole MLS-Aggregated Regular batch updates Partially Partial
+
+Datafiniti Web Crawl (Portals) Days to weeks No No
+
+Estated Public Records + Deed + Assessor 30–90 day recording lag No No
+
+
+API Drift Risk: 500+ Fragmented MLS Boards
+
+The US real estate market operates across 500+ independent MLS boards, each with its own data schema, field naming conventions, and update protocols. Even aggregators with broad MLS coverage cannot guarantee schema consistency across all boards. This creates 'API drift' — a condition where field values, status codes, or data structures shift over time as individual MLS boards update their systems, causing silent validation failures in downstream applications.
+
+RESO Web API Transition (April 2025 Deadline): The mandatory migration from legacy RETS to RESO Web API standard reduces integration time by 92% and standardizes JSON payloads. However, during the transition window, boards mid-migration may produce inconsistent outputs. Monitor provider changelogs closely through Q2 2025.
+
+· Mitigation: Use providers (BatchData, ATTOM) that abstract MLS schema normalization internally
+
+· Mitigation: Implement field-level validation in your ingestion layer — never assume field presence
+
+· Mitigation: Set up automated schema drift alerts on critical fields (listing_status, list_date, close_date)
+
+· Mitigation: Maintain a provider changelog subscription and schedule quarterly API contract reviews
+
+
+Section 2: Bulk/Parallel Request Support & Address Normalization
+
+Batch Endpoint Support & Throughput Benchmarks
+
+TABLE 3 — BATCH ENDPOINT SUPPORT & THROUGHPUT BY PROVIDER
+
+Provider Batch Endpoint Max Batch Size Throughput Ceiling Est. Time (100 Addr) Est. Time (500 Addr)
+
+BatchData Yes 2,000/request Not published (SLA-backed) <1 second <1 second
+
+RealEstateAPI Yes 100/query 220,000 addr/sec theoretical <1 second ~5 seconds
+
+RevAddress Yes 50/call Not published ~2 seconds ~10 seconds
+
+RentCast Yes Not specified Not published ~5–10 seconds ~20–30 seconds
+
+ATTOM Data Yes (Enterprise) Enterprise negotiated Real-time Snowflake Negotiated Negotiated
+
+PropAPIS Yes Not specified Not published ~5 seconds ~15–25 seconds
+
+
+RealEstateAPI's theoretical maximum of 220,000 addresses/second (2,200 queries/second × 100 addresses/query) makes it the highest-throughput option for burst scenarios, though this ceiling is theoretical and subject to rate limit enforcement in practice.
+
+Address Normalization Robustness
+
+Address normalization is the most underestimated failure point in high-volume property validation pipelines. Malformed, abbreviated, or ambiguous inputs — particularly unit/suite designations, directional prefixes, and non-standard city name variants — cause match failures that inflate apparent API error rates and waste API credits on unresolvable queries. The following breakdown covers normalization capabilities by provider.
+
+TABLE 4 — ADDRESS NORMALIZATION CAPABILITIES BY PROVIDER
+
+Provider USPS CASS Certified Fuzzy Matching Unit/Suite Handling Built-in Normalization
+
+BatchData Yes (built-in) Yes Yes Yes — pre-query normalization
+
+Smarty Streets Yes (primary) Yes Yes — best-in-class Yes — dedicated normalization API
+
+Melissa Data Yes Yes Yes Yes — address validation suite
+
+ATTOM Data Partial Limited Partial No — requires pre-processing
+
+RentCast No Limited Limited No
+
+RevAddress No Limited Limited No
+
+PropAPIS No Not specified Not specified No
+
+
+Recommended Pre-Processing Layer: Smarty Streets
+
+For any pipeline processing 1,000+ addresses per month, a dedicated address normalization pre-processing layer is strongly recommended before any property data API call. Smarty Streets is the industry standard for this function, offering USPS CASS-certified validation, best-in-class unit/suite parsing, and a high-throughput batch endpoint capable of processing addresses at the volumes required.
+
+· USPS CASS Certification: Ensures standardized address formatting aligned with postal delivery point validation
+
+· Batch Endpoint: Supports bulk address normalization in a single API call, adding minimal latency to the pipeline
+
+· Fuzzy Matching: Resolves common input errors (transposed numbers, missing directionals, abbreviated street types)
+
+· Unit/Suite Handling: Correctly parses and standardizes apartment, suite, and unit designators — a common failure point for multi-family properties
+
+· Deduplication: Normalizing before querying the property API eliminates duplicate calls for the same address submitted in different formats, directly reducing API spend
+
+· Integration Pattern: Run Smarty Streets normalization as Step 1 in the pipeline; pass only validated, standardized addresses to BatchData or the primary property API
+
+
+Section 3: Unit Economics — Cost Modeling
+
+Cost Per Validation at Scale
+
+TABLE 5 — UNIT ECONOMICS & COST SCALING BY PROVIDER
+
+Provider 1K/mo Cost Per-Record (1K) 10K/mo Cost Per-Record (10K) 100K/mo Cost Per-Record (100K) Billing Model Min Spend
+
+BatchData $650 $0.650 $1,400 $0.140 $3,100 $0.031 Base + Add-on credits ~$650/mo
+
+PropAPIS $299 $0.299 $299 $0.030 $299 $0.003 Flat subscription $299/mo
+
+TovoData $400 $0.400 $2,500 $0.250 Enterprise Custom N/A Usage-based $400/mo
+
+RentCast ~$5 + usage ~$0.050 ~$5 + usage ~$0.020 ~$5 + usage ~$0.010 Base + per-call $5/mo
+
+ATTOM
+
+Data Enterprise Custom Enterprise Custom Enterprise Custom Enterprise contract High — negotiate
+
+RevAddress Not published N/A Not published N/A Not published N/A Per-call Not specified
+
+
+Cost Strategy Analysis
+
+The cost landscape reveals a clear strategic split between low-volume and high-volume optimization. At 1,000 validations/month, PropAPIS ($299 flat) undercuts BatchData ($650) by 54%, making it attractive for early-stage or low-volume deployments. However, BatchData's superior data architecture — USPS normalization, 3,200+ sources, MLS-direct feeds — justifies its premium at production scale.
+
+· PropAPIS at Scale: At 100,000 validations/month, PropAPIS's $0.003/call is the lowest raw cost in the market. However, its data architecture depth and normalization capabilities are unverified at this volume.
+
+· BatchData Premium Justified: At $0.031/call (100K volume), BatchData costs 10x more than PropAPIS per record, but delivers USPS normalization, 3,200+ source aggregation, and a 99.99% uptime SLA — reducing downstream error handling costs.
+
+· RentCast as Cost Arbitrage: At $5/month base plus usage, RentCast is the most cost-accessible supplemental provider. Use it to verify anomalies flagged by the primary provider rather than as a primary source.
+
+· TovoData Scaling Risk: TovoData's pricing scales unfavorably — $400/mo at 1K volume to $2,500/mo at 10K volume (525% increase for 10x volume). Enterprise custom pricing at 100K volume introduces budget unpredictability.
+
+· Per-Field vs. Per-Record Billing: Providers billing per-field (common in enterprise tiers) can dramatically increase costs if your validation requires multiple data points per address. Confirm billing model before contract execution.
+
+· Minimum Spend Flags: BatchData's ~$650/mo minimum and TovoData's $400/mo minimum create fixed cost floors regardless of actual usage. Factor these into break-even analysis for lower-volume months.
+
+Cost Optimization Lever: Implementing Smarty Streets address normalization as a pre-processing step eliminates duplicate API calls for the same address submitted in different formats. At $0.031/call (BatchData, 100K volume), eliminating even 5% duplicate queries saves $155/month at 100K volume — partially offsetting the Smarty Streets subscription cost.
+
+
+Section 4: Managed Scraping Solutions
+
+Architectural Recommendation: Managed scraping should be treated as a last-resort fallback for edge-case properties not covered by primary API providers — never as a primary data source. The legal risk of ToS violation for Zillow and Redfin scraping remains entirely with your organization regardless of the infrastructure provider used.
+
+Apify — Zillow & Redfin Actors
+
+· Pricing: $0.50–$25.00 per 1,000 results depending on actor and volume tier
+
+· Success Rate: Top actors maintain 100% success rate via PerimeterX and CAPTCHA bypass infrastructure
+
+· Proxy Infrastructure: Managed residential proxy rotation; anti-bot evasion handled by actor maintainers
+
+· Legal Risk: HIGH — Zillow's Terms of Service explicitly prohibit automated extraction. ToS violation risk is entirely on your organization.
+
+· Use Case: Gap-filling for properties not found in primary API; edge-case coverage only
+
+· Operational Note: Actor quality varies significantly; vet actor maintainer reputation and update frequency before production use
+
+Bright Data — Enterprise Scraping Infrastructure
+
+· Infrastructure Scale: 400 million+ residential IPs; enterprise-grade anti-bot infrastructure
+
+· Pricing: Web Scraper APIs at $0.75–$1.00 per 1,000 records
+
+· Pre-Built Datasets: Offers pre-scraped real estate datasets that may reduce direct scraping exposure
+
+· MCP Server Tier: Enterprise managed service with dedicated support and SLA
+
+· Legal Risk: HIGH — Bright Data handles anti-bot infrastructure, but ToS violation liability for Zillow/Redfin data remains with your organization
+
+· Advantage Over Apify: Greater infrastructure reliability and IP pool depth for sustained high-volume operations
+
+HasData
+
+· Pricing: Competitive with Apify; specific tiers require direct vendor inquiry
+
+· Capabilities: Real estate portal scraping with proxy management
+
+· Limitations: Smaller IP pool than Bright Data; less established track record for real estate use cases
+
+· Legal Risk: Same ToS violation exposure as other scraping providers
+
+· Recommendation: Third-tier fallback only; prefer Apify or Bright Data for reliability
+
+Legal Verdict on Scraping
+
+Zillow's Terms of Service explicitly prohibit automated data extraction. While managed scraping platforms like Bright Data and Apify abstract the technical complexity of bypassing anti-bot systems, they do not transfer legal liability. Any ToS violation claim from Zillow, Redfin, or other portals would be directed at your organization. The hiQ Labs v. LinkedIn precedent (public data scraping) provides some legal cover for publicly accessible data, but this protection is not absolute and is actively contested. The risk-adjusted recommendation is to use managed scraping strictly as a supplemental fallback for properties not resolvable through primary API providers, with legal counsel review before any production deployment.
+
+TABLE 6 — MANAGED SCRAPING PROVIDER COMPARISON
+
+Provider Price per 1K Results Success Rate IP Pool Size Legal Risk Level Recommended Role
+
+Apify (Zillow
+
+actors) $0.50–$25.00 Up to 100% Managed rotation HIGH Fallback only
+
+Bright Data $0.75–$1.00 Enterprise SLA 400M+ residential IPs HIGH Fallback only
+
+HasData Inquiry required Not published Smaller pool HIGH Third-tier fallback
+
+
+
+Section 5: Middle-Tier & Skip-Tracing APIs
+
+BatchData / BatchLeads
+
+· API Availability: Full REST API with documented bulk endpoints; SDK maturity is above average for the mid-market segment
+
+· SDK Maturity: Official SDKs available; documentation quality is production-grade
+
+· Key Capabilities: Property status, ownership data, skip-tracing, phone/email append, MLS listing status
+
+· Pricing: $650/mo at 1K volume scaling to $3,100/mo at 100K volume (see Section 3)
+
+· Recommendation: Primary provider for property status validation pipeline
+
+PropStream
+
+· API Availability: Limited — PropStream is primarily a UI-driven platform; API access is not a core product offering
+
+· Pricing: Subscription-based UI product; API pricing not publicly available
+
+· Limitations: Not suitable as a programmatic API provider for high-volume automated validation
+
+· Best Use Case: Manual property research and lead generation for human operators, not automated pipelines
+
+· Recommendation: Exclude from automated validation architecture
+
+RentCast
+
+· Entry-Point Value: $5/month base subscription is the lowest cost of entry in the market
+
+· Pricing: $5/month + usage-based per-call fees; scales affordably for supplemental use
+
+· Data Freshness: Regular MLS-aggregated updates for active sales and rentals; cadence less transparent than BatchData
+
+· API Capabilities: Batch processing supported; nationwide active sales and rental listings
+
+· Recommendation: Best supplemental/secondary provider for anomaly verification and cost arbitrage
+
+Melissa Data
+
+· Primary Capability: Address validation, CASS certification, and data quality — not property listing status
+
+· USPS CASS Certified: Yes — strong address standardization capabilities
+
+· Batch Endpoint: Yes — supports bulk address validation
+
+· Property Data: Limited property-specific data; not a listing status provider
+
+· Recommendation: Consider as an alternative to Smarty Streets for address normalization pre-processing layer; not suitable as a property status API
+
+Smarty Streets — Recommended Normalization Layer
+
+· USPS CASS Certification: Yes — industry-leading address standardization
+
+· Batch Endpoint: Yes — high-throughput bulk address validation API
+
+· Fuzzy Matching: Yes — resolves common input errors and abbreviation variants
+
+· Unit/Suite Handling: Best-in-class parsing for multi-family and commercial addresses
+
+· Integration Role: Step 1 in the validation pipeline — normalize all inputs before passing to property status API
+
+· Cost Impact: Reduces duplicate API calls by standardizing variant address formats, lowering net property API spend
+
+
+Section 6: ToS Audit — Caching Rights & Compliance
+
+CRITICAL COMPLIANCE REQUIREMENT: The 7–14 day local caching requirement cannot be legally implemented under any standard self-serve API tier. Commercial license negotiation is a hard prerequisite before production deployment. Proceeding without a negotiated caching agreement exposes the organization to contract breach claims and potential data access termination.
+
+Provider-by-Provider Caching Permissions
+
+TABLE 7 — TOS CACHING RIGHTS AUDIT BY PROVIDER
+
+Provider Default Cache Allowance Storage Permitted? Redistribution Commercial License Path Negotiation Required?
+
+ATTOM Data 0 days No — explicit prohibition Prohibited Yes — enterprise contract Yes — mandatory
+
+BatchData 0 days (MLS data) No — personal/non-commercial only Prohibited Yes — sales team engagement Yes — mandatory
+
+RentCast Not specified Likely restricted Prohibited Likely available Yes — recommended
+
+PropAPIS Not specified Not specified Prohibited Likely available Yes — recommended
+
+TovoData Not specified Not specified Prohibited Enterprise custom Yes — mandatory at scale
+
+RevAddress Not specified Not specified Prohibited Not specified Yes — recommended
+
+
+ATTOM Data — Explicit Prohibition
+
+· Caching: Explicitly prohibited — 0 days allowed under standard terms
+
+· Storage: Any storage or local persistence of ATTOM data is considered a breach of terms
+
+· Redistribution: Strictly prohibited; data is licensed for end-use only
+
+· Attribution: Required in any display context
+
+· Commercial License: Available through enterprise contract negotiation; must explicitly grant internal caching rights for validation purposes
+
+· Action Required: Engage ATTOM enterprise sales before any production deployment involving data persistence
+
+BatchData — MLS Data Restrictions
+
+· Caching: Heavily restricted; MLS data limited to personal, non-commercial use under standard click-wrap terms
+
+· Storage: Not permitted under standard self-serve tier
+
+· Redistribution: Prohibited
+
+· Commercial License: Must engage BatchData sales team to negotiate a Commercial License Agreement explicitly granting 7–14 day internal caching rights for validation purposes
+
+· Key Negotiation Point: Ensure the agreement specifies 'internal validation use only' and 'zero external redistribution' to minimize negotiation friction
+
+· Action Required: Do not deploy to production without a signed commercial license
+
+Recommended Compliance Approach
+
+1. Engage Provider Sales Teams: Before writing any caching infrastructure, initiate commercial license negotiations with BatchData (primary) and any secondary providers. Frame the request as 'internal validation caching for operational efficiency — zero redistribution.'
+
+2. Define Cache Scope in Contract: Ensure the Commercial License Agreement explicitly specifies: (a) maximum TTL of 14 days, (b) internal use only, (c) no external redistribution, (d) data deletion protocols upon TTL expiry.
+
+3. Implement TTL Enforcement: Build hard TTL enforcement into the cache layer — automated expiry at 14 days maximum, with audit logging of cache writes and deletions for compliance documentation.
+
+4. Separate MLS vs. Non-MLS Data: MLS-sourced listing status data carries the strictest restrictions. Separate your cache store by data type and apply the most restrictive TTL to MLS-origin records.
+
+5. Legal Counsel Review: Have legal counsel review all Commercial License Agreements before execution, specifically for caching rights, audit rights, and breach remedies.
+
+6. Quarterly ToS Review: Schedule quarterly reviews of provider ToS documents. Providers update terms unilaterally; a change in caching policy could invalidate your compliance posture without notice.
+
+
+Section 7: Data Refresh Rate Comparison
+
+Data freshness is the primary determinant of validation accuracy. The choice of provider pipeline — MLS-direct, aggregator, or web-crawl — has a direct and measurable impact on the staleness risk of cached data within a 7–14 day TTL window. The following analysis ranks providers by source type and refresh cadence, with explicit staleness risk assessment for the target cache TTL.
+
+TABLE 8 — PROVIDER REFRESH CADENCE & STALENESS RISK FOR 7–14 DAY CACHE TTL
+
+Provider Source Type Refresh Cadence Staleness Risk (7–14d TTL) Suitable for Cache Strategy?
+
+ATTOM Data MLS-Direct + Assessor Daily / Real-time (Snowflake) Low — daily refresh within TTL Yes
+
+BatchData MLS-Direct + 3,200 Sources Daily / Up to 15-min refresh Low — multiple refreshes within TTL Yes — Primary
+
+RentCast MLS-Aggregated Regular batch (cadence opaque) Low-Medium — verify cadence with vendor Yes — Supplemental
+
+RevAddress Aggregated Not published Medium — cadence unverified Conditional
+
+PropAPIS Aggregated Not published Medium — cadence unverified Conditional
+
+Datafiniti Web Crawl Days to weeks HIGH — 4% of listings captured in 24h No
+
+Estated Public Records / Deed 30–90 day recording lag CRITICAL — exceeds TTL window No
+
+
+Impact on 7–14 Day Cache TTL Strategy
+
+· MLS-Direct Providers (ATTOM, BatchData): Daily or sub-daily refresh cycles mean that within a 7–14 day TTL window, the source data will have been refreshed 7–14+ times. Staleness risk is low — the primary risk is the delta between the last cache write and the next MLS update, not the TTL duration itself.
+
+· Aggregator Pipelines (RentCast, RevAddress): Refresh cadence is less transparent. Before committing to a 14-day TTL with these providers, contractually confirm minimum refresh frequency. A provider refreshing weekly would mean cached data could be up to 21 days stale at TTL expiry.
+
+· Web-Crawl Providers (Datafiniti): Unsuitable for any caching strategy. With only 4% of new MLS listings captured within 24 hours, a 7-day cache of Datafiniti data would be structurally unreliable for active listing status.
+
+· Deed-Based Providers (Estated): The 30–90 day deed recording lag exceeds the 14-day TTL window entirely. These providers cannot be used for active listing status validation regardless of cache strategy.
+
+· Recommended TTL by Data Type: Set shorter TTLs (3–5 days) for active/pending listing status fields, which change frequently. Longer TTLs (10–14 days) are acceptable for stable fields like property characteristics, ownership records, and parcel data.
+
+Adaptive TTL Strategy: Consider implementing confidence-weighted TTLs — properties in high-velocity markets (e.g., urban cores with <7-day average days-on-market) should use shorter TTLs (3–5 days) to reduce the risk of serving stale active/pending status. Properties in slower markets can safely use the full 14-day TTL.
+
+
+Section 8: Architectural Recommendations
+
+Recommended Provider Stack
+
+TABLE 9 — RECOMMENDED PROVIDER STACK BY ROLE
+
+Role Provider Rationale Estimated Monthly Cost (10K vol)
+
+Primary — Property
+
+Status BatchData MLS-direct, 3,200+ sources, USPS normalization, 99.99% SLA, 2,000/request batch ~$1,400
+
+Secondary — Anomaly
+
+Verification RentCast Lowest cost supplemental; nationwide active sales + rentals; batch supported ~$5 + usage
+
+Address Normalization Smarty Streets USPS CASS certified; best-in-class unit/suite handling; deduplication layer ~$50–200
+
+Burst / Overflow RealEstateAPI 220,000 addr/sec theoretical ceiling; use for traffic spikes beyond BatchData limits Usage-based
+
+Fallback — Edge Cases Apify / Bright Data Managed scraping for properties not resolvable via API; legal review required Variable
+
+
+Routing Architecture for 45-Second SLA
+
+7. Input Ingestion: Receive address batch (up to 500 addresses). Log batch ID, timestamp, and source for audit trail.
+
+8. Pre-Processing — Smarty Streets Normalization: Submit full batch to Smarty Streets batch endpoint. Receive standardized, CASS-certified addresses. Deduplicate normalized outputs. Flag unresolvable addresses for manual review queue.
+
+9. Cache Lookup: Query local cache store for each normalized address. Return cached results for addresses with valid TTL (< 14 days). Route cache-miss addresses to primary API call.
+
+10. Primary API Call — BatchData: Submit cache-miss addresses as a single bulk request (up to 2,000/request). Receive property status results. Target: sub-second response for ≤500 addresses.
+
+11. Result Validation & Anomaly Detection: Validate response fields for schema completeness. Flag anomalies (missing status, unexpected null fields, schema drift indicators). Route flagged records to RentCast secondary verification.
+
+12. Secondary Verification — RentCast (Anomalies Only): Submit anomaly-flagged addresses to RentCast for cross-validation. Reconcile conflicting results using BatchData as authoritative source.
+
+13. Cache Write: Write validated results to cache store with TTL assignment. Apply adaptive TTL: 3–5 days for active/pending status; 10–14 days for stable property characteristics. Log cache write with provider source, timestamp, and TTL expiry.
+
+14. Response Assembly: Merge cached results + fresh API results. Return complete batch response to calling application. Total target latency: <45 seconds end-to-end including normalization.
+
+Cache Layer Design for 7–14 Day TTL with ToS Compliance
+
+· Cache Store: Redis or equivalent in-memory store with persistent backup. Key structure: normalized_address_hash → {provider, data, written_at, ttl_expiry, data_type}
+
+· TTL Enforcement: Hard expiry at 14 days maximum. Implement automated TTL enforcement at the cache layer — do not rely on application-level TTL checks alone.
+
+· Data Type Segmentation: Separate cache namespaces for MLS-origin data (strictest TTL) vs. assessor/public record data (longer TTL permissible). Enables per-namespace TTL policy aligned with provider ToS.
+
+· Audit Logging: Log all cache writes, reads, and deletions with timestamps. Maintain 90-day audit log for compliance documentation. Required for demonstrating ToS compliance during provider audits.
+
+· Deletion Protocol: Implement automated data deletion at TTL expiry — not just expiry flags. Purge expired records from persistent backup within 24 hours of TTL expiry.
+
+· Commercial License Prerequisite: Do not deploy cache layer to production until Commercial License Agreements with BatchData (and any other providers) are executed and explicitly grant 7–14 day internal caching rights.
+
+Address Normalization Pre-Processing Pipeline
+
+The normalization pipeline should be implemented as a stateless microservice sitting between the input ingestion layer and the cache/API routing layer. This enables independent scaling, versioning, and replacement of the normalization provider without modifying the core validation pipeline.
+
+· Input: Raw address strings from calling application (any format)
+
+· Step 1 — Format Parsing: Extract address components (street number, street name, unit, city, state, ZIP) using regex + rule-based parser
+
+· Step 2 — Smarty Streets CASS Validation: Submit parsed components to Smarty Streets batch endpoint; receive standardized USPS-format output
+
+· Step 3 — Deduplication: Hash normalized addresses; remove duplicates before downstream API calls
+
+· Step 4 — Unresolvable Flagging: Addresses that fail CASS validation are flagged and routed to manual review queue — not passed to property API
+
+· Output: Deduplicated, CASS-certified address list ready for cache lookup and API routing
+
+Risk Mitigations for API Drift and ToS Violations
+
+TABLE 10 — RISK REGISTER & MITIGATIONS
+
+Risk Severity Mitigation Owner
+
+API Schema Drift (MLS
+
+board updates) High Field-level validation in ingestion layer; automated schema drift alerts on critical fields; quarterly API contract reviews Engineering
+
+ToS Caching Violation Critical Commercial License Agreement before production; hard TTL enforcement; audit logging; legal counsel review Legal + Engineering
+
+Provider Outage
+
+(BatchData) High RealEstateAPI as overflow provider; circuit breaker pattern with automatic failover; 99.99% SLA monitoring Engineering
+
+RESO Web API
+
+Transition Disruption Medium Monitor provider changelogs through Q2 2025; test against RESO Web API endpoints in staging before MLS Engineering
+
+migration deadlines
+
+Address Normalization
+
+Failures Medium Smarty Streets pre-processing layer; manual review queue for unresolvable addresses; normalization success rate monitoring Engineering
+
+Scraping ToS Violation
+
+(Apify/Bright Data) High Legal counsel review before any scraping deployment; use strictly as last-resort fallback; document use case justification Legal
+
+Cost Overrun at Scale Medium Implement per-batch cost estimation before API call; alert on monthly spend thresholds; evaluate PropAPIS at 100K+ volume Engineering + Finance
+
+
+
+
+
+Appendix: Quick-Reference Decision Matrix
+
+TABLE 11 — QUICK-REFERENCE DECISION MATRIX FOR ENGINEERING TEAM
+
+Requirement Recommended Solution Alternative Do Not Use
+
+Primary property status
+
+API BatchData ATTOM Data (enterprise) Estated, Datafiniti
+
+45-second SLA (500
+
+addresses) BatchData bulk endpoint (single call) RealEstateAPI (parallel calls) RevAddress (50/call limit)
+
+Address normalization Smarty Streets Melissa Data No pre-processing
+
+Cost optimization at
+
+100K+ vol PropAPIS ($0.003/call) BatchData ($0.031/call) TovoData (enterprise custom)
+
+Anomaly verification /
+
+secondary RentCast ($5/mo base) RevAddress Datafiniti
+
+7–14 day caching BatchData + Commercial License Any provider + negotiated license Standard self-serve tiers
+
+Burst / overflow
+
+throughput RealEstateAPI (220K addr/sec) BatchData (2,000/request) Web crawl providers
+
+Edge-case fallback (last resort) Apify (legal review required) Bright Data (legal review required) Direct portal scraping
+
+
+
+Immediate Action Items: (1) Initiate BatchData commercial license negotiation before any production cache deployment. (2) Implement Smarty Streets normalization as Step 1 in the pipeline. (3) Set up schema drift monitoring on listing_status, list_date, and close_date fields. (4) Schedule legal counsel review of all provider ToS documents before contract execution.
+Property Status Validation API Architecture Memo
+
+
+
+TO: Engineering Team
+FROM: Technical Research & Architecture Review
+RE: Property Status Validation API — Provider Recommendations
+
+DATE: March 2026
+
+Bottom Line Up Front
+
+The definitive engineering recommendation for our high-velocity property validation pipeline is to implement BatchData as the primary routing engine, supported by RentCast for anomaly verification, and Apify / Bright Data as an absolute last-resort fallback for data gaps [1]. BatchData’s direct MLS integrations guarantee the necessary data freshness for listing statuses, while its bulk endpoint architecture easily clears the 500-address / 45-second latency threshold [1]. However, because standard self-serve agreements universally prohibit internal caching, engineering must block production deployment until Legal negotiates a Custom Commercial License explicitly granting a 7–14 day cache TTL [1].
+
+Recommendation #1 — Primary Provider: BatchData
+
+Why #1
+
+
+
+
+
+Data freshness priority: Relies on daily MLS feeds rather than deed-based public records, effectively bypassing the 30–90 day lag typical of county recordings [1]. Currently, 95% of top real estate systems update via MLS within 24 hours (with some refreshing every 15 minutes) [1].
+
+
+
+Batch execution: Supports up to 2,000 results per paginated request, comfortably clearing our 100–500 address requirement in a single API call [1].
+
+
+
+ToS compliance posture: Strict out-of-the-box restrictions against storage exist; local 7–14 day caching is only legally permissible via a negotiated Custom Commercial License Agreement [1].
+
+
+
+Cost efficiency: Highly scalable pricing structure that aggressively discounts high-volume boolean status checks, bringing unit economics down to $0.031/record at peak volume sizes [1].
+
+Integration Approach
+
+
+
+
+
+API endpoint pattern: Utilize the dedicated BatchData bulk verification endpoint over standard single-record GET requests [1].
+
+
+
+Authentication method: Secure integration via custom commercial API keys linked to our specific negotiated caching terms [1].
+
+
+
+Batch request structure: Construct maximum-payload JSON payloads (batching 500 addresses per query) to minimize network round-trips and maximize the 99.99% uptime SLA [1].
+
+
+
+Address normalization pre-processing step: Route all raw inputs through BatchData’s built-in USPS address normalization first to deduplicate queries before executing the validation logic [1].
+
+Performance Projection
+
+
+
+
+
+Expected latency for 100-address batch: Sub-second execution for the entire array payload [1].
+
+
+
+Expected latency for 500-address batch: Sub-second execution, as it remains well under the 2,000 results-per-request threshold [1].
+
+
+
+Throughput ceiling: Scales dynamically, with alternate providers like RealEstateAPI theoretically proving pipelines can capably handle up to 220,000 addresses/second if horizontally scaled [1].
+
+Cost Projection
+
+
+
+
+
+At 10K validations/month: $1,400 total, equating to $140 per 1K validations [1].
+
+
+
+At 100K validations/month: $3,100 total, equating to $31 per 1K validations [1].
+
+Risk Flags & Mitigations
+
+
+
+
+
+Risk: Standard Terms of Service explicitly prohibit caching [1].
+Mitigation: Negotiate a Commercial License Agreement prior to launch guaranteeing 7–14 day internal cache retention limits with zero external data redistribution [1].
+
+
+
+Risk: Redundant API calls driving up scale costs [1].
+Mitigation: Mandate strict utilization of the USPS normalization step to standardize target inputs before validation [1].
+
+
+
+Recommendation #2 — Runner-Up: PropAPIS
+
+Why #2, Not #1
+
+
+
+
+
+Trade-offs vs. primary: While PropAPIS offers vastly superior scalability pricing, it lacks BatchData’s underlying superior data architecture, USPS normalization, and massive aggregator spread of 3,200+ sources [1].
+
+
+
+What it does worse: Provides lower overall data richness and fewer automated systemic guardrails compared to BatchData’s enterprise-grade MLS indexing [1].
+
+Where It Outperforms #1
+
+
+
+
+
+Specific scenarios: Ideal for exceptionally high-volume, hyper-budget-constrained environments executing flat boolean state checks where data enrichment is unnecessary [1].
+
+
+
+Use cases: Wins cleanly as an alternative primary engine if the organization demands aggressive cost containment over comprehensive listing status accuracy [1].
+
+Cost & Performance vs. Primary
+
+
+
+
+
+PropAPIS maintains a flat cost structure of $299 per month, scaling uniformly from 10K to 100K validations [1].
+
+
+
+At 100,000 monthly queries, PropAPIS unit economics effectively drop to $0.003 per call, which is ~10x cheaper than BatchData’s $0.031 rate at identical volume [1].
+
+Risk Flags & Mitigations
+
+
+
+
+
+Risk: Over-reliance on a cheaper provider may expose the system to stale listing statuses [1].
+Mitigation: Deploy RentCast (starting at $5/month) alongside PropAPIS as a supplemental batch processing layer to verify nationwide active sales and validate suspected anomalies [1].
+
+
+
+Recommendation #3 — Contingency/Fallback: Apify / Bright Data
+
+When to Use
+
+
+
+
+
+Deploy managed scraping actors only when primary APIs fail, rate-limit out, or when assessing edge-case properties that are absent from MLS aggregators [1].
+
+
+
+Serves as an essential fallback mechanism for filling blind spots across primary aggregator data sets [1].
+
+Integration Complexity vs. Value
+
+
+
+
+
+Setup effort: Requires implementing containerized actors handling residential IP proxies and CAPTCHA bypass layers via Bright Data (400M+ IPs) or Apify’s specific Zillow/Redfin scripts [1].
+
+
+
+Ongoing maintenance: Medium to high, as underlying target site DOM structures continuously shift, demanding active web scraper API supervision [1].
+
+Risk Flags & Mitigations
+
+
+
+
+
+Risk: Direct violation of major portal Terms of Service (e.g., Zillow strictly forbids automated extraction), transferring substantial legal risk to our organization [1].
+
+
+
+Mitigation: Sandbox the scraping triggers aggressively. Implement a strict programmatic “circuit breaker” where this fallback is only invoked for critical missing keys, ensuring scraping volume remains negligible [1].
+
+
+
+Suggested Provider Stack — Routing Architecture
+
+
+
+
+
+Primary path: Route 99% of localized traffic through BatchData’s bulk endpoints to capture sub-second MLS-direct data with up to 2,000 validated statuses per payload [1].
+
+
+
+Fallback path: Route immediate anomalies and primary-path failures to RentCast ($5/mo baseline) to verify listing anomalies [1]. Trigger Apify web scrapers ($0.50-$25/1k calls) exclusively for localized edge-cases that miss both primary checks [1].
+
+
+
+Cache layer: Implement a hard 7-day or 14-day Redis TTL cache on successful returns [1]. This database layer must be legally shielded by our finalized Custom Commercial License Agreement preventing redistribution [1].
+
+
+
+Address normalization: Enforce BatchData’s built-in USPS formatting logic natively at the API gateway layer to standardize incoming strings prior to querying [1].
+
+
+
+Estimated blended cost: Expect $1,400/month at 10K requests and ~$3,150/month at 100K requests (factoring in minor scrape contingencies and secondary verifications) [1].
+
+What NOT to Use (and Why)
+-- ============================================================================
+-- HIGH-VOLUME PROPERTY STATUS VALIDATION CACHING SYSTEM DDL
+-- Optimized for PostgreSQL 15+ and PostGIS 3.x
+-- ============================================================================
+
+-- ## SECTION 1: EXTENSIONS & ENUMS
+
+-- Enable required extensions
+-- PostGIS is essential for spatial data storage and querying <sup><span data-reference-id="563ce99f-58e3-4a8f-ad41-ea051c97dbb1">[1]</span></sup><sup><span data-reference-id="db0f6193-9252-4b84-b989-8bf236c72b99">[5]</span></sup>.
+CREATE EXTENSION IF NOT EXISTS postgis;
+-- pg_cron allows scheduling database maintenance tasks directly within PostgreSQL <sup><span data-reference-id="3a4b9101-557d-4faf-acb8-30a44d4c3641">[13]</span></sup>.
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+-- pgcrypto is enabled for legacy UUID support, though gen_random_uuid() is native in PG13+.
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- Create status enum: active, pending, sold, off_market, unknown
+-- ENUMs are highly space-efficient and provide strict data validation for known states.
+CREATE TYPE property_status AS ENUM (
+    'active', 
+    'pending', 
+    'sold', 
+    'off_market', 
+    'unknown'
+);
+
+-- Create provider enum or use text with check constraint
+-- WHY: Using a TEXT column with a CHECK constraint instead of an ENUM for providers 
+-- allows adding new data providers without requiring DDL changes (ALTER TYPE), 
+-- which is safer and more flexible in high-velocity production environments.
+ALTER DOMAIN TEXT ADD CONSTRAINT valid_provider_check 
+    CHECK (VALUE IN ('attom', 'batchdata', 'realty_mole', 'scraper_apify'));
+
+
+-- ## SECTION 2: CORE CACHE TABLE — property_cache
+
+CREATE TABLE property_cache (
+    -- id: Native PG13+ UUID generation, avoids sequence bottlenecks in high-write workloads.
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    -- address_hash: SHA-256 of normalized address for O(1) dedup lookup. 
+    -- WHY: String comparison on long addresses is slow; hashes provide fixed-length, fast index lookups.
+    address_hash TEXT NOT NULL,
+
+    -- normalized_address: lowercased, whitespace-collapsed, standardized.
+    normalized_address TEXT NOT NULL,
+
+    -- raw_address: original input as received for auditing and debugging.
+    raw_address TEXT,
+
+    -- provider_id: which API sourced this record.
+    provider_id TEXT NOT NULL,
+
+    -- status: property_status enum NOT NULL.
+    status property_status NOT NULL,
+
+    -- location: PostGIS point, WGS84. 
+    -- WHY: SRID 4326 is the standard for GPS coordinates (longitude/latitude) <sup><span data-reference-id="db0f6193-9252-4b84-b989-8bf236c72b99">[5]</span></sup>.
+    location GEOMETRY(POINT, 4326),
+
+    -- latitude/longitude: denormalized for non-spatial queries.
+    -- WHY: Avoids ST_X/ST_Y function overhead when exporting data to non-GIS downstream systems.
+    latitude NUMERIC(10,7),
+    longitude NUMERIC(10,7),
+
+    -- raw_response: full API response blob.
+    -- WHY: JSONB allows flexible schema evolution if providers change their payload structures.
+    raw_response JSONB,
+
+    -- cache_hit_count: tracks utility of the cache entry.
+    cache_hit_count INTEGER DEFAULT 0 NOT NULL,
+
+    -- last_accessed: tracks when the cache was last utilized.
+    last_accessed TIMESTAMPTZ,
+
+    -- created_at/updated_at: standard audit timestamps.
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+
+    -- expires_at: computed as created_at + TTL interval.
+    expires_at TIMESTAMPTZ NOT NULL,
+
+    -- ttl_days: per-provider TTL (**7** or **14** days).
+    ttl_days SMALLINT DEFAULT 7 NOT NULL,
+
+    -- is_stale: soft-flag for invalidation.
+    -- WHY: Soft deletes/invalidations prevent locking issues during high-velocity reads.
+    is_stale BOOLEAN DEFAULT FALSE NOT NULL,
+
+    -- confidence_score: **0.000**–**1.000**, data quality signal.
+    confidence_score NUMERIC(4,3),
+
+    -- CONSTRAINTS
+    CONSTRAINT chk_expires_after_created CHECK (expires_at > created_at),
+    CONSTRAINT chk_ttl_days_range CHECK (ttl_days BETWEEN 1 AND 30)
+);
+
+
+-- ## SECTION 3: INDEX DEFINITIONS
+
+-- 1. GIST index on location
+-- WHY: Essential for ST_DWithin and ST_MakeEnvelope spatial queries. Transforms operations from seconds to milliseconds <sup><span data-reference-id="e40dfbcc-007e-48aa-a700-8507cbb59b30">[4]</span></sup><sup><span data-reference-id="222a2a16-32ff-40c8-923f-95d6c78e0e1e">[6]</span></sup>.
+CREATE INDEX idx_property_cache_location 
+    ON property_cache USING GIST (location);
+
+-- 2. GIST index on ST_Buffer(location, 0.001)
+-- WHY: Pre-computing the buffer in a functional index speeds up proximity clustering. 
+-- It avoids calculating the buffer at runtime for every row during complex spatial joins or clustering queries <sup><span data-reference-id="5968e606-cd20-4c8e-b1d3-00ff751da54e">[3]</span></sup><sup><span data-reference-id="222a2a16-32ff-40c8-923f-95d6c78e0e1e">[6]</span></sup>.
+CREATE INDEX idx_property_cache_location_buffer 
+    ON property_cache USING GIST (ST_Buffer(location, 0.001));
+
+-- 3. B-tree index on address_hash
+-- WHY: Enables **O(1)** exact-match cache lookups, crucial for the core validation API endpoint.
+CREATE INDEX idx_property_cache_address_hash 
+    ON property_cache (address_hash);
+
+-- 4. B-tree composite index on (provider_id, expires_at)
+-- WHY: Optimizes TTL sweep queries that are isolated per provider (e.g., purging only 'attom' data).
+CREATE INDEX idx_property_cache_prov_expires 
+    ON property_cache (provider_id, expires_at);
+
+-- 5. B-tree composite index on (is_stale, expires_at)
+-- WHY: Highly optimizes the invalidation job efficiency by quickly finding rows where is_stale = FALSE and expires_at < NOW().
+CREATE INDEX idx_property_cache_stale_expires 
+    ON property_cache (is_stale, expires_at);
+
+-- 6. B-tree index on expires_at
+-- WHY: Supports global TTL expiry scans and cleanup jobs (DELETE WHERE expires_at < NOW()).
+CREATE INDEX idx_property_cache_expires_at 
+    ON property_cache (expires_at);
+
+-- 7. GIN index on raw_response
+-- WHY: GIN (Generalized Inverted Index) is required for efficient querying of keys/values inside the JSONB payload.
+CREATE INDEX idx_property_cache_raw_response 
+    ON property_cache USING GIN (raw_response);
+
+-- 8. B-tree composite index on (normalized_address, provider_id)
+-- WHY: Prevents duplicate API calls by quickly checking if a specific provider has already validated a specific address.
+CREATE INDEX idx_property_cache_norm_addr_prov 
+    ON property_cache (normalized_address, provider_id);
+
+-- 9. Partial index on (status) WHERE is_stale = FALSE
+-- WHY: Partial indexes save disk space and memory. Queries filtering for active statuses almost always want non-stale data <sup><span data-reference-id="e7127d83-754f-4bc4-9ae0-a999ad78da5f">[15]</span></sup>.
+CREATE INDEX idx_property_cache_active_status 
+    ON property_cache (status) WHERE is_stale = FALSE;
+
+
+-- ## SECTION 4: REFRESH QUEUE TABLE — cache_refresh_queue
+
+CREATE TABLE cache_refresh_queue (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    address_hash TEXT NOT NULL REFERENCES property_cache(address_hash) ON DELETE CASCADE,
+    normalized_address TEXT NOT NULL,
+    priority SMALLINT DEFAULT 5, -- 1=urgent, 10=low
+    reason TEXT, -- 'cache_miss', 'ttl_expired', 'manual_invalidation', 'stale_flag'
+    provider_id TEXT,
+    retry_count SMALLINT DEFAULT 0,
+    max_retries SMALLINT DEFAULT 3,
+    scheduled_at TIMESTAMPTZ DEFAULT NOW(),
+    locked_at TIMESTAMPTZ,
+    locked_by TEXT,
+    completed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+
+    CONSTRAINT chk_retry_count CHECK (retry_count <= max_retries)
+);
+
+-- Partial index for worker queue polling
+-- WHY: This is the secret sauce for high-throughput queues. It allows workers using FOR UPDATE SKIP LOCKED 
+-- to instantly find available jobs without scanning locked or completed rows <sup><span data-reference-id="3fb33617-8607-42fc-8c51-a2e356bb6407">[14]</span></sup><sup><span data-reference-id="e7127d83-754f-4bc4-9ae0-a999ad78da5f">[15]</span></sup>.
+CREATE INDEX idx_queue_poll 
+    ON cache_refresh_queue (priority, scheduled_at) 
+    WHERE completed_at IS NULL AND locked_at IS NULL;
+
+-- B-tree on address_hash
+-- WHY: Allows quick lookups to prevent enqueueing the same address multiple times if it's already pending.
+CREATE INDEX idx_queue_address_hash 
+    ON cache_refresh_queue (address_hash);
+
+
+-- ## SECTION 5: CACHE ANALYTICS TABLE — cache_analytics
+
+CREATE TABLE cache_analytics (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    window_start TIMESTAMPTZ NOT NULL,
+    window_end TIMESTAMPTZ NOT NULL,
+    provider_id TEXT NOT NULL,
+    total_lookups BIGINT DEFAULT 0,
+    cache_hits BIGINT DEFAULT 0,
+    cache_misses BIGINT DEFAULT 0,
+    -- hit_rate: Computed column ensures data consistency without application-side math.
+    hit_rate NUMERIC(5,4) GENERATED ALWAYS AS (
+        CASE WHEN total_lookups > 0 THEN (cache_hits::NUMERIC / total_lookups) ELSE 0.0000 END
+    ) STORED,
+    avg_response_age_hours NUMERIC(8,2),
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+
+-- ## SECTION 6: TTL INVALIDATION FUNCTION
+
+-- WHY: Encapsulating this in a PL/pgSQL function ensures atomicity. 
+-- The CTE updates the cache and queues the refresh in a single transaction, preventing race conditions.
+CREATE OR REPLACE FUNCTION invalidate_stale_cache() 
+RETURNS INTEGER AS $$
+DECLARE
+    invalidated_count INTEGER;
+BEGIN
+    WITH updated_cache AS (
+        UPDATE property_cache
+        SET is_stale = TRUE,
+            updated_at = NOW()
+        WHERE expires_at < NOW() 
+          AND is_stale = FALSE
+        RETURNING address_hash, normalized_address, provider_id
+    ),
+    queued_inserts AS (
+        INSERT INTO cache_refresh_queue (
+            address_hash, 
+            normalized_address, 
+            provider_id, 
+            reason, 
+            priority
+        )
+        SELECT 
+            address_hash, 
+            normalized_address, 
+            provider_id, 
+            'ttl_expired', 
+            5
+        FROM updated_cache
+        -- ON CONFLICT DO NOTHING would go here if address_hash had a unique constraint in the queue
+        RETURNING 1
+    )
+    SELECT COUNT(*) INTO invalidated_count FROM queued_inserts;
+
+    RETURN invalidated_count;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- ## SECTION 7: UPDATED_AT TRIGGER
+
+-- WHY: Database-level triggers guarantee updated_at is always accurate, 
+-- even if manual SQL updates are run outside the application ORM.
+CREATE OR REPLACE FUNCTION trigger_set_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER set_updated_at
+BEFORE UPDATE ON property_cache
+FOR EACH ROW
+EXECUTE FUNCTION trigger_set_timestamp();
+
+
+-- ## SECTION 8: CACHE LOOKUP QUERY EXAMPLES
+
+-- ### 8a. Bounding-Box Lookup
+-- WHY: ST_MakeEnvelope creates a bounding box. The && operator leverages the GiST index 
+-- for highly efficient bounding-box overlap tests, avoiding sequential scans <sup><span data-reference-id="85c44ef0-74f9-45e9-9872-60b5f5e83dd7">[2]</span></sup><sup><span data-reference-id="222a2a16-32ff-40c8-923f-95d6c78e0e1e">[6]</span></sup>.
+/*
+SELECT id, normalized_address, status, location 
+FROM property_cache 
+WHERE location && ST_MakeEnvelope(:min_lng, :min_lat, :max_lng, :max_lat, 4326)
+  AND is_stale = FALSE 
+  AND expires_at > NOW();
+*/
+
+-- ### 8b. Point-Radius Lookup
+-- WHY: Casting to geography calculates distance in meters over the earth's curvature. 
+-- ST_DWithin uses the GiST index efficiently, unlike ST_Distance which forces sequential scans <sup><span data-reference-id="85c44ef0-74f9-45e9-9872-60b5f5e83dd7">[2]</span></sup>.
+/*
+SELECT id, normalized_address, status, 
+       ST_Distance(location::geography, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography) AS distance_meters
+FROM property_cache 
+WHERE ST_DWithin(
+        location::geography, 
+        ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, 
+        :radius_meters
+      )
+  AND is_stale = FALSE 
+  AND expires_at > NOW();
+*/
+
+-- ### 8c. Bulk Address Lookup
+-- WHY: UNNEST + LEFT JOIN is the most efficient way to check a large array of inputs against a table.
+-- It returns the input alongside the result, making it easy for the application to map responses.
+/*
+SELECT 
+    input.addr AS normalized_address,
+    (pc.id IS NOT NULL AND pc.is_stale = FALSE AND pc.expires_at > NOW()) AS cache_hit,
+    pc.status,
+    pc.expires_at,
+    pc.provider_id
+FROM UNNEST(:address_array::text[]) AS input(addr)
+LEFT JOIN property_cache pc 
+    ON pc.normalized_address = input.addr;
+*/
+
+-- ### 8d. Cache Miss Detection
+-- WHY: Filters out hits, returning only hashes that need to be sent to the external API queue.
+/*
+SELECT input.hash 
+FROM UNNEST(:hash_array::text[]) AS input(hash)
+LEFT JOIN property_cache pc 
+    ON pc.address_hash = input.hash 
+   AND pc.is_stale = FALSE 
+   AND pc.expires_at > NOW()
+WHERE pc.id IS NULL;
+*/
+
+-- ### 8e. Cache Hit Count Update
+-- WHY: Batch updating using ANY() is significantly faster than individual UPDATE statements.
+/*
+UPDATE property_cache 
+SET cache_hit_count = cache_hit_count + 1,
+    last_accessed = NOW()
+WHERE address_hash = ANY(:hash_array::text[]);
+*/
+
+
+-- ## SECTION 9: PARTITIONING STRATEGY
+
+-- ==========================================
+-- Option A: Range Partitioning by created_at
+-- ==========================================
+/*
+CREATE TABLE property_cache_range (
+    id UUID,
+    address_hash TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+    -- ... other columns ...
+    PRIMARY KEY (id, created_at) -- Partition key must be in PK
+) PARTITION BY RANGE (created_at);
+
+CREATE TABLE pc_range_2026_03 PARTITION OF property_cache_range 
+    FOR VALUES FROM ('2026-03-01') TO ('2026-04-01');
+CREATE TABLE pc_range_2026_04 PARTITION OF property_cache_range 
+    FOR VALUES FROM ('2026-04-01') TO ('2026-05-01');
+CREATE TABLE pc_range_2026_05 PARTITION OF property_cache_range 
+    FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
+*/
+
+-- ==========================================
+-- Option B: Hash Partitioning by address_hash
+-- ==========================================
+/*
+CREATE TABLE property_cache_hash (
+    id UUID,
+    address_hash TEXT NOT NULL,
+    -- ... other columns ...
+    PRIMARY KEY (id, address_hash) -- Partition key must be in PK
+) PARTITION BY HASH (address_hash);
+
+CREATE TABLE pc_hash_0 PARTITION OF property_cache_hash FOR VALUES WITH (MODULUS 8, REMAINDER 0);
+CREATE TABLE pc_hash_1 PARTITION OF property_cache_hash FOR VALUES WITH (MODULUS 8, REMAINDER 1);
+-- ... up to REMAINDER 7
+*/
+
+-- ==========================================
+-- DEFINITIVE RECOMMENDATION: Option A (Range Partitioning)
+-- ==========================================
+-- **Justification**: For a **7**–**14** day TTL cache, Range Partitioning by `created_at` (or `expires_at`) 
+-- is vastly superior <sup><span data-reference-id="072f2522-92f6-4f02-86ac-844b0a5c20a8">[7]</span></sup><sup><span data-reference-id="7352d421-600d-46b4-8acf-fcbe217dc749">[11]</span></sup><sup><span data-reference-id="92b707a0-2e37-4e89-8ffc-1912dec17348">[12]</span></sup>. 
+-- 1. **TTL Management**: You can instantly reclaim disk space by dropping old partitions (e.g., `DROP TABLE pc_range_2026_02`) without generating massive WAL bloat or requiring heavy VACUUM operations, which is a major issue with DELETEs in Hash Partitioning <sup><span data-reference-id="b958cf98-0dc5-4929-ad57-4b959466463e">[10]</span></sup><sup><span data-reference-id="7352d421-600d-46b4-8acf-fcbe217dc749">[11]</span></sup>.
+-- 2. **Write Velocity**: While Hash Partitioning prevents hot spots <sup><span data-reference-id="b4c3433a-b20e-415e-a14d-9ec0b5fecf41">[9]</span></sup>, a write velocity of **100**–**500** addresses per **45** seconds (~**11** writes/sec) is trivial for a single modern PostgreSQL partition. The "hot partition" problem only becomes a bottleneck at thousands of writes per second.
+-- 3. **Query Pruning**: Queries filtering by date ranges will automatically skip scanning irrelevant partitions, drastically reducing I/O <sup><span data-reference-id="072f2522-92f6-4f02-86ac-844b0a5c20a8">[7]</span></sup><sup><span data-reference-id="aca830e2-1b50-4c2f-a6f8-277f89acff1f">[8]</span></sup>.
+
+
+-- ## SECTION 10: SCHEDULED JOB PATTERN
+
+-- WHY pg_cron over application-level cron?
+-- 1. Eliminates network latency for heavy data-manipulation tasks.
+-- 2. Prevents "split-brain" execution where multiple scaled application instances try to run the same cron job simultaneously.
+-- 3. Keeps database maintenance logic tightly coupled with the database schema <sup><span data-reference-id="3a4b9101-557d-4faf-acb8-30a44d4c3641">[13]</span></sup><sup><span data-reference-id="9f9d6f9c-50b5-4a4d-ba35-2058a70af57f">[16]</span></sup>.
+
+-- Run invalidate_stale_cache() every hour at minute 0
+SELECT cron.schedule(
+    'invalidate_cache_hourly', 
+    '0 * * * *', 
+    'SELECT invalidate_stale_cache();'
+);
+
+-- Run hard cleanup DELETE every 6 hours for records expired more than 1 day ago (grace period)
+SELECT cron.schedule(
+    'hard_delete_expired_cache', 
+    '0 */6 * * *', 
+    $$DELETE FROM property_cache WHERE expires_at < NOW() - INTERVAL '1 day';$$
+);
+
+
+-- ## SECTION 11: ROW-LEVEL SECURITY (RLS)
+
+-- Enable RLS on the table
+ALTER TABLE property_cache ENABLE ROW LEVEL SECURITY;
+
+-- Service role has full access (bypass RLS essentially, but explicitly defined)
+-- WHY: Backend workers and API services need to read/write everything, including stale data for debugging.
+CREATE POLICY service_all_access 
+    ON property_cache 
+    TO service_role 
+    USING (true) 
+    WITH CHECK (true);
+
+-- Authenticated users can only read non-stale, unexpired records
+-- WHY: Prevents frontend clients from accidentally displaying outdated property statuses.
+CREATE POLICY auth_read_non_stale 
+    ON property_cache 
+    FOR SELECT 
+    TO authenticated 
+    USING (is_stale = FALSE AND expires_at > NOW());
+
+-- Anon role has no access
+-- WHY: Default deny. By not creating a policy for the 'anon' role, they are implicitly denied all access.
+Engineering must strictly avoid any pipeline utilizing deed-based public records or web crawling APIs (such as Datafiniti) for primary status aggregation. Deed recordings inherently suffer from a 30 to 90-day lag on “sold” statuses, while web-crawled platforms demonstrate extreme latency, reportedly capturing a dismal 4% of new MLS listings within a 24-hour window [1]. Furthermore, ATTOM Data must be rejected on a self-serve basis; their standard posture allows zero days of caching and treats any storage as a breach of contract unless navigating their high-wall enterprise structures [1].

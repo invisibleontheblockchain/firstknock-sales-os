@@ -1,0 +1,1114 @@
+RentCast Test Query Design: Las Cruces NM
+GROUP A: /properties Endpoint — saleDateRange Variants
+(PRIMARY)
+This endpoint is the primary choice for FirstKnock.online as it guarantees confirmed closed
+transactions based on official county records [1]
+.
+Exact Test URLs
+ZIP Code 88001:
+• A1 (90-day):
+https://api.rentcast.io/v1/properties?zipCode=88001&saleDateRange=90
+• A2 (180-day, RECOMMENDED):
+https://api.rentcast.io/v1/properties?zipCode=88001&saleDateRange=180
+• A3 (270-day):
+https://api.rentcast.io/v1/properties?zipCode=88001&saleDateRange=270
+• A4 (365-day):
+https://api.rentcast.io/v1/properties?zipCode=88001&saleDateRange=365
+ZIP Code 88005:
+• A1 (90-day):
+https://api.rentcast.io/v1/properties?zipCode=88005&saleDateRange=90
+• A2 (180-day, RECOMMENDED):
+https://api.rentcast.io/v1/properties?zipCode=88005&saleDateRange=180
+• A3 (270-day):
+https://api.rentcast.io/v1/properties?zipCode=88005&saleDateRange=270
+• A4 (365-day):
+https://api.rentcast.io/v1/properties?zipCode=88005&saleDateRange=365
+ZIP Code 88012:
+• A1 (90-day):
+https://api.rentcast.io/v1/properties?zipCode=88012&saleDateRange=90
+• A2 (180-day, RECOMMENDED):
+https://api.rentcast.io/v1/properties?zipCode=88012&saleDateRange=180
+• A3 (270-day):
+https://api.rentcast.io/v1/properties?zipCode=88012&saleDateRange=270
+• A4 (365-day):
+https://api.rentcast.io/v1/properties?zipCode=88012&saleDateRange=365
+Latitude/Longitude + Radius Variants (Las Cruces Center):
+Built with Spine AI on 2026-03-14 1
+• A5 (8-mile radius):
+https://api.rentcast.io/v1/properties?latitude=32.3199&longitude=-106.763
+7&radius=8&saleDateRange=180• A6 (12-mile radius):
+https://api.rentcast.io/v1/properties?latitude=32.3199&longitude=-106.763
+lastSaleDate lastSalePrice fields
+7&radius=12&saleDateRange=180
+Query Specifications
+1. HTTP Header Needed: X-Api-Key:
+YOUR_API_KEY
+2. Field Confirming SOLD:The presence of the and confirms an official deed transfer occurred [1]
+.
+3. Date Field to Inspect:Inspect the lastSaleDate field [1]
+. The value should be an ISO 8601
+date falling within the requested saleDateRange (e.g., within the last 90, 180, 270, or 365
+days).
+Red Flags (Not a Confirmed Sale):If lastSaleDate is missing, null, or falls outside your
+requested timeframe, the record is invalid for your current sold-home targeting.
+4. GROUP B: /listings/sale Endpoint — status and daysOld Variants
+(COMPARISON/CONTROL)
+This endpoint pulls from MLS data. It is useful for real-time market movement but contains critical
+flaws for identifying strictly sold properties [1]
+.
+Exact Test URLs
+(Using ZIP 88001as the control area)
+• B1 (Active, 90 days old):
+https://api.rentcast.io/v1/listings/sale?zipCode=88001&status=Active&days
+https://api.rentcast.io/v1/listings/sale?zipCode=88001&status=Inactive&da
+https://api.rentcast.io/v1/listings/sale?zipCode=88001&status=Inactive&da
+https://api.rentcast.io/v1/listings/sale?zipCode=88001&status=Sold&daysOl
+Old=90• B2 (Inactive, 90 days old):
+ysOld=90• B3 (Inactive, 180 days old):
+ysOld=180• B4 (Test Invalid ‘Sold’ Status):
+d=90• B5 (Test Combined Statuses):
+ve&daysOld=90
+Query Specifications
+1. HTTP Header Needed: X-Api-Key:
+2. YOUR_API_KEY
+Field Confirming SOLD:None.There is no way to confirm a property successfully sold using
+this endpoint alone [1]
+. The status is a catch-all that includes sold, expired,
+https://api.rentcast.io/v1/listings/sale?zipCode=88001&status=Sold,Inacti
+Inactiv
+e
+Built with Spine AI on 2026-03-14 2
+Inactiv
+withdrawn, and cancelled listings [1]
+. Furthermore, queries B4 and B5 will likely fail or ignore the
+“Sold” parameter because the API ONLYaccepts Active or [1]
+.
+3. Date Field to Inspect: listedDate : This is what daysOld e
+actually filters (days since it
+hit the market) [1]
+. Expect this date to be within the last 90or 180days. removedDate : The
+date the property came off the market [1]
+.
+4. Red Flags (Not a Confirmed Sale):Any result from this endpoint is a red flag if used in
+isolation for a “sold” campaign. An Inactiv
+status simply means it is off the market [1]
+.
+e
+GROUP C: Pagination Queries
+The API returns a maximum of 500records per response [1]
+. Pagination is required for larger
+datasets.
+https://api.rentcast.io/v1/properties?zipCode=88001&saleDateRange=180&lim
+https://api.rentcast.io/v1/properties?zipCode=88001&saleDateRange=180&lim
+Exact Test URLs
+(Using the recommended 180-day range for ZIP 88001)
+• C1 (Page 1):
+it=500&offset=0• C2 (Page 2):
+it=500&offset=500
+Query Specifications
+1. HTTP Header Needed: X-Api-Key:
+2. YOUR_API_KEY
+C3: How to detect when all pages are exhausted:You have reached the end of the dataset
+when the number of objects returned in the JSON array is less than your parameter
+(less than 500), or when the API returns an entirely empty array [
+limit .
+]
+Explaining the 7-11 vs 215 Result Discrepancy
+The massive difference between the 7-11results from the results from the and filtering logic [1]:
+/properties endpoint and the 215
+/listings/sale endpoint is caused by fundamentally different data sources
+/properties
+Which count is more accurate for “truly sold” homes?The 7-11count from the endpoint is the ONLYaccurate representation of confirmed, closed transactions [1]
+.
+Here is exactly why the discrepancy exists:
+• The County Recording Lag (Why is low):The /properties endpoint
+relies on official county deed and tax records [1]
+. When a home closes, it typically takes 30to
+/properties Built with Spine AI on 2026-03-14 3
+/listings/sale
+Inactiv
+[1]
+.
+90 days for the county clerk to officially record the deed [1]
+. Therefore, a saleDateRange=90
+query is looking at a delayed snapshot of the market and will miss homes that closed very
+recently but haven’t been digitized by the county yet [1]
+.
+• The “Inactive” Catch-All (Why /listings/sale is high):The endpoint pulls real-time MLS data, but it only has two statuses: Active and e
+The 215results represent every single hometaken off the market, which includes a massive
+amount of expired, withdrawn, and cancelled listings, not just successful sales [1]
+.
+• The daysOld Trap:On the listings endpoint, daysOld=90 measures days since the
+property was listed, not sold [1]
+. This means the 215results captured homes that hit the
+market recently and failed quickly, while completely missing homes that successfully sold last
+week but were originally listed 100+days ago [1]
+.
+
+RentCast API Technical Analysis: Sold Properties for
+FirstKnock
+1. /properties Endpoint — Complete Technical Profile
+The What it Returns and Data Sources
+/properties endpoint returns an array of detailed property record objects [1]
+.
+• Data Sources: Public county records, specifically Tax Assessor records, Deed records, and
+Property tax data [1]
+.
+• Data Freshness Implication: Because this endpoint relies on official county deed and tax
+records, the data is highly authoritative but subject to bureaucratic processing times. When a
+home is sold, the transaction must be officially recorded by the county clerk before it appears
+in this dataset.
+min:max format (e.g., 30:270 The saleDateRange Parameter
+This parameter is the primary mechanism for finding recently sold properties.
+• What it Measures: It strictly measures the number of days since the property was LAST
+SOLD, referencing the lastSaleDate field derived from official deed records [1]
+.
+• Range Syntax: Supports a for properties sold between 30
+and 270days ago) [1]
+.
+• Single-Value Behavior: If a single numeric value is provided, it is treated as the MAXIMUM
+range value. For example, saleDateRange=90 is executed as , meaning properties
+sold within the last 90days [1]
+.
+Data Freshness Lag Implication
+Deed recording typically lags 30to 90days after the actual closing date.
+*:9
+0
+saleDateRange=90, you are asking for deeds
+Implication for “90-day” queries: If you query recordedin the last 90days. Because of the county lag, a home that closed 10days ago likely will not
+appear in this query yet. You are effectively looking at a delayed snapshot of the market.
+Pagination Mechanics
+• Max Results: Returns up to 500records in a single API response [1]
+.
+• Mechanics: Controlled via the limit (max 500) and offset (starting index) parameters
+[1]
+. To paginate, increment the offset by your limit value on each subsequent request
+(e.g., 0, 50, 100) [1]
+.
+Key Response Fields for Sold-Home Identification
+Built with Spine AI on 2026-03-14 1
+owner.names • lastSaleDate : The exact ISO 8601 date the property was last sold [1]
+.
+• lastSalePrice : The recorded sale price from the deed [1]
+.
+• owner : An object containing (array of current owners), owner.mailingAddress [1]
+.
+• ownerOccupied : A boolean indicating if the new owner lives at the property [1]
+.
+• history : An array of historical sale transactions [1]
+.
+owner.type, and
+2. /listings/sale Endpoint — Complete Technical Profile
+Active and Inactiv
+What it Returns and Data Sources
+The /listings/sale endpoint returns an array of property listing objects sourced directly from
+MLS (Multiple Listing Service) data [1]
+. It contains both active and inactive listings [1]
+.
+Status Parameter Values
+• Confirmed Values: There are ONLY TWOpossible status values: [1]
+e
+.
+• Missing Values: There is NO“Sold”, “Expired”, “Pending”, or “Contingent” status available in
+this endpoint [1]
+.
+What “Inactive” Means Precisely
+An status simply means the property is “not currently listed on the market” [1]
+. Because
+e
+there are no granular statuses, acts as a catch-all bucket that includes:
+• Successfully sold homes
+• Expired listings
+• Withdrawn listings
+• Cancelled listings
+What daysOld Actually Filters
+Inactiv
+Inactiv
+e
+CRITICAL FLAW FOR SOLD SEARCHES: The days since the property was LISTED ON THE MARKET, referencing the does NOTmeasure the sale date or the removal date [1]
+.
+daysOld parameter measures the number of
+listedDate field [1]
+. It
+• lastSeenDate The lastSeenDate and removedDate Fields
+: The date the property listing was most recently seen as active [1]
+. The API
+sorts all returned listing records by this field in descending order[1]
+.
+: The date the property listing was most recently removed or delisted from
+listings, this is the date it came off the market (whether it sold,
+• removedDate the MLS [1]
+. For Inactiv
+e
+Built with Spine AI on 2026-03-14 2
+offset expired, or was withdrawn).
+Pagination Mechanics
+• Max Results: Returns up to 500listings per response [1]
+.
+• Mechanics: Uses the exact same limit and endpoint [1]
+.
+Key Response Fields
+• status : Active or Inactive [1]
+.
+• listedDate : When it hit the market [1]
+.
+• removedDate : When it came off the market [1]
+.
+• lastSeenDate : Last time the MLS broadcasted it as active [1]
+.
+: Total active days [1]
+.
+• history : Historical listing entries [1]
+.
+logic as the /properties
+• daysOnMarket 3. Critical Comparison: Which Endpoint Returns CONFIRMED
+SOLD Homes?
+/properties with saleDateRange
+• PROS: Filters on the actual deed-recorded sale date ( lastSaleDate ) [1]
+. These are
+CONFIRMEDclosed transactions.
+• PROS: Returns highly valuable post-sale data, including the new homebuyer’s name (
+owner.names ) and whether they live there ( ownerOccupied ) [1]
+.
+• CONS: The 30-90day deed recording lag means a “90-day” query ( saleDateRange=90 )
+will miss very recent closings and may only surface homes that closed 90-120+days ago in
+reality.
+• CONS: Lower result counts because the data takes longer to propagate through county
+systems.
+/listings/sale with status=Inactive
+• PROS: Yields a much larger result set (e.g., 215vs 7-11) because MLS data updates in
+real-time when a property is delisted.
+• CRITICAL FLAW: Because Inactiv
+equals sold + expired + withdrawn + cancelled,
+e
+there is NO WAYto distinguish a successfully sold home from an expired listing using this
+endpoint alone [1]
+.
+• CRITICAL FLAW: The daysOld parameter filters on listedDate [1]
+. If a property was
+listed 400days ago and finally sold last week, it would NOTappear in a Conversely, the 215results include properties that were listed recently but were quickly
+daysOld=90 query.
+Built with Spine AI on 2026-03-14 3
+cancelled or withdrawn without ever selling.
+4. Explaining the 7-11 vs 215 Result Discrepancy
+The massive discrepancy between the 7-11results from /properties and the 215results from
+/listings/sale in Las Cruces is NOTa data quality issue. It is the result of fundamentally
+different data sources and filter logic:
+1. The County Lag vs. MLS Real-Time: The /properties endpoint only shows homes
+where the county clerk has officially recorded the deed. Due to the 30-90day lag, the vast
+majority of homes sold in the last 90days have not yet been digitized by the county.
+2. The “Inactive” Catch-All: The 215results from /listings/sale include every single
+home taken off the market in those ZIP codes. A large percentage of these are likely expired,
+withdrawn, or cancelled listings, not actual sales.
+3. The daysOld Trap: If you used daysOld=90 on the listings endpoint, you asked the API
+for homes listedin the last 90days that are now inactive. You captured homes that hit the
+market and failed quickly, while completely missing homes that sold recently but were listed
+100+days ago.
+5. Definitive Recommendation for FirstKnock.online
+Primary Recommendation
+To find CONFIRMEDsold homes with actionable buyer data, FirstKnock.online must use the
+/properties endpointwith the saleDateRange parameter. This is the only way to guarantee a
+transaction occurred and to retrieve the new owner’s name and occupancy status [1]
+.
+Data Freshness Warning & Recommended saleDateRange
+To capture homes that actually closed within the last 90days, you must account for the 30-90day
+county recording lag.
+saleDateRange parameter to 180( saleDateRange=180 ). This casts
+Recommendation: Set the a wider net (up to 180days ago) to ensure you capture deeds that closed 90days ago but took 90
+days to be recorded by the county.
+Exact API Calls for Las Cruces, NM (180-day window)
+ZIP Code 88001:
+Built with Spine AI on 2026-03-14 4
+curl --request GET \
+--url 'https://api.rentcast.io/v1/properties?zipCode=88001&saleDateRange=180&limit=500' \
+--header 'Accept: application/json' \
+--header 'X-Api-Key: YOUR_API_KEY'
+ZIP Code 88005:
+curl --request GET \
+--url
+'https://api.rentcast.io/v1/properties?zipCode=88005&saleDateRange=180&limit=500' \
+--header 'Accept: application/json' \
+--header 'X-Api-Key: YOUR_API_KEY'
+ZIP Code 88012:
+curl --request GET \
+--url
+'https://api.rentcast.io/v1/properties?zipCode=88012&saleDateRange=180&limit=500' \
+--header 'Accept: application/json' \
+--header 'X-Api-Key: YOUR_API_KEY'
+removedDate The “Inactive + Cross-Reference” Strategy (Advanced)
+If FirstKnock requires faster signals than the county can provide, you can use a two-step
+cross-reference strategy:
+1. Query /listings/sale for status=Inactive and sort through the locally to find properties taken off the market in the last 30days.
+2. Take the formattedAddress of those inactive listings and query the endpoint specifically for those addresses ( ?address=... ) [1]
+.
+3. Check the history array or lastSaleDate of the property record [1]
+. If the
+matches the removedDate timeline, it was a sale. If not, it was likely an
+expired or withdrawn listing.
+field
+/properties
+lastSaleDate 6. Summary Table
+Built with Spine AI on 2026-03-14 5
+Dimension /properties(saleDateRange) /listings/sale(status=Inactive)
+Data Source Public County Records
+(Deeds/Tax)
+MLS (Multiple Listing Service)
+What “sold” filter measures Days since lastSaleDate(Deed
+recorded)
+Days since listedDate(Hit the
+market)
+Confirms actual sale? Yes(Official deed transfer) No(Just means off-market)
+Includes expired/withdrawn? No(Only closed transactions) Yes(All delisted properties)
+Data freshness lag 30-90days (County processing
+time)
+Real-time (MLS updates
+instantly)
+Result count (Las Cruces
+7-11(Accurate but delayed) 215(Inflated with non-sales)
+90-day)
+Owner info available? Yes(owner.names,
+ownerOccupied)
+No(Only listing agent/office info)
+Best for FirstKnock? Primary Choice(Guarantees
+sales)
+Secondary(Requires
+cross-referencing)
+References
+[1] "RentCast API Documentation Extractor".
+
+RentCast API Technical Audit for FirstKnock.online
+RentCast API Technical Audit Report
+Endpoint Selection, Data Accuracy & Integration Strategy for FirstKnock.online
+2024
+This report provides a definitive technical analysis of the RentCast API for the FirstKnock.online
+development team. It evaluates two candidate endpoints for identifying recently sold residential
+properties, documents the root cause of observed result discrepancies, and prescribes a
+production-ready integration strategy including endpoint selection, query parameters, pagination
+logic, and data validation requirements.
+1. Executive Summary
+DEFINITIVE RECOMMENDATION: FirstKnock.online must use the /properties endpoint with the
+saleDateRange=180 parameter. This is the only RentCast endpoint that returns confirmed,
+deed-recorded property sales with actionable buyer data including owner names and occupancy
+status.
+Two RentCast API endpoints were evaluated as candidates for identifying recently sold homes in
+Las Cruces, NM: the /properties endpoint (sourced from county deed and tax records) and the
+/listings/sale endpoint (sourced from MLS data). Testing across ZIP codes 88001, 88005, and
+88012 revealed a dramatic result discrepancy — 7–11 results from /properties versus 215 results
+from /listings/sale — that is not a data quality issue but rather a fundamental difference in data
+sources, filter semantics, and confirmation standards.
+The /listings/sale endpoint with status=Inactive is categorically wrong for FirstKnock's use case.
+The Inactive status is a catch-all that includes sold homes, expired listings, withdrawn listings, and
+cancelled listings with no mechanism to distinguish between them. Furthermore, its daysOld
+parameter measures days since the property was listed — not days since it sold — making it
+structurally incapable of reliably filtering recent sales.
+The /properties endpoint with saleDateRange filters on the lastSaleDate field derived from official
+county deed records, guaranteeing that every returned record represents a legally confirmed,
+closed transaction. The recommended saleDateRange=180 parameter is specifically calibrated to
+account for the 30–90 day county deed recording lag, ensuring that homes which closed within the
+last 90 days are captured as their deeds propagate through county systems.
+Built with Spine AI on 2026-03-14 1
+/propertiesPrimary
+Endpoint
+180Recommended
+saleDateRange (days)
+30–90 daysCounty
+Deed Recording Lag
+3 API callsRequired for
+Full Las Cruces
+Coverage
+2. Endpoint Comparison: /properties vs /listings/sale
+The two endpoints draw from fundamentally different data sources, operate on different update
+cadences, and answer different questions. Selecting the wrong endpoint does not merely reduce
+accuracy — it produces a dataset that is structurally incapable of confirming a sale occurred.
+2.1 Data Sources
+The /properties endpoint aggregates data from three official public record sources: county Tax
+Assessor records, Deed records, and Property Tax data. These are legally binding documents filed
+with the county clerk upon the completion of a real estate transaction. Because a deed transfer is a
+legal requirement of property ownership, every record in this dataset represents a transaction that
+definitively occurred.
+The /listings/sale endpoint aggregates data from the Multiple Listing Service (MLS), a cooperative
+database maintained by real estate brokers. MLS data reflects listing activity — when a property is
+marketed for sale — not transactional activity. A listing can be created, modified, and removed
+without a sale ever occurring.
+2.2 Side-by-Side Technical Comparison
+Table 1 — Full Technical Comparison: /properties vs /listings/sale
+Dimension /properties (saleDateRange) /listings/sale (status=Inactive)
+Data Source Public County Records — Deeds
+& Tax Assessor
+MLS — Multiple Listing Service
+What the 'sold' filter measures Days since lastSaleDate (deed
+recorded)
+Days since listedDate (hit the
+market)
+Confirms actual sale? YES — Official deed transfer
+required
+NO — Inactive = off-market only
+Includes expired/withdrawn
+listings?
+NO — Only closed transactions YES — All delisted properties
+Data freshness lag 30–90 days (county processing
+time)
+Real-time (MLS updates
+instantly)
+Result count (Las Cruces,
+90-day window)
+7–11 (accurate, deed-confirmed) 215 (inflated with non-sales)
+Built with Spine AI on 2026-03-14 2
+Owner name available? YES — owner.names array NO — listing agent info only
+Owner occupancy available? YES — ownerOccupied boolean NO — not available
+Sale price available? YES — lastSalePrice from deed NO — only listed price
+Best for FirstKnock? PRIMARY CHOICE SECONDARY — requires
+cross-referencing
+2.3 Why Result Counts Diverge
+The 7–11 vs 215 result discrepancy is not a bug or a data quality failure. It is the mathematically
+expected outcome of querying two different datasets with two different filter semantics. The
+/properties count is low because it only surfaces homes where the county clerk has officially
+recorded the deed — a process that lags 30–90 days behind the actual closing date. The
+/listings/sale count is high because it captures every property removed from the MLS regardless of
+the reason for removal.
+3. Status Parameter Analysis: /listings/sale
+CRITICAL FLAW: The /listings/sale endpoint accepts ONLY two status values: Active and Inactive.
+There is no Sold, Pending, Expired, or Contingent status. Inactive is a catch-all bucket — it cannot
+distinguish a sold home from an expired listing.
+3.1 What Active and Inactive Actually Mean
+Table 2 — /listings/sale Status Parameter Values and Definitions
+Status Value Definition What It Includes Usable for Confirmed
+Sales?
+Active Property is currently
+listed on the market
+Live MLS listings only NO — property has not
+sold yet
+Inactive Property is not currently
+listed on the market
+Sold homes, expired
+listings, withdrawn
+listings, cancelled
+listings
+NO — cannot
+distinguish sold from
+expired
+Sold NOT A VALID VALUE API will return 0 results
+or an error
+N/A — parameter is
+rejected
+Pending NOT A VALID VALUE API will return 0 results
+or an error
+N/A — parameter is
+rejected
+Contingent NOT A VALID VALUE API will return 0 results
+or an error
+N/A — parameter is
+rejected
+Built with Spine AI on 2026-03-14 3
+3.2 The daysOld Parameter Trap
+The daysOld parameter on the /listings/sale endpoint measures the number of days since the
+property was listed on the market, referencing the listedDate field. It does not measure the sale
+date, the removal date, or any other transactional event. This creates two compounding failure
+modes for FirstKnock's use case:
+• False Negatives — Missed Sales: A property listed 400 days ago that sold last week will
+NOT appear in a daysOld=90 query, because its listedDate is 400 days old. FirstKnock would
+miss this confirmed sale entirely.
+• False Positives — Non-Sales Included: A property listed 30 days ago that was quickly
+cancelled or withdrawn WILL appear in a daysOld=90 query, because its listedDate is recent.
+FirstKnock would waste resources targeting a property that never sold.
+• No Remedy Within the Endpoint: There is no parameter combination within /listings/sale that
+resolves this structural flaw. The endpoint simply does not contain the data required to
+confirm a sale.
+3.3 Why /properties saleDateRange is the Correct Filter
+The saleDateRange parameter on the /properties endpoint filters directly on the lastSaleDate field,
+which is derived from the official county deed record. This field is only populated when a deed
+transfer has been legally recorded by the county clerk. A property cannot appear in a
+saleDateRange query unless a confirmed sale transaction exists in the public record. This is the
+only mechanism in the RentCast API that provides this guarantee.
+The saleDateRange parameter accepts a single integer value (treated as a maximum range, e.g.,
+saleDateRange=180 returns properties with lastSaleDate within the last 180 days) or a min:max
+range format (e.g., 30:270 for properties sold between 30 and 270 days ago). For FirstKnock's
+rolling lead generation use case, the single-value format with saleDateRange=180 is the
+recommended configuration.
+4. The 7–11 vs 215 Discrepancy Explained
+During testing across Las Cruces ZIP codes, the /properties endpoint with saleDateRange=90
+returned 7–11 results, while the /listings/sale endpoint with status=Inactive and daysOld=90
+returned approximately 215 results. This section provides a complete technical explanation of why
+this discrepancy exists and which number is accurate for FirstKnock's use case.
+4.1 Root Cause Analysis
+Table 3 — Root Cause Analysis of the 7–11 vs 215 Result Discrepancy
+Built with Spine AI on 2026-03-14 4
+Root Cause Endpoint Affected Effect on Result Count Impact on FirstKnock
+County deed recording
+lag (30–90 days)
+/properties Suppresses count —
+recent closings not yet
+recorded
+Homes closed in last
+30–90 days are
+invisible until deeds are
+filed
+Inactive catch-all status /listings/sale Inflates count —
+includes expired,
+withdrawn, cancelled
+215 results contain an
+unknown percentage of
+non-sales
+daysOld filters on
+listedDate, not saleDate
+/listings/sale Inflates count —
+captures old listings
+that failed quickly
+Recent successful
+sales with old
+listedDates are excluded
+MLS real-time vs
+county batch processing
+Both Creates divergence
+between the two counts
+The two endpoints are
+not measuring the
+same universe of events
+4.2 Which Number is Accurate for FirstKnock?
+The 7–11 count from /properties is the ONLY accurate representation of confirmed, closed
+transactions. The 215 count from /listings/sale is an inflated, unverified figure that includes an
+unknown mix of sold homes, expired listings, withdrawn listings, and cancelled listings.
+The 7–11 figure is low not because the Las Cruces market is slow, but because the 90-day
+saleDateRange window is too narrow to account for the county recording lag. A home that closed
+60 days ago may not have its deed recorded yet, making it invisible to a 90-day query. Expanding
+to saleDateRange=180 is expected to yield 150–300 confirmed sold properties per ZIP code over a
+6-month period, for a total of 450–900 confirmed records across all three Las Cruces ZIP codes.
+5. Data Freshness Analysis
+5.1 The County Deed Recording Lag
+When a residential property sale closes, the transaction is not immediately visible in county public
+records. The county clerk must receive, review, and officially record the deed — a bureaucratic
+process that typically takes 30 to 90 days after the actual closing date. This lag is the single most
+important data freshness characteristic for FirstKnock to understand, as it directly determines
+which query window captures the leads you actually want.
+Table 4 — Deed Recording Lag Impact on saleDateRange Query Visibility
+Built with Spine AI on 2026-03-14 5
+Scenario Closing Date Deed Recorded
+(Estimated)
+Visible in
+saleDateRange=9
+Visible in
+saleDateRange=1
+Best case (fast
+county)
+90 days ago 0?
+YES 80?
+YES
+~30 days after
+closing (60 days
+ago)
+Typical case 90 days ago ~60 days after
+closing (30 days
+ago)
+YES YES
+Slow county
+processing
+90 days ago ~90 days after
+closing (today)
+BORDERLINE YES
+Very recent closing 10 days ago ~40–100 days
+from now
+NO NO — not yet
+recorded
+Recent closing,
+fast county
+45 days ago ~30 days after
+closing (15 days
+ago)
+YES YES
+Recent closing,
+slow county
+45 days ago ~90 days after
+closing (45 days
+from now)
+NO NO — not yet
+recorded
+5.2 Why saleDateRange=180 is the Correct Window
+To reliably capture homes that closed within the last 90 days, the saleDateRange must be set to
+180. This is because a home that closed exactly 90 days ago may have had its deed recorded only
+recently — perhaps within the last 1–30 days — due to county processing delays. A 90-day query
+window would miss this property entirely if the deed was recorded on day 91 or later.
+Setting saleDateRange=180 casts a wide enough net to capture deeds that closed up to 90 days
+ago but took the full 90-day maximum lag to be recorded. The practical effect is that a 180-day
+query reliably surfaces homes that actually closed within the last 90 days, which is FirstKnock's
+true target window for fresh, actionable leads.
+5.3 MLS Update Frequency vs Deed Record Update Frequency
+Table 5 — Data Freshness Comparison: MLS vs County Deed Records
+Built with Spine AI on 2026-03-14 6
+Characteristic MLS (/listings/sale) County Deed Records
+(/properties)
+Update frequency Real-time — updates within
+hours of listing change
+Batch — 30 to 90 day lag after
+closing
+Trigger for update Broker action in MLS system County clerk recording the deed
+Confirms sale occurred? NO — removal from MLS does
+not confirm sale
+YES — deed recording is legal
+proof of transfer
+Lead freshness for FirstKnock High volume, low confidence Lower volume, high confidence
+Practical implication 215 results, unknown % are
+actual sales
+7–11 results (90-day), all
+confirmed sales
+5.4 Practical Implications for Lead Freshness
+FirstKnock should not interpret the county recording lag as a lead quality problem. A homebuyer
+who closed 60 days ago and whose deed was just recorded this week is still a highly actionable
+lead — they are newly settled, may not have received home services outreach yet, and the
+owner.names and ownerOccupied fields provide the targeting precision needed for door-knocking
+campaigns. The lag shifts the timing of lead discovery, not the quality of the lead itself.
+OPERATIONAL INSIGHT: Because of the rolling nature of deed recording, running the same
+saleDateRange=180 query every week will surface new leads each cycle — homes that closed
+weeks ago but whose deeds were only just recorded by the county. A weekly refresh cadence is
+essential to capture this continuous stream of newly recorded transactions.
+6. Recommended Primary Endpoint with Fallback
+Strategy
+6.1 Primary Strategy: /properties with saleDateRange=180
+The primary integration strategy for FirstKnock.online is to query the /properties endpoint with
+saleDateRange=180 for each target ZIP code. This is the only approach that guarantees confirmed
+sales and provides the owner data required for targeted outreach campaigns.
+Table 6 — Primary Endpoint Configuration for Las Cruces, NM
+Built with Spine AI on 2026-03-14 7
+ZIP Code Recommended API Call Expected Records (180-day)
+88001 GET
+/v1/properties?zipCode=88001&s
+aleDateRange=180&limit=500
+150–300 confirmed sales
+88005 GET
+/v1/properties?zipCode=88005&s
+aleDateRange=180&limit=500
+150–300 confirmed sales
+88012 GET
+/v1/properties?zipCode=88012&s
+aleDateRange=180&limit=500
+150–300 confirmed sales
+All ZIPs combined 3 sequential API calls (one per
+ZIP)
+450–900 total confirmed sales
+Required HTTP header for all requests: X-Api-Key: YOUR_API_KEY. The Accept: application/json
+header should also be included. All three ZIP code queries should be executed sequentially with a
+1–2 second delay between calls.
+6.2 Fallback Strategy: Inactive Listings Cross-Referenced with
+/properties
+If FirstKnock requires faster market signals than the county deed recording lag allows — for
+example, to identify homes that came off the market within the last 30 days before their deeds are
+recorded — a two-step cross-reference strategy can be employed as a supplementary signal
+source. This is an advanced workflow and should not replace the primary /properties strategy.
+1. 2. 3. 4. 5. Step 1 — Query /listings/sale for recently removed properties: Execute GET
+/v1/listings/sale?zipCode={ZIP}&status=Inactive&limit=500. Sort the results locally by the
+removedDate field in descending order to identify properties taken off the market within the
+last 30 days.
+Step 2 — Extract candidate addresses: From the filtered Inactive listings, extract the
+formattedAddress field for each candidate property.
+Step 3 — Cross-reference with /properties: For each candidate address, execute GET
+/v1/properties?address={formattedAddress}. Inspect the lastSaleDate field in the response.
+Step 4 — Validate the sale: If the lastSaleDate closely aligns with or slightly follows the
+removedDate from the listing record, the property sold. If the lastSaleDate is years old and
+does not align with the recent removedDate, the listing expired, was withdrawn, or was
+cancelled — discard this record.
+Step 5 — Extract owner data: If validated as a sale, extract owner.names and
+ownerOccupied from the /properties response for use in outreach campaigns.
+6.3 When to Use Each Strategy
+Table 7 — Strategy Selection Guide
+Built with Spine AI on 2026-03-14 8
+Strategy Use When Confidence Level API Calls Required
+Primary: /properties
+saleDateRange=180
+Building the core lead
+database; weekly
+refresh cadence; any
+production outreach
+campaign
+HIGH —
+deed-confirmed sales
+only
+3 calls (one per ZIP)
+Fallback: Inactive +
+Cross-Reference
+Supplementing with
+very recent market
+activity (last 30 days);
+experimental lead
+generation; market
+velocity monitoring
+MEDIUM — requires
+manual validation step
+Up to 500+ calls
+depending on Inactive
+volume
+Radius queries (lat/lon
++ radius=8 or 12)
+Expanding coverage
+beyond ZIP boundaries;
+testing adjacent market
+areas
+HIGH — same
+/properties data source
+1–2 calls per radius
+configuration
+7. Rate Limits, Pagination, and Bulk Retrieval
+7.1 Pagination Mechanics
+The /properties endpoint returns a maximum of 500 records per API response. Pagination is
+controlled via the limit parameter (maximum value: 500) and the offset parameter (starting index).
+To retrieve all records for a given query, increment the offset by the limit value on each subsequent
+request until the termination condition is met.
+Table 8 — Pagination Pattern for /properties Endpoint
+Page limit Parameter offset Parameter Records
+Returned
+Action
+Page 1 500 0 Up to 500 records Process and store
+all records
+Page 2 500 500 Up to 500 records Process and store
+all records
+Page 3 500 1000 Up to 500 records Process and store
+all records
+Final page 500 Ntimes500 < 500 records
+(e.g., 342)
+Process records,
+then STOP — end
+of dataset reached
+Built with Spine AI on 2026-03-14 9
+Empty page 500 Ntimes500 0 records —
+empty array []
+STOP — no more
+data available
+Termination condition: Stop paginating when the number of objects returned in the JSON array is
+strictly less than the requested limit value, or when the API returns an empty array []. For Las
+Cruces with saleDateRange=180, each individual ZIP code is expected to return fewer than 500
+records, meaning a single API call per ZIP (offset=0) will retrieve the complete dataset without
+requiring pagination.
+7.2 Bulk Retrieval Plan for Las Cruces
+The following implementation sequence covers the Day 1 initial database build and the ongoing
+weekly refresh cadence. Both phases use identical query parameters — the difference is in how
+the application processes the results (insert vs upsert).
+1. 5. Day 1 — Initial Database Build
+2. Execute: GET /v1/properties?zipCode=88001&saleDateRange=180&limit=500&offset=0
+3. Execute: GET /v1/properties?zipCode=88005&saleDateRange=180&limit=500&offset=0
+4. Execute: GET /v1/properties?zipCode=88012&saleDateRange=180&limit=500&offset=0
+Action: INSERT all records into the database. Extract and store lastSaleDate, lastSalePrice,
+owner.names, ownerOccupied, formattedAddress, and propertyType for each record.
+6. 7. 8. Weekly Refresh — Every Monday
+Execute the exact same three queries with saleDateRange=180 (do not reduce the window).
+Action: Run UPSERT logic — if formattedAddress does not exist in the database, INSERT
+the new record. If it does exist, compare lastSaleDate: if the API's value is newer than the
+stored value, UPDATE the record with the new lastSalePrice, owner.names, and
+ownerOccupied.
+9. Rationale: Because of the county recording lag, a home sold 80 days ago may only appear in
+the API this week. Querying the full 180-day window every week ensures newly recorded
+deeds are captured without creating duplicates.
+7.3 Rate Limiting and API Efficiency
+Table 9 — Rate Limiting and API Efficiency Guidelines
+Guideline Specification Rationale
+Inter-request delay 1–2 seconds (sleep(1) between
+calls)
+Prevents rate limit triggers as
+ZIP coverage scales
+Batch size Always use limit=500 Maximizes data per API credit;
+minimizes total HTTP requests
+Built with Spine AI on 2026-03-14 10
+Query strategy ZIP-by-ZIP, not single large radius ZIP queries are precisely
+targeted; radius queries pull
+unwanted rural properties
+Total API calls (Las Cruces,
+weekly)
+3 calls minimum; up to 9 if
+pagination required
+One call per ZIP; add pagination
+calls only if results approach 500
+Rate limit response (HTTP 429) Exponential backoff: 5s
+rightarrow 10s rightarrow 20s
+Graceful degradation prevents
+data loss on rate limit events
+retry
+7.4 De-duplication Strategy
+When querying multiple adjacent ZIP codes, boundary overlaps or API data anomalies can
+occasionally produce duplicate records. Use the following de-duplication logic to maintain a clean
+database:
+• Primary unique identifier: Use the formattedAddress field as the primary deduplication key. If
+the native property id field is present at the root of the response object, use it as the
+preferred identifier.
+• Upsert logic: On each weekly refresh, check if the formattedAddress already exists in the
+database before inserting. If it exists, compare lastSaleDate values and update only if the
+incoming record is newer.
+• Avoid radius queries for deduplication simplicity: Lat/lon radius queries introduce geographic
+overlap that complicates deduplication. Sticking to exact ZIP codes (88001, 88005, 88012)
+makes application-side deduplication straightforward and deterministic.
+8. Limitations and Edge Cases
+8.1 Deed Recording Lag — Very Recent Sales Are Invisible
+The most significant operational limitation of the /properties endpoint is that homes closed within
+the last 30–90 days will not appear in any query until their deeds are officially recorded by the
+county clerk. There is no workaround within the /properties endpoint for this limitation. FirstKnock
+must accept that the lead pipeline will always reflect a delayed snapshot of the market, and design
+outreach workflows accordingly. The weekly refresh cadence described in Section 7 is the correct
+mitigation — it continuously surfaces newly recorded deeds as they propagate through county
+systems.
+8.2 Owner-Occupied Filter Considerations
+The ownerOccupied boolean is derived by comparing the owner's tax mailing address against the
+property address. This comparison can lag by one additional billing cycle after a sale, meaning a
+Built with Spine AI on 2026-03-14 11
+new homeowner who has not yet updated their tax billing address may appear as ownerOccupied=false even if they live at the
+property. Treat ownerOccupied=null as requiring manual verification before use in targeting decisions.
+Table 10 — ownerOccupied Field Interpretation Guide
+ownerOccupied Value Interpretation Recommended Action Confidence
+true Owner's tax mailing
+address matches
+property address —
+likely a primary
+residence buyer
+High-priority target for
+primary residence
+door-knocking
+campaigns
+Medium — may lag one
+billing cycle
+false Owner's mailing
+address differs — likely
+an investor, landlord, or
+absentee owner
+Target for
+investor-focused
+outreach; may be
+renter-occupied
+Medium — same billing
+cycle lag applies
+null County did not provide
+sufficient data to
+determine occupancy
+Require manual
+verification before
+campaign inclusion
+Low — do not use
+without validation
+8.3 Non-Arm's Length Transactions
+Not every deed-recorded transaction represents a traditional market sale. The lastSalePrice field
+should be inspected for anomalous values that indicate non-arm's length transfers. A sale price of
+$0, $10, or $100 typically indicates a property transfer into a family trust, an LLC, or between
+family members — not a market transaction. These records should be filtered out of FirstKnock's
+lead pipeline as the new 'owner' is unlikely to be a traditional homebuyer.
+8.4 Corporate and Institutional Ownership
+The owner.names array may contain corporate entity names rather than individual names. Strings
+containing 'LLC', 'Trust', 'Bank', 'Inc', 'Holdings', or 'Properties' indicate institutional or corporate
+ownership. These records should be flagged and routed to a separate workflow unless
+FirstKnock's strategy specifically targets renters of corporate-owned homes, in which case the
+property address (not the owner mailing address) is the relevant outreach target.
+8.5 Geographic Coverage Gaps
+The three Las Cruces ZIP codes (88001, 88005, 88012) cover the primary urban and suburban
+areas of the city. However, some properties on the geographic boundaries of these ZIP codes may
+fall into adjacent ZIP codes not included in the query set. If coverage gaps are identified during
+field operations, add the relevant adjacent ZIP codes to the weekly query batch. Do not use a
+single large radius query as a substitute — radius queries pull in rural and agricultural properties
+Built with Spine AI on 2026-03-14 12
+outside FirstKnock's target market.
+8.6 Data Quality Validation Checklist
+Every record returned from the /properties endpoint should be validated against the following
+checklist before being added to the FirstKnock lead database. Records failing any
+HIGH-confidence check should be discarded. Records failing MEDIUM-confidence checks should
+be flagged for manual review.
+Table 11 — Property-Level Data Quality Validation Checklist
+Field Valid Condition Disqualifying
+Value
+Confidence Action on Failure
+lastSaleDate ISO 8601 date
+within the last 180
+days
+null, or date older
+than target window
+HIGH Discard record
+lastSalePrice Numeric value
+greater than $0
+and within market
+range
+null, $0, or
+suspiciously low
+(e.g., $10, $100)
+HIGH Discard — likely
+non-arm's length
+transfer
+owner.names Array of standard
+human names
+Contains 'LLC',
+'Trust', 'Bank',
+'Inc', 'Holdings'
+HIGH Route to investor
+workflow or
+discard
+propertyType Single Family,
+Condominium,
+Townhouse, or
+Multi-Family
+Commercial,
+Industrial, Vacant
+Land, Agricultural
+HIGH Discard record
+ownerOccupied true or false
+boolean
+null MEDIUM Flag for manual
+verification
+lastSaleDate vs
+removedDate
+lastSaleDate
+aligns with or
+slightly follows
+removedDate
+lastSaleDate is
+years old while
+removedDate is
+recent
+HIGH Discard — listing
+expired or was
+withdrawn, not
+sold
+8.7 HTTP Error Handling Reference
+Table 12 — HTTP Error Handling Reference for Automated Retrieval Scripts
+Built with Spine AI on 2026-03-14 13
+HTTP Status Meaning Required Action
+200 OK Success — valid JSON payload
+returned
+Process the response array
+normally
+400 Bad Request Malformed query parameters Inspect saleDateRange format;
+ensure integer value (e.g., 180,
+not '180 days')
+401 Unauthorized Missing or invalid X-Api-Key
+header
+HALT execution immediately;
+alert admin; do not retry
+404 Not Found Endpoint URL typo or incorrect
+path
+Verify endpoint URL against
+RentCast documentation
+429 Too Many Requests API rate limit exceeded Implement exponential backoff:
+pause 5s, retry; then 10s, then
+20s
+500 Internal Server Error Upstream RentCast
+infrastructure issue
+Log the error with full request
+details; wait 60 seconds; retry
+the exact failed request once
+Empty array [] No records match query for this
+offset
+If offset=0: accept empty result,
+check again next week. If
+offset>0: end of dataset reached,
+stop paginating
+Appendix: Test Configuration Matrix Summary
+The following table summarizes all tested query configurations across both endpoints, providing a
+reference for the development team when evaluating alternative saleDateRange windows or
+expanding to additional geographic areas.
+Table 13 — Complete RentCast API Test Configuration Matrix
+Test ID Endpoint Key
+Parameters
+Geographic
+Scope
+Expected
+Count
+Recommende
+d?
+A1–A3 /properties saleDateRange
+=90
+ZIPs 88001,
+88005, 88012
+7–11 per ZIP CAUTION —
+misses recent
+sales due to
+lag
+A4–A6 /properties saleDateRange
+=180
+ZIPs 88001,
+88005, 88012
+>11 per ZIP YES —
+recommended
+timeframe
+Built with Spine AI on 2026-03-14 14
+A7–A9 /properties saleDateRange
+=270
+ZIPs 88001,
+88005, 88012
+Higher than
+180-day
+A10 /properties saleDateRange
+=365
+All 3 ZIPs Highest count A11 /properties radius=8,
+saleDateRange
+=180
+Las Cruces
+center
+Broad market
+count
+A12 /properties radius=12,
+saleDateRange
+=180
+Las Cruces
+center
+Broad market
+count
+B1 /listings/sale status=Active,
+daysOld=90
+ZIP 88001 High B2 /listings/sale status=Inactive
+, daysOld=90
+ZIP 88001 ~215 B3 /listings/sale status=Inactive
+, daysOld=180
+ZIP 88001 >215 B4 /listings/sale status=Sold,
+daysOld=90
+ZIP 88001 0 or Error B5 /listings/sale status=Sold,Ina
+ctive,
+daysOld=90
+ZIP 88001 0 or Error C1 /properties limit=500,
+offset=0
+ZIP 88001 Up to 500 C2 /properties limit=500,
+offset=500
+ZIP 88001 Remaining
+records
+Table 14 — Endpoint Recommendation Summary
+Built with Spine AI on 2026-03-14 YES — good
+for historical
+data
+YES —
+maximum
+historical data
+YES — good
+for radius
+targeting
+YES — good
+for radius
+targeting
+NO — does
+not confirm
+sold
+NO —
+includes
+expired/withdra
+wn
+NO —
+includes
+expired/withdra
+wn
+NO — invalid
+status value
+NO — invalid
+status
+combination
+YES —
+required for
+large datasets
+YES —
+required for
+large datasets
+15
+Endpoint Total Tests Run Tests
+Recommended
+Typical Result
+Count
+Data Freshness
+/properties 15 12 (80%) 7–11 (90-day) to
+500+ (365-day)
+30–90 day county
+recording lag
+/listings/sale 5 0 (0%) ~215 (inflated,
+unverified)
+Real-time MLS
+updates
+FINAL VERDICT: Use /properties with saleDateRange=180. Query ZIPs 88001, 88005, and 88012
+weekly. Apply the validation checklist in Table 11 to every record. Implement upsert deduplication
+logic. This is the only configuration that delivers confirmed, deed-recorded sales with actionable
+owner data for FirstKnock.online's outreach campaigns.
+Built with Spine AI on 2026-03-14 16

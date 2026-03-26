@@ -424,6 +424,57 @@ Deno.serve(async (req) => {
                 });
             }
 
+            // ── Validation Cache & Queue Injection ──
+            const BATCH_DATA_API_KEY = Deno.env.get("BATCH_DATA_API_KEY");
+            if (BATCH_DATA_API_KEY && mapped.length > 0) {
+                try {
+                    // Extract hashes to lookup cache
+                    const hashes = mapped.map(m => m.address_hash);
+                    
+                    // 1. Check existing validation items
+                    const existingValidation = await base44.asServiceRole.entities.PropertyValidationCache.filter({
+                        "address_hash__in": hashes
+                    }, null, hashes.length * 2);
+                    
+                    const validationArr = Array.isArray(existingValidation) ? existingValidation : (existingValidation?.items || []);
+                    const validationMap = new Map();
+                    validationArr.forEach(v => validationMap.set(v.address_hash, v));
+
+                    // 2. Identify Cache Misses and Update Confidences
+                    const cacheMisses = [];
+                    for (const m of mapped) {
+                        const verified = validationMap.get(m.address_hash);
+                        if (verified) {
+                            if (verified.status === 'sold') {
+                                m.sale_confidence = 'high'; // Converted from 'low' to 'high' by BatchData
+                                m.data_source = 'batchdata_verified';
+                            } else {
+                                m.original_status = 'REJECTED'; // Suppress from routes
+                            }
+                        } else {
+                            // Cache miss -> Queue for BatchData polling
+                            cacheMisses.push({
+                                address_hash: m.address_hash,
+                                normalized_address: `${m.house_number} ${m.street_name}, ${m.city}, ${m.state} ${m.zip_code}`,
+                                status: 'pending',
+                                provider_id: 'batchdata'
+                            });
+                        }
+                    }
+
+                    // 3. Queue Misses
+                    if (cacheMisses.length > 0) {
+                        for (let i = 0; i < cacheMisses.length; i += 500) {
+                            await base44.asServiceRole.entities.ValidationQueue.bulkCreate(cacheMisses.slice(i, i + 500)).catch(e => logError(`Queue error: ${e.message}`));
+                        }
+                    }
+                } catch (err) {
+                    const errMsg = err instanceof Error ? err.message : String(err);
+                    logError(`Validation layer failed: ${errMsg}`);
+                }
+            }
+            // ── End Validation Cache ──
+
             const dbResult = await writeToDb(mapped);
             totalInserted += dbResult.chunkInserted; totalExisted += dbResult.chunkExisted; totalUpdated += dbResult.chunkUpdated;
 
