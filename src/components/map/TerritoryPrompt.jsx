@@ -359,21 +359,25 @@ export default function TerritoryPrompt({
                     <Pencil className="w-3 h-3 text-yellow-500 shrink-0" />
                     <p className="text-[10px] font-bold text-white whitespace-nowrap">Tap map</p>
                     <select
-                        value={drawShape === 'circle' && drawSizeMiles === 5 ? 'test' : (drawShape || 'circle')}
-                        onChange={(e) => {
-                            if (e.target.value === 'test') {
-                                setDrawShape('circle');
-                                setDrawSizeMiles(5);
-                            } else {
-                                setDrawShape(e.target.value);
-                                if (drawSizeMiles === 5) setDrawSizeMiles(10);
-                            }
-                        }}
+                        value={drawShape || 'circle'}
+                        onChange={(e) => setDrawShape(e.target.value)}
                         className="bg-gray-900 border border-gray-700 text-white text-[10px] rounded-md px-1.5 py-0.5 h-6"
                     >
-                        {!hasPulledData && <option value="test">Test (5mi²)</option>}
                         <option value="circle">Circle</option>
                         <option value="square">Square</option>
+                    </select>
+                    <select
+                        value={drawSizeMiles}
+                        onChange={(e) => {
+                            const newSize = Number(e.target.value);
+                            setDrawSizeMiles(newSize);
+                            setFetchMonths(newSize === 300 ? 1 : 12);
+                        }}
+                        className="bg-gray-900 border border-gray-700 text-white text-[10px] rounded-md px-1.5 py-0.5 h-6 max-w-[130px]"
+                    >
+                        <option value={40}>40 sq mi (12 Mo Data)</option>
+                        <option value={300}>300 sq mi (1 Mo Data)</option>
+                        {!hasPulledData && <option value={5}>Test (5 sq mi)</option>}
                     </select>
                     <button
                         onClick={() => { setDrawingMode(false); setDraftPolygon([]); }}
@@ -442,27 +446,12 @@ export default function TerritoryPrompt({
                     <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
                     {canPullAgain ? (
                         <div className="flex items-center gap-1.5 ml-2">
-                            {/* Pull mode toggle */}
-                            <div className="flex bg-gray-900 rounded-lg border border-gray-700 overflow-hidden">
-                                <button
-                                    onClick={() => setFetchMonths(12)}
-                                    className={`px-2 py-1 text-[9px] font-bold transition-all ${fetchMonths === 12 ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}
-                                >
-                                    40mi² 12Mo
-                                </button>
-                                <button
-                                    onClick={() => setFetchMonths(1)}
-                                    className={`px-2 py-1 text-[9px] font-bold transition-all ${fetchMonths === 1 ? 'bg-cyan-600 text-white' : 'text-gray-400 hover:text-white'}`}
-                                >
-                                    300mi² 1Mo
-                                </button>
-                            </div>
                             <Button
                                 disabled={pulling}
                                 onClick={handleFetchData}
-                                className={`text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide ${fetchMonths === 1 ? 'bg-cyan-600 hover:bg-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]'}`}
+                                className={`text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide ${drawSizeMiles === 300 || fetchMonths === 1 ? 'bg-cyan-600 hover:bg-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]'}`}
                             >
-                                {fetchMonths === 1 ? 'Pull 300mi²' : 'Pull 40mi²'}
+                                {drawSizeMiles === 300 ? 'Pull 300mi² (1 Mo Data)' : drawSizeMiles === 40 ? 'Pull 40mi² (12 Mo Data)' : `Pull ${drawSizeMiles}mi²`}
                             </Button>
                         </div>
                     ) : (

@@ -1,0 +1,89 @@
+{
+  "active": [],
+  "trialing": [],
+  "past_due": [],
+  "canceled": [
+    {
+      "customer_id": "cus_UAXk3Kluzr6Vpw",
+      "email": "codyaf1993@yahoo.com",
+      "subscription_id": "sub_1TCCf62MvSNi6E8hfEbTTXqn",
+      "status": "canceled",
+      "trial_end": "2026-03-25T05:28:56.000Z",
+      "current_period_end": null,
+      "plan_amount": 4900,
+      "plan_interval": "month"
+    },
+    {
+      "customer_id": "cus_UAMpPeca8yZjWE",
+      "email": "mbcottle1@gmail.com",
+      "subscription_id": "sub_1TC25d2MvSNi6E8h67Rt1NWH",
+      "status": "canceled",
+      "trial_end": "2026-03-24T18:11:37.000Z",
+      "current_period_end": null,
+      "plan_amount": 4900,
+      "plan_interval": "month"
+    },
+    {
+      "customer_id": "cus_UA8d9ncwyHRF50",
+      "email": "tharrisromney@gmail.com",
+      "subscription_id": "sub_1TBoMp2MvSNi6E8hRRvgWp1K",
+      "status": "canceled",
+      "trial_end": "2026-03-24T03:32:27.000Z",
+      "current_period_end": null,
+      "plan_amount": 4900,
+      "plan_interval": "month"
+    },
+    {
+      "customer_id": "cus_UA6EcYM6arogDn",
+      "email": "jordan.wheeler@candorpestcontrol.com",
+      "subscription_id": "sub_1TBm2m2MvSNi6E8ha3spmLsi",
+      "status": "canceled",
+      "trial_end": "2026-03-24T01:03:36.000Z",
+      "current_period_end": null,
+      "plan_amount": 4900,
+      "plan_interval": "month"
+    }
+  ],
+  "no_subscription": [
+    {
+      "id": "cus_U5pJfTgnGanraH",
+      "email": "nick.cohen999@gmail.com",
+      "name": "Nicholas Cohen",
+      "created": "2026-03-05T15:17:52.000Z",
+      "has_saved_card": false
+    },
+    {
+      "id": "cus_Ty9xAkrNiy6Xcu",
+      "email": "baysecurity@gmail.com",
+      "name": "Cory Larson",
+      "created": "2026-02-13T04:05:53.000Z",
+      "has_saved_card": false
+    },
+    {
+      "id": "cus_TuHV8urNaXtGP8",
+      "email": "lileditsmusic@gmail.com",
+      "name": "Nick Cohen",
+      "created": "2026-02-02T19:37:40.000Z",
+      "has_saved_card": false
+    },
+    {
+      "customer_id": "cus_Tu1nwFr3gvhnNY",
+      "email": "irobotv2noip@gmail.com",
+      "subscription_id": "sub_1SwDkc2MvSNi6E8hdyjqiWWY",
+      "status": "incomplete_expired",
+      "trial_end": null,
+      "current_period_end": null,
+      "plan_amount": 9900,
+      "plan_interval": "month",
+      "note": "Unexpected status: incomplete_expired"
+    }
+  ],
+  "summary": {
+    "active": 0,
+    "trialing": 0,
+    "past_due": 0,
+    "canceled": 4,
+    "no_subscription_card_on_file": 0,
+    "no_subscription_no_card": 4
+  }
+}
