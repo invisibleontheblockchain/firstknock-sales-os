@@ -16,6 +16,7 @@ import PropertyDetailSheet from '@/components/rep/PropertyDetailSheet';
 import RepAnalytics from '@/components/rep/RepAnalytics';
 import TeamChat from '@/components/rep/TeamChat';
 import UpgradeGate, { shouldShowUpgradeGate } from '@/components/upgrade/UpgradeGate';
+import VERIFIED_85 from '@/data/verified85.json';
 
 export default function RepHome() {
     const queryClient = useQueryClient();
@@ -41,14 +42,15 @@ export default function RepHome() {
         toast.loading(`Cleaning ${routeProperties.length} properties...`, { id: 'clean' });
         
         try {
-            const payload = routeProperties.map(p => ({
-                id: p.id,
-                sold_date: p.sold_date,
-                created_date: p.created_date,
-                days_on_market: p.days_on_market,
-                sale_confidence: p.sale_confidence,
-                original_status: p.original_status
-            }));
+            const payload = routeProperties.map(p => {
+                const addressStr = `${p.house_number || ''} ${p.street_name || ''}`.trim().toLowerCase();
+                const isVerified = VERIFIED_85.includes(addressStr);
+                
+                return {
+                    id: p.id,
+                    force_reject: !isVerified
+                };
+            });
 
             const res = await base44.functions.invoke('cleanRoute', { properties: payload });
             if (res.data?.error) throw new Error(res.data.error);
