@@ -16,7 +16,6 @@ import PropertyDetailSheet from '@/components/rep/PropertyDetailSheet';
 import RepAnalytics from '@/components/rep/RepAnalytics';
 import TeamChat from '@/components/rep/TeamChat';
 import UpgradeGate, { shouldShowUpgradeGate } from '@/components/upgrade/UpgradeGate';
-import SEED_85 from '@/data/verified85_seed.json';
 
 export default function RepHome() {
     const queryClient = useQueryClient();
@@ -31,55 +30,6 @@ export default function RepHome() {
     const [showChat, setShowChat] = useState(false);
     const [showUpgradeGate, setShowUpgradeGate] = useState(false);
     const [soldDateFilter, setSoldDateFilter] = useState('all');
-    const [cleaning, setCleaning] = useState(false);
-    const handleAddRoute = async () => {
-        if (!activeRoute) return;
-        if (!confirm('This will hard-code the 85 verified properties into your route and database. Continue?')) return;
-        
-        setCleaning(true);
-        try {
-            console.log(`[AddRoute] Creating ${SEED_85.length} properties...`);
-            
-            // 1. Create properties (silent fail if they exist)
-            for (let i = 0; i < SEED_85.length; i += 10) {
-                const chunk = SEED_85.slice(i, i + 10);
-                await Promise.all(chunk.map(async p => {
-                    const { _geocode_failed, ...safeProp } = p;
-                    try {
-                        await base44.entities.MasterProperty.create(safeProp);
-                    } catch(e) {
-                         // Likely already exists, safe to ignore
-                    }
-                }));
-            }
-            
-            // 2. Extract hashes to update
-            const hashes = SEED_85.map(p => p.address_hash);
-            
-            // 3. Update active route
-            console.log(`[AddRoute] Overwriting Route with ${hashes.length} hashes...`);
-            await base44.entities.SavedRoute.update(activeRoute.id, {
-                property_hashes: hashes,
-                metrics: {
-                    ...(activeRoute.metrics || {}),
-                    house_count: hashes.length
-                },
-                status: 'ACTIVE'
-            });
-
-            await queryClient.invalidateQueries({ queryKey: ['routeProperties'] });
-            await queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
-            await queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
-            
-            toast.success(`Route synchronized! Exactly ${hashes.length} doors added.`);
-            
-        } catch(e) {
-            toast.error("Failed to add route: " + e.message, { id: 'clean' });
-            console.error(e);
-        } finally {
-            setCleaning(false);
-        }
-    };
 
     // Offline Listener
     React.useEffect(() => {
@@ -642,17 +592,6 @@ export default function RepHome() {
                             )}
                         </div>
                     )}
-
-                    {/* Add Route Button */}
-                    <Button 
-                        onClick={handleAddRoute} 
-                        disabled={cleaning || !activeRoute}
-                        title="Add verified houses to route"
-                        className="h-8 px-3 rounded-xl bg-green-600/20 text-green-400 hover:bg-green-600/40 border border-green-500/30 text-[11px] font-bold shadow-lg shrink-0"
-                    >
-                        {cleaning ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Sparkles className="w-3.5 h-3.5 mr-1.5" />}
-                        {cleaning ? 'Adding...' : 'Add Route'}
-                    </Button>
                 </div>
             </div>
 
