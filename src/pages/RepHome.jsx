@@ -34,24 +34,52 @@ export default function RepHome() {
 
     const handleCleanRoute = async () => {
         if (!routeProperties.length) return;
-        const zips = [...new Set(routeProperties.map(p => p.zip_code).filter(Boolean))];
-        if (!zips.length) {
-            toast.error("No zip codes found in this route.");
-            return;
-        }
         
-        if (!confirm(`Are you sure you want to clean this route? This will run the ${zips.length} territory zip code(s) through the new pipeline to permanently remove false doors.`)) return;
+        if (!confirm(`Are you sure you want to clean this route? We will apply the new validation heuristic to prune old/failed listings.`)) return;
 
         setCleaning(true);
-        toast.loading(`Cleaning ${zips.length} zips...`, { id: 'clean' });
+        toast.loading(`Cleaning ${routeProperties.length} properties...`, { id: 'clean' });
         
         try {
-            for (const zip of zips) {
-                await base44.functions.invoke('fetchZipProperties', { zip_code: zip });
-            }
-            toast.success("Route cleaned! False doors removed.", { id: 'clean' });
+            let removedCount = 0;
+            let keptCount = 0;
+
+            const promises = routeProperties.map(async (p) => {
+                if (!p.id) return;
+                let isFalseDoor = false;
+                
+                // 1. County Lag Rule (>90 days)
+                if (p.sold_date) {
+                    const daysSinceSold = Math.round((new Date() - new Date(p.sold_date)) / (1000 * 3600 * 24));
+                    if (daysSinceSold > 90) isFalseDoor = true;
+                }
+                
+                // 2. Listing failed
+                if (p.days_on_market && p.days_on_market > 150) isFalseDoor = true;
+                if (p.sale_confidence === 'REJECTED' || p.original_status === 'REJECTED') isFalseDoor = true;
+
+                if (isFalseDoor) {
+                    removedCount++;
+                    return base44.entities.MasterProperty.update(p.id, {
+                        original_status: 'REJECTED',
+                        sale_confidence: 'REJECTED'
+                    });
+                } else {
+                    keptCount++;
+                    // Optional: upgrade low confidence to medium/heuristic
+                    if (p.sale_confidence === 'low') {
+                        return base44.entities.MasterProperty.update(p.id, {
+                            original_status: 'HEURISTIC_SOLD',
+                            sale_confidence: 'medium'
+                        });
+                    }
+                }
+            });
+
+            await Promise.all(promises);
+            
+            toast.success(`Cleaned! Pruned ${removedCount} false doors. Kept ${keptCount} verified.`, { id: 'clean' });
             queryClient.invalidateQueries({ queryKey: ['routeProperties'] });
-            queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
         } catch(e) {
             toast.error("Failed to clean route", { id: 'clean' });
             console.error(e);
@@ -379,10 +407,11 @@ export default function RepHome() {
     const routeProperties = useMemo(() => {
         if (!activeRoute || !properties.length) return [];
 
-        // Map hashes to real properties
+        // Map hashes to real properties, drop any marked as REJECTED
         const rawProps = (activeRoute.property_hashes || [])
             .map(hash => properties.find(p => p.address_hash === hash))
-            .filter(Boolean);
+            .filter(Boolean)
+            .filter(p => p.sale_confidence !== 'REJECTED' && p.original_status !== 'REJECTED');
 
         // Deduplicate properties by normalized address
         const uniqueMap = new Map();
