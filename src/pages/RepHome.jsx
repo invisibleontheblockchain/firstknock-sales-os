@@ -42,15 +42,23 @@ export default function RepHome() {
         toast.loading(`Cleaning ${routeProperties.length} properties...`, { id: 'clean' });
         
         try {
-            // Explicitly filter down the array to exactly the 85 verified doors
-            const correctHashes = routeProperties
+            // Because filtering reduced the route array to 50, we must re-query the original database 
+            // for the user's zip codes to locate the 35 missing verified hashes
+            const zips = ['29621', '29624', '29625', '29626', '29627'];
+            const res = await base44.entities.MasterProperty.list('-created_date', 5000, {
+                zip_code: { $in: zips }
+            });
+            const allProps = Array.isArray(res) ? res : (res?.items || []);
+
+            // Now precisely extract the 85 hashes from the master list
+            const correctHashes = allProps
                 .filter(p => {
                     const addressStr = `${p.house_number || ''} ${p.street_name || ''}`.trim().toLowerCase();
                     return VERIFIED_85.includes(addressStr);
                 })
                 .map(p => p.address_hash);
 
-            console.log(`[CleanRoute] Force-updating route from ${activeRoute.property_hashes?.length} to ${correctHashes.length} doors`);
+            console.log(`[CleanRoute] Force-updating route to EXCTLY ${correctHashes.length} doors`);
 
             // Direct route overwrite - perfectly syncs both 'Knock' and 'Map' tabs
             await base44.entities.SavedRoute.update(activeRoute.id, {
@@ -65,7 +73,7 @@ export default function RepHome() {
             await queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
             await queryClient.invalidateQueries({ queryKey: ['savedRoutes'] }); // For Home map view
             
-            toast.success(`Route synchronized! Exactly ${correctHashes.length} verified doors remain.`);
+            toast.success(`Route perfectly synchronized! Exactly ${correctHashes.length} doors restored.`);
             
             if (typeof refetch === 'function') await refetch();
         } catch(e) {
@@ -393,13 +401,13 @@ export default function RepHome() {
 
     // Hydrate Route with Property Data & Status
     const routeProperties = useMemo(() => {
-        if (!activeRoute || !properties.length) return [];
+        if (!activeRoute || routesLoading || !properties.length) return [];
 
-        // Map hashes to real properties, drop any marked as REJECTED
+        // Build the physical property list directly from the route hashes
+        // The Clean Route button natively deletes rejected hashes from this array, so dynamic filtering is no longer needed
         const rawProps = (activeRoute.property_hashes || [])
             .map(hash => properties.find(p => p.address_hash === hash))
-            .filter(Boolean)
-            .filter(p => p.sale_confidence !== 'REJECTED' && p.original_status !== 'REJECTED');
+            .filter(Boolean);
 
         // Deduplicate properties by normalized address
         const uniqueMap = new Map();
