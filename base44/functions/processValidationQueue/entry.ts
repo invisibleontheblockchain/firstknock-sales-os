@@ -1,21 +1,26 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
 
 const BATCH_DATA_API_KEY = Deno.env.get("BATCH_DATA_API_KEY") || Deno.env.get("BATCH_DATA_SANDBOX_KEY");
-const BATCH_DATA_URL = 'https://api.batchdata.com/api/v1/property/search';
+const BATCH_DATA_URL = 'https://api.batchdata.com/api/v1/property/lookup/async';
 
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
+        const originUrl = new URL(req.url);
+        // e.g. https://[app-name].base44.app/api/functions/batchDataWebhookCallback
+        // The path depends on how base44 exposes functions, but typically it aligns with the invoke path.
+        // We will construct the public webhook URL relative to the current execution path.
+        const webhookUrl = `${originUrl.origin}/api/functions/batchDataWebhookCallback`;
 
         if (!BATCH_DATA_API_KEY) {
             return Response.json({ error: 'No BatchData API key configured' }, { status: 500 });
         }
 
-        // 1. Fetch pending items from the queue (Limit to 50 per execution to respect time limits)
+        // 1. Fetch pending items from the queue (Limit to 500 for bulk async processing)
         const pendingItems = await base44.asServiceRole.entities.ValidationQueue.filter(
             { status: 'pending' }, 
             'created_date', 
-            50
+            500 
         );
         const queueArr = Array.isArray(pendingItems) ? pendingItems : (pendingItems?.items || []);
 
@@ -23,102 +28,80 @@ Deno.serve(async (req) => {
             return Response.json({ message: 'Queue is empty. Nothing to process.' });
         }
 
-        console.log(`[ValidationWorker] Processing ${queueArr.length} pending items...`);
+        console.log(`[ValidationWorker] Processing ${queueArr.length} pending items in bulk async lookup...`);
 
-        let processedCount = 0;
-        let authErrors = 0;
-
-        // 2. Process each item sequentially to respect API rate limits
+        // 2. Map items to BatchData schema
+        const requestsPayload = [];
+        
         for (const item of queueArr) {
             // Update status to processing to prevent double-processing
             await base44.asServiceRole.entities.ValidationQueue.update(item.id, { status: 'processing' });
+            
+            // normalized_address: e.g. "123 Main St, Anderson, SC 29625"
+            const parts = item.normalized_address.split(', ');
+            let addrObj = {};
 
-            try {
-                // Formatting payload per our rigorous sandbox payload tests
-                const payload = {
-                    searchCriteria: {
-                        query: item.normalized_address
-                    }
-                };
-
-                const response = await fetch(BATCH_DATA_URL, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${BATCH_DATA_API_KEY}`
-                    },
-                    body: JSON.stringify(payload)
-                });
-
-                if (response.status === 401 || response.status === 403) {
-                    authErrors++;
-                    console.error("[ValidationWorker] BatchData Auth Error! Verify your API Key.");
-                    await base44.asServiceRole.entities.ValidationQueue.update(item.id, { status: 'failed', error_log: 'Auth Rejected' });
-                    continue; // Skip the rest if auth fails
-                }
-
-                const data = await response.json();
+            if (parts.length >= 3) {
+                const street = parts[0];
+                const city = parts[1];
+                const stateZipParts = parts.slice(2).join(' ').trim().split(' ');
+                const state = stateZipParts[0];
+                const zip = stateZipParts[1] || '';
                 
-                // 3. Extract MLS Status from the response payload
-                let apiStatus = 'unknown';
-                if (data.results && data.results.length > 0) {
-                    const result = data.results[0];
-                    if (result.listing && result.listing.status) {
-                        apiStatus = result.listing.status.toLowerCase();
-                    }
-                }
-
-                // Is it definitively sold?
-                const isSold = apiStatus.includes('sold');
-                
-                // 4. Upsert/Create the record in the PropertyValidationCache
-                const expiresAt = new Date();
-                expiresAt.setDate(expiresAt.getDate() + 14); // 14-day Time-to-Live
-
-                await base44.asServiceRole.entities.PropertyValidationCache.create({
-                    address_hash: item.address_hash,
-                    normalized_address: item.normalized_address,
-                    status: isSold ? 'sold' : 'rejected',
-                    expires_at: expiresAt.toISOString(),
-                    provider_id: 'batchdata',
-                    is_stale: false,
-                    latitude: 0, // Placeholder, usually read from RentCast initial pass
-                    longitude: 0 // Placeholder
-                });
-
-                // 5. Mark queue item as completed
-                await base44.asServiceRole.entities.ValidationQueue.update(item.id, { 
-                    status: 'completed' 
-                });
-
-                processedCount++;
-
-            } catch (err) {
-                const errMsg = err instanceof Error ? err.message : String(err);
-                console.error(`[ValidationWorker] Error processing ${item.address_hash}: ${errMsg}`);
-                await base44.asServiceRole.entities.ValidationQueue.update(item.id, { 
-                    status: 'failed', 
-                    error_log: errMsg 
-                });
+                addrObj = { street, city, state, zip };
+            } else {
+                addrObj = { search: item.normalized_address };
             }
 
-            // Small delay to prevent API throttling
-            await new Promise(resolve => setTimeout(resolve, 200));
+            requestsPayload.push({
+                address: addrObj,
+                requestId: item.id // Pass the DB ID so we can correlate it in the webhook!
+            });
         }
 
-        // If we hit auth errors, alert the platform
-        if (authErrors > 0) {
-            return Response.json({ error: `Processed ${processedCount}, but encountered ${authErrors} Auth Errors. Check API Key.` }, { status: 401 });
+        const payload = {
+            requests: requestsPayload,
+            options: {
+                webhookUrl: webhookUrl
+            }
+        };
+
+        // 3. Dispatch Async Job to BatchData
+        const response = await fetch(BATCH_DATA_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${BATCH_DATA_API_KEY}`
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.status === 401 || response.status === 403) {
+            console.error(`[ValidationWorker] BatchData Auth Error (${response.status})!`);
+            // Rollback processing statuses
+            for (const item of queueArr) {
+                await base44.asServiceRole.entities.ValidationQueue.update(item.id, { status: 'failed', error_log: `Auth ${response.status}` });
+            }
+            return Response.json({ error: 'BatchData authentication failed. Check API key and account balance.' }, { status: 401 });
         }
 
-        // If there are more items pending, recursively invoke ourselves (Base44 pattern)
-        if (queueArr.length === 50) {
-            setTimeout(() => base44.functions.invoke('processValidationQueue', {}).catch(() => {}), 1000);
+        if (!response.ok) {
+            const body = await response.text();
+            console.error(`[ValidationWorker] API Error (${response.status}):`, body);
+            for (const item of queueArr) {
+                await base44.asServiceRole.entities.ValidationQueue.update(item.id, { status: 'failed', error_log: `Batch Error ${response.status}` });
+            }
+            return Response.json({ error: `API Error ${response.status}` }, { status: 500 });
         }
 
+        const data = await response.json();
+        
+        // 4. Return summary. Webhook will handle the actual data insertion.
         return Response.json({ 
-            message: `BatchData Validation Worker Completed. Processed ${processedCount} records.`,
-            processed: processedCount
+            message: `BatchData Async Job Initiated. Dispatched ${queueArr.length} records to Webhook.`,
+            dispatched: queueArr.length,
+            batchResponsePath: webhookUrl,
+            batchStatus: data
         });
 
     } catch (error) {

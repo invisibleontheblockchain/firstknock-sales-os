@@ -1,0 +1,94 @@
+Christian Route — BatchData Validation Results
+Generated: 2026-03-31T01:23:19.242Z
+
+Total ambiguous validated: 80
+SOLD: 14 | FAILED: 18 | NO MATCH: 20
+
+SOLD PROPERTIES:
+────────────────────────────────────────────────────────────
+#42 1406 Pioneer Dr, Anderson, SC 29621 | Age: 2m | Score: 0 | Sold: $247000 | Owner: Rocky Duvall Marina
+#62 405 Berkshire Hl, Anderson, SC 29621 | Age: 2m | Score: 0 | Sold: $554000 | Owner: Victoria J Wicks; Todd Wicks
+#82 131 Life Style Ln, Anderson, SC 29621 | Age: 2m | Score: 0 | Sold: $312500 | Owner: John Mark Taylor
+#123 207 Keystone Dr, Anderson, SC 29621 | Age: 2m | Score: 0 | Sold: $290000 | Owner: Jacob Evan Calvert; Savannah Page Cox
+#143 137 Port Royal Rd, Anderson, SC 29621 | Age: 2m | Score: 0 | Sold: $520000 | Owner: Brittany K Stamey; Adger Stamey
+#147 100 Golden Eagle Ln, Anderson, SC 29621 | Age: 2m | Score: 0 | Sold: $0 | Owner: GRANT REVOCABLE TRUST
+#186 8 Lofton Ct, Anderson, SC 29621 | Age: 2m | Score: 0 | Sold: $329000 | Owner: Chase Taylor; Jessica Taylor
+#196 114 Trudy Ln, Anderson, SC 29621 | Age: 2m | Score: 0 | Sold: $0 | Owner: Thomas Simeon Lavigne
+#251 106 Harlond Dr, Anderson, SC 29621 | Age: 2m | Score: 0 | Sold: $0 | Owner: Jessica Michelle Ericson
+#273 124 Bradley Park, Anderson, SC 29621 | Age: 2m | Score: 0 | Sold: $459000 | Owner: Bradley Thomas Masters; Ingryd Masters
+#355 119 Ashwood Ln, Anderson, SC 29625 | Age: 2m | Score: 0 | Sold: $0 | Owner: Edmond Wilder; Ruth Edmond Wilder
+#357 100 Featherfilled Ct, Anderson, SC 29625 | Age: 2m | Score: 0 | Sold: $0 | Owner: Matthew Hunter Brininger
+#364 208 Huntington Dr, Anderson, SC 29625 | Age: 2m | Score: 0 | Sold: $310000 | Owner: Shane Lareau; Michelle Marie Lareau
+#450 213 Obannon Ct, Anderson, SC 29621 | Age: 2m | Score: 0 | Sold: $372500 | Owner: Cynthia P Mcmahan
+
+FAILED/EXPIRED PROPERTIES:
+────────────────────────────────────────────────────────────
+#3 117 Phillips St, Anderson, SC 29625 | Age: 12d | Score: 0 | Failed: 2026-03-25T00:00:00.000Z
+#10 614 Brogan Ave, Anderson, SC 29625 | Age: 21d | Score: 2 | Failed: 2026-03-17T00:00:00.000Z
+#11 300 Strickland Ave, Anderson, SC 29625 | Age: 2m | Score: 0 | Failed: 2026-01-11T00:00:00.000Z
+#33 2703 Leftwich Ln, Anderson, SC 29621 | Age: 23d | Score: 2 | Failed: 2026-03-12T00:00:00.000Z
+#45 1426 E Calhoun St, Anderson, SC 29621 | Age: 2m | Score: 0 | Failed: 2026-01-18T00:00:00.000Z
+#83 155 Life Style Ln, Anderson, SC 29621 | Age: 2m | Score: 0 | Failed: 2026-01-20T00:00:00.000Z
+#138 3108 Cobbs Way, Anderson, SC 29621 | Age: 24d | Score: 2 | Failed: 2026-03-12T00:00:00.000Z
+#153 2109 Rolling Green Rd, Anderson, SC 29621 | Age: 2m | Score: 0 | Failed: 2026-02-07T00:00:00.000Z
+#162 506 Laurens Dr, Anderson, SC 29621 | Age: 2m | Score: 0 | Failed: 2026-01-24T00:00:00.000Z
+#248 105 Bree Dr, Anderson, SC 29621 | Age: 11d | Score: 0 | Failed: 2026-03-26T00:00:00.000Z
+#267 101 Clarendon Dr, Anderson, SC 29621 | Age: 21d | Score: 2 | Failed: 2026-03-20T00:00:00.000Z
+#335 227 Celebration Ave, Anderson, SC 29625 | Age: 29d | Score: 2 | Failed: 2026-03-03T00:00:00.000Z
+#345 1046 Jackson St, Anderson, SC 29625 | Age: 2m | Score: 0 | Failed: 2026-01-06T00:00:00.000Z
+#435 120 Bonaire Pt, Anderson, SC 29621 | Age: 2m | Score: 0 | Failed: 2026-01-04T00:00:00.000Z
+#443 124 Reed Pl, Anderson, SC 29621 | Age: 2m | Score: 0 | Failed: 2025-12-31T00:00:00.000Z
+#453 3080 Mcgee Rd, Anderson, SC 29621 | Age: 28d | Score: 2 | Failed: 2026-03-03T00:00:00.000Z
+#454 104 Mcgee Ct, Anderson, SC 29621 | Age: 2m | Score: 0 | Failed: 2026-02-28T00:00:00.000Z
+#485 1026 Harpers Way, Anderson, SC 29621 | Age: 20d | Score: 2 | Failed: 2026-01-11T00:00:00.000Z
+
+NO MATCH:
+────────────────────────────────────────────────────────────
+#9 409 Fairfax St, Anderson, SC 29625 | Age: 22d | Score: 2 | Status: Pending
+#21 311 Johnson St, Anderson, SC 29624 | Age: 10d | Score: 0 | Status: no_match
+#34 126 A And B Brookmeade Dr, Anderson, SC 29626 | Age: 20d | Score: 2 | Status: no_match
+#57 501 North St, Anderson, SC 29621 | Age: 13d | Score: 0 | Status: Pending
+#58 609 Bonham Ct, Anderson, SC 29621 | Age: 28d | Score: 2 | Status: Active
+#68 2811 Leconte Rd, Anderson, SC 29621 | Age: 14d | Score: 2 | Status: Active
+#80 205 Laurel Ridge Rd, Anderson, SC 29621 | Age: 19d | Score: 2 | Status: Pending
+#88 109 Abigail Ln, Anderson, SC 29621 | Age: 19d | Score: 2 | Status: Pending
+#96 103 Ashton Ln, Anderson, SC 29621 | Age: 2m | Score: 0 | Status: Pending
+#112 329 Ritter Ln, Anderson, SC 29621 | Age: 25d | Score: 2 | Status: no_match
+#114 207 Durness Ct, Anderson, SC 29621 | Age: 2m | Score: 0 | Status: no_match
+#133 428 Deerwood Rd, Anderson, SC 29621 | Age: 18d | Score: 2 | Status: Pending
+#135 205 Green Valley Dr, Anderson, SC 29621 | Age: 19d | Score: 2 | Status: Pending
+#140 2403 Warriors Path, Anderson, SC 29621 | Age: 15d | Score: 2 | Status: Pending
+#149 2414 Old Williamston Rd, Anderson, SC 29621 | Age: 19d | Score: 2 | Status: Pending
+#156 217 Andalusian Trl, Anderson, SC 29621 | Age: 2m | Score: 0 | Status: Off Market
+#167 104 Easy Gap Rd, Anderson, SC 29621 | Age: 20d | Score: 2 | Status: Pending
+#174 197 Tiger Lily Dr, Anderson, SC 29621 | Age: 2m | Score: 0 | Status: no_match
+#176 212 Tiger Lily Dr, Anderson, SC 29621 | Age: 2m | Score: 0 | Status: no_match
+#178 128 Tiger Lily Dr, Anderson, SC 29621 | Age: 2m | Score: 0 | Status: no_match
+#194 109 Vining Xing, Belton, SC 29627 | Age: 14d | Score: 2 | Status: Pending
+#197 7 Ravencrest Dr, Anderson, SC 29621 | Age: 8d | Score: 0 | Status: Active
+#211 133 Beaverdam Creek Dr, Anderson, SC 29621 | Age: 2m | Score: 0 | Status: no_match
+#212 132 Beaverdam Creek Dr, Anderson, SC 29621 | Age: 2m | Score: 0 | Status: no_match
+#213 132 Beaverdam Creek Rd, Anderson, SC 29621 | Age: 2m | Score: 0 | Status: no_match
+#214 122 Beaverdam Creek Dr, Anderson, SC 29621 | Age: 2m | Score: 0 | Status: no_match
+#219 308 Vandiver Rd, Anderson, SC 29621 | Age: 11d | Score: 0 | Status: no_match
+#220 298 Vandiver Rd, Anderson, SC 29621 | Age: 2m | Score: 0 | Status: no_match
+#236 167 Kayfield Farms Dr, Anderson, SC 29621 | Age: 2m | Score: 0 | Status: no_match
+#237 128 Kayfield Farms Dr, Anderson, SC 29621 | Age: 2m | Score: 0 | Status: no_match
+#239 116 Kayfield Farms Dr, Anderson, SC 29621 | Age: 2m | Score: 0 | Status: no_match
+#258 109 Bronson Rdg, Anderson, SC 29621 | Age: 28d | Score: 2 | Status: Active
+#270 109 Bradley Park, Anderson, SC 29621 | Age: 11d | Score: 0 | Status: Pending
+#279 537 Drayton Cir, Anderson, SC 29621 | Age: 20d | Score: 2 | Status: Active
+#290 120 Mid Town Sq, Anderson, SC 29621 | Age: 21d | Score: 2 | Status: Active
+#300 419 Central Ave, Anderson, SC 29625 | Age: 24d | Score: 2 | Status: Pending
+#304 2305 W North Ave, Anderson, SC 29625 | Age: 10d | Score: 0 | Status: Active
+#307 2307 W North Ave, Anderson, SC 29625 | Age: 19d | Score: 2 | Status: Active
+#336 216 Celebration Ave, Anderson, SC 29625 | Age: 9d | Score: 0 | Status: Active
+#368 140 Shakleton Dr, Anderson, SC 29625 | Age: 18d | Score: 2 | Status: Active
+#374 8 Cringle Ln, Anderson, SC 29625 | Age: 2m | Score: 0 | Status: Off Market
+#382 304 Arcadia Dr, Anderson, SC 29621 | Age: 18d | Score: 2 | Status: Off Market
+#389 1116 Manse Jolly Rd, Anderson, SC 29621 | Age: 9d | Score: 0 | Status: no_match
+#397 1116 Manse Jolly Road Timberland Grv, Anderson, SC 29621 | Age: 9d | Score: 0 | Status: no_match
+#398 1104 Manse Jolly Road Timberland Grv, Anderson, SC 29621 | Age: 16d | Score: 2 | Status: no_match
+#420 507 Barcliff Ln, Anderson, SC 29621 | Age: 13d | Score: 0 | Status: Active
+#474 300 Summerall Dr, Anderson, SC 29621 | Age: 2m | Score: 0 | Status: no_match
+#484 1104 Harpers Way, Anderson, SC 29621 | Age: 16d | Score: 2 | Status: Pending

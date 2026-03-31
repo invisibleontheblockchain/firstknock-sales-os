@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Navigation, CheckCircle2, Search, X, TrendingUp, MessageCircle, ChevronDown, CalendarDays } from 'lucide-react';
+import { Loader2, Navigation, CheckCircle2, Search, X, TrendingUp, MessageCircle, ChevronDown, CalendarDays, Sparkles } from 'lucide-react';
 import localforage from 'localforage';
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -29,6 +30,35 @@ export default function RepHome() {
     const [showChat, setShowChat] = useState(false);
     const [showUpgradeGate, setShowUpgradeGate] = useState(false);
     const [soldDateFilter, setSoldDateFilter] = useState('all');
+    const [cleaning, setCleaning] = useState(false);
+
+    const handleCleanRoute = async () => {
+        if (!routeProperties.length) return;
+        const zips = [...new Set(routeProperties.map(p => p.zip_code).filter(Boolean))];
+        if (!zips.length) {
+            toast.error("No zip codes found in this route.");
+            return;
+        }
+        
+        if (!confirm(`Are you sure you want to clean this route? This will run the ${zips.length} territory zip code(s) through the new pipeline to permanently remove false doors.`)) return;
+
+        setCleaning(true);
+        toast.loading(`Cleaning ${zips.length} zips...`, { id: 'clean' });
+        
+        try {
+            for (const zip of zips) {
+                await base44.functions.invoke('fetchZipProperties', { zip_code: zip });
+            }
+            toast.success("Route cleaned! False doors removed.", { id: 'clean' });
+            queryClient.invalidateQueries({ queryKey: ['routeProperties'] });
+            queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
+        } catch(e) {
+            toast.error("Failed to clean route", { id: 'clean' });
+            console.error(e);
+        } finally {
+            setCleaning(false);
+        }
+    };
 
     // Offline Listener
     React.useEffect(() => {
@@ -590,6 +620,17 @@ export default function RepHome() {
                             )}
                         </div>
                     )}
+
+                    {/* Clean Route Button */}
+                    <Button 
+                        onClick={handleCleanRoute} 
+                        disabled={cleaning}
+                        title="Remove false doors via the validation pipeline"
+                        className="h-8 px-3 rounded-xl bg-purple-600/20 text-purple-400 hover:bg-purple-600/40 border border-purple-500/30 text-[11px] font-bold shadow-lg shrink-0"
+                    >
+                        {cleaning ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : <Sparkles className="w-3.5 h-3.5 mr-1.5" />}
+                        {cleaning ? 'Cleaning...' : 'Clean Route'}
+                    </Button>
                 </div>
             </div>
 

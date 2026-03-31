@@ -1,0 +1,558 @@
+════════════════════════════════════════════════════════════════════════════════
+  CHRISTIAN ROUTE — OPTIMIZED PIPELINE RESULTS
+  Generated: 2026-03-30T20:15:59.914Z
+════════════════════════════════════════════════════════════════════════════════
+
+PIPELINE SUMMARY
+────────────────────────────────────────────────────────────
+Total properties in original route:     495
+
+BEFORE (Old Pipeline):
+  ALL 495 → sent to BatchData → $49.50
+
+AFTER (Optimized Pipeline):
+  🔴 REJECTED (no cost):                344 (69.5%)
+     ├─ County lag (>90 days old):       305
+     └─ Heuristic scoring (≤ -4):         39
+  🟢 LIKELY SOLD (no cost):             71 (14.3%)
+  🟡 AMBIGUOUS → BatchData ($0.10/ea):  80 (16.2%)
+
+COST COMPARISON
+────────────────────────────────────────────────────────────
+  BEFORE: 495 × $0.10 = $49.50
+  AFTER:  80 × $0.10 = $8.00
+  SAVINGS: $41.50 per route (83.8% reduction)
+
+════════════════════════════════════════════════════════════════════════════════
+  PROPERTY-BY-PROPERTY BREAKDOWN
+════════════════════════════════════════════════════════════════════════════════
+
+
+────────────────────────────────────────────────────────────
+🟡 AMBIGUOUS — WOULD BE SENT TO BATCHDATA (80 properties, $8.00)
+────────────────────────────────────────────────────────────
+  #  3  117 Phillips St                          Anderson, SC 29625        Age:  12d  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #  9  409 Fairfax St                           Anderson, SC 29625        Age:  22d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  # 10  614 Brogan Ave                           Anderson, SC 29625        Age:  21d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  # 11  300 Strickland Ave                       Anderson, SC 29625        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  # 21  311 Johnson St                           Anderson, SC 29624        Age:  10d  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  # 33  2703 Leftwich Ln                         Anderson, SC 29621        Age:  23d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  # 34  126 A And B Brookmeade Dr                Anderson, SC 29626        Age:  20d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  # 42  1406 Pioneer Dr                          Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  # 45  1426 E Calhoun St                        Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  # 57  501 North St                             Anderson, SC 29621        Age:  13d  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  # 58  609 Bonham Ct                            Anderson, SC 29621        Age:  28d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  # 62  405 Berkshire Hl                         Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  # 68  2811 Leconte Rd                          Anderson, SC 29621        Age:  14d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  # 80  205 Laurel Ridge Rd                      Anderson, SC 29621        Age:  19d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  # 82  131 Life Style Ln                        Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  # 83  155 Life Style Ln                        Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  # 88  109 Abigail Ln                           Anderson, SC 29621        Age:  19d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  # 96  103 Ashton Ln                            Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #112  329 Ritter Ln                            Anderson, SC 29621        Age:  25d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #114  207 Durness Ct                           Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #123  207 Keystone Dr                          Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #133  428 Deerwood Rd                          Anderson, SC 29621        Age:  18d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #135  205 Green Valley Dr                      Anderson, SC 29621        Age:  19d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #138  3108 Cobbs Way                           Anderson, SC 29621        Age:  24d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #140  2403 Warriors Path                       Anderson, SC 29621        Age:  15d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #143  137 Port Royal Rd                        Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #147  100 Golden Eagle Ln                      Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #149  2414 Old Williamston Rd                  Anderson, SC 29621        Age:  19d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #153  2109 Rolling Green Rd                    Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #156  217 Andalusian Trl                       Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #162  506 Laurens Dr                           Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #167  104 Easy Gap Rd                          Anderson, SC 29621        Age:  20d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #174  197 Tiger Lily Dr                        Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #176  212 Tiger Lily Dr                        Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #178  128 Tiger Lily Dr                        Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #186  8 Lofton Ct                              Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #194  109 Vining Xing                          Belton, SC 29627          Age:  14d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #196  114 Trudy Ln                             Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #197  7 Ravencrest Dr                          Anderson, SC 29621        Age:   8d  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #211  133 Beaverdam Creek Dr                   Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #212  132 Beaverdam Creek Dr                   Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #213  132 Beaverdam Creek Rd                   Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #214  122 Beaverdam Creek Dr                   Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #219  308 Vandiver Rd                          Anderson, SC 29621        Age:  11d  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #220  298 Vandiver Rd                          Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #236  167 Kayfield Farms Dr                    Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #237  128 Kayfield Farms Dr                    Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #239  116 Kayfield Farms Dr                    Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #248  105 Bree Dr                              Anderson, SC 29621        Age:  11d  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #251  106 Harlond Dr                           Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #258  109 Bronson Rdg                          Anderson, SC 29621        Age:  28d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #267  101 Clarendon Dr                         Anderson, SC 29621        Age:  21d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #270  109 Bradley Park                         Anderson, SC 29621        Age:  11d  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #273  124 Bradley Park                         Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #279  537 Drayton Cir                          Anderson, SC 29621        Age:  20d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #290  120 Mid Town Sq                          Anderson, SC 29621        Age:  21d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #300  419 Central Ave                          Anderson, SC 29625        Age:  24d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #304  2305 W North Ave                         Anderson, SC 29625        Age:  10d  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #307  2307 W North Ave                         Anderson, SC 29625        Age:  19d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #335  227 Celebration Ave                      Anderson, SC 29625        Age:  29d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #336  216 Celebration Ave                      Anderson, SC 29625        Age:   9d  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #345  1046 Jackson St                          Anderson, SC 29625        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #355  119 Ashwood Ln                           Anderson, SC 29625        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #357  100 Featherfilled Ct                     Anderson, SC 29625        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #364  208 Huntington Dr                        Anderson, SC 29625        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #368  140 Shakleton Dr                         Anderson, SC 29625        Age:  18d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #374  8 Cringle Ln                             Anderson, SC 29625        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #382  304 Arcadia Dr                           Anderson, SC 29621        Age:  18d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #389  1116 Manse Jolly Rd                      Anderson, SC 29621        Age:   9d  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #397  1116 Manse Jolly Road Timberland Grv     Anderson, SC 29621        Age:   9d  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #398  1104 Manse Jolly Road Timberland Grv     Anderson, SC 29621        Age:  16d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #420  507 Barcliff Ln                          Anderson, SC 29621        Age:  13d  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #435  120 Bonaire Pt                           Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #443  124 Reed Pl                              Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #450  213 Obannon Ct                           Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #453  3080 Mcgee Rd                            Anderson, SC 29621        Age:  28d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #454  104 Mcgee Ct                             Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #474  300 Summerall Dr                         Anderson, SC 29621        Age:   2m  Score:   0  Ambiguous: score=0 → needs BatchData verification
+  #484  1104 Harpers Way                         Anderson, SC 29621        Age:  16d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+  #485  1026 Harpers Way                         Anderson, SC 29621        Age:  20d  Score:   2  Ambiguous: score=2 → needs BatchData verification
+
+────────────────────────────────────────────────────────────
+🟢 LIKELY SOLD — SKIP BATCHDATA, CLASSIFY AS SOLD (71 properties, FREE)
+────────────────────────────────────────────────────────────
+  #  6  106 Westminster Ave                      Anderson, SC 29625        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #  7  104 Westminster Ave                      Anderson, SC 29625        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  # 16  413 W Market St                          Anderson, SC 29624        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  # 19  509 Rose Hill St                         Anderson, SC 29624        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  # 23  310 W Hampton St                         Anderson, SC 29624        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  # 26  1606 S Murray Ave Ext                    Anderson, SC 29624        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  # 36  602 Caughlin Ave                         Anderson, SC 29624        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  # 38  105 Bailey St                            Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  # 50  117 Postelle Dr                          Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  # 63  2607 Bellview Rd                         Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  # 73  304 Avenue Of Oaks Ave                   Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  # 86  607 Laurel Creek Dr                      Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  # 97  115 Dundee Ct                            Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #107  535 Fairmont Rd                          Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #108  620 Fairmont Rd                          Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #113  203 Durness Ct                           Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #115  211 Durness Ct                           Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #117  119 Amberwood Dr                         Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #120  191 Amberwood Dr                         Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #121  164 Amberwood Dr                         Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #122  126 Olivarri Dr                          Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #134  506 Quail Hollow Dr                      Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #155  116 Aycock Dr                            Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #160  707 Britton St                           Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #177  210 Tiger Lily Dr                        Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #180  122 Tiger Lily Dr                        Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #181  116 Tiger Lily Dr                        Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #183  43 Fawn Hill Dr                          Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #202  3128 Midway Rd                           Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #203  5 Long Branch Ct                         Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #206  17 Long Branch Ct                        Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #209  117 Beaverdam Creek Dr                   Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #210  117 Beaverdam Creek Rd                   Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #215  120 Beaverdam Creek Dr                   Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #217  116 Beaverdam Creek Dr                   Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #221  296 Vandiver Rd                          Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #222  164 Laurel Oak Dr                        Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #223  122 Laurel Oak Dr                        Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #228  619 Wh Kay Ln                            Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #233  123 Kayfield Farms Dr                    Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #244  2916 Rambling Path                       Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #252  104 Harlond Dr                           Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #257  5 Appledown Ct                           Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #262  1109 Oak Hill Dr                         Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #263  210 Northridge Dr                        Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #287  408 Moultrie Sq                          Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #302  1817 Edgewood Ave                        Anderson, SC 29625        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #314  2608 Lane Ave                            Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #317  212 Whitehall Rd                         Anderson, SC 29625        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #322  607 Westview Ave                         Anderson, SC 29625        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #326  213 Oneal Dr                             Anderson, SC 29625        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #346  407 Camellia Dr                          Anderson, SC 29625        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #351  208 Brentwood Cir                        Anderson, SC 29625        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #352  210 Camson Rd                            Anderson, SC 29625        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #359  185 Norfolk Cir                          Anderson, SC 29625        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #362  8 Rivanna Dr                             Anderson, SC 29625        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #375  216 Maplewood Rd                         Anderson, SC 29625        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #377  707 Woodlake Rd                          Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #379  300 Woodlake Rd                          Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #393  1116 Manse Jolly Rd Unit Timberland Grv  Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #394  1112 Manse Jolly Rd Unit Timberland Grv  Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #395  1108 Manse Jolly Rd Unit Timberland Grv  Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #396  1104 Manse Jolly Rd Unit Timberland Grv  Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #407  306 Lakewood Dr                          Anderson, SC 29625        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #409  104 Tinsley Dr                           Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #414  707 Weathered Oak Way                    Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #421  1027 Edenbrooke Cir                      Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #449  505 Canebrake Dr                         Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #464  109 Engram Ln                            Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #465  115 Engram Ln                            Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+  #486  4204 Weatherstone Way                    Anderson, SC 29621        Age:   1m  Score:   3  Heuristic Likely Sold: score=3 (escrow-window timing)
+
+────────────────────────────────────────────────────────────
+🔴 REJECTED — AUTO-REJECTED, NOT SOLD (344 properties, FREE)
+────────────────────────────────────────────────────────────
+
+  --- County Lag Rejections (305) ---
+  #  1  505 507 Blair St                         Anderson, SC 29626        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #  2  505 507 Blair St                         Anderson, SC 29625        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #  4  115 Simmons St                           Anderson, SC 29625        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #  5  108 Hunter St                            Anderson, SC 29625        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #  8  405 Fairfax St                           Anderson, SC 29625        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  # 12  202 K St                                 Anderson, SC 29625        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  # 13  802 Linley St                            Anderson, SC 29625        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  # 15  110 Maxwell Ave                          Anderson, SC 29624        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  # 18  403 Rose Hl                              Anderson, SC 29624        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  # 20  309 Johnson St                           Anderson, SC 29624        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  # 22  317 W Hampton St                         Anderson, SC 29624        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  # 24  308 W Hampton St                         Anderson, SC 29624        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  # 25  1250 Gadsden St                          Anderson, SC 29624        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  # 27  1606 S Murray St Ext                     Anderson, SC 29624        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  # 28  1200 S Main St                           Anderson, SC 29624        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  # 29  604 S Mcduffie St                        Anderson, SC 29624        Age:  11m  County Lag Rule: 330 days old (>90 days = expired/withdrawn)
+  # 30  1009 E River St                          Anderson, SC 29624        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  # 31  1111 E River St                          Anderson, SC 29624        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  # 32  113 Cassandra Turn                       Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  # 35  610 Caughlin Ave                         Anderson, SC 29624        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  # 37  905 E Whitner St                         Anderson, SC 29624        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  # 39  200 Sumter St                            Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  # 40  23 Gilmer Dr                             Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  # 41  105 Willow Ct                            Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  # 43  703 E Calhoun St                         Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  # 44  1611 E Calhoun St                        Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  # 46  503 Allenby Rd                           Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  # 47  601 Heyward Rd                           Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  # 48  3 Drakeford Ct                           Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  # 51  119 Postelle Dr                          Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  # 52  1112 Greenacres                          Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  # 53  1106 Greenacres                          Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  # 55  1100 Greenacres                          Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  # 56  707 Windsor Dr                           Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  # 64  2701 Bellview Rd                         Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  # 65  2807 Bellview Rd                         Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  # 66  3004 Bellview Rd                         Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  # 67  2713 Leconte Rd                          Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  # 69  2004 Millgate Rd                         Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  # 70  1402 Stonehurst Dr                       Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  # 71  103 Buckingham Ct                        Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  # 72  309 Avenue                               Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  # 74  410 Holly Ridge Dr                       Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  # 75  404 Holly Ridge Dr                       Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  # 77  302 Holly Creek Dr                       Anderson, SC 29621        Age:  11m  County Lag Rule: 330 days old (>90 days = expired/withdrawn)
+  # 78  109 James Lawrence Orr Dr                Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  # 79  113 James Lawrence Orr Dr                Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  # 81  508 Upland Way                           Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  # 84  601 Laurel Creek Dr                      Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  # 85  607 Laurel Creek Rd                      Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  # 87  402 Simpson Rd                           Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  # 89  216 Londonberry Dr                       Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  # 90  105 Brittania Cir                        Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  # 92  104 Brittania Cir                        Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  # 93  519 Laurel Crk                           Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  # 94  2413 Annandale Dr                        Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  # 95  135 Elliott Cir                          Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  # 98  107 Rankin Ct                            Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  # 99  1516 Johanna Cir                         Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #101  124 Woodbridge Ct                        Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #102  120 Woodbridge Ct                        Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #103  409 Liberty Ct                           Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #104  11 Chalet Ct                             Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #105  19 Chalet Ct                             Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #106  31 Chalet Ct                             Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #109  124 Palm Branch Way                      Anderson, SC 29621        Age:  11m  County Lag Rule: 330 days old (>90 days = expired/withdrawn)
+  #110  118 Palm Branch Way                      Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #111  1016 Sand Palm Way                       Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #116  1853 Rogers Rd                           Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #119  177 Amberwood Dr                         Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #124  226 Mariposa Cir                         Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #125  118 Mariposa Cir                         Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #126  100 Mariposa Cir                         Anderson, SC 29621        Age:  11m  County Lag Rule: 330 days old (>90 days = expired/withdrawn)
+  #127  103 Cresta Verde Rd                      Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #128  1507 Bennett Dr                          Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #129  2335 Snow Rd                             Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #131  5002 King Dr                             Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #136  2603 Cobbs Way                           Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #137  2701 Cobbs Way                           Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #139  207 Green                                Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #141  2402 Warriors Path                       Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #142  130 Sea Palms Dr                         Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #144  115 Spanish Wls                          Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #145  137 Golden Eagle Ln                      Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #146  128 Golden Eagle Ln                      Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #148  1004 Gilreath Rd                         Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #150  2312 Old Williamston Rd                  Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #151  215 Maple Dr                             Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #152  218 Maple Dr                             Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #154  415 Van Martin Rd                        Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #158  214 Savannah Dr                          Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #159  130 Taylors Trl                          Anderson, SC 29621        Age:  11m  County Lag Rule: 330 days old (>90 days = expired/withdrawn)
+  #163  102 Laurens Ct                           Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #164  133 Herd Park Ct                         Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #165  133 Easy Gap Rd                          Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #166  118 Easy Gap Rd                          Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #168  25 Barron Glenn Way                      Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #169  215 Rockpine Dr                          Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #170  214 Rockpine Dr                          Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #171  125 Tiger Lily Dr                        Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #172  127 Tiger Lily Dr                        Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #173  129 Tiger Lily Dr                        Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #175  209 Tiger Lily Dr                        Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #182  100 Tiger Lily Dr                        Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #184  28 Fawn Hill Dr                          Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #185  43 Hillsborough Dr                       Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #187  137 Mediterranean Ave                    Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #188  122 St James Ct                          Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #189  1314 Cobbs Glen Dr                       Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #190  107 Coosa Ln                             Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #191  106 Dewars Trl                           Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #192  2815 Waccamaw Trl                        Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #193  213 Vinings Xing                         Belton, SC 29627          Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #195  115 Trudy Ln                             Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #198  33 Ravencrest Dr                         Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #199  2709 Midway Rd                           Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #200  3138 Midway Rd                           Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #201  3136 Midway Rd                           Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #204  7 Long Branch Ct                         Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #205  11 Long Branch Ct                        Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #207  10 Long Branch Ct                        Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #208  115 Beaverdam Creek Dr                   Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #216  118 Beaverdam Creek Dr                   Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #218  108 Beaverdam Creek Dr                   Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #224  120 Laurel Oak Dr                        Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #225  104 Laurel Oak Dr                        Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #226  504 Grasshopper Ct                       Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #227  611 Wh Kay Ln                            Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #229  103 Kayfield Farms Dr                    Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #230  105 Kayfield Farms Dr                    Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #231  107 Kayfield Farms Dr                    Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #234  153 Kayfield Farms Dr                    Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #235  155 Kayfield Farms Dr                    Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #238  126 Kayfield Farms Dr                    Anderson, SC 29621        Age:  11m  County Lag Rule: 330 days old (>90 days = expired/withdrawn)
+  #240  114 Kayfield Farms Dr                    Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #241  112 Kayfield Farms Dr                    Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #242  110 Raspberry Ln                         Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #243  2905 Rambling Path                       Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #246  121 Langwell Dr                          Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #247  122 Langwell Dr                          Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #249  107 Chetwood Dr                          Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #250  112 Limelight Dr                         Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #253  310 Smithfield Dr                        Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #254  200 Smithfield Dr                        Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #256  137 Duraleigh Rd                         Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #259  121 Bronson Rdg                          Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #261  111 Wild Meadows Dr                      Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #264  3005 Beechwood Pkwy                      Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #265  3113 Pinehurst Ln                        Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #266  109 Cameron Way                          Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #269  317 Avenue                               Anderson, SC 29621        Age:  11m  County Lag Rule: 330 days old (>90 days = expired/withdrawn)
+  #272  161 Bradley Park                         Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #274  203 Lancaster Dr                         Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #275  1000 Meadow Ln                           Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #276  900 Meadow Ln                            Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #277  1103 Stratford Dr                        Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #278  1012 Stratford Dr                        Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #280  113 Sedgefield Ct                        Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #281  102 Sedgefield Ct                        Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #282  2311 Hanna Rd                            Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #283  2014 College Ave                         Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #284  2011 Boulevard Hts                       Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #285  2012 Boulevard Hts                       Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #286  110 Clinton Dr                           Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #288  406 Moultrie Sq                          Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #289  220 Moultrie Sq                          Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #291  118 Mid Town Sq                          Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #292  203 Bradford St                          Anderson, SC 29625        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #293  201 W Highland Ave                       Anderson, SC 29625        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #294  206 Daniel St                            Anderson, SC 29625        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #295  1008 Tribble St                          Anderson, SC 29625        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #296  504 Piedmont Ave                         Anderson, SC 29625        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #297  1706 Park Dr                             Anderson, SC 29625        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #298  1811 Club Dr                             Anderson, SC 29625        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #299  415 Watson Ave                           Anderson, SC 29625        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #301  421 Central Ave                          Anderson, SC 29625        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #303  2705 Edgewood Ave                        Anderson, SC 29625        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #305  205 James St                             Anderson, SC 29625        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #306  304 Oak Dr                               Anderson, SC 29625        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #309  2616 Duncan St                           Anderson, SC 29625        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #310  413 Harden Rd                            Anderson, SC 29621        Age:  11m  County Lag Rule: 330 days old (>90 days = expired/withdrawn)
+  #311  402 Harden Rd                            Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #312  2305 Poplar Ln                           Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #315  2400 Lane Ave                            Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #316  2602 Whitehall Ave                       Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #318  2614 E North Ave                         Anderson, SC 29625        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #319  3011 Manchester Cir                      Anderson, SC 29625        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #320  428 Starkes St                           Anderson, SC 29625        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #321  2801 Pope Dr                             Anderson, SC 29625        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #323  2106 Woodside Ave                        Anderson, SC 29625        Age:  11m  County Lag Rule: 330 days old (>90 days = expired/withdrawn)
+  #324  1938 Inman Dr                            Anderson, SC 29625        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #325  207 Oneal Dr                             Anderson, SC 29625        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #328  107 Westwind Rd                          Anderson, SC 29625        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #330  703 W Fredericks St                      Anderson, SC 29625        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #331  618 W Fredericks St                      Anderson, SC 29625        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #332  166 Bleckley Trl                         Anderson, SC 29625        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #333  100 Bleckley Trl                         Anderson, SC 29625        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #334  217 Celebration Ave                      Anderson, SC 29625        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #337  121 Traditions Blvd                      Anderson, SC 29625        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #338  411 Reflection Dr                        Anderson, SC 29625        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #339  422 Reflection Dr                        Anderson, SC 29625        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #340  418 Reflection Dr                        Anderson, SC 29625        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #341  443 Hillside Dr                          Anderson, SC 29625        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #342  406 Hillside Dr                          Anderson, SC 29625        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #343  431 Horse Shoe Bnd                       Anderson, SC 29625        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #344  433 Horse Shoe Bnd                       Anderson, SC 29625        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #347  2909 Olive St                            Anderson, SC 29625        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #349  234 Brentwood Cir                        Anderson, SC 29625        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #350  214 Brentwood Cir                        Anderson, SC 29625        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #353  2904 Birch St                            Anderson, SC 29625        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #354  113 Ashwood Ln                           Anderson, SC 29625        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #358  163 Norfolk Cir                          Anderson, SC 29625        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #360  186 Norfolk Cir                          Anderson, SC 29625        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #361  15 Rivanna Dr                            Anderson, SC 29625        Age:  11m  County Lag Rule: 330 days old (>90 days = expired/withdrawn)
+  #363  401 Phil Watson Rd                       Anderson, SC 29625        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #365  309 Merriman Trl                         Anderson, SC 29621        Age:  11m  County Lag Rule: 330 days old (>90 days = expired/withdrawn)
+  #366  213 Brookgreen Dr                        Anderson, SC 29625        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #367  403 Brookgreen Dr                        Anderson, SC 29625        Age:  11m  County Lag Rule: 330 days old (>90 days = expired/withdrawn)
+  #369  126 Shakleton Dr                         Anderson, SC 29625        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #370  126 Patagonia Dr                         Anderson, SC 29625        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #371  126 Patagonia Rd                         Anderson, SC 29625        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #372  110 Patagonia Rd                         Anderson, SC 29625        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #373  3 Cringle Ln                             Anderson, SC 29625        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #376  301 Woodlake Rd                          Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #378  706 Woodlake Rd                          Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #380  403 Brown Rd                             Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #381  308 Arcadia Dr                           Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #383  101 Amanda Dr                            Anderson, SC 29621        Age:  11m  County Lag Rule: 330 days old (>90 days = expired/withdrawn)
+  #384  107 Amanda Dr                            Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #385  340 Green Hill Dr                        Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #387  103 Welborn Oaks Way                     Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #388  104 Welborn Oaks Way                     Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #390  1112 Manse Jolly Rd                      Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #391  1108 Manse Jolly Rd                      Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #392  1104 Manse Jolly Rd                      Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #399  604 Robin Hood Ln                        Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #400  409 Little John Trl                      Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #401  802 Pebble Ln                            Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #403  720 Sunny Shore Ln                       Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #404  712 Sunny Shore Ln                       Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #405  1003 Summer Pl                           Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #408  110 Frances Cannon Dr                    Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #410  115 Kingsgate Way                        Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #411  124 Kingsgate Way                        Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #415  803 Weathered Oak Way                    Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #416  805 Weathered Oak Way                    Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #417  807 Weathered Oak Way                    Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #418  809 Weathered Oak Way                    Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #419  808 Weathered Oak Way                    Anderson, SC 29621        Age:  11m  County Lag Rule: 330 days old (>90 days = expired/withdrawn)
+  #422  1074 Edenbrooke Cir                      Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #423  115 Elmhurst Ln                          Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #424  169 Evonshire Blvd                       Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #427  115 Tanglewood Dr                        Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #428  221 Graylyn Dr                           Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #429  229 Graylyn Dr                           Anderson, SC 29621        Age:  11m  County Lag Rule: 330 days old (>90 days = expired/withdrawn)
+  #430  192 Graylyn Dr                           Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #431  190 Graylyn Dr                           Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #432  148 Cayman Way                           Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #433  140 Cayman Way                           Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #434  519 Smithmore St                         Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #436  116 Bonaire Pt                           Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #437  101 Henry Dr                             Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #438  116 Henry Ave                            Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #439  109 Palancar Ct                          Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #440  104 Palancar Ct                          Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #441  103 Downie Ln                            Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #442  202 Kings Rd                             Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #444  107 Mystic Vineyard Ln                   Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #445  307 Brittany Park                        Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #446  528 Brittany Park                        Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #447  116 Arnold Dr                            Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #448  108 Rustic Ln                            Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #451  219 Obannon Ct                           Anderson, SC 29621        Age:  11m  County Lag Rule: 330 days old (>90 days = expired/withdrawn)
+  #452  133 Prescott Dr                          Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #455  137 Olde Towne Dr                        Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #456  118 Briar Patch Rd                       Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #457  711 Concord Rd                           Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #458  2202 Concord Rd                          Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #459  2018 Concord Rd                          Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #460  604 Concord Ave                          Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #461  1013 Whirlaway Cir                       Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #462  1016 Whirlaway Cir                       Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #463  1002 Whirlaway Cir                       Anderson, SC 29621        Age:   5m  County Lag Rule: 150 days old (>90 days = expired/withdrawn)
+  #466  130 Charping Ln                          Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #467  114 Hawnes Pl                            Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #468  201 Dursely Dr                           Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #469  126 Wycombe Dr                           Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #470  105 Caversham Ln                         Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #472  326 Summerall Dr                         Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #473  324 Summerall Dr                         Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #476  202 Meadows Edge Ct                      Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #477  109 Baybrooke Ln                         Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #478  114 Baybrooke Ln                         Anderson, SC 29621        Age:   6m  County Lag Rule: 180 days old (>90 days = expired/withdrawn)
+  #479  102 Stoneleigh Ct                        Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #481  1003 Harpers Way                         Anderson, SC 29621        Age:  11m  County Lag Rule: 330 days old (>90 days = expired/withdrawn)
+  #482  1015 Harpers Way                         Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+  #483  1019 Harpers Way                         Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #487  412 Sutton Pl                            Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #489  180 Little Creek Rd                      Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #490  1009 Mcbane Ct                           Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #491  405 Ashley Downs                         Anderson, SC 29621        Age:   8m  County Lag Rule: 240 days old (>90 days = expired/withdrawn)
+  #492  604 Ashley Downs                         Anderson, SC 29621        Age:   9m  County Lag Rule: 270 days old (>90 days = expired/withdrawn)
+  #493  416 Ashley Downs                         Anderson, SC 29621        Age:   4m  County Lag Rule: 120 days old (>90 days = expired/withdrawn)
+  #494  321 Quail Run                            Anderson, SC 29621        Age:  10m  County Lag Rule: 300 days old (>90 days = expired/withdrawn)
+  #495  406 Dove Tree Ln                         Anderson, SC 29621        Age:   7m  County Lag Rule: 210 days old (>90 days = expired/withdrawn)
+
+  --- Heuristic Rejections (39) ---
+  # 14  111 Maxwell Ave                          Anderson, SC 29624        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  # 17  902 W Market St                          Anderson, SC 29624        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  # 49  2025 Sheldon Dr                          Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  # 54  1102 Greenacres                          Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  # 59  211 Cater St                             Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  # 60  1315 N Blvd                              Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  # 61  705 E Mauldin St                         Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  # 76  216 Holly Ridge Dr                       Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  # 91  109 Brittania Cir                        Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #100  9 Woodbridge Cir                         Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #118  153 Amberwood Dr                         Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #130  114 Hillview Cir                         Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #132  1122 Cox Rd                              Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #157  215 Savannah Dr                          Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #161  105 Laurens Ct                           Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #179  126 Tiger Lily Dr                        Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #232  111 Kayfield Farms Dr                    Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #245  3004 Barefoot Trl                        Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #255  1026 Crestview Rd                        Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #260  402 Greer Farm Ln                        Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #268  1021 Belk Dr                             Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #271  117 Bradley Park                         Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #308  2600 E North Ave                         Anderson, SC 29625        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #313  2313 Poplar Ln                           Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #327  119 Mcclure Dr                           Anderson, SC 29625        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #329  207 Mayfield Dr                          Anderson, SC 29625        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #348  301 Hembree Rd                           Anderson, SC 29625        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #356  207 Ashwood Ln                           Anderson, SC 29625        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #386  310 Green Hill Dr                        Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #402  701 Sunny Shore Ln                       Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #406  211 Lakewood Dr                          Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #412  122 Kingsgate Way                        Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #413  103 Trident Ct                           Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #425  513 Eskew Cir                            Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #426  111 Tanglewood Dr                        Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #471  1003 Hillcrest Ct                        Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #475  208 Timothy Ct                           Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #480  1021 Hobby Ln                            Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+  #488  1000 Whisper Wood Ln                     Anderson, SC 29621        Age:   3m  Score:  -5  Heuristic Auto-Reject: score=-5 (contract boundary or stale listing)
+
+════════════════════════════════════════════════════════════════════════════════
+  KEY OBSERVATION: 117 Phillips St (#3)
+════════════════════════════════════════════════════════════════════════════════
+  Address: 117 Phillips St, Anderson, SC 29625
+  Age: 12d (12 days)
+  Score: 0
+  Classification: AMBIGUOUS
+  Reason: Ambiguous: score=0 → needs BatchData verification
+  Send to BatchData: YES
+
+  BatchData Ground Truth: statusCategory="Failed", soldPrice=$0
+  This listing was withdrawn after 10 days — NOT sold.
+  ✅ CORRECT: Pipeline sends it to BatchData for verification.
+
+════════════════════════════════════════════════════════════════════════════════
+  END OF REPORT
+════════════════════════════════════════════════════════════════════════════════

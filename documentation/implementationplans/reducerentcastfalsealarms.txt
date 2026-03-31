@@ -1,0 +1,67 @@
+educe RentCast False Alarms & Optimize BatchData Costs
+This plan details how we will restructure the RentCast ingestion and BatchData validation pipeline to minimize false doors and achieve the lowest possible API spend. Currently, the system leaks too many Inactive RentCast listings into the validation queue, causing unnecessary credit burn.
+
+Goal Description
+Reduce RentCast False Alarms Locally: We will stop paying BatchData to tell us what we should already know. If an Inactive listing was taken off the market 120 days ago, it should have appeared in the Phase 1 Deed Records (which lag by 30-90 days). If it hasn't, it's an expired/withdrawn listing, not a sold home.
+Implement Async Bulk Validation: For the truly ambiguous properties (recent Inactive listings that are still within the county lag window), we will send them to BatchData using the Async Bulk endpoint to optimize operational overhead and align with the cheapest architectural patterns.
+User Review Required
+IMPORTANT
+
+Async Webhook Requirement: The BatchData Async Bulk endpoint requires a webhook URL to receive results. We will need to set up a new Base44 function (batchDataWebhookCallback) that is accessible via a public URL. Please confirm if Base44 supports exposing a public HTTP endpoint for this webhook.
+
+Proposed Changes
+RentCast Ingestion Filter (The "Lag Window" Rule)
+This is the primary software-level cost saver. We will aggressively filter Phase 2 records before they even get marked as low confidence.
+
+[MODIFY] processFetchChunk/entry.ts
+Rule Changes for Phase 2 (listings_records):
+We currently accept any Inactive listing removed after soldCutoff (up to 12 months ago).
+New Rule: If a property has a removedDate older than 90 days (the maximum county deed lag), AND it does not already exist in the database from Phase 1 (deed_records), we must assume it is an Expired/Withdrawn listing and drop it.
+Only properties with a removedDate within the last 0-90 days will be given sale_confidence = 'low' and queued for BatchData. Older false alarms will be assigned sale_confidence = 'REJECTED'.
+BatchData Async Bulk Implementation
+We will transition the validation queue from a 1-by-1 synchronous loop to a bulk async job.
+
+[MODIFY] processValidationQueue/entry.ts
+Change execution from loop to bulk slice: The function will pull up to 1,000 pending records from ValidationQueue.
+API Call Update: Formulate the payload for POST https://api.batchdata.com/api/v1/property/lookup/async.
+Options Object: Inject a webhookUrl (pointing to the new Base44 webhook endpoint) and requestId mapping.
+Queue State: Update the queue items from pending to processing (awaiting webhook).
+[NEW] batchDataWebhookCallback/entry.ts
+Purpose: An endpoint to catch the POST payload from BatchData.
+Logic:
+Parse data.results.properties.
+Evaluate listing.status and listing.statusCategory.
+Upsert the results to PropertyValidationCache (sold or rejected).
+Update the corresponding ValidationQueue items to completed.
+If sold, update MasterProperty confidence to verified.
+Open Questions
+CAUTION
+
+Base44 Webhook Support: Can we create a publicly reachable Base44 function (batchDataWebhookCallback) that doesn't strictly require FirstKnock user authentication to hit? BatchData will be hitting this from their servers.
+
+County Lag Window: Is 90 days the safe cutoff for your counties? If a home doesn't show up in county deeds 90 days after going Inactive, are you comfortable automatically discarding it as a false door?
+
+Verification Plan
+Local Filtering Test
+Run processFetchChunk locally and verify the logs drop "stale" Inactive listings instead of queuing them.
+Webhook Simulation
+Use a mock payload to hit the batchDataWebhookCallback locally and ensure it updates the cache correctly.
+
+/Users/nick/Documents/GitHub/firstknock-sales-os/documentation/data.txt
+/Users/nick/Documents/GitHub/firstknock-sales-os/documentation/RentCast API Test Configuration Matrix.csv
+Can we see 
+
+
+Okay so basically we found out that the current process we did for pulling the information we wanted took 4$ from batchdata which is not going to be sustainale this way. Running it this way theres no chance with the amount of homes we are pulling that this is gong to work
+
+
+We need to verify the status of the listing/sale endpoint or the phase 2 that is directly connected to MLS data 
+
+
+Understand the data we want and see if theres a better way
+
+Understand the data we want and see if theres a better way
+ can you please craft me a deep research prompt so we can analyze and figure ou the data problem. We need it optimized for
+1: Performance
+2:Cost
+3:MLS accuracy.

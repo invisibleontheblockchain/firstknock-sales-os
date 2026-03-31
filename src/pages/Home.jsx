@@ -1150,8 +1150,10 @@ export default function Home() {
                 
                 console.log(`[generateRoutes] Applying Sold Date Filter: ${soldDateFilter} months (Cutoff: ${cutoff instanceof Date && !isNaN(cutoff) ? cutoff.toISOString() : 'Invalid'})`);
                 workingSet = workingSet.filter(p => {
-                    // Always include Pending/Recent Listing Bridge properties
-                    if (p.original_status === 'PENDING' || p.original_status === 'RECENT_OFF_MARKET') return true;
+                    // Always include Pending properties (active MLS deals)
+                    if (p.original_status === 'PENDING') return true;
+                    // Only bypass for RECENT_OFF_MARKET if validated by BatchData (not low confidence)
+                    if (p.original_status === 'RECENT_OFF_MARKET' && p.sale_confidence !== 'low') return true;
                     
                     // Properties with rep interaction statuses always stay in routes
                     const hasInteraction = ['CALLBACK', 'NO_ANSWER', 'QUALIFIED'].includes(p.effective_status);
@@ -1209,6 +1211,15 @@ export default function Home() {
                     const pt = p.property_type.toLowerCase();
                     return !landKeywords.some(kw => pt.includes(kw));
                 });
+            }
+
+            // Exclude BatchData-rejected properties (confirmed NOT sold)
+            {
+                const before = workingSet.length;
+                workingSet = workingSet.filter(p => p.original_status !== 'REJECTED');
+                if (before > workingSet.length) {
+                    console.log(`[generateRoutes] Removed ${before - workingSet.length} REJECTED properties`);
+                }
             }
 
             // Skip low-confidence "sold" properties (likely expired/withdrawn listings, not real sales)
@@ -1399,7 +1410,8 @@ export default function Home() {
                 }
                 cutoff.setHours(0, 0, 0, 0);
                 workingSet = workingSet.filter(p => {
-                    if (p.original_status === 'PENDING' || p.original_status === 'RECENT_OFF_MARKET') return true;
+                    if (p.original_status === 'PENDING') return true;
+                    if (p.original_status === 'RECENT_OFF_MARKET' && p.sale_confidence !== 'low') return true;
                     const hasInteraction = ['CALLBACK', 'NO_ANSWER', 'QUALIFIED'].includes(p.effective_status);
                     if (!p.sold_date) return hasInteraction;
                     try {

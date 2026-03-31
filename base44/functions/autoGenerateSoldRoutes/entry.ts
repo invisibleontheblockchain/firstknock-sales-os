@@ -34,6 +34,9 @@ Deno.serve(async (req) => {
             
             const recentSales = (properties.items || []).filter(p => {
                 if (!p.sold_date) return false;
+                // Exclude unvalidated MLS Inactive records and BatchData-rejected properties
+                if (p.sale_confidence === 'low') return false;
+                if (p.original_status === 'REJECTED') return false;
                 try {
                     const d = new Date(p.sold_date);
                     return d >= thirtyDaysAgo;

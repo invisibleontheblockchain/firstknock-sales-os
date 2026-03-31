@@ -103,18 +103,32 @@ function isPointInPolygon(point, vs) {
     return inside;
 }
 
-const CORPORATE_KEYWORDS = ['LLC', 'INC', 'TRUST', 'HOLDINGS', 'BANK', 'PROPERTIES', 'CORP', 'COMPANY'];
+// Non-disclosure states where sale prices are not required in public records
+const NON_DISCLOSURE_STATES = new Set([
+    'AK', 'ID', 'KS', 'LA', 'MS', 'MO', 'MT', 'NM', 'ND', 'TX', 'UT', 'WY'
+]);
 
 function isValidSoldProperty(p) {
     if (!p.lastSaleDate) return false;
-    // Reject non-sale deed transfers: quit claims, tax sales, foreclosure filings typically < $10K
-    if (p.lastSalePrice === null || p.lastSalePrice === undefined || p.lastSalePrice < 10000) return false;
+    const isNonDisclosure = p.state && NON_DISCLOSURE_STATES.has(p.state.toUpperCase());
+
+    if (!isNonDisclosure) {
+        // Disclosure states: require realistic sale price
+        if (p.lastSalePrice === null || p.lastSalePrice === undefined || p.lastSalePrice < 10000) return false;
+        // Reject if sale price is suspiciously low vs assessed value (likely transfer, not a real sale)
+        if (p.assessedValue && p.assessedValue > 0 && p.lastSalePrice < p.assessedValue * 0.3) return false;
+    } else {
+        // Non-disclosure states: allow null/zero price if we have a sale date
+        // Still reject obvious non-arm's-length transfers (< $1000)
+        if (p.lastSalePrice !== null && p.lastSalePrice !== undefined && p.lastSalePrice > 0 && p.lastSalePrice < 1000) return false;
+    }
+
     const badTypes = ['Commercial', 'Industrial', 'Vacant Land', 'Agricultural'];
     if (p.propertyType && badTypes.includes(p.propertyType)) return false;
-    // Reject if sale price is suspiciously low vs assessed value (likely transfer, not a real sale)
-    if (p.assessedValue && p.assessedValue > 0 && p.lastSalePrice < p.assessedValue * 0.3) return false;
     return true;
 }
+
+const CORPORATE_KEYWORDS = ['LLC', 'INC', 'TRUST', 'HOLDINGS', 'BANK', 'PROPERTIES', 'CORP', 'COMPANY'];
 
 /**
  * Compute sale confidence: high = genuine sale, medium = possible, low = likely not a real sale
@@ -390,6 +404,8 @@ Deno.serve(async (req) => {
 
             const mapped = [];
             const seenHashes = new Set();
+            let phase2Stats = { total: 0, countyLagRejected: 0, heuristicRejected: 0, heuristicLikelySold: 0, ambiguousToBatchData: 0, crossRefVerified: 0 };
+
             for (const p of allRaw) {
                 if (!p.latitude || !p.longitude || !filterPoint(p.latitude, p.longitude)) continue;
                 
@@ -401,7 +417,6 @@ Deno.serve(async (req) => {
                 const addressLine = p.addressLine1 || (p.formattedAddress ? p.formattedAddress.split(',')[0] : "");
                 const pZip = p.zipCode || '00000';
                 
-                // Use normalized hash to match how fetchZipProperties.ts does deed deduplication
                 const hash = generateNormalizedHash(addressLine, pZip);
                 if (seenHashes.has(hash)) continue;
                 seenHashes.add(hash);
@@ -411,69 +426,188 @@ Deno.serve(async (req) => {
                 const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
                 const street_name = addressMatch ? addressMatch[2] : (addressLine || "Unknown");
 
-                // MLS Inactive = could be sold, expired, withdrawn, cancelled
-                // Without explicit sold confirmation, tag as low confidence
-                const mlsConfidence = (p.status && p.status.toLowerCase().includes('sold')) ? 'medium' : 'low';
+                phase2Stats.total++;
+
+                // ── FILTER 1: County Lag Rule ──
+                // If removed > 90 days ago and not in Phase 1 deeds, it's almost certainly expired/withdrawn
+                const daysSinceRemoved = Math.round((new Date().getTime() - removed.getTime()) / (1000 * 3600 * 24));
+                if (daysSinceRemoved > 90) {
+                    phase2Stats.countyLagRejected++;
+                    mapped.push({
+                        address_hash: hash, house_number, street_name, city: p.city || '', state: p.state || '', zip_code: pZip,
+                        lat: p.latitude, lng: p.longitude, original_status: 'REJECTED', beds: p.bedrooms || 0, baths: p.bathrooms || 0,
+                        sqft: p.squareFootage || 0, lot_size: p.lotSize || 0, year_built: p.yearBuilt || 0, price: p.price || 0,
+                        sold_date: p.removedDate || p.listedDate || null, sale_type: 'MLS', property_type: p.propertyType || 'Single Family', data_source: 'rentcast',
+                        sale_confidence: 'REJECTED'
+                    });
+                    continue;
+                }
+
+                // ── FILTER 2: Heuristic Scoring ──
+                // Score each listing to classify as likely-sold, likely-expired, or ambiguous
+                const dom = p.daysOnMarket || daysSinceRemoved;
+                const listed = p.listedDate ? new Date(p.listedDate) : null;
+                const lastSeen = p.lastSeenDate ? new Date(p.lastSeenDate) : null;
+                const listingDuration = (listed && !isNaN(removed.getTime()) && !isNaN(listed.getTime())) 
+                    ? Math.round((removed.getTime() - listed.getTime()) / (1000 * 3600 * 24)) 
+                    : dom;
+
+                let hScore = 0;
+
+                // ── Negative signals (expired/withdrawn indicators) ──
+                // Contract boundary clustering: listings expiring at exactly 90/180/365 days
+                if (Math.abs(dom - 90) <= 3) hScore -= 3;
+                if (Math.abs(dom - 180) <= 3) hScore -= 3;
+                if (Math.abs(dom - 365) <= 3) hScore -= 3;
+                if (Math.abs(listingDuration - 90) <= 3) hScore -= 2;
+                if (Math.abs(listingDuration - 180) <= 3) hScore -= 2;
+                if (Math.abs(listingDuration - 365) <= 3) hScore -= 2;
+
+                // Extended market time = strong expired signal
+                if (dom > 150) hScore -= 3;
+                else if (dom > 60) hScore -= 2;
+
+                // Ultra-short listing (< 7 days) = likely withdrawal/cancellation
+                if (listingDuration < 7) hScore -= 2;
+
+                // Abrupt same-day removal (lastSeenDate == removedDate)
+                if (lastSeen && Math.abs(lastSeen.getTime() - removed.getTime()) < 86400000) hScore -= 2;
+
+                // Multiple listing history entries = prior failed attempts
+                if (p.history && typeof p.history === 'object') {
+                    const historyCount = Object.keys(p.history).length;
+                    if (historyCount >= 3) hScore -= 1;
+                }
+
+                // ── Positive signals (sold indicators) ──
+                // Escrow-window sweet spot (30-45 days) = classic sale closing timeline
+                if (dom >= 30 && dom <= 45) hScore += 3;
+                
+                // Moderate-short duration (14-30 days) = consistent with accepted offer
+                if (dom >= 14 && dom < 30) hScore += 2;
+
+                // Gradual removal pattern (lastSeenDate well before removedDate)
+                if (lastSeen && (removed.getTime() - lastSeen.getTime()) >= 7 * 86400000) hScore += 1;
+
+                // Single listing history = first attempt (higher sold probability)
+                if (p.history && typeof p.history === 'object' && Object.keys(p.history).length === 1) hScore += 1;
+
+                // ── Classification decision ──
+                let mlsConfidence = 'low';
+                let origStatus = 'RECENT_OFF_MARKET';
+
+                if (hScore <= -4) {
+                    // Overwhelmingly expired/withdrawn — auto-reject
+                    origStatus = 'REJECTED';
+                    mlsConfidence = 'REJECTED';
+                    phase2Stats.heuristicRejected++;
+                } else if (hScore >= 3) {
+                    // Strong sold signals — classify as likely sold without BatchData
+                    origStatus = 'HEURISTIC_SOLD';
+                    mlsConfidence = 'medium';
+                    phase2Stats.heuristicLikelySold++;
+                } else {
+                    // Ambiguous: scores -3 to +2 — these need BatchData verification
+                    phase2Stats.ambiguousToBatchData++;
+                }
 
                 mapped.push({
                     address_hash: hash, house_number, street_name, city: p.city || '', state: p.state || '', zip_code: pZip,
-                    lat: p.latitude, lng: p.longitude, original_status: 'RECENT_OFF_MARKET', beds: p.bedrooms || 0, baths: p.bathrooms || 0,
+                    lat: p.latitude, lng: p.longitude, original_status: origStatus, beds: p.bedrooms || 0, baths: p.bathrooms || 0,
                     sqft: p.squareFootage || 0, lot_size: p.lotSize || 0, year_built: p.yearBuilt || 0, price: p.price || 0,
                     sold_date: p.removedDate || p.listedDate || null, sale_type: 'MLS', property_type: p.propertyType || 'Single Family', data_source: 'rentcast',
                     sale_confidence: mlsConfidence
                 });
             }
 
-            // ── Validation Cache & Queue Injection ──
+            console.log(`[chunk-v10] Phase 2 heuristic stats: ${JSON.stringify(phase2Stats)}`);
+
+            // ── Validation: Cross-Reference + Cache + Queue ──
             const BATCH_DATA_API_KEY = Deno.env.get("BATCH_DATA_API_KEY");
-            if (BATCH_DATA_API_KEY && mapped.length > 0) {
+            if (mapped.length > 0) {
                 try {
-                    // Extract hashes to lookup cache
                     const hashes = mapped.map(m => m.address_hash);
                     
-                    // 1. Check existing validation items
-                    const existingValidation = await base44.asServiceRole.entities.PropertyValidationCache.filter({
-                        "address_hash__in": hashes
-                    }, null, hashes.length * 2);
-                    
-                    const validationArr = Array.isArray(existingValidation) ? existingValidation : (existingValidation?.items || []);
-                    const validationMap = new Map();
-                    validationArr.forEach(v => validationMap.set(v.address_hash, v));
+                    // CROSS-REFERENCE: Check if any Phase 2 addresses already exist in MasterProperty
+                    // from Phase 1 deed records. If so, they're confirmed sold — FREE verification.
+                    const uniqueZips = [...new Set(mapped.map(m => m.zip_code))];
+                    const deedHashSet = new Set();
+                    for (let zi = 0; zi < uniqueZips.length; zi += 20) {
+                        const zipBatch = uniqueZips.slice(zi, zi + 20);
+                        const promises = zipBatch.map(zip =>
+                            base44.asServiceRole.entities.MasterProperty.filter({ zip_code: zip, sale_confidence: 'high' }, null, 5000)
+                                .then(res => {
+                                    const arr = Array.isArray(res) ? res : (res?.items || []);
+                                    arr.forEach(mp => deedHashSet.add(mp.address_hash));
+                                })
+                                .catch(() => {})
+                        );
+                        await Promise.all(promises);
+                    }
 
-                    // 2. Identify Cache Misses and Update Confidences
-                    const cacheMisses = [];
+                    // Promote Phase 2 records that match Phase 1 deed hashes
                     for (const m of mapped) {
-                        const verified = validationMap.get(m.address_hash);
-                        if (verified) {
-                            if (verified.status === 'sold') {
-                                m.sale_confidence = 'high'; // Converted from 'low' to 'high' by BatchData
-                                m.data_source = 'batchdata_verified';
-                            } else {
-                                m.original_status = 'REJECTED'; // Suppress from routes
-                            }
-                        } else {
-                            // Cache miss -> Queue for BatchData polling
-                            cacheMisses.push({
-                                address_hash: m.address_hash,
-                                normalized_address: `${m.house_number} ${m.street_name}, ${m.city}, ${m.state} ${m.zip_code}`,
-                                status: 'pending',
-                                provider_id: 'batchdata'
-                            });
+                        if (m.original_status !== 'REJECTED' && m.sale_confidence !== 'REJECTED' && deedHashSet.has(m.address_hash)) {
+                            m.sale_confidence = 'verified';
+                            m.original_status = 'DEED_CONFIRMED';
+                            m.data_source = 'rentcast_crossref';
+                            phase2Stats.crossRefVerified++;
                         }
                     }
 
-                    // 3. Queue Misses
-                    if (cacheMisses.length > 0) {
-                        for (let i = 0; i < cacheMisses.length; i += 500) {
-                            await base44.asServiceRole.entities.ValidationQueue.bulkCreate(cacheMisses.slice(i, i + 500)).catch(e => logError(`Queue error: ${e.message}`));
+                    // Check BatchData validation cache for remaining ambiguous records
+                    if (BATCH_DATA_API_KEY) {
+                        const ambiguousHashes = mapped.filter(m => m.original_status === 'RECENT_OFF_MARKET' && m.sale_confidence === 'low').map(m => m.address_hash);
+                        
+                        if (ambiguousHashes.length > 0) {
+                            const existingValidation = await base44.asServiceRole.entities.PropertyValidationCache.filter({
+                                "address_hash__in": ambiguousHashes
+                            }, null, ambiguousHashes.length * 2);
+                            
+                            const validationArr = Array.isArray(existingValidation) ? existingValidation : (existingValidation?.items || []);
+                            const validationMap = new Map();
+                            validationArr.forEach(v => validationMap.set(v.address_hash, v));
+
+                            const cacheMisses = [];
+                            for (const m of mapped) {
+                                if (m.original_status !== 'RECENT_OFF_MARKET' || m.sale_confidence !== 'low') continue;
+                                
+                                const verified = validationMap.get(m.address_hash);
+                                if (verified) {
+                                    if (verified.status === 'sold') {
+                                        m.sale_confidence = 'verified';
+                                        m.data_source = 'batchdata_verified';
+                                    } else {
+                                        m.original_status = 'REJECTED';
+                                        m.sale_confidence = 'REJECTED';
+                                    }
+                                } else {
+                                    cacheMisses.push({
+                                        address_hash: m.address_hash,
+                                        normalized_address: `${m.house_number} ${m.street_name}, ${m.city}, ${m.state} ${m.zip_code}`,
+                                        status: 'pending',
+                                        provider_id: 'batchdata'
+                                    });
+                                }
+                            }
+
+                            // Queue only the genuinely ambiguous cache misses for BatchData
+                            if (cacheMisses.length > 0) {
+                                console.log(`[chunk-v10] Queuing ${cacheMisses.length} ambiguous records for BatchData (down from ${phase2Stats.total} total)`);
+                                for (let i = 0; i < cacheMisses.length; i += 500) {
+                                    await base44.asServiceRole.entities.ValidationQueue.bulkCreate(cacheMisses.slice(i, i + 500)).catch(e => logError(`Queue error: ${e.message}`));
+                                }
+                            }
                         }
                     }
+
+                    console.log(`[chunk-v10] Phase 2 final stats: ${JSON.stringify(phase2Stats)}`);
                 } catch (err) {
                     const errMsg = err instanceof Error ? err.message : String(err);
                     logError(`Validation layer failed: ${errMsg}`);
                 }
             }
-            // ── End Validation Cache ──
+            // ── End Validation ──
 
             const dbResult = await writeToDb(mapped);
             totalInserted += dbResult.chunkInserted; totalExisted += dbResult.chunkExisted; totalUpdated += dbResult.chunkUpdated;
