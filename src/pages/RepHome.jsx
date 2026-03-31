@@ -42,23 +42,32 @@ export default function RepHome() {
         toast.loading(`Cleaning ${routeProperties.length} properties...`, { id: 'clean' });
         
         try {
-            const payload = routeProperties.map(p => {
-                const addressStr = `${p.house_number || ''} ${p.street_name || ''}`.trim().toLowerCase();
-                const isVerified = VERIFIED_85.includes(addressStr);
-                
-                return {
-                    id: p.id,
-                    force_reject: !isVerified
-                };
+            // Explicitly filter down the array to exactly the 85 verified doors
+            const correctHashes = routeProperties
+                .filter(p => {
+                    const addressStr = `${p.house_number || ''} ${p.street_name || ''}`.trim().toLowerCase();
+                    return VERIFIED_85.includes(addressStr);
+                })
+                .map(p => p.address_hash);
+
+            console.log(`[CleanRoute] Force-updating route from ${activeRoute.property_hashes?.length} to ${correctHashes.length} doors`);
+
+            // Direct route overwrite - perfectly syncs both 'Knock' and 'Map' tabs
+            await base44.entities.SavedRoute.update(activeRoute.id, {
+                property_hashes: correctHashes,
+                metrics: {
+                    ...(activeRoute.metrics || {}),
+                    house_count: correctHashes.length
+                }
             });
 
-            const res = await base44.functions.invoke('cleanRoute', { properties: payload });
-            if (res.data?.error) throw new Error(res.data.error);
-
-            const { removed, kept } = res.data?.stats || { removed: 0, kept: 0 };
-            toast.success(`Cleaned! Pruned ${removed} false doors. Kept ${kept} verified.`, { id: 'clean' });
-            queryClient.invalidateQueries({ queryKey: ['routeProperties'] });
-            queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
+            await queryClient.invalidateQueries({ queryKey: ['routeProperties'] });
+            await queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
+            await queryClient.invalidateQueries({ queryKey: ['savedRoutes'] }); // For Home map view
+            
+            toast.success(`Route synchronized! Exactly ${correctHashes.length} verified doors remain.`);
+            
+            if (typeof refetch === 'function') await refetch();
         } catch(e) {
             toast.error("Failed to clean route: " + e.message, { id: 'clean' });
             console.error(e);
