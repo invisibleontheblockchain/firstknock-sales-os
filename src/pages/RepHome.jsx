@@ -41,48 +41,24 @@ export default function RepHome() {
         toast.loading(`Cleaning ${routeProperties.length} properties...`, { id: 'clean' });
         
         try {
-            let removedCount = 0;
-            let keptCount = 0;
+            const payload = routeProperties.map(p => ({
+                id: p.id,
+                sold_date: p.sold_date,
+                created_date: p.created_date,
+                days_on_market: p.days_on_market,
+                sale_confidence: p.sale_confidence,
+                original_status: p.original_status
+            }));
 
-            const promises = routeProperties.map(async (p) => {
-                if (!p.id) return;
-                let isFalseDoor = false;
-                
-                // 1. County Lag Rule (>90 days)
-                const targetDate = p.sold_date || p.created_date;
-                if (targetDate) {
-                    const daysSinceSold = Math.round((new Date() - new Date(targetDate)) / (1000 * 3600 * 24));
-                    if (daysSinceSold > 90) isFalseDoor = true;
-                }
-                
-                // 2. Listing failed
-                if (p.days_on_market && p.days_on_market > 150) isFalseDoor = true;
-                if (p.sale_confidence === 'REJECTED' || p.original_status === 'REJECTED') isFalseDoor = true;
+            const res = await base44.functions.invoke('cleanRoute', { properties: payload });
+            if (res.data?.error) throw new Error(res.data.error);
 
-                if (isFalseDoor) {
-                    removedCount++;
-                    return base44.entities.MasterProperty.update(p.id, {
-                        original_status: 'REJECTED',
-                        sale_confidence: 'REJECTED'
-                    });
-                } else {
-                    keptCount++;
-                    // Optional: upgrade low confidence to medium/heuristic
-                    if (p.sale_confidence === 'low') {
-                        return base44.entities.MasterProperty.update(p.id, {
-                            original_status: 'HEURISTIC_SOLD',
-                            sale_confidence: 'medium'
-                        });
-                    }
-                }
-            });
-
-            await Promise.all(promises);
-            
-            toast.success(`Cleaned! Pruned ${removedCount} false doors. Kept ${keptCount} verified.`, { id: 'clean' });
+            const { removed, kept } = res.data?.stats || { removed: 0, kept: 0 };
+            toast.success(`Cleaned! Pruned ${removed} false doors. Kept ${kept} verified.`, { id: 'clean' });
             queryClient.invalidateQueries({ queryKey: ['routeProperties'] });
+            queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
         } catch(e) {
-            toast.error("Failed to clean route", { id: 'clean' });
+            toast.error("Failed to clean route: " + e.message, { id: 'clean' });
             console.error(e);
         } finally {
             setCleaning(false);
