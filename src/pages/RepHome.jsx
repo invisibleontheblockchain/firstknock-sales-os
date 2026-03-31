@@ -42,12 +42,9 @@ export default function RepHome() {
         toast.loading(`Cleaning ${routeProperties.length} properties...`, { id: 'clean' });
         
         try {
-            // Because filtering reduced the route array to 50, we must re-query the original database 
-            // for the user's zip codes to locate the 35 missing verified hashes
-            const zips = ['29621', '29624', '29625', '29626', '29627'];
-            const res = await base44.entities.MasterProperty.list('-created_date', 5000, {
-                zip_code: { $in: zips }
-            });
+            // We use .list() without the invalid 3rd arg, grabbing 5000 properties 
+            // since we do the matching strictly in-memory anyway.
+            const res = await base44.entities.MasterProperty.list('-created_date', 5000);
             const allProps = Array.isArray(res) ? res : (res?.items || []);
 
             // Now precisely extract the 85 hashes from the master list
