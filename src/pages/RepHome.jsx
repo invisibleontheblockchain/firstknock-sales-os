@@ -49,8 +49,9 @@ export default function RepHome() {
                 let isFalseDoor = false;
                 
                 // 1. County Lag Rule (>90 days)
-                if (p.sold_date) {
-                    const daysSinceSold = Math.round((new Date() - new Date(p.sold_date)) / (1000 * 3600 * 24));
+                const targetDate = p.sold_date || p.created_date;
+                if (targetDate) {
+                    const daysSinceSold = Math.round((new Date() - new Date(targetDate)) / (1000 * 3600 * 24));
                     if (daysSinceSold > 90) isFalseDoor = true;
                 }
                 
