@@ -148,7 +148,7 @@ export default function Home() {
 
     const [showRoutePanel, setShowRoutePanel] = useState(false);
     const [showCompare, setShowCompare] = useState(false);
-    const [housesPerRoute, setHousesPerRoute] = useState(999999); // Default: All-in-One route
+    const [housesPerRoute, setHousesPerRoute] = useState(10000); // Default: All-in-One route
     const ROUTE_SIZE_OPTIONS = [25, 50, 75, 100];
     const [sortBy, setSortBy] = useState('score'); // score, houses, distance
     const [minScore, setMinScore] = useState(0); // Default All Scores
