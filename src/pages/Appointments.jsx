@@ -162,28 +162,25 @@ export default function Appointments() {
                         <StatPill icon={AlertTriangle} label="No-Show" value={stats.noShow} color="#f97316" />
                     </div>
 
-                    {/* Time tabs - stack on mobile */}
-                    <div className="grid grid-cols-5 gap-1 sm:flex sm:gap-1.5 p-1 sm:p-1.5 bg-white/[0.03] rounded-lg sm:rounded-xl border border-white/[0.05] overflow-x-auto sm:overflow-visible no-scrollbar">
+                    {/* Time tabs - responsive */}
+                    <div className="grid grid-cols-5 gap-1 sm:flex sm:gap-2 p-1.5 sm:p-2 bg-white/[0.03] rounded-lg sm:rounded-xl border border-white/[0.05] overflow-x-auto sm:overflow-visible no-scrollbar">
                         {TIME_TABS.map(t => (
                             <button key={t.id} onClick={() => setTimeFilter(t.id)}
-                                className={`py-2 px-1.5 sm:px-5 rounded-lg text-[8px] sm:text-xs font-bold transition-all whitespace-nowrap text-center ${
-                                    timeFilter === t.id ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-white'
-                                }`}
+                                className={`py-2.5 px-2 sm:px-5 rounded-lg text-[8px] sm:text-xs font-bold transition-all whitespace-nowrap text-center h-full ${timeFilter === t.id ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-white'}`}
                             >{t.label}</button>
                         ))}
                     </div>
 
-                    {/* Status chips - scrollable on mobile only */}
-                    <div className="flex gap-1 sm:gap-2 mt-2 sm:mt-3 overflow-x-auto no-scrollbar sm:overflow-visible -mx-4 px-4 sm:mx-0 sm:px-0 pb-2 sm:pb-0">
+                    {/* Status chips - scrollable on mobile */}
+                    <div className="flex gap-1.5 sm:gap-2 mt-2 sm:mt-3 overflow-x-auto no-scrollbar sm:overflow-visible -mx-4 px-4 sm:mx-0 sm:px-0 pb-2 sm:pb-0">
                         {STATUS_CHIPS.map(s => (
                             <button key={s.id} onClick={() => setStatusFilter(s.id)}
-                                className={`flex-shrink-0 px-2 sm:px-4 py-1 sm:py-1.5 rounded-full text-[9px] sm:text-xs font-bold transition-all border ${
-                                    statusFilter === s.id ? 'bg-white/[0.08] border-white/15 text-white' : 'border-white/[0.04] text-gray-600 hover:text-gray-400'
-                                }`}
+                                className={`flex-shrink-0 px-3 sm:px-4 py-2 sm:py-2 h-9 sm:h-auto rounded-lg sm:rounded-full text-[9px] sm:text-xs font-bold transition-all border ${statusFilter === s.id ? 'bg-white/[0.08] border-white/15 text-white' : 'border-white/[0.04] text-gray-600 hover:text-gray-400'}`}
                             >{s.label}</button>
                         ))}
                     </div>
                 </div>
+            </div>
             </div>
 
             {/* Content */}
