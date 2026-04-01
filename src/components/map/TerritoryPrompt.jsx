@@ -122,6 +122,15 @@ export default function TerritoryPrompt({
         return () => { cancelled = true; };
     }, [user?.email]);
 
+    // Clear drawing mode and polygon when switching away from builder tab
+    useEffect(() => {
+        if (mode !== 'generate') {
+            setDrawingMode(false);
+            setDraftPolygon([]);
+            setDrawnPolygon(null);
+        }
+    }, [mode]);
+
     const hasPulledData = !!user?.has_pulled_data;
     const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
     const isPaid = user?.subscription_status === 'active' || user?.is_owner;
@@ -266,8 +275,13 @@ export default function TerritoryPrompt({
     const handleFetchData = async () => {
         // Don't allow double-trigger
         if (pulling) return;
-        
-        // Check pull limit on frontend too for instant feedback
+
+        // Block 300mi pull for non-subscribers
+        if ((drawSizeMiles === 300 || fetchMonths === 1) && !isPaid) {
+            toast.error('The 300 sq mi pull requires an active FirstKnock subscription. Upgrade to unlock!', { duration: 5000 });
+            return;
+        }
+
         if (!canPullAgain) {
             toast.error("You've used your 2 free data pulls. Upgrade to Pro for 3 additional pulls.", { duration: 5000 });
             return;
@@ -355,36 +369,53 @@ export default function TerritoryPrompt({
 
             {/* Active Drawing Controls */}
             {drawingMode && (
-                <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[2000] bg-black/85 backdrop-blur-md border border-yellow-500/40 rounded-xl px-2.5 py-1.5 shadow-xl flex items-center gap-2 animate-in slide-in-from-top-4 max-w-xs">
-                    <Pencil className="w-3 h-3 text-yellow-500 shrink-0" />
-                    <p className="text-[10px] font-bold text-white whitespace-nowrap">Tap map</p>
-                    <select
-                        value={drawShape || 'circle'}
-                        onChange={(e) => setDrawShape(e.target.value)}
-                        className="bg-gray-900 border border-gray-700 text-white text-[10px] rounded-md px-1.5 py-0.5 h-6"
-                    >
-                        <option value="circle">Circle</option>
-                        <option value="square">Square</option>
-                    </select>
-                    <select
-                        value={drawSizeMiles}
-                        onChange={(e) => {
-                            const newSize = Number(e.target.value);
-                            setDrawSizeMiles(newSize);
-                            setFetchMonths(newSize === 300 ? 1 : 3);
-                        }}
-                        className="bg-gray-900 border border-gray-700 text-white text-[10px] rounded-md px-1.5 py-0.5 h-6 max-w-[130px]"
-                    >
-                        <option value={40}>40 sq mi (3 Mo Data)</option>
-                        <option value={300}>300 sq mi (1 Mo Data)</option>
-                        {!hasPulledData && <option value={5}>Test (5 sq mi)</option>}
-                    </select>
-                    <button
-                        onClick={() => { setDrawingMode(false); setDraftPolygon([]); }}
-                        className="w-5 h-5 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center shrink-0"
-                    >
-                        <X className="w-3 h-3" />
-                    </button>
+                <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[2000] animate-in slide-in-from-top-4">
+                    <div className="bg-black/90 backdrop-blur-md border border-yellow-500/30 rounded-2xl px-4 py-3 shadow-2xl flex flex-col gap-2.5 min-w-[260px]">
+                        {/* Header */}
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-yellow-500/20 flex items-center justify-center">
+                                    <Pencil className="w-3 h-3 text-yellow-400" />
+                                </div>
+                                <span className="text-xs font-bold text-white">Draw Territory</span>
+                            </div>
+                            <button
+                                onClick={() => { setDrawingMode(false); setDraftPolygon([]); }}
+                                className="w-6 h-6 rounded-full bg-white/5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 flex items-center justify-center transition-all"
+                            >
+                                <X className="w-3 h-3" />
+                            </button>
+                        </div>
+                        {/* Controls */}
+                        <div className="flex items-center gap-2">
+                            <select
+                                value={drawShape || 'circle'}
+                                onChange={(e) => setDrawShape(e.target.value)}
+                                className="flex-1 bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
+                            >
+                                <option value="circle">Circle</option>
+                                <option value="square">Square</option>
+                            </select>
+                            <select
+                                value={drawSizeMiles}
+                                onChange={(e) => {
+                                    const newSize = Number(e.target.value);
+                                    if (newSize === 300 && !isPaid) {
+                                        toast.error('300 sq mi pull requires an active subscription. Upgrade to unlock!', { duration: 4000 });
+                                        return;
+                                    }
+                                    setDrawSizeMiles(newSize);
+                                    setFetchMonths(newSize === 300 ? 1 : 3);
+                                }}
+                                className="flex-1 bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
+                            >
+                                <option value={40}>40 sq mi · 3 Mo</option>
+                                <option value={300}>300 sq mi · 1 Mo {isPaid ? '' : '🔒 PRO'}</option>
+                                {!hasPulledData && <option value={5}>Test · 5 sq mi</option>}
+                            </select>
+                        </div>
+                        <p className="text-[10px] text-yellow-400/70 text-center">Tap the map to place your territory</p>
+                    </div>
                 </div>
             )}
 
@@ -416,20 +447,20 @@ export default function TerritoryPrompt({
                         <div className="mt-2 bg-gray-900/80 rounded-lg p-2.5 border border-gray-800">
                             <p className="text-[10px] text-gray-300 leading-relaxed text-center">
                                 {isDeltaPull 
-                                    ? (displayPct < 30
-                                        ? '⚡ Only fetching records that changed since your last pull — much faster!'
-                                        : displayPct < 80
-                                            ? '🔄 Comparing against your existing data — unchanged records are skipped automatically.'
-                                            : '✅ Delta sync almost complete! Only new & changed properties were written.')
-                                    : (displayPct < 5
-                                        ? '🔍 Scanning your area for every property on record — this is a one-time setup that gives you the full picture.'
-                                        : displayPct < 30
-                                            ? '📦 Pulling property data in batches from public records. Larger areas have more homes to process.'
-                                            : displayPct < 70
-                                                ? '⚡ Deduplicating and writing to your database. You can close this page — it will keep running.'
-                                                : displayPct < 95
-                                                    ? '🏁 Almost there! Writing final records and updating your territory map.'
-                                                    : '✅ Wrapping up! Your territory will be ready in seconds.')}
+                                        ? (displayPct < 30
+                                            ? '⚡ Smart sync — only fetching what changed since your last pull.'
+                                            : displayPct < 80
+                                                ? '🔄 Skipping unchanged records — writing only what is new.'
+                                                : '✅ Almost done! Only fresh leads are being added.')
+                                        : (displayPct < 5
+                                            ? '🗺️ Mapping every door in your territory — one-time setup.'
+                                            : displayPct < 30
+                                                ? '📦 Fetching property records in batches. Bigger areas take a little longer.'
+                                                : displayPct < 70
+                                                    ? '⚡ Deduplicating leads. Feel free to close — this keeps running in the background.'
+                                                    : displayPct < 95
+                                                        ? '🏁 Almost there! Writing your final records to the map.'
+                                                        : '✅ Done! Your territory is ready to route.')}
                             </p>
                         </div>
                         <p className="text-[9px] text-gray-600 mt-1.5 text-center">
@@ -446,13 +477,23 @@ export default function TerritoryPrompt({
                     <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
                     {canPullAgain ? (
                         <div className="flex items-center gap-1.5 ml-2">
-                            <Button
-                                disabled={pulling}
-                                onClick={handleFetchData}
-                                className={`text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide ${drawSizeMiles === 300 || fetchMonths === 1 ? 'bg-cyan-600 hover:bg-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]'}`}
-                            >
-                                {drawSizeMiles === 300 ? 'Pull 300mi² (1 Mo Data)' : drawSizeMiles === 40 ? 'Pull 40mi² (3 Mo Data)' : `Pull ${drawSizeMiles}mi²`}
-                            </Button>
+                            {(drawSizeMiles === 300 || fetchMonths === 1) && !isPaid ? (
+                                <Link
+                                    to={createPageUrl('Billing')}
+                                    className="flex items-center gap-1.5 text-[10px] font-bold text-yellow-500 hover:text-yellow-400 transition-colors bg-yellow-500/10 border border-yellow-500/30 rounded-md px-2 py-1"
+                                >
+                                    <Lock className="w-3 h-3" />
+                                    <span>PRO — 300mi²</span>
+                                </Link>
+                            ) : (
+                                <Button
+                                    disabled={pulling}
+                                    onClick={handleFetchData}
+                                    className={`text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide ${drawSizeMiles === 300 || fetchMonths === 1 ? 'bg-cyan-600 hover:bg-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]'}`}
+                                >
+                                    {drawSizeMiles === 300 ? 'Pull 300mi² (1 Mo Data)' : drawSizeMiles === 40 ? 'Pull 40mi² (3 Mo Data)' : `Pull ${drawSizeMiles}mi²`}
+                                </Button>
+                            )}
                         </div>
                     ) : (
                         <Link

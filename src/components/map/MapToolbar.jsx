@@ -124,14 +124,20 @@ export default function MapToolbar({
                     {/* MODE TOGGLE - Absolutely centered */}
                     <div className="pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/80 backdrop-blur-md rounded-lg sm:rounded-xl p-0.5 sm:p-1 border border-gray-800 flex gap-0.5 shadow-xl">
                         <button
-                            onClick={() => setMode('analyze')}
+                            onClick={() => { setMode('analyze'); }}
                             className={`px-2 py-1.5 sm:px-4 sm:py-2.5 rounded-md sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'analyze' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
                         >
                             ROUTES
                         </button>
                         <button
-                            onClick={() => setMode('generate')}
-                            className={`px-2 py-1.5 sm:px-4 sm:py-2.5 rounded-md sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                            onClick={() => {
+                                if (activeRoute) {
+                                    toast.error("Close the active route first");
+                                    return;
+                                }
+                                setMode('generate');
+                            }}
+                            className={`px-2 py-1.5 sm:px-4 sm:py-2.5 rounded-md sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : activeRoute ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
                         >
                             BUILDER
                         </button>
@@ -166,113 +172,95 @@ export default function MapToolbar({
                     </div>
                 </div>
 
-                {/* Active Route Banner - Compact */}
+                {/* Active Route Banner - Optimized 2-row layout */}
                 {activeRoute && (
-                    <div className="pointer-events-auto rounded-full px-0.5 py-0.5 sm:px-1.5 sm:py-1.5 flex items-center gap-0.5 sm:gap-2 shadow-2xl border border-yellow-600/40 animate-in slide-in-from-top-2 backdrop-blur-md" style={{ background: 'rgba(10,10,10,0.92)' }}>
-                        <div className="w-5 h-5 sm:w-8 sm:h-8 rounded-full flex items-center justify-center shrink-0" style={{ background: BRAND.gold }}>
-                            <Navigation className="w-2.5 h-2.5 sm:w-4 sm:h-4" style={{ color: BRAND.voidBlack }} />
-                        </div>
-                        {/* Inline Editable Route Name */}
-                        {editingName ? (
-                            <div className="flex items-center gap-1 min-w-0" onClick={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
-                                <input
-                                    value={draftName}
-                                    onChange={e => setDraftName(e.target.value)}
-                                    onKeyDown={e => { if (e.key === 'Enter') handleSaveRename(); if (e.key === 'Escape') setEditingName(false); }}
-                                    className="bg-black/60 border border-yellow-500/50 text-yellow-500 text-[10px] sm:text-sm font-bold rounded-full px-2 py-0.5 w-[80px] sm:w-[130px] outline-none"
-                                    autoFocus
-                                />
-                                <button onClick={handleSaveRename} className="p-0.5 text-green-500 hover:text-green-400">
-                                    <Check className="w-3 h-3 sm:w-4 sm:h-4" />
-                                </button>
-                                <button onClick={() => setEditingName(false)} className="p-0.5 text-gray-500 hover:text-white">
-                                    <X className="w-3 h-3 sm:w-4 sm:h-4" />
-                                </button>
+                    <div className="pointer-events-auto rounded-2xl px-3 py-2 shadow-2xl border border-yellow-600/30 animate-in slide-in-from-top-2 backdrop-blur-md flex flex-col gap-2" style={{ background: 'rgba(10,10,10,0.95)' }}>
+                        {/* Row 1: Icon + Name + Optimize + Close */}
+                        <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ background: BRAND.gold }}>
+                                <Navigation className="w-3.5 h-3.5" style={{ color: BRAND.voidBlack }} />
                             </div>
-                        ) : (
-                            <button
-                                onClick={handleStartRename}
-                                className="group/name flex items-center gap-1 min-w-0 max-w-[90px] sm:max-w-[160px]"
-                                title="Click to rename"
-                            >
-                                <span className="text-[9px] sm:text-sm font-bold truncate" style={{ color: BRAND.gold }}>{activeRoute.name}</span>
-                                <Pencil className="w-2 h-2 sm:w-3 sm:h-3 text-gray-500 opacity-0 group-hover/name:opacity-100 transition-opacity shrink-0" />
-                            </button>
-                        )}
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                if (onReoptimizeRoute) onReoptimizeRoute(activeRoute);
-                            }}
-                            className="h-6 sm:h-8 px-1.5 sm:px-3 text-[9px] sm:text-[11px] font-bold bg-yellow-500 hover:bg-yellow-400 text-black rounded-full transition-all border border-yellow-400/30 whitespace-nowrap flex items-center gap-1 shadow-lg shadow-yellow-900/20"
-                            title="Re-optimize route pathing"
-                        >
-                            <Zap className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                            <span className="hidden xs:inline">OPTIMIZE</span>
-                        </button>
-                        <div onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} className="shrink-0 flex items-center gap-1 sm:gap-2">
-                            {setActiveRouteSoldFilter && (
-                                <select
-                                    value={activeRouteSoldFilter}
-                                    onChange={(e) => {
-                                        e.stopPropagation();
-                                        setActiveRouteSoldFilter(e.target.value);
-                                    }}
-                                    onPointerDown={(e) => e.stopPropagation()}
-                                    className="text-[8px] sm:text-xs font-medium bg-white/10 border border-white/10 rounded-full px-1 py-0.5 sm:px-3 sm:py-1.5 outline-none cursor-pointer hover:bg-white/15 transition-colors appearance-auto max-w-[55px] sm:max-w-none"
-                                    style={{ color: '#ccc', WebkitAppearance: 'menulist' }}
-                                >
-                                    <option value="all">All</option>
-                                    <option value="0.25">1W</option>
-                                    <option value="0.5">2W</option>
-                                    <option value="1">1M</option>
-                                    <option value="3">3M</option>
-                                    <option value="6">6M</option>
-                                    <option value="9">9M</option>
-                                    <option value="12">1Y</option>
-                                </select>
+
+                            {/* Editable Name */}
+                            {editingName ? (
+                                <div className="flex items-center gap-1 flex-1 min-w-0" onClick={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
+                                    <input
+                                        value={draftName}
+                                        onChange={e => setDraftName(e.target.value)}
+                                        onKeyDown={e => { if (e.key === 'Enter') handleSaveRename(); if (e.key === 'Escape') setEditingName(false); }}
+                                        className="bg-black/60 border border-yellow-500/50 text-yellow-500 text-xs font-bold rounded-lg px-2 py-1 flex-1 outline-none"
+                                        autoFocus
+                                    />
+                                    <button onClick={handleSaveRename} className="p-1 text-green-500 hover:text-green-400"><Check className="w-3.5 h-3.5" /></button>
+                                    <button onClick={() => setEditingName(false)} className="p-1 text-gray-500 hover:text-white"><X className="w-3.5 h-3.5" /></button>
+                                </div>
+                            ) : (
+                                <button onClick={handleStartRename} className="group/name flex items-center gap-1.5 flex-1 min-w-0" title="Click to rename">
+                                    <span className="text-sm font-bold truncate" style={{ color: BRAND.gold }}>{activeRoute.name}</span>
+                                    <Pencil className="w-3 h-3 text-gray-600 opacity-0 group-hover/name:opacity-100 transition-opacity shrink-0" />
+                                </button>
                             )}
+
+                            <button
+                                onClick={(e) => { e.stopPropagation(); if (onReoptimizeRoute) onReoptimizeRoute(activeRoute); }}
+                                className="h-7 px-3 text-[11px] font-bold bg-yellow-500 hover:bg-yellow-400 text-black rounded-lg transition-all flex items-center gap-1 shrink-0"
+                                title="Re-optimize route pathing"
+                            >
+                                <Zap className="w-3 h-3" /> OPTIMIZE
+                            </button>
+
+                            <button
+                                onClick={() => { setActiveRoute(null); if (mapRef.current) { try { if (mapRef.current._mapPane) mapRef.current.setZoom(Math.max(13, mapRef.current.getZoom() - 2)); } catch (e) { } } }}
+                                className="flex items-center gap-1 h-7 px-2.5 rounded-lg border border-white/10 text-[11px] font-bold text-gray-400 hover:text-white hover:bg-white/10 transition-all shrink-0"
+                            >
+                                <X className="w-3 h-3" /> CLOSE
+                            </button>
+                        </div>
+
+                        {/* Row 2: Assign + Date Filter + Save */}
+                        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
                             <select
                                 value={activeRoute.assigned_to || ""}
-                                onChange={(e) => {
-                                    e.stopPropagation();
-                                    handleAssignRoute(activeRoute.id, e.target.value);
-                                }}
+                                onChange={(e) => { e.stopPropagation(); handleAssignRoute(activeRoute.id, e.target.value); }}
                                 onPointerDown={(e) => e.stopPropagation()}
-                                className="text-[8px] sm:text-xs font-medium bg-white/10 border border-white/10 rounded-full px-1 py-0.5 sm:px-3 sm:py-1.5 outline-none cursor-pointer hover:bg-white/15 transition-colors appearance-auto max-w-[55px] sm:max-w-none"
+                                className="flex-1 text-xs font-medium bg-white/5 border border-white/10 rounded-lg px-2 py-1 outline-none cursor-pointer hover:bg-white/10 transition-colors"
                                 style={{ color: '#ccc', WebkitAppearance: 'menulist' }}
                             >
-                                <option value="">—</option>
+                                <option value="">Unassigned</option>
                                 <option value={user?.id || 'manager'}>Me</option>
                                 {teamMembers.map(m => (
                                     <option key={m.id} value={m.id}>{m.name}</option>
                                 ))}
                             </select>
-                            {activeRouteSoldFilter !== 'all' && onSaveFilteredRoute && (
-                                <Button
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        onSaveFilteredRoute();
-                                    }}
-                                    size="sm"
-                                    className="h-6 sm:h-8 px-1.5 sm:px-3 text-[9px] sm:text-[11px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-full transition-all border border-blue-400/30 whitespace-nowrap flex items-center gap-1 shadow-lg shadow-blue-900/20"
+
+                            {setActiveRouteSoldFilter && (
+                                <select
+                                    value={activeRouteSoldFilter}
+                                    onChange={(e) => { e.stopPropagation(); setActiveRouteSoldFilter(e.target.value); }}
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    className="text-xs font-medium bg-white/5 border border-white/10 rounded-lg px-2 py-1 outline-none cursor-pointer hover:bg-white/10 transition-colors"
+                                    style={{ color: '#ccc', WebkitAppearance: 'menulist' }}
                                 >
-                                    <Save className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                                    <span className="hidden xs:inline">SAVE</span>
-                                </Button>
+                                    <option value="all">All Dates</option>
+                                    <option value="0.25">1 Week</option>
+                                    <option value="0.5">2 Weeks</option>
+                                    <option value="1">1 Month</option>
+                                    <option value="3">3 Months</option>
+                                    <option value="6">6 Months</option>
+                                    <option value="9">9 Months</option>
+                                    <option value="12">1 Year</option>
+                                </select>
+                            )}
+
+                            {activeRouteSoldFilter !== 'all' && onSaveFilteredRoute && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); onSaveFilteredRoute(); }}
+                                    className="h-7 px-3 text-[11px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all flex items-center gap-1 shrink-0"
+                                >
+                                    <Save className="w-3 h-3" /> SAVE
+                                </button>
                             )}
                         </div>
-                        <button
-                            onClick={() => {
-                                setActiveRoute(null);
-                                if (mapRef.current) {
-                                    try { if (mapRef.current._mapPane) mapRef.current.setZoom(Math.max(13, mapRef.current.getZoom() - 2)); } catch (e) { }
-                                }
-                            }}
-                            className="w-5 h-5 sm:w-8 sm:h-8 flex items-center justify-center hover:bg-white/10 active:bg-white/15 rounded-full transition-colors shrink-0"
-                        >
-                            <X className="w-2.5 h-2.5 sm:w-4 sm:h-4 text-gray-400" />
-                        </button>
                     </div>
                 )}
             </div>
