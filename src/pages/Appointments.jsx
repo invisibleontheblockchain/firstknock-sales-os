@@ -181,7 +181,6 @@ export default function Appointments() {
                     </div>
                 </div>
             </div>
-            </div>
 
             {/* Content */}
             <div className="flex-1 overflow-auto">
