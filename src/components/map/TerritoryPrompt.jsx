@@ -484,7 +484,6 @@ export default function TerritoryPrompt({
                                 >
                                     <Lock className="w-3 h-3" />
                                     <span>PRO — 300mi²</span>
-                                    <ArrowRight className="w-3 h-3" />
                                 </Link>
                             ) : (
                                 <Button
