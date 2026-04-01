@@ -1,5 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
+import { HelpCircle } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
@@ -508,9 +510,6 @@ function SplitRouteButton({ route, onReplaceRoutes }) {
         </Button>
     );
 }
-
-import { HelpCircle } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 function StatBox({ label, value, highlight = false, tooltip = undefined }) {
     return (
