@@ -266,8 +266,13 @@ export default function TerritoryPrompt({
     const handleFetchData = async () => {
         // Don't allow double-trigger
         if (pulling) return;
-        
-        // Check pull limit on frontend too for instant feedback
+
+        // Block 300mi pull for non-subscribers
+        if ((drawSizeMiles === 300 || fetchMonths === 1) && !isPaid) {
+            toast.error('The 300 sq mi pull requires an active FirstKnock subscription. Upgrade to unlock!', { duration: 5000 });
+            return;
+        }
+
         if (!canPullAgain) {
             toast.error("You've used your 2 free data pulls. Upgrade to Pro for 3 additional pulls.", { duration: 5000 });
             return;
@@ -386,13 +391,17 @@ export default function TerritoryPrompt({
                                 value={drawSizeMiles}
                                 onChange={(e) => {
                                     const newSize = Number(e.target.value);
+                                    if (newSize === 300 && !isPaid) {
+                                        toast.error('300 sq mi pull requires an active subscription. Upgrade to unlock!', { duration: 4000 });
+                                        return;
+                                    }
                                     setDrawSizeMiles(newSize);
                                     setFetchMonths(newSize === 300 ? 1 : 3);
                                 }}
                                 className="flex-1 bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
                             >
                                 <option value={40}>40 sq mi · 3 Mo</option>
-                                <option value={300}>300 sq mi · 1 Mo</option>
+                                <option value={300}>300 sq mi · 1 Mo {isPaid ? '' : '🔒 PRO'}</option>
                                 {!hasPulledData && <option value={5}>Test · 5 sq mi</option>}
                             </select>
                         </div>
@@ -459,13 +468,24 @@ export default function TerritoryPrompt({
                     <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
                     {canPullAgain ? (
                         <div className="flex items-center gap-1.5 ml-2">
-                            <Button
-                                disabled={pulling}
-                                onClick={handleFetchData}
-                                className={`text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide ${drawSizeMiles === 300 || fetchMonths === 1 ? 'bg-cyan-600 hover:bg-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]'}`}
-                            >
-                                {drawSizeMiles === 300 ? 'Pull 300mi² (1 Mo Data)' : drawSizeMiles === 40 ? 'Pull 40mi² (3 Mo Data)' : `Pull ${drawSizeMiles}mi²`}
-                            </Button>
+                            {(drawSizeMiles === 300 || fetchMonths === 1) && !isPaid ? (
+                                <Link
+                                    to={createPageUrl('Billing')}
+                                    className="flex items-center gap-1.5 text-[10px] font-bold text-yellow-500 hover:text-yellow-400 transition-colors bg-yellow-500/10 border border-yellow-500/30 rounded-md px-2 py-1"
+                                >
+                                    <Lock className="w-3 h-3" />
+                                    <span>PRO — 300mi²</span>
+                                    <ArrowRight className="w-3 h-3" />
+                                </Link>
+                            ) : (
+                                <Button
+                                    disabled={pulling}
+                                    onClick={handleFetchData}
+                                    className={`text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide ${drawSizeMiles === 300 || fetchMonths === 1 ? 'bg-cyan-600 hover:bg-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]'}`}
+                                >
+                                    {drawSizeMiles === 300 ? 'Pull 300mi² (1 Mo Data)' : drawSizeMiles === 40 ? 'Pull 40mi² (3 Mo Data)' : `Pull ${drawSizeMiles}mi²`}
+                                </Button>
+                            )}
                         </div>
                     ) : (
                         <Link
