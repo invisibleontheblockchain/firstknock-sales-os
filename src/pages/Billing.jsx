@@ -13,18 +13,18 @@ const PLANS = [
   {
     id: 'pro',
     name: 'FirstKnock Pro',
-    price: 49,
-    priceId: 'price_1SwDXY2MvSNi6E8hZb5nSRDw',
+    price: 59,
+    priceId: 'price_1THYMh2MvSNi6E8haDHYVGKW',
     isPopular: true,
     features: [
-      '2 Free Data Pulls + 3 More with Pro',
-      'Up to 200 sq mi Service Area',
-      'Unlimited Route Generation',
-      'Filter by Price, Date, Property Type',
+      '300 sq mi Territory Pull (1 Month Data)',
+      'Verified Property Data (BatchData Cross-Check)',
+      'Unlimited Route Generation & Rebuilds',
+      'Advanced Filters: Price, Date, Type, Year',
       'Live GPS Tracking & Proof of Visit',
-      'AI Route Optimization',
-      'Team Management & Dispatch',
-      'Property Intel & History',
+      'AI Route Optimization Engine',
+      'Team Management, Dispatch & Chat',
+      'Full Property Intel & Sale History',
       'Priority Support'
     ]
   }
@@ -190,7 +190,7 @@ export default function Billing() {
                                         disabled={loadingPriceId !== null}
                                         className="w-full h-9 sm:h-10 font-bold tracking-wide rounded-xl transition-all bg-white/10 text-white hover:bg-white/20 border border-white/10 text-[10px] sm:text-sm"
                                     >
-                                        {loadingPriceId === plan.priceId + '_pay' ? 'PREPARING...' : 'PAY $49/MO — NO TRIAL'}
+                                        {loadingPriceId === plan.priceId + '_pay' ? 'PREPARING...' : 'PAY $59/MO — NO TRIAL'}
                                     </Button>
                                 </div>
                             )}

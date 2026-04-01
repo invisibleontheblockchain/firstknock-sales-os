@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { base44 } from '@/api/base44Client';
 import { Map as MapIcon, Pencil, X, Trash2, Loader2, List, Zap, Lock, ArrowRight } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from 'react-router-dom';
@@ -32,6 +33,7 @@ export default function TerritoryPrompt({
     onPullComplete
 }) {
     const queryClient = useQueryClient();
+    const navigate = useNavigate();
     const [pulling, setPulling] = useState(false);
     const [pullProgress, setPullProgress] = useState('');
     const [fetchMonths, setFetchMonths] = useState(3);
@@ -411,7 +413,8 @@ export default function TerritoryPrompt({
                                 onChange={(e) => {
                                     const newSize = Number(e.target.value);
                                     if (newSize === 300 && !isPaid) {
-                                        toast.error('300 sq mi pull requires an active subscription. Upgrade to unlock!', { duration: 4000 });
+                                        toast.error('300 sq mi requires a Pro subscription. Redirecting to plans...', { duration: 3000 });
+                                        setTimeout(() => navigate('/Billing'), 1500);
                                         return;
                                     }
                                     setDrawSizeMiles(newSize);
@@ -488,13 +491,13 @@ export default function TerritoryPrompt({
                     {canPullAgain ? (
                         <div className="flex items-center gap-1.5 ml-2">
                             {(drawSizeMiles === 300 || fetchMonths === 1) && !isPaid ? (
-                                <Link
-                                    to={createPageUrl('Billing')}
+                                <button
+                                    onClick={() => navigate('/Billing')}
                                     className="flex items-center gap-1.5 text-[10px] font-bold text-yellow-500 hover:text-yellow-400 transition-colors bg-yellow-500/10 border border-yellow-500/30 rounded-md px-2 py-1"
                                 >
                                     <Lock className="w-3 h-3" />
                                     <span>PRO — 300mi²</span>
-                                </Link>
+                                </button>
                             ) : (
                                 <Button
                                     disabled={pulling}

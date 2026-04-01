@@ -524,6 +524,12 @@ Deno.serve(async (req) => {
 
             // ── Validation: Cross-Reference + Cache + Queue ──
             const BATCH_DATA_API_KEY = Deno.env.get("BATCH_DATA_API_KEY");
+            // Skip expensive BatchData validation for free-tier 40mi/3mo pulls (sold_months <= 3)
+            // Only run full validation for paid 300mi/1mo pulls
+            const skipBatchDataValidation = monthsBack <= 3;
+            if (skipBatchDataValidation) {
+                console.log(`[chunk-v10] Skipping BatchData validation for ${monthsBack}-month pull (free tier). Ambiguous MLS records will be kept as low-confidence.`);
+            }
             if (mapped.length > 0) {
                 try {
                     const hashes = mapped.map(m => m.address_hash);
@@ -556,7 +562,8 @@ Deno.serve(async (req) => {
                     }
 
                     // Check BatchData validation cache for remaining ambiguous records
-                    if (BATCH_DATA_API_KEY) {
+                    // COST GUARD: Only run BatchData for paid 300mi pulls (sold_months > 3)
+                    if (BATCH_DATA_API_KEY && !skipBatchDataValidation) {
                         const ambiguousHashes = mapped.filter(m => m.original_status === 'RECENT_OFF_MARKET' && m.sale_confidence === 'low').map(m => m.address_hash);
                         
                         if (ambiguousHashes.length > 0) {
