@@ -269,9 +269,10 @@ export default function MapToolbar({
                                     try { if (mapRef.current._mapPane) mapRef.current.setZoom(Math.max(13, mapRef.current.getZoom() - 2)); } catch (e) { }
                                 }
                             }}
-                            className="w-5 h-5 sm:w-8 sm:h-8 flex items-center justify-center hover:bg-white/10 active:bg-white/15 rounded-full transition-colors shrink-0"
+                            className="flex items-center gap-1 px-2 py-1 sm:px-3 sm:py-1.5 hover:bg-white/10 active:bg-white/15 rounded-full transition-colors shrink-0 text-[10px] sm:text-[11px] font-bold text-gray-400 hover:text-white border border-white/10"
                         >
-                            <X className="w-2.5 h-2.5 sm:w-4 sm:h-4 text-gray-400" />
+                            <X className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                            CLOSE ROUTE
                         </button>
                     </div>
                 )}
