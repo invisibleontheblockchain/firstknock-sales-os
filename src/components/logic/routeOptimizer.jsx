@@ -787,6 +787,35 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 export { batchScoreProperties, ownershipDurationScore, SCORING_CONSTANTS } from './leadScoring';
 
 /**
+ * Optimize route purely by minimum walking distance.
+ * Applies: Nearest Neighbor → 2-Opt → Or-Opt (Link Swap)
+ * Does NOT group by street — pure distance minimization.
+ * @param {Array} properties - Array of {lat, lng, address_hash, ...}
+ * @param {Object|null} startLocation - Optional {lat, lng} starting point
+ * @returns {Array} Properties in optimized order
+ */
+export function optimizeRouteByDistance(properties, startLocation = null) {
+    if (!properties || properties.length === 0) return [];
+    if (properties.length === 1) return [...properties];
+
+    // Build working copy
+    const props = properties.map(p => ({ ...p }));
+
+    // Step 1: Nearest neighbor from start
+    const startLat = startLocation?.lat ?? null;
+    const startLng = startLocation?.lng ?? null;
+    let ordered = optimizeRouteOrder(props, startLat, startLng, false);
+
+    // Step 2: 2-Opt to eliminate crossings
+    ordered = apply2Opt(ordered);
+
+    // Step 3: Or-Opt (link swap) for further improvements
+    ordered = applyLinkSwap(ordered);
+
+    return ordered;
+}
+
+/**
  * Export route to JSON format
  */
 export function exportRouteToJSON(route) {

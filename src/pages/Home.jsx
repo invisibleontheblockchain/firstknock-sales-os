@@ -42,7 +42,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { format, subMonths, subDays, isAfter, parseISO } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { generateOptimizedRoutes } from '../components/logic/routeOptimizer';
+import { generateOptimizedRoutes, optimizeRouteByDistance } from '../components/logic/routeOptimizer';
 import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../components/logic/heatmapLogic';
 const RouteChecklist = React.lazy(() => import('../components/routes/RouteChecklist'));
 const RouteCommandPanel = React.lazy(() => import('../components/routes/RouteCommandPanel'));
@@ -1545,9 +1545,9 @@ export default function Home() {
         }
     }, [frozenWorkingSet, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, routeConfig, soldDateFilter, drawnPolygon]);
 
-    // Re-optimize a single saved route's order in-place (preserves route ID + outcomes)
+    // Re-optimize a single saved route's order in-place — pure distance minimization (NN + 2-Opt + Or-Opt)
     const handleReoptimizeRoute = useCallback(async (route) => {
-        const toastId = toast.loading('Re-optimizing route order...', { id: 'reoptimize-route' });
+        const toastId = toast.loading('Optimizing for shortest distance...', { id: 'reoptimize-route' });
         try {
             // Get the route's properties
             const hashes = route.property_hashes || (route.properties || []).map(p => p.address_hash);
@@ -1560,41 +1560,38 @@ export default function Home() {
                 return;
             }
 
-            // Re-sort using generateOptimizedRoutes with all props in one route
             const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
             const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
 
-            const reoptimized = generateOptimizedRoutes(
-                routeProperties,
-                routeProperties.length, // Keep all in one route
-                start,
-                logs,
-                {
-                    streetCooldownDays: 0, // Don't exclude anything, just re-sort
-                    useStreetSweep: routeConfig.walkingPattern === 'street_sweep',
-                    minimizeTurns: routeConfig.minimizeTurns,
-                    use2Opt: routeConfig.use2Opt,
-                    walkingPattern: routeConfig.walkingPattern,
-                    returnToStart: routeConfig.returnToStart,
-                    excludeTerminal: false, // Keep all properties, just re-order
-                },
-                learnedWeights
-            );
+            // Pure distance optimization: Nearest Neighbor + 2-Opt + Or-Opt
+            // This eliminates zig-zagging by minimizing total walking distance
+            const optimized = optimizeRouteByDistance(routeProperties, start);
 
-            if (!reoptimized || reoptimized.length === 0) {
-                toast.error('Re-optimization produced no results.', { id: 'reoptimize-route' });
+            if (!optimized || optimized.length === 0) {
+                toast.error('Optimization produced no results.', { id: 'reoptimize-route' });
                 return;
             }
 
-            const newOrder = reoptimized[0].properties.map(p => p.address_hash);
+            // Calculate new total distance
+            let newDistance = 0;
+            for (let i = 0; i < optimized.length - 1; i++) {
+                const R = 3959;
+                const dLat = (optimized[i+1].lat - optimized[i].lat) * Math.PI / 180;
+                const dLng = (optimized[i+1].lng - optimized[i].lng) * Math.PI / 180;
+                const a = Math.sin(dLat/2)**2 + Math.cos(optimized[i].lat * Math.PI/180) * Math.cos(optimized[i+1].lat * Math.PI/180) * Math.sin(dLng/2)**2;
+                newDistance += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            }
+            newDistance = Math.round(newDistance * 100) / 100;
+
+            const oldDistance = route.metrics?.distance || route.totalDistance || 0;
+            const newOrder = optimized.map(p => p.address_hash);
 
             // Update saved route in-place (same ID, same outcomes)
             await base44.entities.SavedRoute.update(route.id, {
                 property_hashes: newOrder,
                 metrics: {
                     ...route.metrics,
-                    distance: reoptimized[0].totalDistance,
-                    score: reoptimized[0].competitivenessScore
+                    distance: newDistance,
                 }
             });
 
@@ -1608,12 +1605,15 @@ export default function Home() {
                 setActiveRoute(prev => ({
                     ...prev,
                     properties: updatedProps,
-                    totalDistance: reoptimized[0].totalDistance,
-                    competitivenessScore: reoptimized[0].competitivenessScore
+                    totalDistance: newDistance,
                 }));
             }
 
-            toast.success(`Route re-optimized (${routeConfig.walkingPattern.replace(/_/g, ' ')})`, { id: 'reoptimize-route', duration: 3000 });
+            const savedMiles = Math.round((oldDistance - newDistance) * 100) / 100;
+            const msg = savedMiles > 0
+                ? `Route optimized! Saved ~${savedMiles} miles (${newDistance} mi total)`
+                : `Route optimized (${newDistance} mi total)`;
+            toast.success(msg, { id: 'reoptimize-route', duration: 4000 });
         } catch (e) {
             console.error('Re-optimize error:', e);
             toast.error('Failed to re-optimize route.', { id: 'reoptimize-route' });
