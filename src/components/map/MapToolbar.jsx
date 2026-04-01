@@ -130,8 +130,14 @@ export default function MapToolbar({
                             ROUTES
                         </button>
                         <button
-                            onClick={() => setMode('generate')}
-                            className={`px-2 py-1.5 sm:px-4 sm:py-2.5 rounded-md sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-400 hover:text-white'}`}
+                            onClick={() => {
+                                if (activeRoute) {
+                                    toast.error("Close the active route first");
+                                    return;
+                                }
+                                setMode('generate');
+                            }}
+                            className={`px-2 py-1.5 sm:px-4 sm:py-2.5 rounded-md sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : activeRoute ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
                         >
                             BUILDER
                         </button>
