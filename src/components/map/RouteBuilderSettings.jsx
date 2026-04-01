@@ -169,7 +169,7 @@ export default function RouteBuilderSettings({
                                 </>
                             ) : (
                                 <div className="flex gap-1.5">
-                                    {[{ label: '1 Mo', val: 1 }, { label: '3 Mo', val: 3 }, { label: '6 Mo', val: 6 }, { label: '9 Mo', val: 9 }, { label: '12 Mo', val: 12 }].map(opt => (
+                                    {[{ label: '1 Mo', val: 1 }, { label: '3 Mo', val: 3 }].map(opt => (
                                         <button
                                             key={opt.val}
                                             onClick={() => setSoldDateFilter(opt.val)}
@@ -182,61 +182,6 @@ export default function RouteBuilderSettings({
                                             {opt.label}
                                         </button>
                                     ))}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* ═══ 3. ROUTE SIZE ═══ */}
-                        <div className="space-y-3">
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">3. Route Size</label>
-                            <div className="flex p-1 bg-[#1A1A1A] rounded-xl border border-gray-800">
-                                <button
-                                    onClick={() => setHousesPerRoute(10000)}
-                                    className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${housesPerRoute === 10000 ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}
-                                >
-                                    ALL IN ONE ROUTE
-                                </button>
-                                <button
-                                    onClick={() => setHousesPerRoute(50)}
-                                    className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${housesPerRoute !== 10000 ? 'bg-yellow-500 text-black shadow-lg' : 'text-gray-500 hover:text-white'}`}
-                                >
-                                    HOUSES PER ROUTE
-                                </button>
-                            </div>
-
-                            {housesPerRoute !== 10000 && (
-                                <div className="space-y-3 pt-2">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-[10px] font-bold text-gray-500 uppercase">Houses per Route</span>
-                                        <span className="text-sm font-bold text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded">{housesPerRoute}</span>
-                                    </div>
-                                    <div className="grid grid-cols-6 gap-1.5">
-                                        {ROUTE_SIZE_OPTIONS.map(size => (
-                                            <button
-                                                key={size}
-                                                onClick={() => setHousesPerRoute(size)}
-                                                className={`py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center ${housesPerRoute === size
-                                                    ? 'bg-yellow-500 text-black shadow-lg'
-                                                    : 'bg-[#1F1F1F] text-gray-400 hover:bg-[#2a2a2a] border border-gray-800'
-                                                    }`}
-                                            >
-                                                {size}
-                                            </button>
-                                        ))}
-                                    </div>
-                                    <Slider
-                                        value={[housesPerRoute]}
-                                        onValueChange={([v]) => setHousesPerRoute(v)}
-                                        min={10}
-                                        max={200}
-                                        step={10}
-                                        className="w-full"
-                                    />
-                                    <div className="flex justify-between text-[10px] text-gray-600 font-medium px-1">
-                                        <span>Small (10)</span>
-                                        <span>Standard (60)</span>
-                                        <span>Large (200)</span>
-                                    </div>
                                 </div>
                             )}
                         </div>
