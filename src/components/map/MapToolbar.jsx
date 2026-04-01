@@ -28,6 +28,7 @@ export default function MapToolbar({
     setShowCompare,
     setShowRoutePanel,
     setShowChecklist,
+    setDrawingMode,
 
     // Data
     teamMembers,
@@ -362,7 +363,17 @@ export default function MapToolbar({
                 <div className="pointer-events-auto flex items-center justify-center gap-1.5 sm:gap-2 bg-black/70 backdrop-blur-lg p-1.5 sm:p-2 rounded-full border border-white/10 shadow-2xl">
                     {mode === 'generate' && !activeRoute && (
                         <Button
-                            onClick={() => setShowCompare(true)}
+                            onClick={() => {
+                                // Check if we already have a drawn polygon
+                                if (drawnPolygon && drawnPolygon.length > 2) {
+                                    // User has already drawn an area — open builder to generate routes
+                                    setShowCompare(true);
+                                } else {
+                                    // No drawn area yet — just enable drawing mode without opening builder
+                                    setShowCompare(false);
+                                    setDrawingMode(true);
+                                }
+                            }}
                             disabled={routesGenerating}
                             className="rounded-full h-9 px-3 sm:h-10 sm:px-5 text-[11px] sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap"
                             style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
