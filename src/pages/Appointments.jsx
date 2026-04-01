@@ -172,7 +172,7 @@ export default function Appointments() {
                     </div>
 
                     {/* Status chips - scrollable on mobile */}
-                    <div className="flex gap-1.5 sm:gap-2 mt-2 sm:mt-3 overflow-x-auto no-scrollbar sm:overflow-visible -mx-4 px-4 sm:mx-0 sm:px-0 pb-2 sm:pb-0">
+                    <div className="flex gap-1.5 sm:gap-2 mt-2 sm:mt-3 overflow-x-auto sm:overflow-visible -mx-3 px-3 sm:mx-0 sm:px-0 pb-1.5 sm:pb-0">
                         {STATUS_CHIPS.map(s => (
                             <button key={s.id} onClick={() => setStatusFilter(s.id)}
                                 className={`flex-shrink-0 px-3 sm:px-4 py-2 sm:py-2 h-9 sm:h-auto rounded-lg sm:rounded-full text-[9px] sm:text-xs font-bold transition-all border ${statusFilter === s.id ? 'bg-white/[0.08] border-white/15 text-white' : 'border-white/[0.04] text-gray-600 hover:text-gray-400'}`}
