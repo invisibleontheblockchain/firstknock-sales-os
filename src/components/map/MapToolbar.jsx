@@ -69,6 +69,7 @@ export default function MapToolbar({
 }) {
     const queryClient = useQueryClient();
     const hasDrawnArea = drawnPolygon && drawnPolygon.length > 2;
+    const hasPulledData = !!user?.has_pulled_data;
 
     // Inline route name editing state
     const [editingName, setEditingName] = useState(false);
@@ -363,24 +364,29 @@ export default function MapToolbar({
                     {mode === 'generate' && !activeRoute && (
                         <Button
                             onClick={() => {
-                                // Check if we already have a drawn polygon
-                                if (drawnPolygon && drawnPolygon.length > 2) {
-                                    // User has already drawn an area — open builder to generate routes
+                                if (hasDrawnArea) {
+                                    if (!hasPulledData) {
+                                        toast.error("Pull property data first! Use the 'Pull' button in the territory bar above.", { duration: 4000 });
+                                        return;
+                                    }
                                     setShowCompare(true);
                                 } else {
-                                    // No drawn area yet — dispatch event to enable drawing mode
                                     setShowCompare(false);
                                     window.dispatchEvent(new CustomEvent('fk-start-drawing'));
                                 }
                             }}
-                            disabled={routesGenerating}
-                            className="rounded-full h-9 px-3 sm:h-10 sm:px-5 text-[11px] sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap"
+                            disabled={routesGenerating || (hasDrawnArea && !hasPulledData)}
+                            className={`rounded-full h-9 px-3 sm:h-10 sm:px-5 text-[11px] sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap ${hasDrawnArea && !hasPulledData ? 'opacity-50' : ''}`}
                             style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
                         >
                             {routesGenerating ? (
                                 <><Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 animate-spin" /> BUILDING</>
                             ) : hasDrawnArea ? (
-                                <><Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" /> GENERATE</>
+                                hasPulledData ? (
+                                    <><Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" /> GENERATE</>
+                                ) : (
+                                    <><Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" /> PULL DATA FIRST</>
+                                )
                             ) : (
                                 <><Navigation className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" /> DRAW</>
                             )}
