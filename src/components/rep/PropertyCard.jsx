@@ -19,7 +19,7 @@ export default function PropertyCard({ property, index, onSelect }) {
 
     return (
         <button
-            onClick={() => onSelect(property)}
+            onClick={() => onSelect(property, index)}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 active:scale-[0.98] group ${!isDone ? 'hover:bg-[#1A1A24] hover:shadow-[0_0_20px_rgba(255,255,255,0.15)] hover:border-white/30' : ''}`}
             style={{
                 background: isDone ? '#0A0A0F' : '#111',

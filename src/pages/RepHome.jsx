@@ -20,6 +20,7 @@ import UpgradeGate, { shouldShowUpgradeGate } from '@/components/upgrade/Upgrade
 export default function RepHome() {
     const queryClient = useQueryClient();
     const [selectedProperty, setSelectedProperty] = useState(null);
+    const [selectedPropertyIndex, setSelectedPropertyIndex] = useState(null);
     const [filterStatus, setFilterStatus] = useState('todo');
     const [searchQuery, setSearchQuery] = useState('');
     const [uploading, setUploading] = useState(false);
@@ -613,7 +614,7 @@ export default function RepHome() {
                                 key={prop.address_hash}
                                 property={prop}
                                 index={idx}
-                                onSelect={setSelectedProperty}
+                                onSelect={(p, i) => { setSelectedProperty(p); setSelectedPropertyIndex(i); }}
                             />
                         ))}
                     </div>
@@ -693,12 +694,13 @@ export default function RepHome() {
                     onLog={handleLog}
                     onPhotoUpload={handlePhotoUpload}
                     uploading={uploading}
-                    onClose={() => setSelectedProperty(null)}
-                    routePosition={routeProperties.findIndex(p => p.address_hash === selectedProperty.address_hash) + 1}
-                    totalStops={routeProperties.length}
+                    onClose={() => { setSelectedProperty(null); setSelectedPropertyIndex(null); }}
+                    routePosition={selectedPropertyIndex !== null ? selectedPropertyIndex + 1 : null}
+                    totalStops={filteredProperties.length}
                     onViewOnMap={() => {
                         const prop = selectedProperty;
                         setSelectedProperty(null);
+                        setSelectedPropertyIndex(null);
                         setFocusProperty(prop);
                         setShowMap(true);
                     }}
