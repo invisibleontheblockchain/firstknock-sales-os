@@ -234,16 +234,12 @@ export default function ListPage() {
                                 <RepAnalyticsKpis metrics={analytics} dateDays={dateDays} />
                                 <RevenueMetrics logs={filteredLogs} dateDays={dateDays} />
                                 <RepAnalyticsPipeline metrics={analytics} />
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 md:gap-3">
-                                    <TimeOfDayEffectiveness logs={filteredLogs} />
-                                    <StatusBreakdown properties={effectiveProperties} />
-                                </div>
-                                <AppointmentTimeline appointments={filteredAppointments} days={dateDays} />
+                                <StatusBreakdown properties={effectiveProperties} />
                             </div>
                         )}
 
                         {activeTab === 'advanced' && (
-                            <div className="p-2.5 md:p-5 max-w-7xl mx-auto pb-24">
+                            <div className="p-2.5 md:p-5 space-y-2 md:space-y-3 max-w-7xl mx-auto pb-24">
                                 <RepAdvancedAnalytics
                                     logs={logs}
                                     filteredLogs={filteredLogs}
@@ -251,6 +247,10 @@ export default function ListPage() {
                                     appointments={filteredAppointments}
                                     dateDays={dateDays}
                                 />
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 md:gap-3">
+                                    <TimeOfDayEffectiveness logs={filteredLogs} />
+                                    <AppointmentTimeline appointments={filteredAppointments} days={dateDays} />
+                                </div>
                             </div>
                         )}
 
