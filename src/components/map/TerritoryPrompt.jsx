@@ -447,20 +447,20 @@ export default function TerritoryPrompt({
                         <div className="mt-2 bg-gray-900/80 rounded-lg p-2.5 border border-gray-800">
                             <p className="text-[10px] text-gray-300 leading-relaxed text-center">
                                 {isDeltaPull 
-                                    ? (displayPct < 30
-                                        ? '⚡ Only fetching records that changed since your last pull — much faster!'
-                                        : displayPct < 80
-                                            ? '🔄 Comparing against your existing data — unchanged records are skipped automatically.'
-                                            : '✅ Delta sync almost complete! Only new & changed properties were written.')
-                                    : (displayPct < 5
-                                        ? '🔍 Scanning your area for every property on record — this is a one-time setup that gives you the full picture.'
-                                        : displayPct < 30
-                                            ? '📦 Pulling property data in batches from public records. Larger areas have more homes to process.'
-                                            : displayPct < 70
-                                                ? '⚡ Deduplicating and writing to your database. You can close this page — it will keep running.'
-                                                : displayPct < 95
-                                                    ? '🏁 Almost there! Writing final records and updating your territory map.'
-                                                    : '✅ Wrapping up! Your territory will be ready in seconds.')}
+                                        ? (displayPct < 30
+                                            ? '⚡ Smart sync — only fetching what changed since your last pull.'
+                                            : displayPct < 80
+                                                ? '🔄 Skipping unchanged records — writing only what is new.'
+                                                : '✅ Almost done! Only fresh leads are being added.')
+                                        : (displayPct < 5
+                                            ? '🗺️ Mapping every door in your territory — one-time setup.'
+                                            : displayPct < 30
+                                                ? '📦 Fetching property records in batches. Bigger areas take a little longer.'
+                                                : displayPct < 70
+                                                    ? '⚡ Deduplicating leads. Feel free to close — this keeps running in the background.'
+                                                    : displayPct < 95
+                                                        ? '🏁 Almost there! Writing your final records to the map.'
+                                                        : '✅ Done! Your territory is ready to route.')}
                             </p>
                         </div>
                         <p className="text-[9px] text-gray-600 mt-1.5 text-center">
