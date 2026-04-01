@@ -104,8 +104,9 @@ export default function RouteCommandPanel({
                 {/* Tab Navigation */}
                 <div className="flex border-b px-2 sm:px-4 shrink-0 overflow-x-auto no-scrollbar" style={{ borderColor: BRAND.charcoal }}>
                     <button
-                        onClick={() => setActiveTab('new')}
-                        className={`flex-1 min-w-[100px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeTab === 'new'
+                        onClick={() => !activeRouteId && setActiveTab('new')}
+                        disabled={!!activeRouteId}
+                        className={`flex-1 min-w-[100px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeRouteId ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'new'
                             ? 'border-yellow-500 text-yellow-500'
                             : 'border-transparent text-gray-500 hover:text-white'
                             }`}
@@ -117,8 +118,9 @@ export default function RouteCommandPanel({
                         )}
                     </button>
                     <button
-                        onClick={() => setActiveTab('active')}
-                        className={`flex-1 min-w-[100px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeTab === 'active'
+                        onClick={() => !activeRouteId && setActiveTab('active')}
+                        disabled={!!activeRouteId}
+                        className={`flex-1 min-w-[100px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeRouteId ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'active'
                             ? 'border-blue-500 text-blue-500'
                             : 'border-transparent text-gray-500 hover:text-white'
                             }`}
@@ -130,8 +132,9 @@ export default function RouteCommandPanel({
                         </Badge>
                     </button>
                     <button
-                        onClick={() => setActiveTab('team')}
-                        className={`flex-1 min-w-[100px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeTab === 'team'
+                        onClick={() => !activeRouteId && setActiveTab('team')}
+                        disabled={!!activeRouteId}
+                        className={`flex-1 min-w-[100px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeRouteId ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'team'
                             ? 'border-green-500 text-green-500'
                             : 'border-transparent text-gray-500 hover:text-white'
                             }`}
