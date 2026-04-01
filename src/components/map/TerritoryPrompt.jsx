@@ -131,6 +131,13 @@ export default function TerritoryPrompt({
         }
     }, [mode]);
 
+    // Listen for toolbar draw button event
+    useEffect(() => {
+        const handler = () => setDrawingMode(true);
+        window.addEventListener('fk-start-drawing', handler);
+        return () => window.removeEventListener('fk-start-drawing', handler);
+    }, []);
+
     const hasPulledData = !!user?.has_pulled_data;
     const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
     const isPaid = user?.subscription_status === 'active' || user?.is_owner;

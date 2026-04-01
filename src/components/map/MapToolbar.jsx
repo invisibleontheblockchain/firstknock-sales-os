@@ -368,8 +368,9 @@ export default function MapToolbar({
                                     // User has already drawn an area — open builder to generate routes
                                     setShowCompare(true);
                                 } else {
-                                    // No drawn area yet — close builder to reveal drawing controls
+                                    // No drawn area yet — dispatch event to enable drawing mode
                                     setShowCompare(false);
+                                    window.dispatchEvent(new CustomEvent('fk-start-drawing'));
                                 }
                             }}
                             disabled={routesGenerating}
