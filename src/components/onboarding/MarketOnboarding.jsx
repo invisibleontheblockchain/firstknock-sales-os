@@ -111,7 +111,7 @@ export default function MarketOnboarding({ user, onComplete }) {
                         <div className="bg-black/40 border border-white/5 rounded-xl p-4 space-y-2 text-left">
                             <div className="flex items-center gap-2">
                                 <Check className="w-4 h-4 text-yellow-500 shrink-0" />
-                                <span className="text-xs text-gray-300">200 sq miles max — covers most territories</span>
+                                <span className="text-xs text-gray-300">40 sq miles max — covers most territories</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Check className="w-4 h-4 text-yellow-500 shrink-0" />

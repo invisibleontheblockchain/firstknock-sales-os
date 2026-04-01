@@ -34,7 +34,7 @@ export default function TerritoryPrompt({
     const queryClient = useQueryClient();
     const [pulling, setPulling] = useState(false);
     const [pullProgress, setPullProgress] = useState('');
-    const [fetchMonths, setFetchMonths] = useState(12);
+    const [fetchMonths, setFetchMonths] = useState(3);
     const [pullPct, setPullPct] = useState(0);
     const [displayPct, setDisplayPct] = useState(0);
     const [etaText, setEtaText] = useState('');
@@ -371,11 +371,11 @@ export default function TerritoryPrompt({
                         onChange={(e) => {
                             const newSize = Number(e.target.value);
                             setDrawSizeMiles(newSize);
-                            setFetchMonths(newSize === 300 ? 1 : 12);
+                            setFetchMonths(newSize === 300 ? 1 : 3);
                         }}
                         className="bg-gray-900 border border-gray-700 text-white text-[10px] rounded-md px-1.5 py-0.5 h-6 max-w-[130px]"
                     >
-                        <option value={40}>40 sq mi (12 Mo Data)</option>
+                        <option value={40}>40 sq mi (3 Mo Data)</option>
                         <option value={300}>300 sq mi (1 Mo Data)</option>
                         {!hasPulledData && <option value={5}>Test (5 sq mi)</option>}
                     </select>
@@ -451,7 +451,7 @@ export default function TerritoryPrompt({
                                 onClick={handleFetchData}
                                 className={`text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide ${drawSizeMiles === 300 || fetchMonths === 1 ? 'bg-cyan-600 hover:bg-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]'}`}
                             >
-                                {drawSizeMiles === 300 ? 'Pull 300mi² (1 Mo Data)' : drawSizeMiles === 40 ? 'Pull 40mi² (12 Mo Data)' : `Pull ${drawSizeMiles}mi²`}
+                                {drawSizeMiles === 300 ? 'Pull 300mi² (1 Mo Data)' : drawSizeMiles === 40 ? 'Pull 40mi² (3 Mo Data)' : `Pull ${drawSizeMiles}mi²`}
                             </Button>
                         </div>
                     ) : (

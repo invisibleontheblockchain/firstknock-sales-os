@@ -227,6 +227,7 @@ Deno.serve(async (req) => {
         let sold_date = null;
         let sale_type = 'Deed';
         let price = 0;
+        let sale_confidence = 'high';
 
         if (p._stream === 'A') {
             original_status = 'SOLD';
@@ -242,6 +243,51 @@ Deno.serve(async (req) => {
             sale_type = 'MLS';
             sold_date = p.removedDate || p.listedDate || null;
             price = p.price || 0;
+            
+            const removed = p.removedDate ? new Date(p.removedDate) : new Date();
+            const listed = p.listedDate ? new Date(p.listedDate) : null;
+            const lastSeen = p.lastSeenDate ? new Date(p.lastSeenDate) : null;
+            const daysSinceRemoved = Math.round((new Date().getTime() - removed.getTime()) / (1000 * 3600 * 24));
+            
+            if (daysSinceRemoved > 90) {
+                 original_status = 'REJECTED';
+                 sale_confidence = 'REJECTED';
+            } else {
+                const dom = p.daysOnMarket || daysSinceRemoved;
+                const listingDuration = (listed && !isNaN(removed.getTime()) && !isNaN(listed.getTime())) 
+                    ? Math.round((removed.getTime() - listed.getTime()) / (1000 * 3600 * 24)) 
+                    : dom;
+
+                let hScore = 0;
+                if (Math.abs(dom - 90) <= 3) hScore -= 3;
+                if (Math.abs(dom - 180) <= 3) hScore -= 3;
+                if (Math.abs(dom - 365) <= 3) hScore -= 3;
+                if (Math.abs(listingDuration - 90) <= 3) hScore -= 2;
+                if (Math.abs(listingDuration - 180) <= 3) hScore -= 2;
+                if (Math.abs(listingDuration - 365) <= 3) hScore -= 2;
+                if (dom > 150) hScore -= 3;
+                else if (dom > 60) hScore -= 2;
+                if (listingDuration < 7) hScore -= 2;
+                if (lastSeen && Math.abs(lastSeen.getTime() - removed.getTime()) < 86400000) hScore -= 2;
+                if (p.history && typeof p.history === 'object') {
+                    const historyCount = Object.keys(p.history).length;
+                    if (historyCount >= 3) hScore -= 1;
+                }
+                if (dom >= 30 && dom <= 45) hScore += 3;
+                if (dom >= 14 && dom < 30) hScore += 2;
+                if (lastSeen && (removed.getTime() - lastSeen.getTime()) >= 7 * 86400000) hScore += 1;
+                if (p.history && typeof p.history === 'object' && Object.keys(p.history).length === 1) hScore += 1;
+
+                if (hScore <= -4) {
+                    original_status = 'REJECTED';
+                    sale_confidence = 'REJECTED';
+                } else if (hScore >= 3) {
+                    original_status = 'HEURISTIC_SOLD';
+                    sale_confidence = 'medium';
+                } else {
+                    sale_confidence = 'low';
+                }
+            }
         }
 
         let h3_index = null;
@@ -258,24 +304,77 @@ Deno.serve(async (req) => {
           beds: p.bedrooms || 0, baths: p.bathrooms || 0,
           sqft: p.squareFootage || 0, lot_size: p.lotSize || 0,
           year_built: p.yearBuilt || 0, price,
-          sold_date, sale_type,
+          sold_date, sale_type, sale_confidence,
           property_type: p.propertyType || 'Single Family',
           mls_id: p.assessorID || null, url: null,
           data_source: 'rentcast'
         };
       });
 
-    console.log(`[FetchZip-v8] ${mapped.length} new properties to import (${mapped.filter(m => m.original_status === 'SOLD').length} sold)`);
+    // --- STEP 3: BatchData API for Ambiguous properties ---
+    const BATCH_DATA_API_KEY = Deno.env.get("BATCH_DATA_API_KEY");
+    if (BATCH_DATA_API_KEY) {
+        const ambiguous = mapped.filter(m => m.sale_confidence === 'low');
+        const allowedMisses = ambiguous.slice(0, 100);
+        
+        if (allowedMisses.length > 0) {
+            console.log(`[FetchZip-v8] Launching sync BatchData check for ${allowedMisses.length} ambiguous records...`);
+            for (let b = 0; b < allowedMisses.length; b += 10) {
+                const batch = allowedMisses.slice(b, b + 10);
+                const promises = batch.map(async (cm) => {
+                    try {
+                        const url = 'https://api.batchdata.com/api/v1/property/search';
+                        const payload = { searchCriteria: { query: `${cm.house_number} ${cm.street_name}, ${cm.city}, ${cm.state} ${cm.zip_code}` } };
+                        const res = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BATCH_DATA_API_KEY}` },
+                            body: JSON.stringify(payload)
+                        });
+                        if (!res.ok) return { hash: cm.address_hash, verifiedSold: false };
+                        const data = await res.json();
+                        const results = data?.results || {};
+                        const listing = results.property?.listing || results.listing || {};
+                        const apiStatus = (listing.status || '').toLowerCase();
+                        const statusCat = (listing.statusCategory || '').toLowerCase();
+                        const isSold = apiStatus.includes('sold') || statusCat === 'sold' || (listing.soldPrice > 0);
+                        return { hash: cm.address_hash, verifiedSold: isSold };
+                    } catch (e) {
+                        return { hash: cm.address_hash, verifiedSold: false };
+                    }
+                });
+                const batchResults = await Promise.all(promises);
+                const bdSold = new Set(batchResults.filter(r => r.verifiedSold).map(r => r.hash));
+                const bdRej = new Set(batchResults.filter(r => !r.verifiedSold).map(r => r.hash));
+                
+                for (const m of mapped) {
+                    if (bdSold.has(m.address_hash)) {
+                        m.sale_confidence = 'verified';
+                        m.original_status = 'BATCHDATA_CONFIRMED';
+                        m.data_source = 'batchdata_verified';
+                    } else if (bdRej.has(m.address_hash)) {
+                        m.sale_confidence = 'REJECTED';
+                        m.original_status = 'REJECTED';
+                    }
+                }
+                await new Promise(r => setTimeout(r, 250));
+            }
+        }
+    }
+    
+    // Filter out outright rejected properties
+    const finalMapped = mapped.filter(m => m.original_status !== 'REJECTED');
 
-    if (mapped.length === 0) {
+    console.log(`[FetchZip-v8] ${finalMapped.length} new properties to import (${finalMapped.filter(m => m.original_status === 'SOLD' || m.original_status === 'ELIGIBLE' || m.original_status === 'BATCHDATA_CONFIRMED').length} sold)`);
+
+    if (finalMapped.length === 0) {
       return Response.json({ status: 'exists', count: 0, message: `All properties already in database.`, api_calls: totalApiCalls });
     }
 
     // Bulk insert
     let successCount = 0;
     const CHUNK_SIZE = 500;
-    for (let i = 0; i < mapped.length; i += CHUNK_SIZE) {
-      const chunk = mapped.slice(i, i + CHUNK_SIZE);
+    for (let i = 0; i < finalMapped.length; i += CHUNK_SIZE) {
+      const chunk = finalMapped.slice(i, i + CHUNK_SIZE);
       try {
         await base44.entities.MasterProperty.bulkCreate(chunk);
         successCount += chunk.length;
@@ -287,16 +386,16 @@ Deno.serve(async (req) => {
           try { await base44.entities.MasterProperty.bulkCreate(small); successCount += small.length; } catch {}
         }
       }
-      if (i + CHUNK_SIZE < mapped.length) await new Promise(r => setTimeout(r, 500));
+      if (i + CHUNK_SIZE < finalMapped.length) await new Promise(r => setTimeout(r, 500));
     }
 
-    console.log(`[FetchZip-v8] Done! Imported ${successCount}/${mapped.length}, used ${totalApiCalls} API calls`);
+    console.log(`[FetchZip-v8] Done! Imported ${successCount}/${finalMapped.length}, used ${totalApiCalls} API calls`);
 
     return Response.json({
       status: 'imported', zip_code: zip, count: successCount,
       total_found: allProperties.length,
-      sold_count: mapped.filter(m => m.original_status === 'SOLD').length,
-      mls_count: mapped.filter(m => m.sale_type === 'MLS').length,
+      sold_count: finalMapped.filter(m => m.original_status === 'SOLD' || m.original_status === 'ELIGIBLE' || m.original_status === 'BATCHDATA_CONFIRMED').length,
+      mls_count: finalMapped.filter(m => m.sale_type === 'MLS').length,
       api_calls: totalApiCalls,
       message: `Imported ${successCount} properties for ${zip} (${totalApiCalls} API calls)`
     });

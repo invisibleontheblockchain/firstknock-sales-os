@@ -591,11 +591,59 @@ Deno.serve(async (req) => {
                                 }
                             }
 
-                            // Queue only the genuinely ambiguous cache misses for BatchData
-                            if (cacheMisses.length > 0) {
-                                console.log(`[chunk-v10] Queuing ${cacheMisses.length} ambiguous records for BatchData (down from ${phase2Stats.total} total)`);
-                                for (let i = 0; i < cacheMisses.length; i += 500) {
-                                    await base44.asServiceRole.entities.ValidationQueue.bulkCreate(cacheMisses.slice(i, i + 500)).catch(e => logError(`Queue error: ${e.message}`));
+                            // Process up to 100 genuinely ambiguous cache misses synchronously via BatchData
+                            const allowedMisses = cacheMisses.slice(0, 100);
+                            if (cacheMisses.length > 100) {
+                                console.warn(`[chunk-v10] Capping BatchData sync requests at 100 (omitting ${cacheMisses.length - 100})`);
+                            }
+
+                            if (allowedMisses.length > 0) {
+                                console.log(`[chunk-v10] Launching synchronous BatchData check for ${allowedMisses.length} ambiguous records...`);
+                                
+                                for (let b = 0; b < allowedMisses.length; b += 10) {
+                                    const batch = allowedMisses.slice(b, b + 10);
+                                    const promises = batch.map(async (cm) => {
+                                        try {
+                                            const url = 'https://api.batchdata.com/api/v1/property/search';
+                                            const res = await fetch(url, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BATCH_DATA_API_KEY}` },
+                                                body: JSON.stringify({ searchCriteria: { query: cm.normalized_address } })
+                                            });
+                                            if (!res.ok) return { hash: cm.address_hash, verifiedSold: false };
+                                            
+                                            const data = await res.json();
+                                            const results = data?.results || {};
+                                            const listing = results.property?.listing || results.listing || {};
+                                            const apiStatus = (listing.status || '').toLowerCase();
+                                            const statusCat = (listing.statusCategory || '').toLowerCase();
+                                            const soldPrice = listing.soldPrice || 0;
+                                            
+                                            const isSold = apiStatus.includes('sold') || statusCat === 'sold' || soldPrice > 0;
+                                            return { hash: cm.address_hash, verifiedSold: isSold };
+                                        } catch (e) {
+                                            return { hash: cm.address_hash, verifiedSold: false };
+                                        }
+                                    });
+                                    
+                                    const batchResults = await Promise.all(promises);
+                                    
+                                    const bdSoldHashes = new Set(batchResults.filter(r => r.verifiedSold).map(r => r.hash));
+                                    const bdRejectedHashes = new Set(batchResults.filter(r => !r.verifiedSold).map(r => r.hash));
+                                    
+                                    for (const m of mapped) {
+                                        if (bdSoldHashes.has(m.address_hash)) {
+                                            m.sale_confidence = 'verified';
+                                            m.original_status = 'BATCHDATA_CONFIRMED';
+                                            m.data_source = 'batchdata_verified';
+                                        } else if (bdRejectedHashes.has(m.address_hash)) {
+                                            m.sale_confidence = 'REJECTED';
+                                            m.original_status = 'REJECTED';
+                                        }
+                                    }
+                                    
+                                    // Sleep is already defined in this file
+                                    await sleep(250);
                                 }
                             }
                         }
