@@ -122,11 +122,12 @@ export default function TerritoryPrompt({
         return () => { cancelled = true; };
     }, [user?.email]);
 
-    // Clear drawing mode when switching away from builder tab
+    // Clear drawing mode and polygon when switching away from builder tab
     useEffect(() => {
-        if (mode !== 'generate' && drawingMode) {
+        if (mode !== 'generate') {
             setDrawingMode(false);
             setDraftPolygon([]);
+            setDrawnPolygon(null);
         }
     }, [mode]);
 
