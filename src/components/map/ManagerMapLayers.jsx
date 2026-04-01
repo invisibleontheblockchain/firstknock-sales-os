@@ -526,7 +526,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                                 <React.Fragment key={`generated-${route.id}-${idx}`}>
                                     <CircleMarker
                                         center={[p.lat, p.lng]}
-                                        radius={20}
+                                        radius={28}
                                         eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute(route); } }}
                                         pathOptions={{ fillColor: 'transparent', color: 'transparent', interactive: true, stroke: false }}
                                     />
