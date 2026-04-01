@@ -1222,12 +1222,12 @@ export default function Home() {
                 }
             }
 
-            // Skip low-confidence "sold" properties (likely expired/withdrawn listings, not real sales)
-            if (!routeConfig.includeUnverifiedSales) {
+            // Skip low-confidence properties — forced for 40mi pulls (no BatchData validation)
+            if (!routeConfig.includeUnverifiedSales || lastPullMode === '40mi') {
                 const before = workingSet.length;
                 workingSet = workingSet.filter(p => p.sale_confidence !== 'low');
                 if (before > workingSet.length) {
-                    console.log(`[generateRoutes] Removed ${before - workingSet.length} low-confidence properties`);
+                    console.log(`[generateRoutes] Removed ${before - workingSet.length} low-confidence properties${lastPullMode === '40mi' ? ' (40mi forced)' : ''}`);
                 }
             }
 
