@@ -355,36 +355,49 @@ export default function TerritoryPrompt({
 
             {/* Active Drawing Controls */}
             {drawingMode && (
-                <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[2000] bg-black/85 backdrop-blur-md border border-yellow-500/40 rounded-xl px-2.5 py-1.5 shadow-xl flex items-center gap-2 animate-in slide-in-from-top-4 max-w-xs">
-                    <Pencil className="w-3 h-3 text-yellow-500 shrink-0" />
-                    <p className="text-[10px] font-bold text-white whitespace-nowrap">Tap map</p>
-                    <select
-                        value={drawShape || 'circle'}
-                        onChange={(e) => setDrawShape(e.target.value)}
-                        className="bg-gray-900 border border-gray-700 text-white text-[10px] rounded-md px-1.5 py-0.5 h-6"
-                    >
-                        <option value="circle">Circle</option>
-                        <option value="square">Square</option>
-                    </select>
-                    <select
-                        value={drawSizeMiles}
-                        onChange={(e) => {
-                            const newSize = Number(e.target.value);
-                            setDrawSizeMiles(newSize);
-                            setFetchMonths(newSize === 300 ? 1 : 3);
-                        }}
-                        className="bg-gray-900 border border-gray-700 text-white text-[10px] rounded-md px-1.5 py-0.5 h-6 max-w-[130px]"
-                    >
-                        <option value={40}>40 sq mi (3 Mo Data)</option>
-                        <option value={300}>300 sq mi (1 Mo Data)</option>
-                        {!hasPulledData && <option value={5}>Test (5 sq mi)</option>}
-                    </select>
-                    <button
-                        onClick={() => { setDrawingMode(false); setDraftPolygon([]); }}
-                        className="w-5 h-5 rounded-full bg-red-500/20 text-red-500 hover:bg-red-500 hover:text-white flex items-center justify-center shrink-0"
-                    >
-                        <X className="w-3 h-3" />
-                    </button>
+                <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[2000] animate-in slide-in-from-top-4">
+                    <div className="bg-black/90 backdrop-blur-md border border-yellow-500/30 rounded-2xl px-4 py-3 shadow-2xl flex flex-col gap-2.5 min-w-[260px]">
+                        {/* Header */}
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="w-6 h-6 rounded-full bg-yellow-500/20 flex items-center justify-center">
+                                    <Pencil className="w-3 h-3 text-yellow-400" />
+                                </div>
+                                <span className="text-xs font-bold text-white">Draw Territory</span>
+                            </div>
+                            <button
+                                onClick={() => { setDrawingMode(false); setDraftPolygon([]); }}
+                                className="w-6 h-6 rounded-full bg-white/5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 flex items-center justify-center transition-all"
+                            >
+                                <X className="w-3 h-3" />
+                            </button>
+                        </div>
+                        {/* Controls */}
+                        <div className="flex items-center gap-2">
+                            <select
+                                value={drawShape || 'circle'}
+                                onChange={(e) => setDrawShape(e.target.value)}
+                                className="flex-1 bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
+                            >
+                                <option value="circle">Circle</option>
+                                <option value="square">Square</option>
+                            </select>
+                            <select
+                                value={drawSizeMiles}
+                                onChange={(e) => {
+                                    const newSize = Number(e.target.value);
+                                    setDrawSizeMiles(newSize);
+                                    setFetchMonths(newSize === 300 ? 1 : 3);
+                                }}
+                                className="flex-1 bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
+                            >
+                                <option value={40}>40 sq mi · 3 Mo</option>
+                                <option value={300}>300 sq mi · 1 Mo</option>
+                                {!hasPulledData && <option value={5}>Test · 5 sq mi</option>}
+                            </select>
+                        </div>
+                        <p className="text-[10px] text-yellow-400/70 text-center">Tap the map to place your territory</p>
+                    </div>
                 </div>
             )}
 
