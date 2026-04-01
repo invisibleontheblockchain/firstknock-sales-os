@@ -80,24 +80,6 @@ export default function RepAnalyticsKpis({ metrics, dateDays }) {
         </div>
       )}
 
-      {/* Stat grid */}
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-1.5 md:gap-2">
-        {stats.map((s) => {
-          const Icon = s.icon;
-          return (
-            <div key={s.label} className="group rounded-lg border border-white/[0.05] bg-[#111113] p-2 md:p-3 hover:border-white/10 transition-all overflow-hidden relative">
-              <div className="absolute -top-8 -right-8 w-16 h-16 rounded-full blur-[20px] opacity-0 group-hover:opacity-20 transition-opacity pointer-events-none" style={{ background: s.color }} />
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-0.5 md:mb-1">
-                  <span className="text-[7px] md:text-[9px] font-bold uppercase tracking-[0.1em] text-gray-500">{s.label}</span>
-                  <Icon className="w-2.5 h-2.5 md:w-3 md:h-3" style={{ color: s.color }} />
-                </div>
-                <div className="text-sm md:text-xl font-black text-white leading-none">{s.value}</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
