@@ -28,7 +28,6 @@ export default function MapToolbar({
     setShowCompare,
     setShowRoutePanel,
     setShowChecklist,
-    setDrawingMode,
 
     // Data
     teamMembers,
@@ -369,9 +368,8 @@ export default function MapToolbar({
                                     // User has already drawn an area — open builder to generate routes
                                     setShowCompare(true);
                                 } else {
-                                    // No drawn area yet — just enable drawing mode without opening builder
+                                    // No drawn area yet — close builder to reveal drawing controls
                                     setShowCompare(false);
-                                    setDrawingMode(true);
                                 }
                             }}
                             disabled={routesGenerating}
