@@ -252,6 +252,9 @@ export default function TerritoryPrompt({
                         });
                     } catch (e) { console.warn('Failed to update pull status', e); }
 
+                    // Signal to MapToolbar that data is now available for this territory
+                    window.dispatchEvent(new CustomEvent('fk-territory-data-ready'));
+
                     if (onPullComplete) {
                         onPullComplete(fetchMonths);
                         setShowCompare(true);
