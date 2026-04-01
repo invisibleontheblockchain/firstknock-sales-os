@@ -378,12 +378,13 @@ export default function MapToolbar({
                     )}
 
                     <Button
-                        onClick={() => setShowRoutePanel(true)}
-                        className="rounded-full h-9 px-3 sm:h-10 sm:px-5 text-[11px] sm:text-sm font-bold tracking-wide shadow-lg transition-all duration-300 transform active:scale-95 whitespace-nowrap"
+                        onClick={() => !activeRoute && setShowRoutePanel(true)}
+                        disabled={!!activeRoute}
+                        className={`rounded-full h-9 px-3 sm:h-10 sm:px-5 text-[11px] sm:text-sm font-bold tracking-wide shadow-lg transition-all duration-300 transform active:scale-95 whitespace-nowrap ${activeRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
                         style={{
-                            background: mode === 'generate' && !activeRoute ? 'rgba(31, 31, 31, 0.9)' : 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)',
-                            color: mode === 'generate' && !activeRoute ? BRAND.gold : BRAND.voidBlack,
-                            border: mode === 'generate' && !activeRoute ? `1px solid ${BRAND.gold}` : 'none'
+                            background: activeRoute ? 'rgba(31, 31, 31, 0.9)' : (mode === 'generate' && !activeRoute ? 'rgba(31, 31, 31, 0.9)' : 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)'),
+                            color: activeRoute ? BRAND.gold : (mode === 'generate' && !activeRoute ? BRAND.gold : BRAND.voidBlack),
+                            border: activeRoute ? `1px solid ${BRAND.gold}` : (mode === 'generate' && !activeRoute ? `1px solid ${BRAND.gold}` : 'none')
                         }}
                     >
                         <List className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
