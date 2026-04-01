@@ -110,13 +110,13 @@ export default function Billing() {
   };
 
   return (
-    <div className="h-full overflow-y-auto bg-black text-white px-2 py-1 sm:p-6 lg:p-8 flex flex-col items-center">
-            <div className="max-w-6xl w-full mx-auto space-y-1.5 sm:space-y-8 py-1 sm:py-8">
+    <div className="h-full overflow-y-auto bg-black text-white px-4 py-4 sm:p-6 lg:p-8 flex flex-col items-center">
+            <div className="max-w-6xl w-full mx-auto space-y-4 sm:space-y-8 py-4 sm:py-8">
                 
                 {/* Header */}
-                <div className="text-center space-y-0 sm:space-y-3">
-                    <h1 className="text-lg sm:text-4xl font-extrabold tracking-tight">FirstKnock Pro</h1>
-                    <p className="text-[10px] sm:text-base text-gray-400 max-w-md mx-auto">
+                <div className="text-center space-y-2 sm:space-y-3">
+                    <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">FirstKnock Pro</h1>
+                    <p className="text-sm sm:text-base text-gray-400 max-w-md mx-auto">
                         Everything you need to dominate your territory.
                     </p>
                 </div>
@@ -146,28 +146,28 @@ export default function Billing() {
         }
 
                 {/* Main Pricing Card */}
-                <div className="grid grid-cols-1 max-w-md mx-auto gap-2 sm:gap-6">
+                <div className="grid grid-cols-1 max-w-md mx-auto gap-4 sm:gap-6">
                     {PLANS.map((plan) => (
-                        <div key={plan.id} className={`relative rounded-xl p-2.5 sm:p-6 border ${plan.isPopular ? 'border-yellow-500 bg-gray-900/80 shadow-[0_0_30px_rgba(255,215,0,0.1)]' : 'border-gray-800 bg-[#111]'} backdrop-blur-sm flex flex-col`}>
+                        <div key={plan.id} className={`relative rounded-2xl p-5 sm:p-6 border ${plan.isPopular ? 'border-yellow-500 bg-gray-900/80 shadow-[0_0_30px_rgba(255,215,0,0.1)]' : 'border-gray-800 bg-[#111]'} backdrop-blur-sm flex flex-col`}>
                             {plan.isPopular && (
-                                <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-yellow-500 text-black text-[8px] sm:text-xs font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shadow-lg whitespace-nowrap">
+                                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-yellow-500 text-black text-xs sm:text-xs font-bold px-3 py-0.5 rounded-full flex items-center gap-1 shadow-lg whitespace-nowrap">
                                     <Star className="w-2.5 h-2.5 fill-black" />
                                     MOST POPULAR
                                 </div>
                             )}
 
-                            <div className="text-center mb-1 sm:mb-6 mt-0.5 sm:mt-2">
-                                <div className="flex items-baseline justify-center gap-0.5">
-                                    <span className="text-2xl sm:text-4xl font-extrabold text-white">${plan.price}</span>
-                                    <span className="text-gray-400 text-[10px] sm:text-sm">/mo</span>
+                            <div className="text-center mb-3 sm:mb-6 mt-2 sm:mt-2">
+                                <div className="flex items-baseline justify-center gap-1">
+                                    <span className="text-4xl sm:text-4xl font-extrabold text-white">${plan.price}</span>
+                                    <span className="text-gray-400 text-sm sm:text-sm">/mo</span>
                                 </div>
                             </div>
 
-                            <ul className="space-y-0.5 sm:space-y-3 mb-1.5 sm:mb-8 flex-1">
+                            <ul className="space-y-2.5 sm:space-y-3 mb-5 sm:mb-8 flex-1">
                                 {plan.features.map((feature, i) => (
-                                    <li key={i} className="flex items-center gap-1.5 sm:gap-3 text-[11px] sm:text-sm text-gray-300">
-                                        <div className={`rounded-full p-0.5 sm:p-1 shrink-0 ${plan.isPopular ? 'bg-yellow-500/20 text-yellow-500' : 'bg-gray-800 text-gray-400'}`}>
-                                            <Check className="w-2 h-2 sm:w-3 sm:h-3" />
+                                    <li key={i} className="flex items-center gap-3 sm:gap-3 text-sm sm:text-sm text-gray-300">
+                                        <div className={`rounded-full p-1 sm:p-1 shrink-0 ${plan.isPopular ? 'bg-yellow-500/20 text-yellow-500' : 'bg-gray-800 text-gray-400'}`}>
+                                            <Check className="w-3 h-3 sm:w-3 sm:h-3" />
                                         </div>
                                         <span className="leading-snug">{feature}</span>
                                     </li>
@@ -175,18 +175,18 @@ export default function Billing() {
                             </ul>
 
                             {!isSubscribed && (
-                                <div className="flex flex-col gap-1 sm:gap-3">
+                                <div className="flex flex-col gap-3 sm:gap-3">
                                     <Button
                                         onClick={() => handleSubscribe(plan.priceId, 7)}
                                         disabled={loadingPriceId !== null}
-                                        className="w-full h-9 sm:h-12 font-bold tracking-wide rounded-xl transition-all bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg hover:shadow-yellow-500/20 text-[11px] sm:text-base"
+                                        className="w-full h-12 sm:h-12 font-bold tracking-wide rounded-xl transition-all bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg hover:shadow-yellow-500/20 text-base sm:text-base"
                                     >
                                         {loadingPriceId === plan.priceId + '_trial' ? 'PREPARING...' : 'START 7-DAY FREE TRIAL'}
                                     </Button>
                                     <Button
                                         onClick={() => handleSubscribe(plan.priceId, 0)}
                                         disabled={loadingPriceId !== null}
-                                        className="w-full h-7 sm:h-10 font-bold tracking-wide rounded-xl transition-all bg-white/10 text-white hover:bg-white/20 border border-white/10 text-[9px] sm:text-sm"
+                                        className="w-full h-10 sm:h-10 font-bold tracking-wide rounded-xl transition-all bg-white/10 text-white hover:bg-white/20 border border-white/10 text-sm sm:text-sm"
                                     >
                                         {loadingPriceId === plan.priceId + '_pay' ? 'PREPARING...' : 'PAY $59/MO — NO TRIAL'}
                                     </Button>
@@ -197,12 +197,12 @@ export default function Billing() {
                 </div>
 
                 {!isSubscribed && (
-                    <p className="text-center text-[10px] sm:text-xs text-gray-500 mt-1 sm:mt-4">
+                    <p className="text-center text-xs sm:text-xs text-gray-500 mt-3 sm:mt-4">
                         Secure payments via Stripe. Cancel anytime.
                     </p>
                 )}
 
-                <div className="text-center mt-2 sm:mt-6 pb-2">
+                <div className="text-center mt-4 sm:mt-6 pb-4">
                     <p className="text-[10px] sm:text-xs text-gray-500">
                         Need help? Contact support at{' '}
                         <a href="mailto:firstknockhelp@gmail.com" className="text-yellow-500 hover:text-yellow-400 underline">
