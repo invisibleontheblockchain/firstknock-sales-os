@@ -694,6 +694,8 @@ export default function RepHome() {
                     onPhotoUpload={handlePhotoUpload}
                     uploading={uploading}
                     onClose={() => setSelectedProperty(null)}
+                    routePosition={routeProperties.findIndex(p => p.address_hash === selectedProperty.address_hash) + 1}
+                    totalStops={routeProperties.length}
                     onViewOnMap={() => {
                         const prop = selectedProperty;
                         setSelectedProperty(null);

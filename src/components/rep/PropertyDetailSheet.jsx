@@ -11,7 +11,7 @@ const STATUS_OPTIONS = [
     { id: 'HARD_NO', label: 'Not Int.', icon: Ban, color: '#8B5CF6' },
 ];
 
-export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUpload, uploading, onClose, onViewOnMap }) {
+export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUpload, uploading, onClose, onViewOnMap, routePosition, totalStops }) {
     const [showMore, setShowMore] = useState(false);
     const [logNote, setLogNote] = useState('');
     const [callbackTime, setCallbackTime] = useState('');
@@ -73,6 +73,13 @@ export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUplo
 
                 {/* Address */}
                 <div className="px-5 pb-3 pt-1">
+                    {routePosition > 0 && (
+                        <div className="flex items-center gap-1.5 mb-1">
+                            <span className="text-[10px] font-bold bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-full border border-yellow-500/30">
+                                Stop #{routePosition}{totalStops ? ` of ${totalStops}` : ''}
+                            </span>
+                        </div>
+                    )}
                     <h2 className="text-xl font-bold text-white leading-tight">
                         {property.house_number} {property.street_name}
                     </h2>
