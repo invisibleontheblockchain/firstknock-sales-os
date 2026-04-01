@@ -124,7 +124,7 @@ export default function MapToolbar({
                     {/* MODE TOGGLE - Absolutely centered */}
                     <div className="pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/80 backdrop-blur-md rounded-lg sm:rounded-xl p-0.5 sm:p-1 border border-gray-800 flex gap-0.5 shadow-xl">
                         <button
-                            onClick={() => setMode('analyze')}
+                            onClick={() => { setMode('analyze'); }}
                             className={`px-2 py-1.5 sm:px-4 sm:py-2.5 rounded-md sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'analyze' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
                         >
                             ROUTES
