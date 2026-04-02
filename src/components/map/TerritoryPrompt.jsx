@@ -36,7 +36,7 @@ export default function TerritoryPrompt({
     const navigate = useNavigate();
     const [pulling, setPulling] = useState(false);
     const [pullProgress, setPullProgress] = useState('');
-    const [fetchMonths, setFetchMonths] = useState(3);
+    const [fetchMonths, setFetchMonths] = useState(() => user?.pull_months_back || 12);
     const [pullPct, setPullPct] = useState(0);
     const [displayPct, setDisplayPct] = useState(0);
     const [etaText, setEtaText] = useState('');
@@ -418,11 +418,11 @@ export default function TerritoryPrompt({
                                         return;
                                     }
                                     setDrawSizeMiles(newSize);
-                                    setFetchMonths(newSize === 300 ? 1 : 3);
+                                    setFetchMonths(newSize === 300 ? 1 : (user?.pull_months_back || 12));
                                 }}
                                 className="flex-1 bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
                             >
-                                <option value={40}>40 sq mi · 3 Mo</option>
+                                <option value={40}>40 sq mi · {user?.pull_months_back || 12} Mo</option>
                                 <option value={300}>300 sq mi · 1 Mo {isPaid ? '' : '🔒 PRO'}</option>
                                 {!hasPulledData && <option value={5}>Test · 5 sq mi</option>}
                             </select>
