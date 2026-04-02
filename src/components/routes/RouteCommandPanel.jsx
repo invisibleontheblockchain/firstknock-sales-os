@@ -47,6 +47,13 @@ export default function RouteCommandPanel({
 }) {
     const [activeTab, setActiveTab] = useState(generatedRoutes.length > 0 ? 'new' : 'active');
 
+    // Build a global route number map: route.id → #1, #2, #3...
+    const routeNumberMap = useMemo(() => {
+        const map = new Map();
+        savedRoutes.forEach((r, i) => map.set(r.id, i + 1));
+        return map;
+    }, [savedRoutes]);
+
     // Group saved routes by status
     const routesByStatus = useMemo(() => {
         const groups = {
@@ -324,19 +331,20 @@ export default function RouteCommandPanel({
                                                 </Badge>
                                             </div>
                                             {memberData.routes.map(route => (
-                                                <SavedRouteCard
-                                                    key={route.id}
-                                                    route={route}
-                                                    repColor={repColors[member.id]}
-                                                    isActive={activeRouteId === route.id}
-                                                    onSelect={() => onSelectRoute(route)}
-                                                    onDelete={() => onDeleteRoute && onDeleteRoute(route)}
-                                                    logs={logs}
-                                                    onReoptimize={onReoptimizeRoute}
-                                                    routeConfig={routeConfig}
-                                                />
-                                            ))}
-                                        </div>
+                                                                <SavedRouteCard
+                                                                     key={route.id}
+                                                                     route={route}
+                                                                     routeNumber={routeNumberMap.get(route.id)}
+                                                                     repColor={repColors[member.id]}
+                                                                     isActive={activeRouteId === route.id}
+                                                                     onSelect={() => onSelectRoute(route)}
+                                                                     onDelete={() => onDeleteRoute && onDeleteRoute(route)}
+                                                                     logs={logs}
+                                                                     onReoptimize={onReoptimizeRoute}
+                                                                     routeConfig={routeConfig}
+                                                                 />
+                                                            ))}
+                                                        </div>
                                     );
                                 })}
 
@@ -354,6 +362,7 @@ export default function RouteCommandPanel({
                                             <SavedRouteCard
                                                 key={route.id}
                                                 route={route}
+                                                routeNumber={routeNumberMap.get(route.id)}
                                                 repColor="#666"
                                                 isActive={activeRouteId === route.id}
                                                 onSelect={() => onSelectRoute(route)}
@@ -576,7 +585,7 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave,
     );
 }
 
-function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete, logs = [], onReoptimize, routeConfig }) {
+function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDelete, logs = [], onReoptimize, routeConfig }) {
     const [editing, setEditing] = useState(false);
     const [newName, setNewName] = useState(route.name);
     const queryClient = useQueryClient();
@@ -637,6 +646,11 @@ function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete, logs = 
                             </div>
                         ) : (
                             <div className="flex items-center gap-1.5">
+                                {routeNumber && (
+                                    <span className="shrink-0 w-6 h-6 rounded-md bg-white/10 border border-white/20 flex items-center justify-center text-[11px] font-bold text-yellow-400">
+                                        {routeNumber}
+                                    </span>
+                                )}
                                 <span className="font-bold text-sm text-white truncate">{route.name}</span>
                                 <button
                                     onClick={e => { e.stopPropagation(); setEditing(true); }}
