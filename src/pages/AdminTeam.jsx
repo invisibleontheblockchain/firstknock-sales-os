@@ -20,6 +20,7 @@ import TeamLeaderboard from '@/components/team/TeamLeaderboard';
 import TeamAnalyticsSummary from '@/components/analytics/team/TeamAnalyticsSummary';
 import TeamActivityTrend from '@/components/analytics/team/TeamActivityTrend';
 import TeamOutcomeBreakdown from '@/components/analytics/team/TeamOutcomeBreakdown';
+import SalesEditor from '@/components/analytics/SalesEditor';
 
 
 const BRAND = {
@@ -547,6 +548,7 @@ export default function AdminTeam() {
                             <TeamOutcomeBreakdown logs={logs} />
                         </div>
                         <TeamLeaderboard members={analyticsMembers} logs={logs} routes={routes} />
+                        <SalesEditor logs={logs} members={analyticsMembers} />
                     </TabsContent>
 
                     {/* ROSTER TAB */}
