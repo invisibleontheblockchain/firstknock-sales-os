@@ -620,9 +620,11 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
 
     return (
         <div className="relative group">
-            <button
+            <div
                 onClick={onSelect}
-                className="w-full p-3 rounded-xl border transition-all text-left hover:border-gray-600"
+                role="button"
+                tabIndex={0}
+                className="w-full p-3 rounded-xl border transition-all text-left hover:border-gray-600 cursor-pointer"
                 style={{
                     background: isActive ? `${BRAND.gold}15` : '#151515',
                     borderColor: isActive ? BRAND.gold : '#222',
@@ -692,7 +694,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                         <div className="h-full rounded-full transition-all" style={{ width: `${(knockStats.knocked / knockStats.total) * 100}%`, background: knockStats.knocked === knockStats.total ? '#22c55e' : '#FFD700' }} />
                     </div>
                 )}
-            </button>
+            </div>
             {onDelete && (
                 <button
                     onClick={(e) => { e.stopPropagation(); onDelete(); }}

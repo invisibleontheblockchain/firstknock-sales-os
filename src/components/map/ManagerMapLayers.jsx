@@ -290,7 +290,7 @@ function SavedRoutesLayer({
     mode, activeRoute, zoomLevel, hydratedSavedRoutes,
     analyzeZipFilter, quickFilter, repColors, ROUTE_COLORS,
     showRouteDetails, showRouteLines, pinSize, mapSettings,
-    lineDashArray, setActiveRoute
+    lineDashArray, setActiveRoute, allSavedRoutes
 }) {
     const map = useMap();
     const layerRef = useRef(null);
@@ -315,6 +315,10 @@ function SavedRoutesLayer({
             return route.properties.some(p => p.zip_code === analyzeZipFilter);
         });
 
+        // Build a global route number map from the full unfiltered list for consistent numbering
+        const routeNumberMap = new Map();
+        (allSavedRoutes || hydratedSavedRoutes).forEach((r, i) => routeNumberMap.set(r.id, i + 1));
+
         filteredRoutes.forEach((route, routeIdx) => {
             let repColor = route.assigned_to
                 ? (repColors[route.assigned_to] || '#3b82f6')
@@ -323,6 +327,7 @@ function SavedRoutesLayer({
             if (route.isCompleted) repColor = '#6b7280';
 
             const isUnassigned = !route.assigned_to;
+            const globalNumber = routeNumberMap.get(route.id) || (routeIdx + 1);
             const centerProp = route.properties[Math.floor(route.properties.length / 2)];
 
             // Center marker with route number
@@ -336,7 +341,7 @@ function SavedRoutesLayer({
                 const label = L.marker([centerProp.lat, centerProp.lng], {
                     icon: L.divIcon({
                         className: '',
-                        html: `<div style="color:${repColor};font-weight:900;font-size:10px;text-shadow:0 0 3px #000;pointer-events:none;transform:translate(-50%,-50%);white-space:nowrap">#${routeIdx + 1}</div>`,
+                        html: `<div style="color:${repColor};font-weight:900;font-size:10px;text-shadow:0 0 3px #000;pointer-events:none;transform:translate(-50%,-50%);white-space:nowrap">#${globalNumber}</div>`,
                         iconSize: [0, 0], iconAnchor: [0, 0],
                     }),
                     interactive: false, keyboard: false,
@@ -415,7 +420,7 @@ function SavedRoutesLayer({
             }
         };
     }, [map, mode, activeRoute, zoomLevel, hydratedSavedRoutes, analyzeZipFilter, quickFilter,
-        repColors, ROUTE_COLORS, showRouteDetails, showRouteLines, pinSize, mapSettings, lineDashArray, setActiveRoute]);
+        repColors, ROUTE_COLORS, showRouteDetails, showRouteLines, pinSize, mapSettings, lineDashArray, setActiveRoute, allSavedRoutes]);
 
     return null; // Imperative layer — no React DOM output
 }
@@ -434,6 +439,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
 
     // Route data
     hydratedSavedRoutes,
+    allSavedRoutes,
     filteredRoutes,
     ROUTE_COLORS,
 
@@ -489,6 +495,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                 activeRoute={activeRoute}
                 zoomLevel={zoomLevel}
                 hydratedSavedRoutes={hydratedSavedRoutes}
+                allSavedRoutes={allSavedRoutes}
                 analyzeZipFilter={analyzeZipFilter}
                 quickFilter={quickFilter}
                 repColors={repColors}

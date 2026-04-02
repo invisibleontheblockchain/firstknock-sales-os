@@ -32,7 +32,8 @@ export default function ActiveRoutesTab({
     onReplaceRoutes
 }) {
     const [selectedIds, setSelectedIds] = useState(new Set());
-    const isMultiSelect = selectedIds.size > 0;
+    const [mergeMode, setMergeMode] = useState(false);
+    const isMultiSelect = mergeMode;
 
     // Build a global route number map: route.id → #1, #2, #3...
     const routeNumberMap = useMemo(() => {
@@ -116,6 +117,7 @@ export default function ActiveRoutesTab({
 
                 toast.success(`Merged ${selectedRoutes.length} routes → ${allProps.length} doors`);
                 setSelectedIds(new Set());
+                setMergeMode(false);
             }
         } catch (e) {
             toast.error("Failed to merge routes");
@@ -133,13 +135,14 @@ export default function ActiveRoutesTab({
                             <Button
                                 onClick={handleMerge}
                                 size="sm"
+                                disabled={selectedIds.size < 2}
                                 className="h-7 text-[10px] bg-purple-600 hover:bg-purple-500 text-white font-bold px-3"
                             >
                                 <Merge className="w-3 h-3 mr-1" />
                                 MERGE {selectedNumbers || selectedIds.size}
                             </Button>
                             <Button
-                                onClick={() => setSelectedIds(new Set())}
+                                onClick={() => { setMergeMode(false); setSelectedIds(new Set()); }}
                                 variant="ghost"
                                 size="sm"
                                 className="h-6 text-[10px] text-gray-400 hover:text-white px-2"
@@ -150,7 +153,7 @@ export default function ActiveRoutesTab({
                     )}
                     {!isMultiSelect && savedRoutes.length >= 2 && (
                         <Button
-                            onClick={() => setSelectedIds(new Set())}
+                            onClick={() => setMergeMode(true)}
                             variant="ghost"
                             size="sm"
                             className="h-6 text-[10px] text-purple-400 hover:text-purple-300 hover:bg-purple-900/20 px-2"
@@ -346,9 +349,11 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
             )}
 
             <div className="flex-1 min-w-0">
-                <button
+                <div
                     onClick={isMultiSelect ? onToggleSelect : onSelect}
-                    className="w-full p-3 rounded-xl border transition-all text-left hover:border-gray-600"
+                    role="button"
+                    tabIndex={0}
+                    className="w-full p-3 rounded-xl border transition-all text-left hover:border-gray-600 cursor-pointer"
                     style={{
                         background: isActive ? `${BRAND.gold}15` : '#151515',
                         borderColor: isActive ? BRAND.gold : '#222',
@@ -420,7 +425,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                             <div className="h-full rounded-full transition-all" style={{ width: `${(knockStats.knocked / knockStats.total) * 100}%`, background: knockStats.knocked === knockStats.total ? '#22c55e' : '#FFD700' }} />
                         </div>
                     )}
-                </button>
+                </div>
                 {!isMultiSelect && onDelete && (
                     <button
                         onClick={(e) => { e.stopPropagation(); onDelete(); }}
