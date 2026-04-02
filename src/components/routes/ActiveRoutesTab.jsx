@@ -34,6 +34,13 @@ export default function ActiveRoutesTab({
     const [selectedIds, setSelectedIds] = useState(new Set());
     const isMultiSelect = selectedIds.size > 0;
 
+    // Build a global route number map: route.id → #1, #2, #3...
+    const routeNumberMap = useMemo(() => {
+        const map = new Map();
+        savedRoutes.forEach((r, i) => map.set(r.id, i + 1));
+        return map;
+    }, [savedRoutes]);
+
     const toggleSelect = (routeId) => {
         setSelectedIds(prev => {
             const next = new Set(prev);
@@ -46,6 +53,16 @@ export default function ActiveRoutesTab({
     const selectedRoutes = useMemo(() => {
         return savedRoutes.filter(r => selectedIds.has(r.id));
     }, [savedRoutes, selectedIds]);
+
+    // Build display string for selected route numbers (e.g. "#1, #3, #5")
+    const selectedNumbers = useMemo(() => {
+        return [...selectedIds]
+            .map(id => routeNumberMap.get(id))
+            .filter(Boolean)
+            .sort((a, b) => a - b)
+            .map(n => `#${n}`)
+            .join(', ');
+    }, [selectedIds, routeNumberMap]);
 
     const handleMerge = async () => {
         if (selectedRoutes.length < 2) {
@@ -119,7 +136,7 @@ export default function ActiveRoutesTab({
                                 className="h-7 text-[10px] bg-purple-600 hover:bg-purple-500 text-white font-bold px-3"
                             >
                                 <Merge className="w-3 h-3 mr-1" />
-                                MERGE {selectedIds.size}
+                                MERGE {selectedNumbers || selectedIds.size}
                             </Button>
                             <Button
                                 onClick={() => setSelectedIds(new Set())}
@@ -174,6 +191,7 @@ export default function ActiveRoutesTab({
                     selectedIds={selectedIds}
                     onToggleSelect={toggleSelect}
                     isMultiSelect={isMultiSelect}
+                    routeNumberMap={routeNumberMap}
                 />
             )}
 
@@ -193,6 +211,7 @@ export default function ActiveRoutesTab({
                     selectedIds={selectedIds}
                     onToggleSelect={toggleSelect}
                     isMultiSelect={isMultiSelect}
+                    routeNumberMap={routeNumberMap}
                 />
             )}
 
@@ -212,6 +231,7 @@ export default function ActiveRoutesTab({
                     selectedIds={selectedIds}
                     onToggleSelect={toggleSelect}
                     isMultiSelect={isMultiSelect}
+                    routeNumberMap={routeNumberMap}
                 />
             )}
 
@@ -232,6 +252,7 @@ export default function ActiveRoutesTab({
                     selectedIds={selectedIds}
                     onToggleSelect={toggleSelect}
                     isMultiSelect={isMultiSelect}
+                    routeNumberMap={routeNumberMap}
                 />
             )}
 
@@ -248,7 +269,7 @@ export default function ActiveRoutesTab({
     );
 }
 
-function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRouteId, collapsed = false, onDeleteRoute, logs = [], onReoptimize, routeConfig, selectedIds, onToggleSelect, isMultiSelect }) {
+function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRouteId, collapsed = false, onDeleteRoute, logs = [], onReoptimize, routeConfig, selectedIds, onToggleSelect, isMultiSelect, routeNumberMap }) {
     const [isExpanded, setIsExpanded] = useState(!collapsed);
 
     return (
@@ -264,6 +285,7 @@ function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRou
                 <SavedRouteCard
                     key={route.id}
                     route={route}
+                    routeNumber={routeNumberMap?.get(route.id)}
                     repColor={route.assigned_to ? repColors[route.assigned_to] : '#666'}
                     isActive={activeRouteId === route.id}
                     onSelect={() => onSelectRoute(route)}
@@ -280,7 +302,7 @@ function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRou
     );
 }
 
-function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete, logs = [], onReoptimize, routeConfig, isSelected, onToggleSelect, isMultiSelect }) {
+function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDelete, logs = [], onReoptimize, routeConfig, isSelected, onToggleSelect, isMultiSelect }) {
     const [editing, setEditing] = useState(false);
     const [newName, setNewName] = useState(route.name);
     const queryClient = useQueryClient();
@@ -350,6 +372,11 @@ function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete, logs = 
                                 </div>
                             ) : (
                                 <div className="flex items-center gap-1.5">
+                                    {routeNumber && (
+                                        <span className="shrink-0 w-6 h-6 rounded-md bg-white/10 border border-white/20 flex items-center justify-center text-[11px] font-bold text-yellow-400">
+                                            {routeNumber}
+                                        </span>
+                                    )}
                                     <span className="font-bold text-sm text-white truncate">{route.name}</span>
                                     {!isMultiSelect && (
                                         <button
