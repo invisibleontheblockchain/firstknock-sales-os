@@ -34,6 +34,7 @@ export default function ActiveRoutesTab({
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [mergeMode, setMergeMode] = useState(false);
     const isMultiSelect = mergeMode;
+    const queryClient = useQueryClient();
 
     // Build a global route number map: route.id → #1, #2, #3...
     const routeNumberMap = useMemo(() => {
@@ -71,6 +72,10 @@ export default function ActiveRoutesTab({
             return;
         }
 
+        if (!confirm(`Merge ${selectedRoutes.length} routes? The originals will be deleted and replaced with one optimized route.`)) {
+            return;
+        }
+
         // Collect all properties from selected routes
         const seen = new Set();
         const allProps = [];
@@ -103,10 +108,11 @@ export default function ActiveRoutesTab({
                     name: `Merged (${selectedRoutes.length} routes, ${allProps.length} doors)`
                 };
 
-                // Delete original routes
-                for (const route of selectedRoutes) {
-                    if (onDeleteRoute) await onDeleteRoute(route);
-                }
+                // Delete original routes in batch — no individual confirmations
+                await Promise.all(
+                    selectedRoutes.map(route => base44.entities.SavedRoute.delete(route.id).catch(() => {}))
+                );
+                queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
 
                 // Save the merged route
                 if (onReplaceRoutes) {
