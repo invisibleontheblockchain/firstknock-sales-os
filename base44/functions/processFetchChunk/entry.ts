@@ -283,7 +283,9 @@ Deno.serve(async (req) => {
         // PHASE 1: DEED RECORDS
         // ======================================================================
         if (currentPhase === 'deed_records') {
-            const saleDateRange = Math.min(monthsBack * 30, 365);
+            // Research finding: add +90 days to compensate for 30-90 day county deed recording lag
+            // A home closed 90 days ago may not have its deed recorded yet — saleDateRange=180 captures it
+            const saleDateRange = Math.min((monthsBack * 30) + 90, 730);
             const allRaw = [];
             let reachedEnd = false;
 
@@ -380,7 +382,7 @@ Deno.serve(async (req) => {
         // PHASE 2: LISTINGS RECORDS (Early Warning Radar / MLS Inactive)
         // ======================================================================
         if (currentPhase === 'listings_records') {
-            const saleDateRange = Math.min(monthsBack * 30, 365);
+            const saleDateRange = Math.min((monthsBack * 30) + 90, 730);
             
             const allRaw = [];
             let reachedEnd = false;
@@ -435,17 +437,12 @@ Deno.serve(async (req) => {
                 phase2Stats.total++;
 
                 // ── FILTER 1: County Lag Rule ──
-                // If removed > 90 days ago and not in Phase 1 deeds, it's almost certainly expired/withdrawn
+                // Research: If removed > 90 days ago and not in Phase 1 deeds, it's expired/withdrawn.
+                // County deeds lag 30-90 days. If it hasn't appeared in deed records by now, it never sold.
                 const daysSinceRemoved = Math.round((new Date().getTime() - removed.getTime()) / (1000 * 3600 * 24));
                 if (daysSinceRemoved > 90) {
                     phase2Stats.countyLagRejected++;
-                    mapped.push({
-                        address_hash: hash, house_number, street_name, city: p.city || '', state: p.state || '', zip_code: pZip,
-                        lat: p.latitude, lng: p.longitude, original_status: 'REJECTED', beds: p.bedrooms || 0, baths: p.bathrooms || 0,
-                        sqft: p.squareFootage || 0, lot_size: p.lotSize || 0, year_built: p.yearBuilt || 0, price: p.price || 0,
-                        sold_date: p.removedDate || p.listedDate || null, sale_type: 'MLS', property_type: p.propertyType || 'Single Family', data_source: 'rentcast',
-                        sale_confidence: 'REJECTED'
-                    });
+                    // Don't even write these to DB — they're noise. Skip entirely.
                     continue;
                 }
 
@@ -460,24 +457,38 @@ Deno.serve(async (req) => {
 
                 let hScore = 0;
 
+                // ══════════════════════════════════════════════════════════
+                // RESEARCH-BACKED HEURISTIC SCORING MODEL
+                // Per Deep Research Report: Zero-Cost Classification Pipeline
+                // ══════════════════════════════════════════════════════════
+
+                // ── AUTO-REJECT: Contract boundary clustering ──
+                // Research: "Contract expirations are highly predictable. If it hits exactly
+                // 180 days, the probability of it being an expiration approaches 99%.
+                // Do not waste points here; filter it out immediately."
+                const isContractBoundary = (
+                    Math.abs(dom - 90) <= 3 || Math.abs(dom - 180) <= 3 || Math.abs(dom - 365) <= 3 ||
+                    Math.abs(listingDuration - 90) <= 3 || Math.abs(listingDuration - 180) <= 3 || Math.abs(listingDuration - 365) <= 3
+                );
+                if (isContractBoundary) {
+                    phase2Stats.heuristicRejected++;
+                    // Auto-reject — don't write to DB
+                    continue;
+                }
+
                 // ── Negative signals (expired/withdrawn indicators) ──
-                // Contract boundary clustering: listings expiring at exactly 90/180/365 days
-                if (Math.abs(dom - 90) <= 3) hScore -= 3;
-                if (Math.abs(dom - 180) <= 3) hScore -= 3;
-                if (Math.abs(dom - 365) <= 3) hScore -= 3;
-                if (Math.abs(listingDuration - 90) <= 3) hScore -= 2;
-                if (Math.abs(listingDuration - 180) <= 3) hScore -= 2;
-                if (Math.abs(listingDuration - 365) <= 3) hScore -= 2;
 
                 // Extended market time = strong expired signal
                 if (dom > 150) hScore -= 3;
                 else if (dom > 60) hScore -= 2;
 
                 // Ultra-short listing (< 7 days) = likely withdrawal/cancellation
-                if (listingDuration < 7) hScore -= 2;
+                if (listingDuration < 7) hScore -= 1;
 
                 // Abrupt same-day removal (lastSeenDate == removedDate)
-                if (lastSeen && Math.abs(lastSeen.getTime() - removed.getTime()) < 86400000) hScore -= 2;
+                // Research: "-3 pts — Abrupt removals without a Pending transition
+                // period are almost exclusively cancellations or withdrawals."
+                if (lastSeen && Math.abs(lastSeen.getTime() - removed.getTime()) < 86400000) hScore -= 3;
 
                 // Multiple listing history entries = prior failed attempts
                 if (p.history && typeof p.history === 'object') {
@@ -486,34 +497,52 @@ Deno.serve(async (req) => {
                 }
 
                 // ── Positive signals (sold indicators) ──
-                // Escrow-window sweet spot (30-45 days) = classic sale closing timeline
-                if (dom >= 30 && dom <= 45) hScore += 3;
-                
-                // Moderate-short duration (14-30 days) = consistent with accepted offer
-                if (dom >= 14 && dom < 30) hScore += 2;
+                // Fast removal (< 30 days DOM) = strongly correlates with accepted offer
+                if (dom < 30) hScore += 3;
 
-                // Gradual removal pattern (lastSeenDate well before removedDate)
+                // Short duration (< 45 days listing to removal) = consistent with sale closing
+                if (listingDuration > 0 && listingDuration < 45) hScore += 2;
+
+                // Gradual removal pattern (lastSeenDate >= 7 days before removedDate)
+                // Research: "Sold listings typically follow a pattern where the listing remains
+                // visible but inactive for a period (under contract/pending) before removal."
                 if (lastSeen && (removed.getTime() - lastSeen.getTime()) >= 7 * 86400000) hScore += 1;
 
                 // Single listing history = first attempt (higher sold probability)
                 if (p.history && typeof p.history === 'object' && Object.keys(p.history).length === 1) hScore += 1;
 
                 // ── Classification decision ──
+                // Research thresholds:
+                //   >= 3: LIKELY SOLD (75-85% confidence) — no BatchData needed
+                //   1-2:  PROBABLY SOLD (60-70%) — classify with lower confidence
+                //   -1-0: AMBIGUOUS — route to BatchData
+                //   -2/-3: PROBABLY EXPIRED (60-70%) — classify expired
+                //   <= -4: LIKELY EXPIRED (75-85%) — no BatchData needed
                 let mlsConfidence = 'low';
                 let origStatus = 'RECENT_OFF_MARKET';
 
                 if (hScore <= -4) {
-                    // Overwhelmingly expired/withdrawn — auto-reject
-                    origStatus = 'REJECTED';
+                    // Overwhelmingly expired/withdrawn — auto-reject, don't write to DB
+                    phase2Stats.heuristicRejected++;
+                    continue;
+                } else if (hScore <= -2) {
+                    // Probably expired — classify with low confidence flag
+                    origStatus = 'PROBABLY_EXPIRED';
                     mlsConfidence = 'REJECTED';
                     phase2Stats.heuristicRejected++;
+                    continue; // Skip DB write for probable expired too
                 } else if (hScore >= 3) {
-                    // Strong sold signals — classify as likely sold without BatchData
+                    // Strong sold signals (75-85% confidence) — classify as sold WITHOUT BatchData
                     origStatus = 'HEURISTIC_SOLD';
                     mlsConfidence = 'medium';
                     phase2Stats.heuristicLikelySold++;
+                } else if (hScore >= 1) {
+                    // Probably sold (60-70% confidence) — classify with lower confidence
+                    origStatus = 'HEURISTIC_SOLD';
+                    mlsConfidence = 'low';
+                    phase2Stats.heuristicLikelySold++;
                 } else {
-                    // Ambiguous: scores -3 to +2 — these need BatchData verification
+                    // Ambiguous: scores -1 to 0 — only THESE go to BatchData
                     phase2Stats.ambiguousToBatchData++;
                 }
 
@@ -627,12 +656,21 @@ Deno.serve(async (req) => {
                                             
                                             const data = await res.json();
                                             const results = data?.results || {};
-                                            const listing = results.property?.listing || results.listing || {};
-                                            const apiStatus = (listing.status || '').toLowerCase();
-                                            const statusCat = (listing.statusCategory || '').toLowerCase();
-                                            const soldPrice = listing.soldPrice || 0;
+                                            // BatchData response structure: results.properties is an array
+                                            const properties = results.properties || [];
+                                            const prop = properties[0] || {};
+                                            const listing = prop.listing || {};
+                                            const transfer = prop.lastTransfer || prop.transfer || {};
                                             
-                                            const isSold = apiStatus.includes('sold') || statusCat === 'sold' || soldPrice > 0;
+                                            // Research: statusCategory DOES NOT EXIST on RentCast.
+                                            // On BatchData, check listing.statusType, transfer data, and salePrice.
+                                            const apiStatus = (listing.statusType || listing.status || '').toLowerCase();
+                                            const salePrice = transfer.salePrice || listing.price || 0;
+                                            const hasRecentTransfer = transfer.recordingDate && 
+                                                ((Date.now() - new Date(transfer.recordingDate).getTime()) < 365 * 86400000);
+                                            
+                                            const isSold = apiStatus.includes('sold') || apiStatus.includes('closed') || 
+                                                salePrice > 10000 || hasRecentTransfer;
                                             return { hash: cm.address_hash, verifiedSold: isSold };
                                         } catch (e) {
                                             return { hash: cm.address_hash, verifiedSold: false };
