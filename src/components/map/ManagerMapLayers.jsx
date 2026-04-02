@@ -2,6 +2,7 @@ import React, { useMemo, useCallback, useEffect, useRef } from 'react';
 import { CircleMarker, Polyline, Circle, LayerGroup, Tooltip, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { DarkRoomClient } from '@/components/logic/neonClient';
+import { CONFIDENCE_COLORS } from '@/components/map/ConfidenceLegend';
 
 /**
  * ActiveRouteLayer — High-performance active route renderer.
@@ -236,7 +237,16 @@ function ViewportCulledPins({
                     effectiveColorStatus = p.original_status;
                 }
             }
-            const fillColor = isRecentlySold ? '#FF00FF' : (STATUS_COLORS[effectiveColorStatus] || STATUS_COLORS.OTHER);
+            // Fix #5: Confidence-tier coloring when 'confidence' color scheme is active
+            const useConfidenceColors = mapSettings.colorScheme === 'confidence';
+            let fillColor;
+            if (isRecentlySold) {
+                fillColor = '#FF00FF';
+            } else if (useConfidenceColors && p.sale_confidence && CONFIDENCE_COLORS[p.sale_confidence]) {
+                fillColor = CONFIDENCE_COLORS[p.sale_confidence];
+            } else {
+                fillColor = STATUS_COLORS[effectiveColorStatus] || STATUS_COLORS.OTHER;
+            }
             
             // Transparent hitbox for mobile tapping
             const hitbox = L.circleMarker([p.lat, p.lng], {
@@ -652,72 +662,6 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                 subMonths={subMonths}
                 mapRef={mapRef}
             />
-
-            {/* Legacy pin layer kept as hidden reference — replaced by ViewportCulledPins above */}
-            <LayerGroup>
-                {false && viewMode === 'pins' && zoomLevel >= 13 && !activeRoute && (mode === 'generate' || showAllProperties) && effectiveProperties
-                    .filter(p => !p.is_dark_room)
-                    .filter(p => {
-                        if (mode === 'generate' && assignedHashes.has(p.address_hash)) return false;
-                        if (mode === 'generate' && zipCodeFilter && zipCodeFilter.trim()) {
-                            const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
-                            const pZip = String(p.zip_code || '').trim().slice(0, 5);
-                            if (targetZips.length > 0 && !targetZips.includes(pZip)) return false;
-                        }
-                        if (mode === 'generate' && drawnPolygon && drawnPolygon.length > 2) {
-                            if (!isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon)) return false;
-                        }
-                        if (soldDateFilter !== null) {
-                            if (!p.sold_date) return false;
-                            try {
-                                const date = new Date(p.sold_date);
-                                const cutoff = subMonths(new Date(), parseInt(soldDateFilter));
-                                if (date < cutoff) return false;
-                            } catch (e) { return false; }
-                        }
-                        if (quickFilter === 'all') return true;
-                        if (quickFilter === 'eligible') return p.effective_status === 'ELIGIBLE' || p.effective_status === 'NO_ANSWER';
-                        if (quickFilter === 'sold') return p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED';
-                        if (quickFilter === 'rejected') return p.effective_status === 'HARD_NO';
-                        return true;
-                    })
-                    .map(p => {
-                        let isRecentlySold = false;
-                        if (highlightRecentlySold && p.sold_date) {
-                            try {
-                                isRecentlySold = new Date(p.sold_date) > subMonths(new Date(), 1);
-                            } catch (e) { }
-                        }
-
-                        const isUnvisited = ['ELIGIBLE', 'NO_ANSWER', 'OTHER'].includes(p.effective_status);
-                        const effColorStatus = p.effective_status === 'ELIGIBLE' && p.original_status && ['SOLD', 'RECENT_OFF_MARKET', 'PENDING'].includes(p.original_status)
-                            ? p.original_status
-                            : p.effective_status;
-
-                        return (
-                            <CircleMarker
-                                key={p.address_hash || p.id}
-                                center={[p.lat, p.lng]}
-                                radius={isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize)}
-                                eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setSelectedProperty(p); } }}
-                                pathOptions={{
-                                    fillColor: isRecentlySold ? '#FF00FF' : (STATUS_COLORS[effColorStatus] || STATUS_COLORS.OTHER),
-                                    fillOpacity: isRecentlySold ? 1 : ((isUnvisited && p.effective_status === 'ELIGIBLE' && effColorStatus === 'ELIGIBLE') ? 0.3 : ((mode === 'generate' ? 0.9 : 0.5) * mapSettings.pinOpacity)),
-                                    color: isRecentlySold ? '#FFFFFF' : (mapSettings.fillStyle === 'outline' ? (STATUS_COLORS[effColorStatus] || STATUS_COLORS.OTHER) : ((isUnvisited && p.effective_status === 'ELIGIBLE' && effColorStatus === 'ELIGIBLE') ? 'transparent' : (mapSettings.pinBorderColor || '#000'))),
-                                    weight: isRecentlySold ? 2 : (mapSettings.fillStyle === 'outline' ? 2 : (isUnvisited ? 0 : mapSettings.pinBorderWidth))
-                                }}
-                            >
-                                {mapSettings.showLabels && (
-                                    <Tooltip permanent direction="center" className="route-number-tooltip">
-                                        <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '8px', textShadow: '0 0 3px #000' }}>
-                                            {mapSettings.labelType === 'number' ? p.house_number : mapSettings.labelType === 'status' ? (p.effective_status || '').slice(0, 1) : (p.street_name || '').split(' ')[0]}
-                                        </span>
-                                    </Tooltip>
-                                )}
-                            </CircleMarker>
-                        );
-                    })}
-            </LayerGroup>
 
             {/* Preview Route (hover/tap from list) */}
             {previewRoute && !activeRoute && (

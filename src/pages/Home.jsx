@@ -65,6 +65,7 @@ import ManagerMapLayers from '../components/map/ManagerMapLayers';
 import MapToolbar from '../components/map/MapToolbar';
 import ZipCodeOverlay from '../components/map/ZipCodeOverlay';
 import PolygonHistory, { savePolygonToHistory } from '../components/map/PolygonHistory';
+import ConfidenceLegend from '../components/map/ConfidenceLegend';
 
 // Brand Colors
 const BRAND = {
@@ -92,6 +93,7 @@ const DEFAULT_STATUS_COLORS = {
 
 const COLOR_SCHEME_MAP = {
     default: DEFAULT_STATUS_COLORS,
+    confidence: DEFAULT_STATUS_COLORS,
     neon: { ELIGIBLE: '#00fff7', SOLD: '#39ff14', HARD_NO: '#ff073a', CALLBACK: '#ffed00', NO_ANSWER: '#00fff7', QUALIFIED: '#39ff14', UNVERIFIED: '#bf5af2', RECENT_OFF_MARKET: '#ffed00', OTHER: '#00fff7' },
     pastel: { ELIGIBLE: '#a8b8c8', SOLD: '#77dd77', HARD_NO: '#b39ddb', CALLBACK: '#fff176', NO_ANSWER: '#a8b8c8', QUALIFIED: '#77dd77', UNVERIFIED: '#c4b5fd', RECENT_OFF_MARKET: '#fff176', OTHER: '#a8b8c8' },
     heatmap: { ELIGIBLE: '#1e3a5f', SOLD: '#ff4500', HARD_NO: '#8b0000', CALLBACK: '#ff8c00', NO_ANSWER: '#1e3a5f', QUALIFIED: '#ff4500', UNVERIFIED: '#7c3aed', RECENT_OFF_MARKET: '#ff8c00', OTHER: '#1e3a5f' },
@@ -1368,181 +1370,49 @@ export default function Home() {
 
     // Reorder: re-run filtering + routing on frozen data without re-fetching
     const handleReorder = useCallback(async () => {
-        if (!frozenWorkingSet || frozenWorkingSet.length === 0) {
-            toast.error('No data to reorder. Generate routes first.');
-            return;
-        }
+        if (!frozenWorkingSet || frozenWorkingSet.length === 0) { toast.error('No data to reorder.'); return; }
         setRoutesGenerating(true);
         const toastId = toast.loading('Reordering routes...', { id: 'reorder-routes' });
-
         try {
             let workingSet = [...frozenWorkingSet];
-            console.log(`[handleReorder] Starting with ${workingSet.length} frozen properties`);
-
-            // Re-apply all current filters on the frozen data
-            // Zip filter
             let targetZips = [];
-            if (zipCodeFilter && zipCodeFilter.trim()) {
-                targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
-            } else if (!(drawnPolygon && drawnPolygon.length > 2) && user?.territory_zip_codes?.length > 0) {
-                targetZips = user.territory_zip_codes;
-            }
-            if (targetZips.length > 0) {
-                workingSet = workingSet.filter(p => {
-                    const pZip = String(p.zip_code || '').trim().slice(0, 5);
-                    return targetZips.includes(pZip);
-                });
-            }
-
-            // Polygon filter
-            if (drawnPolygon && drawnPolygon.length > 2) {
-                workingSet = workingSet.filter(p => isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon));
-            }
-
-            // Sold date filter
+            if (zipCodeFilter?.trim()) targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
+            else if (!(drawnPolygon?.length > 2) && user?.territory_zip_codes?.length > 0) targetZips = user.territory_zip_codes;
+            if (targetZips.length > 0) workingSet = workingSet.filter(p => targetZips.includes(String(p.zip_code || '').trim().slice(0, 5)));
+            if (drawnPolygon?.length > 2) workingSet = workingSet.filter(p => isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon));
             if (soldDateFilter !== null && soldDateFilter !== 'all') {
-                let cutoff;
-                const now = new Date();
-                if (soldDateFilter === 0.25 || soldDateFilter === '0.25') {
-                    cutoff = subDays(now, 7);
-                } else {
-                    cutoff = subMonths(now, Number(soldDateFilter));
-                }
+                const cutoff = soldDateFilter === 0.25 || soldDateFilter === '0.25' ? subDays(new Date(), 7) : subMonths(new Date(), Number(soldDateFilter));
                 cutoff.setHours(0, 0, 0, 0);
                 workingSet = workingSet.filter(p => {
-                    if (p.original_status === 'PENDING') return true;
-                    if (p.original_status === 'RECENT_OFF_MARKET' && p.sale_confidence !== 'low') return true;
+                    if (p.original_status === 'PENDING' || (p.original_status === 'RECENT_OFF_MARKET' && p.sale_confidence !== 'low')) return true;
                     const hasInteraction = ['CALLBACK', 'NO_ANSWER', 'QUALIFIED'].includes(p.effective_status);
                     if (!p.sold_date) return hasInteraction;
-                    try {
-                        const date = new Date(p.sold_date);
-                        if (isNaN(date.getTime())) return hasInteraction;
-                        return date >= cutoff;
-                    } catch (e) { return hasInteraction; }
+                    try { const d = new Date(p.sold_date); return isNaN(d.getTime()) ? hasInteraction : d >= cutoff; } catch { return hasInteraction; }
                 });
             }
-
-            // Property type filter
-            if (routeConfig.propertyTypes.length > 0) {
-                workingSet = workingSet.filter(p => {
-                    if (!p.property_type) return true;
-                    const pt = p.property_type.toLowerCase();
-                    return routeConfig.propertyTypes.some(t => pt.includes(t.toLowerCase()));
-                });
-            }
-
-            // Commercial filter
-            if (routeConfig.excludeCommercial) {
-                const commKeywords = ['commercial', 'industrial', 'retail', 'office', 'warehouse', 'business', 'shopping'];
-                workingSet = workingSet.filter(p => {
-                    if (!p.property_type) return true;
-                    const pt = p.property_type.toLowerCase();
-                    return !commKeywords.some(kw => pt.includes(kw));
-                });
-            }
-
-            // Condos filter
-            if (routeConfig.excludeCondos) {
-                const condoKeywords = ['condo', 'apartment', 'co-op', 'coop', 'multifamily', 'multi family', 'multi-family'];
-                workingSet = workingSet.filter(p => {
-                    if (!p.property_type) return true;
-                    const pt = p.property_type.toLowerCase();
-                    return !condoKeywords.some(kw => pt.includes(kw));
-                });
-            }
-
-            // Land filter
-            if (routeConfig.excludeLand) {
-                const landKeywords = ['land', 'lot', 'vacant', 'acreage', 'farm'];
-                workingSet = workingSet.filter(p => {
-                    if (!p.property_type) return true;
-                    const pt = p.property_type.toLowerCase();
-                    return !landKeywords.some(kw => pt.includes(kw));
-                });
-            }
-
-            // Previously knocked filter
-            const logsByAddress = new Map();
-            logs.forEach(l => {
-                if (!l.address_hash) return;
-                if (!logsByAddress.has(l.address_hash)) logsByAddress.set(l.address_hash, []);
-                logsByAddress.get(l.address_hash).push(l);
-            });
-            if (routeConfig.excludePreviouslyKnocked) {
-                workingSet = workingSet.filter(p => {
-                    const hash = p.address_hash || p.id;
-                    const propLogs = logsByAddress.get(hash);
-                    if (p.effective_status === 'CALLBACK') return true;
-                    return !propLogs || propLogs.length === 0;
-                });
-            }
-
-            // Price filters
+            if (routeConfig.propertyTypes.length > 0) workingSet = workingSet.filter(p => !p.property_type || routeConfig.propertyTypes.some(t => p.property_type.toLowerCase().includes(t.toLowerCase())));
+            if (routeConfig.excludeCommercial) { const kw = ['commercial','industrial','retail','office','warehouse','business','shopping']; workingSet = workingSet.filter(p => !p.property_type || !kw.some(k => p.property_type.toLowerCase().includes(k))); }
+            if (routeConfig.excludeCondos) { const kw = ['condo','apartment','co-op','coop','multifamily','multi family','multi-family']; workingSet = workingSet.filter(p => !p.property_type || !kw.some(k => p.property_type.toLowerCase().includes(k))); }
+            if (routeConfig.excludeLand) { const kw = ['land','lot','vacant','acreage','farm']; workingSet = workingSet.filter(p => !p.property_type || !kw.some(k => p.property_type.toLowerCase().includes(k))); }
+            const logsByAddr = new Map(); logs.forEach(l => { if (!l.address_hash) return; if (!logsByAddr.has(l.address_hash)) logsByAddr.set(l.address_hash, []); logsByAddr.get(l.address_hash).push(l); });
+            if (routeConfig.excludePreviouslyKnocked) workingSet = workingSet.filter(p => { if (p.effective_status === 'CALLBACK') return true; return !(logsByAddr.get(p.address_hash || p.id)?.length); });
             if (routeConfig.minPrice) workingSet = workingSet.filter(p => !p.price || p.price >= routeConfig.minPrice);
             if (routeConfig.maxPrice) workingSet = workingSet.filter(p => !p.price || p.price <= routeConfig.maxPrice);
-
-            // Year built filters
             if (routeConfig.minYearBuilt) workingSet = workingSet.filter(p => !p.year_built || p.year_built >= routeConfig.minYearBuilt);
             if (routeConfig.maxYearBuilt) workingSet = workingSet.filter(p => !p.year_built || p.year_built <= routeConfig.maxYearBuilt);
-
-            // Callbacks
-            if (!routeConfig.includeCallbacks) {
-                workingSet = workingSet.filter(p => p.effective_status !== 'CALLBACK');
-            }
-
-            if (workingSet.length === 0) {
-                toast.error('No properties match current filters. Adjust settings and try again.', { id: 'reorder-routes', duration: 5000 });
-                setRoutesGenerating(false);
-                return;
-            }
-
-            console.log(`[handleReorder] After all filters: ${workingSet.length} properties`);
-
-            // Generate routes
-            const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
-            const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
-
-            const generated = generateOptimizedRoutes(
-                workingSet, housesPerRoute, start, logs,
-                {
-                    streetCooldownDays,
-                    useStreetSweep: routeConfig.walkingPattern === 'street_sweep',
-                    minimizeTurns: routeConfig.minimizeTurns,
-                    use2Opt: routeConfig.use2Opt,
-                    walkingPattern: routeConfig.walkingPattern,
-                    returnToStart: routeConfig.returnToStart,
-                    excludeTerminal: routeConfig.excludeTerminal,
-                },
-                learnedWeights
-            );
-
+            if (!routeConfig.includeCallbacks) workingSet = workingSet.filter(p => p.effective_status !== 'CALLBACK');
+            if (workingSet.length === 0) { toast.error('No properties match current filters.', { id: 'reorder-routes', duration: 5000 }); setRoutesGenerating(false); return; }
+            const start = startLocation || (mapRef.current ? { lat: mapRef.current.getCenter().lat, lng: mapRef.current.getCenter().lng } : null);
+            const generated = generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: routeConfig.use2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: routeConfig.returnToStart, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights);
             setRoutes(generated);
-
-            // Auto-save
             if (generated.length > 0) {
-                const bulkToastId = toast.loading(`Auto-saving ${generated.length} routes...`);
-                try {
-                    await Promise.all(generated.map(route =>
-                        handleSaveRoute(route, null, null, true)
-                    ));
-                    toast.success(`Reordered into ${generated.length} routes`, { id: bulkToastId, duration: 3000 });
-                    setRoutes([]);
-                    setModeRaw('analyze');
-                } catch (error) {
-                    console.error('[Home] Reorder auto-save failed:', error);
-                    toast.error('Auto-save failed during reorder.', { id: bulkToastId });
-                }
+                const bulkId = toast.loading(`Auto-saving ${generated.length} routes...`);
+                try { await Promise.all(generated.map(r => handleSaveRoute(r, null, null, true))); toast.success(`Reordered into ${generated.length} routes`, { id: bulkId, duration: 3000 }); setRoutes([]); setModeRaw('analyze'); } catch (e) { toast.error('Auto-save failed.', { id: bulkId }); }
             }
-
-            setShowRoutePanel(true);
-            setShowCompare(false);
-            toast.success(`Reordered! ${generated.length} route(s) from ${workingSet.length} properties`, { id: 'reorder-routes', duration: 5000 });
-        } catch (e) {
-            console.error('Reorder error:', e);
-            toast.error('Reorder failed.', { id: 'reorder-routes' });
-        } finally {
-            setRoutesGenerating(false);
-        }
+            setShowRoutePanel(true); setShowCompare(false);
+            toast.success(`Reordered! ${generated.length} route(s)`, { id: 'reorder-routes', duration: 5000 });
+        } catch (e) { console.error('Reorder error:', e); toast.error('Reorder failed.', { id: 'reorder-routes' }); }
+        finally { setRoutesGenerating(false); }
     }, [frozenWorkingSet, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, routeConfig, soldDateFilter, drawnPolygon]);
 
     // Re-optimize a single saved route's order in-place — pure distance minimization (NN + 2-Opt + Or-Opt)
@@ -2300,15 +2170,8 @@ export default function Home() {
                 </React.Suspense>
             )}
 
-            <ManagerPropertyDetailSheet
-                selectedProperty={selectedProperty}
-                setSelectedProperty={setSelectedProperty}
-                STATUS_COLORS={STATUS_COLORS}
-                navigationApp={navigationApp}
-                selectedPropertyLogs={selectedPropertyLogs}
-                handleLogResult={handleLogResult}
-                toast={toast}
-            />
+            <ConfidenceLegend effectiveProperties={effectiveProperties} isPaid={user?.subscription_status === 'active' || user?.is_owner} isVisible={mapSettings.colorScheme === 'confidence' && !activeRoute} />
+            <ManagerPropertyDetailSheet selectedProperty={selectedProperty} setSelectedProperty={setSelectedProperty} STATUS_COLORS={STATUS_COLORS} navigationApp={navigationApp} selectedPropertyLogs={selectedPropertyLogs} handleLogResult={handleLogResult} toast={toast} />
         </div>
     );
 }

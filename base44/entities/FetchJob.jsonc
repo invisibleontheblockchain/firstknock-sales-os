@@ -122,6 +122,11 @@
       "default": 0,
       "description": "Total RentCast API calls consumed by this job"
     },
+    "total_batchdata_calls": {
+      "type": "integer",
+      "default": 0,
+      "description": "Total BatchData API calls consumed by this job (capped at 500)"
+    },
     "error_message": {
       "type": "string"
     },
