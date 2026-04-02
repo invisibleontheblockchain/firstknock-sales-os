@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 // v9 — Grid Subdivision: breaks large areas into overlapping sub-circles (≤5mi)
 // per RentCast support guidance. Large-radius queries silently drop records.

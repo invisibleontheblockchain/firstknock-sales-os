@@ -375,14 +375,14 @@ export default function MapToolbar({
             </div>
 
             {/* Bottom Action Bar */}
-            <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 z-[1000] pointer-events-none flex justify-center">
-                <div className="pointer-events-auto flex items-center justify-center gap-1.5 sm:gap-2 bg-black/70 backdrop-blur-lg p-1.5 sm:p-2 rounded-full border border-white/10 shadow-2xl">
+            <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 z-[1000] pointer-events-none flex justify-center px-2">
+                <div className="pointer-events-auto flex items-center justify-center gap-2 bg-black/80 backdrop-blur-lg p-1.5 rounded-full border border-white/10 shadow-2xl">
                     {mode === 'generate' && !activeRoute && (
                         <Button
                             onClick={() => {
                                 if (hasDrawnArea) {
                                     if (!territoryDataReady) {
-                                        toast.error("Pull property data first! Hit the blue 'Pull' button in the territory bar above.", { duration: 4000 });
+                                        toast.error("Pull property data first!", { duration: 4000 });
                                         return;
                                     }
                                     setShowCompare(true);
@@ -392,19 +392,19 @@ export default function MapToolbar({
                                 }
                             }}
                             disabled={routesGenerating || (hasDrawnArea && !territoryDataReady)}
-                            className={`rounded-full h-9 px-3 sm:h-10 sm:px-5 text-[11px] sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap ${hasDrawnArea && !territoryDataReady ? 'opacity-50' : ''}`}
+                            className={`rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] transition-all active:scale-95 whitespace-nowrap ${hasDrawnArea && !territoryDataReady ? 'opacity-50' : ''}`}
                             style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
                         >
                             {routesGenerating ? (
-                                <><Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 animate-spin" /> BUILDING</>
+                                <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> BUILDING</>  
                             ) : hasDrawnArea ? (
                                 territoryDataReady ? (
-                                    <><Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" /> GENERATE</>
+                                    <><Zap className="w-4 h-4 mr-1.5" /> GENERATE</>  
                                 ) : (
-                                    <><Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" /> PULL DATA FIRST</>
+                                    <><Zap className="w-4 h-4 mr-1.5" /> PULL DATA</>  
                                 )
                             ) : (
-                                <><Navigation className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" /> DRAW</>
+                                <><Navigation className="w-4 h-4 mr-1.5" /> DRAW</>  
                             )}
                         </Button>
                     )}
@@ -412,17 +412,17 @@ export default function MapToolbar({
                     <Button
                         onClick={() => !activeRoute && setShowRoutePanel(true)}
                         disabled={!!activeRoute}
-                        className={`rounded-full h-9 px-3 sm:h-10 sm:px-5 text-[11px] sm:text-sm font-bold tracking-wide shadow-lg transition-all duration-300 transform active:scale-95 whitespace-nowrap ${activeRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap ${activeRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
                         style={{
                             background: activeRoute ? 'rgba(31, 31, 31, 0.9)' : (mode === 'generate' && !activeRoute ? 'rgba(31, 31, 31, 0.9)' : 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)'),
                             color: activeRoute ? BRAND.gold : (mode === 'generate' && !activeRoute ? BRAND.gold : BRAND.voidBlack),
                             border: activeRoute ? `1px solid ${BRAND.gold}` : (mode === 'generate' && !activeRoute ? `1px solid ${BRAND.gold}` : 'none')
                         }}
                     >
-                        <List className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                        <List className="w-4 h-4 mr-1.5" />
                         ROUTES
                         {!routesGenerating && (hydratedSavedRoutes.length > 0 || routes.length > 0) && (
-                            <Badge className="ml-1 sm:ml-2 h-5 min-w-[20px] px-1.5 text-[10px]" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
+                            <Badge className="ml-1.5 h-5 min-w-[20px] px-1.5 text-[10px]" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
                                 {hydratedSavedRoutes.length > 0 ? hydratedSavedRoutes.length : routes.length}
                             </Badge>
                         )}
@@ -431,10 +431,10 @@ export default function MapToolbar({
                     {activeRoute && (
                         <Button
                             onClick={() => setShowChecklist(true)}
-                            className="rounded-full h-9 px-3 sm:h-10 sm:px-5 text-[11px] sm:text-sm font-bold tracking-wide shadow-lg backdrop-blur-md transition-all duration-300 transform active:scale-95 whitespace-nowrap"
+                            className="rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-lg backdrop-blur-md transition-all active:scale-95 whitespace-nowrap"
                             style={{ background: 'rgba(31, 31, 31, 0.9)', color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}
                         >
-                            <List className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                            <List className="w-4 h-4 mr-1.5" />
                             CHECKLIST
                         </Button>
                     )}

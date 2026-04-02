@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 import { latLngToCell } from 'npm:h3-js@4.1.0';
 
 // v10 — Grid Subdivision + Deed/Listing Hybrid Architecture
@@ -195,9 +195,15 @@ Deno.serve(async (req) => {
         }
 
         let currentPhase = job.phase || 'deed_records';
-        const subCircles = job.sub_circles || [{ lat: job.latitude, lng: job.longitude, radius: job.radius }];
+        // CRITICAL: sub_circles must be read from the job entity.
+        // If missing (legacy jobs), fall back to a single circle.
+        const subCircles = (job.sub_circles && job.sub_circles.length > 0) 
+            ? job.sub_circles 
+            : [{ lat: job.latitude, lng: job.longitude, radius: job.radius }];
         let currentSubCircle = job.current_sub_circle || 0;
-        const totalSubCircles = subCircles.length;
+        const totalSubCircles = job.total_sub_circles || subCircles.length;
+        
+        console.log(`[chunk-v10] sub_circles loaded: ${subCircles.length} circles, current=${currentSubCircle}, total=${totalSubCircles}, first_circle=${JSON.stringify(subCircles[0])}`);
 
         console.log(`[chunk-v10] Job ${jobId} | phase=${currentPhase} | sub-circle=${currentSubCircle + 1}/${totalSubCircles} | offset=${job.current_offset} | delta=${isDeltaPull}`);
 

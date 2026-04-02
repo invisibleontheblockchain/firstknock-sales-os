@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { HelpCircle } from 'lucide-react';
+import ActiveRoutesTab from './ActiveRoutesTab';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 // cache-bust v2
 import { Badge } from "@/components/ui/badge";
@@ -288,100 +289,19 @@ export default function RouteCommandPanel({
 
                         {/* ACTIVE ROUTES TAB */}
                         {activeTab === 'active' && (
-                            <>
-                                <div className="flex justify-between items-center mb-2 px-1">
-                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">All Campaigns</span>
-                                    {savedRoutes.length > 0 && (
-                                        <Button
-                                            onClick={() => {
-                                                if (confirm("Are you sure you want to delete ALL saved routes? This action cannot be undone.")) {
-                                                    onDeleteAllRoutes && onDeleteAllRoutes();
-                                                }
-                                            }}
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-6 text-[10px] text-red-500 hover:text-red-400 hover:bg-red-900/20 px-2"
-                                        >
-                                            <X className="w-3 h-3 mr-1" /> DELETE ALL
-                                        </Button>
-                                    )}
-                                </div>
-
-                                {/* In Progress */}
-                                {routesByStatus.IN_PROGRESS.length > 0 && (
-                                    <RouteSection
-                                        title="In Progress"
-                                        icon={<Clock className="w-4 h-4 text-blue-500" />}
-                                        routes={routesByStatus.IN_PROGRESS}
-                                        repColors={repColors}
-                                        onSelectRoute={onSelectRoute}
-                                        activeRouteId={activeRouteId}
-                                        onDeleteRoute={onDeleteRoute}
-                                        logs={logs}
-                                        onReoptimize={onReoptimizeRoute}
-                                        routeConfig={routeConfig}
-                                    />
-                                )}
-
-                                {/* Active/Queued */}
-                                {routesByStatus.ACTIVE.length > 0 && (
-                                    <RouteSection
-                                        title="Queued"
-                                        icon={<Navigation className="w-4 h-4 text-yellow-500" />}
-                                        routes={routesByStatus.ACTIVE}
-                                        repColors={repColors}
-                                        onSelectRoute={onSelectRoute}
-                                        activeRouteId={activeRouteId}
-                                        onDeleteRoute={onDeleteRoute}
-                                        logs={logs}
-                                        onReoptimize={onReoptimizeRoute}
-                                        routeConfig={routeConfig}
-                                    />
-                                )}
-
-                                {/* Pending Assignment */}
-                                {routesByStatus.PENDING.length > 0 && (
-                                    <RouteSection
-                                        title="Pending Assignment"
-                                        icon={<AlertCircle className="w-4 h-4 text-orange-500" />}
-                                        routes={routesByStatus.PENDING}
-                                        repColors={repColors}
-                                        onSelectRoute={onSelectRoute}
-                                        activeRouteId={activeRouteId}
-                                        onDeleteRoute={onDeleteRoute}
-                                        logs={logs}
-                                        onReoptimize={onReoptimizeRoute}
-                                        routeConfig={routeConfig}
-                                    />
-                                )}
-
-                                {/* Completed */}
-                                {routesByStatus.COMPLETED.length > 0 && (
-                                    <RouteSection
-                                        title="Completed"
-                                        icon={<CheckCircle2 className="w-4 h-4 text-green-500" />}
-                                        routes={routesByStatus.COMPLETED}
-                                        repColors={repColors}
-                                        onSelectRoute={onSelectRoute}
-                                        activeRouteId={activeRouteId}
-                                        collapsed
-                                        onDeleteRoute={onDeleteRoute}
-                                        logs={logs}
-                                        onReoptimize={onReoptimizeRoute}
-                                        routeConfig={routeConfig}
-                                    />
-                                )}
-
-                                {savedRoutes.length === 0 && (
-                                    <div className="text-center py-12">
-                                        <div className="w-16 h-16 rounded-full bg-[#1A1A1A] flex items-center justify-center mx-auto mb-4">
-                                            <Navigation className="w-8 h-8 text-gray-600" />
-                                        </div>
-                                        <h3 className="text-lg font-bold text-gray-400 mb-2">No Active Routes</h3>
-                                        <p className="text-xs text-gray-600">Generate and save routes to see them here.</p>
-                                    </div>
-                                )}
-                            </>
+                            <ActiveRoutesTab
+                                savedRoutes={savedRoutes}
+                                routesByStatus={routesByStatus}
+                                repColors={repColors}
+                                onSelectRoute={onSelectRoute}
+                                activeRouteId={activeRouteId}
+                                onDeleteRoute={onDeleteRoute}
+                                onDeleteAllRoutes={onDeleteAllRoutes}
+                                onReoptimizeRoute={onReoptimizeRoute}
+                                routeConfig={routeConfig}
+                                logs={logs}
+                                onReplaceRoutes={onReplaceRoutes}
+                            />
                         )}
 
                         {/* BY REP TAB */}
