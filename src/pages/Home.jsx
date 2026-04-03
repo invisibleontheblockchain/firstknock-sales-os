@@ -161,8 +161,9 @@ export default function Home() {
     const [startAddressInput, setStartAddressInput] = useState("");
     const [zipCodeFilter, setZipCodeFilter] = useState(''); // Comma separated string
     const [analyzeZipFilter, setAnalyzeZipFilter] = useState('all'); // Filter for Analyze mode
-    const [soldDateFilter, setSoldDateFilter] = useState(12); // Default: 12 months
-    const [lastPullMode, setLastPullMode] = useState(null); // '40mi' or '300mi' — tracks which pull mode was last used
+    const [soldDateFilter, setSoldDateFilterRaw] = useState(12);
+    const setSoldDateFilter = (val) => { setSoldDateFilterRaw(val); setFrozenWorkingSet(null); }; // Clear frozen on filter change
+    const [lastPullMode, setLastPullMode] = useState(null);
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
@@ -958,12 +959,10 @@ export default function Home() {
     }, [effectiveProperties, zoomLevel, activeRoute]);
 
     const generateRoutes = useCallback(async () => {
-        // If we already have frozen data, and user is just hitting GENERATE again (maybe after changing slider or routing rules),
-        // we can just re-run the filtering via handleReorder instead of doing a full re-fetch.
-        if (frozenWorkingSet && frozenWorkingSet.length > 0) {
-            console.log(`[generateRoutes] Frozen data exists (${frozenWorkingSet.length} props). Using handleReorder to skip refetch.`);
-            handleReorder();
-            return;
+        // If frozen data exists, reorder instead of refetch (unless filter just changed, which clears frozen)
+        if (frozenWorkingSet?.length > 0) {
+            console.log(`[generateRoutes] Frozen data exists (${frozenWorkingSet.length} props). Using handleReorder.`);
+            await handleReorder(); return;
         }
 
         setRoutesGenerating(true);
