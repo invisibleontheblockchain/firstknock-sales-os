@@ -1097,34 +1097,25 @@ export default function Home() {
             // Freeze data for reorder functionality
             setFrozenWorkingSet(workingSet);
 
-            // 3. FILTERING
-            let targetZips = [];
-            if (zipCodeFilter && zipCodeFilter.trim()) {
-                targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
-            } else if (!(drawnPolygon && drawnPolygon.length > 2) && user?.territory_zip_codes?.length > 0) {
-                targetZips = user.territory_zip_codes;
+            // 3. FILTERING — Polygon is the PRIMARY geographic constraint when drawn
+            const hasActivePolygon = drawnPolygon && drawnPolygon.length > 2;
+            if (!hasActivePolygon) {
+                let targetZips = [];
+                if (zipCodeFilter && zipCodeFilter.trim()) targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
+                else if (user?.territory_zip_codes?.length > 0) targetZips = user.territory_zip_codes;
+                if (targetZips.length > 0) {
+                    workingSet = workingSet.filter(p => targetZips.includes(String(p.zip_code || '').trim().slice(0, 5)));
+                    console.log(`[generateRoutes] After Zip Filter (${targetZips.join(', ')}): ${workingSet.length}`);
+                }
             }
 
-            if (targetZips.length > 0) {
-                workingSet = workingSet.filter(p => {
-                    const pZip = String(p.zip_code || '').trim().slice(0, 5);
-                    return targetZips.includes(pZip);
-                });
-                console.log(`[generateRoutes] After Zip Filter (${targetZips.join(', ')}): ${workingSet.length}`);
-            }
-
-            // Apply Polygon Filter (Drawn Area)
-            if (drawnPolygon && drawnPolygon.length > 2) {
+            // Apply Polygon Filter — NEVER auto-clear, polygon is the user's explicit boundary
+            if (hasActivePolygon) {
                 const beforePoly = workingSet.length;
                 workingSet = workingSet.filter(p => isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon));
                 console.log(`[generateRoutes] After Polygon Filter: ${workingSet.length} (was ${beforePoly})`);
-                if (workingSet.length === 0 && beforePoly > 0) {
-                    // Data exists but not in polygon — auto-clear stale polygon and use all data
-                    setDrawnPolygon(null);
-                    toast.info('Drawn area had no matches. Cleared area filter — using all data.', { id: 'build-routes', duration: 5000 });
-                    workingSet = Array.from(combinedMap.values());
-                } else if (workingSet.length === 0) {
-                    toast.error('No property data in this area. Pull data first.', { id: 'build-routes', duration: 6000 });
+                if (workingSet.length === 0) {
+                    toast.error('No property data inside your drawn area. Pull data for this area first.', { id: 'build-routes', duration: 6000 });
                     setRoutesGenerating(false); return;
                 }
             }
@@ -1374,11 +1365,8 @@ export default function Home() {
         const toastId = toast.loading('Reordering routes...', { id: 'reorder-routes' });
         try {
             let workingSet = [...frozenWorkingSet];
-            let targetZips = [];
-            if (zipCodeFilter?.trim()) targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
-            else if (!(drawnPolygon?.length > 2) && user?.territory_zip_codes?.length > 0) targetZips = user.territory_zip_codes;
-            if (targetZips.length > 0) workingSet = workingSet.filter(p => targetZips.includes(String(p.zip_code || '').trim().slice(0, 5)));
-            if (drawnPolygon?.length > 2) { const bP = workingSet.length; workingSet = workingSet.filter(p => isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon)); if (workingSet.length === 0 && bP > 0) { setDrawnPolygon(null); toast.info('Drawn area had no matches. Cleared filter — using all data.', { id: 'reorder-routes', duration: 5000 }); workingSet = [...frozenWorkingSet]; } }
+            if (drawnPolygon?.length > 2) { workingSet = workingSet.filter(p => isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon)); if (workingSet.length === 0) { toast.error('No data in drawn area.', { id: 'reorder-routes' }); setRoutesGenerating(false); return; } }
+            else { let tz = []; if (zipCodeFilter?.trim()) tz = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean); else if (user?.territory_zip_codes?.length > 0) tz = user.territory_zip_codes; if (tz.length > 0) workingSet = workingSet.filter(p => tz.includes(String(p.zip_code || '').trim().slice(0, 5))); }
             if (soldDateFilter !== null && soldDateFilter !== 'all') {
                 const cutoff = soldDateFilter === 0.25 || soldDateFilter === '0.25' ? subDays(new Date(), 7) : subMonths(new Date(), Number(soldDateFilter)); cutoff.setHours(0, 0, 0, 0);
                 workingSet = workingSet.filter(p => { if (p.original_status === 'PENDING' || (p.original_status === 'RECENT_OFF_MARKET' && p.sale_confidence !== 'low')) return true; const hasI = ['CALLBACK','NO_ANSWER','QUALIFIED'].includes(p.effective_status); if (!p.sold_date) return hasI; try { const d = new Date(p.sold_date); return isNaN(d.getTime()) ? hasI : d >= cutoff; } catch { return hasI; } });
