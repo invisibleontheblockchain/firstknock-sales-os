@@ -289,10 +289,10 @@ Deno.serve(async (req) => {
         } catch (e) { console.warn('Failed to update pull count:', e.message); }
 
         setTimeout(() => {
-            base44.functions.invoke('processFetchChunk', {}).catch(e => {
-                console.warn('[fetchArea-v8] Background chunk invoke failed:', e.message);
+            base44.functions.invoke('processFetchChunk', { expected_chunk: 0 }).catch(e => {
+                console.warn('[fetchArea-v9] Background chunk invoke failed:', e.message);
             });
-        }, 0);
+        }, 500);
 
         return Response.json({
             status: 'started',
