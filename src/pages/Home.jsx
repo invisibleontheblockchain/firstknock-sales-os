@@ -1840,17 +1840,10 @@ export default function Home() {
                 onPullComplete={(pullFetchMonths) => {
                     queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
                     queryClient.invalidateQueries({ queryKey: ['user'] });
-                    localStorage.setItem('fk_autobuild_next_open', 'true');
-                    setMode('generate');
-                    setShowCompare(true);
-                    // Track pull mode and set sold date filter to match the data window
-                    if (pullFetchMonths === 1) {
-                        setLastPullMode('300mi');
-                        setSoldDateFilter(1);
-                    } else {
-                        setLastPullMode('40mi');
-                        setSoldDateFilter(pullFetchMonths || 12);
-                    }
+                    setFrozenWorkingSet(null); setRoutes([]); // Clear stale frozen data
+                    setMode('generate'); setShowCompare(true);
+                    if (pullFetchMonths === 1) { setLastPullMode('300mi'); setSoldDateFilter(1); }
+                    else { setLastPullMode('40mi'); setSoldDateFilter(pullFetchMonths || 12); }
                 }}
             />
 
