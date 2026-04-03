@@ -169,7 +169,7 @@ export default function RouteBuilderSettings({
                                 </>
                             ) : (
                                 <div className="flex gap-1.5">
-                                    {[{ label: '1 Mo', val: 1 }, { label: '3 Mo', val: 3 }].map(opt => (
+                                    {[{ label: '1', val: 1 }, { label: '3', val: 3 }, { label: '6', val: 6 }, { label: '9', val: 9 }, { label: '12', val: 12 }].map(opt => (
                                         <button
                                             key={opt.val}
                                             onClick={() => setSoldDateFilter(opt.val)}
@@ -179,7 +179,7 @@ export default function RouteBuilderSettings({
                                                     : 'bg-[#1A1A1A] text-gray-500 border border-gray-800 active:bg-[#252525]'
                                             }`}
                                         >
-                                            {opt.label}
+                                            {opt.label}mo
                                         </button>
                                     ))}
                                 </div>
