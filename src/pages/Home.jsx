@@ -1378,16 +1378,10 @@ export default function Home() {
             if (zipCodeFilter?.trim()) targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
             else if (!(drawnPolygon?.length > 2) && user?.territory_zip_codes?.length > 0) targetZips = user.territory_zip_codes;
             if (targetZips.length > 0) workingSet = workingSet.filter(p => targetZips.includes(String(p.zip_code || '').trim().slice(0, 5)));
-            if (drawnPolygon?.length > 2) workingSet = workingSet.filter(p => isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon));
+            if (drawnPolygon?.length > 2) { const bP = workingSet.length; workingSet = workingSet.filter(p => isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon)); if (workingSet.length === 0 && bP > 0) { setDrawnPolygon(null); toast.info('Drawn area had no matches. Cleared filter — using all data.', { id: 'reorder-routes', duration: 5000 }); workingSet = [...frozenWorkingSet]; } }
             if (soldDateFilter !== null && soldDateFilter !== 'all') {
-                const cutoff = soldDateFilter === 0.25 || soldDateFilter === '0.25' ? subDays(new Date(), 7) : subMonths(new Date(), Number(soldDateFilter));
-                cutoff.setHours(0, 0, 0, 0);
-                workingSet = workingSet.filter(p => {
-                    if (p.original_status === 'PENDING' || (p.original_status === 'RECENT_OFF_MARKET' && p.sale_confidence !== 'low')) return true;
-                    const hasInteraction = ['CALLBACK', 'NO_ANSWER', 'QUALIFIED'].includes(p.effective_status);
-                    if (!p.sold_date) return hasInteraction;
-                    try { const d = new Date(p.sold_date); return isNaN(d.getTime()) ? hasInteraction : d >= cutoff; } catch { return hasInteraction; }
-                });
+                const cutoff = soldDateFilter === 0.25 || soldDateFilter === '0.25' ? subDays(new Date(), 7) : subMonths(new Date(), Number(soldDateFilter)); cutoff.setHours(0, 0, 0, 0);
+                workingSet = workingSet.filter(p => { if (p.original_status === 'PENDING' || (p.original_status === 'RECENT_OFF_MARKET' && p.sale_confidence !== 'low')) return true; const hasI = ['CALLBACK','NO_ANSWER','QUALIFIED'].includes(p.effective_status); if (!p.sold_date) return hasI; try { const d = new Date(p.sold_date); return isNaN(d.getTime()) ? hasI : d >= cutoff; } catch { return hasI; } });
             }
             if (routeConfig.propertyTypes.length > 0) workingSet = workingSet.filter(p => !p.property_type || routeConfig.propertyTypes.some(t => p.property_type.toLowerCase().includes(t.toLowerCase())));
             if (routeConfig.excludeCommercial) { const kw = ['commercial','industrial','retail','office','warehouse','business','shopping']; workingSet = workingSet.filter(p => !p.property_type || !kw.some(k => p.property_type.toLowerCase().includes(k))); }
