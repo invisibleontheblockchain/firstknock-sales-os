@@ -1115,17 +1115,17 @@ export default function Home() {
 
             // Apply Polygon Filter (Drawn Area)
             if (drawnPolygon && drawnPolygon.length > 2) {
+                const beforePoly = workingSet.length;
                 workingSet = workingSet.filter(p => isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon));
-                console.log(`[generateRoutes] After Polygon Filter: ${workingSet.length}`);
-
-                // If drawn area has 0 properties, user hasn't fetched data yet — guide them
-                if (workingSet.length === 0) {
-                    toast.error(
-                        "No property data in this area yet! Close Route Builder, then use the \"Pull 40mi²\" or \"Pull 300mi²\" button in the territory bar to fetch data first.",
-                        { id: 'build-routes', duration: 8000 }
-                    );
-                    setRoutesGenerating(false);
-                    return;
+                console.log(`[generateRoutes] After Polygon Filter: ${workingSet.length} (was ${beforePoly})`);
+                if (workingSet.length === 0 && beforePoly > 0) {
+                    // Data exists but not in polygon — auto-clear stale polygon and use all data
+                    setDrawnPolygon(null);
+                    toast.info('Drawn area had no matches. Cleared area filter — using all data.', { id: 'build-routes', duration: 5000 });
+                    workingSet = Array.from(combinedMap.values());
+                } else if (workingSet.length === 0) {
+                    toast.error('No property data in this area. Pull data first.', { id: 'build-routes', duration: 6000 });
+                    setRoutesGenerating(false); return;
                 }
             }
 
@@ -1836,13 +1836,13 @@ export default function Home() {
                 setDrawSizeMiles={setDrawSizeMiles}
                 user={user}
                 setZipCodeFilter={setZipCodeFilter}
-                onPullComplete={(pullFetchMonths) => {
-                    queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
-                    queryClient.invalidateQueries({ queryKey: ['user'] });
-                    setFrozenWorkingSet(null); setRoutes([]); // Clear stale frozen data
+                onPullComplete={async (pullFetchMonths) => {
+                    setFrozenWorkingSet(null); setRoutes([]);
+                    await queryClient.refetchQueries({ queryKey: ['masterProperties'] });
+                    await queryClient.refetchQueries({ queryKey: ['user'] });
                     setMode('generate'); setShowCompare(true);
-                    if (pullFetchMonths === 1) { setLastPullMode('300mi'); setSoldDateFilter(1); }
-                    else { setLastPullMode('40mi'); setSoldDateFilter(pullFetchMonths || 12); }
+                    if (pullFetchMonths === 1) { setLastPullMode('300mi'); setSoldDateFilterRaw(1); }
+                    else { setLastPullMode('40mi'); setSoldDateFilterRaw(pullFetchMonths || 12); }
                 }}
             />
 
