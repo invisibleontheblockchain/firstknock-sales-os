@@ -1843,13 +1843,13 @@ export default function Home() {
                     localStorage.setItem('fk_autobuild_next_open', 'true');
                     setMode('generate');
                     setShowCompare(true);
-                    // Track pull mode and lock sold date filter accordingly
+                    // Track pull mode and set sold date filter to match the data window
                     if (pullFetchMonths === 1) {
                         setLastPullMode('300mi');
                         setSoldDateFilter(1);
                     } else {
                         setLastPullMode('40mi');
-                        setSoldDateFilter(12);
+                        setSoldDateFilter(pullFetchMonths || 12);
                     }
                 }}
             />

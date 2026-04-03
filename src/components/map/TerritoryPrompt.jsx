@@ -398,12 +398,12 @@ export default function TerritoryPrompt({
                                 <X className="w-3 h-3" />
                             </button>
                         </div>
-                        {/* Controls */}
+                        {/* Shape + Size Row */}
                         <div className="flex items-center gap-2">
                             <select
                                 value={drawShape || 'circle'}
                                 onChange={(e) => setDrawShape(e.target.value)}
-                                className="flex-1 bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
+                                className="bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
                             >
                                 <option value="circle">Circle</option>
                                 <option value="square">Square</option>
@@ -413,20 +413,42 @@ export default function TerritoryPrompt({
                                 onChange={(e) => {
                                     const newSize = Number(e.target.value);
                                     if (newSize === 300 && !isPaid) {
-                                        toast.error('300 sq mi requires a Pro subscription. Redirecting to plans...', { duration: 3000 });
+                                        toast.error('300 sq mi requires a Pro subscription.', { duration: 3000 });
                                         setTimeout(() => navigate('/Billing'), 1500);
                                         return;
                                     }
                                     setDrawSizeMiles(newSize);
-                                    setFetchMonths(newSize === 300 ? 1 : (user?.pull_months_back || 12));
+                                    if (newSize === 300) setFetchMonths(1);
                                 }}
                                 className="flex-1 bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
                             >
-                                <option value={40}>40 sq mi · {user?.pull_months_back || 12} Mo</option>
-                                <option value={300}>300 sq mi · 1 Mo {isPaid ? '' : '🔒 PRO'}</option>
+                                <option value={40}>40 sq mi</option>
+                                <option value={300}>300 sq mi {isPaid ? '' : '🔒 PRO'}</option>
                                 {!hasPulledData && <option value={5}>Test · 5 sq mi</option>}
                             </select>
                         </div>
+                        {/* Months Selector */}
+                        {drawSizeMiles !== 300 && (
+                            <div className="flex items-center gap-1">
+                                <span className="text-[9px] text-gray-500 font-bold mr-1">DATA:</span>
+                                {[1, 3, 6, 9, 12].map(m => (
+                                    <button
+                                        key={m}
+                                        onClick={() => setFetchMonths(m)}
+                                        className={`flex-1 text-[10px] font-bold py-1 rounded-md transition-all ${
+                                            fetchMonths === m
+                                                ? 'bg-yellow-500 text-black shadow-[0_0_8px_rgba(255,215,0,0.4)]'
+                                                : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                                        }`}
+                                    >
+                                        {m}mo
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                        {drawSizeMiles === 300 && (
+                            <div className="text-[9px] text-cyan-400 text-center font-semibold">300mi² pulls are locked to 1 month of data</div>
+                        )}
                         <p className="text-[10px] text-yellow-400/70 text-center">Tap the map to place your territory</p>
                     </div>
                 </div>
@@ -502,9 +524,9 @@ export default function TerritoryPrompt({
                                 <Button
                                     disabled={pulling}
                                     onClick={handleFetchData}
-                                    className={`text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide ${drawSizeMiles === 300 || fetchMonths === 1 ? 'bg-cyan-600 hover:bg-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]'}`}
+                                    className={`text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide ${drawSizeMiles === 300 ? 'bg-cyan-600 hover:bg-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]'}`}
                                 >
-                                    {drawSizeMiles === 300 ? 'Pull 300mi² (1 Mo Data)' : drawSizeMiles === 40 ? 'Pull 40mi² (3 Mo Data)' : `Pull ${drawSizeMiles}mi²`}
+                                    {drawSizeMiles === 300 ? 'Pull 300mi² (1 Mo)' : `Pull ${drawSizeMiles}mi² (${fetchMonths} Mo)`}
                                 </Button>
                             )}
                         </div>

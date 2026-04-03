@@ -94,20 +94,27 @@ export default function MarketOnboarding({ user, onComplete }) {
                             </button>
                         </div>
 
-                        {/* Months back slider */}
+                        {/* Months back picker */}
                         <div className="bg-black/40 border border-white/5 rounded-xl p-4 space-y-3">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-bold text-gray-300">Sold in the last</span>
                                 <span className="text-sm font-extrabold text-yellow-500">{monthsBack} month{monthsBack !== 1 ? 's' : ''}</span>
                             </div>
-                            <Slider
-                                value={[monthsBack]}
-                                onValueChange={([v]) => setMonthsBack(v)}
-                                min={1}
-                                max={12}
-                                step={1}
-                                className="w-full"
-                            />
+                            <div className="flex gap-2">
+                                {[1, 3, 6, 9, 12].map(m => (
+                                    <button
+                                        key={m}
+                                        onClick={() => setMonthsBack(m)}
+                                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                                            monthsBack === m
+                                                ? 'bg-yellow-500 text-black shadow-[0_0_12px_rgba(255,215,0,0.4)]'
+                                                : 'bg-white/5 text-gray-400 hover:bg-white/10 border border-white/5'
+                                        }`}
+                                    >
+                                        {m}mo
+                                    </button>
+                                ))}
+                            </div>
                             <p className="text-[10px] text-gray-500 text-center">
                                 {sizeLabel}
                             </p>
