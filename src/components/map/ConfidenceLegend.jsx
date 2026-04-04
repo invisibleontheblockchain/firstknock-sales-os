@@ -5,7 +5,7 @@ import { createPageUrl } from '@/utils';
 
 // Fix #3: Surface low-confidence lead count to users
 // Fix #5: Confidence tier legend for the map
-const CONFIDENCE_TIERS = [
+export const CONFIDENCE_TIERS = [
     { key: 'high', label: 'Deed Confirmed', color: '#22c55e', description: 'County recorded sale' },
     { key: 'verified', label: 'Verified', color: '#3b82f6', description: 'Third-party confirmed' },
     { key: 'medium', label: 'Likely Sold', color: '#f59e0b', description: 'Strong heuristic signals' },

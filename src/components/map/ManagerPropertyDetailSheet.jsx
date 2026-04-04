@@ -8,6 +8,7 @@ import { DarkRoomClient } from '@/components/logic/neonClient';
 import PropertyHistory from '@/components/rep/PropertyHistory';
 import QuickMarkButtons from '@/components/rep/QuickMarkButtons';
 import { openInMaps } from '@/components/logic/navigation';
+import ConfidenceBadge from '@/components/map/ConfidenceBadge';
 
 export default function ManagerPropertyDetailSheet({
     selectedProperty,
@@ -64,6 +65,14 @@ export default function ManagerPropertyDetailSheet({
                                 </div>
                             )}
                         </div>
+
+                        {/* Confidence Tier */}
+                        {selectedProperty.sale_confidence && (
+                            <div className="flex items-center justify-between p-3 bg-black/60 rounded-xl border border-gray-800">
+                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Data Confidence</span>
+                                <ConfidenceBadge confidence={selectedProperty.sale_confidence} />
+                            </div>
+                        )}
 
                         {/* Intel Grid */}
                         <div>

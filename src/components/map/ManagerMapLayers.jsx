@@ -262,6 +262,22 @@ function ViewportCulledPins({
             });
             group.addLayer(hitbox);
 
+            // Confidence ring: subtle outer glow for verified/high leads in any color scheme
+            const conf = p.sale_confidence;
+            const showConfRing = !useConfidenceColors && !isRecentlySold && !isUnvisited && conf && (conf === 'high' || conf === 'verified');
+            if (showConfRing) {
+                const ringColor = CONFIDENCE_COLORS[conf];
+                const ring = L.circleMarker([p.lat, p.lng], {
+                    radius: pinSize + 3,
+                    fillColor: 'transparent',
+                    fillOpacity: 0,
+                    color: ringColor,
+                    weight: 1.5,
+                    opacity: 0.6,
+                });
+                group.addLayer(ring);
+            }
+
             // Visible pin
             const circle = L.circleMarker([p.lat, p.lng], {
                 radius: isRecentlySold ? pinSize + 4 : (isUnvisited ? Math.max(2, pinSize - 2) : pinSize),
