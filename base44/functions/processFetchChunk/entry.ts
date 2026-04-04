@@ -1,6 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
-// v11 — Fixed: Mutex via chunk_number, no duplicate self-chains, removed PropertyValidationCache dependency
+// v12 — Hybrid tiered BatchData: only DOM < 30 days gets medium confidence (BatchData-eligible)
 // Architecture: Single sub-circle (40 sq mi ≈ 3.57mi radius), 2-phase (deeds + listings)
 // Self-chain uses entity automation on FetchJob update instead of fire-and-forget setTimeout
 
@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
         // another instance already processed this chunk. Bail out silently.
         const currentChunkNumber = job.chunk_number || 0;
         if (expectedChunk !== null && currentChunkNumber !== expectedChunk) {
-            console.log(`[chunk-v11] MUTEX: expected_chunk=${expectedChunk} but job is at chunk=${currentChunkNumber}. Duplicate invocation — skipping.`);
+            console.log(`[chunk-v12] MUTEX: expected_chunk=${expectedChunk} but job is at chunk=${currentChunkNumber}. Duplicate invocation — skipping.`);
             return Response.json({ skipped: true, reason: 'duplicate_invocation' });
         }
 
@@ -198,7 +198,7 @@ Deno.serve(async (req) => {
         let currentSubCircle = job.current_sub_circle || 0;
         const totalSubCircles = job.total_sub_circles || subCircles.length;
 
-        console.log(`[chunk-v11] Job ${jobId} | phase=${currentPhase} | sub-circle=${currentSubCircle + 1}/${totalSubCircles} | offset=${job.current_offset} | chunk#=${currentChunkNumber}`);
+        console.log(`[chunk-v12] Job ${jobId} | phase=${currentPhase} | sub-circle=${currentSubCircle + 1}/${totalSubCircles} | offset=${job.current_offset} | chunk#=${currentChunkNumber}`);
 
         const { polygon } = job;
         const activeCircle = subCircles[currentSubCircle] || subCircles[0];
@@ -323,7 +323,7 @@ Deno.serve(async (req) => {
             }
 
             totalFetched += allRaw.length;
-            console.log(`[chunk-v11] Phase 1 fetched ${allRaw.length} raw records (offset=${currentOffset}, totalExpected=${totalExpected})`);
+            console.log(`[chunk-v12] Phase 1 fetched ${allRaw.length} raw records (offset=${currentOffset}, totalExpected=${totalExpected})`);
             
             const soldCutoff = new Date();
             soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
@@ -362,7 +362,7 @@ Deno.serve(async (req) => {
                 });
             }
 
-            console.log(`[chunk-v11] Phase 1 mapped ${mapped.length} valid properties from ${allRaw.length} raw`);
+            console.log(`[chunk-v12] Phase 1 mapped ${mapped.length} valid properties from ${allRaw.length} raw`);
 
             const dbResult = await writeToDb(mapped);
             totalInserted += dbResult.chunkInserted;
@@ -377,16 +377,16 @@ Deno.serve(async (req) => {
                     nextSubCircle++;
                     nextOffset = 0;
                     totalExpected = 0;
-                    console.log(`[chunk-v11] Phase 1 sub-circle ${currentSubCircle + 1} done, advancing to sub-circle ${nextSubCircle + 1}`);
+                    console.log(`[chunk-v12] Phase 1 sub-circle ${currentSubCircle + 1} done, advancing to sub-circle ${nextSubCircle + 1}`);
                 } else {
                     nextPhase = 'listings_records';
                     nextSubCircle = 0;
                     nextOffset = 0;
                     totalExpected = 0;
-                    console.log(`[chunk-v11] Phase 1 COMPLETE for all sub-circles. Advancing to Phase 2 (listings).`);
+                    console.log(`[chunk-v12] Phase 1 COMPLETE for all sub-circles. Advancing to Phase 2 (listings).`);
                 }
             } else {
-                console.log(`[chunk-v11] Phase 1 sub-circle ${currentSubCircle + 1} needs more pages (nextOffset=${nextOffset})`);
+            console.log(`[chunk-v12] Phase 1 sub-circle ${currentSubCircle + 1} needs more pages (nextOffset=${nextOffset})`);
             }
 
             const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
@@ -441,14 +441,14 @@ Deno.serve(async (req) => {
                 await sleep(300);
             }
 
-            console.log(`[chunk-v11] Phase 2 fetched ${allRaw.length} raw listings (offset=${currentOffset})`);
+            console.log(`[chunk-v12] Phase 2 fetched ${allRaw.length} raw listings (offset=${currentOffset})`);
 
             const soldCutoff = new Date();
             soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
 
             const mapped = [];
             const seenHashes = new Set();
-            let phase2Stats = { total: 0, countyLagRejected: 0, heuristicRejected: 0, heuristicLikelySold: 0, ambiguousKept: 0 };
+            let phase2Stats = { total: 0, countyLagRejected: 0, heuristicRejected: 0, heuristicLikelySold: 0, ambiguousKept: 0, batchdataEligible: 0, domGatedToLow: 0 };
 
             for (const p of allRaw) {
                 if (!p.latitude || !p.longitude || !filterPoint(p.latitude, p.longitude)) continue;
@@ -511,9 +511,13 @@ Deno.serve(async (req) => {
                 if (lastSeen && (removed.getTime() - lastSeen.getTime()) >= 7 * 86400000) hScore += 1;
                 if (p.history && typeof p.history === 'object' && Object.keys(p.history).length === 1) hScore += 1;
 
-                // Classification
+                // Classification — Hybrid Tiered Approach
+                // Only DOM < 30 days gets 'medium' confidence (BatchData-eligible).
+                // DOM 30-90 days: heuristic-only classification, always 'low' (no BatchData spend).
+                // This cuts BatchData volume ~70-80% while keeping all high-value early signals.
                 let mlsConfidence = 'low';
                 let origStatus = 'RECENT_OFF_MARKET';
+                const isFreshListing = dom < 30;
 
                 if (hScore <= -4) {
                     phase2Stats.heuristicRejected++;
@@ -523,11 +527,13 @@ Deno.serve(async (req) => {
                     continue;
                 } else if (hScore >= 3) {
                     origStatus = 'HEURISTIC_SOLD';
-                    mlsConfidence = 'medium';
+                    mlsConfidence = isFreshListing ? 'medium' : 'low';
                     phase2Stats.heuristicLikelySold++;
+                    if (isFreshListing) phase2Stats.batchdataEligible++;
+                    else phase2Stats.domGatedToLow++;
                 } else if (hScore >= 1) {
                     origStatus = 'HEURISTIC_SOLD';
-                    mlsConfidence = 'low';
+                    mlsConfidence = 'low'; // Never send score 1-2 to BatchData regardless of DOM
                     phase2Stats.heuristicLikelySold++;
                 } else {
                     // Ambiguous (score -1 to 0) — keep as low confidence, skip BatchData
@@ -545,7 +551,7 @@ Deno.serve(async (req) => {
                 });
             }
 
-            console.log(`[chunk-v11] Phase 2 stats: ${JSON.stringify(phase2Stats)}`);
+            console.log(`[chunk-v12] Phase 2 stats: ${JSON.stringify(phase2Stats)}`);
 
             // ── Cross-reference with Phase 1 deed records (FREE verification) ──
             if (mapped.length > 0) {
@@ -575,7 +581,7 @@ Deno.serve(async (req) => {
                             crossRefCount++;
                         }
                     }
-                    if (crossRefCount > 0) console.log(`[chunk-v11] Cross-ref verified ${crossRefCount} listings against deed records`);
+                    if (crossRefCount > 0) console.log(`[chunk-v12] Cross-ref verified ${crossRefCount} listings against deed records`);
                 } catch (err) {
                     logError(`Cross-ref failed (non-fatal): ${err.message}`);
                 }
@@ -622,7 +628,7 @@ Deno.serve(async (req) => {
                     }
                 } catch (_e) { /* non-fatal */ }
                 
-                console.log(`[chunk-v11] JOB COMPLETE | apiCalls=${totalApiCalls} | inserted=${totalInserted} | existed=${totalExisted} | updated=${totalUpdated}`);
+                console.log(`[chunk-v12] JOB COMPLETE | apiCalls=${totalApiCalls} | inserted=${totalInserted} | existed=${totalExisted} | updated=${totalUpdated}`);
                 return Response.json({ status: 'completed', job_id: jobId });
             } else {
                 const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
@@ -648,7 +654,7 @@ Deno.serve(async (req) => {
         return Response.json({ error: `Unknown phase: ${currentPhase}` });
 
     } catch (error) {
-        console.error('[chunk-v11] FATAL:', error.message, error.stack);
+        console.error('[chunk-v12] FATAL:', error.message, error.stack);
         return Response.json({ error: error.message }, { status: 500 });
     }
 });
