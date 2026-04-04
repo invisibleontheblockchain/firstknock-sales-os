@@ -102,7 +102,7 @@ export default function MapSettingsPanel({
 
   const handleReset = () => {
     setLocal({
-      mapSettings: { pinShape:'circle', colorScheme:'default', lineStyle:'dashed', lineWidth:2, lineOpacity:0.5, pinOpacity:0.85, pinBorderWidth:1, pinBorderColor:'#000', showLabels:false, labelType:'number', glowEffect:false, fillStyle:'solid' },
+      mapSettings: { pinShape:'circle', colorScheme:'confidence', lineStyle:'dashed', lineWidth:2, lineOpacity:0.5, pinOpacity:0.85, pinBorderWidth:1, pinBorderColor:'#000', showLabels:false, labelType:'number', glowEffect:false, fillStyle:'solid' },
       pinSize:5, showRouteLines:false, showRouteDetails:true, showAllProperties:false,
       mapTheme:'dark', navigationApp:'apple', quickFilter:'all',
       soldDateFilter:null, highlightRecentlySold:false, showZipOverlay:false,

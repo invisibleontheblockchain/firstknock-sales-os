@@ -218,7 +218,7 @@ export default function Home() {
         const saved = localStorage.getItem('fk_mapSettings_v3');
         return saved ? JSON.parse(saved) : {
             pinShape: 'circle',
-            colorScheme: 'default',
+            colorScheme: 'confidence',
             lineStyle: 'solid',
             lineWidth: 3,
             lineOpacity: 0.8,
