@@ -655,6 +655,27 @@ Deno.serve(async (req) => {
 
     } catch (error) {
         console.error('[chunk-v12] FATAL:', error.message, error.stack);
+
+        // Attempt to mark the job as failed so it doesn't stay stuck in 'running' forever
+        try {
+            const base44Recovery = createClientFromRequest(req);
+            const stuckJobs = await base44Recovery.asServiceRole.entities.FetchJob.filter({ status: 'running' }, '-updated_date', 1);
+            const stuckArr = Array.isArray(stuckJobs) ? stuckJobs : (stuckJobs?.items || []);
+            if (stuckArr.length > 0) {
+                const job = stuckArr[0];
+                const existingLog = job.error_log || [];
+                existingLog.push(`[${new Date().toISOString()}] FATAL: ${error.message}`);
+                await base44Recovery.asServiceRole.entities.FetchJob.update(job.id, {
+                    status: 'failed',
+                    error_message: `Processing crashed: ${error.message}`,
+                    error_log: existingLog
+                });
+                console.log(`[chunk-v12] Marked job ${job.id} as failed after fatal error`);
+            }
+        } catch (recoveryErr) {
+            console.error('[chunk-v12] Could not mark job as failed during recovery:', recoveryErr.message);
+        }
+
         return Response.json({ error: error.message }, { status: 500 });
     }
 });
