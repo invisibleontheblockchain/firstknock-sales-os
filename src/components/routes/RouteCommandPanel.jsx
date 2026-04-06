@@ -1,7 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { HelpCircle } from 'lucide-react';
+import ActiveRoutesTab from './ActiveRoutesTab';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+// cache-bust v2
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
@@ -44,6 +46,13 @@ export default function RouteCommandPanel({
     routeConfig
 }) {
     const [activeTab, setActiveTab] = useState(generatedRoutes.length > 0 ? 'new' : 'active');
+
+    // Build a global route number map: route.id → #1, #2, #3...
+    const routeNumberMap = useMemo(() => {
+        const map = new Map();
+        savedRoutes.forEach((r, i) => map.set(r.id, i + 1));
+        return map;
+    }, [savedRoutes]);
 
     // Group saved routes by status
     const routesByStatus = useMemo(() => {
@@ -103,8 +112,9 @@ export default function RouteCommandPanel({
                 {/* Tab Navigation */}
                 <div className="flex border-b px-2 sm:px-4 shrink-0 overflow-x-auto no-scrollbar" style={{ borderColor: BRAND.charcoal }}>
                     <button
-                        onClick={() => setActiveTab('new')}
-                        className={`flex-1 min-w-[100px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeTab === 'new'
+                        onClick={() => !activeRouteId && setActiveTab('new')}
+                        disabled={!!activeRouteId}
+                        className={`flex-1 min-w-[100px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeRouteId ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'new'
                             ? 'border-yellow-500 text-yellow-500'
                             : 'border-transparent text-gray-500 hover:text-white'
                             }`}
@@ -116,8 +126,9 @@ export default function RouteCommandPanel({
                         )}
                     </button>
                     <button
-                        onClick={() => setActiveTab('active')}
-                        className={`flex-1 min-w-[100px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeTab === 'active'
+                        onClick={() => !activeRouteId && setActiveTab('active')}
+                        disabled={!!activeRouteId}
+                        className={`flex-1 min-w-[100px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeRouteId ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'active'
                             ? 'border-blue-500 text-blue-500'
                             : 'border-transparent text-gray-500 hover:text-white'
                             }`}
@@ -129,8 +140,9 @@ export default function RouteCommandPanel({
                         </Badge>
                     </button>
                     <button
-                        onClick={() => setActiveTab('team')}
-                        className={`flex-1 min-w-[100px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeTab === 'team'
+                        onClick={() => !activeRouteId && setActiveTab('team')}
+                        disabled={!!activeRouteId}
+                        className={`flex-1 min-w-[100px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeRouteId ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'team'
                             ? 'border-green-500 text-green-500'
                             : 'border-transparent text-gray-500 hover:text-white'
                             }`}
@@ -284,100 +296,19 @@ export default function RouteCommandPanel({
 
                         {/* ACTIVE ROUTES TAB */}
                         {activeTab === 'active' && (
-                            <>
-                                <div className="flex justify-between items-center mb-2 px-1">
-                                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">All Campaigns</span>
-                                    {savedRoutes.length > 0 && (
-                                        <Button
-                                            onClick={() => {
-                                                if (confirm("Are you sure you want to delete ALL saved routes? This action cannot be undone.")) {
-                                                    onDeleteAllRoutes && onDeleteAllRoutes();
-                                                }
-                                            }}
-                                            variant="ghost"
-                                            size="sm"
-                                            className="h-6 text-[10px] text-red-500 hover:text-red-400 hover:bg-red-900/20 px-2"
-                                        >
-                                            <X className="w-3 h-3 mr-1" /> DELETE ALL
-                                        </Button>
-                                    )}
-                                </div>
-
-                                {/* In Progress */}
-                                {routesByStatus.IN_PROGRESS.length > 0 && (
-                                    <RouteSection
-                                        title="In Progress"
-                                        icon={<Clock className="w-4 h-4 text-blue-500" />}
-                                        routes={routesByStatus.IN_PROGRESS}
-                                        repColors={repColors}
-                                        onSelectRoute={onSelectRoute}
-                                        activeRouteId={activeRouteId}
-                                        onDeleteRoute={onDeleteRoute}
-                                        logs={logs}
-                                        onReoptimize={onReoptimizeRoute}
-                                        routeConfig={routeConfig}
-                                    />
-                                )}
-
-                                {/* Active/Queued */}
-                                {routesByStatus.ACTIVE.length > 0 && (
-                                    <RouteSection
-                                        title="Queued"
-                                        icon={<Navigation className="w-4 h-4 text-yellow-500" />}
-                                        routes={routesByStatus.ACTIVE}
-                                        repColors={repColors}
-                                        onSelectRoute={onSelectRoute}
-                                        activeRouteId={activeRouteId}
-                                        onDeleteRoute={onDeleteRoute}
-                                        logs={logs}
-                                        onReoptimize={onReoptimizeRoute}
-                                        routeConfig={routeConfig}
-                                    />
-                                )}
-
-                                {/* Pending Assignment */}
-                                {routesByStatus.PENDING.length > 0 && (
-                                    <RouteSection
-                                        title="Pending Assignment"
-                                        icon={<AlertCircle className="w-4 h-4 text-orange-500" />}
-                                        routes={routesByStatus.PENDING}
-                                        repColors={repColors}
-                                        onSelectRoute={onSelectRoute}
-                                        activeRouteId={activeRouteId}
-                                        onDeleteRoute={onDeleteRoute}
-                                        logs={logs}
-                                        onReoptimize={onReoptimizeRoute}
-                                        routeConfig={routeConfig}
-                                    />
-                                )}
-
-                                {/* Completed */}
-                                {routesByStatus.COMPLETED.length > 0 && (
-                                    <RouteSection
-                                        title="Completed"
-                                        icon={<CheckCircle2 className="w-4 h-4 text-green-500" />}
-                                        routes={routesByStatus.COMPLETED}
-                                        repColors={repColors}
-                                        onSelectRoute={onSelectRoute}
-                                        activeRouteId={activeRouteId}
-                                        collapsed
-                                        onDeleteRoute={onDeleteRoute}
-                                        logs={logs}
-                                        onReoptimize={onReoptimizeRoute}
-                                        routeConfig={routeConfig}
-                                    />
-                                )}
-
-                                {savedRoutes.length === 0 && (
-                                    <div className="text-center py-12">
-                                        <div className="w-16 h-16 rounded-full bg-[#1A1A1A] flex items-center justify-center mx-auto mb-4">
-                                            <Navigation className="w-8 h-8 text-gray-600" />
-                                        </div>
-                                        <h3 className="text-lg font-bold text-gray-400 mb-2">No Active Routes</h3>
-                                        <p className="text-xs text-gray-600">Generate and save routes to see them here.</p>
-                                    </div>
-                                )}
-                            </>
+                            <ActiveRoutesTab
+                                savedRoutes={savedRoutes}
+                                routesByStatus={routesByStatus}
+                                repColors={repColors}
+                                onSelectRoute={onSelectRoute}
+                                activeRouteId={activeRouteId}
+                                onDeleteRoute={onDeleteRoute}
+                                onDeleteAllRoutes={onDeleteAllRoutes}
+                                onReoptimizeRoute={onReoptimizeRoute}
+                                routeConfig={routeConfig}
+                                logs={logs}
+                                onReplaceRoutes={onReplaceRoutes}
+                            />
                         )}
 
                         {/* BY REP TAB */}
@@ -400,19 +331,20 @@ export default function RouteCommandPanel({
                                                 </Badge>
                                             </div>
                                             {memberData.routes.map(route => (
-                                                <SavedRouteCard
-                                                    key={route.id}
-                                                    route={route}
-                                                    repColor={repColors[member.id]}
-                                                    isActive={activeRouteId === route.id}
-                                                    onSelect={() => onSelectRoute(route)}
-                                                    onDelete={() => onDeleteRoute && onDeleteRoute(route)}
-                                                    logs={logs}
-                                                    onReoptimize={onReoptimizeRoute}
-                                                    routeConfig={routeConfig}
-                                                />
-                                            ))}
-                                        </div>
+                                                                <SavedRouteCard
+                                                                     key={route.id}
+                                                                     route={route}
+                                                                     routeNumber={routeNumberMap.get(route.id)}
+                                                                     repColor={repColors[member.id]}
+                                                                     isActive={activeRouteId === route.id}
+                                                                     onSelect={() => onSelectRoute(route)}
+                                                                     onDelete={() => onDeleteRoute && onDeleteRoute(route)}
+                                                                     logs={logs}
+                                                                     onReoptimize={onReoptimizeRoute}
+                                                                     routeConfig={routeConfig}
+                                                                 />
+                                                            ))}
+                                                        </div>
                                     );
                                 })}
 
@@ -430,6 +362,7 @@ export default function RouteCommandPanel({
                                             <SavedRouteCard
                                                 key={route.id}
                                                 route={route}
+                                                routeNumber={routeNumberMap.get(route.id)}
                                                 repColor="#666"
                                                 isActive={activeRouteId === route.id}
                                                 onSelect={() => onSelectRoute(route)}
@@ -652,7 +585,7 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave,
     );
 }
 
-function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete, logs = [], onReoptimize, routeConfig }) {
+function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDelete, logs = [], onReoptimize, routeConfig }) {
     const [editing, setEditing] = useState(false);
     const [newName, setNewName] = useState(route.name);
     const queryClient = useQueryClient();
@@ -687,9 +620,11 @@ function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete, logs = 
 
     return (
         <div className="relative group">
-            <button
+            <div
                 onClick={onSelect}
-                className="w-full p-3 rounded-xl border transition-all text-left hover:border-gray-600"
+                role="button"
+                tabIndex={0}
+                className="w-full p-3 rounded-xl border transition-all text-left hover:border-gray-600 cursor-pointer"
                 style={{
                     background: isActive ? `${BRAND.gold}15` : '#151515',
                     borderColor: isActive ? BRAND.gold : '#222',
@@ -713,6 +648,11 @@ function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete, logs = 
                             </div>
                         ) : (
                             <div className="flex items-center gap-1.5">
+                                {routeNumber && (
+                                    <span className="shrink-0 w-6 h-6 rounded-md bg-white/10 border border-white/20 flex items-center justify-center text-[11px] font-bold text-yellow-400">
+                                        {routeNumber}
+                                    </span>
+                                )}
                                 <span className="font-bold text-sm text-white truncate">{route.name}</span>
                                 <button
                                     onClick={e => { e.stopPropagation(); setEditing(true); }}
@@ -754,7 +694,7 @@ function SavedRouteCard({ route, repColor, isActive, onSelect, onDelete, logs = 
                         <div className="h-full rounded-full transition-all" style={{ width: `${(knockStats.knocked / knockStats.total) * 100}%`, background: knockStats.knocked === knockStats.total ? '#22c55e' : '#FFD700' }} />
                     </div>
                 )}
-            </button>
+            </div>
             {onDelete && (
                 <button
                     onClick={(e) => { e.stopPropagation(); onDelete(); }}

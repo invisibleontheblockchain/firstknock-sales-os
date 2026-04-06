@@ -12,7 +12,6 @@ import AppointmentTimeline from '@/components/analytics/AppointmentTimeline';
 import RepAnalyticsHeader from '@/components/analytics/rep/RepAnalyticsHeader';
 import RepAnalyticsKpis from '@/components/analytics/rep/RepAnalyticsKpis';
 import RepAnalyticsPipeline from '@/components/analytics/rep/RepAnalyticsPipeline';
-import RepAnalyticsFocus from '@/components/analytics/rep/RepAnalyticsFocus';
 import RepAdvancedAnalytics from '@/components/analytics/rep/RepAdvancedAnalytics';
 import RevenueMetrics from '@/components/analytics/rep/RevenueMetrics';
 
@@ -231,27 +230,16 @@ export default function ListPage() {
                         )}
 
                         {activeTab === 'performance' && (
-                            <div className="p-3 md:p-6 space-y-3 md:space-y-5 max-w-7xl mx-auto pb-24">
+                            <div className="p-2.5 md:p-5 space-y-2 md:space-y-3 max-w-7xl mx-auto pb-24">
                                 <RepAnalyticsKpis metrics={analytics} dateDays={dateDays} />
-
                                 <RevenueMetrics logs={filteredLogs} dateDays={dateDays} />
-
-                                <div className="grid grid-cols-1 xl:grid-cols-[1.1fr,0.9fr] gap-3 md:gap-5">
-                                    <RepAnalyticsPipeline metrics={analytics} />
-                                    <RepAnalyticsFocus metrics={analytics} />
-                                </div>
-
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-5">
-                                    <TimeOfDayEffectiveness logs={filteredLogs} />
-                                    <StatusBreakdown properties={effectiveProperties} />
-                                </div>
-
-                                <AppointmentTimeline appointments={filteredAppointments} days={dateDays} />
+                                <RepAnalyticsPipeline metrics={analytics} />
+                                <StatusBreakdown properties={effectiveProperties} />
                             </div>
                         )}
 
                         {activeTab === 'advanced' && (
-                            <div className="p-3 md:p-6 max-w-7xl mx-auto pb-24">
+                            <div className="p-2.5 md:p-5 space-y-2 md:space-y-3 max-w-7xl mx-auto pb-24">
                                 <RepAdvancedAnalytics
                                     logs={logs}
                                     filteredLogs={filteredLogs}
@@ -259,6 +247,10 @@ export default function ListPage() {
                                     appointments={filteredAppointments}
                                     dateDays={dateDays}
                                 />
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 md:gap-3">
+                                    <TimeOfDayEffectiveness logs={filteredLogs} />
+                                    <AppointmentTimeline appointments={filteredAppointments} days={dateDays} />
+                                </div>
                             </div>
                         )}
 

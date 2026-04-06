@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Button } from "@/components/ui/button";
-import { Circle, Square, ArrowRight, Check, Lock, Map as MapIconLucide } from 'lucide-react';
+import { Circle, Square, ArrowRight, Check, Lock, Map as MapIconLucide, Satellite } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -10,7 +10,7 @@ import { Slider } from "@/components/ui/slider";
 export default function MarketOnboarding({ user, onComplete }) {
     const queryClient = useQueryClient();
     const [shape, setShape] = useState('square');
-    const [monthsBack, setMonthsBack] = useState(3);
+    const [monthsBack, setMonthsBack] = useState(12);
     const [isDrawingSession, setIsDrawingSession] = React.useState(false);
 
     React.useEffect(() => {
@@ -37,6 +37,11 @@ export default function MarketOnboarding({ user, onComplete }) {
         onComplete({ method: 'draw', shape });
     };
 
+    const sizeLabel = monthsBack <= 3 ? 'Fresh leads — most recent sales only' 
+        : monthsBack <= 6 ? 'Good balance of volume & recency' 
+        : monthsBack <= 9 ? 'High volume — covers seasonal cycles'
+        : 'Maximum coverage — full year of sales data';
+
     return (
         <div className="fixed inset-0 z-[6000] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
             <motion.div
@@ -47,15 +52,15 @@ export default function MarketOnboarding({ user, onComplete }) {
                 <div className="bg-[#111] border border-gray-800 rounded-3xl overflow-hidden shadow-2xl p-8">
                     <div className="text-center space-y-6">
                         <div className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto shadow-[0_0_40px_rgba(255,215,0,0.3)]" style={{ background: 'linear-gradient(135deg, #FFD93D, #FFA500)' }}>
-                            <MapIconLucide className="w-8 h-8 text-black" />
+                            <Satellite className="w-8 h-8 text-black" />
                         </div>
 
                         <div>
                             <h2 className="text-2xl font-extrabold text-white mb-2 tracking-tight">
-                                Draw Your Service Area
+                                Define Your Territory
                             </h2>
                             <p className="text-gray-400 text-sm leading-relaxed">
-                                Cover your <strong className="text-white">entire territory</strong> in one shape. We'll pull every recently sold home inside it — <strong className="text-white">2 free data pulls included</strong>.
+                                Draw your area on the <strong className="text-white">satellite map</strong>. We'll find every recently sold home inside it.
                             </p>
                         </div>
 
@@ -89,37 +94,48 @@ export default function MarketOnboarding({ user, onComplete }) {
                             </button>
                         </div>
 
-                        {/* Months back slider */}
+                        {/* Months back picker */}
                         <div className="bg-black/40 border border-white/5 rounded-xl p-4 space-y-3">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-bold text-gray-300">Sold in the last</span>
                                 <span className="text-sm font-extrabold text-yellow-500">{monthsBack} month{monthsBack !== 1 ? 's' : ''}</span>
                             </div>
-                            <Slider
-                                value={[monthsBack]}
-                                onValueChange={([v]) => setMonthsBack(v)}
-                                min={1}
-                                max={12}
-                                step={1}
-                                className="w-full"
-                            />
+                            <div className="flex gap-2">
+                                {[1, 3, 6, 9, 12].map(m => (
+                                    <button
+                                        key={m}
+                                        onClick={() => setMonthsBack(m)}
+                                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all ${
+                                            monthsBack === m
+                                                ? 'bg-yellow-500 text-black shadow-[0_0_12px_rgba(255,215,0,0.4)]'
+                                                : 'bg-white/5 text-gray-400 hover:bg-white/10 border border-white/5'
+                                        }`}
+                                    >
+                                        {m}mo
+                                    </button>
+                                ))}
+                            </div>
                             <p className="text-[10px] text-gray-500 text-center">
-                                More months = more leads, but older data
+                                {sizeLabel}
                             </p>
                         </div>
 
                         <div className="bg-black/40 border border-white/5 rounded-xl p-4 space-y-2 text-left">
                             <div className="flex items-center gap-2">
                                 <Check className="w-4 h-4 text-yellow-500 shrink-0" />
-                                <span className="text-xs text-gray-300">40 sq miles max — covers most territories</span>
+                                <span className="text-xs text-gray-300">Up to 40 sq miles — covers most territories</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Check className="w-4 h-4 text-yellow-500 shrink-0" />
-                                <span className="text-xs text-gray-300">Two free pulls — filter by price, type, date after</span>
+                                <span className="text-xs text-gray-300">Satellite view — see real rooftops & streets</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Check className="w-4 h-4 text-yellow-500 shrink-0" />
+                                <span className="text-xs text-gray-300">Filter by price, property type & sold date after</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 <Lock className="w-4 h-4 text-gray-600 shrink-0" />
-                                <span className="text-xs text-gray-500">Need more pulls? Upgrade for 3 additional</span>
+                                <span className="text-xs text-gray-500">Need 300mi² coverage? Upgrade for PRO pulls</span>
                             </div>
                         </div>
 
@@ -127,10 +143,10 @@ export default function MarketOnboarding({ user, onComplete }) {
                             onClick={handleGo}
                             className="bg-yellow-500 hover:bg-yellow-400 text-black font-bold h-14 text-base w-full rounded-xl shadow-[0_0_20px_rgba(255,215,0,0.4)] border-none"
                         >
-                            Open Map & Draw <ArrowRight className="w-5 h-5 ml-2" />
+                            Open Satellite Map <ArrowRight className="w-5 h-5 ml-2" />
                         </Button>
 
-                        <p className="text-[10px] text-gray-600">Click anywhere on the map to place your area</p>
+                        <p className="text-[10px] text-gray-600">Tap the map to place your territory shape</p>
                     </div>
                 </div>
             </motion.div>

@@ -10,6 +10,7 @@ const REP_COLOR_OPTIONS = ['#FFD700','#ef4444','#22c55e','#3b82f6','#ec4899','#f
 
 const COLOR_SCHEMES = [
   { id: 'default', label: 'Default', colors: { ELIGIBLE:'#404040', SOLD:'#00F5A0', HARD_NO:'#FF6B6B', CALLBACK:'#FFD93D', NO_ANSWER:'#404040' } },
+  { id: 'confidence', label: 'Confidence', colors: { ELIGIBLE:'#404040', SOLD:'#22c55e', HARD_NO:'#FF6B6B', CALLBACK:'#FFD93D', NO_ANSWER:'#404040' } },
   { id: 'neon', label: 'Neon', colors: { ELIGIBLE:'#00fff7', SOLD:'#39ff14', HARD_NO:'#ff073a', CALLBACK:'#ffed00', NO_ANSWER:'#00fff7' } },
   { id: 'pastel', label: 'Pastel', colors: { ELIGIBLE:'#a8b8c8', SOLD:'#77dd77', HARD_NO:'#b39ddb', CALLBACK:'#fff176', NO_ANSWER:'#a8b8c8' } },
   { id: 'heatmap', label: 'Heat', colors: { ELIGIBLE:'#1e3a5f', SOLD:'#ff4500', HARD_NO:'#8b0000', CALLBACK:'#ff8c00', NO_ANSWER:'#1e3a5f' } },
@@ -101,7 +102,7 @@ export default function MapSettingsPanel({
 
   const handleReset = () => {
     setLocal({
-      mapSettings: { pinShape:'circle', colorScheme:'default', lineStyle:'dashed', lineWidth:2, lineOpacity:0.5, pinOpacity:0.85, pinBorderWidth:1, pinBorderColor:'#000', showLabels:false, labelType:'number', glowEffect:false, fillStyle:'solid' },
+      mapSettings: { pinShape:'circle', colorScheme:'confidence', lineStyle:'dashed', lineWidth:2, lineOpacity:0.5, pinOpacity:0.85, pinBorderWidth:1, pinBorderColor:'#000', showLabels:false, labelType:'number', glowEffect:false, fillStyle:'solid' },
       pinSize:5, showRouteLines:false, showRouteDetails:true, showAllProperties:false,
       mapTheme:'dark', navigationApp:'apple', quickFilter:'all',
       soldDateFilter:null, highlightRecentlySold:false, showZipOverlay:false,

@@ -57,7 +57,6 @@ export function getKnockWindowLabel(date = new Date()) {
   
   if (score >= 85) return { label: 'PRIME TIME', color: '#22c55e', emoji: '🔥' };
   if (score >= 60) return { label: 'GOOD', color: '#eab308', emoji: '👍' };
-  if (score >= 40) return { label: 'FAIR', color: '#f97316', emoji: '⏳' };
   if (score >= 20) return { label: 'LOW', color: '#ef4444', emoji: '⚠️' };
   return { label: 'AVOID', color: '#6b7280', emoji: '🚫' };
 }

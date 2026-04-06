@@ -100,6 +100,20 @@ export function MapRefHandler({ mapRef }) {
     useEffect(() => {
         if (mapRef) mapRef.current = map;
     }, [map, mapRef]);
+
+    // Optimize zoom behavior for smooth, responsive interactions
+    useEffect(() => {
+        if (!map) return;
+
+        // Reduce wheel scroll sensitivity for snappier zoom response
+        map.options.wheelPxPerZoomLevel = 100;  // Tighter scroll-to-zoom ratio
+        map.options.wheelDebounceTime = 80;     // Faster recognition of zoom intent
+        
+        // Smooth zoom animations
+        map.options.zoomAnimationThreshold = 4;
+        map.options.easeLinearity = 0.2;        // Easing curve for smooth acceleration
+    }, [map]);
+
     return null;
 }
 

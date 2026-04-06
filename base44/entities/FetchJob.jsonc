@@ -1,0 +1,189 @@
+{
+  "name": "FetchJob",
+  "type": "object",
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "running",
+        "completed",
+        "failed"
+      ],
+      "default": "pending"
+    },
+    "latitude": {
+      "type": "number"
+    },
+    "longitude": {
+      "type": "number"
+    },
+    "radius": {
+      "type": "number"
+    },
+    "polygon": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lat": {
+            "type": "number"
+          },
+          "lng": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "sold_months": {
+      "type": "integer",
+      "default": 12,
+      "description": "How many months back to search for sold properties"
+    },
+    "is_delta_pull": {
+      "type": "boolean",
+      "default": false,
+      "description": "True if this is a CDC delta-pull (only fetching changes since last pull)"
+    },
+    "delta_watermark": {
+      "type": "string",
+      "format": "date-time",
+      "description": "High-watermark timestamp \u2014 only fetch records updated after this date"
+    },
+    "delta_savings": {
+      "type": "object",
+      "description": "Tracks API calls saved by delta-pull vs full refresh",
+      "properties": {
+        "estimated_full_calls": {
+          "type": "integer"
+        },
+        "actual_calls": {
+          "type": "integer"
+        },
+        "savings_pct": {
+          "type": "number"
+        }
+      }
+    },
+    "sub_circles": {
+      "type": "array",
+      "description": "Grid subdivision circles for large-area fetches (each has lat, lng, radius)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lat": {
+            "type": "number"
+          },
+          "lng": {
+            "type": "number"
+          },
+          "radius": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "current_sub_circle": {
+      "type": "integer",
+      "default": 0,
+      "description": "Index of the sub-circle currently being processed"
+    },
+    "total_sub_circles": {
+      "type": "integer",
+      "default": 1,
+      "description": "Total number of sub-circles in the grid"
+    },
+    "current_offset": {
+      "type": "integer",
+      "default": 0
+    },
+    "total_expected": {
+      "type": "integer",
+      "default": 0
+    },
+    "total_fetched": {
+      "type": "integer",
+      "default": 0
+    },
+    "total_inserted": {
+      "type": "integer",
+      "default": 0
+    },
+    "total_existed": {
+      "type": "integer",
+      "default": 0
+    },
+    "total_updated": {
+      "type": "integer",
+      "default": 0
+    },
+    "total_api_calls": {
+      "type": "integer",
+      "default": 0,
+      "description": "Total RentCast API calls consumed by this job"
+    },
+    "total_batchdata_calls": {
+      "type": "integer",
+      "default": 0,
+      "description": "Total BatchData API calls consumed by this job (capped at 500)"
+    },
+    "error_message": {
+      "type": "string"
+    },
+    "error_log": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Rolling log of errors/warnings during processing"
+    },
+    "user_email": {
+      "type": "string"
+    },
+    "progress_pct": {
+      "type": "number",
+      "default": 0
+    },
+    "zip_codes_found": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "chunk_number": {
+      "type": "integer",
+      "default": 0,
+      "description": "Increments each chunk to ensure entity update event fires"
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "chunk_timings": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      },
+      "description": "Duration of each chunk in seconds"
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "deed_records",
+        "listings_records",
+        "complete"
+      ],
+      "default": "deed_records"
+    }
+  },
+  "required": [
+    "status",
+    "latitude",
+    "longitude",
+    "radius"
+  ]
+}

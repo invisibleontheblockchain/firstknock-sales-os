@@ -33,67 +33,49 @@ export default function AppointmentCard({ appointment, onClick }) {
     return (
         <button
             onClick={() => onClick?.(appointment)}
-            className={`w-full text-left rounded-2xl p-3.5 md:p-5 transition-all group border ${
+            className={`w-full text-left rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-5 transition-all group border min-h-[100px] ${
                 isOverdue ? 'bg-red-500/[0.03] border-red-500/10 hover:border-red-500/20' :
                 isTodayAppt ? 'bg-yellow-500/[0.03] border-yellow-500/10 hover:border-yellow-500/20' :
                 'bg-white/[0.02] border-white/[0.05] hover:border-white/[0.1]'
             }`}
         >
-            <div className="flex items-start gap-3 md:gap-4">
+            <div className="flex items-start gap-2 sm:gap-3 md:gap-4">
                 {/* Score circle */}
-                <div className={`w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl flex flex-col items-center justify-center shrink-0 border ${scoreBg}`}>
-                    <span className={`text-sm md:text-xl font-black leading-none ${scoreColor}`}>{score}</span>
-                    <Star className={`w-2 h-2 md:w-3 md:h-3 mt-0.5 ${scoreColor}`} />
+                <div className={`w-12 h-12 sm:w-14 md:w-16 rounded-lg sm:rounded-xl md:rounded-2xl flex flex-col items-center justify-center shrink-0 border ${scoreBg}`}>
+                    <span className={`text-base sm:text-lg md:text-xl font-black leading-none ${scoreColor}`}>{score}</span>
+                    <Star className={`w-2.5 h-2.5 md:w-3.5 md:h-3.5 mt-1 ${scoreColor}`} />
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 min-w-0">
-                    {/* Address + status */}
-                    <div className="flex items-center gap-2 mb-1 md:mb-2">
-                        <p className="text-[13px] md:text-base font-bold text-white truncate">{appointment.full_address || 'Unknown Address'}</p>
-                    </div>
+                <div className="flex-1 min-w-0 flex flex-col">
+                    {/* Address */}
+                    <p className="text-xs sm:text-sm md:text-base font-bold text-white truncate mb-1.5">{appointment.full_address || 'Unknown'}</p>
 
-                    {/* Meta row */}
-                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mb-1.5 md:mb-2">
-                        <span className={`text-[9px] md:text-[11px] font-bold px-1.5 md:px-2.5 py-0.5 md:py-1 rounded-full border ${status.bg} ${status.text} ${status.border}`}>
+                    {/* Status badges - wrap on mobile */}
+                    <div className="flex flex-wrap items-center gap-1 mb-1.5">
+                        <span className={`text-[8px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full border ${status.bg} ${status.text} ${status.border} whitespace-nowrap`}>
                             {status.label}
                         </span>
                         {outcome.label && (
-                            <span className={`text-[9px] md:text-[11px] font-bold ${outcome.color}`}>• {outcome.label}</span>
+                            <span className={`text-[8px] sm:text-[9px] font-bold ${outcome.color} whitespace-nowrap`}>• {outcome.label}</span>
                         )}
-                        <span className="text-[9px] md:text-[11px] font-medium text-gray-600 bg-white/[0.04] px-1.5 md:px-2.5 py-0.5 md:py-1 rounded-full">
-                            {getIndustryLabel(appointment.industry)}
-                        </span>
                     </div>
 
-                    {/* Details row */}
-                    <div className="flex flex-wrap items-center gap-x-3 md:gap-x-4 gap-y-1 text-[10px] md:text-xs text-gray-500">
-                        <span className="flex items-center gap-1 md:gap-1.5">
-                            <Calendar className="w-3 h-3 md:w-3.5 md:h-3.5" />
-                            {appointment.scheduled_date ? format(new Date(appointment.scheduled_date), 'MMM d, h:mm a') : 'Unscheduled'}
-                        </span>
-                        {appointment.assigned_rep_name && (
-                            <span className="flex items-center gap-1 md:gap-1.5">
-                                <User className="w-3 h-3 md:w-3.5 md:h-3.5" />
-                                {appointment.assigned_rep_name}
-                            </span>
-                        )}
-                        {appointment.homeowner_name && (
-                            <span className="flex items-center gap-1 md:gap-1.5">
-                                <User className="w-2.5 h-2.5 md:w-3.5 md:h-3.5" />
-                                {appointment.homeowner_name}
-                            </span>
-                        )}
+                    {/* Key details - hide less important on mobile */}
+                    <div className="flex items-center gap-1.5 text-[8px] sm:text-[10px] text-gray-500">
+                        <Calendar className="w-2.5 h-2.5 shrink-0" />
+                        <span className="truncate">{appointment.scheduled_date ? format(new Date(appointment.scheduled_date), 'MMM d') : 'Unscheduled'}</span>
                         {appointment.phone && (
-                            <span className="flex items-center gap-1 md:gap-1.5">
-                                <Phone className="w-2.5 h-2.5 md:w-3.5 md:h-3.5" />
-                                {appointment.phone}
-                            </span>
+                            <>
+                                <span className="hidden sm:inline">•</span>
+                                <Phone className="w-2.5 h-2.5 shrink-0 hidden sm:inline" />
+                                <span className="hidden sm:inline truncate">{appointment.phone.slice(-4)}</span>
+                            </>
                         )}
                     </div>
                 </div>
 
-                <ChevronRight className="w-4 h-4 md:w-5 md:h-5 text-gray-700 group-hover:text-gray-400 transition-colors shrink-0 mt-2 md:mt-3" />
+                <ChevronRight className="w-4 h-4 sm:w-5 text-gray-700 group-hover:text-gray-400 transition-colors shrink-0 mt-1" />
             </div>
         </button>
     );

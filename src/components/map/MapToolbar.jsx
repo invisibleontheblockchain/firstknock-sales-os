@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check } from 'lucide-react';
@@ -69,6 +69,21 @@ export default function MapToolbar({
 }) {
     const queryClient = useQueryClient();
     const hasDrawnArea = drawnPolygon && drawnPolygon.length > 2;
+
+    // Track whether data has been pulled for the current drawn territory
+    const [territoryDataReady, setTerritoryDataReady] = useState(false);
+
+    // Reset when polygon changes (new territory drawn)
+    useEffect(() => {
+        setTerritoryDataReady(false);
+    }, [drawnPolygon]);
+
+    // Listen for pull-complete signal from TerritoryPrompt
+    useEffect(() => {
+        const handler = () => setTerritoryDataReady(true);
+        window.addEventListener('fk-territory-data-ready', handler);
+        return () => window.removeEventListener('fk-territory-data-ready', handler);
+    }, []);
 
     // Inline route name editing state
     const [editingName, setEditingName] = useState(false);
@@ -172,58 +187,60 @@ export default function MapToolbar({
                     </div>
                 </div>
 
-                {/* Active Route Banner - Optimized 2-row layout */}
+                {/* Active Route Banner - Compact inline on desktop, 2-row on mobile */}
                 {activeRoute && (
-                    <div className="pointer-events-auto rounded-2xl px-3 py-2 shadow-2xl border border-yellow-600/30 animate-in slide-in-from-top-2 backdrop-blur-md flex flex-col gap-2" style={{ background: 'rgba(10,10,10,0.95)' }}>
-                        {/* Row 1: Icon + Name + Optimize + Close */}
-                        <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-full flex items-center justify-center shrink-0" style={{ background: BRAND.gold }}>
-                                <Navigation className="w-3.5 h-3.5" style={{ color: BRAND.voidBlack }} />
+                    <div className="pointer-events-auto rounded-xl px-2.5 py-1.5 md:px-3 md:py-1.5 shadow-2xl border border-yellow-600/30 animate-in slide-in-from-top-2 backdrop-blur-md flex flex-col md:flex-row md:items-center gap-1.5 md:gap-2" style={{ background: 'rgba(10,10,10,0.95)' }}>
+                        {/* Icon + Name + Optimize + Close */}
+                        <div className="flex items-center gap-1.5 md:gap-2 min-w-0">
+                            <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: BRAND.gold }}>
+                                <Navigation className="w-3 h-3" style={{ color: BRAND.voidBlack }} />
                             </div>
 
-                            {/* Editable Name */}
                             {editingName ? (
                                 <div className="flex items-center gap-1 flex-1 min-w-0" onClick={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
                                     <input
                                         value={draftName}
                                         onChange={e => setDraftName(e.target.value)}
                                         onKeyDown={e => { if (e.key === 'Enter') handleSaveRename(); if (e.key === 'Escape') setEditingName(false); }}
-                                        className="bg-black/60 border border-yellow-500/50 text-yellow-500 text-xs font-bold rounded-lg px-2 py-1 flex-1 outline-none"
+                                        className="bg-black/60 border border-yellow-500/50 text-yellow-500 text-xs font-bold rounded px-1.5 py-0.5 flex-1 outline-none"
                                         autoFocus
                                     />
-                                    <button onClick={handleSaveRename} className="p-1 text-green-500 hover:text-green-400"><Check className="w-3.5 h-3.5" /></button>
-                                    <button onClick={() => setEditingName(false)} className="p-1 text-gray-500 hover:text-white"><X className="w-3.5 h-3.5" /></button>
+                                    <button onClick={handleSaveRename} className="p-0.5 text-green-500 hover:text-green-400"><Check className="w-3 h-3" /></button>
+                                    <button onClick={() => setEditingName(false)} className="p-0.5 text-gray-500 hover:text-white"><X className="w-3 h-3" /></button>
                                 </div>
                             ) : (
-                                <button onClick={handleStartRename} className="group/name flex items-center gap-1.5 flex-1 min-w-0" title="Click to rename">
-                                    <span className="text-sm font-bold truncate" style={{ color: BRAND.gold }}>{activeRoute.name}</span>
-                                    <Pencil className="w-3 h-3 text-gray-600 opacity-0 group-hover/name:opacity-100 transition-opacity shrink-0" />
+                                <button onClick={handleStartRename} className="group/name flex items-center gap-1 min-w-0" title="Click to rename">
+                                    <span className="text-xs font-bold truncate max-w-[120px] md:max-w-[160px]" style={{ color: BRAND.gold }}>{activeRoute.name}</span>
+                                    <Pencil className="w-2.5 h-2.5 text-gray-600 opacity-0 group-hover/name:opacity-100 transition-opacity shrink-0" />
                                 </button>
                             )}
 
                             <button
                                 onClick={(e) => { e.stopPropagation(); if (onReoptimizeRoute) onReoptimizeRoute(activeRoute); }}
-                                className="h-7 px-3 text-[11px] font-bold bg-yellow-500 hover:bg-yellow-400 text-black rounded-lg transition-all flex items-center gap-1 shrink-0"
+                                className="h-6 px-2 text-[10px] font-bold bg-yellow-500 hover:bg-yellow-400 text-black rounded-md transition-all flex items-center gap-1 shrink-0"
                                 title="Re-optimize route pathing"
                             >
-                                <Zap className="w-3 h-3" /> OPTIMIZE
+                                <Zap className="w-2.5 h-2.5" /> OPTIMIZE
                             </button>
 
                             <button
                                 onClick={() => { setActiveRoute(null); if (mapRef.current) { try { if (mapRef.current._mapPane) mapRef.current.setZoom(Math.max(13, mapRef.current.getZoom() - 2)); } catch (e) { } } }}
-                                className="flex items-center gap-1 h-7 px-2.5 rounded-lg border border-white/10 text-[11px] font-bold text-gray-400 hover:text-white hover:bg-white/10 transition-all shrink-0"
+                                className="flex items-center gap-0.5 h-6 px-2 rounded-md border border-white/10 text-[10px] font-bold text-gray-400 hover:text-white hover:bg-white/10 transition-all shrink-0"
                             >
-                                <X className="w-3 h-3" /> CLOSE
+                                <X className="w-2.5 h-2.5" /> CLOSE
                             </button>
                         </div>
 
-                        {/* Row 2: Assign + Date Filter + Save */}
-                        <div className="flex items-center gap-2" onClick={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
+                        {/* Divider on desktop */}
+                        <div className="hidden md:block w-px h-5 bg-white/10 shrink-0" />
+
+                        {/* Assign + Date Filter + Save */}
+                        <div className="flex items-center gap-1.5 md:gap-2" onClick={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
                             <select
                                 value={activeRoute.assigned_to || ""}
                                 onChange={(e) => { e.stopPropagation(); handleAssignRoute(activeRoute.id, e.target.value); }}
                                 onPointerDown={(e) => e.stopPropagation()}
-                                className="flex-1 text-xs font-medium bg-white/5 border border-white/10 rounded-lg px-2 py-1 outline-none cursor-pointer hover:bg-white/10 transition-colors"
+                                className="flex-1 md:flex-none text-[11px] font-medium bg-white/5 border border-white/10 rounded-md px-1.5 py-0.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
                                 style={{ color: '#ccc', WebkitAppearance: 'menulist' }}
                             >
                                 <option value="">Unassigned</option>
@@ -238,7 +255,7 @@ export default function MapToolbar({
                                     value={activeRouteSoldFilter}
                                     onChange={(e) => { e.stopPropagation(); setActiveRouteSoldFilter(e.target.value); }}
                                     onPointerDown={(e) => e.stopPropagation()}
-                                    className="text-xs font-medium bg-white/5 border border-white/10 rounded-lg px-2 py-1 outline-none cursor-pointer hover:bg-white/10 transition-colors"
+                                    className="text-[11px] font-medium bg-white/5 border border-white/10 rounded-md px-1.5 py-0.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
                                     style={{ color: '#ccc', WebkitAppearance: 'menulist' }}
                                 >
                                     <option value="all">All Dates</option>
@@ -255,9 +272,9 @@ export default function MapToolbar({
                             {activeRouteSoldFilter !== 'all' && onSaveFilteredRoute && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); onSaveFilteredRoute(); }}
-                                    className="h-7 px-3 text-[11px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-all flex items-center gap-1 shrink-0"
+                                    className="h-6 px-2 text-[10px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-all flex items-center gap-1 shrink-0"
                                 >
-                                    <Save className="w-3 h-3" /> SAVE
+                                    <Save className="w-2.5 h-2.5" /> SAVE
                                 </button>
                             )}
                         </div>
@@ -358,38 +375,54 @@ export default function MapToolbar({
             </div>
 
             {/* Bottom Action Bar */}
-            <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 z-[1000] pointer-events-none flex justify-center">
-                <div className="pointer-events-auto flex items-center justify-center gap-1.5 sm:gap-2 bg-black/70 backdrop-blur-lg p-1.5 sm:p-2 rounded-full border border-white/10 shadow-2xl">
+            <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 z-[1000] pointer-events-none flex justify-center px-2">
+                <div className="pointer-events-auto flex items-center justify-center gap-2 bg-black/80 backdrop-blur-lg p-1.5 rounded-full border border-white/10 shadow-2xl">
                     {mode === 'generate' && !activeRoute && (
                         <Button
-                            onClick={() => setShowCompare(true)}
-                            disabled={routesGenerating}
-                            className="rounded-full h-9 px-3 sm:h-10 sm:px-5 text-[11px] sm:text-sm font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] hover:shadow-[0_0_30px_rgba(255,215,0,0.5)] transition-all duration-300 transform active:scale-95 whitespace-nowrap"
+                            onClick={() => {
+                                if (hasDrawnArea) {
+                                    if (!territoryDataReady) {
+                                        toast.error("Pull property data first!", { duration: 4000 });
+                                        return;
+                                    }
+                                    setShowCompare(true);
+                                } else {
+                                    setShowCompare(false);
+                                    window.dispatchEvent(new CustomEvent('fk-start-drawing'));
+                                }
+                            }}
+                            disabled={routesGenerating || (hasDrawnArea && !territoryDataReady)}
+                            className={`rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] transition-all active:scale-95 whitespace-nowrap ${hasDrawnArea && !territoryDataReady ? 'opacity-50' : ''}`}
                             style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
                         >
                             {routesGenerating ? (
-                                <><Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 animate-spin" /> BUILDING</>
+                                <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> BUILDING</>  
                             ) : hasDrawnArea ? (
-                                <><Zap className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" /> GENERATE</>
+                                territoryDataReady ? (
+                                    <><Zap className="w-4 h-4 mr-1.5" /> GENERATE</>  
+                                ) : (
+                                    <><Zap className="w-4 h-4 mr-1.5" /> PULL DATA</>  
+                                )
                             ) : (
-                                <><Navigation className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1" /> DRAW</>
+                                <><Navigation className="w-4 h-4 mr-1.5" /> DRAW</>  
                             )}
                         </Button>
                     )}
 
                     <Button
-                        onClick={() => setShowRoutePanel(true)}
-                        className="rounded-full h-9 px-3 sm:h-10 sm:px-5 text-[11px] sm:text-sm font-bold tracking-wide shadow-lg transition-all duration-300 transform active:scale-95 whitespace-nowrap"
+                        onClick={() => !activeRoute && setShowRoutePanel(true)}
+                        disabled={!!activeRoute}
+                        className={`rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap ${activeRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
                         style={{
-                            background: mode === 'generate' && !activeRoute ? 'rgba(31, 31, 31, 0.9)' : 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)',
-                            color: mode === 'generate' && !activeRoute ? BRAND.gold : BRAND.voidBlack,
-                            border: mode === 'generate' && !activeRoute ? `1px solid ${BRAND.gold}` : 'none'
+                            background: activeRoute ? 'rgba(31, 31, 31, 0.9)' : (mode === 'generate' && !activeRoute ? 'rgba(31, 31, 31, 0.9)' : 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)'),
+                            color: activeRoute ? BRAND.gold : (mode === 'generate' && !activeRoute ? BRAND.gold : BRAND.voidBlack),
+                            border: activeRoute ? `1px solid ${BRAND.gold}` : (mode === 'generate' && !activeRoute ? `1px solid ${BRAND.gold}` : 'none')
                         }}
                     >
-                        <List className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                        <List className="w-4 h-4 mr-1.5" />
                         ROUTES
                         {!routesGenerating && (hydratedSavedRoutes.length > 0 || routes.length > 0) && (
-                            <Badge className="ml-1 sm:ml-2 h-5 min-w-[20px] px-1.5 text-[10px]" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
+                            <Badge className="ml-1.5 h-5 min-w-[20px] px-1.5 text-[10px]" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
                                 {hydratedSavedRoutes.length > 0 ? hydratedSavedRoutes.length : routes.length}
                             </Badge>
                         )}
@@ -398,10 +431,10 @@ export default function MapToolbar({
                     {activeRoute && (
                         <Button
                             onClick={() => setShowChecklist(true)}
-                            className="rounded-full h-9 px-3 sm:h-10 sm:px-5 text-[11px] sm:text-sm font-bold tracking-wide shadow-lg backdrop-blur-md transition-all duration-300 transform active:scale-95 whitespace-nowrap"
+                            className="rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-lg backdrop-blur-md transition-all active:scale-95 whitespace-nowrap"
                             style={{ background: 'rgba(31, 31, 31, 0.9)', color: BRAND.gold, border: `1px solid ${BRAND.gold}` }}
                         >
-                            <List className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                            <List className="w-4 h-4 mr-1.5" />
                             CHECKLIST
                         </Button>
                     )}

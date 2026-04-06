@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 const BATCH_DATA_API_KEY = Deno.env.get("BATCH_DATA_API_KEY") || Deno.env.get("BATCH_DATA_SANDBOX_KEY");
 const BATCH_DATA_URL = 'https://api.batchdata.com/api/v1/property/lookup/async';
@@ -76,22 +76,64 @@ Deno.serve(async (req) => {
             body: JSON.stringify(payload)
         });
 
-        if (response.status === 401 || response.status === 403) {
-            console.error(`[ValidationWorker] BatchData Auth Error (${response.status})!`);
-            // Rollback processing statuses
-            for (const item of queueArr) {
-                await base44.asServiceRole.entities.ValidationQueue.update(item.id, { status: 'failed', error_log: `Auth ${response.status}` });
-            }
-            return Response.json({ error: 'BatchData authentication failed. Check API key and account balance.' }, { status: 401 });
-        }
-
+        // ── Graceful BatchData failure handling ──
+        // If credits exhausted (402), unauthorized (401/403), or any non-200:
+        // Fall back to heuristic-only classification instead of failing the whole batch.
+        // Properties keep their heuristic score but stay at 'low' confidence.
         if (!response.ok) {
-            const body = await response.text();
-            console.error(`[ValidationWorker] API Error (${response.status}):`, body);
+            const statusCode = response.status;
+            const body = await response.text().catch(() => 'no body');
+            const isCreditsIssue = statusCode === 401 || statusCode === 402 || statusCode === 403;
+            const reason = isCreditsIssue 
+                ? `[BatchData] Credits exhausted or unauthorized (${statusCode}) — falling back to heuristic-only for this batch`
+                : `[BatchData] API error (${statusCode}) — falling back to heuristic-only for this batch`;
+            
+            console.warn(reason);
+            console.warn(`[ValidationWorker] Response body: ${body.slice(0, 300)}`);
+
+            // Downgrade all queued items to heuristic-only instead of failing them
+            let downgraded = 0;
             for (const item of queueArr) {
-                await base44.asServiceRole.entities.ValidationQueue.update(item.id, { status: 'failed', error_log: `Batch Error ${response.status}` });
+                // Mark queue item as completed (heuristic fallback) not failed
+                await base44.asServiceRole.entities.ValidationQueue.update(item.id, { 
+                    status: 'completed', 
+                    error_log: reason 
+                }).catch(() => {});
+
+                // Downgrade the MasterProperty from 'medium' to 'low' confidence
+                // This ensures the property still renders but without the verified badge
+                if (item.address_hash) {
+                    const mpRecords = await base44.asServiceRole.entities.MasterProperty.filter(
+                        { address_hash: item.address_hash }, null, 1
+                    ).catch(() => []);
+                    const mpArr = Array.isArray(mpRecords) ? mpRecords : (mpRecords?.items || []);
+                    for (const mp of mpArr) {
+                        if (mp.sale_confidence === 'medium') {
+                            await base44.asServiceRole.entities.MasterProperty.update(mp.id, {
+                                sale_confidence: 'low'
+                            }).catch(() => {});
+                        }
+                    }
+                }
+                downgraded++;
             }
-            return Response.json({ error: `API Error ${response.status}` }, { status: 500 });
+
+            // Log warning to any active FetchJob so the user sees it in the UI
+            const runningJobs = await base44.asServiceRole.entities.FetchJob.filter({ status: 'running' }, '-updated_date', 1).catch(() => []);
+            const jobArr = Array.isArray(runningJobs) ? runningJobs : (runningJobs?.items || []);
+            if (jobArr.length > 0) {
+                const job = jobArr[0];
+                const existingLog = job.error_log || [];
+                existingLog.push(`[${new Date().toISOString()}] ${reason}`);
+                await base44.asServiceRole.entities.FetchJob.update(job.id, { error_log: existingLog }).catch(() => {});
+            }
+
+            return Response.json({ 
+                status: 'fallback_heuristic',
+                message: reason,
+                downgraded,
+                statusCode
+            });
         }
 
         const data = await response.json();

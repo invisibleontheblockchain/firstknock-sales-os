@@ -154,32 +154,30 @@ export default function Appointments() {
                         </div>
                     </div>
 
-                    {/* Stats row - scrollable on mobile */}
-                    <div className="flex gap-2 md:gap-3 mb-3 md:mb-4 overflow-x-auto no-scrollbar -mx-4 px-4 md:mx-0 md:px-0">
+                    {/* Stats row - hide non-essentials on mobile */}
+                    <div className="hidden sm:flex gap-2 md:gap-3 mb-3 md:mb-4 overflow-x-auto no-scrollbar">
                         <StatPill icon={CalendarDays} label="Upcoming" value={stats.upcoming} color="#3b82f6" />
                         <StatPill icon={Clock} label="Today" value={stats.today} color="#eab308" />
                         <StatPill icon={CheckCircle2} label="Done" value={stats.completed} color="#22c55e" />
                         <StatPill icon={AlertTriangle} label="No-Show" value={stats.noShow} color="#f97316" />
                     </div>
 
-                    {/* Time tabs */}
-                    <div className="flex gap-1 md:gap-1.5 p-1 md:p-1.5 bg-white/[0.03] rounded-xl border border-white/[0.05] overflow-x-auto no-scrollbar">
+                    {/* Time tabs - responsive */}
+                    <div className="grid grid-cols-5 gap-1 sm:flex sm:gap-2 p-1.5 sm:p-2 bg-white/[0.03] rounded-lg sm:rounded-xl border border-white/[0.05] overflow-x-auto sm:overflow-visible no-scrollbar">
                         {TIME_TABS.map(t => (
                             <button key={t.id} onClick={() => setTimeFilter(t.id)}
-                                className={`flex-shrink-0 py-1.5 md:py-2 px-3 md:px-5 rounded-lg text-[10px] md:text-xs font-bold transition-all whitespace-nowrap ${
-                                    timeFilter === t.id ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-white'
-                                }`}
+                                className={`py-2.5 px-2 sm:px-5 rounded-lg text-[8px] sm:text-xs font-bold transition-all whitespace-nowrap text-center h-full ${timeFilter === t.id ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-white'}`}
                             >{t.label}</button>
                         ))}
                     </div>
 
-                    {/* Status chips */}
-                    <div className="flex gap-1.5 md:gap-2 mt-2 md:mt-3 overflow-x-auto no-scrollbar -mx-4 px-4 md:mx-0 md:px-0 pb-2">
-                        {STATUS_CHIPS.map(s => (
+                    {/* Status chips - wrapped, optimized mobile */}
+                    <div className="flex flex-wrap gap-2 mt-2 sm:mt-3 -mx-3 px-3 sm:mx-0 sm:px-0">
+                        {STATUS_CHIPS.map((s, idx) => (
                             <button key={s.id} onClick={() => setStatusFilter(s.id)}
-                                className={`flex-shrink-0 px-2.5 md:px-4 py-1 md:py-1.5 rounded-full text-[10px] md:text-xs font-bold transition-all border ${
+                                className={`hidden sm:inline-flex px-3 sm:px-4 py-2 h-9 rounded-lg sm:rounded-full text-[9px] sm:text-xs font-bold transition-all border ${
                                     statusFilter === s.id ? 'bg-white/[0.08] border-white/15 text-white' : 'border-white/[0.04] text-gray-600 hover:text-gray-400'
-                                }`}
+                                } ${idx < 3 ? 'flex' : ''}`}
                             >{s.label}</button>
                         ))}
                     </div>
@@ -188,7 +186,7 @@ export default function Appointments() {
 
             {/* Content */}
             <div className="flex-1 overflow-auto">
-                <div className="max-w-7xl mx-auto p-4 md:p-8 lg:p-10 space-y-3 md:space-y-5">
+                <div className="max-w-7xl mx-auto p-3 sm:p-4 md:p-8 lg:p-10 space-y-2 sm:space-y-3 md:space-y-5">
                     {showNewForm && (
                         <NewAppointmentForm
                             onSave={() => { handleRefresh(); setShowNewForm(false); }}
@@ -228,11 +226,7 @@ export default function Appointments() {
                                     <span className="text-[10px] md:text-xs text-gray-700 bg-white/[0.04] px-1.5 md:px-2 py-0.5 md:py-1 rounded-full font-bold">{appts.length}</span>
                                     <div className="flex-1 h-px bg-white/[0.04]" />
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3">
-                                    {appts.map(a => (
-                                        <AppointmentCard key={a.id} appointment={a} onClick={setSelectedAppointment} />
-                                    ))}
-                                </div>
+
                             </div>
                         ))
                     )}

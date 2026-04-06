@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 // v9 — Grid Subdivision: breaks large areas into overlapping sub-circles (≤5mi)
 // per RentCast support guidance. Large-radius queries silently drop records.
@@ -168,10 +168,24 @@ Deno.serve(async (req) => {
 
         // RentCast Limit Enforcement (Max 100 miles)
         if (optimizedRadius > 100) {
-            console.warn(`[fetchArea-v8] ⚠️ Radius ${optimizedRadius}mi exceeds RentCast 100mi limit. Capping.`);
+            console.warn(`[fetchArea-v9] ⚠️ Radius ${optimizedRadius}mi exceeds RentCast 100mi limit. Capping.`);
             return Response.json({ 
                 error: 'radius_too_large', 
                 message: 'Your search area results in a radius larger than 100 miles. Please redraw a smaller area to continue.' 
+            }, { status: 400 });
+        }
+
+        // Fix #4: Server-side area enforcement (40 sq mi for free, 300 sq mi for paid)
+        const areaSqMiles = Math.PI * optimizedRadius * optimizedRadius;
+        const isPaid = user.subscription_status === 'active' || user.is_owner;
+        const maxAreaSqMi = isPaid ? 350 : 50; // Generous padding over UI limits
+        if (areaSqMiles > maxAreaSqMi) {
+            console.warn(`[fetchArea-v9] ⚠️ Area ${Math.round(areaSqMiles)}sq mi exceeds ${maxAreaSqMi}sq mi limit for ${isPaid ? 'paid' : 'free'} user.`);
+            return Response.json({
+                error: 'area_too_large',
+                message: isPaid 
+                    ? `Your drawn area (~${Math.round(areaSqMiles)} sq mi) exceeds the 300 sq mi limit. Please draw a smaller area.`
+                    : `Your drawn area (~${Math.round(areaSqMiles)} sq mi) exceeds the 40 sq mi free limit. Upgrade to pull larger territories.`
             }, { status: 400 });
         }
 
@@ -275,10 +289,10 @@ Deno.serve(async (req) => {
         } catch (e) { console.warn('Failed to update pull count:', e.message); }
 
         setTimeout(() => {
-            base44.functions.invoke('processFetchChunk', {}).catch(e => {
-                console.warn('[fetchArea-v8] Background chunk invoke failed:', e.message);
+            base44.functions.invoke('processFetchChunk', { expected_chunk: 0 }).catch(e => {
+                console.warn('[fetchArea-v9] Background chunk invoke failed:', e.message);
             });
-        }, 0);
+        }, 500);
 
         return Response.json({
             status: 'started',
