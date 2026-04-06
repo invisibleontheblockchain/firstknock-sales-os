@@ -86,6 +86,8 @@ async function lookupProperty(address) {
 function parseResult(address, json) {
   const property =
     json?.results?.[0] ||
+    json?.results?.properties?.[0] ||
+    json?.data?.results?.[0] ||
     json?.data?.[0] ||
     json?.properties?.[0] ||
     json?.property ||
@@ -97,8 +99,10 @@ function parseResult(address, json) {
   }
 
   const rawStatus =
+    property?.listing?.status ||
     property?.listingInfo?.status ||
     property?.mlsInfo?.listing_status ||
+    property?.mls?.status ||
     property?.propertyInfo?.listingStatus ||
     property?.propertyInfo?.status ||
     property?.status ||
@@ -113,11 +117,13 @@ function parseResult(address, json) {
     listingStatus: rawStatus,
     isSold,
     lastSaleDate:
+      property?.listing?.soldDate ||
       property?.lastSale?.saleDate ||
       property?.saleInfo?.lastSaleDate ||
       property?.saleDate ||
       null,
     lastSalePrice:
+      property?.listing?.soldPrice ||
       property?.lastSale?.salePrice ||
       property?.saleInfo?.lastSaleAmount ||
       property?.salePrice ||

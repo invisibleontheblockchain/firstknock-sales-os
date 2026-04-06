@@ -1,392 +1,1066 @@
 [
   {
     "index": 1,
-    "address": "505 Blair St, Anderson, SC 29626",
-    "status": null,
-    "isSold": false,
-    "verdict": "❌ FAIL — Expected isSold=true, got isSold=false (status: null)",
-    "assertNote": "505/507 Blair St — had For Sale signs, should now be SOLD.",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "address": "3766 Strang Ave, Rosemead, CA 91770",
+    "status": "SOLD",
+    "isSold": true,
+    "lastSaleDate": "2026-03-04T00:00:00.000Z",
+    "lastSalePrice": 808000,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 2,
-    "address": "507 Blair St, Anderson, SC 29625",
+    "address": "2525 Iconic St, South El Monte, CA 91733",
     "status": null,
     "isSold": false,
-    "verdict": "❌ FAIL — Expected isSold=true, got isSold=false (status: null)",
-    "assertNote": "505/507 Blair St — had For Sale signs, should now be SOLD.",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
     "rawFields": null
   },
   {
     "index": 3,
-    "address": "117 Phillips St, Anderson, SC 29625",
+    "address": "2531 Stage St, South El Monte, CA 91733",
     "status": null,
     "isSold": false,
-    "verdict": "❌ FAIL — Expected isSold=true, got isSold=false (status: null)",
-    "assertNote": "117 Phillips St — sold Jul 2023, often mislabeled Active.",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
     "rawFields": null
   },
   {
     "index": 4,
-    "address": "115 Simmons St, Anderson, SC 29625",
+    "address": "2540 Warner St, South El Monte, CA 91733",
     "status": null,
     "isSold": false,
-    "verdict": "✅ PASS",
-    "assertNote": "115 Simmons St — boarded up/padlocked. NOT sold, should be OFF_MARKET.",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
     "rawFields": null
   },
   {
     "index": 5,
-    "address": "108 Hunter St, Anderson, SC 29625",
+    "address": "2545 Hepburn St, South El Monte, CA 91733",
     "status": null,
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
+    "error": null,
     "rawFields": null
   },
   {
     "index": 6,
-    "address": "106 Westminster Ave, Anderson, SC 29625",
+    "address": "2544 Warner St, South El Monte, CA 91733",
     "status": null,
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
+    "error": null,
     "rawFields": null
   },
   {
     "index": 7,
-    "address": "104 Westminster Ave, Anderson, SC 29625",
-    "status": null,
+    "address": "1307 Merced Ave, South El Monte, CA 91733",
+    "status": "PENDING",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 8,
-    "address": "405 Fairfax St, Anderson, SC 29625",
-    "status": null,
+    "address": "2660 Havenpark Ave, El Monte, CA 91733",
+    "status": "PENDING",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 9,
-    "address": "409 Fairfax St, Anderson, SC 29625",
-    "status": null,
-    "isSold": false,
+    "address": "10236 Towneway Dr, El Monte, CA 91733",
+    "status": "SOLD",
+    "isSold": true,
+    "lastSaleDate": "2026-03-16T00:00:00.000Z",
+    "lastSalePrice": 668000,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 10,
-    "address": "614 Brogan Ave, Anderson, SC 29625",
-    "status": null,
+    "address": "9855 La Rosa Dr, Temple City, CA 91780",
+    "status": "ACTIVE",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 11,
-    "address": "300 Strickland Ave, Anderson, SC 29625",
-    "status": null,
+    "address": "9942 Howland Dr, Temple City, CA 91780",
+    "status": "PENDING",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 12,
-    "address": "202 K St, Anderson, SC 29625",
-    "status": null,
+    "address": "5111 Halifax Rd, Temple City, CA 91780",
+    "status": "PENDING",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 13,
-    "address": "802 Linley St, Anderson, SC 29625",
-    "status": null,
+    "address": "10720 Freer St, Temple City, CA 91780",
+    "status": "CANCELED",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 14,
-    "address": "111 Maxwell Ave, Anderson, SC 29624",
-    "status": null,
+    "address": "5533 Santa Anita Ave, Temple City, CA 91780",
+    "status": "CANCELED",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 15,
-    "address": "110 Maxwell Ave, Anderson, SC 29624",
-    "status": null,
-    "isSold": false,
+    "address": "5441 Welland Ave, Temple City, CA 91780",
+    "status": "SOLD",
+    "isSold": true,
+    "lastSaleDate": "2026-03-11T00:00:00.000Z",
+    "lastSalePrice": 800000,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 16,
-    "address": "413 W Market St, Anderson, SC 29624",
-    "status": null,
-    "isSold": false,
+    "address": "120 W Longden Ave, Arcadia, CA 91007",
+    "status": "SOLD",
+    "isSold": true,
+    "lastSaleDate": "2026-03-09T00:00:00.000Z",
+    "lastSalePrice": 2030000,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 17,
-    "address": "902 W Market St, Anderson, SC 29624",
-    "status": null,
-    "isSold": false,
+    "address": "1611 Lovell Ave, Arcadia, CA 91007",
+    "status": "SOLD",
+    "isSold": true,
+    "lastSaleDate": "2026-03-09T00:00:00.000Z",
+    "lastSalePrice": 3156000,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 18,
-    "address": "403 Rose Hill St, Anderson, SC 29624",
-    "status": null,
+    "address": "9192 Jaylee Dr, Temple City, CA 91780",
+    "status": "OFF MARKET",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 19,
-    "address": "509 Rose Hill St, Anderson, SC 29624",
-    "status": null,
+    "address": "6326 Sultana Ave, Temple City, CA 91775",
+    "status": "PENDING",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 20,
-    "address": "309 Johnson St, Anderson, SC 29624",
-    "status": null,
+    "address": "6304 Oak Ave, Temple City, CA 91780",
+    "status": "ACTIVE",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 21,
-    "address": "311 Johnson St, Anderson, SC 29624",
-    "status": null,
+    "address": "9662 Garibaldi Ave, Temple City, CA 91780",
+    "status": "OFF MARKET",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 22,
-    "address": "317 W Hampton St, Anderson, SC 29624",
-    "status": null,
+    "address": "9527 Broadway, Temple City, CA 91780",
+    "status": "PENDING",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 23,
-    "address": "310 W Hampton St, Anderson, SC 29624",
-    "status": null,
+    "address": "4922 Heleo Ave, Temple City, CA 91780",
+    "status": "CANCELED",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 24,
-    "address": "308 W Hampton St, Anderson, SC 29624",
-    "status": null,
+    "address": "5313 Acacia St, San Gabriel, CA 91776",
+    "status": "ACTIVE",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 25,
-    "address": "1250 Gadsden St, Anderson, SC 29624",
-    "status": null,
+    "address": "8240 E Live Oak St, San Gabriel, CA 91776",
+    "status": "OFF MARKET",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 26,
-    "address": "1606 S Murray Ave Ext, Anderson, SC 29624",
-    "status": null,
+    "address": "418 E El Monte St, San Gabriel, CA 91776",
+    "status": "ACTIVE",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 27,
-    "address": "1606 S Murray St Ext, Anderson, SC 29624",
-    "status": null,
+    "address": "1825 S Gladys Ave, San Gabriel, CA 91776",
+    "status": "OFF MARKET",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 28,
-    "address": "1200 S Main St, Anderson, SC 29624",
-    "status": null,
+    "address": "608 E Chestnut Ave, San Gabriel, CA 91776",
+    "status": "ACTIVE",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 29,
-    "address": "604 S Mcduffie St, Anderson, SC 29624",
-    "status": null,
+    "address": "345 N San Gabriel Blvd, San Gabriel, CA 91775",
+    "status": "PENDING",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 30,
-    "address": "1009 E River St, Anderson, SC 29624",
-    "status": null,
+    "address": "6202 N Willard Ave, San Gabriel, CA 91775",
+    "status": "PENDING",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 31,
-    "address": "1111 E River St, Anderson, SC 29624",
-    "status": null,
+    "address": "6222 N Willard Ave, San Gabriel, CA 91775",
+    "status": "PENDING",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 32,
-    "address": "113 Cassandra Turn, Anderson, SC 29621",
-    "status": null,
+    "address": "8340 Longden Ave, San Gabriel, CA 91775",
+    "status": "OFF MARKET",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 33,
-    "address": "2703 Leftwich Ln, Anderson, SC 29621",
-    "status": null,
+    "address": "8906 Fortson Dr, San Gabriel, CA 91775",
+    "status": "PENDING",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 34,
-    "address": "126 Brookmeade Dr, Anderson, SC 29626",
-    "status": null,
+    "address": "5837 N Muscatel Ave, San Gabriel, CA 91775",
+    "status": "PENDING",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 35,
-    "address": "610 Caughlin Ave, Anderson, SC 29624",
-    "status": null,
+    "address": "8910 Ardendale Ave, San Gabriel, CA 91775",
+    "status": "CANCELED",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 36,
-    "address": "602 Caughlin Ave, Anderson, SC 29624",
-    "status": null,
+    "address": "10159 Bogue St, Temple City, CA 91780",
+    "status": "PENDING",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 37,
-    "address": "905 E Whitner St, Anderson, SC 29624",
-    "status": null,
+    "address": "11125 Basye St, El Monte, CA 91731",
+    "status": "ACTIVE",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 38,
-    "address": "105 Bailey St, Anderson, SC 29621",
-    "status": null,
+    "address": "11326 Forest Grove St, El Monte, CA 91731",
+    "status": "CANCELED",
     "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
-    "rawFields": null
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   },
   {
     "index": 39,
-    "address": "200 Sumter St, Anderson, SC 29621",
-    "status": null,
-    "isSold": false,
+    "address": "3809 Pine Ave, El Monte, CA 91731",
+    "status": "SOLD",
+    "isSold": true,
+    "lastSaleDate": "2026-02-18T00:00:00.000Z",
+    "lastSalePrice": 1200000,
     "verdict": "NOT_ASSERTED",
     "assertNote": "",
-    "error": "BatchData 403: {\"status\":{\"code\":403,\"text\":\"Forbidden\",\"message\":\"Insufficient balance.\",\"data\":[]}}",
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
+  },
+  {
+    "index": 40,
+    "address": "11427 Wildflower Ln, El Monte, CA 91731",
+    "status": null,
+    "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
     "rawFields": null
+  },
+  {
+    "index": 41,
+    "address": "11175 Legion Loop, El Monte, CA 91731",
+    "status": "SOLD",
+    "isSold": true,
+    "lastSaleDate": "2022-03-17T00:00:00.000Z",
+    "lastSalePrice": 720000,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
+  },
+  {
+    "index": 42,
+    "address": "3051 Nevada Ave, El Monte, CA 91731",
+    "status": "CANCELED",
+    "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
+  },
+  {
+    "index": 43,
+    "address": "4005 Valley Oak Ln, El Monte, CA 91733",
+    "status": null,
+    "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
+    "rawFields": null
+  },
+  {
+    "index": 44,
+    "address": "9040 Garvey Ave, Rosemead, CA 91770",
+    "status": "ACTIVE",
+    "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
+  },
+  {
+    "index": 45,
+    "address": "3259 Sullivan Ave, Rosemead, CA 91770",
+    "status": "OFF MARKET",
+    "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
+  },
+  {
+    "index": 46,
+    "address": "3362 Earlswood Dr, Rosemead, CA 91770",
+    "status": "OFF MARKET",
+    "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
+  },
+  {
+    "index": 47,
+    "address": "3246 Muscatel Ave, Rosemead, CA 91770",
+    "status": "SOLD",
+    "isSold": true,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
+  },
+  {
+    "index": 48,
+    "address": "2217 Angelus Ave, Rosemead, CA 91770",
+    "status": "CANCELED",
+    "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
+  },
+  {
+    "index": 49,
+    "address": "2647 Pine St, Rosemead, CA 91770",
+    "status": "CANCELED",
+    "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
+  },
+  {
+    "index": 50,
+    "address": "7513 Marsh Ave, Rosemead, CA 91770",
+    "status": "ACTIVE",
+    "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
+  },
+  {
+    "index": 51,
+    "address": "1188 Walnut Grove Ave Apt A, Rosemead, CA 91770",
+    "status": "OFF MARKET",
+    "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
+  },
+  {
+    "index": 52,
+    "address": "8509 El Camino Dr, Rosemead, CA 91770",
+    "status": "PENDING",
+    "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
+  },
+  {
+    "index": 53,
+    "address": "7303 Teresa Ave, Rosemead, CA 91770",
+    "status": "SOLD",
+    "isSold": true,
+    "lastSaleDate": "2026-02-13T00:00:00.000Z",
+    "lastSalePrice": 1100000,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
+  },
+  {
+    "index": 54,
+    "address": "2109 Cathryn Dr, Rosemead, CA 91770",
+    "status": "ACTIVE",
+    "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
+  },
+  {
+    "index": 55,
+    "address": "2712 New Ave, Rosemead, CA 91770",
+    "status": "CANCELED",
+    "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
+  },
+  {
+    "index": 56,
+    "address": "132 W Saxon Ave, San Gabriel, CA 91776",
+    "status": "CANCELED",
+    "isSold": false,
+    "lastSaleDate": null,
+    "lastSalePrice": null,
+    "verdict": "NOT_ASSERTED",
+    "assertNote": "",
+    "error": null,
+    "rawFields": {
+      "keys": [
+        "_id",
+        "address",
+        "ids",
+        "listing",
+        "owner"
+      ]
+    }
   }
 ]
