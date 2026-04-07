@@ -84,12 +84,21 @@ export default function AdminTeam() {
     });
 
     const { data: logs = [] } = useQuery({
-        queryKey: ['teamLogs'],
+        queryKey: ['teamLogs', user?.email, teamMembers.map(m => m.email).join(',')],
         staleTime: 1000 * 60 * 2,
         queryFn: async () => {
-            const res = await base44.entities.InteractionLog.list('-created_date', 5000);
-            return Array.isArray(res) ? res : (res?.items || []);
-        }
+            if (!user?.email) return [];
+            // Collect all team emails: manager + reps
+            const teamEmails = [user.email, ...teamMembers.map(m => m.email).filter(Boolean)];
+            // Fetch logs for each team member in parallel
+            const results = await Promise.all(
+                teamEmails.map(email => 
+                    base44.entities.InteractionLog.filter({ created_by: email }, '-created_date', 5000)
+                )
+            );
+            return results.flatMap(res => Array.isArray(res) ? res : (res?.items || []));
+        },
+        enabled: !!user?.email
     });
 
     // --- Mutations ---
