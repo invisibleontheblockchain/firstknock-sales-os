@@ -48,9 +48,10 @@ export default function MapToolbar({
     // Brand
     BRAND,
 
-    // Route Filter
-    activeRouteSoldFilter,
-    setActiveRouteSoldFilter,
+    // Route Filters
+    activeRouteSoldFilter, setActiveRouteSoldFilter,
+    activeRoutePhaseFilter, setActiveRoutePhaseFilter,
+    activeRoutePriceFilter, setActiveRoutePriceFilter,
 
     // Drawing state
     drawnPolygon,
@@ -234,46 +235,50 @@ export default function MapToolbar({
                         {/* Divider on desktop */}
                         <div className="hidden md:block w-px h-5 bg-white/10 shrink-0" />
 
-                        {/* Assign + Date Filter + Save */}
-                        <div className="flex items-center gap-1.5 md:gap-2" onClick={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
-                            <select
-                                value={activeRoute.assigned_to || ""}
-                                onChange={(e) => { e.stopPropagation(); handleAssignRoute(activeRoute.id, e.target.value); }}
-                                onPointerDown={(e) => e.stopPropagation()}
-                                className="flex-1 md:flex-none text-[11px] font-medium bg-white/5 border border-white/10 rounded-md px-1.5 py-0.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
-                                style={{ color: '#ccc', WebkitAppearance: 'menulist' }}
-                            >
+                        {/* Assign + Filters */}
+                        <div className="flex items-center gap-1.5 md:gap-2 flex-wrap" onClick={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
+                            <select value={activeRoute.assigned_to || ""} onChange={(e) => { e.stopPropagation(); handleAssignRoute(activeRoute.id, e.target.value); }} onPointerDown={(e) => e.stopPropagation()} className="text-[11px] font-medium bg-white/5 border border-white/10 rounded-md px-1.5 py-0.5 outline-none cursor-pointer hover:bg-white/10 transition-colors" style={{ color: '#ccc', WebkitAppearance: 'menulist' }}>
                                 <option value="">Unassigned</option>
                                 <option value={user?.id || 'manager'}>Me</option>
-                                {teamMembers.map(m => (
-                                    <option key={m.id} value={m.id}>{m.name}</option>
-                                ))}
+                                {teamMembers.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
                             </select>
 
                             {setActiveRouteSoldFilter && (
-                                <select
-                                    value={activeRouteSoldFilter}
-                                    onChange={(e) => { e.stopPropagation(); setActiveRouteSoldFilter(e.target.value); }}
-                                    onPointerDown={(e) => e.stopPropagation()}
-                                    className="text-[11px] font-medium bg-white/5 border border-white/10 rounded-md px-1.5 py-0.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
-                                    style={{ color: '#ccc', WebkitAppearance: 'menulist' }}
-                                >
+                                <select value={activeRouteSoldFilter} onChange={(e) => { e.stopPropagation(); setActiveRouteSoldFilter(e.target.value); }} onPointerDown={(e) => e.stopPropagation()} className="text-[11px] font-medium bg-white/5 border border-white/10 rounded-md px-1.5 py-0.5 outline-none cursor-pointer hover:bg-white/10 transition-colors" style={{ color: '#ccc', WebkitAppearance: 'menulist' }}>
                                     <option value="all">All Dates</option>
                                     <option value="0.25">1 Week</option>
                                     <option value="0.5">2 Weeks</option>
                                     <option value="1">1 Month</option>
                                     <option value="3">3 Months</option>
                                     <option value="6">6 Months</option>
-                                    <option value="9">9 Months</option>
                                     <option value="12">1 Year</option>
                                 </select>
                             )}
 
-                            {activeRouteSoldFilter !== 'all' && onSaveFilteredRoute && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); onSaveFilteredRoute(); }}
-                                    className="h-6 px-2 text-[10px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-all flex items-center gap-1 shrink-0"
-                                >
+                            {setActiveRoutePhaseFilter && (
+                                <select value={activeRoutePhaseFilter} onChange={(e) => { e.stopPropagation(); setActiveRoutePhaseFilter(e.target.value); }} onPointerDown={(e) => e.stopPropagation()} className="text-[11px] font-medium bg-white/5 border border-purple-500/30 rounded-md px-1.5 py-0.5 outline-none cursor-pointer hover:bg-white/10 transition-colors" style={{ color: '#c4b5fd', WebkitAppearance: 'menulist' }}>
+                                    <option value="all">All Phases</option>
+                                    <option value="deeds">Phase 1 — Deeds</option>
+                                    <option value="listings">Phase 2 — MLS</option>
+                                    <option value="verified">Phase 3 — Verified</option>
+                                </select>
+                            )}
+
+                            {setActiveRoutePriceFilter && (
+                                <select value={activeRoutePriceFilter} onChange={(e) => { e.stopPropagation(); setActiveRoutePriceFilter(e.target.value); }} onPointerDown={(e) => e.stopPropagation()} className="text-[11px] font-medium bg-white/5 border border-green-500/30 rounded-md px-1.5 py-0.5 outline-none cursor-pointer hover:bg-white/10 transition-colors" style={{ color: '#86efac', WebkitAppearance: 'menulist' }}>
+                                    <option value="all">All Prices</option>
+                                    <option value="50000">&gt; $50K</option>
+                                    <option value="100000">&gt; $100K</option>
+                                    <option value="200000">&gt; $200K</option>
+                                    <option value="300000">&gt; $300K</option>
+                                    <option value="500000">&gt; $500K</option>
+                                    <option value="750000">&gt; $750K</option>
+                                    <option value="1000000">&gt; $1M</option>
+                                </select>
+                            )}
+
+                            {(activeRouteSoldFilter !== 'all' || activeRoutePhaseFilter !== 'all' || activeRoutePriceFilter !== 'all') && onSaveFilteredRoute && (
+                                <button onClick={(e) => { e.stopPropagation(); onSaveFilteredRoute(); }} className="h-6 px-2 text-[10px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-all flex items-center gap-1 shrink-0">
                                     <Save className="w-2.5 h-2.5" /> SAVE
                                 </button>
                             )}

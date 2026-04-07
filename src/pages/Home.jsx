@@ -117,36 +117,20 @@ export default function Home() {
     const queryClient = useQueryClient();
     const [activeRoute, setActiveRoute] = useState(null);
     const [activeRouteSoldFilter, setActiveRouteSoldFilter] = useState('all');
+    const [activeRoutePhaseFilter, setActiveRoutePhaseFilter] = useState('all');
+    const [activeRoutePriceFilter, setActiveRoutePriceFilter] = useState('all');
     const [showChecklist, setShowChecklist] = useState(false);
 
     const filteredActiveRoute = useMemo(() => {
         if (!activeRoute) return null;
-        if (activeRouteSoldFilter === 'all') return activeRoute;
-
-        let cutoff;
-        if (activeRouteSoldFilter === '0.25') {
-            cutoff = subDays(new Date(), 7);
-        } else if (activeRouteSoldFilter === '0.5') {
-            cutoff = subDays(new Date(), 14);
-        } else {
-            cutoff = subMonths(new Date(), Number(activeRouteSoldFilter));
-        }
-        const filteredProps = activeRoute.properties.filter(p => {
-            if (!p.sold_date) return false;
-            try {
-                const d = new Date(p.sold_date);
-                if (isNaN(d.getTime())) return false;
-                return isAfter(d, cutoff);
-            } catch (e) { return false; }
-        });
-
-        return {
-            ...activeRoute,
-            _originalId: activeRoute.id, // Track original for filtering logic
-            properties: filteredProps,
-            houseCount: filteredProps.length
-        };
-    }, [activeRoute, activeRouteSoldFilter]);
+        const hD = activeRouteSoldFilter !== 'all', hP = activeRoutePhaseFilter !== 'all', hPr = activeRoutePriceFilter !== 'all';
+        if (!hD && !hP && !hPr) return activeRoute;
+        let fp = activeRoute.properties;
+        if (hD) { let c; if (activeRouteSoldFilter==='0.25') c=subDays(new Date(),7); else if (activeRouteSoldFilter==='0.5') c=subDays(new Date(),14); else c=subMonths(new Date(),Number(activeRouteSoldFilter)); fp=fp.filter(p=>{if(!p.sold_date)return false;try{const d=new Date(p.sold_date);return !isNaN(d.getTime())&&isAfter(d,c);}catch{return false;}}); }
+        if (hP) fp=fp.filter(p=>activeRoutePhaseFilter==='deeds'?(!p.mls_id&&p.original_status!=='PENDING'&&p.original_status!=='RECENT_OFF_MARKET'):activeRoutePhaseFilter==='listings'?(!!p.mls_id||p.original_status==='PENDING'||p.original_status==='RECENT_OFF_MARKET'):activeRoutePhaseFilter==='verified'?p.sale_confidence==='verified':true);
+        if (hPr) { const min=Number(activeRoutePriceFilter); fp=fp.filter(p=>p.price&&p.price>=min); }
+        return {...activeRoute,_originalId:activeRoute.id,properties:fp,houseCount:fp.length};
+    }, [activeRoute, activeRouteSoldFilter, activeRoutePhaseFilter, activeRoutePriceFilter]);
 
     const [showRoutePanel, setShowRoutePanel] = useState(false);
     const [showCompare, setShowCompare] = useState(false);
@@ -1788,6 +1772,10 @@ export default function Home() {
                 BRAND={BRAND}
                 activeRouteSoldFilter={activeRouteSoldFilter}
                 setActiveRouteSoldFilter={setActiveRouteSoldFilter}
+                activeRoutePhaseFilter={activeRoutePhaseFilter}
+                setActiveRoutePhaseFilter={setActiveRoutePhaseFilter}
+                activeRoutePriceFilter={activeRoutePriceFilter}
+                setActiveRoutePriceFilter={setActiveRoutePriceFilter}
                 showRouteDetails={showRouteDetails}
                 setShowRouteDetails={setShowRouteDetails}
                 showRouteLines={showRouteLines}
