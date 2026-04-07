@@ -65,7 +65,7 @@ import ManagerMapLayers from '../components/map/ManagerMapLayers';
 import MapToolbar from '../components/map/MapToolbar';
 import ZipCodeOverlay from '../components/map/ZipCodeOverlay';
 import PolygonHistory, { savePolygonToHistory } from '../components/map/PolygonHistory';
-import ConfidenceLegend from '../components/map/ConfidenceLegend';
+
 
 // Brand Colors
 const BRAND = {
@@ -2144,7 +2144,7 @@ export default function Home() {
                 </React.Suspense>
             )}
 
-            <ConfidenceLegend effectiveProperties={effectiveProperties} isPaid={user?.subscription_status === 'active' || user?.is_owner} isVisible={mapSettings.colorScheme === 'confidence' && !activeRoute} />
+
             <ManagerPropertyDetailSheet selectedProperty={selectedProperty} setSelectedProperty={setSelectedProperty} STATUS_COLORS={STATUS_COLORS} navigationApp={navigationApp} selectedPropertyLogs={selectedPropertyLogs} handleLogResult={handleLogResult} toast={toast} />
         </div>
     );
