@@ -289,8 +289,6 @@ function calculateBearing(lat1, lng1, lat2, lng2) {
 }
 
 /**
- * Nearest Neighbor TSP approximation for route ordering
-/**
  * 2-opt Optimization to uncross paths and reduce total distance
  */
 function apply2Opt(route) {
@@ -421,6 +419,7 @@ const FRONT_LOAD_PROPENSITY_PERCENTILE = 0.30;
 const DEFAULT_MAX_DISTANCE_INCREASE = 0.12;
 
 function fatigueAwareFrontLoad(route) {
+    if (!route || route.length === 0) return route || [];
     if (route.length <= FATIGUE_FRONT_LOAD_STOPS) return route;
 
     // Calculate baseline distance
@@ -783,6 +782,189 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
     }
 
     return routes;
+}
+
+// ─── Mail-Carrier (Boustrophedon) Algorithm ─────────────────────────────────
+
+/** Strip directional prefixes, suffixes, and type words to unify street names. */
+function normalizeStreetName(raw) {
+    if (!raw) return '';
+    let s = raw.toUpperCase().trim();
+    // Remove directional prefixes/suffixes
+    s = s.replace(/^(N\.?|S\.?|E\.?|W\.?|NE|NW|SE|SW|NORTH|SOUTH|EAST|WEST)\s+/i, '');
+    s = s.replace(/\s+(N\.?|S\.?|E\.?|W\.?|NE|NW|SE|SW|NORTH|SOUTH|EAST|WEST)$/i, '');
+    // Remove street type suffixes
+    s = s.replace(/\s+(ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|LN|LANE|CT|COURT|PL|PLACE|WAY|RD|ROAD|CIR|CIRCLE|TRL|TRAIL|PKWY|PARKWAY)\.?$/i, '');
+    return s.trim();
+}
+
+/** Group properties by normalized street name. Unknown streets go to '_unknown'. */
+function groupByStreet(properties) {
+    const groups = new Map();
+    properties.forEach(p => {
+        const key = normalizeStreetName(p.street_name) || '_unknown';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(p);
+    });
+    return groups;
+}
+
+/** Order streets by nearest-neighbor on centroids, then 2-opt refine. */
+function orderStreetsByNearestNeighbor(streetGroups, startLocation) {
+    const streetNames = Array.from(streetGroups.keys());
+    if (streetNames.length <= 1) return streetNames;
+
+    // Compute centroids
+    const centroids = streetNames.map(name => {
+        const props = streetGroups.get(name);
+        const lat = props.reduce((s, p) => s + p.lat, 0) / props.length;
+        const lng = props.reduce((s, p) => s + p.lng, 0) / props.length;
+        return { name, lat, lng };
+    });
+
+    // Nearest neighbor from start
+    const visited = [];
+    const remaining = [...centroids];
+    let current = startLocation
+        ? { lat: startLocation.lat, lng: startLocation.lng }
+        : remaining[0];
+
+    // Find closest to start
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    remaining.forEach((c, i) => {
+        const d = calculateDistanceFast(current.lat, current.lng, c.lat, c.lng);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+    });
+    current = remaining.splice(bestIdx, 1)[0];
+    visited.push(current);
+
+    while (remaining.length > 0) {
+        bestIdx = 0;
+        bestDist = Infinity;
+        remaining.forEach((c, i) => {
+            const d = calculateDistanceFast(current.lat, current.lng, c.lat, c.lng);
+            if (d < bestDist) { bestDist = d; bestIdx = i; }
+        });
+        current = remaining.splice(bestIdx, 1)[0];
+        visited.push(current);
+    }
+
+    // 2-opt on the street sequence (small N, fast)
+    if (visited.length >= 4 && visited.length <= 200) {
+        let improved = true;
+        let iters = 0;
+        while (improved && iters < 30) {
+            improved = false;
+            iters++;
+            for (let i = 1; i < visited.length - 2; i++) {
+                for (let j = i + 2; j < visited.length; j++) {
+                    const d1 = calculateDistanceFast(visited[i-1].lat, visited[i-1].lng, visited[i].lat, visited[i].lng)
+                             + calculateDistanceFast(visited[j].lat, visited[j].lng, (visited[j+1]||visited[j]).lat, (visited[j+1]||visited[j]).lng);
+                    const d2 = calculateDistanceFast(visited[i-1].lat, visited[i-1].lng, visited[j].lat, visited[j].lng)
+                             + calculateDistanceFast(visited[i].lat, visited[i].lng, (visited[j+1]||visited[j]).lat, (visited[j+1]||visited[j]).lng);
+                    if (d2 < d1) {
+                        const seg = visited.splice(i, j - i + 1).reverse();
+                        visited.splice(i, 0, ...seg);
+                        improved = true;
+                    }
+                }
+            }
+        }
+    }
+
+    return visited.map(c => c.name);
+}
+
+/** Walk one side of the street low→high, cross, walk the other side high→low. */
+function boustrophedonStreet(props, reverseDirection) {
+    if (props.length <= 1) return props;
+
+    const odd = props.filter(p => {
+        const num = parseInt(p.house_number, 10);
+        return isNaN(num) || num % 2 !== 0;
+    });
+    const even = props.filter(p => {
+        const num = parseInt(p.house_number, 10);
+        return !isNaN(num) && num % 2 === 0;
+    });
+
+    const sortByNum = (a, b) => (parseInt(a.house_number, 10) || 0) - (parseInt(b.house_number, 10) || 0);
+    odd.sort(sortByNum);
+    even.sort(sortByNum);
+
+    if (reverseDirection) {
+        return [...even.reverse(), ...odd];
+    }
+    return [...odd, ...even.reverse()];
+}
+
+/** 2-opt scoped to a single street's properties only. */
+function applyIntraStreet2Opt(props) {
+    if (props.length < 4) return props;
+    let improved = true;
+    let iters = 0;
+    while (improved && iters < 20) {
+        improved = false;
+        iters++;
+        for (let i = 0; i < props.length - 2; i++) {
+            for (let j = i + 2; j < props.length; j++) {
+                const d1 = calculateDistanceFast(props[i].lat, props[i].lng, props[i+1].lat, props[i+1].lng)
+                         + (j + 1 < props.length ? calculateDistanceFast(props[j].lat, props[j].lng, props[j+1].lat, props[j+1].lng) : 0);
+                const d2 = calculateDistanceFast(props[i].lat, props[i].lng, props[j].lat, props[j].lng)
+                         + (j + 1 < props.length ? calculateDistanceFast(props[i+1].lat, props[i+1].lng, props[j+1].lat, props[j+1].lng) : 0);
+                if (d2 < d1) {
+                    const seg = props.splice(i + 1, j - i).reverse();
+                    props.splice(i + 1, 0, ...seg);
+                    improved = true;
+                }
+            }
+        }
+    }
+    return props;
+}
+
+/** Full mail-carrier ordering: group by street, order streets, boustrophedon walk. */
+export function mailCarrierOrder(properties, startLocation) {
+    if (!properties || properties.length === 0) return [];
+
+    // Filter out properties with missing/NaN coordinates
+    const validProperties = properties.filter(p =>
+        p && typeof p.lat === 'number' && !isNaN(p.lat) &&
+        typeof p.lng === 'number' && !isNaN(p.lng)
+    );
+    if (validProperties.length === 0) return [];
+
+    const streetGroups = groupByStreet(validProperties);
+    const orderedStreetNames = orderStreetsByNearestNeighbor(streetGroups, startLocation);
+
+    const result = [];
+    let exitPoint = startLocation || null;
+    let reverseNext = false;
+
+    for (const streetName of orderedStreetNames) {
+        let streetProps = streetGroups.get(streetName);
+        if (!streetProps || streetProps.length === 0) continue;
+
+        // Boustrophedon walk within the street
+        streetProps = boustrophedonStreet(streetProps, reverseNext);
+        streetProps = applyIntraStreet2Opt(streetProps);
+
+        // If we have an exit point, check if we should reverse this street
+        if (exitPoint && streetProps.length >= 2) {
+            const distToFirst = calculateDistanceFast(exitPoint.lat, exitPoint.lng, streetProps[0].lat, streetProps[0].lng);
+            const distToLast = calculateDistanceFast(exitPoint.lat, exitPoint.lng, streetProps[streetProps.length - 1].lat, streetProps[streetProps.length - 1].lng);
+            if (distToLast < distToFirst) {
+                streetProps.reverse();
+            }
+        }
+
+        result.push(...streetProps);
+        exitPoint = streetProps[streetProps.length - 1];
+        reverseNext = !reverseNext;
+    }
+
+    return result;
 }
 
 // Re-export lead scoring for external consumers

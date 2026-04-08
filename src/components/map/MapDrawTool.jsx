@@ -13,18 +13,17 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
         if (shape === 'circle') {
             radiusInMiles = Math.sqrt(areaSqMiles / Math.PI);
         } else if (shape === 'square') {
-            radiusInMiles = Math.sqrt(areaSqMiles / 4);
+            radiusInMiles = Math.sqrt(areaSqMiles) / 2; // half side-length
         } else if (shape === 'triangle') {
             radiusInMiles = Math.sqrt(areaSqMiles / 2);
         }
 
-        // approximate miles to degrees (rough estimate: 1 lat deg = 69 miles, 1 lng deg at 40N = ~53 miles)
+        // Mercator-corrected deltas
         const radiusLat = radiusInMiles / 69.0;
         const radiusLng = radiusInMiles / (69.0 * Math.cos(centerLatlng.lat * Math.PI / 180));
 
         let newPoints = [];
         if (shape === 'circle') {
-            // Generate a 32-point polygon approximating a circle
             for (let i = 0; i < 32; i++) {
                 const angle = (i / 32) * Math.PI * 2;
                 newPoints.push({
@@ -33,12 +32,13 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
                 });
             }
         } else if (shape === 'square') {
-            newPoints = [
-                { lat: centerLatlng.lat + radiusLat, lng: centerLatlng.lng - radiusLng },
-                { lat: centerLatlng.lat + radiusLat, lng: centerLatlng.lng + radiusLng },
-                { lat: centerLatlng.lat - radiusLat, lng: centerLatlng.lng + radiusLng },
-                { lat: centerLatlng.lat - radiusLat, lng: centerLatlng.lng - radiusLng }
-            ];
+            // Mercator-corrected square: 4 corners + closing 5th point
+            const nw = { lat: centerLatlng.lat + radiusLat, lng: centerLatlng.lng - radiusLng };
+            const ne = { lat: centerLatlng.lat + radiusLat, lng: centerLatlng.lng + radiusLng };
+            const se = { lat: centerLatlng.lat - radiusLat, lng: centerLatlng.lng + radiusLng };
+            const sw = { lat: centerLatlng.lat - radiusLat, lng: centerLatlng.lng - radiusLng };
+            // Closed ring (5 points) so downstream polygon checks work
+            newPoints = [nw, ne, se, sw, nw];
         } else if (shape === 'triangle') {
             newPoints = [
                 { lat: centerLatlng.lat + radiusLat, lng: centerLatlng.lng },
