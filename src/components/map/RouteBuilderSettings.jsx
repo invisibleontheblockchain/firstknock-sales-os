@@ -16,7 +16,7 @@ const BRAND = {
     offWhite: '#E5E5E5'
 };
 
-const ROUTE_SIZE_OPTIONS = [25, 50, 75, 100, 150, 200];
+const ROUTE_SIZE_OPTIONS = [50, 100, 250, 500, 1000];
 
 export default function RouteBuilderSettings({
     // State values
@@ -224,14 +224,14 @@ export default function RouteBuilderSettings({
                                         value={[housesPerRoute]}
                                         onValueChange={([v]) => setHousesPerRoute(v)}
                                         min={10}
-                                        max={200}
+                                        max={1000}
                                         step={10}
                                         className="w-full"
                                     />
                                     <div className="flex justify-between text-[10px] text-gray-600 font-medium px-1">
                                         <span>Small (10)</span>
                                         <span>Standard (60)</span>
-                                        <span>Large (200)</span>
+                                        <span>Large (1000)</span>
                                     </div>
                                 </div>
                             )}

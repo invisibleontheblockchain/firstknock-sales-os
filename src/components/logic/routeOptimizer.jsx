@@ -292,7 +292,7 @@ function calculateBearing(lat1, lng1, lat2, lng2) {
  */
 function apply2Opt(route) {
     if (route.length < 4) return route;
-    if (route.length > 300) {
+    if (route.length > 1200) { // Increased from 300, can be slow for very large routes
         console.warn(`[routeOptimizer] Route too large for 2-Opt (${route.length} nodes). Slipping to Nearest Neighbor for performance.`);
         return route;
     }
@@ -356,7 +356,7 @@ function apply2Opt(route) {
  */
 function applyLinkSwap(route) {
     if (route.length < 4) return route;
-    if (route.length > 300) {
+    if (route.length > 1200) { // Increased from 300
         return route; // Safety limit
     }
     let improved = true;
