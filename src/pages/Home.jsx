@@ -414,25 +414,17 @@ export default function Home() {
 
                     // Chunk requests to avoid crashing the browser with too many concurrent requests
                     const zips = allZips;
-                    const chunkSize = 5;
+                    const chunkSize = 3;
                     let totalFetched = 0;
-                    const MAX_PROPERTIES = 50000; // Property fetch limit
-
+                    const MAX_PROPERTIES = 50000;
+                    const _delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
                     for (let i = 0; i < zips.length; i += chunkSize) {
-                        if (totalFetched >= MAX_PROPERTIES) {
-                            console.log(`[Home] Reached max property limit (${MAX_PROPERTIES}), skipping remaining zips.`);
-                            break;
-                        }
+                        if (totalFetched >= MAX_PROPERTIES) { console.log(`[Home] Reached max property limit`); break; }
+                        if (i > 0) await _delay(400);
                         const chunk = zips.slice(i, i + chunkSize);
-                        const promises = chunk.map(zip =>
-                            base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000)
-                        );
+                        const promises = chunk.map(zip => base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000).catch(err => { console.warn(`[Home] Zip ${zip} fetch failed:`, err?.message); return []; }));
                         const results = await Promise.all(promises);
-                        const newItems = results.flatMap(r => {
-                            if (Array.isArray(r)) return r;
-                            const items = r?.items || [];
-                            return items;
-                        });
+                        const newItems = results.flatMap(r => Array.isArray(r) ? r : (r?.items || []));
                         items = items.concat(newItems);
                         totalFetched += newItems.length;
                     }
