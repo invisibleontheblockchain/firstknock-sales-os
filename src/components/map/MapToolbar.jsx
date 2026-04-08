@@ -248,7 +248,6 @@ export default function MapToolbar({
                                     <option value="all">Phase</option>
                                     <option value="deeds">P1 Deeds</option>
                                     <option value="listings">P2 MLS</option>
-                                    <option value="verified">P3 Verified</option>
                                 </select>
                             )}
 
