@@ -16,7 +16,58 @@ import { useQueryClient } from "@tanstack/react-query";
  * - Bottom action bar (generate, routes, checklist)
  * - Right-side floating buttons (locate, center on territory)
  */
-export default function MapToolbar({ onGenerateRoutes,
+export default function MapToolbar({
+    // Mode & state
+    mode, setMode,
+    activeRoute, setActiveRoute,
+    routesGenerating,
+
+    // Panel toggles
+    setShowDashboard,
+    setShowMapSettings,
+    setShowCompare,
+    setShowRoutePanel,
+    setShowChecklist,
+
+    // Data
+    teamMembers,
+    hydratedSavedRoutes,
+    routes,
+    filteredRoutes,
+    fitBounds,
+    repColors,
+    user,
+
+    // Map ref
+    mapRef,
+    setUserLocation,
+
+    // Actions
+    handleAssignRoute,
+    onGenerateRoutes,
+
+    // Brand
+    BRAND,
+
+    // Route Filters
+    activeRouteSoldFilter, setActiveRouteSoldFilter,
+    activeRoutePhaseFilter, setActiveRoutePhaseFilter,
+    activeRoutePriceFilter, setActiveRoutePriceFilter,
+
+    // Drawing state
+    drawnPolygon,
+
+    // Route Visibility
+    showRouteDetails,
+    setShowRouteDetails,
+    showRouteLines,
+    setShowRouteLines,
+
+    // Filter Saving
+    onSaveFilteredRoute,
+    
+    // Route Optimization
+    onReoptimizeRoute,
 }) {
     const queryClient = useQueryClient();
     const hasDrawnArea = drawnPolygon && drawnPolygon.length > 2;
