@@ -42,7 +42,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { format, subMonths, subDays, isAfter, parseISO } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { generateOptimizedRoutes, optimizeRouteByDistance } from '../components/logic/routeOptimizer';
+import { optimizeRouteByDistance } from '../components/logic/routeOptimizer';
+import { generateAndSaveRoutes } from '../components/logic/routeGeneration';
 import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../components/logic/heatmapLogic';
 const RouteChecklist = React.lazy(() => import('../components/routes/RouteChecklist'));
 import LazyRouteCommandPanel from '../components/routes/LazyRouteCommandPanel';
@@ -942,405 +943,19 @@ export default function Home() {
         return generateStateClusters(effectiveProperties);
     }, [effectiveProperties, zoomLevel, activeRoute]);
 
-    const generateRoutes = useCallback(async () => {
+        const generateRoutes = useCallback(async () => {
         // If frozen data exists, reorder instead of refetch (unless filter just changed, which clears frozen)
         if (frozenWorkingSet?.length > 0) {
             console.log(`[generateRoutes] Frozen data exists (${frozenWorkingSet.length} props). Using handleReorder.`);
             await handleReorder(); return;
         }
 
-        setRoutesGenerating(true);
-        const toastId = toast.loading("Building routes...", { id: 'build-routes' });
-
-        try {
-            // 1. DYNAMIC DATA FETCHING (if zip code is set)
-            let dynamicProps = [];
-            if (zipCodeFilter && zipCodeFilter.trim()) {
-                const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
-
-                // Zip codes are unlimited — no limit check needed
-
-                // Check if we need to fetch (simple check: do we have enough data for these zips?)
-                // We'll just fetch to be safe and merge.
-                // Note: Parallel fetch for multiple zips
-                const fetchPromises = targetZips.map(zip =>
-                    base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000)
-                        .then(res => Array.isArray(res) ? res : (res?.items || []))
-                        .catch(err => {
-                            console.warn(`Failed to fetch zip ${zip}`, err);
-                            return [];
-                        })
-                );
-
-                const results = await Promise.all(fetchPromises);
-                let flattened = results.flat();
-
-                const userGeneratedZips = user?.generated_zip_codes || [];
-                const ungeneratedZips = targetZips.filter(z => !userGeneratedZips.includes(z));
-
-                // If no properties found OR zip not generated yet, pull from RentCast via backend
-                if (flattened.length === 0 || ungeneratedZips.length > 0) {
-                    const zipsToFetch = ungeneratedZips.length > 0 ? ungeneratedZips : targetZips;
-                    console.log(`[Generate] Need to fetch zips from RentCast: ${zipsToFetch.join(', ')}`);
-                    toast.loading("Pulling property data...", { id: 'fetch-zip' });
-
-                    for (const zip of zipsToFetch) {
-                        try {
-                            const res = await base44.functions.invoke('fetchZipProperties', { 
-                                zip_code: zip, 
-                                sold_months: 12 // Always fetch 12 months; UI slider filters locally
-                            });
-                            console.log(`[Generate] Fetch result for ${zip}:`, JSON.stringify(res.data));
-                            if (res.data?.error) {
-                                toast.error(res.data.message || res.data.error, { id: 'fetch-zip' });
-                                break;
-                            }
-                            // Log sold/MLS counts for debugging
-                            if (res.data?.sold_count !== undefined) {
-                                console.log(`[Generate] ${zip}: ${res.data.count} imported, ${res.data.sold_count} sold, ${res.data.mls_count} MLS`);
-                            }
-                        } catch (err) {
-                            console.warn(`Failed to fetch zip ${zip}`, err);
-                            const errData = err?.response?.data;
-                            if (errData?.error) {
-                                toast.error(errData.message || 'Failed to fetch zip data.', { id: 'fetch-zip' });
-                            }
-                        }
-                    }
-
-                    // Backend now auto-adds zips to territory_zip_codes, refresh user
-                    queryClient.invalidateQueries({ queryKey: ['user'] });
-                    toast.success("Data synced!", { id: 'fetch-zip' });
-
-                    // Re-fetch after import
-                    const retryPromises = targetZips.map(zip =>
-                        base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000)
-                            .then(res => Array.isArray(res) ? res : (res?.items || []))
-                            .catch(() => [])
-                    );
-                    const retryResults = await Promise.all(retryPromises);
-                    flattened = retryResults.flat();
-                }
-
-                if (flattened.length > 0) {
-                    console.log(`[Generate] Fetched ${flattened.length} properties from backend for zips: ${targetZips.join(', ')}`);
-                    dynamicProps = flattened;
-                    // Update state to show on map (will trigger re-render eventually, but we use local var for now)
-                    setFetchedProperties(prev => {
-                        // Dedup with existing fetched
-                        const existingIds = new Set(prev.map(p => p.id));
-                        const newUnique = flattened.filter(p => !existingIds.has(p.id));
-                        return prev.concat(newUnique);
-                    });
-                }
-            }
-
-            // 2. PREPARE DATA FOR ROUTING
-            // Combine current available (memoized) with newly fetched dynamic props
-            // Need to apply same processing (dedup, assigned filtering) to dynamicProps
-            const assignedSet = assignedHashes; // closed over from render
-
-            const logsByAddress = new Map();
-            logs.forEach(l => {
-                if (!l.address_hash) return;
-                if (!logsByAddress.has(l.address_hash)) {
-                    logsByAddress.set(l.address_hash, []);
-                }
-                logsByAddress.get(l.address_hash).push(l);
-            });
-
-            // Convert dynamicProps to effective format (add lat/lng parse if needed, though filter returns entities)
-            const processedDynamic = dynamicProps.map(p => {
-                const hash = p.address_hash || p.id;
-                const propLogs = [
-                    ...(logsByAddress.get(hash) || []),
-                    ...(p.legacy_hash && p.legacy_hash !== hash ? (logsByAddress.get(p.legacy_hash) || []) : [])
-                ];
-                return {
-                    ...p,
-                    address_hash: hash,
-                    lat: parseFloat(p.lat),
-                    lng: parseFloat(p.lng),
-                    effective_status: determineEffectiveStatus(p, propLogs)
-                };
-            }).filter(p =>
-                (routeConfig.excludeAssigned === false || !assignedSet.has(p.address_hash)) &&
-                p.lat && p.lng &&
-                !(Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001)
-            );
-
-            // Merge with existing availableProperties, deduping by address_hash
-            const combinedMap = new Map();
-            const baseProps = routeConfig.excludeAssigned === false ? effectiveProperties : availableProperties;
-            baseProps.forEach(p => combinedMap.set(p.address_hash, p));
-            processedDynamic.forEach(p => combinedMap.set(p.address_hash, p));
-
-            let workingSet = Array.from(combinedMap.values());
-            console.log(`[generateRoutes] Initial Properties: ${workingSet.length}`);
-
-            // Freeze data for reorder functionality
-            setFrozenWorkingSet(workingSet);
-
-            // 3. FILTERING — Polygon is the PRIMARY geographic constraint when drawn
-            const hasActivePolygon = drawnPolygon && drawnPolygon.length > 2;
-            if (!hasActivePolygon) {
-                let targetZips = [];
-                if (zipCodeFilter && zipCodeFilter.trim()) targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
-                else if (user?.territory_zip_codes?.length > 0) targetZips = user.territory_zip_codes;
-                if (targetZips.length > 0) {
-                    workingSet = workingSet.filter(p => targetZips.includes(String(p.zip_code || '').trim().slice(0, 5)));
-                    console.log(`[generateRoutes] After Zip Filter (${targetZips.join(', ')}): ${workingSet.length}`);
-                }
-            }
-
-            // Apply Polygon Filter — NEVER auto-clear, polygon is the user's explicit boundary
-            if (hasActivePolygon) {
-                const beforePoly = workingSet.length;
-                workingSet = workingSet.filter(p => isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon));
-                console.log(`[generateRoutes] After Polygon Filter: ${workingSet.length} (was ${beforePoly})`);
-                if (workingSet.length === 0) {
-                    toast.error('No property data inside your drawn area. Pull data for this area first.', { id: 'build-routes', duration: 6000 });
-                    setRoutesGenerating(false); return;
-                }
-            }
-
-            const beforeSoldDateFilter = workingSet.length;
-            const preSoldWorkingSet = workingSet.slice();
-
-            // Apply Sold Date Filter (STRICT: If filter active, MUST have sold_date within range)
-            // EXCEPTION: 'PENDING' homes (from Listings API) bypass this because they are new movers
-            // that hasn't hit deed records yet.
-            if (soldDateFilter !== null && soldDateFilter !== 'all') {
-                let cutoff;
-                const now = new Date();
-                // Set to end of day to be inclusive of properties sold today, 
-                // then subtract to get the start of the filter period.
-                if (soldDateFilter === 0.25 || soldDateFilter === '0.25') {
-                    cutoff = subDays(now, 7);
-                } else {
-                    cutoff = subMonths(now, Number(soldDateFilter));
-                }
-                
-                // Be inclusive of the entire start day
-                cutoff.setHours(0, 0, 0, 0);
-                
-                console.log(`[generateRoutes] Applying Sold Date Filter: ${soldDateFilter} months (Cutoff: ${cutoff instanceof Date && !isNaN(cutoff) ? cutoff.toISOString() : 'Invalid'})`);
-                workingSet = workingSet.filter(p => {
-                    // Always include Pending properties (active MLS deals)
-                    if (p.original_status === 'PENDING') return true;
-                    // Only bypass for RECENT_OFF_MARKET if validated by BatchData (not low confidence)
-                    if (p.original_status === 'RECENT_OFF_MARKET' && p.sale_confidence !== 'low') return true;
-                    
-                    // Properties with rep interaction statuses always stay in routes
-                    const hasInteraction = ['CALLBACK', 'NO_ANSWER', 'QUALIFIED'].includes(p.effective_status);
-                    if (!p.sold_date) return hasInteraction;
-                    try {
-                        const date = new Date(p.sold_date);
-                        if (isNaN(date.getTime())) return hasInteraction;
-                        // Exclude only if sold_date is BEFORE the cutoff
-                        return date >= cutoff;
-                    } catch (e) { return hasInteraction; }
-                });
-                console.log(`[generateRoutes] After Sold Date Filter: ${workingSet.length}`);
-            }
-
-            if (soldDateFilter !== null && beforeSoldDateFilter > 0 && workingSet.length === 0) {
-                toast.error(`No homes match "Sold in last ${soldDateFilter} months" with current filters.`);
-                setRoutesGenerating(false);
-                return;
-            }
-
-            // Apply Property Type Filter
-            if (routeConfig.propertyTypes.length > 0) {
-                workingSet = workingSet.filter(p => {
-                    if (!p.property_type) return true;
-                    const pt = p.property_type.toLowerCase();
-                    return routeConfig.propertyTypes.some(t => pt.includes(t.toLowerCase()));
-                });
-            }
-
-            // Exclude Commercial properties (if enabled)
-            if (routeConfig.excludeCommercial) {
-                const commKeywords = ['commercial', 'industrial', 'retail', 'office', 'warehouse', 'business', 'shopping'];
-                workingSet = workingSet.filter(p => {
-                    if (!p.property_type) return true;
-                    const pt = p.property_type.toLowerCase();
-                    return !commKeywords.some(kw => pt.includes(kw));
-                });
-            }
-
-            // Exclude Condos/Apartments (if enabled)
-            if (routeConfig.excludeCondos) {
-                const condoKeywords = ['condo', 'apartment', 'co-op', 'coop', 'multifamily', 'multi family', 'multi-family'];
-                workingSet = workingSet.filter(p => {
-                    if (!p.property_type) return true;
-                    const pt = p.property_type.toLowerCase();
-                    return !condoKeywords.some(kw => pt.includes(kw));
-                });
-            }
-
-            // Exclude Vacant Land / Lots (if enabled)
-            if (routeConfig.excludeLand) {
-                const landKeywords = ['land', 'lot', 'vacant', 'acreage', 'farm'];
-                workingSet = workingSet.filter(p => {
-                    if (!p.property_type) return true;
-                    const pt = p.property_type.toLowerCase();
-                    return !landKeywords.some(kw => pt.includes(kw));
-                });
-            }
-
-            // Exclude BatchData-rejected properties (confirmed NOT sold)
-            {
-                const before = workingSet.length;
-                workingSet = workingSet.filter(p => p.original_status !== 'REJECTED');
-                if (before > workingSet.length) {
-                    console.log(`[generateRoutes] Removed ${before - workingSet.length} REJECTED properties`);
-                }
-            }
-
-            // Skip low-confidence properties — forced for 40mi pulls (no BatchData validation)
-            if (!routeConfig.includeUnverifiedSales || lastPullMode === '40mi') {
-                const before = workingSet.length;
-                workingSet = workingSet.filter(p => p.sale_confidence !== 'low');
-                if (before > workingSet.length) {
-                    console.log(`[generateRoutes] Removed ${before - workingSet.length} low-confidence properties${lastPullMode === '40mi' ? ' (40mi forced)' : ''}`);
-                }
-            }
-
-            // Exclude Previously Knocked doors (if enabled)
-            if (routeConfig.excludePreviouslyKnocked) {
-                workingSet = workingSet.filter(p => {
-                    const hash = p.address_hash || p.id;
-                    const propLogs = logsByAddress.get(hash);
-                    // Force include if it's a CALLBACK status, otherwise exclude if any logs exist
-                    if (p.effective_status === 'CALLBACK') return true;
-                    return !propLogs || propLogs.length === 0;
-                });
-            }
-
-            // Apply Price Range Filter
-            if (routeConfig.minPrice) {
-                workingSet = workingSet.filter(p => !p.price || p.price >= routeConfig.minPrice);
-            }
-            if (routeConfig.maxPrice) {
-                workingSet = workingSet.filter(p => !p.price || p.price <= routeConfig.maxPrice);
-            }
-
-            // Apply Year Built Filter
-            if (routeConfig.minYearBuilt) {
-                workingSet = workingSet.filter(p => !p.year_built || p.year_built >= routeConfig.minYearBuilt);
-            }
-            if (routeConfig.maxYearBuilt) {
-                workingSet = workingSet.filter(p => !p.year_built || p.year_built <= routeConfig.maxYearBuilt);
-            }
-
-            // Exclude terminal statuses (configurable)
-            if (!routeConfig.excludeTerminal) {
-                // Don't filter out SOLD/HARD_NO — the optimizer will still do it, but we pass them through
-            }
-
-            // Include/exclude callbacks
-            if (!routeConfig.includeCallbacks) {
-                workingSet = workingSet.filter(p => p.effective_status !== 'CALLBACK');
-            }
-
-            if (workingSet.length === 0) {
-                let reason = "current filters or selected area";
-                if (soldDateFilter !== null) reason = `"Sold in last ${soldDateFilter} months" filter`;
-                if (drawnPolygon && drawnPolygon.length > 2) reason = "drawn area selection";
-                if (zipCodeFilter) reason = `filter for ${zipCodeFilter}`;
-
-                toast.error(`No properties found matching ${reason}. Check filters or clear area.`, { 
-                    id: 'build-routes',
-                    duration: 5000 
-                });
-                setRoutesGenerating(false);
-                return;
-            }
-
-            // 4. UI UPDATES (Keep Builder available & Move Map)
-            setShowCompare(true);
-
-            if (mapRef.current && workingSet.length > 0) {
-                const bounds = L.latLngBounds(workingSet.map(p => [p.lat, p.lng]));
-                if (bounds.isValid()) {
-                    try { if (mapRef.current._mapPane) mapRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 }); } catch (e) { }
-                }
-            }
-
-            // 5. GENERATE ROUTES
-            // Use current map center as start location if not set
-            const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
-            const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
-
-            const generated = generateOptimizedRoutes(
-                workingSet,
-                housesPerRoute,
-                start,
-                logs,
-                {
-                    streetCooldownDays,
-                    useStreetSweep: routeConfig.walkingPattern === 'street_sweep',
-                    minimizeTurns: routeConfig.minimizeTurns,
-                    use2Opt: routeConfig.use2Opt,
-                    walkingPattern: routeConfig.walkingPattern,
-                    returnToStart: routeConfig.returnToStart,
-                    excludeTerminal: routeConfig.excludeTerminal,
-                },
-                learnedWeights
-            );
-
-            if (generated['_cooldownInfo']) {
-                setCooldownInfo(generated['_cooldownInfo']);
-            }
-
-            setRoutes(generated);
-            
-            // AUTO-SAVE: Automatically persist all generated routes
-            if (generated.length > 0) {
-                console.log(`[Home] Auto-saving ${generated.length} generated routes...`);
-                // Use a single toast for the bulk save instead of multiple individual toasts
-                const bulkToastId = toast.loading(`Auto-saving ${generated.length} routes...`);
-                
-                try {
-                    // Use Promise.all to wait for all routes to be saved before clearing state
-                    await Promise.all(generated.map(route => 
-                        handleSaveRoute(route, null, null, true) // true = silent (no individual toast)
-                    ));
-                    
-                    toast.success(`Automatically saved ${generated.length} routes`, { id: bulkToastId, duration: 3000 });
-
-                    // Switch to analyze mode so we see the saved items properly
-                    // and clear the transient routes state to prevent double-rendering
-                    setRoutes([]);
-                    setModeRaw('analyze');
-                } catch (error) {
-                    console.error("[Home] Auto-save failed:", error);
-                    toast.error("Bulk auto-save failed. Some routes might not have been persisted.", { id: bulkToastId });
-                }
-            }
-
-            setShowRoutePanel(true);
-            setShowCompare(false); // Close builder to see the map
-            
-            let skippedDueToAssigned = 0;
-            if (routeConfig.excludeAssigned) {
-                skippedDueToAssigned = (effectiveProperties.length - availableProperties.length) + 
-                    (dynamicProps ? dynamicProps.filter(p => assignedHashes.has(p.address_hash || p.id)).length : 0);
-            }
-            
-            const routeWord = generated.length === 1 ? 'route' : 'routes';
-            const toastMsg = `Built ${generated.length} ${routeWord}` + (skippedDueToAssigned > 0 ? ` (${skippedDueToAssigned} skipped because they are already assigned)` : '');
-            
-            toast.success(toastMsg, { id: 'build-routes', duration: 5000 });
-
-        } catch (e) {
-            console.error("Route generation error:", e);
-            alert("An error occurred while generating routes.");
-        } finally {
-            setRoutesGenerating(false);
-        }
-    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon]);
+        generateAndSaveRoutes({
+            setRoutesGenerating, setFrozenWorkingSet, setCooldownInfo, setRoutes, setModeRaw, setFetchedProperties,
+            frozenWorkingSet, zipCodeFilter, user, logs, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, housesPerRoute, startLocation, streetCooldownDays, learnedWeights, availableProperties, effectiveProperties, lastPullMode,
+            queryClient, mapRef, handleSaveRoute,
+        });
+    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, frozenWorkingSet, lastPullMode, effectiveProperties]);
 
     // Reorder: re-run filtering + routing on frozen data without re-fetching
     const handleReorder = useCallback(async () => {
@@ -1589,10 +1204,7 @@ export default function Home() {
         });
     }, [createLogMutation, activeRoute]);
 
-    const generateRoutesRef = useRef(generateRoutes);
-    useEffect(() => {
-        generateRoutesRef.current = generateRoutes;
-    }, [generateRoutes]);
+    
 
     const [pendingAutoGenerate, setPendingAutoGenerate] = useState(false);
 
@@ -1747,7 +1359,7 @@ export default function Home() {
             </MapContainer>
 
             {/* Map UI Overlays extracted to MapToolbar */}
-            <MapToolbar
+                        <MapToolbar
                 mode={mode}
                 setMode={setMode}
                 activeRoute={filteredActiveRoute}
@@ -1781,6 +1393,7 @@ export default function Home() {
                 showRouteLines={showRouteLines}
                 setShowRouteLines={setShowRouteLines}
                 onSaveFilteredRoute={handleSaveFilteredRoute}
+                onGenerateRoutes={generateRoutes}
                 onReoptimizeRoute={handleReoptimizeRoute}
             />
 

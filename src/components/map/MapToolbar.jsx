@@ -16,57 +16,7 @@ import { useQueryClient } from "@tanstack/react-query";
  * - Bottom action bar (generate, routes, checklist)
  * - Right-side floating buttons (locate, center on territory)
  */
-export default function MapToolbar({
-    // Mode & state
-    mode, setMode,
-    activeRoute, setActiveRoute,
-    routesGenerating,
-
-    // Panel toggles
-    setShowDashboard,
-    setShowMapSettings,
-    setShowCompare,
-    setShowRoutePanel,
-    setShowChecklist,
-
-    // Data
-    teamMembers,
-    hydratedSavedRoutes,
-    routes,
-    filteredRoutes,
-    fitBounds,
-    repColors,
-    user,
-
-    // Map ref
-    mapRef,
-    setUserLocation,
-
-    // Actions
-    handleAssignRoute,
-
-    // Brand
-    BRAND,
-
-    // Route Filters
-    activeRouteSoldFilter, setActiveRouteSoldFilter,
-    activeRoutePhaseFilter, setActiveRoutePhaseFilter,
-    activeRoutePriceFilter, setActiveRoutePriceFilter,
-
-    // Drawing state
-    drawnPolygon,
-
-    // Route Visibility
-    showRouteDetails,
-    setShowRouteDetails,
-    showRouteLines,
-    setShowRouteLines,
-
-    // Filter Saving
-    onSaveFilteredRoute,
-    
-    // Route Optimization
-    onReoptimizeRoute,
+export default function MapToolbar({ onGenerateRoutes,
 }) {
     const queryClient = useQueryClient();
     const hasDrawnArea = drawnPolygon && drawnPolygon.length > 2;
@@ -377,7 +327,11 @@ export default function MapToolbar({
                                         toast.error("Pull property data first!", { duration: 4000 });
                                         return;
                                     }
-                                    setShowCompare(true);
+                                    if (onGenerateRoutes) {
+                                        onGenerateRoutes();
+                                    } else {
+                                        setShowCompare(true); // Fallback
+                                    }
                                 } else {
                                     setShowCompare(false);
                                     window.dispatchEvent(new CustomEvent('fk-start-drawing'));
