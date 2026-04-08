@@ -822,6 +822,21 @@ function orderStreetsByNearestNeighbor(streetGroups, startLocation) {
         return { name, lat, lng };
     });
 
+    // For very large street counts, use a simple lat/lng sort instead of O(n²) NN
+    if (centroids.length > 500) {
+        console.log(`[routeOptimizer] ${centroids.length} streets — using spatial sort (fast path)`);
+        // Sort by a space-filling curve approximation (interleaved lat+lng)
+        centroids.sort((a, b) => {
+            const cellSize = 0.01; // ~0.7 miles
+            const rowA = Math.floor(a.lat / cellSize);
+            const rowB = Math.floor(b.lat / cellSize);
+            if (rowA !== rowB) return rowA - rowB;
+            // Boustrophedon: alternate lng direction per row
+            return rowA % 2 === 0 ? a.lng - b.lng : b.lng - a.lng;
+        });
+        return centroids.map(c => c.name);
+    }
+
     // Nearest neighbor from start
     const visited = [];
     const remaining = [...centroids];
@@ -901,10 +916,10 @@ function boustrophedonStreet(props, reverseDirection) {
 
 /** 2-opt scoped to a single street's properties only. */
 function applyIntraStreet2Opt(props) {
-    if (props.length < 4) return props;
+    if (props.length < 4 || props.length > 50) return props; // Skip for large streets
     let improved = true;
     let iters = 0;
-    while (improved && iters < 20) {
+    while (improved && iters < 10) {
         improved = false;
         iters++;
         for (let i = 0; i < props.length - 2; i++) {
