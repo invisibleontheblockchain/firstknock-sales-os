@@ -73,13 +73,7 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
             if (onPointsUpdate) {
                 onPointsUpdate(generated);
             }
-            // Fit map to the drawn shape so it doesn't zoom out
-            if (generated.length > 2) {
-                const bounds = L.latLngBounds(generated.map(p => [p.lat, p.lng]));
-                if (bounds.isValid()) {
-                    try { map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16, animate: true }); } catch (err) { }
-                }
-            }
+            // Don't auto-zoom — keep the map where the user tapped
             // Auto-confirm: immediately commit the shape so user doesn't need to press confirm
             if (onConfirm) {
                 onConfirm(generated);
