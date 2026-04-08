@@ -704,21 +704,19 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
             // We don't literally duplicate, but we account for return distance in metrics
         }
 
-        // Metrics
+        // Metrics — use fast distance for large routes
         let totalDistance = 0;
         let totalScore = 0;
+        const distFn = orderedProps.length > 5000 ? calculateDistanceFast : calculateDistance;
 
         for (let j = 0; j < orderedProps.length - 1; j++) {
-            const legDist = calculateDistance(
+            const legDist = distFn(
                 orderedProps[j].lat, orderedProps[j].lng,
                 orderedProps[j + 1].lat, orderedProps[j + 1].lng
             );
 
             // Basic Max Distance Check - Stop adding if we exceed limit
             if (maxRouteDistance && (totalDistance + legDist) > maxRouteDistance) {
-                // Remove remaining properties from this route
-                // In a real implementation we might want to put them back in the pool, 
-                // but for now we just truncate to respect the user's hard constraint.
                 orderedProps.splice(j + 1);
                 break;
             }

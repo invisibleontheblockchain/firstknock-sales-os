@@ -413,15 +413,15 @@ export default function Home() {
                 if (allZips.length > 0) {
                     console.log(`[Home] Fetching properties for zips: ${allZips.join(', ')}`);
 
-                    // Chunk requests to avoid crashing the browser with too many concurrent requests
+                    // Chunk requests to avoid rate limits
                     const zips = allZips;
-                    const chunkSize = 3;
+                    const chunkSize = 2;
                     let totalFetched = 0;
                     const MAX_PROPERTIES = 50000;
                     const _delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
                     for (let i = 0; i < zips.length; i += chunkSize) {
                         if (totalFetched >= MAX_PROPERTIES) { console.log(`[Home] Reached max property limit`); break; }
-                        if (i > 0) await _delay(400);
+                        if (i > 0) await _delay(800);
                         const chunk = zips.slice(i, i + chunkSize);
                         const promises = chunk.map(zip => base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000).catch(err => { console.warn(`[Home] Zip ${zip} fetch failed:`, err?.message); return []; }));
                         const results = await Promise.all(promises);
@@ -1197,61 +1197,31 @@ export default function Home() {
                 }
             }
 
-            // 5. GENERATE ROUTES
-            // Use current map center as start location if not set
+            // 5. GENERATE ROUTES — yield to UI before heavy computation
             const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
             const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
-
-            const generated = generateOptimizedRoutes(
-                workingSet,
-                housesPerRoute,
-                start,
-                logs,
-                {
-                    streetCooldownDays,
-                    useStreetSweep: routeConfig.walkingPattern === 'street_sweep',
-                    minimizeTurns: routeConfig.minimizeTurns,
-                    use2Opt: routeConfig.use2Opt,
-                    walkingPattern: routeConfig.walkingPattern,
-                    returnToStart: routeConfig.returnToStart,
-                    excludeTerminal: routeConfig.excludeTerminal,
-                },
+            console.log(`[generateRoutes] Starting optimization for ${workingSet.length} properties...`);
+            const generated = await new Promise(resolve => setTimeout(() => resolve(generateOptimizedRoutes(
+                workingSet, housesPerRoute, start, logs,
+                { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: routeConfig.use2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: routeConfig.returnToStart, excludeTerminal: routeConfig.excludeTerminal },
                 learnedWeights
-            );
-
-            if (generated['_cooldownInfo']) {
-                setCooldownInfo(generated['_cooldownInfo']);
-            }
-
+            )), 50));
+            console.log(`[generateRoutes] Done: ${generated.length} routes`);
+            if (generated['_cooldownInfo']) setCooldownInfo(generated['_cooldownInfo']);
             setRoutes(generated);
-            
-            // AUTO-SAVE: Automatically persist all generated routes
-            if (generated.length > 0) {
-                console.log(`[Home] Auto-saving ${generated.length} generated routes...`);
-                // Use a single toast for the bulk save instead of multiple individual toasts
-                const bulkToastId = toast.loading(`Auto-saving ${generated.length} routes...`);
-                
+            // AUTO-SAVE (skip routes >10K properties — payload too large)
+            const saveable = generated.filter(r => r.houseCount <= 10000);
+            if (saveable.length > 0) {
+                const bulkId = toast.loading(`Auto-saving ${saveable.length} routes...`);
                 try {
-                    // Use Promise.all to wait for all routes to be saved before clearing state
-                    await Promise.all(generated.map(route => 
-                        handleSaveRoute(route, null, null, true) // true = silent (no individual toast)
-                    ));
-                    
-                    toast.success(`Automatically saved ${generated.length} routes`, { id: bulkToastId, duration: 3000 });
-
-                    // Switch to analyze mode so we see the saved items properly
-                    // and clear the transient routes state to prevent double-rendering
-                    setRoutes([]);
-                    setModeRaw('analyze');
-                } catch (error) {
-                    console.error("[Home] Auto-save failed:", error);
-                    toast.error("Bulk auto-save failed. Some routes might not have been persisted.", { id: bulkToastId });
-                }
+                    await Promise.all(saveable.map(r => handleSaveRoute(r, null, null, true)));
+                    toast.success(`Saved ${saveable.length} routes`, { id: bulkId, duration: 3000 });
+                    setRoutes([]); setModeRaw('analyze');
+                } catch (error) { console.error('[Home] Auto-save failed:', error); toast.error('Auto-save failed.', { id: bulkId }); }
+            } else if (generated.length > 0) {
+                toast.info(`Route has ${generated[0].houseCount} properties — too large to auto-save. View on map.`, { id: 'build-routes', duration: 5000 });
             }
-
-            setShowRoutePanel(true);
-            setShowCompare(false); // Close builder to see the map
-            
+            setShowRoutePanel(true); setShowCompare(false);
             let skippedDueToAssigned = 0;
             if (routeConfig.excludeAssigned) {
                 skippedDueToAssigned = (effectiveProperties.length - availableProperties.length) + 
