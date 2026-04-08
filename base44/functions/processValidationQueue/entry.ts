@@ -7,10 +7,15 @@ Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
         const originUrl = new URL(req.url);
-        // e.g. https://[app-name].base44.app/api/functions/batchDataWebhookCallback
-        // The path depends on how base44 exposes functions, but typically it aligns with the invoke path.
-        // We will construct the public webhook URL relative to the current execution path.
-        const webhookUrl = `${originUrl.origin}/api/functions/batchDataWebhookCallback`;
+        
+        // Use explicit env var if set, otherwise construct from request URL
+        // Append PIPELINE_SECRET as query param for webhook authentication
+        const PIPELINE_SECRET = Deno.env.get('PIPELINE_SECRET');
+        const baseWebhookUrl = Deno.env.get('BATCHDATA_WEBHOOK_URL') 
+            || `${originUrl.origin}/api/functions/batchDataWebhookCallback`;
+        const webhookUrl = PIPELINE_SECRET 
+            ? `${baseWebhookUrl}?secret=${encodeURIComponent(PIPELINE_SECRET)}` 
+            : baseWebhookUrl;
 
         if (!BATCH_DATA_API_KEY) {
             return Response.json({ error: 'No BatchData API key configured' }, { status: 500 });

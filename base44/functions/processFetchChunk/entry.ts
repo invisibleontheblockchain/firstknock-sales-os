@@ -7,6 +7,10 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
 
+// Configurable deed lag cutoff — default 120 days per Harris County worst-case research
+// (90-day clerk backlog + 30-60 day RentCast propagation lag)
+const DEED_LAG_CUTOFF_DAYS = parseInt(Deno.env.get("DEED_LAG_CUTOFF_DAYS") || '120', 10);
+
 const MAX_RETRIES = 3;
 const BASE_BACKOFF_MS = 1500;
 const MAX_BACKOFF_MS = 20000;
@@ -445,12 +449,43 @@ Deno.serve(async (req) => {
 
             console.log(`[chunk-v12] Phase 2 fetched ${allRaw.length} raw listings (offset=${currentOffset})`);
 
+            // ── Delta validation: load previously seen listingIds from this job's zip codes ──
+            // This prevents reprocessing listings we've already classified on prior pulls
+            let seenListingIds = null;
+            if (isDeltaPull && allRaw.length > 0) {
+                try {
+                    seenListingIds = new Set();
+                    // Check existing MasterProperty records for this area — any listing we already have
+                    // with a data_source of 'rentcast' was already processed
+                    const uniqueZips = [...new Set(allRaw.map(p => p.zipCode).filter(Boolean))];
+                    for (let zi = 0; zi < uniqueZips.length; zi += 20) {
+                        if (Date.now() - chunkStart > 35000) break;
+                        const zipBatch = uniqueZips.slice(zi, zi + 20);
+                        const promises = zipBatch.map(zip =>
+                            base44.asServiceRole.entities.MasterProperty.filter({ zip_code: zip, data_source: 'rentcast' }, null, 5000)
+                                .then(res => {
+                                    const arr = Array.isArray(res) ? res : (res?.items || []);
+                                    arr.forEach(mp => {
+                                        if (mp.mls_id) seenListingIds.add(mp.mls_id);
+                                    });
+                                })
+                                .catch(() => {})
+                        );
+                        await Promise.all(promises);
+                    }
+                    console.log(`[chunk-v12] Delta validation: loaded ${seenListingIds.size} previously seen listing IDs`);
+                } catch (err) {
+                    logError(`Delta validation load failed (non-fatal): ${err.message}`);
+                    seenListingIds = null; // Disable delta check, process all
+                }
+            }
+
             const soldCutoff = new Date();
             soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
 
             const mapped = [];
             const seenHashes = new Set();
-            let phase2Stats = { total: 0, countyLagRejected: 0, heuristicRejected: 0, heuristicLikelySold: 0, ambiguousKept: 0, batchdataEligible: 0, domGatedToLow: 0 };
+            let phase2Stats = { total: 0, countyLagRejected: 0, heuristicRejected: 0, heuristicLikelySold: 0, ambiguousKept: 0, batchdataEligible: 0, domGatedToLow: 0, deltaSkipped: 0 };
 
             for (const p of allRaw) {
                 if (!p.latitude || !p.longitude || !filterPoint(p.latitude, p.longitude)) continue;
@@ -473,9 +508,19 @@ Deno.serve(async (req) => {
 
                 phase2Stats.total++;
 
+                // ── FILTER 0: Delta Validation — skip listings already processed ──
+                // Uses listingId from RentCast to avoid reprocessing on subsequent pulls
+                const listingId = p.id || p.listingId || null;
+                if (listingId && seenListingIds && seenListingIds.has(listingId)) {
+                    phase2Stats.deltaSkipped++;
+                    continue;
+                }
+
                 // ── FILTER 1: County Lag Rule ──
+                // Research: Harris County TX worst-case = 120 days (clerk backlog + RentCast propagation)
+                // Configurable via DEED_LAG_CUTOFF_DAYS env var, default 120
                 const daysSinceRemoved = Math.round((Date.now() - removed.getTime()) / (1000 * 3600 * 24));
-                if (daysSinceRemoved > 90) {
+                if (daysSinceRemoved > DEED_LAG_CUTOFF_DAYS) {
                     phase2Stats.countyLagRejected++;
                     continue;
                 }
@@ -549,7 +594,8 @@ Deno.serve(async (req) => {
                     lat: p.latitude, lng: p.longitude, original_status: origStatus, beds: p.bedrooms || 0, baths: p.bathrooms || 0,
                     sqft: p.squareFootage || 0, lot_size: p.lotSize || 0, year_built: p.yearBuilt || 0, price: p.price || 0,
                     sold_date: p.removedDate || p.listedDate || null, sale_type: 'MLS', property_type: p.propertyType || 'Single Family', data_source: 'rentcast',
-                    sale_confidence: mlsConfidence
+                    sale_confidence: mlsConfidence,
+                    mls_id: listingId || ''
                 });
             }
 

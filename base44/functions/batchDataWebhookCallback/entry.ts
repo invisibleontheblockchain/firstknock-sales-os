@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 Deno.serve(async (req) => {
     try {
@@ -7,6 +7,18 @@ Deno.serve(async (req) => {
         // Only accept POST
         if (req.method !== 'POST') {
             return Response.json({ error: 'Method Not Allowed' }, { status: 405 });
+        }
+
+        // ── Webhook Authentication ──
+        // Verify PIPELINE_SECRET to prevent unauthorized webhook calls
+        const PIPELINE_SECRET = Deno.env.get('PIPELINE_SECRET');
+        if (PIPELINE_SECRET) {
+            const url = new URL(req.url);
+            const incomingSecret = url.searchParams.get('secret') || req.headers.get('x-pipeline-secret');
+            if (incomingSecret !== PIPELINE_SECRET) {
+                console.error('[BatchDataWebhook] Unauthorized — invalid or missing pipeline secret');
+                return Response.json({ error: 'Unauthorized' }, { status: 401 });
+            }
         }
 
         const data = await req.json();
