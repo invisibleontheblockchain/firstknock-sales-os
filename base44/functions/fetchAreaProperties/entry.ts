@@ -125,7 +125,7 @@ Deno.serve(async (req) => {
 
         // Enforce pull limit (admins bypass)
         const pullCount = user.area_pulls_count || 0;
-        const maxPulls = 9999; // unlimited for testing
+        const maxPulls = (user.subscription_status === 'active' || user.is_owner) ? 100 : 10;
         if (pullCount >= maxPulls) {
             return Response.json({
                 error: 'pull_limit_reached',

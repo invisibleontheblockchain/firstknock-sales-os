@@ -1,6 +1,13 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
-const FLAT_COMMISSION = 10; // $10 per referral, regardless of plan
+// Generate a cryptographically secure referral code
+function generateSecureCode(name) {
+  const namePart = (name || 'USER').replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase();
+  const array = new Uint8Array(6);
+  crypto.getRandomValues(array);
+  const randPart = Array.from(array, b => b.toString(36).padStart(2, '0')).join('').slice(0, 8).toUpperCase();
+  return `FK-${namePart}-${randPart}`;
+}
 
 Deno.serve(async (req) => {
   try {
@@ -18,11 +25,7 @@ Deno.serve(async (req) => {
       if (user.referral_code) {
         return Response.json({ referral_code: user.referral_code });
       }
-      // Generate a unique code: FK-<first 4 chars of name>-<random 5>
-      const namePart = (user.full_name || 'USER').replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase();
-      const randPart = Math.random().toString(36).substring(2, 7).toUpperCase();
-      const code = `FK-${namePart}-${randPart}`;
-
+      const code = generateSecureCode(user.full_name);
       await base44.asServiceRole.entities.User.update(user.id, { referral_code: code });
       return Response.json({ referral_code: code });
     }
@@ -44,10 +47,10 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'You already used a referral code', already_applied: true });
       }
 
-      // Find the referrer by code
-      const allUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000);
-      const users = Array.isArray(allUsers) ? allUsers : (allUsers?.items || []);
-      const referrer = users.find(u => u.referral_code === referral_code);
+      // FIX: Use indexed filter instead of O(n) full table scan
+      const matchingUsers = await base44.asServiceRole.entities.User.filter({ referral_code }, null, 1);
+      const users = Array.isArray(matchingUsers) ? matchingUsers : (matchingUsers?.items || []);
+      const referrer = users[0];
 
       if (!referrer) {
         return Response.json({ error: 'Invalid referral code' }, { status: 404 });
@@ -70,7 +73,7 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, referrer_name: referrer.full_name });
     }
 
-    // ACTION: Credit commission when a referred user subscribes (called from stripe webhook)
+    // ACTION: Credit commission when a referred user subscribes
     if (action === 'credit_commission') {
       // Admin only
       if (user.role !== 'admin') {
@@ -82,12 +85,12 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Missing params' }, { status: 400 });
       }
 
-      // Calculate 10% commission based on subscription tier
+      // Calculate commission based on subscription tier
       let commission = 0;
-      if (subscription_tier === 'GROWTH') commission = 9.90; // 10% of $99
-      else if (subscription_tier === 'ENTERPRISE') commission = 29.90; // 10% of $299
-      else if (subscription_tier === 'HUSTLER') commission = 4.90; // 10% of $49
-      else commission = FLAT_COMMISSION;
+      if (subscription_tier === 'GROWTH') commission = 9.90;
+      else if (subscription_tier === 'ENTERPRISE') commission = 29.90;
+      else if (subscription_tier === 'HUSTLER') commission = 4.90;
+      else commission = 10;
 
       // Find the referral record
       const referrals = await base44.asServiceRole.entities.Referral.filter(
@@ -113,14 +116,16 @@ Deno.serve(async (req) => {
         subscription_tier,
       });
 
-      // Update referrer's balance
-      const allUsers2 = await base44.asServiceRole.entities.User.list('-created_date', 5000);
-      const users2 = Array.isArray(allUsers2) ? allUsers2 : (allUsers2?.items || []);
-      const referrer = users2.find(u => u.email === referral.referrer_email);
+      // FIX: Use indexed filter instead of O(n) full table scan
+      const referrerUsers = await base44.asServiceRole.entities.User.filter({ email: referral.referrer_email }, null, 1);
+      const referrerArr = Array.isArray(referrerUsers) ? referrerUsers : (referrerUsers?.items || []);
+      const referrer = referrerArr[0];
 
       if (referrer) {
-        const newBalance = (referrer.referral_balance || 0) + commission;
-        const newTotal = (referrer.referral_total_earned || 0) + commission;
+        // FIX: Re-read balance just before write to minimize TOCTOU window
+        const freshReferrer = await base44.asServiceRole.entities.User.get(referrer.id);
+        const newBalance = (freshReferrer.referral_balance || 0) + commission;
+        const newTotal = (freshReferrer.referral_total_earned || 0) + commission;
         await base44.asServiceRole.entities.User.update(referrer.id, {
           referral_balance: newBalance,
           referral_total_earned: newTotal,
@@ -136,9 +141,7 @@ Deno.serve(async (req) => {
       // Generate code if doesn't exist
       let code = user.referral_code;
       if (!code) {
-        const namePart = (user.full_name || 'USER').replace(/[^a-zA-Z]/g, '').slice(0, 4).toUpperCase();
-        const randPart = Math.random().toString(36).substring(2, 7).toUpperCase();
-        code = `FK-${namePart}-${randPart}`;
+        code = generateSecureCode(user.full_name);
         await base44.asServiceRole.entities.User.update(user.id, { referral_code: code });
       }
 

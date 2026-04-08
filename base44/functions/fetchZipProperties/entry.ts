@@ -267,7 +267,7 @@ Deno.serve(async (req) => {
                 if (Math.abs(listingDuration - 365) <= 3) hScore -= 2;
                 if (dom > 150) hScore -= 3;
                 else if (dom > 60) hScore -= 2;
-                if (listingDuration < 7) hScore -= 2;
+                if (listingDuration < 7) hScore -= 1;
                 if (lastSeen && Math.abs(lastSeen.getTime() - removed.getTime()) < 86400000) hScore -= 2;
                 if (p.history && typeof p.history === 'object') {
                     const historyCount = Object.keys(p.history).length;

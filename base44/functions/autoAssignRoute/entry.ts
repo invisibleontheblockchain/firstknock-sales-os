@@ -16,6 +16,13 @@ const calcDist = (lat1, lng1, lat2, lng2) => {
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
+
+        // Auth check: verify caller is authenticated
+        const authUser = await base44.auth.me();
+        if (!authUser) {
+            return Response.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
         const payload = await req.json();
         
         // Event payload from entity automation
@@ -72,7 +79,8 @@ Deno.serve(async (req) => {
 
         if (lastLocation) {
             const routesWithDist = pendingRoutes.items.map(r => {
-                const start = r.start_location || { lat: 0, lng: 0 }; // Fallback
+                const start = r.start_location;
+                if (!start || (!start.lat && !start.lng)) return { ...r, dist: 9999, effectiveScore: (r.metrics?.score || 0) - 9999 };
                 const dist = calcDist(lastLocation.lat, lastLocation.lng, start.lat, start.lng);
                 
                 // Composite score: High quality (metrics.score) + Proximity (lower dist)
@@ -107,7 +115,8 @@ Deno.serve(async (req) => {
             return Response.json({ 
                 success: true, 
                 message: `Assigned ${bestRoute.name} to ${rep.name}`,
-                route: bestRoute 
+                route_id: bestRoute.id,
+                assigned_to: rep.id
             });
         }
 
