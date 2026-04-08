@@ -1,14 +1,18 @@
 /**
  * Advanced Route Optimization Engine
- * Clusters properties into optimal driving routes based on:
- * - Geographic proximity
- * - Property value/score
- * - Distance minimization
- * - Street Sweep pattern (all houses on a street)
- * - Street Cooldown (avoid recently visited streets)
+ *
+ * Implements a mail-carrier (boustrophedon) walking pattern:
+ * 1. Group properties by normalized street name.
+ * 2. Order streets via nearest-neighbor TSP on street centroids + 2-Opt.
+ * 3. Within each street, walk one side low→high then the other side high→low
+ *    (or reversed, depending on which end of the street you arrive from).
+ * 4. Apply intra-street 2-Opt to tighten each side independently.
+ *
+ * This eliminates the cross-street backtracking visible as yellow lines
+ * crossing back over themselves on the map.
  */
 
-import { filterByStreetCooldown, orderForStreetSweep, COOLDOWN_CONFIG } from './territoryLogic';
+import { filterByStreetCooldown, COOLDOWN_CONFIG } from './territoryLogic';
 import { latLngToCell, gridDisk } from 'h3-js';
 import { batchScoreProperties, ownershipDurationScore, SCORING_CONSTANTS } from './leadScoring';
 
@@ -274,15 +278,14 @@ function kMeansClustering(properties, numClusters) {
     return items;
 }
 
-/**
- * Calculate bearing between two points
- */
+/** Bearing in degrees (0–360) from point 1 to point 2. Inputs in degrees. */
 function calculateBearing(lat1, lng1, lat2, lng2) {
-    const y = Math.sin(lng2 - lng1) * Math.cos(lat2);
-    const x = Math.cos(lat1) * Math.sin(lat2) -
-        Math.sin(lat1) * Math.cos(lat2) * Math.cos(lng2 - lng1);
-    const brng = Math.atan2(y, x) * 180 / Math.PI;
-    return (brng + 360) % 360;
+    const lat1r = lat1 * Math.PI / 180;
+    const lat2r = lat2 * Math.PI / 180;
+    const dLng = (lng2 - lng1) * Math.PI / 180;
+    const y = Math.sin(dLng) * Math.cos(lat2r);
+    const x = Math.cos(lat1r) * Math.sin(lat2r) - Math.sin(lat1r) * Math.cos(lat2r) * Math.cos(dLng);
+    return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
 /**
@@ -517,7 +520,7 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null, minimi
 
             // Heuristic: Minimize Turns
             if (minimizeTurns && currentBearing !== null) {
-                const newBearing = calculateBearing(current.lat * Math.PI / 180, current.lng * Math.PI / 180, prop.lat * Math.PI / 180, prop.lng * Math.PI / 180);
+                const newBearing = calculateBearing(current.lat, current.lng, prop.lat, prop.lng);
                 const turnAngle = Math.abs(newBearing - currentBearing);
                 const normalizedTurn = turnAngle > 180 ? 360 - turnAngle : turnAngle;
 
@@ -537,7 +540,7 @@ function optimizeRouteOrder(properties, startLat = null, startLng = null, minimi
         const nextProp = unvisited.splice(bestIdx, 1)[0];
 
         // Update bearing
-        currentBearing = calculateBearing(current.lat * Math.PI / 180, current.lng * Math.PI / 180, nextProp.lat * Math.PI / 180, nextProp.lng * Math.PI / 180);
+        currentBearing = calculateBearing(current.lat, current.lng, nextProp.lat, nextProp.lng);
 
         current = nextProp;
         route.push(current);
@@ -661,14 +664,13 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         const clusterProps = clustered.filter(p => p.cluster === i);
         if (clusterProps.length === 0) continue;
 
-        // MAIL CARRIER: Always use street sweep ordering
-        // Every street is fully completed before moving to the next
-        // NOTE: orderForStreetSweep already applies nearest-neighbor + 2-opt
-        // on the STREET CENTROID sequence to minimize inter-street travel.
-        // We intentionally do NOT apply global apply2Opt/applyLinkSwap here
-        // because those destroy the street grouping — causing routes to
-        // bounce between streets instead of completing one before the next.
-        let orderedProps = orderForStreetSweep(clusterProps);
+        // MAIL CARRIER ORDERING — replaces orderForStreetSweep
+        // Centroid-based nearest-neighbor TSP + boustrophedon intra-street walk
+        // No global 2-Opt/LinkSwap — those destroy street groupings
+        let orderedProps = mailCarrierOrder(clusterProps, startLocation);
+
+        // Fatigue-aware front-loading (respects 12% distance constraint)
+        orderedProps = fatigueAwareFrontLoad(orderedProps);
 
         // Return to start: add first property at the end conceptually (affects distance calc)
         if (returnToStart && orderedProps.length > 1) {
