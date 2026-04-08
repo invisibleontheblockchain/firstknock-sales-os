@@ -44,7 +44,6 @@ export default function MapToolbar({
 
     // Actions
     handleAssignRoute,
-    onGenerateRoutes,
 
     // Brand
     BRAND,
@@ -378,11 +377,7 @@ export default function MapToolbar({
                                         toast.error("Pull property data first!", { duration: 4000 });
                                         return;
                                     }
-                                    if (onGenerateRoutes) {
-                                        onGenerateRoutes();
-                                    } else {
-                                        setShowCompare(true); // Fallback
-                                    }
+                                    setShowCompare(true);
                                 } else {
                                     setShowCompare(false);
                                     window.dispatchEvent(new CustomEvent('fk-start-drawing'));

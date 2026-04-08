@@ -292,7 +292,7 @@ function calculateBearing(lat1, lng1, lat2, lng2) {
  */
 function apply2Opt(route) {
     if (route.length < 4) return route;
-    if (route.length > 1200) { // Increased from 300, can be slow for very large routes
+    if (route.length > 300) {
         console.warn(`[routeOptimizer] Route too large for 2-Opt (${route.length} nodes). Slipping to Nearest Neighbor for performance.`);
         return route;
     }
@@ -356,7 +356,7 @@ function apply2Opt(route) {
  */
 function applyLinkSwap(route) {
     if (route.length < 4) return route;
-    if (route.length > 1200) { // Increased from 300
+    if (route.length > 300) {
         return route; // Safety limit
     }
     let improved = true;
@@ -568,41 +568,12 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 
     // Filter out properties on streets that are on cooldown
     // Also filter out invalid coordinates (Null Island 0,0)
-    // Also filter out house_number === 0 (invalid records) and REJECTED confidence
     let eligible = properties.filter(p =>
         p && p.lat && p.lng &&
-        !(Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001) &&
-        p.house_number !== 0 &&
-        p.sale_confidence !== 'REJECTED'
+        !(Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001)
     );
 
-    // Filter out the route origin/start address if it's in the property list
-    if (startLocation && startLocation.address) {
-        const originAddr = (startLocation.address || '').toUpperCase().trim();
-        if (originAddr) {
-            eligible = eligible.filter(p => {
-                const fullAddr = (p.full_address || '').toUpperCase().trim();
-                return fullAddr !== originAddr;
-            });
-        }
-    }
-
-    // Deduplicate by address_hash first (primary key), then by normalized address as fallback
-    const hashMap = new Map();
-    eligible.forEach(p => {
-        if (p.address_hash && !hashMap.has(p.address_hash)) {
-            hashMap.set(p.address_hash, p);
-        } else if (p.address_hash && hashMap.has(p.address_hash)) {
-            // Keep the one with more recent sold_date
-            const existing = hashMap.get(p.address_hash);
-            const existDate = existing.sold_date ? new Date(existing.sold_date).getTime() : 0;
-            const newDate = p.sold_date ? new Date(p.sold_date).getTime() : 0;
-            if (newDate > existDate) hashMap.set(p.address_hash, p);
-        }
-    });
-    eligible = Array.from(hashMap.values());
-
-    // Secondary dedup by normalized address (catches hash format mismatches)
+    // Deduplicate by normalized address (safety net for Phase1/Phase2 hash mismatch)
     const addrMap = new Map();
     eligible.forEach(p => {
         const street = (p.street_name || '').toUpperCase().trim();
