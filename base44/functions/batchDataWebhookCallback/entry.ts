@@ -49,17 +49,21 @@ Deno.serve(async (req) => {
             statusCategory = (listing.statusCategory || 'unknown').toLowerCase();
             soldPrice = listing.soldPrice || 0;
 
+            // statusCategory and soldPrice are valid BatchData fields (NOT RentCast fields)
             const isSold = apiStatus.includes('sold') || statusCategory === 'sold' || soldPrice > 0;
+            const isPending = statusCategory === 'pending' || apiStatus.includes('pending');
             
             const expiresAt = new Date();
-            expiresAt.setDate(expiresAt.getDate() + (isSold ? 30 : 7));
+            // Pending = under contract, not yet closed — re-check in 30 days per PENDING_CONFIRMATION spec
+            const cacheStatus = isSold ? 'sold' : isPending ? 'pending_confirmation' : 'rejected';
+            expiresAt.setDate(expiresAt.getDate() + (isSold ? 30 : isPending ? 30 : 7));
 
             // If we have the original queue item, update Cache directly with its hash.
             if (originalItem) {
                 await base44.asServiceRole.entities.PropertyValidationCache.create({
                     address_hash: originalItem.address_hash,
                     normalized_address: originalItem.normalized_address,
-                    status: isSold ? 'sold' : 'rejected',
+                    status: cacheStatus,
                     expires_at: expiresAt.toISOString(),
                     provider_id: 'batchdata',
                     is_stale: false,
@@ -71,7 +75,12 @@ Deno.serve(async (req) => {
                     status: 'completed'
                 });
 
-                // Crucial step: if it IS sold, we need to mark MasterProperty as 'verified'
+                // If pending confirmation — hold, do not update MasterProperty yet, re-check in 30 days
+                if (isPending && !isSold) {
+                    console.log(`[BatchDataWebhook] Property ${originalItem.address_hash} is PENDING_CONFIRMATION — holding for 30-day re-check`);
+                }
+
+                // If confirmed sold — mark MasterProperty as verified
                 if (isSold) {
                     // Update MasterProperty matching this hash
                     const mpRecords = await base44.asServiceRole.entities.MasterProperty.filter({

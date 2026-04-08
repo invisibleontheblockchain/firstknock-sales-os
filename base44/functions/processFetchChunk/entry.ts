@@ -290,7 +290,9 @@ Deno.serve(async (req) => {
         // PHASE 1: DEED RECORDS — /v1/properties?saleDateRange
         // ======================================================================
         if (currentPhase === 'deed_records') {
-            const saleDateRange = Math.min((monthsBack * 30) + 90, 730);
+            // Minimum 180 days to cover the full 90-day county deed recording lag
+            // (e.g. sold_months=1 would give 120 without the floor — missing late-recorded deeds)
+            const saleDateRange = Math.max(180, Math.min((monthsBack * 30) + 90, 730));
             const allRaw = [];
             let reachedEnd = false;
 
