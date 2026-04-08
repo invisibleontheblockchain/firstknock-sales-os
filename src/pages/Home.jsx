@@ -1078,46 +1078,7 @@ export default function Home() {
             let workingSet = Array.from(combinedMap.values());
             console.log(`[generateRoutes] Initial Properties: ${workingSet.length}`);
 
-            // Freeze data for reorder functionality
-            setFrozenWorkingSet(workingSet);
-
-            // 3. FILTERING — Polygon is the PRIMARY geographic constraint when drawn
-            const hasActivePolygon = drawnPolygon && drawnPolygon.length > 2;
-            if (!hasActivePolygon) {
-                let targetZips = [];
-                if (zipCodeFilter && zipCodeFilter.trim()) targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
-                else if (user?.territory_zip_codes?.length > 0) targetZips = user.territory_zip_codes;
-                if (targetZips.length > 0) {
-                    workingSet = workingSet.filter(p => targetZips.includes(String(p.zip_code || '').trim().slice(0, 5)));
-                    console.log(`[generateRoutes] After Zip Filter (${targetZips.join(', ')}): ${workingSet.length}`);
-                }
-            }
-
-            // Apply Polygon Filter — NEVER auto-clear, polygon is the user's explicit boundary
-            if (hasActivePolygon) {
-                const beforePoly = workingSet.length;
-                workingSet = workingSet.filter(p => isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon));
-                console.log(`[generateRoutes] After Polygon Filter: ${workingSet.length} (was ${beforePoly})`);
-                if (workingSet.length === 0) {
-                    toast.error('No property data inside your drawn area. Pull data for this area first.', { id: 'build-routes', duration: 6000 });
-                    setRoutesGenerating(false); return;
-                }
-            }
-
-            const beforeSoldDateFilter = workingSet.length;
-            const preSoldWorkingSet = workingSet.slice();
-
-            // Apply Sold Date Filter (STRICT: If filter active, MUST have sold_date within range)
-            // EXCEPTION: 'PENDING' homes (from Listings API) bypass this because they are new movers
-            // that hasn't hit deed records yet.
-            if (soldDateFilter !== null && soldDateFilter !== 'all') {
-                let cutoff;
-                const now = new Date();
-                // Set to end of day to be inclusive of properties sold today, 
-                // then subtract to get the start of the filter period.
-                if (soldDateFilter === 0.25 || soldDateFilter === '0.25') {
-                    cutoff = subDays(now, 7);
-                } else {
+            // Freeze data for reorder functionality else {
                     cutoff = subMonths(now, Number(soldDateFilter));
                 }
                 
