@@ -1077,39 +1077,14 @@ export default function Home() {
 
             let workingSet = Array.from(combinedMap.values());
             console.log(`[generateRoutes] Initial Properties: ${workingSet.length}`);
-
-            // Freeze data for reorder functionality else {
-                    cutoff = subMonths(now, Number(soldDateFilter));
-                }
-                
-                // Be inclusive of the entire start day
-                cutoff.setHours(0, 0, 0, 0);
-                
-                console.log(`[generateRoutes] Applying Sold Date Filter: ${soldDateFilter} months (Cutoff: ${cutoff instanceof Date && !isNaN(cutoff) ? cutoff.toISOString() : 'Invalid'})`);
-                workingSet = workingSet.filter(p => {
-                    // Always include Pending properties (active MLS deals)
-                    if (p.original_status === 'PENDING') return true;
-                    // Only bypass for RECENT_OFF_MARKET if validated by BatchData (not low confidence)
-                    if (p.original_status === 'RECENT_OFF_MARKET' && p.sale_confidence !== 'low') return true;
-                    
-                    // Properties with rep interaction statuses always stay in routes
-                    const hasInteraction = ['CALLBACK', 'NO_ANSWER', 'QUALIFIED'].includes(p.effective_status);
-                    if (!p.sold_date) return hasInteraction;
-                    try {
-                        const date = new Date(p.sold_date);
-                        if (isNaN(date.getTime())) return hasInteraction;
-                        // Exclude only if sold_date is BEFORE the cutoff
-                        return date >= cutoff;
-                    } catch (e) { return hasInteraction; }
-                });
-                console.log(`[generateRoutes] After Sold Date Filter: ${workingSet.length}`);
-            }
-
-            if (soldDateFilter !== null && beforeSoldDateFilter > 0 && workingSet.length === 0) {
-                toast.error(`No homes match "Sold in last ${soldDateFilter} months" with current filters.`);
-                setRoutesGenerating(false);
-                return;
-            }
+            // 3. FILTERING — Polygon is the PRIMARY geographic constraint when drawn
+            const hasActivePolygon = drawnPolygon && drawnPolygon.length > 2;
+            if (!hasActivePolygon) { let targetZips = []; if (zipCodeFilter && zipCodeFilter.trim()) targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean); else if (user?.territory_zip_codes?.length > 0) targetZips = user.territory_zip_codes; if (targetZips.length > 0) { workingSet = workingSet.filter(p => targetZips.includes(String(p.zip_code || '').trim().slice(0, 5))); } }
+            if (hasActivePolygon) { workingSet = workingSet.filter(p => isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon)); if (workingSet.length === 0) { toast.error('No property data inside your drawn area.', { id: 'build-routes', duration: 6000 }); setRoutesGenerating(false); return; } }
+            setFrozenWorkingSet(workingSet);
+            const beforeSoldDateFilter = workingSet.length;
+            if (soldDateFilter !== null && soldDateFilter !== 'all') { let cutoff; const now = new Date(); if (soldDateFilter === 0.25 || soldDateFilter === '0.25') { cutoff = subDays(now, 7); } else { cutoff = subMonths(now, Number(soldDateFilter)); } cutoff.setHours(0, 0, 0, 0); workingSet = workingSet.filter(p => { if (p.original_status === 'PENDING') return true; if (p.original_status === 'RECENT_OFF_MARKET' && p.sale_confidence !== 'low') return true; const hasInteraction = ['CALLBACK', 'NO_ANSWER', 'QUALIFIED'].includes(p.effective_status); if (!p.sold_date) return hasInteraction; try { const date = new Date(p.sold_date); if (isNaN(date.getTime())) return hasInteraction; return date >= cutoff; } catch (e) { return hasInteraction; } }); }
+            if (soldDateFilter !== null && beforeSoldDateFilter > 0 && workingSet.length === 0) { toast.error(`No homes match "Sold in last ${soldDateFilter} months" with current filters.`); setRoutesGenerating(false); return; }
 
             // Apply Property Type Filter
             if (routeConfig.propertyTypes.length > 0) {
