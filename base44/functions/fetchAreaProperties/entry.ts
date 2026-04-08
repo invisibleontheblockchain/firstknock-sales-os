@@ -124,12 +124,38 @@ Deno.serve(async (req) => {
         }
 
         // Enforce pull limit (admins bypass)
-        const pullCount = user.area_pulls_count || 0;
-        const maxPulls = (user.subscription_status === 'active' || user.is_owner) ? 100 : 10;
-        if (pullCount >= maxPulls) {
+        // Monthly pull tracking
+        const now = new Date();
+        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const pullsThisMonth = user.pulls_this_month || 0;
+        const pullMonth = user.pull_month || '';
+        const monthlyPulls = pullMonth === currentMonth ? pullsThisMonth : 0;
+        const isPaidUser = user.subscription_status === 'active' || user.is_owner;
+
+        // Determine area size for limit checking
+        const areaEstimate = Math.PI * radius * radius;
+        const isLargePull = areaEstimate > 50; // > ~40 sq mi = large (300mi) pull
+
+        // Pull limits per month:
+        // Free: 2 small pulls (40 sq mi), 0 large pulls (300 sq mi)
+        // Paid: 4 small pulls, 1 large pull per month
+        const largePullsThisMonth = pullMonth === currentMonth ? (user.large_pulls_this_month || 0) : 0;
+        const maxSmallPulls = isPaidUser ? 4 : 2;
+        const maxLargePulls = isPaidUser ? 1 : 0;
+
+        if (isLargePull && largePullsThisMonth >= maxLargePulls) {
             return Response.json({
                 error: 'pull_limit_reached',
-                message: "Limit reached."
+                message: isPaidUser
+                    ? `You've used your ${maxLargePulls} large territory pull for this month. Large pulls reset on the 1st of each month.`
+                    : 'Large territory pulls (300 sq mi) are only available on paid plans. Upgrade to pull larger territories.'
+            });
+        }
+
+        if (!isLargePull && monthlyPulls >= maxSmallPulls) {
+            return Response.json({
+                error: 'pull_limit_reached',
+                message: `You've used all ${maxSmallPulls} territory pulls for this month. Pulls reset on the 1st of each month.${!isPaidUser ? ' Upgrade for more pulls.' : ''}`
             });
         }
 
@@ -285,7 +311,14 @@ Deno.serve(async (req) => {
         console.log(`[fetchArea-v9] Created FetchJob ${job.id} | delta=${isDeltaPull} | lat=${optimizedLat} lng=${optimizedLng} r=${optimizedRadius}mi | saleDateRange=${computedSaleDateRange}${gridMsg}`);
 
         try {
-            await base44.auth.updateMe({ area_pulls_count: pullCount + 1 });
+            const updateData = {
+                pulls_this_month: monthlyPulls + 1,
+                pull_month: currentMonth
+            };
+            if (isLargePull) {
+                updateData.large_pulls_this_month = largePullsThisMonth + 1;
+            }
+            await base44.auth.updateMe(updateData);
         } catch (e) { console.warn('Failed to update pull count:', e.message); }
 
         setTimeout(() => {
