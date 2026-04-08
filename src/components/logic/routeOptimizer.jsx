@@ -618,39 +618,64 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 
     if (eligible.length === 0) return [];
 
-    // Pre-calculate Neighborhood Heat (Recent Sales count per H3 hexagon)
-    const neighborhoodStats = {};
-    eligible.forEach(p => {
-        if (p.lat && p.lng && (p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED' || p.effective_status === 'UNVERIFIED')) {
-            try {
-                const h3Index = latLngToCell(p.lat, p.lng, 9);
-                // Add heat to the cell itself and its immediate neighbors (gridDisk radius 1)
-                const disk = gridDisk(h3Index, 1);
-                disk.forEach(cell => {
-                    neighborhoodStats[cell] = (neighborhoodStats[cell] || 0) + 1;
-                });
-            } catch (e) {}
-        }
-    });
+    console.log(`[routeOptimizer] Scoring ${eligible.length} properties...`);
+    const t0 = Date.now();
 
-    // V2 Propensity scoring (§1.5)
-    const propensityMap = batchScoreProperties(eligible, allLogs, learnedWeights);
+    let scored;
+    // FAST PATH: Skip expensive per-property scoring for large datasets
+    if (eligible.length > 5000) {
+        console.log(`[routeOptimizer] Large dataset (${eligible.length}) — using fast scoring`);
+        // Simple inline score: no H3, no log lookups, no batchScoreProperties
+        scored = eligible.map(p => {
+            let score = 100;
+            if (p.effective_status === 'ELIGIBLE') score += 60;
+            if (p.effective_status === 'CALLBACK') score += 100;
+            if (p.effective_status === 'QUALIFIED') score += 80;
+            if (p.effective_status === 'UNVERIFIED') score += 40;
+            if (p.effective_status === 'NO_ANSWER') score += 30;
+            if (p.effective_status === 'HARD_NO') score = 0;
+            if (p.effective_status === 'SOLD' && p.sold_date) {
+                const monthsAgo = (Date.now() - new Date(p.sold_date).getTime()) / (1000 * 60 * 60 * 24 * 30.44);
+                if (monthsAgo <= 3) score += 80;
+                else if (monthsAgo <= 6) score += 60;
+                else if (monthsAgo <= 12) score += 40;
+                else score += 20;
+            }
+            if (p.price > 1000000) score += 30;
+            return { ...p, score: Math.max(0, score), propensity: 0.5 };
+        });
+    } else {
+        // FULL PATH: H3 neighborhood heat + propensity + full scoring
+        const neighborhoodStats = {};
+        eligible.forEach(p => {
+            if (p.lat && p.lng && (p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED' || p.effective_status === 'UNVERIFIED')) {
+                try {
+                    const h3Index = latLngToCell(p.lat, p.lng, 9);
+                    const disk = gridDisk(h3Index, 1);
+                    disk.forEach(cell => {
+                        neighborhoodStats[cell] = (neighborhoodStats[cell] || 0) + 1;
+                    });
+                } catch (e) {}
+            }
+        });
 
-    // Score all properties — propensity feeds into score for backward compat
-    const scored = eligible.map(p => {
-        const hash = p.address_hash || p.id;
-        const pData = propensityMap.get(hash);
-        const propensity = pData ? pData.propensity : 0.5;
-        return {
-            ...p,
-            propensity,
-            score: scoreProperty(p, allLogs, neighborhoodStats, learnedWeights),
-        };
-    });
+        const propensityMap = batchScoreProperties(eligible, allLogs, learnedWeights);
+
+        scored = eligible.map(p => {
+            const hash = p.address_hash || p.id;
+            const pData = propensityMap.get(hash);
+            const propensity = pData ? pData.propensity : 0.5;
+            return {
+                ...p,
+                propensity,
+                score: scoreProperty(p, allLogs, neighborhoodStats, learnedWeights),
+            };
+        });
+    }
+
+    console.log(`[routeOptimizer] Scoring done in ${Date.now() - t0}ms`);
 
     // MAIL CARRIER: Always generate a single route — all properties in one contiguous sweep
-    // Skip K-Means clustering entirely for single-route generation
-    const numRoutes = 1;
     let clustered = scored.map(p => ({ ...p, cluster: 0 }));
 
     // Generate routes
@@ -663,13 +688,16 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         const clusterProps = clustered.filter(p => p.cluster === i);
         if (clusterProps.length === 0) continue;
 
-        // MAIL CARRIER ORDERING — replaces orderForStreetSweep
-        // Centroid-based nearest-neighbor TSP + boustrophedon intra-street walk
-        // No global 2-Opt/LinkSwap — those destroy street groupings
+        // MAIL CARRIER ORDERING
+        console.log(`[routeOptimizer] Mail carrier ordering ${clusterProps.length} properties...`);
+        const t1 = Date.now();
         let orderedProps = mailCarrierOrder(clusterProps, startLocation);
+        console.log(`[routeOptimizer] Mail carrier done in ${Date.now() - t1}ms (${orderedProps.length} ordered)`);
 
-        // Fatigue-aware front-loading (respects 12% distance constraint)
-        orderedProps = fatigueAwareFrontLoad(orderedProps);
+        // Fatigue-aware front-loading (skip for very large routes)
+        if (orderedProps.length <= 5000) {
+            orderedProps = fatigueAwareFrontLoad(orderedProps);
+        }
 
         // Return to start: add first property at the end conceptually (affects distance calc)
         if (returnToStart && orderedProps.length > 1) {
@@ -721,22 +749,22 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
             );
         }
 
-        // H3 Density Scoring
-        // Count how many properties are in each H3 cell in this route
-        const cellCounts = {};
-        let maxDensity = 0;
-        orderedProps.forEach(p => {
-            if (p.lat && p.lng) {
-                try {
-                    const cell = latLngToCell(p.lat, p.lng, 9);
-                    cellCounts[cell] = (cellCounts[cell] || 0) + 1;
-                    if (cellCounts[cell] > maxDensity) maxDensity = cellCounts[cell];
-                } catch (e) {}
-            }
-        });
-        
-        // Density multiplier: up to 20% bonus for highly dense routes (e.g. 10+ houses in same hex)
-        const densityMultiplier = 1 + Math.min(0.2, (maxDensity / 10) * 0.2);
+        // H3 Density Scoring (skip for large routes — too expensive)
+        let densityMultiplier = 1.0;
+        if (orderedProps.length <= 5000) {
+            const cellCounts = {};
+            let maxDensity = 0;
+            orderedProps.forEach(p => {
+                if (p.lat && p.lng) {
+                    try {
+                        const cell = latLngToCell(p.lat, p.lng, 9);
+                        cellCounts[cell] = (cellCounts[cell] || 0) + 1;
+                        if (cellCounts[cell] > maxDensity) maxDensity = cellCounts[cell];
+                    } catch (e) {}
+                }
+            });
+            densityMultiplier = 1 + Math.min(0.2, (maxDensity / 10) * 0.2);
+        }
 
         // Competitiveness: Score (60%) + Efficiency (30%) - Commute Penalty (capped to prevent edge routes from dropping out)
         const commutePenalty = Math.min(distanceFromStart * 2, 20);
