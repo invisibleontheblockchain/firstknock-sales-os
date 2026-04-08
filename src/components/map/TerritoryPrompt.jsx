@@ -431,7 +431,7 @@ export default function TerritoryPrompt({
                         {drawSizeMiles !== 300 && (
                             <div className="flex items-center gap-1">
                                 <span className="text-[9px] text-gray-500 font-bold mr-1">DATA:</span>
-                                {[1, 3, 6, 9, 12].map(m => (
+                                {[6, 12].map(m => (
                                     <button
                                         key={m}
                                         onClick={() => setFetchMonths(m)}
