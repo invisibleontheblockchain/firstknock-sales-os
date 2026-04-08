@@ -50,7 +50,8 @@ export default function RouteBuilderSettings({
     onReorder, hasFrozenData,
     // Data
     user,
-    hasDrawnArea
+    hasDrawnArea,
+    maxDataMonths
 }) {
     const [expandedSection, setExpandedSection] = useState(null);
 
@@ -169,19 +170,25 @@ export default function RouteBuilderSettings({
                                 </>
                             ) : (
                                 <div className="flex gap-1.5">
-                                    {[{ label: '1', val: 1 }, { label: '3', val: 3 }, { label: '6', val: 6 }, { label: '9', val: 9 }, { label: '12', val: 12 }].map(opt => (
-                                        <button
-                                            key={opt.val}
-                                            onClick={() => setSoldDateFilter(opt.val)}
-                                            className={`flex-1 py-3 rounded-lg text-xs font-bold transition-all ${
-                                                (soldDateFilter || 12) === opt.val
-                                                    ? 'bg-yellow-500 text-black shadow-lg'
-                                                    : 'bg-[#1A1A1A] text-gray-500 border border-gray-800 active:bg-[#252525]'
-                                            }`}
-                                        >
-                                            {opt.label}mo
-                                        </button>
-                                    ))}
+                                    {[{ label: '1', val: 1 }, { label: '3', val: 3 }, { label: '6', val: 6 }, { label: '9', val: 9 }, { label: '12', val: 12 }].map(opt => {
+                                        const isDisabled = maxDataMonths && opt.val > maxDataMonths;
+                                        return (
+                                            <button
+                                                key={opt.val}
+                                                onClick={() => !isDisabled && setSoldDateFilter(opt.val)}
+                                                disabled={isDisabled}
+                                                className={`flex-1 py-3 rounded-lg text-xs font-bold transition-all ${
+                                                    isDisabled
+                                                        ? 'bg-[#111] text-gray-700 border border-gray-800/50 cursor-not-allowed opacity-40'
+                                                        : (soldDateFilter || 12) === opt.val
+                                                            ? 'bg-yellow-500 text-black shadow-lg'
+                                                            : 'bg-[#1A1A1A] text-gray-500 border border-gray-800 active:bg-[#252525]'
+                                                }`}
+                                            >
+                                                {opt.label}mo{isDisabled && ' 🔒'}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>

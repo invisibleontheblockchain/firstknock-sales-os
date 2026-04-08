@@ -148,6 +148,7 @@ export default function Home() {
     const [soldDateFilter, setSoldDateFilterRaw] = useState(12);
     const setSoldDateFilter = (val) => { setSoldDateFilterRaw(val); setFrozenWorkingSet(null); }; // Clear frozen on filter change
     const [lastPullMode, setLastPullMode] = useState(null);
+    const [maxDataMonths, setMaxDataMonths] = useState(() => { try { return parseInt(localStorage.getItem('fk_maxDataMonths')) || null; } catch { return null; } });
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
@@ -1735,12 +1736,9 @@ export default function Home() {
                 user={user}
                 setZipCodeFilter={setZipCodeFilter}
                 onPullComplete={async (pullFetchMonths) => {
-                    setFrozenWorkingSet(null); setRoutes([]);
-                    await queryClient.refetchQueries({ queryKey: ['masterProperties'] });
-                    await queryClient.refetchQueries({ queryKey: ['user'] });
-                    setMode('generate'); setShowCompare(true);
-                    if (pullFetchMonths === 1) { setLastPullMode('300mi'); setSoldDateFilterRaw(1); }
-                    else { setLastPullMode('40mi'); setSoldDateFilterRaw(pullFetchMonths || 12); }
+                    setFrozenWorkingSet(null); setRoutes([]); await queryClient.refetchQueries({ queryKey: ['masterProperties'] }); await queryClient.refetchQueries({ queryKey: ['user'] });
+                    setMode('generate'); setShowCompare(true); const pm = pullFetchMonths || 12; setMaxDataMonths(pm); try { localStorage.setItem('fk_maxDataMonths', String(pm)); } catch {}
+                    if (pm === 1) { setLastPullMode('300mi'); setSoldDateFilterRaw(1); } else { setLastPullMode('40mi'); setSoldDateFilterRaw(pm); }
                 }}
             />
 
@@ -1966,6 +1964,7 @@ export default function Home() {
                         }}
                         user={user}
                         hasDrawnArea={drawnPolygon && drawnPolygon.length > 2}
+                        maxDataMonths={maxDataMonths}
                     />
                 </React.Suspense>
             )}
