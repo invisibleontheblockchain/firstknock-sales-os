@@ -164,11 +164,15 @@ export function MapController({ fitBounds, onZoomChange, onMoveEnd }) {
         if (fitBounds?.length > 0) {
             try {
                 const bounds = L.latLngBounds(fitBounds);
-                const boundsKey = JSON.stringify(fitBounds.slice(0, 1));
-
-                if (bounds.isValid() && lastBoundsRef.current !== boundsKey) {
-                    if (map._mapPane) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17, animate: false });
-                    lastBoundsRef.current = boundsKey;
+                // Use the bounding box corners as the key (stable regardless of property order)
+                if (bounds.isValid()) {
+                    const sw = bounds.getSouthWest();
+                    const ne = bounds.getNorthEast();
+                    const boundsKey = `${sw.lat.toFixed(4)},${sw.lng.toFixed(4)},${ne.lat.toFixed(4)},${ne.lng.toFixed(4)}`;
+                    if (lastBoundsRef.current !== boundsKey) {
+                        if (map._mapPane) map.fitBounds(bounds, { padding: [30, 30], maxZoom: 17, animate: false });
+                        lastBoundsRef.current = boundsKey;
+                    }
                 }
             } catch (e) { }
         }
