@@ -345,8 +345,6 @@ export default function MapSettingsPanel({
                       <option value="6">Last 6 Months</option>
                       <option value="9">Last 9 Months</option>
                       <option value="12">Last 1 Year</option>
-                      <option value="24">Last 2 Years</option>
-                      <option value="36">Last 3 Years</option>
                     </select>
                   </div>
                 </div>

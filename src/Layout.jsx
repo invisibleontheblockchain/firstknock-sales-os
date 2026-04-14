@@ -37,12 +37,16 @@ function LayoutInner({ children }) {
     const { accent } = useTheme();
     const accentText = contrastText(accent);
 
-    if (typeof window !== 'undefined' && window.location.pathname === '/login') {
-        window.location.replace('/SignIn');
-        return null;
-    }
-
     const [isOnline, setIsOnline] = React.useState(navigator.onLine);
+    const queryClient = useQueryClient();
+    const { data: user, isLoading } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), retry: false });
+
+    React.useEffect(() => {
+        if (typeof window !== 'undefined' && window.location.pathname === '/login') {
+            window.location.replace('/SignIn');
+        }
+    }, []);
+
     React.useEffect(() => {
         const on = () => setIsOnline(true);
         const off = () => setIsOnline(false);
@@ -79,8 +83,9 @@ function LayoutInner({ children }) {
         return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
     }, []);
 
-    const queryClient = useQueryClient();
-    const { data: user, isLoading } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), retry: false });
+    if (typeof window !== 'undefined' && window.location.pathname === '/login') {
+        return null;
+    }
 
     if (isLoading) {
         return (
