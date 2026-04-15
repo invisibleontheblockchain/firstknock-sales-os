@@ -1282,76 +1282,36 @@ export default function Home() {
     // Re-optimize a single saved route's order in-place — pure distance minimization (NN + 2-Opt + Or-Opt)
     const handleReoptimizeRoute = useCallback(async (route) => {
         const toastId = toast.loading('Optimizing for shortest distance...', { id: 'reoptimize-route' });
+        const savedView = mapRef.current ? { center: mapRef.current.getCenter(), zoom: mapRef.current.getZoom() } : null;
         try {
-            // Get the route's properties
             const hashes = route.property_hashes || (route.properties || []).map(p => p.address_hash);
-            const routeProperties = hashes
-                .map(hash => effectiveProperties.find(p => p.address_hash === hash))
-                .filter(Boolean);
-
-            if (routeProperties.length === 0) {
-                toast.error('No properties found for this route.', { id: 'reoptimize-route' });
-                return;
-            }
-
+            const routeProperties = hashes.map(hash => effectiveProperties.find(p => p.address_hash === hash)).filter(Boolean);
+            if (routeProperties.length === 0) { toast.error('No properties found for this route.', { id: 'reoptimize-route' }); return; }
             const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
             const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
-
-            // Pure distance optimization: Nearest Neighbor + 2-Opt + Or-Opt
-            // This eliminates zig-zagging by minimizing total walking distance
             const optimized = optimizeRouteByDistance(routeProperties, start);
-
-            if (!optimized || optimized.length === 0) {
-                toast.error('Optimization produced no results.', { id: 'reoptimize-route' });
-                return;
-            }
-
-            // Calculate new total distance
+            if (!optimized || optimized.length === 0) { toast.error('Optimization produced no results.', { id: 'reoptimize-route' }); return; }
             let newDistance = 0;
             for (let i = 0; i < optimized.length - 1; i++) {
-                const R = 3959;
-                const dLat = (optimized[i+1].lat - optimized[i].lat) * Math.PI / 180;
-                const dLng = (optimized[i+1].lng - optimized[i].lng) * Math.PI / 180;
+                const R = 3959, dLat = (optimized[i+1].lat - optimized[i].lat) * Math.PI / 180, dLng = (optimized[i+1].lng - optimized[i].lng) * Math.PI / 180;
                 const a = Math.sin(dLat/2)**2 + Math.cos(optimized[i].lat * Math.PI/180) * Math.cos(optimized[i+1].lat * Math.PI/180) * Math.sin(dLng/2)**2;
                 newDistance += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
             }
             newDistance = Math.round(newDistance * 100) / 100;
-
             const oldDistance = route.metrics?.distance || route.totalDistance || 0;
             const newOrder = optimized.map(p => p.address_hash);
-
-            // Update saved route in-place (same ID, same outcomes)
-            await base44.entities.SavedRoute.update(route.id, {
-                property_hashes: newOrder,
-                metrics: {
-                    ...route.metrics,
-                    distance: newDistance,
-                }
-            });
-
+            await base44.entities.SavedRoute.update(route.id, { property_hashes: newOrder, metrics: { ...route.metrics, distance: newDistance } });
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
-
-            // If this route is currently active, update it
             if (activeRoute && activeRoute.id === route.id) {
-                const updatedProps = newOrder
-                    .map(hash => effectiveProperties.find(p => p.address_hash === hash))
-                    .filter(Boolean);
-                setActiveRoute(prev => ({
-                    ...prev,
-                    properties: updatedProps,
-                    totalDistance: newDistance,
-                }));
+                const updatedProps = newOrder.map(hash => effectiveProperties.find(p => p.address_hash === hash)).filter(Boolean);
+                setActiveRoute(prev => ({ ...prev, properties: updatedProps, totalDistance: newDistance }));
             }
-
+            // Restore map view to prevent zoom-out from fitBounds reacting to property reorder
+            if (savedView && mapRef.current) { try { mapRef.current.setView(savedView.center, savedView.zoom, { animate: false }); } catch (e) {} }
             const savedMiles = Math.round((oldDistance - newDistance) * 100) / 100;
-            const msg = savedMiles > 0
-                ? `Route optimized! Saved ~${savedMiles} miles (${newDistance} mi total)`
-                : `Route optimized (${newDistance} mi total)`;
+            const msg = savedMiles > 0 ? `Route optimized! Saved ~${savedMiles} miles (${newDistance} mi total)` : `Route optimized (${newDistance} mi total)`;
             toast.success(msg, { id: 'reoptimize-route', duration: 4000 });
-        } catch (e) {
-            console.error('Re-optimize error:', e);
-            toast.error('Failed to re-optimize route.', { id: 'reoptimize-route' });
-        }
+        } catch (e) { console.error('Re-optimize error:', e); toast.error('Failed to re-optimize route.', { id: 'reoptimize-route' }); }
     }, [effectiveProperties, startLocation, logs, routeConfig, learnedWeights, activeRoute]);
 
     // Filter and sort routes
