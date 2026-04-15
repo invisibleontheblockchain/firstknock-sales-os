@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Check, X, Phone, Ban, Home, Navigation, Mic, MapPin } from 'lucide-react';
+import { Check, X, Phone, Ban, Home, Navigation, Mic, MapPin, UserX, Clock } from 'lucide-react';
 import { getPropertyResultSummary } from '../logic/territoryLogic';
 import { openInMaps } from '../logic/navigation';
 import { formatPropertyAge } from '@/utils';
@@ -19,6 +19,8 @@ const STATUS_OPTIONS = [
     { id: 'NO_ANSWER', label: 'No Answer', icon: Home, color: '#3b82f6', textColor: '#fff' },
     { id: 'CALLBACK', label: 'Callback', icon: Phone, color: '#eab308', textColor: '#000' },
     { id: 'HARD_NO', label: 'Not Interested', icon: Ban, color: '#8B5CF6', textColor: '#fff' },
+    { id: 'NOT_MOVED_IN', label: 'Not Moved In', icon: Clock, color: '#f97316', textColor: '#fff' },
+    { id: 'DM_NOT_HOME', label: 'DM Not Home', icon: UserX, color: '#06b6d4', textColor: '#fff' },
 ];
 
 const STATUS_COLORS = {
@@ -28,7 +30,9 @@ const STATUS_COLORS = {
     CALLBACK: '#eab308',
     NO_ANSWER: '#6b7280',
     QUALIFIED: '#3b82f6',
-    RECENT_OFF_MARKET: '#FFD700'
+    RECENT_OFF_MARKET: '#FFD700',
+    NOT_MOVED_IN: '#f97316',
+    DM_NOT_HOME: '#06b6d4'
 };
 
 export default function RouteChecklist({ route, logs, onLogResult, onClose, navigationApp = 'apple', activeRouteSoldFilter, setActiveRouteSoldFilter }) {
@@ -122,6 +126,8 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
             else if (lower.includes('not interested') || lower.includes('no') || lower.includes('go away')) status = 'HARD_NO';
             else if (lower.includes('call') || lower.includes('back') || lower.includes('busy')) status = 'CALLBACK';
             else if (lower.includes('no answer') || lower.includes('nobody')) status = 'NO_ANSWER';
+            else if (lower.includes('not moved in') || lower.includes('haven\'t moved')) status = 'NOT_MOVED_IN';
+            else if (lower.includes('decision maker') || lower.includes('dm not home') || lower.includes('husband') || lower.includes('wife')) status = 'DM_NOT_HOME';
             else if (lower.includes('yes') || lower.includes('interested')) status = 'QUALIFIED';
             if (confirm(`Heard: "${text}"\nStatus: ${status}\n\nSave?`)) {
                 onLogResult(property, status, text);
@@ -280,7 +286,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                                     {currentStatus && !isExpanded && (
                                         <span className="text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0"
                                             style={{ background: STATUS_COLORS[currentStatus] + '20', color: STATUS_COLORS[currentStatus] }}>
-                                            {currentStatus === 'NO_ANSWER' ? 'N/A' : currentStatus === 'HARD_NO' ? 'NO' : currentStatus}
+                                            {currentStatus === 'NO_ANSWER' ? 'N/A' : currentStatus === 'HARD_NO' ? 'NO' : currentStatus === 'NOT_MOVED_IN' ? 'NMI' : currentStatus === 'DM_NOT_HOME' ? 'DM' : currentStatus}
                                         </span>
                                     )}
                                 </button>
@@ -329,7 +335,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                                                 </div>
                                             </div>
                                         ) : (
-                                            <div className="grid grid-cols-4 gap-1.5">
+                                            <div className="grid grid-cols-3 gap-1.5">
                                                 {STATUS_OPTIONS.map(opt => (
                                                     <button
                                                         key={opt.id}

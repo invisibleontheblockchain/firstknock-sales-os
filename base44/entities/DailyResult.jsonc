@@ -1,0 +1,65 @@
+{
+  "name": "DailyResult",
+  "type": "object",
+  "properties": {
+    "address_hash": {
+      "type": "string",
+      "description": "Link to MasterProperty"
+    },
+    "date_visited": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Date and time of visit"
+    },
+    "result_text": {
+      "type": "string",
+      "description": "Free-form result text from field (e.g., 'not home', 'sold', 'call back in March')"
+    },
+    "parsed_status": {
+      "type": "string",
+      "enum": [
+        "ELIGIBLE",
+        "HARD_NO",
+        "CALLBACK",
+        "QUALIFIED",
+        "SOLD",
+        "NO_ANSWER",
+        "NOT_MOVED_IN",
+        "DM_NOT_HOME",
+        "OTHER"
+      ],
+      "description": "Parsed status from result_text"
+    },
+    "callback_target": {
+      "type": "string",
+      "description": "Target month/date for callback (e.g., '2026-03')"
+    },
+    "next_eligible_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this property becomes eligible again"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Additional notes from the visit"
+    },
+    "route_id": {
+      "type": "string",
+      "description": "Which route this visit was part of"
+    },
+    "gps_lat": {
+      "type": "number",
+      "description": "GPS proof latitude"
+    },
+    "gps_lng": {
+      "type": "number",
+      "description": "GPS proof longitude"
+    }
+  },
+  "required": [
+    "address_hash",
+    "date_visited",
+    "result_text",
+    "parsed_status"
+  ]
+}

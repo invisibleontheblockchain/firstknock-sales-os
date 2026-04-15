@@ -55,6 +55,8 @@ export function scoreProperty(property, logs = [], neighborhoodStats = {}, learn
     if (property.effective_status === 'UNVERIFIED') score += 40; // Legacy CSV data, treat as routable but lower confidence
     if (property.effective_status === 'CALLBACK') score += 100; // Top priority
     if (property.effective_status === 'NO_ANSWER') score += 30; // Worth another try
+    if (property.effective_status === 'NOT_MOVED_IN') score += 20; // Come back later
+    if (property.effective_status === 'DM_NOT_HOME') score += 50; // Decision maker absent — high re-visit value
     if (property.effective_status === 'QUALIFIED') score += 80;
     if (property.effective_status === 'HARD_NO') return 0;
     // 'SOLD' = recently sold home from MLS (new homeowner = prime lead), score based on recency

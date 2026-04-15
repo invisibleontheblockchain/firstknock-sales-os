@@ -60,6 +60,26 @@ export function parseResultText(text) {
         };
     }
     
+    // NOT MOVED IN
+    if (lower.includes('not moved in') || lower.includes('haven\'t moved') || lower.includes('hasnt moved') || lower.includes('nmi')) {
+        return {
+            status: 'NOT_MOVED_IN',
+            notes: text,
+            nextDate: moment().add(30, 'days').toISOString(),
+            callbackTarget: null
+        };
+    }
+
+    // DECISION MAKER NOT HOME
+    if (lower.includes('decision maker') || lower.includes('dm not home') || lower.includes('husband not home') || lower.includes('wife not home') || lower.includes('spouse')) {
+        return {
+            status: 'DM_NOT_HOME',
+            notes: text,
+            nextDate: moment().add(3, 'days').toISOString(),
+            callbackTarget: null
+        };
+    }
+
     // NO_ANSWER / NOT HOME
     if (lower.includes('no answer') || lower.includes('not home') || lower.includes('nh') || lower.includes('nobody')) {
         return {
@@ -115,6 +135,16 @@ export function isPropertyEligible(property, dailyResults) {
     
     // NO_ANSWER - check cooldown period (14 days)
     if (latest.parsed_status === 'NO_ANSWER' && latest.next_eligible_date) {
+        return moment().isAfter(moment(latest.next_eligible_date));
+    }
+
+    // NOT_MOVED_IN - check cooldown (30 days)
+    if (latest.parsed_status === 'NOT_MOVED_IN' && latest.next_eligible_date) {
+        return moment().isAfter(moment(latest.next_eligible_date));
+    }
+
+    // DM_NOT_HOME - check cooldown (3 days)
+    if (latest.parsed_status === 'DM_NOT_HOME' && latest.next_eligible_date) {
         return moment().isAfter(moment(latest.next_eligible_date));
     }
     

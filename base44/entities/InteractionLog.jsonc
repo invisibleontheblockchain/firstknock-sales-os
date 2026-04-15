@@ -1,0 +1,57 @@
+{
+  "name": "InteractionLog",
+  "type": "object",
+  "properties": {
+    "address_hash": {
+      "type": "string",
+      "description": "Link to MasterProperty"
+    },
+    "raw_input_text": {
+      "type": "string",
+      "description": "The exact text the user typed/spoke"
+    },
+    "parsed_status": {
+      "type": "string",
+      "enum": [
+        "SOLD",
+        "HARD_NO",
+        "CALLBACK",
+        "NO_ANSWER",
+        "ELIGIBLE",
+        "NOT_MOVED_IN",
+        "DM_NOT_HOME"
+      ],
+      "description": "The status derived from the NLP parser"
+    },
+    "sale_amount": {
+      "type": "number",
+      "description": "Dollar amount of the sale if status is SOLD"
+    },
+    "gps_proof_lat": {
+      "type": "number",
+      "description": "Latitude where interaction was recorded"
+    },
+    "gps_proof_lng": {
+      "type": "number",
+      "description": "Longitude where interaction was recorded"
+    },
+    "gps_accuracy": {
+      "type": "number",
+      "description": "Accuracy radius in meters"
+    },
+    "image_url": {
+      "type": "string",
+      "description": "Proof of visit photo"
+    },
+    "next_eligible_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this property can be knocked again"
+    }
+  },
+  "required": [
+    "address_hash",
+    "parsed_status",
+    "raw_input_text"
+  ]
+}

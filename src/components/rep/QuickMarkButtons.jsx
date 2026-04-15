@@ -1,18 +1,20 @@
 import React from 'react';
-import { Check, Home, Phone, Ban } from 'lucide-react';
+import { Check, Home, Phone, Ban, Clock, UserX } from 'lucide-react';
 
 const ACTIONS = [
     { id: 'SOLD', label: 'SOLD', icon: Check, bg: 'rgba(34, 197, 94, 0.1)', text: '#22c55e', border: 'rgba(34, 197, 94, 0.2)' },
     { id: 'NO_ANSWER', label: 'NO ANSWER', icon: Home, bg: 'rgba(59, 130, 246, 0.1)', text: '#3b82f6', border: 'rgba(59, 130, 246, 0.2)' },
     { id: 'CALLBACK', label: 'CALLBACK', icon: Phone, bg: 'rgba(234, 179, 8, 0.1)', text: '#eab308', border: 'rgba(234, 179, 8, 0.2)' },
     { id: 'HARD_NO', label: 'NOT INT.', icon: Ban, bg: 'rgba(139, 92, 246, 0.1)', text: '#8B5CF6', border: 'rgba(139, 92, 246, 0.2)' },
+    { id: 'NOT_MOVED_IN', label: 'NOT MOVED IN', icon: Clock, bg: 'rgba(249, 115, 22, 0.1)', text: '#f97316', border: 'rgba(249, 115, 22, 0.2)' },
+    { id: 'DM_NOT_HOME', label: 'DM NOT HOME', icon: UserX, bg: 'rgba(6, 182, 212, 0.1)', text: '#06b6d4', border: 'rgba(6, 182, 212, 0.2)' },
 ];
 
 export default function QuickMarkButtons({ onMark, disabled, size = 'normal' }) {
     const isLarge = size === 'large';
     
     return (
-        <div className={`grid grid-cols-4 ${isLarge ? 'gap-3' : 'gap-2'}`}>
+        <div className={`grid grid-cols-3 ${isLarge ? 'gap-3' : 'gap-2'}`}>
             {ACTIONS.map(a => {
                 const Icon = a.icon;
                 return (
