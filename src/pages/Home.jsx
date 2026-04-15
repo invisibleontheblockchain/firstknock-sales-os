@@ -149,6 +149,7 @@ export default function Home() {
     const setSoldDateFilter = (val) => { setSoldDateFilterRaw(val); setFrozenWorkingSet(null); }; // Clear frozen on filter change
     const [lastPullMode, setLastPullMode] = useState(null);
     const [maxDataMonths, setMaxDataMonths] = useState(() => { try { return parseInt(localStorage.getItem('fk_maxDataMonths')) || null; } catch { return null; } });
+    const [hasMlsData, setHasMlsData] = useState(() => { try { return localStorage.getItem('fk_hasMlsData') === 'true'; } catch { return false; } });
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
@@ -1641,7 +1642,8 @@ export default function Home() {
                 setShowRouteLines={setShowRouteLines}
                 onSaveFilteredRoute={handleSaveFilteredRoute}
                 onReoptimizeRoute={handleReoptimizeRoute}
-            />
+                hasMlsData={hasMlsData}
+                />
 
             {/* Territory Prompt - Drawing Controls + Initial Prompt */}
             <TerritoryPrompt
@@ -1665,9 +1667,10 @@ export default function Home() {
                 setDrawSizeMiles={setDrawSizeMiles}
                 user={user}
                 setZipCodeFilter={setZipCodeFilter}
-                onPullComplete={async (pullFetchMonths) => {
+                onPullComplete={async (pullFetchMonths, pulledWithMls) => {
                     setFrozenWorkingSet(null); setRoutes([]); await queryClient.refetchQueries({ queryKey: ['masterProperties'] }); await queryClient.refetchQueries({ queryKey: ['user'] });
                     setMode('generate'); setShowCompare(true); const pm = pullFetchMonths || 12; setMaxDataMonths(pm); try { localStorage.setItem('fk_maxDataMonths', String(pm)); } catch {}
+                    setHasMlsData(!!pulledWithMls); try { localStorage.setItem('fk_hasMlsData', pulledWithMls ? 'true' : 'false'); } catch {}
                     if (pm === 1) { setLastPullMode('300mi'); setSoldDateFilterRaw(1); } else { setLastPullMode('40mi'); setSoldDateFilterRaw(pm); }
                 }}
             />
@@ -1895,6 +1898,7 @@ export default function Home() {
                         user={user}
                         hasDrawnArea={drawnPolygon && drawnPolygon.length > 2}
                         maxDataMonths={maxDataMonths}
+                        hasMlsData={hasMlsData}
                     />
                 </React.Suspense>
             )}

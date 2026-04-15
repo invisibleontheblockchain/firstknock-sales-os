@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
         const body = await req.json();
-        let { latitude, longitude, radius, polygon, sold_months } = body;
+        let { latitude, longitude, radius, polygon, sold_months, include_mls } = body;
 
         if (!latitude || !longitude || !radius) {
             return Response.json({ error: 'Latitude, longitude, and radius are required' }, { status: 400 });
@@ -259,6 +259,7 @@ Deno.serve(async (req) => {
             radius: optimizedRadius,
             polygon: polygon || [],
             sold_months: effectiveSoldMonths,
+            include_mls: !!include_mls,
             is_delta_pull: isDeltaPull,
             delta_watermark: isDeltaPull ? deltaInfo.watermark : null,
             delta_savings: isDeltaPull ? { estimated_full_calls: deltaInfo.previousApiCalls, actual_calls: 0, savings_pct: 0 } : null,

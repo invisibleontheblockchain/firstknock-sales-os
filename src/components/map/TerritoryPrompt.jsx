@@ -42,6 +42,7 @@ export default function TerritoryPrompt({
     const [etaText, setEtaText] = useState('');
     const [totalExpected, setTotalExpected] = useState(0);
     const [isDeltaPull, setIsDeltaPull] = useState(false);
+    const [includeMls, setIncludeMls] = useState(false);
     const pollRef = useRef(null);
     const animRef = useRef(null);
     const pctHistoryRef = useRef([]);
@@ -258,7 +259,7 @@ export default function TerritoryPrompt({
                     window.dispatchEvent(new CustomEvent('fk-territory-data-ready'));
 
                     if (onPullComplete) {
-                        onPullComplete(fetchMonths);
+                        onPullComplete(fetchMonths, includeMls);
                         setShowCompare(true);
                     } else {
                         queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
@@ -330,7 +331,8 @@ export default function TerritoryPrompt({
                 longitude: centerLng,
                 radius: radius,
                 polygon: drawnPolygon,
-                sold_months: fetchMonths
+                sold_months: fetchMonths,
+                include_mls: includeMls
             });
             const d = res.data || {};
 
@@ -449,6 +451,32 @@ export default function TerritoryPrompt({
                         {drawSizeMiles === 300 && (
                             <div className="text-[9px] text-cyan-400 text-center font-semibold">300mi² pulls are locked to 1 month of data</div>
                         )}
+                        {/* MLS Early Signal Toggle */}
+                        <div className="border-t border-white/10 pt-2 mt-1">
+                            <button
+                                onClick={() => setIncludeMls(!includeMls)}
+                                className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg transition-all text-left ${
+                                    includeMls 
+                                        ? 'bg-orange-500/15 border border-orange-500/40' 
+                                        : 'bg-white/5 border border-white/10'
+                                }`}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <div className={`w-8 h-4 rounded-full transition-all relative ${includeMls ? 'bg-orange-500' : 'bg-gray-700'}`}>
+                                        <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all shadow ${includeMls ? 'left-4' : 'left-0.5'}`} />
+                                    </div>
+                                    <span className={`text-[10px] font-bold ${includeMls ? 'text-orange-400' : 'text-gray-500'}`}>
+                                        Early Signals (MLS)
+                                    </span>
+                                </div>
+                                <Zap className={`w-3 h-3 ${includeMls ? 'text-orange-400' : 'text-gray-600'}`} />
+                            </button>
+                            {includeMls && (
+                                <p className="text-[8px] text-orange-400/70 mt-1 leading-tight px-1">
+                                    ⚠️ Adds recently off-market MLS homes. These may still have "For Sale" signs — the sale hasn't recorded at the county yet. Best used as a separate early-warning layer, not mixed with confirmed sales.
+                                </p>
+                            )}
+                        </div>
                         <p className="text-[10px] text-yellow-400/70 text-center">Tap the map to place your territory</p>
                     </div>
                 </div>

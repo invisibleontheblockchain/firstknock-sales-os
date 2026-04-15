@@ -40,6 +40,11 @@
       "default": 12,
       "description": "How many months back to search for sold properties"
     },
+    "include_mls": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether to include Phase 2 MLS early signal data (Inactive listings)"
+    },
     "is_delta_pull": {
       "type": "boolean",
       "default": false,
@@ -67,7 +72,7 @@
     },
     "sub_circles": {
       "type": "array",
-      "description": "Grid subdivision circles for large-area fetches (each has lat, lng, radius)",
+      "description": "Grid subdivision circles for large-area fetches",
       "items": {
         "type": "object",
         "properties": {
@@ -85,13 +90,11 @@
     },
     "current_sub_circle": {
       "type": "integer",
-      "default": 0,
-      "description": "Index of the sub-circle currently being processed"
+      "default": 0
     },
     "total_sub_circles": {
       "type": "integer",
-      "default": 1,
-      "description": "Total number of sub-circles in the grid"
+      "default": 1
     },
     "current_offset": {
       "type": "integer",
@@ -119,13 +122,11 @@
     },
     "total_api_calls": {
       "type": "integer",
-      "default": 0,
-      "description": "Total RentCast API calls consumed by this job"
+      "default": 0
     },
     "total_batchdata_calls": {
       "type": "integer",
-      "default": 0,
-      "description": "Total BatchData API calls consumed by this job (capped at 500)"
+      "default": 0
     },
     "error_message": {
       "type": "string"
@@ -134,8 +135,7 @@
       "type": "array",
       "items": {
         "type": "string"
-      },
-      "description": "Rolling log of errors/warnings during processing"
+      }
     },
     "user_email": {
       "type": "string"
@@ -152,8 +152,7 @@
     },
     "chunk_number": {
       "type": "integer",
-      "default": 0,
-      "description": "Increments each chunk to ensure entity update event fires"
+      "default": 0
     },
     "started_at": {
       "type": "string",
@@ -167,8 +166,7 @@
       "type": "array",
       "items": {
         "type": "number"
-      },
-      "description": "Duration of each chunk in seconds"
+      }
     },
     "phase": {
       "type": "string",

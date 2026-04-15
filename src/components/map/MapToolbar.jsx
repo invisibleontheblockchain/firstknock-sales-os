@@ -67,6 +67,9 @@ export default function MapToolbar({
     
     // Route Optimization
     onReoptimizeRoute,
+
+    // MLS data flag
+    hasMlsData,
 }) {
     const queryClient = useQueryClient();
     const hasDrawnArea = drawnPolygon && drawnPolygon.length > 2;
@@ -243,7 +246,7 @@ export default function MapToolbar({
                                 </select>
                             )}
 
-                            {setActiveRoutePhaseFilter && (
+                            {setActiveRoutePhaseFilter && hasMlsData && (
                                 <select value={activeRoutePhaseFilter} onChange={(e) => { e.stopPropagation(); setActiveRoutePhaseFilter(e.target.value); }} onPointerDown={(e) => e.stopPropagation()} className="text-[10px] md:text-[11px] font-medium bg-white/5 border border-purple-500/30 rounded-md px-1 md:px-1.5 py-0.5 outline-none cursor-pointer hover:bg-white/10 shrink-0" style={{ color: '#c4b5fd', WebkitAppearance: 'menulist' }}>
                                     <option value="all">Phase</option>
                                     <option value="deeds">P1 Deeds</option>

@@ -51,7 +51,8 @@ export default function RouteBuilderSettings({
     // Data
     user,
     hasDrawnArea,
-    maxDataMonths
+    maxDataMonths,
+    hasMlsData
 }) {
     const [expandedSection, setExpandedSection] = useState(null);
 
@@ -351,13 +352,15 @@ export default function RouteBuilderSettings({
                                     checked={routeConfig.excludePreviouslyKnocked}
                                     onChange={(v) => setRouteConfig(prev => ({ ...prev, excludePreviouslyKnocked: v }))}
                                 />
-                                <ToggleOption
-                                    label="Include Unverified Sales"
-                                    description="Show properties that may be expired listings, not confirmed sales"
-                                    icon={<Target className="w-4 h-4 text-orange-400" />}
-                                    checked={routeConfig.includeUnverifiedSales}
-                                    onChange={(v) => setRouteConfig(prev => ({ ...prev, includeUnverifiedSales: v }))}
-                                />
+                                {hasMlsData && (
+                                    <ToggleOption
+                                        label="Include Early Signal (MLS)"
+                                        description="Include off-market MLS homes that haven't been deed-confirmed yet. May still have For Sale signs."
+                                        icon={<Target className="w-4 h-4 text-orange-400" />}
+                                        checked={routeConfig.includeUnverifiedSales}
+                                        onChange={(v) => setRouteConfig(prev => ({ ...prev, includeUnverifiedSales: v }))}
+                                    />
+                                )}
                             </div>
                         </CollapsibleSection>
 
