@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Navigation, Camera, Loader2, Phone, Clock, ChevronUp, Mic, Check, Home, Ban, MapPin } from 'lucide-react';
+import { X, Navigation, Camera, Loader2, Phone, Clock, ChevronUp, Mic, Check, Home, Ban, MapPin, UserX } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { format } from 'date-fns';
 import PropertyHistory from './PropertyHistory';
@@ -9,6 +9,8 @@ const STATUS_OPTIONS = [
     { id: 'NO_ANSWER', label: 'No Answer', icon: Home, color: '#3b82f6' },
     { id: 'CALLBACK', label: 'Callback', icon: Phone, color: '#eab308' },
     { id: 'HARD_NO', label: 'Not Int.', icon: Ban, color: '#8B5CF6' },
+    { id: 'NOT_MOVED_IN', label: 'Not Moved In', icon: Clock, color: '#f97316' },
+    { id: 'DM_NOT_HOME', label: 'DM Not Home', icon: UserX, color: '#06b6d4' },
 ];
 
 export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUpload, uploading, onClose, onViewOnMap, routePosition, totalStops }) {
@@ -93,7 +95,7 @@ export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUplo
                     <div className="flex items-center justify-between mb-2">
                         <span className="text-[10px] font-bold uppercase text-gray-600">Log outcome</span>
                     </div>
-                    <div className="grid grid-cols-4 gap-1.5">
+                    <div className="grid grid-cols-3 gap-1.5">
                         {STATUS_OPTIONS.map(opt => (
                             <button
                                 key={opt.id}
