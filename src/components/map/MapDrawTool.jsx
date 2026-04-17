@@ -73,11 +73,35 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
             if (onPointsUpdate) {
                 onPointsUpdate(generated);
             }
-            // Don't auto-zoom — keep the map where the user tapped
-            // Auto-confirm: immediately commit the shape so user doesn't need to press confirm
+            // Fire confirm FIRST so parent can do its work (state updates, polygon save).
             if (onConfirm) {
                 onConfirm(generated);
             }
+            // Then focus the drawn area as the main subject WITHOUT zooming out.
+            // We run this LAST (and on next tick) so it wins over any caller-side fitBounds
+            // that would expand the view and zoom OUT from where the user tapped.
+            //   • If the shape already fits in current view → just pan to its center
+            //   • If it doesn't fit → fit bounds but cap max-zoom at current zoom
+            //     (so we never zoom further in/out than the user was).
+            // The requestAnimationFrame ensures this runs after React flushes parent state
+            // (including any fitBounds the parent's onConfirm may trigger).
+            requestAnimationFrame(() => {
+                try {
+                    if (generated && generated.length > 2) {
+                        const b = L.latLngBounds(generated.map(pt => [pt.lat, pt.lng]));
+                        if (b.isValid() && map?._mapPane) {
+                            const center = b.getCenter();
+                            const curZoom = map.getZoom();
+                            const curBounds = map.getBounds();
+                            if (curBounds.contains(b)) {
+                                map.panTo(center, { animate: true, duration: 0.4 });
+                            } else {
+                                map.fitBounds(b, { padding: [40, 40], maxZoom: curZoom, animate: true });
+                            }
+                        }
+                    }
+                } catch (err) { /* non-fatal focus adjustment */ }
+            });
         },
         mousemove(e) {
             if (!active) return;
