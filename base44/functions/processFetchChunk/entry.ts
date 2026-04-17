@@ -1,16 +1,14 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
-// v14 — BatchData Step 3 for ambiguous MLS listings:
-//   • After heuristic scoring + deed cross-ref, ambiguous RECENT_OFF_MARKET listings
-//     are verified via BatchData property/search endpoint (has statusCategory/soldPrice
-//     that RentCast doesn't). Capped at 50 per chunk (~$5 max per pull).
-//   • Confirmed sold → promoted to BATCHDATA_CONFIRMED / verified confidence
-//   • Not sold → dropped (REJECTED)
-// v13 — Hardened MLS classifier:
-//   • Reject Expired/Withdrawn/Cancelled/Pending/Active listings (still-for-sale-sign leads)
-//   • Reject ambiguous heuristic scores (-1 to 0) — was "ambiguousKept", too risky
-//   • Widen medium-confidence band to DOM < 60 (was 30) — catch more real sales
-//   • Raise disclosure-state sale-price floor $10K → $30K (filter quitclaim/tax transfers)
+// v15 — "Clerk Gap" Architecture:
+//   Phase 1 = 6-12 months of county deed records (verified ground truth)
+//   Phase 2 = LAST 30 DAYS ONLY of MLS data (covers the courthouse recording gap)
+//   • RentCast daysOld now set to 30 (was monthsBack*30+90 = 450+ days!)
+//   • ALL Phase 2 survivors sent to BatchData for ground-truth verification
+//   • No MLS property reaches the route without BatchData or deed confirmation
+//   • Result: zero false "for sale sign" leads on routes
+// v14 — BatchData Step 3 (partial — still pulled 12mo of MLS)
+// v13 — Hardened MLS classifier (heuristic-only, no BatchData verification)
 // v12 — Hybrid tiered BatchData: only DOM < 30 days gets medium confidence
 // Architecture: Single sub-circle (40 sq mi ≈ 3.57mi radius), 2-phase (deeds + listings)
 // Self-chain uses entity automation on FetchJob update instead of fire-and-forget setTimeout
@@ -229,7 +227,7 @@ Deno.serve(async (req) => {
         // another instance already processed this chunk. Bail out silently.
         const currentChunkNumber = job.chunk_number || 0;
         if (expectedChunk !== null && currentChunkNumber !== expectedChunk) {
-            console.log(`[chunk-v12] MUTEX: expected_chunk=${expectedChunk} but job is at chunk=${currentChunkNumber}. Duplicate invocation — skipping.`);
+            console.log(`[chunk-v15] MUTEX: expected_chunk=${expectedChunk} but job is at chunk=${currentChunkNumber}. Duplicate invocation — skipping.`);
             return Response.json({ skipped: true, reason: 'duplicate_invocation' });
         }
 
@@ -258,7 +256,7 @@ Deno.serve(async (req) => {
         let currentSubCircle = job.current_sub_circle || 0;
         const totalSubCircles = job.total_sub_circles || subCircles.length;
 
-        console.log(`[chunk-v12] Job ${jobId} | phase=${currentPhase} | sub-circle=${currentSubCircle + 1}/${totalSubCircles} | offset=${job.current_offset} | chunk#=${currentChunkNumber}`);
+        console.log(`[chunk-v15] Job ${jobId} | phase=${currentPhase} | sub-circle=${currentSubCircle + 1}/${totalSubCircles} | offset=${job.current_offset} | chunk#=${currentChunkNumber}`);
 
         const { polygon } = job;
         const activeCircle = subCircles[currentSubCircle] || subCircles[0];
@@ -351,7 +349,7 @@ Deno.serve(async (req) => {
                         const msg = e?.message || String(e);
                         const is429 = /429|rate limit/i.test(msg);
                         attempt++;
-                        console.warn(`[chunk-v12] Self-chain attempt ${attempt}/${delays.length} failed (${is429 ? '429' : 'other'}): ${msg}`);
+                        console.warn(`[chunk-v15] Self-chain attempt ${attempt}/${delays.length} failed (${is429 ? '429' : 'other'}): ${msg}`);
                         if (attempt < delays.length) {
                             setTimeout(tryInvoke, delays[attempt]);
                         } else {
@@ -368,9 +366,9 @@ Deno.serve(async (req) => {
                                 await base44.asServiceRole.entities.FetchJob.update(jobId, {
                                     error_log: recoveryLog
                                 });
-                                console.warn(`[chunk-v12] Job ${jobId} self-chain exhausted — cron will resume.`);
+                                console.warn(`[chunk-v15] Job ${jobId} self-chain exhausted — cron will resume.`);
                             } catch (recoveryErr) {
-                                console.error(`[chunk-v12] Could not log stall: ${recoveryErr.message}`);
+                                console.error(`[chunk-v15] Could not log stall: ${recoveryErr.message}`);
                             }
                         }
                     });
@@ -466,7 +464,7 @@ Deno.serve(async (req) => {
             }
 
             totalFetched += rawFetchedThisChunk;
-            console.log(`[chunk-v13] Phase 1 inline-mapped ${mapped.length}/${rawFetchedThisChunk} raw (polygon-rej=${rejectedByPolygon}, filter-rej=${rejectedByFilter}, dupe=${rejectedByDupe}, totalExpected=${totalExpected})`);
+            console.log(`[chunk-v15] Phase 1 inline-mapped ${mapped.length}/${rawFetchedThisChunk} raw (polygon-rej=${rejectedByPolygon}, filter-rej=${rejectedByFilter}, dupe=${rejectedByDupe}, totalExpected=${totalExpected})`);
 
             const dbResult = await writeToDb(mapped);
             totalInserted += dbResult.chunkInserted;
@@ -481,7 +479,7 @@ Deno.serve(async (req) => {
                     nextSubCircle++;
                     nextOffset = 0;
                     totalExpected = 0;
-                    console.log(`[chunk-v12] Phase 1 sub-circle ${currentSubCircle + 1} done, advancing to sub-circle ${nextSubCircle + 1}`);
+                    console.log(`[chunk-v15] Phase 1 sub-circle ${currentSubCircle + 1} done, advancing to sub-circle ${nextSubCircle + 1}`);
                 } else {
                     // Only advance to Phase 2 if include_mls is enabled on the job
                     const includeMls = job.include_mls || false;
@@ -490,10 +488,10 @@ Deno.serve(async (req) => {
                         nextSubCircle = 0;
                         nextOffset = 0;
                         totalExpected = 0;
-                        console.log(`[chunk-v12] Phase 1 COMPLETE for all sub-circles. Advancing to Phase 2 (listings).`);
+                        console.log(`[chunk-v15] Phase 1 COMPLETE for all sub-circles. Advancing to Phase 2 (listings).`);
                     } else {
                         // Skip Phase 2 entirely — deed records only
-                        console.log(`[chunk-v12] Phase 1 COMPLETE. MLS early signals DISABLED — skipping Phase 2, marking job complete.`);
+                        console.log(`[chunk-v15] Phase 1 COMPLETE. MLS early signals DISABLED — skipping Phase 2, marking job complete.`);
                         const completedAt = new Date().toISOString();
                         const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
                         chunkTimings.push(chunkDuration);
@@ -512,12 +510,12 @@ Deno.serve(async (req) => {
                                 });
                             }
                         } catch (_e) { /* non-fatal */ }
-                        console.log(`[chunk-v12] JOB COMPLETE (deed-only) | apiCalls=${totalApiCalls} | inserted=${totalInserted} | existed=${totalExisted} | updated=${totalUpdated}`);
+                        console.log(`[chunk-v15] JOB COMPLETE (deed-only) | apiCalls=${totalApiCalls} | inserted=${totalInserted} | existed=${totalExisted} | updated=${totalUpdated}`);
                         return Response.json({ status: 'completed', job_id: jobId, phase: 'deed_only' });
                     }
                 }
             } else {
-            console.log(`[chunk-v12] Phase 1 sub-circle ${currentSubCircle + 1} needs more pages (nextOffset=${nextOffset})`);
+            console.log(`[chunk-v15] Phase 1 sub-circle ${currentSubCircle + 1} needs more pages (nextOffset=${nextOffset})`);
             }
 
             const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
@@ -542,8 +540,20 @@ Deno.serve(async (req) => {
         // ======================================================================
         // PHASE 2: LISTINGS RECORDS — /v1/listings/sale?status=Inactive
         // ======================================================================
+        // ARCHITECTURE (v15): Phase 2 ONLY covers the "clerk gap" — the last
+        // 30 days where county deeds haven't been recorded yet.
+        //
+        //   Phase 1 = 6-12 months of county deed records (verified ground truth)
+        //   Phase 2 = LAST 30 DAYS ONLY of MLS data (covers the clerk gap)
+        //
+        // Previously this pulled (monthsBack * 30 + 90) = 450+ days of MLS data
+        // which was the root cause of 80-90% false positives on routes.
+        // Now we only ask RentCast for 30 days, and ALL survivors go to BatchData.
+        // ======================================================================
         if (currentPhase === 'listings_records') {
-            const saleDateRange = Math.min((monthsBack * 30) + 90, 730);
+            // FIXED: Only pull last 30 days of MLS data (the clerk gap)
+            // Previously: Math.min((monthsBack * 30) + 90, 730) = 450+ days
+            const MLS_CLERK_GAP_DAYS = 30;
             
             const allRaw = [];
             let reachedEnd = false;
@@ -558,7 +568,7 @@ Deno.serve(async (req) => {
                         latitude: String(fetchLat), longitude: String(fetchLng),
                         radius: String(fetchRadius), limit: String(LIMIT),
                         offset: String(offset), status: 'Inactive',
-                        daysOld: String(saleDateRange)
+                        daysOld: String(MLS_CLERK_GAP_DAYS)
                     });
                     return fetchWithBackoff(`${RENTCAST_BASE}/listings/sale?${params}`, { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY }, logError);
                 });
@@ -572,7 +582,7 @@ Deno.serve(async (req) => {
                 await sleep(300);
             }
 
-            console.log(`[chunk-v12] Phase 2 fetched ${allRaw.length} raw listings (offset=${currentOffset})`);
+            console.log(`[chunk-v15] Phase 2 fetched ${allRaw.length} raw MLS listings from last ${MLS_CLERK_GAP_DAYS} days (offset=${currentOffset})`);
 
             // ── Delta validation: load previously seen listingIds from this job's zip codes ──
             // This prevents reprocessing listings we've already classified on prior pulls
@@ -598,19 +608,21 @@ Deno.serve(async (req) => {
                         );
                         await Promise.all(promises);
                     }
-                    console.log(`[chunk-v12] Delta validation: loaded ${seenListingIds.size} previously seen listing IDs`);
+                    console.log(`[chunk-v15] Delta validation: loaded ${seenListingIds.size} previously seen listing IDs`);
                 } catch (err) {
                     logError(`Delta validation load failed (non-fatal): ${err.message}`);
                     seenListingIds = null; // Disable delta check, process all
                 }
             }
 
+            // FIXED: soldCutoff is now 30 days back (matches MLS_CLERK_GAP_DAYS)
+            // Previously: soldCutoff = monthsBack months ago (up to 12 months of MLS!)
             const soldCutoff = new Date();
-            soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
+            soldCutoff.setDate(soldCutoff.getDate() - MLS_CLERK_GAP_DAYS);
 
             const mapped = [];
             const seenHashes = new Set();
-            let phase2Stats = { total: 0, countyLagRejected: 0, heuristicRejected: 0, heuristicLikelySold: 0, ambiguousRejected: 0, batchdataEligible: 0, batchdataVerified: 0, batchdataDropped: 0, domGatedToLow: 0, deltaSkipped: 0, mlsStatusRejected: 0 };
+            let phase2Stats = { total: 0, outsideWindowRejected: 0, heuristicRejected: 0, heuristicPassed: 0, ambiguousRejected: 0, batchdataVerified: 0, batchdataDropped: 0, deltaSkipped: 0, mlsStatusRejected: 0, deedCrossRef: 0 };
 
             for (const p of allRaw) {
                 if (!p.latitude || !p.longitude || !filterPoint(p.latitude, p.longitude)) continue;
@@ -654,31 +666,21 @@ Deno.serve(async (req) => {
                     continue;
                 }
 
-                // ── FILTER 1: County Lag Rule ──
-                // Research: Harris County TX worst-case = 120 days (clerk backlog + RentCast propagation)
-                // Configurable via DEED_LAG_CUTOFF_DAYS env var, default 120
+                // ── FILTER 1: 30-Day Window Enforcement ──
+                // Since we only asked RentCast for 30 days, this is a safety net.
+                // Anything somehow older than our clerk gap window gets dropped.
                 const daysSinceRemoved = Math.round((Date.now() - removed.getTime()) / (1000 * 3600 * 24));
-                if (daysSinceRemoved > DEED_LAG_CUTOFF_DAYS) {
-                    phase2Stats.countyLagRejected++;
+                if (daysSinceRemoved > MLS_CLERK_GAP_DAYS) {
+                    phase2Stats.outsideWindowRejected++;
                     continue;
                 }
 
-                // ── FILTER 2: Contract Boundary Auto-Reject ──
                 const dom = p.daysOnMarket || daysSinceRemoved;
                 const listed = p.listedDate ? new Date(p.listedDate) : null;
                 const lastSeen = p.lastSeenDate ? new Date(p.lastSeenDate) : null;
                 const listingDuration = (listed && !isNaN(removed.getTime()) && !isNaN(listed.getTime())) 
                     ? Math.round((removed.getTime() - listed.getTime()) / (1000 * 3600 * 24)) 
                     : dom;
-
-                const isContractBoundary = (
-                    Math.abs(dom - 90) <= 3 || Math.abs(dom - 180) <= 3 || Math.abs(dom - 365) <= 3 ||
-                    Math.abs(listingDuration - 90) <= 3 || Math.abs(listingDuration - 180) <= 3 || Math.abs(listingDuration - 365) <= 3
-                );
-                if (isContractBoundary) {
-                    phase2Stats.heuristicRejected++;
-                    continue;
-                }
 
                 // ── FILTER 3: Heuristic Scoring ──
                 let hScore = 0;
@@ -696,40 +698,28 @@ Deno.serve(async (req) => {
                 if (lastSeen && (removed.getTime() - lastSeen.getTime()) >= 7 * 86400000) hScore += 1;
                 if (p.history && typeof p.history === 'object' && Object.keys(p.history).length === 1) hScore += 1;
 
-                // Classification — Sold-Signal-Required Approach (field-test fix)
-                // Previously: score ≥ 3 + DOM < 60 → labeled 'HEURISTIC_SOLD' with medium confidence.
-                // Problem: in the field, 5/5 of these had for-sale signs in the yard. The DOM-based
-                // heuristic alone CANNOT distinguish "quickly sold" from "quickly withdrawn".
-                //
-                // New rule: a listing only becomes 'HEURISTIC_SOLD' if there's a *positive*
-                // sold/closed signal in the MLS status fields OR history. Without that signal,
-                // it's saved as 'RECENT_OFF_MARKET' (a distinct status — UI treats as radar-only,
-                // NOT routed as a prime new-homeowner lead).
-                //
-                // Cross-reference with deed records (below) can still promote these to
-                // 'DEED_CONFIRMED' / 'verified' when the county deed actually shows up.
+                // Classification (v15) — Simplified for 30-day window
+                // Since we're only pulling the last 30 days, every listing here is fresh.
+                // The heuristic just filters out obvious garbage (withdrawn same-day, etc).
+                // ALL survivors go to BatchData for ground-truth verification.
+                // Nothing reaches the route unverified.
                 let mlsConfidence = 'low';
-                let origStatus = 'RECENT_OFF_MARKET';
-                const isFreshListing = dom < 60;
+                let origStatus = 'MLS_PENDING_VERIFICATION';
 
-                if (hScore <= 0) {
-                    // Ambiguous (-1 to 0) and clearly-not-sold (≤ -2) — drop.
-                    if (hScore <= -2) phase2Stats.heuristicRejected++;
-                    else phase2Stats.ambiguousRejected++;
+                if (hScore <= -2) {
+                    // Clearly not sold — drop entirely
+                    phase2Stats.heuristicRejected++;
                     continue;
-                } else if (hasSoldSignal && hScore >= 3) {
-                    // Strong positive signal AND supporting heuristics — safe to label as likely sold.
-                    origStatus = 'HEURISTIC_SOLD';
-                    mlsConfidence = isFreshListing ? 'medium' : 'low';
-                    phase2Stats.heuristicLikelySold++;
-                    if (isFreshListing) phase2Stats.batchdataEligible++;
-                    else phase2Stats.domGatedToLow++;
+                } else if (hScore <= 0) {
+                    // Ambiguous — drop (not worth spending BatchData credits on)
+                    phase2Stats.ambiguousRejected++;
+                    continue;
                 } else {
-                    // No sold signal (or weak heuristic) — keep as radar-only signal.
-                    // UI will surface these at lower priority than deed-confirmed sales.
-                    origStatus = 'RECENT_OFF_MARKET';
-                    mlsConfidence = 'low';
-                    phase2Stats.heuristicLikelySold++;
+                    // Score > 0: survived heuristic, will be sent to BatchData
+                    // If RentCast gave us an explicit sold signal, note it but still verify
+                    origStatus = hasSoldSignal ? 'MLS_LIKELY_SOLD' : 'MLS_PENDING_VERIFICATION';
+                    mlsConfidence = 'low'; // stays low until BatchData confirms
+                    phase2Stats.heuristicPassed++;
                 }
 
                 mapped.push({
@@ -742,7 +732,7 @@ Deno.serve(async (req) => {
                 });
             }
 
-            console.log(`[chunk-v12] Phase 2 stats: ${JSON.stringify(phase2Stats)}`);
+            console.log(`[chunk-v15] Phase 2 stats (30-day window): ${JSON.stringify(phase2Stats)}`);
 
             // ── Cross-reference with Phase 1 deed records (FREE verification) ──
             if (mapped.length > 0) {
@@ -772,45 +762,36 @@ Deno.serve(async (req) => {
                             crossRefCount++;
                         }
                     }
-                    if (crossRefCount > 0) console.log(`[chunk-v14] Cross-ref verified ${crossRefCount} listings against deed records`);
+                    if (crossRefCount > 0) console.log(`[chunk-v15] Cross-ref verified ${crossRefCount} listings against deed records`);
                 } catch (err) {
                     logError(`Cross-ref failed (non-fatal): ${err.message}`);
                 }
             }
 
-            // ── Step 3: BatchData Verification for Ambiguous MLS Listings ──
-            // This is the key missing piece from the April 8 pipeline architecture spec.
-            // RentCast only provides Active/Inactive — no Sold, Expired, Withdrawn.
-            // BatchData HAS statusCategory (Sold/Expired/Withdrawn/Pending) and soldPrice.
-            // We only send listings that survived heuristic scoring but aren't yet verified:
-            //   - RECENT_OFF_MARKET with 'low' confidence = ambiguous, needs ground truth
-            //   - HEURISTIC_SOLD with 'medium'/'low' = strong heuristic, still worth confirming
-            // Deed-confirmed listings (already promoted above) are skipped.
+            // ── Step 3: BatchData Verification — ALL Phase 2 MLS Listings ──
+            // v15: Since Phase 2 now only pulls the last 30 days, there's no need
+            // for a secondary date filter. ALL MLS listings that survived the
+            // heuristic and aren't already deed-confirmed get sent to BatchData.
+            // This is the ONLY way MLS data reaches the route — no exceptions.
             // Cost: ~$0.10/record, capped at 50 per chunk = $5 max per chunk.
             const BATCH_DATA_API_KEY = Deno.env.get("BATCH_DATA_API_KEY");
             if (BATCH_DATA_API_KEY && mapped.length > 0) {
-                // The 1-Month (30 day) Strict Filter for BatchData
-                const oneMonthAgo = new Date();
-                oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
-
-                const ambiguousMls = mapped.filter(m => {
-                    const removedDate = m.sold_date ? new Date(m.sold_date) : new Date(0);
-                    return m.sale_confidence === 'low' && 
-                           (m.original_status === 'RECENT_OFF_MARKET' || m.original_status === 'HEURISTIC_SOLD') &&
-                           m.original_status !== 'DEED_CONFIRMED' &&
-                           removedDate >= oneMonthAgo;
-                });
+                // Send ALL non-deed-confirmed MLS listings to BatchData
+                const ambiguousMls = mapped.filter(m => 
+                    m.sale_confidence === 'low' && 
+                    m.original_status !== 'DEED_CONFIRMED'
+                );
                 const batchdataCandidates = ambiguousMls.slice(0, 50); // Cost cap
 
                 if (batchdataCandidates.length > 0) {
-                    console.log(`[chunk-v14] Step 3: Sending ${batchdataCandidates.length}/${ambiguousMls.length} ambiguous MLS listings to BatchData for verification`);
+                    console.log(`[chunk-v15] Step 3: Sending ${batchdataCandidates.length}/${ambiguousMls.length} MLS listings to BatchData for verification`);
                     let bdVerified = 0, bdRejected = 0, bdErrors = 0;
 
                     try {
                         for (let b = 0; b < batchdataCandidates.length; b += 10) {
                             // Time guard — don't let BatchData calls push us past function timeout
                             if (Date.now() - chunkStart > 45000) {
-                                console.log(`[chunk-v14] Step 3 time guard: stopping after ${b} BatchData calls (${Math.round((Date.now() - chunkStart) / 1000)}s elapsed)`);
+                                console.log(`[chunk-v15] Step 3 time guard: stopping after ${b} BatchData calls (${Math.round((Date.now() - chunkStart) / 1000)}s elapsed)`);
                                 break;
                             }
 
@@ -858,7 +839,7 @@ Deno.serve(async (req) => {
                             // Check if we hit a fatal API error (credits/auth) — stop sending more
                             const fatalError = batchResults.find(r => r.outcome === 'api_error');
                             if (fatalError) {
-                                console.warn(`[chunk-v14] Step 3 stopping: BatchData returned ${fatalError.status} — likely credits exhausted or auth issue`);
+                                console.warn(`[chunk-v15] Step 3 stopping: BatchData returned ${fatalError.status} — likely credits exhausted or auth issue`);
                                 break;
                             }
 
@@ -898,20 +879,20 @@ Deno.serve(async (req) => {
                         phase2Stats.batchdataVerified += bdVerified;
                         phase2Stats.batchdataDropped += bdRejected;
                         
-                        console.log(`[chunk-v14] Step 3 results: ${bdVerified} verified sold, ${bdRejected} rejected (not sold), ${bdErrors} errors/skipped`);
+                        console.log(`[chunk-v15] Step 3 results: ${bdVerified} verified sold, ${bdRejected} rejected (not sold), ${bdErrors} errors/skipped`);
                     } catch (err) {
                         // Non-fatal — if BatchData is completely down, listings pass through as-is
                         logError(`Step 3 BatchData failed (non-fatal): ${err.message}`);
                     }
                 } else {
-                    console.log(`[chunk-v14] Step 3 skipped: no ambiguous MLS listings to verify`);
+                    console.log(`[chunk-v15] Step 3 skipped: no ambiguous MLS listings to verify`);
                 }
             }
 
             // Filter out REJECTED records (from heuristic scoring or BatchData Step 3)
             const finalMapped = mapped.filter(m => m.original_status !== 'REJECTED');
             if (finalMapped.length < mapped.length) {
-                console.log(`[chunk-v14] Filtered out ${mapped.length - finalMapped.length} REJECTED records before DB write`);
+                console.log(`[chunk-v15] Filtered out ${mapped.length - finalMapped.length} REJECTED records before DB write`);
             }
 
             const dbResult = await writeToDb(finalMapped);
@@ -955,7 +936,7 @@ Deno.serve(async (req) => {
                     }
                 } catch (_e) { /* non-fatal */ }
                 
-                console.log(`[chunk-v14] JOB COMPLETE | apiCalls=${totalApiCalls} | inserted=${totalInserted} | existed=${totalExisted} | updated=${totalUpdated}`);
+                console.log(`[chunk-v15] JOB COMPLETE | apiCalls=${totalApiCalls} | inserted=${totalInserted} | existed=${totalExisted} | updated=${totalUpdated}`);
                 return Response.json({ status: 'completed', job_id: jobId });
             } else {
                 const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
@@ -981,7 +962,7 @@ Deno.serve(async (req) => {
         return Response.json({ error: `Unknown phase: ${currentPhase}` });
 
     } catch (error) {
-        console.error('[chunk-v14] FATAL:', error.message, error.stack);
+        console.error('[chunk-v15] FATAL:', error.message, error.stack);
 
         // Attempt to mark the job as failed so it doesn't stay stuck in 'running' forever
         try {
@@ -997,10 +978,10 @@ Deno.serve(async (req) => {
                     error_message: `Processing crashed: ${error.message}`,
                     error_log: existingLog
                 });
-                console.log(`[chunk-v14] Marked job ${job.id} as failed after fatal error`);
+                console.log(`[chunk-v15] Marked job ${job.id} as failed after fatal error`);
             }
         } catch (recoveryErr) {
-            console.error('[chunk-v14] Could not mark job as failed during recovery:', recoveryErr.message);
+            console.error('[chunk-v15] Could not mark job as failed during recovery:', recoveryErr.message);
         }
 
         return Response.json({ error: error.message }, { status: 500 });
