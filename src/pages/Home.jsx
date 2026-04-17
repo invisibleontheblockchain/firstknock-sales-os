@@ -402,47 +402,57 @@ export default function Home() {
     // Fetch Properties - support both user-specific and fallback for mobile auth
     const { data: userProperties = [], isLoading: propsLoading } = useQuery({
         queryKey: ['masterProperties', user?.email, user?.territory_zip_codes, user?.generated_zip_codes],
-        staleTime: 1000 * 60 * 3, // 3 min — avoid refetch on every tab switch
-        gcTime: 1000 * 60 * 10,
+        staleTime: 1000 * 60 * 15, // 15 min — aggressive caching to avoid slow refetch
+        gcTime: 1000 * 60 * 30,
+        refetchOnWindowFocus: false,
+        refetchOnMount: false,
         queryFn: async () => {
             if (!user) return [];
 
             try {
                 let items = [];
-                // If user has configured territory zip codes, fetch properties for those zips
-                // This ensures we get the data regardless of who created it (e.g. system import)
                 const allZips = Array.from(new Set([...(user.territory_zip_codes || []), ...(user.generated_zip_codes || [])]));
 
                 if (allZips.length > 0) {
-                    console.log(`[Home] Fetching properties for zips: ${allZips.join(', ')}`);
-
-                    // Chunk requests to avoid rate limits
-                    const zips = allZips;
-                    const chunkSize = 2;
-                    let totalFetched = 0;
+                    console.log(`[Home] Fetching properties for ${allZips.length} zips`);
+                    const t0 = performance.now();
                     const MAX_PROPERTIES = 50000;
                     const _delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-                    for (let i = 0; i < zips.length; i += chunkSize) {
-                        if (totalFetched >= MAX_PROPERTIES) { console.log(`[Home] Reached max property limit`); break; }
-                        if (i > 0) await _delay(800);
-                        const chunk = zips.slice(i, i + chunkSize);
-                        const promises = chunk.map(zip => base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000).catch(err => { console.warn(`[Home] Zip ${zip} fetch failed:`, err?.message); return []; }));
-                        const results = await Promise.all(promises);
-                        const newItems = results.flatMap(r => Array.isArray(r) ? r : (r?.items || []));
-                        items = items.concat(newItems);
-                        totalFetched += newItems.length;
+
+                    // Fetch ONE zip at a time, with retry-on-429 backoff.
+                    // Sequential + paced is faster than parallel-with-rate-limit-failures.
+                    const fetchZipWithRetry = async (zip, attempt = 0) => {
+                        try {
+                            const res = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000);
+                            return Array.isArray(res) ? res : (res?.items || []);
+                        } catch (err) {
+                            const msg = err?.message || '';
+                            const isRateLimit = msg.includes('Rate limit') || msg.includes('429');
+                            if (isRateLimit && attempt < 3) {
+                                const backoff = 1500 * Math.pow(2, attempt); // 1.5s, 3s, 6s
+                                console.warn(`[Home] Zip ${zip} rate-limited, retry in ${backoff}ms`);
+                                await _delay(backoff);
+                                return fetchZipWithRetry(zip, attempt + 1);
+                            }
+                            console.warn(`[Home] Zip ${zip} fetch failed:`, msg);
+                            return [];
+                        }
+                    };
+
+                    for (let i = 0; i < allZips.length; i++) {
+                        if (items.length >= MAX_PROPERTIES) break;
+                        if (i > 0) await _delay(250); // pace requests
+                        const zipItems = await fetchZipWithRetry(allZips[i]);
+                        items = items.concat(zipItems);
                     }
 
-                    if (items.length > MAX_PROPERTIES) {
-                        items = items.slice(0, MAX_PROPERTIES);
-                    }
+                    if (items.length > MAX_PROPERTIES) items = items.slice(0, MAX_PROPERTIES);
+                    console.log(`[Home] Fetched ${items.length} properties in ${Math.round(performance.now() - t0)}ms`);
                 } else {
-                    // Fallback to properties created by the user if no territory is defined
                     const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 10000);
                     items = Array.isArray(result) ? result : (result?.items || []);
                 }
 
-                console.log(`[Home] Total fetched properties: ${items.length}`);
                 return items;
             } catch (e) {
                 console.log('[Home] Error fetching properties:', e);
