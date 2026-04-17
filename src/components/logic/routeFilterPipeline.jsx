@@ -134,8 +134,9 @@ export function applyRouteFilters({
     });
     if (crossRefPromoted > 0) console.log(`[routeFilter] Cross-ref promoted ${crossRefPromoted} MLS listings to verified (deed match found)`);
 
-    // Skip low-confidence properties — forced for 40mi pulls (no BatchData validation)
-    if (!routeConfig.includeUnverifiedSales || lastPullMode === '40mi') {
+    // Skip low-confidence properties unless the user explicitly opts in.
+    // (Previously 40mi and 300mi branched differently here — now unified.)
+    if (!routeConfig.includeUnverifiedSales) {
         workingSet = workingSet.filter(p => p.sale_confidence !== 'low');
     }
     track('confidence');

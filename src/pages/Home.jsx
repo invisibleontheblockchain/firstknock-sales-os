@@ -1622,7 +1622,12 @@ export default function Home() {
                     setFrozenWorkingSet(null); setRoutes([]); await queryClient.refetchQueries({ queryKey: ['masterProperties'] }); await queryClient.refetchQueries({ queryKey: ['user'] });
                     setMode('generate'); setShowCompare(true); const pm = pullFetchMonths || 12; setMaxDataMonths(pm); try { localStorage.setItem('fk_maxDataMonths', String(pm)); } catch {}
                     setHasMlsData(!!pulledWithMls); try { localStorage.setItem('fk_hasMlsData', pulledWithMls ? 'true' : 'false'); } catch {}
-                    if (pm === 1) { setLastPullMode('300mi'); setSoldDateFilterRaw(1); } else { setLastPullMode('40mi'); setSoldDateFilterRaw(pm); }
+                    // Unified: 40mi² and 300mi² pulls are handled identically downstream.
+                    // soldDateFilter mirrors what was actually pulled; lastPullMode is retained as '40mi'
+                    // (the "standard" confidence-filtered path) for both sizes so the route pipeline
+                    // behaves the same regardless of area size.
+                    setLastPullMode('40mi');
+                    setSoldDateFilterRaw(pm);
                 }}
             />
 

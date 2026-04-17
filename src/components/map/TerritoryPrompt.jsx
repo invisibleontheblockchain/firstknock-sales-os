@@ -290,7 +290,7 @@ export default function TerritoryPrompt({
         if (pulling) return;
 
         // Block 300mi pull for non-subscribers
-        if ((drawSizeMiles === 300 || fetchMonths === 1) && !isPaid) {
+        if (drawSizeMiles === 300 && !isPaid) {
             toast.error('The 300 sq mi pull requires an active FirstKnock subscription. Upgrade to unlock!', { duration: 5000 });
             return;
         }
@@ -428,10 +428,10 @@ export default function TerritoryPrompt({
                                 {!hasPulledData && <option value={5}>Test · 5 sq mi</option>}
                             </select>
                         </div>
-                        {/* Months Selector — available for all area sizes */}
+                        {/* Months Selector — same options for 40mi² and 300mi² */}
                         <div className="flex items-center gap-1">
                             <span className="text-[9px] text-gray-500 font-bold mr-1">DATA:</span>
-                            {(drawSizeMiles === 300 ? [1, 6, 12] : [6, 12]).map(m => (
+                            {[6, 12].map(m => (
                                 <button
                                     key={m}
                                     onClick={() => setFetchMonths(m)}
@@ -445,7 +445,7 @@ export default function TerritoryPrompt({
                                 </button>
                             ))}
                         </div>
-                        {drawSizeMiles === 300 && fetchMonths > 1 && (
+                        {drawSizeMiles === 300 && (
                             <div className="text-[9px] text-cyan-400 text-center font-semibold">Heads up — 300mi² × {fetchMonths}mo is a big pull. Expect longer import times.</div>
                         )}
                         {/* MLS Early Signal Toggle */}
@@ -537,7 +537,7 @@ export default function TerritoryPrompt({
                     <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
                     {canPullAgain ? (
                         <div className="flex items-center gap-1.5 ml-2">
-                            {(drawSizeMiles === 300 || fetchMonths === 1) && !isPaid ? (
+                            {drawSizeMiles === 300 && !isPaid ? (
                                 <button
                                     onClick={() => navigate('/Billing')}
                                     className="flex items-center gap-1.5 text-[10px] font-bold text-yellow-500 hover:text-yellow-400 transition-colors bg-yellow-500/10 border border-yellow-500/30 rounded-md px-2 py-1"
@@ -549,7 +549,7 @@ export default function TerritoryPrompt({
                                 <Button
                                     disabled={pulling}
                                     onClick={handleFetchData}
-                                    className={`text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide ${drawSizeMiles === 300 ? 'bg-cyan-600 hover:bg-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]'}`}
+                                    className="text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]"
                                 >
                                     {`Pull ${drawSizeMiles}mi² (${fetchMonths} Mo)`}
                                 </Button>
