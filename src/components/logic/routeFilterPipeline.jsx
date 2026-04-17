@@ -38,7 +38,11 @@ export function applyRouteFilters({
     } else {
         workingSet = workingSet.filter(p => isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon));
         if (workingSet.length === 0) {
-            return { workingSet: [], stages, error: 'No property data inside your drawn area.' };
+            stages.push({ name: 'geography', count: 0 });
+            return {
+                workingSet: [], stages,
+                error: `No properties inside drawn area. You have ${initialSet.length.toLocaleString()} properties loaded, but none are inside the polygon you drew. Try clearing the drawn area, or pulling fresh data for that area.`,
+            };
         }
     }
     track('geography');

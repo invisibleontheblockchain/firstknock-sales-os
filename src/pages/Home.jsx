@@ -935,6 +935,7 @@ export default function Home() {
     const [streetCooldownDays, setStreetCooldownDays] = useState(30);
     const [cooldownInfo, setCooldownInfo] = useState(null);
     const [frozenWorkingSet, setFrozenWorkingSet] = useState(null); // Frozen data for reorder
+    const [generationError, setGenerationError] = useState(null); // Error shown in overlay
 
     // Heatmap Data (High Zoom)
     const heatmapData = useMemo(() => {
@@ -958,6 +959,7 @@ export default function Home() {
 
         // IMMEDIATE visual feedback — show overlay + toast BEFORE any heavy work.
         // Then yield 2 frames (~32ms) so React paints before we block the main thread.
+        setGenerationError(null);
         setGenerationStage('Preparing data...');
         setRoutesGenerating(true);
         toast.loading("Preparing data...", { id: 'build-routes' });
@@ -1104,9 +1106,10 @@ export default function Home() {
             if (filterResult.frozenSet) setFrozenWorkingSet(filterResult.frozenSet);
             if (filterResult.diagnostic) console.warn(`[generateRoutes] Sold-date diagnostic:`, filterResult.diagnostic);
             if (filterResult.error) {
-                toast.error(filterResult.error, { id: 'build-routes', duration: 7000 });
-                setRoutesGenerating(false);
-                return;
+                console.warn(`[generateRoutes] Filter error:`, filterResult.error, 'stages:', filterResult.stages);
+                toast.dismiss('build-routes');
+                setGenerationError(filterResult.error);
+                return; // Keep overlay visible to show the error — user dismisses manually
             }
             let workingSet = filterResult.workingSet;
 
@@ -1131,7 +1134,7 @@ export default function Home() {
             console.log(`[generateRoutes] Opt start | n=${finalCount} | 2opt=${effectiveUse2Opt}`);
             const generated = await new Promise(resolve => setTimeout(() => resolve(generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: routeConfig.returnToStart, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights)), 50));
             console.log(`[generateRoutes] Done in ${Math.round(performance.now() - optStart)}ms: ${generated.length} routes`);
-            if (!generated || generated.length === 0) { toast.error(`Optimizer returned 0 routes from ${finalCount} properties. Try relaxing filters.`, { id: 'build-routes', duration: 6000 }); setRoutesGenerating(false); return; }
+            if (!generated || generated.length === 0) { toast.dismiss('build-routes'); setGenerationError(`Optimizer returned 0 routes from ${finalCount.toLocaleString()} properties. Try relaxing filters or pulling fresh data.`); return; }
             if (generated['_cooldownInfo']) setCooldownInfo(generated['_cooldownInfo']);
             setRoutes(generated);
             // AUTO-SAVE (skip routes >10K properties — payload too large)
@@ -1162,15 +1165,20 @@ export default function Home() {
 
         } catch (e) {
             console.error(`[generateRoutes] Failed after ${Math.round((performance.now() - t0) / 1000)}s:`, e);
-            toast.error(`Route generation failed: ${e?.message || 'Unknown error'}. Check console.`, { id: 'build-routes', duration: 8000 });
+            toast.dismiss('build-routes');
+            setGenerationError(`Route generation failed: ${e?.message || 'Unknown error'}. Check console for details.`);
+            return;
         } finally {
+            // Hide overlay — but if an error was set, keep it visible until user dismisses
+            // (we re-check generationError via a functional setState)
             setRoutesGenerating(false);
         }
-    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, frozenWorkingSet]);
+    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, frozenWorkingSet, effectiveProperties]);
 
     // Reorder: re-run filtering + routing on frozen data without re-fetching
     const handleReorder = useCallback(async () => {
         if (!frozenWorkingSet || frozenWorkingSet.length === 0) { toast.error('No data to reorder.'); return; }
+        setGenerationError(null);
         setGenerationStage(`Reordering ${frozenWorkingSet.length.toLocaleString()} doors...`);
         setRoutesGenerating(true);
         toast.loading('Reordering routes...', { id: 'reorder-routes' });
@@ -1184,7 +1192,7 @@ export default function Home() {
                 soldDateFilter, routeConfig, lastPullMode, logsByAddress: logsByAddr,
             });
             console.log(`[handleReorder] Filter funnel: ${formatStageCounts(filterResult.stages)}`);
-            if (filterResult.error) { toast.error(filterResult.error, { id: 'reorder-routes', duration: 6000 }); setRoutesGenerating(false); return; }
+            if (filterResult.error) { toast.dismiss('reorder-routes'); setGenerationError(filterResult.error); return; }
             const workingSet = filterResult.workingSet;
             const effectiveUse2Opt = workingSet.length > 3000 ? false : routeConfig.use2Opt;
             const start = startLocation || (mapRef.current ? { lat: mapRef.current.getCenter().lat, lng: mapRef.current.getCenter().lng } : null);
@@ -1406,7 +1414,12 @@ export default function Home() {
     return (
         <div className="h-full relative" style={{ background: BRAND.voidBlack }}>
             {/* Generation Overlay — immediate visual feedback */}
-            <RouteGenerationOverlay visible={routesGenerating} stage={generationStage} />
+            <RouteGenerationOverlay
+                visible={routesGenerating || !!generationError}
+                stage={generationStage}
+                error={generationError}
+                onDismiss={() => { setGenerationError(null); setRoutesGenerating(false); }}
+            />
 
             {/* Map */}
             <MapContainer
