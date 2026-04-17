@@ -1,5 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
+// v14 — BatchData Step 3 for ambiguous MLS listings:
+//   • After heuristic scoring + deed cross-ref, ambiguous RECENT_OFF_MARKET listings
+//     are verified via BatchData property/search endpoint (has statusCategory/soldPrice
+//     that RentCast doesn't). Capped at 50 per chunk (~$5 max per pull).
+//   • Confirmed sold → promoted to BATCHDATA_CONFIRMED / verified confidence
+//   • Not sold → dropped (REJECTED)
 // v13 — Hardened MLS classifier:
 //   • Reject Expired/Withdrawn/Cancelled/Pending/Active listings (still-for-sale-sign leads)
 //   • Reject ambiguous heuristic scores (-1 to 0) — was "ambiguousKept", too risky
@@ -604,7 +610,7 @@ Deno.serve(async (req) => {
 
             const mapped = [];
             const seenHashes = new Set();
-            let phase2Stats = { total: 0, countyLagRejected: 0, heuristicRejected: 0, heuristicLikelySold: 0, ambiguousRejected: 0, batchdataEligible: 0, domGatedToLow: 0, deltaSkipped: 0, mlsStatusRejected: 0 };
+            let phase2Stats = { total: 0, countyLagRejected: 0, heuristicRejected: 0, heuristicLikelySold: 0, ambiguousRejected: 0, batchdataEligible: 0, batchdataVerified: 0, batchdataDropped: 0, domGatedToLow: 0, deltaSkipped: 0, mlsStatusRejected: 0 };
 
             for (const p of allRaw) {
                 if (!p.latitude || !p.longitude || !filterPoint(p.latitude, p.longitude)) continue;
@@ -766,13 +772,143 @@ Deno.serve(async (req) => {
                             crossRefCount++;
                         }
                     }
-                    if (crossRefCount > 0) console.log(`[chunk-v12] Cross-ref verified ${crossRefCount} listings against deed records`);
+                    if (crossRefCount > 0) console.log(`[chunk-v14] Cross-ref verified ${crossRefCount} listings against deed records`);
                 } catch (err) {
                     logError(`Cross-ref failed (non-fatal): ${err.message}`);
                 }
             }
 
-            const dbResult = await writeToDb(mapped);
+            // ── Step 3: BatchData Verification for Ambiguous MLS Listings ──
+            // This is the key missing piece from the April 8 pipeline architecture spec.
+            // RentCast only provides Active/Inactive — no Sold, Expired, Withdrawn.
+            // BatchData HAS statusCategory (Sold/Expired/Withdrawn/Pending) and soldPrice.
+            // We only send listings that survived heuristic scoring but aren't yet verified:
+            //   - RECENT_OFF_MARKET with 'low' confidence = ambiguous, needs ground truth
+            //   - HEURISTIC_SOLD with 'medium'/'low' = strong heuristic, still worth confirming
+            // Deed-confirmed listings (already promoted above) are skipped.
+            // Cost: ~$0.10/record, capped at 50 per chunk = $5 max per chunk.
+            const BATCH_DATA_API_KEY = Deno.env.get("BATCH_DATA_API_KEY");
+            if (BATCH_DATA_API_KEY && mapped.length > 0) {
+                const ambiguousMls = mapped.filter(m => 
+                    m.sale_confidence === 'low' && 
+                    (m.original_status === 'RECENT_OFF_MARKET' || m.original_status === 'HEURISTIC_SOLD') &&
+                    m.original_status !== 'DEED_CONFIRMED'
+                );
+                const batchdataCandidates = ambiguousMls.slice(0, 50); // Cost cap
+
+                if (batchdataCandidates.length > 0) {
+                    console.log(`[chunk-v14] Step 3: Sending ${batchdataCandidates.length}/${ambiguousMls.length} ambiguous MLS listings to BatchData for verification`);
+                    let bdVerified = 0, bdRejected = 0, bdErrors = 0;
+
+                    try {
+                        for (let b = 0; b < batchdataCandidates.length; b += 10) {
+                            // Time guard — don't let BatchData calls push us past function timeout
+                            if (Date.now() - chunkStart > 45000) {
+                                console.log(`[chunk-v14] Step 3 time guard: stopping after ${b} BatchData calls (${Math.round((Date.now() - chunkStart) / 1000)}s elapsed)`);
+                                break;
+                            }
+
+                            const batch = batchdataCandidates.slice(b, b + 10);
+                            const promises = batch.map(async (cm) => {
+                                try {
+                                    const query = `${cm.house_number} ${cm.street_name}, ${cm.city}, ${cm.state} ${cm.zip_code}`;
+                                    const res = await fetch('https://api.batchdata.com/api/v1/property/search', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BATCH_DATA_API_KEY}` },
+                                        body: JSON.stringify({ searchCriteria: { query } })
+                                    });
+                                    if (!res.ok) {
+                                        // If credits exhausted (402) or auth failed (401), don't count as error per-record
+                                        if (res.status === 402 || res.status === 401) {
+                                            return { hash: cm.address_hash, outcome: 'api_error', status: res.status };
+                                        }
+                                        return { hash: cm.address_hash, outcome: 'skip' };
+                                    }
+                                    const data = await res.json();
+                                    const results = data?.results || {};
+                                    const listing = results.property?.listing || results.listing || {};
+                                    
+                                    // BatchData has statusCategory and soldPrice — the fields RentCast doesn't have
+                                    const apiStatus = (listing.status || '').toLowerCase();
+                                    const statusCat = (listing.statusCategory || '').toLowerCase();
+                                    const soldPrice = listing.soldPrice || 0;
+                                    const soldDate = listing.soldDate || null;
+
+                                    if (apiStatus.includes('sold') || statusCat === 'sold' || soldPrice > 0) {
+                                        return { hash: cm.address_hash, outcome: 'sold', soldPrice, soldDate };
+                                    }
+                                    if (statusCat === 'pending' || apiStatus.includes('pending')) {
+                                        return { hash: cm.address_hash, outcome: 'pending' };
+                                    }
+                                    // Expired, withdrawn, cancelled, or no match → not sold
+                                    return { hash: cm.address_hash, outcome: 'not_sold' };
+                                } catch (e) {
+                                    return { hash: cm.address_hash, outcome: 'skip' };
+                                }
+                            });
+
+                            const batchResults = await Promise.all(promises);
+                            
+                            // Check if we hit a fatal API error (credits/auth) — stop sending more
+                            const fatalError = batchResults.find(r => r.outcome === 'api_error');
+                            if (fatalError) {
+                                console.warn(`[chunk-v14] Step 3 stopping: BatchData returned ${fatalError.status} — likely credits exhausted or auth issue`);
+                                break;
+                            }
+
+                            for (const result of batchResults) {
+                                const match = mapped.find(m => m.address_hash === result.hash);
+                                if (!match) continue;
+
+                                if (result.outcome === 'sold') {
+                                    match.sale_confidence = 'verified';
+                                    match.original_status = 'BATCHDATA_CONFIRMED';
+                                    match.data_source = 'batchdata_verified';
+                                    if (result.soldPrice) match.price = result.soldPrice;
+                                    if (result.soldDate) match.sold_date = result.soldDate;
+                                    bdVerified++;
+                                } else if (result.outcome === 'not_sold') {
+                                    match.sale_confidence = 'REJECTED';
+                                    match.original_status = 'REJECTED';
+                                    bdRejected++;
+                                } else if (result.outcome === 'pending') {
+                                    // Pending = under contract, keep as RECENT_OFF_MARKET (will confirm later when deed records)
+                                    match.original_status = 'RECENT_OFF_MARKET';
+                                    match.sale_confidence = 'low';
+                                } else {
+                                    bdErrors++;
+                                }
+                            }
+
+                            // Rate-limit pacing — 250ms between batches of 10
+                            if (b + 10 < batchdataCandidates.length) await sleep(250);
+                        }
+
+                        // Filter out BatchData-rejected listings
+                        const preRejectCount = mapped.length;
+                        const rejectedHashes = new Set(mapped.filter(m => m.original_status === 'REJECTED').map(m => m.address_hash));
+                        // Don't splice mapped — just mark, writeToDb will handle filtering
+                        
+                        phase2Stats.batchdataVerified += bdVerified;
+                        phase2Stats.batchdataDropped += bdRejected;
+                        
+                        console.log(`[chunk-v14] Step 3 results: ${bdVerified} verified sold, ${bdRejected} rejected (not sold), ${bdErrors} errors/skipped`);
+                    } catch (err) {
+                        // Non-fatal — if BatchData is completely down, listings pass through as-is
+                        logError(`Step 3 BatchData failed (non-fatal): ${err.message}`);
+                    }
+                } else {
+                    console.log(`[chunk-v14] Step 3 skipped: no ambiguous MLS listings to verify`);
+                }
+            }
+
+            // Filter out REJECTED records (from heuristic scoring or BatchData Step 3)
+            const finalMapped = mapped.filter(m => m.original_status !== 'REJECTED');
+            if (finalMapped.length < mapped.length) {
+                console.log(`[chunk-v14] Filtered out ${mapped.length - finalMapped.length} REJECTED records before DB write`);
+            }
+
+            const dbResult = await writeToDb(finalMapped);
             totalInserted += dbResult.chunkInserted;
             totalExisted += dbResult.chunkExisted;
             totalUpdated += dbResult.chunkUpdated;
@@ -813,7 +949,7 @@ Deno.serve(async (req) => {
                     }
                 } catch (_e) { /* non-fatal */ }
                 
-                console.log(`[chunk-v12] JOB COMPLETE | apiCalls=${totalApiCalls} | inserted=${totalInserted} | existed=${totalExisted} | updated=${totalUpdated}`);
+                console.log(`[chunk-v14] JOB COMPLETE | apiCalls=${totalApiCalls} | inserted=${totalInserted} | existed=${totalExisted} | updated=${totalUpdated}`);
                 return Response.json({ status: 'completed', job_id: jobId });
             } else {
                 const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
@@ -839,7 +975,7 @@ Deno.serve(async (req) => {
         return Response.json({ error: `Unknown phase: ${currentPhase}` });
 
     } catch (error) {
-        console.error('[chunk-v12] FATAL:', error.message, error.stack);
+        console.error('[chunk-v14] FATAL:', error.message, error.stack);
 
         // Attempt to mark the job as failed so it doesn't stay stuck in 'running' forever
         try {
@@ -855,10 +991,10 @@ Deno.serve(async (req) => {
                     error_message: `Processing crashed: ${error.message}`,
                     error_log: existingLog
                 });
-                console.log(`[chunk-v12] Marked job ${job.id} as failed after fatal error`);
+                console.log(`[chunk-v14] Marked job ${job.id} as failed after fatal error`);
             }
         } catch (recoveryErr) {
-            console.error('[chunk-v12] Could not mark job as failed during recovery:', recoveryErr.message);
+            console.error('[chunk-v14] Could not mark job as failed during recovery:', recoveryErr.message);
         }
 
         return Response.json({ error: error.message }, { status: 500 });
