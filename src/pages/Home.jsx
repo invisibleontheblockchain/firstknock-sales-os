@@ -944,8 +944,8 @@ export default function Home() {
         }
 
         setRoutesGenerating(true);
-        const toastId = toast.loading("Building routes...", { id: 'build-routes' });
-
+        const t0 = performance.now();
+        toast.loading("Preparing data...", { id: 'build-routes' });
         try {
             // 1. DYNAMIC DATA FETCHING (if zip code is set)
             let dynamicProps = [];
@@ -1070,7 +1070,8 @@ export default function Home() {
             processedDynamic.forEach(p => combinedMap.set(p.address_hash, p));
 
             let workingSet = Array.from(combinedMap.values());
-            console.log(`[generateRoutes] Initial Properties: ${workingSet.length}`);
+            const initialCount = workingSet.length;
+            console.log(`[generateRoutes] Initial: ${initialCount} (base=${baseProps.length}, dynamic=${processedDynamic.length})`); toast.loading(`Loaded ${initialCount.toLocaleString()} properties. Filtering...`, { id: 'build-routes' }); await new Promise(r => setTimeout(r, 30));
             // 3. FILTERING — Polygon is the PRIMARY geographic constraint when drawn
             const hasActivePolygon = drawnPolygon && drawnPolygon.length > 2;
             if (!hasActivePolygon) { let targetZips = []; if (zipCodeFilter && zipCodeFilter.trim()) targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean); else if (user?.territory_zip_codes?.length > 0) targetZips = user.territory_zip_codes; if (targetZips.length > 0) { workingSet = workingSet.filter(p => targetZips.includes(String(p.zip_code || '').trim().slice(0, 5))); } }
@@ -1201,13 +1202,14 @@ export default function Home() {
             // 5. GENERATE ROUTES — yield to UI before heavy computation
             const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
             const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
-            console.log(`[generateRoutes] Starting optimization for ${workingSet.length} properties...`);
-            const generated = await new Promise(resolve => setTimeout(() => resolve(generateOptimizedRoutes(
-                workingSet, housesPerRoute, start, logs,
-                { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: routeConfig.use2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: routeConfig.returnToStart, excludeTerminal: routeConfig.excludeTerminal },
-                learnedWeights
-            )), 50));
-            console.log(`[generateRoutes] Done: ${generated.length} routes`);
+            const finalCount = workingSet.length; const filteredOut = initialCount - finalCount; const effectiveUse2Opt = finalCount > 3000 ? false : routeConfig.use2Opt;
+            if (finalCount > 3000 && routeConfig.use2Opt) console.warn(`[generateRoutes] Auto-disabled 2-Opt (n=${finalCount} > 3K)`);
+            const optStart = performance.now();
+            toast.loading(`Optimizing ${finalCount.toLocaleString()} properties${filteredOut > 0 ? ` (${filteredOut.toLocaleString()} filtered)` : ''}... ~${Math.max(2, Math.round(finalCount / 1500))}s`, { id: 'build-routes' });
+            console.log(`[generateRoutes] Opt start | n=${finalCount} | 2opt=${effectiveUse2Opt}`);
+            const generated = await new Promise(resolve => setTimeout(() => resolve(generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: routeConfig.returnToStart, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights)), 50));
+            console.log(`[generateRoutes] Done in ${Math.round(performance.now() - optStart)}ms: ${generated.length} routes`);
+            if (!generated || generated.length === 0) { toast.error(`Optimizer returned 0 routes from ${finalCount} properties. Try relaxing filters.`, { id: 'build-routes', duration: 6000 }); setRoutesGenerating(false); return; }
             if (generated['_cooldownInfo']) setCooldownInfo(generated['_cooldownInfo']);
             setRoutes(generated);
             // AUTO-SAVE (skip routes >10K properties — payload too large)
@@ -1235,8 +1237,8 @@ export default function Home() {
             toast.success(toastMsg, { id: 'build-routes', duration: 5000 });
 
         } catch (e) {
-            console.error("Route generation error:", e);
-            alert("An error occurred while generating routes.");
+            console.error(`[generateRoutes] Failed after ${Math.round((performance.now() - t0) / 1000)}s:`, e);
+            toast.error(`Route generation failed: ${e?.message || 'Unknown error'}. Check console.`, { id: 'build-routes', duration: 8000 });
         } finally {
             setRoutesGenerating(false);
         }
