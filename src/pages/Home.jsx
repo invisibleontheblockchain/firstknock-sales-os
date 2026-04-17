@@ -1538,10 +1538,8 @@ export default function Home() {
                     active={drawingMode}
                     onPointsUpdate={setDraftPolygon}
                     onConfirm={(polygon) => {
-                        savePolygonToHistory(polygon);
-                        setDrawnPolygon(polygon);
-                        setDraftPolygon([]);
-                        setDrawingMode(false);
+                        savePolygonToHistory(polygon); setDrawnPolygon(polygon); setDraftPolygon([]); setDrawingMode(false);
+                        try { if (mapRef.current?._mapPane && polygon?.length > 2) { const b = L.latLngBounds(polygon.map(pt => [pt.lat, pt.lng])); if (b.isValid()) mapRef.current.fitBounds(b, { padding: [40, 40], maxZoom: 17, animate: true }); } } catch (e) {}
                         toast.success("Area selected! Now fetch data or generate routes.");
                     }}
                     drawnPolygon={drawnPolygon}
