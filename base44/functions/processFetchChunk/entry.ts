@@ -323,15 +323,47 @@ Deno.serve(async (req) => {
             return { chunkInserted, chunkExisted, chunkUpdated };
         }
 
-        // ── Helper: self-chain with mutex ──
+        // ── Helper: self-chain with mutex + retry-on-429 ──
+        // Prior bug: when Base44 returned 429 Rate Limit on the self-invoke, the chain
+        // died silently and the job sat in 'running' forever (classic "stuck at 91%").
+        // Now we retry up to 5 times with exponential backoff (0.5s, 2s, 5s, 10s, 20s),
+        // and if ALL attempts fail we bump the job into 'pending' so the watchdog /
+        // next poll can resurrect it instead of leaving it permanently stalled.
         const nextChunkNumber = currentChunkNumber + 1;
         function scheduleNextChunk() {
-            // Small delay to let the entity update propagate, then invoke with mutex token
-            setTimeout(() => {
-                base44.functions.invoke('processFetchChunk', { expected_chunk: nextChunkNumber }).catch(e => {
-                    console.warn('[chunk-v11] Self-chain invoke failed:', e.message);
-                });
-            }, 500);
+            const delays = [500, 2000, 5000, 10000, 20000];
+            let attempt = 0;
+            const tryInvoke = () => {
+                base44.functions.invoke('processFetchChunk', { expected_chunk: nextChunkNumber })
+                    .catch(async (e) => {
+                        const msg = e?.message || String(e);
+                        const is429 = /429|rate limit/i.test(msg);
+                        attempt++;
+                        console.warn(`[chunk-v12] Self-chain attempt ${attempt}/${delays.length} failed (${is429 ? '429' : 'other'}): ${msg}`);
+                        if (attempt < delays.length) {
+                            setTimeout(tryInvoke, delays[attempt]);
+                        } else {
+                            // All retries exhausted — log the stall but leave status as 'running'
+                            // so the scheduled "Cron Fetch Job Processor" automation (runs every
+                            // 5 min) can resurrect the chain by invoking processFetchChunk again.
+                            // We DON'T flip to 'pending' because the watchdog would then kill it
+                            // based on its created_date (which is minutes-to-hours old by now).
+                            try {
+                                const recoveryLog = errorLog.slice();
+                                recoveryLog.push(`[${new Date().toISOString()}] Self-chain failed after ${delays.length} retries: ${msg}. Awaiting cron resurrection.`);
+                                // Bump updated_date so the watchdog's staleness clock resets
+                                // (gives the cron a full 30-min window to resume before watchdog kills it).
+                                await base44.asServiceRole.entities.FetchJob.update(jobId, {
+                                    error_log: recoveryLog
+                                });
+                                console.warn(`[chunk-v12] Job ${jobId} self-chain exhausted — cron will resume.`);
+                            } catch (recoveryErr) {
+                                console.error(`[chunk-v12] Could not log stall: ${recoveryErr.message}`);
+                            }
+                        }
+                    });
+            };
+            setTimeout(tryInvoke, delays[0]);
         }
 
         // ======================================================================
