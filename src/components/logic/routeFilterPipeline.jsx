@@ -109,6 +109,31 @@ export function applyRouteFilters({
 
     // --- Confidence / Rejection Filters ---
     workingSet = workingSet.filter(p => p.original_status !== 'REJECTED');
+
+    // GLOBAL DEED CROSS-REF: If an MLS listing (HEURISTIC_SOLD) shares an address_hash
+    // with a deed-confirmed record (sale_confidence='high' / 'verified' / status='SOLD'),
+    // auto-promote the MLS record to 'verified'. This fixes the bug where cross-ref only
+    // happened within a single chunk during fetch — deeds landing in a later sub-circle
+    // never got cross-referenced to the listings from an earlier sub-circle.
+    const deedHashes = new Set();
+    for (const p of initialSet) {
+        if (!p.address_hash) continue;
+        const isDeedConfirmed =
+            p.sale_confidence === 'high' ||
+            p.sale_confidence === 'verified' ||
+            (p.original_status === 'SOLD' && p.sale_type === 'Deed');
+        if (isDeedConfirmed) deedHashes.add(p.address_hash);
+    }
+    let crossRefPromoted = 0;
+    workingSet = workingSet.map(p => {
+        if (p.original_status === 'HEURISTIC_SOLD' && p.sale_confidence !== 'verified' && deedHashes.has(p.address_hash)) {
+            crossRefPromoted++;
+            return { ...p, sale_confidence: 'verified', original_status: 'DEED_CONFIRMED' };
+        }
+        return p;
+    });
+    if (crossRefPromoted > 0) console.log(`[routeFilter] Cross-ref promoted ${crossRefPromoted} MLS listings to verified (deed match found)`);
+
     // Skip low-confidence properties — forced for 40mi pulls (no BatchData validation)
     if (!routeConfig.includeUnverifiedSales || lastPullMode === '40mi') {
         workingSet = workingSet.filter(p => p.sale_confidence !== 'low');

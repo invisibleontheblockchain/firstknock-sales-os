@@ -1,6 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
-// v12 — Hybrid tiered BatchData: only DOM < 30 days gets medium confidence (BatchData-eligible)
+// v13 — Hardened MLS classifier:
+//   • Reject Expired/Withdrawn/Cancelled/Pending/Active listings (still-for-sale-sign leads)
+//   • Reject ambiguous heuristic scores (-1 to 0) — was "ambiguousKept", too risky
+//   • Widen medium-confidence band to DOM < 60 (was 30) — catch more real sales
+//   • Raise disclosure-state sale-price floor $10K → $30K (filter quitclaim/tax transfers)
+// v12 — Hybrid tiered BatchData: only DOM < 30 days gets medium confidence
 // Architecture: Single sub-circle (40 sq mi ≈ 3.57mi radius), 2-phase (deeds + listings)
 // Self-chain uses entity automation on FetchJob update instead of fire-and-forget setTimeout
 
@@ -113,7 +118,9 @@ function isValidSoldProperty(p) {
     if (!p.lastSaleDate) return false;
     const isNonDisclosure = p.state && NON_DISCLOSURE_STATES.has(p.state.toUpperCase());
     if (!isNonDisclosure) {
-        if (p.lastSalePrice === null || p.lastSalePrice === undefined || p.lastSalePrice < 10000) return false;
+        // Raised floor from $10K → $30K. Under $30K in a disclosure state is almost always
+        // a quitclaim / family transfer / tax sale, not an arm's-length sale → bad lead.
+        if (p.lastSalePrice === null || p.lastSalePrice === undefined || p.lastSalePrice < 30000) return false;
         if (p.assessedValue && p.assessedValue > 0 && p.lastSalePrice < p.assessedValue * 0.3) return false;
     } else {
         if (p.lastSalePrice !== null && p.lastSalePrice !== undefined && p.lastSalePrice > 0 && p.lastSalePrice < 1000) return false;
@@ -121,6 +128,43 @@ function isValidSoldProperty(p) {
     const badTypes = ['Commercial', 'Industrial', 'Vacant Land', 'Agricultural'];
     if (p.propertyType && badTypes.includes(p.propertyType)) return false;
     return true;
+}
+
+// ── MLS Listing Sanity Check ──
+// Reject listings that are clearly NOT a sale (expired/withdrawn/cancelled/pending).
+// These are the "for-sale sign in yard" leads we've been wasting reps on.
+// Returns { reject: boolean, reason: string }
+function checkMlsListingSanity(p) {
+    // Collect every status signal we can see
+    const signals = [];
+    if (p.status) signals.push(String(p.status).toLowerCase());
+    if (p.mlsStatus) signals.push(String(p.mlsStatus).toLowerCase());
+    if (p.listingStatus) signals.push(String(p.listingStatus).toLowerCase());
+    // Recent history entries (last 2 events are most relevant)
+    if (p.history && typeof p.history === 'object') {
+        const entries = Object.values(p.history).slice(-2);
+        for (const e of entries) {
+            if (e && typeof e === 'object') {
+                if (e.event) signals.push(String(e.event).toLowerCase());
+                if (e.status) signals.push(String(e.status).toLowerCase());
+            }
+        }
+    }
+    const joined = signals.join(' ');
+
+    // HARD REJECT — seller still owns, listing just fell off MLS
+    if (/\b(expired|withdrawn|cancell?ed|canceled|terminated|released)\b/.test(joined)) {
+        return { reject: true, reason: 'mls_non_sale_status' };
+    }
+    // HARD REJECT — still under contract but not closed (not a sale yet)
+    if (/\b(pending|contingent|under[ _-]?contract|active[ _-]?under[ _-]?contract)\b/.test(joined)) {
+        return { reject: true, reason: 'mls_pending_not_closed' };
+    }
+    // HARD REJECT — listing is actively on market (would have for-sale sign up!)
+    if (/\bactive\b/.test(joined) && !/\b(sold|closed)\b/.test(joined)) {
+        return { reject: true, reason: 'mls_still_active' };
+    }
+    return { reject: false, reason: null };
 }
 
 const CORPORATE_KEYWORDS = ['LLC', 'INC', 'TRUST', 'HOLDINGS', 'BANK', 'PROPERTIES', 'CORP', 'COMPANY'];
@@ -512,7 +556,7 @@ Deno.serve(async (req) => {
 
             const mapped = [];
             const seenHashes = new Set();
-            let phase2Stats = { total: 0, countyLagRejected: 0, heuristicRejected: 0, heuristicLikelySold: 0, ambiguousKept: 0, batchdataEligible: 0, domGatedToLow: 0, deltaSkipped: 0 };
+            let phase2Stats = { total: 0, countyLagRejected: 0, heuristicRejected: 0, heuristicLikelySold: 0, ambiguousRejected: 0, batchdataEligible: 0, domGatedToLow: 0, deltaSkipped: 0, mlsStatusRejected: 0 };
 
             for (const p of allRaw) {
                 if (!p.latitude || !p.longitude || !filterPoint(p.latitude, p.longitude)) continue;
@@ -520,6 +564,15 @@ Deno.serve(async (req) => {
                 if (!p.removedDate) continue;
                 const removed = new Date(p.removedDate);
                 if (isNaN(removed.getTime()) || removed < soldCutoff) continue;
+
+                // ── HARD GATE: Reject if MLS status signals clearly say "not sold" ──
+                // Expired / Withdrawn / Cancelled / Pending / Active = for-sale sign still up.
+                // This is THE biggest source of "rep knocked wrong house" complaints.
+                const sanity = checkMlsListingSanity(p);
+                if (sanity.reject) {
+                    phase2Stats.mlsStatusRejected++;
+                    continue;
+                }
 
                 const addressLine = p.addressLine1 || (p.formattedAddress ? p.formattedAddress.split(',')[0] : "");
                 const pZip = p.zipCode || '00000';
@@ -585,19 +638,22 @@ Deno.serve(async (req) => {
                 if (lastSeen && (removed.getTime() - lastSeen.getTime()) >= 7 * 86400000) hScore += 1;
                 if (p.history && typeof p.history === 'object' && Object.keys(p.history).length === 1) hScore += 1;
 
-                // Classification — Hybrid Tiered Approach
-                // Only DOM < 30 days gets 'medium' confidence (BatchData-eligible).
-                // DOM 30-90 days: heuristic-only classification, always 'low' (no BatchData spend).
-                // This cuts BatchData volume ~70-80% while keeping all high-value early signals.
+                // Classification — Hardened Tiered Approach
+                // - score ≥ 3 + DOM < 60 → 'medium' (strong sold signal, widened from DOM<30)
+                // - score ≥ 3 + DOM ≥ 60 → 'low'
+                // - score 1-2           → 'low'
+                // - score -1 to 0       → REJECT (was "ambiguousKept" — too risky, these are
+                //                         the borderline listings most likely to still be on market)
+                // - score ≤ -2          → REJECT (clearly not sold)
                 let mlsConfidence = 'low';
                 let origStatus = 'RECENT_OFF_MARKET';
-                const isFreshListing = dom < 30;
+                const isFreshListing = dom < 60; // widened from 30
 
-                if (hScore <= -4) {
-                    phase2Stats.heuristicRejected++;
-                    continue;
-                } else if (hScore <= -2) {
-                    phase2Stats.heuristicRejected++;
+                if (hScore <= 0) {
+                    // REJECT both ambiguous (-1 to 0) AND negative (-2 to -4).
+                    // These are the listings most likely to still have a for-sale sign.
+                    if (hScore <= -2) phase2Stats.heuristicRejected++;
+                    else phase2Stats.ambiguousRejected++;
                     continue;
                 } else if (hScore >= 3) {
                     origStatus = 'HEURISTIC_SOLD';
@@ -605,15 +661,11 @@ Deno.serve(async (req) => {
                     phase2Stats.heuristicLikelySold++;
                     if (isFreshListing) phase2Stats.batchdataEligible++;
                     else phase2Stats.domGatedToLow++;
-                } else if (hScore >= 1) {
-                    origStatus = 'HEURISTIC_SOLD';
-                    mlsConfidence = 'low'; // Never send score 1-2 to BatchData regardless of DOM
-                    phase2Stats.heuristicLikelySold++;
                 } else {
-                    // Ambiguous (score -1 to 0) — keep as low confidence, skip BatchData
+                    // score 1 or 2: save as low-confidence, never send to BatchData
                     origStatus = 'HEURISTIC_SOLD';
                     mlsConfidence = 'low';
-                    phase2Stats.ambiguousKept++;
+                    phase2Stats.heuristicLikelySold++;
                 }
 
                 mapped.push({
