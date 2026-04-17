@@ -44,6 +44,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { generateOptimizedRoutes, optimizeRouteByDistance } from '../components/logic/routeOptimizer';
 import { applyRouteFilters, formatStageCounts } from '../components/logic/routeFilterPipeline';
+import RouteGenerationOverlay from '../components/routes/RouteGenerationOverlay';
 import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../components/logic/heatmapLogic';
 const RouteChecklist = React.lazy(() => import('../components/routes/RouteChecklist'));
 import LazyRouteCommandPanel from '../components/routes/LazyRouteCommandPanel';
@@ -919,6 +920,7 @@ export default function Home() {
     // Generate routes with configurable houses per route
     const [routes, setRoutes] = useState([]);
     const [routesGenerating, setRoutesGenerating] = useState(false);
+    const [generationStage, setGenerationStage] = useState('Preparing data...');
 
     const [streetCooldownDays, setStreetCooldownDays] = useState(30);
     const [cooldownInfo, setCooldownInfo] = useState(null);
@@ -944,9 +946,14 @@ export default function Home() {
             await handleReorder(); return;
         }
 
+        // IMMEDIATE visual feedback — show overlay + toast BEFORE any heavy work.
+        // Then yield 2 frames (~32ms) so React paints before we block the main thread.
+        setGenerationStage('Preparing data...');
         setRoutesGenerating(true);
-        const t0 = performance.now();
         toast.loading("Preparing data...", { id: 'build-routes' });
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+        const t0 = performance.now();
         try {
             // 1. DYNAMIC DATA FETCHING (if zip code is set)
             let dynamicProps = [];
@@ -1073,6 +1080,7 @@ export default function Home() {
             const initialSet = Array.from(combinedMap.values());
             const initialCount = initialSet.length;
             console.log(`[generateRoutes] Initial: ${initialCount} (base=${baseProps.length}, dynamic=${processedDynamic.length})`);
+            setGenerationStage(`Filtering ${initialCount.toLocaleString()} properties...`);
             toast.loading(`Loaded ${initialCount.toLocaleString()} properties. Filtering...`, { id: 'build-routes' });
             await new Promise(r => setTimeout(r, 30));
 
@@ -1108,6 +1116,7 @@ export default function Home() {
             const finalCount = workingSet.length; const filteredOut = initialCount - finalCount; const effectiveUse2Opt = finalCount > 3000 ? false : routeConfig.use2Opt;
             if (finalCount > 3000 && routeConfig.use2Opt) console.warn(`[generateRoutes] Auto-disabled 2-Opt (n=${finalCount} > 3K)`);
             const optStart = performance.now();
+            setGenerationStage(`Optimizing ${finalCount.toLocaleString()} doors — ~${Math.max(2, Math.round(finalCount / 1500))}s`);
             toast.loading(`Optimizing ${finalCount.toLocaleString()} properties${filteredOut > 0 ? ` (${filteredOut.toLocaleString()} filtered)` : ''}... ~${Math.max(2, Math.round(finalCount / 1500))}s`, { id: 'build-routes' });
             console.log(`[generateRoutes] Opt start | n=${finalCount} | 2opt=${effectiveUse2Opt}`);
             const generated = await new Promise(resolve => setTimeout(() => resolve(generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: routeConfig.returnToStart, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights)), 50));
@@ -1118,6 +1127,7 @@ export default function Home() {
             // AUTO-SAVE (skip routes >10K properties — payload too large)
             const saveable = generated.filter(r => r.houseCount <= 10000);
             if (saveable.length > 0) {
+                setGenerationStage(`Saving ${saveable.length} routes...`);
                 const bulkId = toast.loading(`Auto-saving ${saveable.length} routes...`);
                 try {
                     await Promise.all(saveable.map(r => handleSaveRoute(r, null, null, true)));
@@ -1151,8 +1161,10 @@ export default function Home() {
     // Reorder: re-run filtering + routing on frozen data without re-fetching
     const handleReorder = useCallback(async () => {
         if (!frozenWorkingSet || frozenWorkingSet.length === 0) { toast.error('No data to reorder.'); return; }
+        setGenerationStage(`Reordering ${frozenWorkingSet.length.toLocaleString()} doors...`);
         setRoutesGenerating(true);
         toast.loading('Reordering routes...', { id: 'reorder-routes' });
+        await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
         try {
             const logsByAddr = new Map();
             logs.forEach(l => { if (!l.address_hash) return; if (!logsByAddr.has(l.address_hash)) logsByAddr.set(l.address_hash, []); logsByAddr.get(l.address_hash).push(l); });
@@ -1259,20 +1271,19 @@ export default function Home() {
         return { totalHouses, totalDist, avgScore, routeCount: routes.length, highPotentialCount, excludedCount };
     }, [routes]);
 
+    // Only update fitBounds when the active route ID actually changes — NOT on every filter/state update.
+    // Previously, any change to availableProperties or filteredActiveRoute (e.g. toggling a filter) would
+    // create a new array reference, triggering MapController to re-fit and zoom the user out.
+    const activeRouteId = filteredActiveRoute?.id || null;
     const fitBounds = useMemo(() => {
         if (filteredActiveRoute?.properties?.length > 0) {
             return filteredActiveRoute.properties
                 .filter(p => p && p.lat !== undefined && p.lng !== undefined)
                 .map(p => [p.lat, p.lng]);
         }
-        if (availableProperties?.length > 0) {
-            return availableProperties
-                .slice(0, 1000)
-                .filter(p => p && p.lat !== undefined && p.lng !== undefined)
-                .map(p => [p.lat, p.lng]);
-        }
         return null;
-    }, [filteredActiveRoute, availableProperties]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeRouteId]);
 
     // Initial Fit Effect
     const hasCenteredRef = useRef(false);
@@ -1384,6 +1395,9 @@ export default function Home() {
 
     return (
         <div className="h-full relative" style={{ background: BRAND.voidBlack }}>
+            {/* Generation Overlay — immediate visual feedback */}
+            <RouteGenerationOverlay visible={routesGenerating} stage={generationStage} />
+
             {/* Map */}
             <MapContainer
                 center={center}
