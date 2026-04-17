@@ -400,8 +400,21 @@ export default function Home() {
     const DarkRoomManager = () => null;
 
     // Fetch Properties - support both user-specific and fallback for mobile auth
+    // When a polygon is drawn, fetch by bounding-box (lat/lng) to guarantee the full
+    // shape is populated — zip-based fetch can miss the "other half" of the circle
+    // because zip-by-zip fetches are capped and sorted by -created_date (drops older rows
+    // in dense zips). Bounding-box fetch is direct geography — no zip boundaries.
+    const polygonBBoxKey = useMemo(() => {
+        if (!drawnPolygon || drawnPolygon.length < 3) return null;
+        const lats = drawnPolygon.map(p => p.lat);
+        const lngs = drawnPolygon.map(p => p.lng);
+        // Quantize to 4 decimals so tiny drift doesn't bust the cache
+        const q = (v) => Math.round(v * 10000) / 10000;
+        return `${q(Math.min(...lats))},${q(Math.max(...lats))},${q(Math.min(...lngs))},${q(Math.max(...lngs))}`;
+    }, [drawnPolygon]);
+
     const { data: userProperties = [], isLoading: propsLoading } = useQuery({
-        queryKey: ['masterProperties', user?.email, user?.territory_zip_codes, user?.generated_zip_codes],
+        queryKey: ['masterProperties', user?.email, user?.territory_zip_codes, user?.generated_zip_codes, polygonBBoxKey],
         staleTime: 1000 * 60 * 15, // 15 min — aggressive caching to avoid slow refetch
         gcTime: 1000 * 60 * 30,
         refetchOnWindowFocus: false,
@@ -411,19 +424,53 @@ export default function Home() {
 
             try {
                 let items = [];
+                const t0 = performance.now();
+                const MAX_PROPERTIES = 100000; // Raised from 50K — dense metros can exceed
+                const PER_QUERY_CAP = 10000;   // Max the DB returns per filter call
+                const _delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+                // ── POLYGON-BASED FETCH ──
+                // If user drew an area, fetch by geographic bounding box so we get EVERY
+                // property inside the shape — regardless of which zip it falls in.
+                // This fixes the "half-populated circle" bug where zip-based fetches
+                // only returned the most-recently-imported 5K per zip.
+                const hasActivePolygon = !!(drawnPolygon && drawnPolygon.length > 2);
+                if (hasActivePolygon) {
+                    const lats = drawnPolygon.map(p => p.lat);
+                    const lngs = drawnPolygon.map(p => p.lng);
+                    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+                    const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+                    // Small padding so properties right on the edge aren't missed
+                    const padLat = (maxLat - minLat) * 0.02;
+                    const padLng = (maxLng - minLng) * 0.02;
+                    console.log(`[Home] Polygon bbox fetch: lat=[${minLat.toFixed(4)},${maxLat.toFixed(4)}] lng=[${minLng.toFixed(4)},${maxLng.toFixed(4)}]`);
+                    try {
+                        const res = await base44.entities.MasterProperty.filter(
+                            { lat: { $gte: minLat - padLat, $lte: maxLat + padLat }, lng: { $gte: minLng - padLng, $lte: maxLng + padLng } },
+                            '-created_date', PER_QUERY_CAP
+                        );
+                        items = Array.isArray(res) ? res : (res?.items || []);
+                        console.log(`[Home] Bbox fetch: ${items.length} properties in ${Math.round(performance.now() - t0)}ms`);
+                    } catch (err) {
+                        console.warn('[Home] Bbox fetch failed, falling back to zip-based:', err?.message);
+                    }
+                    // If bbox hit the cap, ALSO fetch by zip to catch anything the bbox-sort missed
+                    // (rare but possible in extremely dense areas). Otherwise we're done.
+                    if (items.length < PER_QUERY_CAP) return items;
+                    console.warn(`[Home] Bbox returned ${items.length} (at cap) — augmenting with zip fetches`);
+                }
+
+                // ── ZIP-BASED FETCH (territory mode OR augmenting bbox) ──
                 const allZips = Array.from(new Set([...(user.territory_zip_codes || []), ...(user.generated_zip_codes || [])]));
 
                 if (allZips.length > 0) {
-                    console.log(`[Home] Fetching properties for ${allZips.length} zips`);
-                    const t0 = performance.now();
-                    const MAX_PROPERTIES = 50000;
-                    const _delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+                    console.log(`[Home] Fetching properties for ${allZips.length} zips (cap=${PER_QUERY_CAP}/zip)`);
 
                     // Fetch ONE zip at a time, with retry-on-429 backoff.
                     // Sequential + paced is faster than parallel-with-rate-limit-failures.
                     const fetchZipWithRetry = async (zip, attempt = 0) => {
                         try {
-                            const res = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000);
+                            const res = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', PER_QUERY_CAP);
                             return Array.isArray(res) ? res : (res?.items || []);
                         } catch (err) {
                             const msg = err?.message || '';
@@ -439,17 +486,23 @@ export default function Home() {
                         }
                     };
 
+                    // If augmenting, dedupe against existing bbox items
+                    const seenHashes = new Set(items.map(p => p.address_hash || p.id));
+
                     for (let i = 0; i < allZips.length; i++) {
                         if (items.length >= MAX_PROPERTIES) break;
                         if (i > 0) await _delay(250); // pace requests
                         const zipItems = await fetchZipWithRetry(allZips[i]);
-                        items = items.concat(zipItems);
+                        for (const p of zipItems) {
+                            const k = p.address_hash || p.id;
+                            if (k && !seenHashes.has(k)) { seenHashes.add(k); items.push(p); }
+                        }
                     }
 
                     if (items.length > MAX_PROPERTIES) items = items.slice(0, MAX_PROPERTIES);
                     console.log(`[Home] Fetched ${items.length} properties in ${Math.round(performance.now() - t0)}ms`);
-                } else {
-                    const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 10000);
+                } else if (!hasActivePolygon) {
+                    const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', PER_QUERY_CAP);
                     items = Array.isArray(result) ? result : (result?.items || []);
                 }
 
