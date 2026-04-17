@@ -110,24 +110,29 @@ export function applyRouteFilters({
     // --- Confidence / Rejection Filters ---
     workingSet = workingSet.filter(p => p.original_status !== 'REJECTED');
 
-    // v15 HARD GATE: Block ALL unverified RentCast MLS data from routes.
-    // Only RentCast-sourced properties that have been verified (by deed cross-ref
-    // or BatchData) are allowed through. This catches old pre-v15 data that has
-    // sale_confidence='medium' from the broken heuristic (HEURISTIC_SOLD).
+    // v15 HARD GATE: Block ALL unverified MLS data from routes.
+    // Only deed-sourced properties OR MLS properties that have been verified
+    // (by deed cross-ref or BatchData) are allowed through.
+    //
+    // CRITICAL: We check `sale_type` not `data_source` because ALL records
+    // (including deeds) come from the RentCast API and have data_source='rentcast'.
+    // The distinction is sale_type: 'Deed'/'Corporate' (ground truth) vs 'MLS' (needs verification).
     const beforeMlsGate = workingSet.length;
     workingSet = workingSet.filter(p => {
-        // Not from RentCast? Let it through (it's a deed record).
-        if (p.data_source !== 'rentcast') return true;
-        // RentCast + deed cross-ref? Verified. Let through.
-        if (p.data_source === 'rentcast_crossref') return true;
-        // RentCast + verified by deed or BatchData? Let through.
-        if (p.sale_confidence === 'high' || p.sale_confidence === 'verified') return true;
+        // Deed or Corporate sale_type? Ground truth — always let through.
+        const saleType = (p.sale_type || '').toLowerCase();
+        if (saleType === 'deed' || saleType === 'corporate') return true;
+        // SOLD status from Phase 1 (county records)? Let through.
+        if (p.original_status === 'SOLD' || p.original_status === 'ELIGIBLE') return true;
+        // Deed-confirmed or BatchData-confirmed? Let through.
         if (p.original_status === 'DEED_CONFIRMED' || p.original_status === 'BATCHDATA_CONFIRMED') return true;
-        // Everything else from RentCast is unverified MLS garbage — block it.
+        // Verified confidence? Let through.
+        if (p.sale_confidence === 'high' || p.sale_confidence === 'verified') return true;
+        // Everything else is unverified MLS — block it.
         return false;
     });
     const mlsGateDropped = beforeMlsGate - workingSet.length;
-    if (mlsGateDropped > 0) console.log(`[routeFilter] v15 MLS gate: blocked ${mlsGateDropped} unverified RentCast properties`);
+    if (mlsGateDropped > 0) console.log(`[routeFilter] v15 MLS gate: blocked ${mlsGateDropped} unverified MLS properties`);
 
     // GLOBAL DEED CROSS-REF: If an MLS listing (HEURISTIC_SOLD) shares an address_hash
     // with a deed-confirmed record (sale_confidence='high' / 'verified' / status='SOLD'),
