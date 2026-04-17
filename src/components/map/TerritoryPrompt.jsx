@@ -420,7 +420,6 @@ export default function TerritoryPrompt({
                                         return;
                                     }
                                     setDrawSizeMiles(newSize);
-                                    if (newSize === 300) setFetchMonths(1);
                                 }}
                                 className="flex-1 bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
                             >
@@ -429,27 +428,25 @@ export default function TerritoryPrompt({
                                 {!hasPulledData && <option value={5}>Test · 5 sq mi</option>}
                             </select>
                         </div>
-                        {/* Months Selector */}
-                        {drawSizeMiles !== 300 && (
-                            <div className="flex items-center gap-1">
-                                <span className="text-[9px] text-gray-500 font-bold mr-1">DATA:</span>
-                                {[6, 12].map(m => (
-                                    <button
-                                        key={m}
-                                        onClick={() => setFetchMonths(m)}
-                                        className={`flex-1 text-[10px] font-bold py-1 rounded-md transition-all ${
-                                            fetchMonths === m
-                                                ? 'bg-yellow-500 text-black shadow-[0_0_8px_rgba(255,215,0,0.4)]'
-                                                : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                                        }`}
-                                    >
-                                        {m}mo
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                        {drawSizeMiles === 300 && (
-                            <div className="text-[9px] text-cyan-400 text-center font-semibold">300mi² pulls are locked to 1 month of data</div>
+                        {/* Months Selector — available for all area sizes */}
+                        <div className="flex items-center gap-1">
+                            <span className="text-[9px] text-gray-500 font-bold mr-1">DATA:</span>
+                            {(drawSizeMiles === 300 ? [1, 6, 12] : [6, 12]).map(m => (
+                                <button
+                                    key={m}
+                                    onClick={() => setFetchMonths(m)}
+                                    className={`flex-1 text-[10px] font-bold py-1 rounded-md transition-all ${
+                                        fetchMonths === m
+                                            ? 'bg-yellow-500 text-black shadow-[0_0_8px_rgba(255,215,0,0.4)]'
+                                            : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                                    }`}
+                                >
+                                    {m}mo
+                                </button>
+                            ))}
+                        </div>
+                        {drawSizeMiles === 300 && fetchMonths > 1 && (
+                            <div className="text-[9px] text-cyan-400 text-center font-semibold">Heads up — 300mi² × {fetchMonths}mo is a big pull. Expect longer import times.</div>
                         )}
                         {/* MLS Early Signal Toggle */}
                         <div className="border-t border-white/10 pt-2 mt-1">
@@ -554,7 +551,7 @@ export default function TerritoryPrompt({
                                     onClick={handleFetchData}
                                     className={`text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide ${drawSizeMiles === 300 ? 'bg-cyan-600 hover:bg-cyan-500 shadow-[0_0_15px_rgba(6,182,212,0.4)]' : 'bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]'}`}
                                 >
-                                    {drawSizeMiles === 300 ? 'Pull 300mi² (1 Mo)' : `Pull ${drawSizeMiles}mi² (${fetchMonths} Mo)`}
+                                    {`Pull ${drawSizeMiles}mi² (${fetchMonths} Mo)`}
                                 </Button>
                             )}
                         </div>
