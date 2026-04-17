@@ -789,11 +789,17 @@ Deno.serve(async (req) => {
             // Cost: ~$0.10/record, capped at 50 per chunk = $5 max per chunk.
             const BATCH_DATA_API_KEY = Deno.env.get("BATCH_DATA_API_KEY");
             if (BATCH_DATA_API_KEY && mapped.length > 0) {
-                const ambiguousMls = mapped.filter(m => 
-                    m.sale_confidence === 'low' && 
-                    (m.original_status === 'RECENT_OFF_MARKET' || m.original_status === 'HEURISTIC_SOLD') &&
-                    m.original_status !== 'DEED_CONFIRMED'
-                );
+                // The 1-Month (30 day) Strict Filter for BatchData
+                const oneMonthAgo = new Date();
+                oneMonthAgo.setDate(oneMonthAgo.getDate() - 30);
+
+                const ambiguousMls = mapped.filter(m => {
+                    const removedDate = m.sold_date ? new Date(m.sold_date) : new Date(0);
+                    return m.sale_confidence === 'low' && 
+                           (m.original_status === 'RECENT_OFF_MARKET' || m.original_status === 'HEURISTIC_SOLD') &&
+                           m.original_status !== 'DEED_CONFIRMED' &&
+                           removedDate >= oneMonthAgo;
+                });
                 const batchdataCandidates = ambiguousMls.slice(0, 50); // Cost cap
 
                 if (batchdataCandidates.length > 0) {

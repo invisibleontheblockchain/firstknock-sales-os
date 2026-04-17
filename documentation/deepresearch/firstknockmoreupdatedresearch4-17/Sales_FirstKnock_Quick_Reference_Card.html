@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FirstKnock Founder Quick Reference Card</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        @page {
+            size: letter;
+            margin: 0.25in;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-size: 9px;
+            line-height: 1.3;
+            color: #222;
+            background: #fff;
+            width: 8.5in;
+            min-height: 11in;
+            margin: 0 auto;
+            padding: 0;
+        }
+
+        .print-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #1a5c38;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            z-index: 1000;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+
+        .print-btn:hover {
+            background: #145230;
+        }
+
+        .card {
+            width: 100%;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            min-height: 10.5in;
+        }
+
+        .header {
+            background: #1a1a1a;
+            color: white;
+            padding: 10px 16px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+        }
+
+        .mindset-strip {
+            background: #1a5c38;
+            color: white;
+            padding: 8px 16px;
+            text-align: center;
+            font-size: 9px;
+        }
+
+        .mindset-strip strong {
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+
+        .mindset-strip em {
+            font-style: italic;
+            opacity: 0.95;
+        }
+
+        .main-content {
+            display: flex;
+            flex: 1;
+            padding: 8px;
+            gap: 8px;
+        }
+
+        .column {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .section {
+            background: #f5f5f5;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .section-header {
+            background: #1a5c38;
+            color: white;
+            padding: 5px 10px;
+            font-size: 9px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .section-content {
+            padding: 8px 10px;
+        }
+
+        .qualifier-item {
+            margin-bottom: 5px;
+            padding-left: 0;
+        }
+
+        .qualifier-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .qualifier-label {
+            font-weight: 700;
+            color: #1a5c38;
+            display: inline;
+        }
+
+        .qualifier-script {
+            color: #333;
+        }
+
+        .qualifier-script b {
+            font-weight: 700;
+            color: #000;
+        }
+
+        .pitch-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .pitch-list li {
+            position: relative;
+            padding-left: 12px;
+            margin-bottom: 4px;
+        }
+
+        .pitch-list li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #1a5c38;
+            font-weight: bold;
+        }
+
+        .pitch-list li:last-child {
+            margin-bottom: 0;
+        }
+
+        .pitch-list li b {
+            font-weight: 700;
+        }
+
+        .signal-list {
+            list-style: none;
+            padding: 0;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3px 12px;
+        }
+
+        .signal-list li {
+            font-size: 8.5px;
+        }
+
+        .signal-list li:before {
+            content: counter(signal) ".";
+            counter-increment: signal;
+            font-weight: 700;
+            color: #1a5c38;
+            margin-right: 4px;
+        }
+
+        .signal-list {
+            counter-reset: signal;
+        }
+
+        .close-box {
+            background: #e8f5e9;
+            border-left: 3px solid #1a5c38;
+            padding: 6px 8px;
+            margin-top: 2px;
+        }
+
+        .close-box b {
+            font-weight: 700;
+        }
+
+        .objection-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .objection-list li {
+            margin-bottom: 4px;
+            font-size: 8.5px;
+        }
+
+        .objection-list li:last-child {
+            margin-bottom: 0;
+        }
+
+        .objection-num {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            background: #1a5c38;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 14px;
+            font-size: 8px;
+            font-weight: 700;
+            margin-right: 5px;
+        }
+
+        .objection-trigger {
+            font-weight: 700;
+            color: #333;
+        }
+
+        .objection-response {
+            color: #555;
+        }
+
+        .objection-response b {
+            font-weight: 700;
+            color: #000;
+        }
+
+        .outcomes-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 10px;
+        }
+
+        .outcome-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 8.5px;
+        }
+
+        .checkbox {
+            width: 12px;
+            height: 12px;
+            border: 1.5px solid #1a5c38;
+            border-radius: 2px;
+            display: inline-block;
+        }
+
+        .call-windows {
+            font-size: 8.5px;
+        }
+
+        .call-windows p {
+            margin-bottom: 2px;
+        }
+
+        .call-windows p:last-child {
+            margin-bottom: 0;
+        }
+
+        .call-windows strong {
+            color: #1a5c38;
+        }
+
+        .avoid-text {
+            color: #c62828;
+            font-weight: 600;
+        }
+
+        .footer-strip {
+            background: #1a1a1a;
+            color: white;
+            padding: 8px 16px;
+            text-align: center;
+            font-size: 9px;
+        }
+
+        .footer-strip em {
+            font-style: italic;
+            opacity: 0.9;
+        }
+
+        .footer-strip b {
+            font-weight: 700;
+            color: #4CAF50;
+        }
+
+        @media print {
+            .print-btn {
+                display: none !important;
+            }
+
+            body {
+                width: 100%;
+                min-height: auto;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .card {
+                min-height: auto;
+            }
+
+            .section {
+                break-inside: avoid;
+            }
+
+            .header, .mindset-strip, .footer-strip {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+    </style>
+</head>
+<body>
+    <button class="print-btn" onclick="window.print()">🖨️ Print Card</button>
+
+    <div class="card">
+        <div class="header">
+            <h1>FirstKnock Founder Quick Reference Card</h1>
+        </div>
+
+        <div class="mindset-strip">
+            <strong>MINDSET RESET:</strong> <em>"I built this. I believe in this. I'm calling to find people who have the problem I solved."</em>
+        </div>
+
+        <div class="main-content">
+            <div class="column">
+                <div class="section">
+                    <div class="section-header">Qualifier Flow</div>
+                    <div class="section-content">
+                        <div class="qualifier-item">
+                            <span class="qualifier-label">Got the name →</span>
+                            <span class="qualifier-script"> <b>"Hey [Name], did I catch you at a bad time?"</b></span>
+                        </div>
+                        <div class="qualifier-item">
+                            <span class="qualifier-label">No name →</span>
+                            <span class="qualifier-script"> <b>"Who runs the sales team over there?"</b></span>
+                        </div>
+                        <div class="qualifier-item">
+                            <span class="qualifier-label">Gatekeeper →</span>
+                            <span class="qualifier-script"> <b>"[Company] is hiring reps — I built something for growing D2D teams. 30 seconds with [Owner]?"</b></span>
+                        </div>
+                        <div class="qualifier-item">
+                            <span class="qualifier-label">Voicemail (Pest) →</span>
+                            <span class="qualifier-script"> <b>"Hey [Name], [YOUR NAME] — your reps are knocking 35-50% rentals right now. Built something that fixes that. [PHONE]. Takes 30 seconds."</b></span>
+                        </div>
+                        <div class="qualifier-item">
+                            <span class="qualifier-label">Voicemail (Security) →</span>
+                            <span class="qualifier-script"> <b>"Hey [Name], [YOUR NAME] — new homeowners are your #1 buyer and your reps have no way to find them systematically. Built the fix. [PHONE]."</b></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-header">Pest Control Pitch</div>
+                    <div class="section-content">
+                        <ul class="pitch-list">
+                            <li><b>35-50% of doors = rentals.</b> Can never buy.</li>
+                            <li><b>New homeowners = highest intent</b> in first 90 days</li>
+                            <li>Bad doors → rejection → <b>rep churn ($75K-$145K/head)</b></li>
+                            <li>FirstKnock: <b>verified new homeowner map only</b></li>
+                            <li><b>"What would 8x closes on the same doors mean for your team?"</b></li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-header">Security Pitch</div>
+                    <div class="section-content">
+                        <ul class="pitch-list">
+                            <li><b>New homeowners = #1 security buyer segment</b></li>
+                            <li>Window closes fast — <b>90 days post-move</b></li>
+                            <li><b>100 cold doors → 1 close. 40 FK doors → 8 closes.</b></li>
+                            <li>Reps have <b>no systematic way</b> to find these doors</li>
+                            <li><b>"How many new homeowners did your reps hit last week?"</b></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="column">
+                <div class="section">
+                    <div class="section-header">Buying Signals (They're Ready — Go to Close)</div>
+                    <div class="section-content">
+                        <ol class="signal-list">
+                            <li>"How does it work exactly?"</li>
+                            <li>"What does it cost?"</li>
+                            <li>"How many companies use this?"</li>
+                            <li>"Does it work in [city]?"</li>
+                            <li>"How long to set up?"</li>
+                            <li>"My reps complain about bad leads"</li>
+                        </ol>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-header">Trial Close</div>
+                    <div class="section-content">
+                        <div class="close-box">
+                            <b>"I don't want to sell you anything today. Let me show you your territory on the map — 15 minutes. If it doesn't blow you away, I'll leave you alone. You free [day] or [day]?"</b>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-header">Calendar Lock</div>
+                    <div class="section-content">
+                        <div class="close-box">
+                            <b>"Perfect. What's your email? Sending the invite right now — you'll see it in 30 seconds."</b> [Stay on until confirmed.]
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-header">Top 5 Objections</div>
+                    <div class="section-content">
+                        <ul class="objection-list">
+                            <li>
+                                <span class="objection-num">1</span>
+                                <span class="objection-trigger">Already have something →</span>
+                                <span class="objection-response"> <b>"What's your close rate on new homeowners specifically?"</b></span>
+                            </li>
+                            <li>
+                                <span class="objection-num">2</span>
+                                <span class="objection-trigger">Not interested →</span>
+                                <span class="objection-response"> <b>"Fair — what's working for lead gen right now?"</b></span>
+                            </li>
+                            <li>
+                                <span class="objection-num">3</span>
+                                <span class="objection-trigger">Send me an email →</span>
+                                <span class="objection-response"> <b>"I will — it's visual though. 15 min screen share does more. Thursday or Friday?"</b></span>
+                            </li>
+                            <li>
+                                <span class="objection-num">4</span>
+                                <span class="objection-trigger">How much? →</span>
+                                <span class="objection-response"> <b>"What's a new customer worth annually? The math changes fast."</b></span>
+                            </li>
+                            <li>
+                                <span class="objection-num">5</span>
+                                <span class="objection-trigger">Never heard of you →</span>
+                                <span class="objection-response"> <b>"I built this [X months] ago. That's why I'm calling personally — not sending a rep."</b></span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-header">Call Outcomes to Log</div>
+                    <div class="section-content">
+                        <div class="outcomes-grid">
+                            <span class="outcome-item"><span class="checkbox"></span> Interested</span>
+                            <span class="outcome-item"><span class="checkbox"></span> Not Interested</span>
+                            <span class="outcome-item"><span class="checkbox"></span> Callback</span>
+                            <span class="outcome-item"><span class="checkbox"></span> Demo Booked</span>
+                            <span class="outcome-item"><span class="checkbox"></span> Trial Closed</span>
+                            <span class="outcome-item"><span class="checkbox"></span> DNC</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-header">Best Call Windows</div>
+                    <div class="section-content">
+                        <div class="call-windows">
+                            <p><strong>Pest Control:</strong> Tue/Wed — 8-10am or 4-5pm local</p>
+                            <p><strong>Security:</strong> Tue/Wed — 8-10am or 4-5pm local</p>
+                            <p><span class="avoid-text">Avoid:</span> Mon, Fri, lunch hours</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer-strip">
+            <em>"<b>80%</b> of sales require <b>5+ follow-ups</b>. Every 'no' is timing, not rejection."</em>
+        </div>
+    </div>
+</body>
+</html>

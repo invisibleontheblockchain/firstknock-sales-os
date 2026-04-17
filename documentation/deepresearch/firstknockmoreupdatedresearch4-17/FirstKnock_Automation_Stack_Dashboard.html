@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="https://cdn.tailwindcss.com"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FirstKnock Automation Stack</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0f;
+    --bg2: #0f0f1a;
+    --blue: #00d4ff;
+    --green: #00ff88;
+    --purple: #b44fff;
+    --gold: #ffd700;
+    --card-bg: rgba(255,255,255,0.04);
+    --card-border: rgba(255,255,255,0.08);
+    --text: #e8e8f0;
+    --muted: #6b6b8a;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 28px 28px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; padding: 0 24px 80px; }
+
+  header {
+    text-align: center;
+    padding: 60px 24px 40px;
+    position: relative;
+  }
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 50%; transform: translateX(-50%);
+    width: 600px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--blue), transparent);
+  }
+  .header-eyebrow {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 16px;
+    opacity: 0.8;
+  }
+  h1 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: clamp(32px, 5vw, 56px);
+    font-weight: 700;
+    background: linear-gradient(135deg, #fff 0%, var(--blue) 50%, var(--green) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1.1;
+    margin-bottom: 12px;
+  }
+  .subtitle {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: clamp(14px, 2vw, 18px);
+    color: var(--muted);
+    font-weight: 400;
+    margin-bottom: 8px;
+  }
+  .tagline {
+    font-size: 12px;
+    color: var(--green);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    font-weight: 500;
+    opacity: 0.7;
+  }
+
+  .stats-bar {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 32px 0;
+  }
+  .stat-pill {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 100px;
+    padding: 8px 20px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    backdrop-filter: blur(10px);
+    white-space: nowrap;
+  }
+  .stat-pill span { color: var(--blue); }
+  .stat-pill.green span { color: var(--green); }
+
+  .filter-bar {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin: 0 0 48px;
+    flex-wrap: wrap;
+  }
+  .filter-btn {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    padding: 10px 24px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 0.5px;
+  }
+  .filter-btn:hover { border-color: var(--blue); color: var(--blue); }
+  .filter-btn.active { background: rgba(0,212,255,0.12); border-color: var(--blue); color: var(--blue); }
+
+  .flow-pipeline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin: 0 0 48px;
+    flex-wrap: wrap;
+    padding: 20px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 16px;
+    backdrop-filter: blur(10px);
+    position: relative;
+    overflow: hidden;
+  }
+  .flow-pipeline::before {
+    content: 'AUTOMATION FLOW';
+    position: absolute;
+    top: 8px; left: 16px;
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 600;
+  }
+  .flow-node {
+    background: rgba(0,212,255,0.08);
+    border: 1px solid rgba(0,212,255,0.3);
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--blue);
+    white-space: nowrap;
+  }
+  .flow-arrow {
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+    position: relative;
+  }
+  .flow-arrow svg { width: 40px; height: 16px; overflow: visible; }
+  .flow-dot {
+    r: 3;
+    fill: var(--blue);
+    opacity: 0;
+  }
+  .flow-dot.animate {
+    animation: flowDot 2s linear infinite;
+  }
+  @keyframes flowDot {
+    0% { opacity: 0; transform: translateX(0); }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { opacity: 0; transform: translateX(40px); }
+  }
+
+  .swimlane {
+    margin-bottom: 40px;
+  }
+  .lane-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .lane-number {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--blue), var(--purple));
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+  }
+  .lane-title {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: 0.5px;
+  }
+  .lane-line {
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, var(--card-border), transparent);
+  }
+
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+  }
+
+  .tool-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: blur(12px);
+    position: relative;
+    overflow: hidden;
+  }
+  .tool-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+    opacity: 0;
+    transition: opacity 0.25s;
+  }
+  .tool-card.oss::before { background: radial-gradient(circle at top left, rgba(0,255,136,0.06), transparent 60%); }
+  .tool-card.commercial::before { background: radial-gradient(circle at top left, rgba(0,212,255,0.06), transparent 60%); }
+  .tool-card.self-hosted::before { background: radial-gradient(circle at top left, rgba(180,79,255,0.06), transparent 60%); }
+
+  .tool-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(255,255,255,0.15);
+  }
+  .tool-card.oss:hover { box-shadow: 0 0 20px rgba(0,255,136,0.2), 0 8px 32px rgba(0,0,0,0.4); border-color: rgba(0,255,136,0.3); }
+  .tool-card.commercial:hover { box-shadow: 0 0 20px rgba(0,212,255,0.2), 0 8px 32px rgba(0,0,0,0.4); border-color: rgba(0,212,255,0.3); }
+  .tool-card.self-hosted:hover { box-shadow: 0 0 20px rgba(180,79,255,0.2), 0 8px 32px rgba(0,0,0,0.4); border-color: rgba(180,79,255,0.3); }
+  .tool-card:hover::before { opacity: 1; }
+
+  .tool-card.hidden { display: none; }
+
+  .card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .tool-name {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1.2;
+  }
+  .badges { display: flex; flex-direction: column; gap: 4px; align-items: flex-end; flex-shrink: 0; }
+  .badge {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 3px 7px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .badge.oss { background: rgba(0,255,136,0.15); color: var(--green); border: 1px solid rgba(0,255,136,0.3); }
+  .badge.commercial { background: rgba(0,212,255,0.15); color: var(--blue); border: 1px solid rgba(0,212,255,0.3); }
+  .badge.self-hosted { background: rgba(180,79,255,0.15); color: var(--purple); border: 1px solid rgba(180,79,255,0.3); }
+  .badge.recommended { background: rgba(255,215,0,0.15); color: var(--gold); border: 1px solid rgba(255,215,0,0.4); }
+
+  .tool-use {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 10px;
+    line-height: 1.4;
+  }
+
+  .complexity-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .complexity-label { font-size: 10px; color: var(--muted); font-weight: 500; }
+  .dots { display: flex; gap: 3px; }
+  .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--card-border);
+  }
+  .dot.filled.oss { background: var(--green); }
+  .dot.filled.commercial { background: var(--blue); }
+  .dot.filled.self-hosted { background: var(--purple); }
+
+  .card-expanded {
+    display: none;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--card-border);
+  }
+  .tool-card.expanded .card-expanded { display: block; }
+  .expanded-desc {
+    font-size: 12px;
+    color: rgba(232,232,240,0.7);
+    line-height: 1.6;
+    margin-bottom: 8px;
+  }
+  .integration-note {
+    font-size: 11px;
+    color: var(--blue);
+    background: rgba(0,212,255,0.06);
+    border: 1px solid rgba(0,212,255,0.15);
+    border-radius: 6px;
+    padding: 6px 10px;
+    line-height: 1.5;
+    margin-bottom: 8px;
+  }
+  .card-link {
+    font-size: 11px;
+    color: var(--muted);
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: color 0.2s;
+  }
+  .card-link:hover { color: var(--blue); }
+
+  .connector-section {
+    display: flex;
+    justify-content: center;
+    margin: -20px 0 20px;
+    position: relative;
+    z-index: 2;
+  }
+  .connector-arrow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+  .connector-line {
+    width: 2px;
+    height: 24px;
+    background: linear-gradient(180deg, var(--blue), var(--green));
+    position: relative;
+    overflow: hidden;
+  }
+  .connector-line::after {
+    content: '';
+    position: absolute;
+    top: -100%;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(180deg, transparent, rgba(255,255,255,0.8), transparent);
+    animation: connectorFlow 1.5s linear infinite;
+  }
+  @keyframes connectorFlow {
+    0% { top: -100%; }
+    100% { top: 100%; }
+  }
+  .connector-chevron {
+    width: 0; height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 7px solid var(--green);
+  }
+
+  footer {
+    text-align: center;
+    padding: 40px 24px;
+    border-top: 1px solid var(--card-border);
+    margin-top: 40px;
+  }
+  footer p { font-size: 12px; color: var(--muted); }
+  footer strong { color: var(--blue); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-eyebrow">Field Intelligence Platform · GTM Architecture</div>
+  <h1>FirstKnock Automation Stack</h1>
+  <p class="subtitle">The GTM Engine for the Future of Outside Sales</p>
+  <p class="tagline">Every knock. Every lead. Every close. Automated.</p>
+</header>
+
+<div class="container">
+
+  <div class="stats-bar">
+    <div class="stat-pill"><span>14</span> Integrations</div>
+    <div class="stat-pill"><span>6</span> Automation Layers</div>
+    <div class="stat-pill green"><span>$0</span> Required (Full OSS Path)</div>
+    <div class="stat-pill"><span>Built for</span> D2D</div>
+    <div class="stat-pill"><span>2</span> Verticals: Pest Control + Smart Home</div>
+  </div>
+
+  <div class="filter-bar">
+    <button class="filter-btn active" onclick="filterCards('all')">All Tools</button>
+    <button class="filter-btn" onclick="filterCards('oss')">Open Source Only</button>
+    <button class="filter-btn" onclick="filterCards('commercial')">Commercial Only</button>
+    <button class="filter-btn" onclick="filterCards('self-hosted')">Self-Hosted Only</button>
+  </div>
+
+  <div class="flow-pipeline">
+    <div class="flow-node">Clay.com</div>
+    <div class="flow-arrow">
+      <svg viewBox="0 0 40 16"><line x1="0" y1="8" x2="34" y2="8" stroke="rgba(0,212,255,0.4)" stroke-width="1.5"/><polygon points="34,4 40,8 34,12" fill="rgba(0,212,255,0.6)"/><circle class="flow-dot animate" cx="5" cy="8" style="animation-delay:0s"/></svg>
+    </div>
+    <div class="flow-node">Instantly.ai</div>
+    <div class="flow-arrow">
+      <svg viewBox="0 0 40 16"><line x1="0" y1="8" x2="34" y2="8" stroke="rgba(0,212,255,0.4)" stroke-width="1.5"/><polygon points="34,4 40,8 34,12" fill="rgba(0,212,255,0.6)"/><circle class="flow-dot animate" cx="5" cy="8" style="animation-delay:0.4s"/></svg>
+    </div>
+    <div class="flow-node">Close.io</div>
+    <div class="flow-arrow">
+      <svg viewBox="0 0 40 16"><line x1="0" y1="8" x2="34" y2="8" stroke="rgba(0,212,255,0.4)" stroke-width="1.5"/><polygon points="34,4 40,8 34,12" fill="rgba(0,212,255,0.6)"/><circle class="flow-dot animate" cx="5" cy="8" style="animation-delay:0.8s"/></svg>
+    </div>
+    <div class="flow-node">n8n</div>
+    <div class="flow-arrow">
+      <svg viewBox="0 0 40 16"><line x1="0" y1="8" x2="34" y2="8" stroke="rgba(0,212,255,0.4)" stroke-width="1.5"/><polygon points="34,4 40,8 34,12" fill="rgba(0,212,255,0.6)"/><circle class="flow-dot animate" cx="5" cy="8" style="animation-delay:1.2s"/></svg>
+    </div>
+    <div class="flow-node">GPT-4</div>
+    <div class="flow-arrow">
+      <svg viewBox="0 0 40 16"><line x1="0" y1="8" x2="34" y2="8" stroke="rgba(0,212,255,0.4)" stroke-width="1.5"/><polygon points="34,4 40,8 34,12" fill="rgba(0,212,255,0.6)"/><circle class="flow-dot animate" cx="5" cy="8" style="animation-delay:1.6s"/></svg>
+    </div>
+    <div class="flow-node">Buffer / Mixpost</div>
+  </div>
+
+  <!-- LAYER 1 -->
+  <div class="swimlane" id="layer1">
+    <div class="lane-header">
+      <div class="lane-number">1</div>
+      <div class="lane-title">Data & Prospecting</div>
+      <div class="lane-line"></div>
+    </div>
+    <div class="cards-grid">
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">RentCast</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+            <span class="badge recommended">Recommended</span>
+          </div>
+        </div>
+        <div class="tool-use">Recently sold home data API</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Pulls recently sold home data by ZIP code — the core data feed for D2D route generation. Homeowner name, address, sale price, sale date.</div>
+          <div class="integration-note">→ n8n webhook pulls new sales daily → feeds Clay enrichment → exports to route optimizer</div>
+          <a href="#" class="card-link">↗ rentcast.io/api</a>
+        </div>
+      </div>
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">BatchData</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+            <span class="badge recommended">Recommended</span>
+          </div>
+        </div>
+        <div class="tool-use">Property & homeowner data enrichment</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Bulk property data — owner name, phone, email, equity, mortgage info. Pairs with RentCast for full homeowner profiles.</div>
+          <div class="integration-note">→ Batch upload ZIP codes → receive enriched CSV → push to Clay via n8n</div>
+          <a href="#" class="card-link">↗ batchdata.io</a>
+        </div>
+      </div>
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">Clay.com</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+            <span class="badge recommended">Recommended</span>
+          </div>
+        </div>
+        <div class="tool-use">Waterfall lead enrichment & sequencing</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">The enrichment hub. Waterfall enrichment across 50+ data providers. Finds emails, phones, LinkedIn profiles for homeowners and business owners.</div>
+          <div class="integration-note">→ Receives raw leads from BatchData → enriches → pushes to Instantly.ai sequences via webhook</div>
+          <a href="#" class="card-link">↗ clay.com</a>
+        </div>
+      </div>
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">Apollo.io</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+          </div>
+        </div>
+        <div class="tool-use">B2B prospecting (free tier)</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Free tier gives 50 exports/mo. Use for B2B prospecting (pest control franchise owners, security dealer managers). Upgrade to Clay when volume demands it.</div>
+          <div class="integration-note">→ Manual export → CSV upload to Clay or Instantly.ai</div>
+          <a href="#" class="card-link">↗ apollo.io</a>
+        </div>
+      </div>
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">LinkedIn Sales Nav</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+          </div>
+        </div>
+        <div class="tool-use">Decision-maker prospecting</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Target pest control franchise owners, security alarm dealers, and regional managers. Feed into Expandi for automated outreach sequences.</div>
+          <div class="integration-note">→ Export saved leads → Expandi sequences → Close.io CRM</div>
+          <a href="#" class="card-link">↗ linkedin.com/sales</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="connector-section"><div class="connector-arrow"><div class="connector-line"></div><div class="connector-chevron"></div></div></div>
+
+  <!-- LAYER 2 -->
+  <div class="swimlane" id="layer2">
+    <div class="lane-header">
+      <div class="lane-number">2</div>
+      <div class="lane-title">Cold Outreach Engine</div>
+      <div class="lane-line"></div>
+    </div>
+    <div class="cards-grid">
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">Instantly.ai</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+            <span class="badge recommended">Recommended</span>
+          </div>
+        </div>
+        <div class="tool-use">Cold email sequencing & inbox warmup</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Core cold email platform. Built-in inbox rotation, deliverability warmup, A/B testing, and reply detection. Handles the full outreach sequence lifecycle.</div>
+          <div class="integration-note">→ Receives enriched leads from Clay → runs sequences → positive replies trigger Close.io lead creation via webhook</div>
+          <a href="#" class="card-link">↗ instantly.ai</a>
+        </div>
+      </div>
+
+      <div class="tool-card oss" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">ColdFlow</div>
+          <div class="badges">
+            <span class="badge oss">Open Source</span>
+          </div>
+        </div>
+        <div class="tool-use">OSS email sequencing alternative</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled oss"></div><div class="dot filled oss"></div><div class="dot filled oss"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Open source cold email sequencer. Viable fallback if budget is zero. Lacks built-in warmup and deliverability tooling — requires more manual setup.</div>
+          <div class="integration-note">→ Self-host on VPS → connect to Mailgun SMTP → manual warmup required</div>
+          <a href="#" class="card-link">↗ github.com/coldflow</a>
+        </div>
+      </div>
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">Dedicated Domains</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+            <span class="badge recommended">Recommended</span>
+          </div>
+        </div>
+        <div class="tool-use">Sending domain infrastructure</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Buy 3–5 sending domains (variations of firstknock.com). Rotate across Instantly.ai inboxes. Protects primary domain reputation. ~$12/domain/yr.</div>
+          <div class="integration-note">→ Configure SPF/DKIM/DMARC → add to Instantly.ai inbox rotation → warmup 2–4 weeks before sending</div>
+          <a href="#" class="card-link">↗ namecheap.com</a>
+        </div>
+      </div>
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">Expandi</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+          </div>
+        </div>
+        <div class="tool-use">LinkedIn outreach automation</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot filled commercial"></div><div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Cloud-based LinkedIn automation with safety limits. Target pest control franchise owners and security alarm dealers. Use conservatively — 20–30 connections/day max.</div>
+          <div class="integration-note">→ Import Sales Nav lists → run connection + message sequences → webhook to Close.io on reply</div>
+          <a href="#" class="card-link">↗ expandi.io</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="connector-section"><div class="connector-arrow"><div class="connector-line"></div><div class="connector-chevron"></div></div></div>
+
+  <!-- LAYER 3 -->
+  <div class="swimlane" id="layer3">
+    <div class="lane-header">
+      <div class="lane-number">3</div>
+      <div class="lane-title">CRM & Pipeline</div>
+      <div class="lane-line"></div>
+    </div>
+    <div class="cards-grid">
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">Close.io</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+            <span class="badge recommended">Recommended</span>
+          </div>
+        </div>
+        <div class="tool-use">Outbound-first CRM & power dialer</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">The command center. Built-in power dialer, SMS, email sequences, and robust webhook system. Every closed deal triggers the content automation pipeline via n8n.</div>
+          <div class="integration-note">→ Lead status change → webhook → n8n → triggers GPT-4 script gen + HeyGen video + social post</div>
+          <a href="#" class="card-link">↗ close.com</a>
+        </div>
+      </div>
+
+      <div class="tool-card self-hosted" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">n8n (Self-Hosted)</div>
+          <div class="badges">
+            <span class="badge self-hosted">Self-Hosted</span>
+            <span class="badge recommended">Recommended</span>
+          </div>
+        </div>
+        <div class="tool-use">Workflow automation backbone</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled self-hosted"></div><div class="dot filled self-hosted"></div><div class="dot filled self-hosted"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">The central nervous system. Self-hosted on $20/mo VPS. Unlimited executions, full code nodes, 400+ integrations. Connects every tool in the stack.</div>
+          <div class="integration-note">→ Receives webhooks from Close.io, Instantly.ai → orchestrates GPT-4, HeyGen, ElevenLabs, Mixpost → zero per-task cost</div>
+          <a href="#" class="card-link">↗ n8n.io</a>
+        </div>
+      </div>
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">Slack</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+          </div>
+        </div>
+        <div class="tool-use">Team notifications & deal alerts</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">n8n pushes deal notifications, rep leaderboard updates, and content publish confirmations to Slack channels. Free tier sufficient for early stage.</div>
+          <div class="integration-note">→ n8n Slack node → #wins channel → #content-published channel → manager alerts</div>
+          <a href="#" class="card-link">↗ slack.com</a>
+        </div>
+      </div>
+
+      <div class="tool-card oss" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">Twenty.com</div>
+          <div class="badges">
+            <span class="badge oss">Open Source</span>
+          </div>
+        </div>
+        <div class="tool-use">OSS CRM alternative</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled oss"></div><div class="dot filled oss"></div><div class="dot filled oss"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Open source CRM (Salesforce alternative). Promising but lacks D2D-specific features and mobile power dialer. Consider at scale when Close.io costs become significant.</div>
+          <div class="integration-note">→ Self-host on VPS → custom webhook setup → manual integration work required</div>
+          <a href="#" class="card-link">↗ twenty.com</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="connector-section"><div class="connector-arrow"><div class="connector-line"></div><div class="connector-chevron"></div></div></div>
+
+  <!-- LAYER 4 -->
+  <div class="swimlane" id="layer4">
+    <div class="lane-header">
+      <div class="lane-number">4</div>
+      <div class="lane-title">Content Production</div>
+      <div class="lane-line"></div>
+    </div>
+    <div class="cards-grid">
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">HeyGen</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+            <span class="badge recommended">Recommended</span>
+          </div>
+        </div>
+        <div class="tool-use">AI avatar talking-head videos</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot filled commercial"></div><div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Generate polished avatar videos from GPT-4 scripts. API-accessible for n8n automation. Create rep win-announcement videos automatically on every closed deal.</div>
+          <div class="integration-note">→ n8n sends GPT-4 script to HeyGen API → renders video → downloads to server → FFmpeg adds captions → Mixpost schedules</div>
+          <a href="#" class="card-link">↗ heygen.com</a>
+        </div>
+      </div>
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">ElevenLabs</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+            <span class="badge recommended">Recommended</span>
+          </div>
+        </div>
+        <div class="tool-use">AI voiceover & voice cloning</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Clone top rep voices for authentic testimonial content. API-driven voiceover generation for video scripts. $22/mo for 30K chars — sufficient for early content volume.</div>
+          <div class="integration-note">→ n8n sends script text to ElevenLabs API → returns MP3 → feeds into HeyGen or FFmpeg pipeline</div>
+          <a href="#" class="card-link">↗ elevenlabs.io</a>
+        </div>
+      </div>
+
+      <div class="tool-card oss" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">FFmpeg + Whisper</div>
+          <div class="badges">
+            <span class="badge oss">Open Source</span>
+            <span class="badge recommended">Recommended</span>
+          </div>
+        </div>
+        <div class="tool-use">Video editing, captions & processing</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled oss"></div><div class="dot filled oss"></div><div class="dot filled oss"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">FFmpeg handles video trimming, watermarking, format conversion. Whisper generates accurate captions. Fully scriptable via n8n shell commands. Zero cost, maximum automation.</div>
+          <div class="integration-note">→ n8n executes FFmpeg commands on HeyGen output → adds captions via Whisper → exports TikTok/Reels format</div>
+          <a href="#" class="card-link">↗ ffmpeg.org</a>
+        </div>
+      </div>
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">CapCut AI</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+          </div>
+        </div>
+        <div class="tool-use">Manual video editing (team use)</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">For manual content creation by reps and managers. Great for quick field videos, testimonials, and ad creatives. Not automatable — use FFmpeg for pipeline work.</div>
+          <div class="integration-note">→ Manual use by content team → export → upload to Mixpost for scheduling</div>
+          <a href="#" class="card-link">↗ capcut.com</a>
+        </div>
+      </div>
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">GPT-4 API</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+            <span class="badge recommended">Recommended</span>
+          </div>
+        </div>
+        <div class="tool-use">AI script & copy generation</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Generates video scripts, social captions, email copy, and ad hooks. Triggered by n8n on deal close events. Pennies per script — highest ROI tool in the stack.</div>
+          <div class="integration-note">→ n8n sends deal data (rep name, vertical, location) → GPT-4 returns script → feeds HeyGen + ElevenLabs</div>
+          <a href="#" class="card-link">↗ platform.openai.com</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="connector-section"><div class="connector-arrow"><div class="connector-line"></div><div class="connector-chevron"></div></div></div>
+
+  <!-- LAYER 5 -->
+  <div class="swimlane" id="layer5">
+    <div class="lane-header">
+      <div class="lane-number">5</div>
+      <div class="lane-title">Ad Retargeting</div>
+      <div class="lane-line"></div>
+    </div>
+    <div class="cards-grid">
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">Meta Custom Audiences</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+            <span class="badge recommended">Recommended</span>
+          </div>
+        </div>
+        <div class="tool-use">Homeowner retargeting on Facebook/Instagram</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Upload recently-sold homeowner lists as Custom Audiences. Retarget with pest control / security ads before reps knock. Warms up the door before the knock.</div>
+          <div class="integration-note">→ n8n pushes new homeowner list to Meta API weekly → audience auto-updates → ads run 7 days before rep visit</div>
+          <a href="#" class="card-link">↗ facebook.com/business</a>
+        </div>
+      </div>
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">Google In-Market</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+          </div>
+        </div>
+        <div class="tool-use">In-market audience targeting</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Target homeowners actively searching for pest control or home security. Layer with Customer Match lists from BatchData for maximum precision.</div>
+          <div class="integration-note">→ Upload customer match list → layer in-market segments → run search + display campaigns in target ZIP codes</div>
+          <a href="#" class="card-link">↗ ads.google.com</a>
+        </div>
+      </div>
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">YouTube Pre-Roll</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+          </div>
+        </div>
+        <div class="tool-use">Video ad retargeting</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Run HeyGen-generated rep videos as YouTube pre-roll ads targeting homeowners in knock zones. Hyper-local video ads at $0.01–0.03 CPV.</div>
+          <div class="integration-note">→ HeyGen video output → upload to YouTube → Google Ads campaign targeting ZIP code + homeowner audience</div>
+          <a href="#" class="card-link">↗ ads.google.com/youtube</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="connector-section"><div class="connector-arrow"><div class="connector-line"></div><div class="connector-chevron"></div></div></div>
+
+  <!-- LAYER 6 -->
+  <div class="swimlane" id="layer6">
+    <div class="lane-header">
+      <div class="lane-number">6</div>
+      <div class="lane-title">Wins → Social Automation</div>
+      <div class="lane-line"></div>
+    </div>
+    <div class="cards-grid">
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">Close.io Webhook</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+            <span class="badge recommended">Recommended</span>
+          </div>
+        </div>
+        <div class="tool-use">Deal-close trigger for automation</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Every "Won" status change fires a webhook to n8n with deal data: rep name, vertical, location, deal value. This is the automation trigger for the entire content pipeline.</div>
+          <div class="integration-note">→ Status: Won → POST to n8n webhook URL → payload includes rep_name, vertical, zip_code, deal_value</div>
+          <a href="#" class="card-link">↗ developer.close.com</a>
+        </div>
+      </div>
+
+      <div class="tool-card self-hosted" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">n8n Orchestrator</div>
+          <div class="badges">
+            <span class="badge self-hosted">Self-Hosted</span>
+            <span class="badge recommended">Recommended</span>
+          </div>
+        </div>
+        <div class="tool-use">Automation pipeline orchestration</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled self-hosted"></div><div class="dot filled self-hosted"></div><div class="dot filled self-hosted"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Receives Close.io webhook → calls GPT-4 for script → calls ElevenLabs for voice → calls HeyGen for video → runs FFmpeg for captions → pushes to Mixpost → notifies Slack.</div>
+          <div class="integration-note">→ Single n8n workflow handles the entire Wins→Social pipeline. Runs in ~3–5 minutes per deal close. Zero marginal cost.</div>
+          <a href="#" class="card-link">↗ n8n.io/workflows</a>
+        </div>
+      </div>
+
+      <div class="tool-card commercial" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">Airtable</div>
+          <div class="badges">
+            <span class="badge commercial">Commercial</span>
+            <span class="badge recommended">Recommended</span>
+          </div>
+        </div>
+        <div class="tool-use">Content ops & pipeline tracking</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled commercial"></div><div class="dot filled commercial"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Tracks every piece of content in the pipeline: script status, video render status, publish status, performance metrics. n8n writes to Airtable at each pipeline stage.</div>
+          <div class="integration-note">→ n8n creates Airtable record on deal close → updates status at each step → team views content calendar in Airtable</div>
+          <a href="#" class="card-link">↗ airtable.com</a>
+        </div>
+      </div>
+
+      <div class="tool-card self-hosted" onclick="toggleCard(this)">
+        <div class="card-top">
+          <div class="tool-name">Mixpost</div>
+          <div class="badges">
+            <span class="badge self-hosted">Self-Hosted</span>
+            <span class="badge recommended">Recommended</span>
+          </div>
+        </div>
+        <div class="tool-use">Social media scheduling (self-hosted)</div>
+        <div class="complexity-row">
+          <span class="complexity-label">Complexity</span>
+          <div class="dots">
+            <div class="dot filled self-hosted"></div><div class="dot filled self-hosted"></div><div class="dot"></div><div class="dot"></div><div class="dot"></div>
+          </div>
+        </div>
+        <div class="card-expanded">
+          <div class="expanded-desc">Self-hosted social scheduler with full API. n8n pushes finished videos + captions to Mixpost for scheduled publishing across TikTok, Instagram Reels, YouTube Shorts, LinkedIn.</div>
+          <div class="integration-note">→ n8n POST to Mixpost API → schedules post for optimal time → publishes to all platforms simultaneously</div>
+          <a href="#" class="card-link">↗ mixpost.app</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <p>FirstKnock Sales OS · <strong>Automation Stack v1.0</strong> · Built for D2D field intelligence · Pest Control + Smart Home Security</p>
+</footer>
+
+<script>
+  function toggleCard(card) {
+    card.classList.toggle('expanded');
+  }
+
+  function filterCards(type) {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+
+    document.querySelectorAll('.tool-card').forEach(card => {
+      if (type === 'all') {
+        card.classList.remove('hidden');
+      } else if (type === 'oss') {
+        card.classList.toggle('hidden', !card.classList.contains('oss'));
+      } else if (type === 'commercial') {
+        card.classList.toggle('hidden', !card.classList.contains('commercial'));
+      } else if (type === 'self-hosted') {
+        card.classList.toggle('hidden', !card.classList.contains('self-hosted'));
+      }
+    });
+  }
+</script>
+
+</body>
+</html>

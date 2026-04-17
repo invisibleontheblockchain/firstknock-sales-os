@@ -1,0 +1,329 @@
+// IMPORTANT: statusCategory and soldPrice do NOT exist in RentCast API. Do not reference them.
+// This file classifies Inactive listings using ONLY fields that exist on /listings/sale:
+// daysOnMarket, listedDate, removedDate, lastSeenDate, history, price
+// For confirmed sale data, use lastSaleDate and lastSalePrice from /properties endpoint only.
+
+// ─────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────
+
+interface HistoryEntry {
+  event: 'Sale Listing' | 'Rental Listing';
+  price: number;
+  listingType: string;
+  listedDate: string;
+  removedDate: string;
+  daysOnMarket: number;
+}
+
+interface InactiveListing {
+  listingId: string;
+  formattedAddress: string;
+  daysOnMarket: number;
+  listedDate: string;        // ISO 8601
+  removedDate: string;       // ISO 8601
+  lastSeenDate: string;      // ISO 8601
+  history: Record<string, HistoryEntry> | null;
+  price: number;             // list price only — NOT sold price
+  // NOTE: statusCategory does NOT exist — do not reference it
+  // NOTE: soldPrice does NOT exist — do not reference it
+}
+
+interface ScoringResult {
+  classification: 'LIKELY_SOLD' | 'PROBABLY_SOLD' | 'AMBIGUOUS' | 'PROBABLY_EXPIRED' | 'LIKELY_EXPIRED_WITHDRAWN';
+  score: number;
+  signals: string[];
+  confidence: number;
+  routeToBatchData: boolean;
+}
+
+interface ClassificationResult {
+  listingId: string;
+  formattedAddress: string;
+  classification: string;
+  confidence: number;
+  source: 'phase1_confirmed' | 'lag_window_rule' | 'delta_skip' | 'heuristic_scoring';
+  routeToBatchData: boolean;
+  scoringResult?: ScoringResult;
+}
+
+interface Database {
+  query(sql: string, params?: any[]): Promise<any>;
+}
+
+// ─────────────────────────────────────────────
+// HELPER
+// ─────────────────────────────────────────────
+
+/**
+ * Returns the absolute number of days between two dates.
+ * Returns 0 if either argument is null or undefined.
+ */
+function daysBetween(dateA: string | Date | null | undefined, dateB: string | Date | null | undefined): number {
+  if (dateA == null || dateB == null) return 0;
+  const a = typeof dateA === 'string' ? new Date(dateA) : dateA;
+  const b = typeof dateB === 'string' ? new Date(dateB) : dateB;
+  const msPerDay = 1000 * 60 * 60 * 24;
+  return Math.abs(Math.round((a.getTime() - b.getTime()) / msPerDay));
+}
+
+// ─────────────────────────────────────────────
+// AUTO-REJECT BOUNDARIES
+// ─────────────────────────────────────────────
+
+const AUTO_REJECT_BOUNDARIES = [90, 180, 365] as const;
+const AUTO_REJECT_TOLERANCE = 3;
+
+function isNearBoundary(value: number, boundary: number): boolean {
+  return Math.abs(value - boundary) <= AUTO_REJECT_TOLERANCE;
+}
+
+// ─────────────────────────────────────────────
+// CORE SCORING FUNCTION
+// ─────────────────────────────────────────────
+
+/**
+ * Scores an inactive listing using heuristic signals to classify its disposition.
+ * IMPORTANT: statusCategory and soldPrice do NOT exist in RentCast API.
+ * Uses only: daysOnMarket, listedDate, removedDate, lastSeenDate, history
+ * @param listing - The inactive listing to score
+ * @returns ScoringResult with classification, score, signals, confidence, and BatchData routing flag
+ */
+export function scoreInactiveListing(listing: InactiveListing): ScoringResult {
+  const { daysOnMarket, listedDate, removedDate, lastSeenDate, history } = listing;
+
+  // ── Step 1: AUTO-REJECT checks (run FIRST, before any scoring) ──────────────
+
+  // Check daysOnMarket against standard contract-expiry boundaries
+  for (const boundary of AUTO_REJECT_BOUNDARIES) {
+    if (isNearBoundary(daysOnMarket, boundary)) {
+      return {
+        classification: 'LIKELY_EXPIRED_WITHDRAWN',
+        score: -99,
+        signals: [`auto_reject_dom_${boundary}`],
+        confidence: 0.92,
+        routeToBatchData: false,
+      };
+    }
+  }
+
+  // Check (removedDate - listedDate) duration against the same boundaries
+  const listingDuration = daysBetween(listedDate, removedDate);
+  for (const boundary of AUTO_REJECT_BOUNDARIES) {
+    if (isNearBoundary(listingDuration, boundary)) {
+      return {
+        classification: 'LIKELY_EXPIRED_WITHDRAWN',
+        score: -99,
+        signals: [`auto_reject_duration_${boundary}`],
+        confidence: 0.92,
+        routeToBatchData: false,
+      };
+    }
+  }
+
+  // ── Step 2: Accumulate heuristic signals ────────────────────────────────────
+
+  let score = 0;
+  const signals: string[] = [];
+
+  const removalToLastSeen = daysBetween(removedDate, lastSeenDate);
+  const historyEntryCount = history != null ? Object.keys(history).length : 0;
+
+  // Positive signals
+  if (daysOnMarket < 30) {
+    score += 3;
+    signals.push('fast_sale');
+  }
+
+  if (listingDuration < 45) {
+    score += 2;
+    signals.push('short_duration');
+  }
+
+  if (removalToLastSeen >= 7) {
+    score += 1;
+    signals.push('gradual_removal');
+  }
+
+  if (historyEntryCount === 1) {
+    score += 1;
+    signals.push('clean_history');
+  }
+
+  // Negative signals
+  if (daysOnMarket > 150) {
+    score -= 3;
+    signals.push('long_dom');
+  }
+
+  if (removalToLastSeen === 0) {
+    score -= 2;
+    signals.push('abrupt_removal');
+  }
+
+  if (listingDuration < 7) {
+    score -= 1;
+    signals.push('very_short_listing');
+  }
+
+  if (historyEntryCount >= 3) {
+    score -= 1;
+    signals.push('repeated_relisting');
+  }
+
+  // ── Step 3: Classify by score threshold ─────────────────────────────────────
+
+  if (score >= 3) {
+    return { classification: 'LIKELY_SOLD', score, signals, confidence: 0.80, routeToBatchData: false };
+  }
+  if (score >= 1) {
+    return { classification: 'PROBABLY_SOLD', score, signals, confidence: 0.65, routeToBatchData: false };
+  }
+  if (score >= -1) {
+    return { classification: 'AMBIGUOUS', score, signals, confidence: 0.0, routeToBatchData: true };
+  }
+  if (score >= -3) {
+    return { classification: 'PROBABLY_EXPIRED', score, signals, confidence: 0.65, routeToBatchData: false };
+  }
+  return { classification: 'LIKELY_EXPIRED_WITHDRAWN', score, signals, confidence: 0.80, routeToBatchData: false };
+}
+
+// ─────────────────────────────────────────────
+// PIPELINE WRAPPER
+// ─────────────────────────────────────────────
+
+/**
+ * Full Step 2 pipeline wrapper: runs Steps 2a → 2b → 2c → 2d in sequence.
+ * Step 2a: Hard Signal Check (Phase 1 DB match)
+ * Step 2b: Lag Window Rule (DEED_LAG_CUTOFF_DAYS env var, default 120)
+ * Step 2c: Delta Validation (listing_seen_log)
+ * Step 2d: Heuristic Scoring
+ * @param listing - The inactive listing to classify
+ * @param db - Database connection
+ * @returns ClassificationResult
+ */
+export async function classifyInactiveListing(
+  listing: InactiveListing,
+  db: Database
+): Promise<ClassificationResult> {
+  const { listingId, formattedAddress, removedDate } = listing;
+
+  // ── Step 2a: Hard Signal Check (Phase 1 DB match) ───────────────────────────
+  // saleDateRange=0:45 means we accept a confirmed sale whose lastSaleDate falls
+  // within 0–45 days of the listing's removedDate.
+  const confirmedSaleRows = await db.query(
+    `SELECT last_sale_date
+     FROM confirmed_sales
+     WHERE formatted_address = $1
+     LIMIT 1`,
+    [formattedAddress]
+  );
+
+  if (confirmedSaleRows.rows.length > 0) {
+    const lastSaleDate: string = confirmedSaleRows.rows[0].last_sale_date;
+    const dateDiff = daysBetween(lastSaleDate, removedDate);
+
+    if (dateDiff <= 45) {
+      // Strong Phase 1 match — confirmed sale within acceptable deed-recording lag
+      return {
+        listingId,
+        formattedAddress,
+        classification: 'SOLD',
+        confidence: 0.95,
+        source: 'phase1_confirmed',
+        routeToBatchData: false,
+      };
+    }
+    // Match exists but date diff > 45 days — fall through to lag window rule
+  }
+
+  // ── Step 2b: Lag Window Rule ─────────────────────────────────────────────────
+  // If the listing was removed more than DEED_LAG_CUTOFF_DAYS ago and there is
+  // no Phase 1 match, it is almost certainly expired/withdrawn rather than a
+  // pending deed recording.
+  const DEED_LAG_CUTOFF_DAYS = parseInt(process.env.DEED_LAG_CUTOFF_DAYS ?? '120', 10);
+  const daysSinceRemoval = daysBetween(removedDate, new Date().toISOString());
+
+  if (daysSinceRemoval > DEED_LAG_CUTOFF_DAYS) {
+    return {
+      listingId,
+      formattedAddress,
+      classification: 'EXPIRED_WITHDRAWN',
+      confidence: 0.90,
+      source: 'lag_window_rule',
+      routeToBatchData: false,
+    };
+  }
+
+  // ── Step 2c: Delta Validation (listing_seen_log) ─────────────────────────────
+  const seenLogRows = await db.query(
+    `SELECT id FROM listing_seen_log WHERE listing_id = $1 LIMIT 1`,
+    [listingId]
+  );
+
+  if (seenLogRows.rows.length > 0) {
+    // Already processed — update the timestamp and skip re-scoring
+    await db.query(
+      `UPDATE listing_seen_log
+       SET last_processed_date = NOW()
+       WHERE listing_id = $1`,
+      [listingId]
+    );
+
+    return {
+      listingId,
+      formattedAddress,
+      classification: 'DELTA_SKIP',
+      confidence: 1.0,
+      source: 'delta_skip',
+      routeToBatchData: false,
+    };
+  }
+
+  // First time we are seeing this listing — record it
+  await db.query(
+    `INSERT INTO listing_seen_log (listing_id, formatted_address, first_seen_date, last_processed_date)
+     VALUES ($1, $2, NOW(), NOW())`,
+    [listingId, formattedAddress]
+  );
+
+  // ── Step 2d: Heuristic Scoring ───────────────────────────────────────────────
+  const scoringResult = scoreInactiveListing(listing);
+
+  // Persist heuristic result for audit / analytics
+  await db.query(
+    `INSERT INTO heuristic_score_log
+       (listing_id, formatted_address, classification, score, signals, confidence, route_to_batch_data, scored_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+    [
+      listingId,
+      formattedAddress,
+      scoringResult.classification,
+      scoringResult.score,
+      JSON.stringify(scoringResult.signals),
+      scoringResult.confidence,
+      scoringResult.routeToBatchData,
+    ]
+  );
+
+  // If the heuristic is ambiguous, enqueue for BatchData validation
+  if (scoringResult.routeToBatchData) {
+    await db.query(
+      `INSERT INTO validation_queue
+         (listing_id, formatted_address, status, enqueued_at)
+       VALUES ($1, $2, 'pending', NOW())
+       ON CONFLICT (listing_id) DO UPDATE SET status = 'pending', enqueued_at = NOW()`,
+      [listingId, formattedAddress]
+    );
+  }
+
+  return {
+    listingId,
+    formattedAddress,
+    classification: scoringResult.classification,
+    confidence: scoringResult.confidence,
+    source: 'heuristic_scoring',
+    routeToBatchData: scoringResult.routeToBatchData,
+    scoringResult,
+  };
+}

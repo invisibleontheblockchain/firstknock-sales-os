@@ -1,0 +1,176 @@
+-- ============================================================
+-- Migration 001: listing_seen_log
+-- Purpose: Delta validation — tracks previously seen listing IDs
+-- to avoid reprocessing records on every fetch cycle.
+-- Expected throughput reduction: ~215 records/week → ~13 new records/week
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS listing_seen_log (
+  listingId          VARCHAR(255) PRIMARY KEY,
+  firstSeenDate      TIMESTAMP NOT NULL DEFAULT NOW(),
+  lastProcessedDate  TIMESTAMP NOT NULL DEFAULT NOW(),
+  classification     VARCHAR(50),
+  confidence         FLOAT
+);
+
+CREATE INDEX IF NOT EXISTS idx_listing_seen_log_listingId 
+  ON listing_seen_log(listingId);
+
+COMMENT ON TABLE listing_seen_log IS 
+  'Delta validation log. Tracks previously seen RentCast listing IDs to prevent reprocessing on weekly refresh cycles.';
+
+-- ============================================================
+-- Migration 002: heuristic_score_log
+-- Purpose: Audit log for all heuristic scoring decisions.
+-- Used for shadow mode validation and model accuracy tracking.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS heuristic_score_log (
+  id               SERIAL PRIMARY KEY,
+  listingId        VARCHAR(255) NOT NULL,
+  score            INTEGER NOT NULL,
+  signals          JSONB,
+  classification   VARCHAR(50) NOT NULL,
+  confidence       FLOAT,
+  batchdataResult  VARCHAR(50),  -- populated during shadow mode comparison
+  createdAt        TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_heuristic_score_log_listingId 
+  ON heuristic_score_log(listingId);
+
+CREATE INDEX IF NOT EXISTS idx_heuristic_score_log_classification 
+  ON heuristic_score_log(classification);
+
+CREATE INDEX IF NOT EXISTS idx_heuristic_score_log_createdAt 
+  ON heuristic_score_log(createdAt);
+
+COMMENT ON TABLE heuristic_score_log IS 
+  'Audit log for heuristic scoring decisions. batchdataResult populated during shadow mode to compare heuristic vs BatchData ground truth.';
+
+COMMENT ON COLUMN heuristic_score_log.batchdataResult IS 
+  'BatchData classification result for this listing (populated during shadow mode). NULL = not yet validated by BatchData.';
+
+-- ============================================================
+-- Migration 003: pending_confirmation_queue
+-- Purpose: Holds listings classified as PENDING_CONFIRMATION
+-- (BatchData returned Pending status). Re-checked after 30 days.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS pending_confirmation_queue (
+  listingId          VARCHAR(255) PRIMARY KEY,
+  formattedAddress   VARCHAR(500) NOT NULL,
+  classifiedAt       TIMESTAMP NOT NULL DEFAULT NOW(),
+  reCheckDate        TIMESTAMP NOT NULL,  -- classifiedAt + 30 days
+  status             VARCHAR(50) NOT NULL DEFAULT 'pending',
+  lastCheckedAt      TIMESTAMP,
+  checkCount         INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_pending_confirmation_reCheckDate 
+  ON pending_confirmation_queue(reCheckDate);
+
+CREATE INDEX IF NOT EXISTS idx_pending_confirmation_status 
+  ON pending_confirmation_queue(status);
+
+COMMENT ON TABLE pending_confirmation_queue IS 
+  'Holds listings where BatchData returned Pending status. Scheduled for re-check 30 days after classification.';
+
+COMMENT ON COLUMN pending_confirmation_queue.reCheckDate IS 
+  'Date to re-query BatchData for this property. Set to classifiedAt + 30 days.';
+
+-- ============================================================
+-- Migration 004: job_runs
+-- Purpose: Full audit trail for processFetchChunk jobs.
+-- Tracks metrics, coverage verification, and failed chunks.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS job_runs (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id                TEXT NOT NULL,
+  area_id               TEXT,
+  total_chunks          INTEGER,
+  completed_chunks      INTEGER,
+  failed_chunks         INTEGER,
+  total_fetched         INTEGER,
+  total_unique          INTEGER,
+  total_inserted        INTEGER,
+  total_api_calls       INTEGER,
+  duplicate_count       INTEGER,
+  job_start_time        TIMESTAMPTZ,
+  job_end_time          TIMESTAMPTZ,
+  job_duration_ms       BIGINT,
+  coverage_verification JSONB,
+  failed_chunk_log      JSONB,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_job_runs_job_id 
+  ON job_runs(job_id);
+
+CREATE INDEX IF NOT EXISTS idx_job_runs_area_id 
+  ON job_runs(area_id);
+
+CREATE INDEX IF NOT EXISTS idx_job_runs_created_at 
+  ON job_runs(created_at);
+
+COMMENT ON TABLE job_runs IS 
+  'Audit trail for processFetchChunk jobs. Stores full metrics, coverage verification results, and failed chunk logs.';
+
+COMMENT ON COLUMN job_runs.coverage_verification IS 
+  'JSON object: { expected_bbox, actual_bbox, coverage_pct, empty_cells, flagged_for_review }';
+
+COMMENT ON COLUMN job_runs.failed_chunk_log IS 
+  'JSON array of FailedChunkRecord objects: { chunkId, centerLat, centerLng, radius, errorCode, errorMessage, timestamp, retryCount, retryExhausted }';
+
+-- ============================================================
+-- Post-Migration Verification Queries
+-- Run these after applying migrations to confirm success:
+-- ============================================================
+
+-- SELECT table_name FROM information_schema.tables 
+--   WHERE table_schema = 'public' 
+--   AND table_name IN ('listing_seen_log', 'heuristic_score_log', 'pending_confirmation_queue', 'job_runs');
+
+-- SELECT indexname FROM pg_indexes 
+--   WHERE tablename IN ('listing_seen_log', 'heuristic_score_log', 'pending_confirmation_queue', 'job_runs');
+
+-- ============================================================
+-- Migration 005: validation_queue (if not exists)
+-- Purpose: Queue for records routed to BatchData validation.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS validation_queue (
+  id               SERIAL PRIMARY KEY,
+  listingId        VARCHAR(255) NOT NULL,
+  formattedAddress VARCHAR(500) NOT NULL,
+  requestId        TEXT,          -- BatchData job correlation ID
+  status           VARCHAR(50) NOT NULL DEFAULT 'pending',  -- pending | processing | completed
+  classification   VARCHAR(50),   -- populated on completion
+  createdAt        TIMESTAMP NOT NULL DEFAULT NOW(),
+  completedAt      TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_validation_queue_status 
+  ON validation_queue(status);
+
+CREATE INDEX IF NOT EXISTS idx_validation_queue_requestId 
+  ON validation_queue(requestId);
+
+COMMENT ON TABLE validation_queue IS 
+  'Queue for AMBIGUOUS records routed to BatchData async bulk validation. Updated by batchDataWebhookCallback.';
+
+-- ============================================================
+-- Migration 006: property_validation_cache (if not exists)
+-- Purpose: Cache of BatchData validation results.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS property_validation_cache (
+  formattedAddress  VARCHAR(500) PRIMARY KEY,
+  classification    VARCHAR(50) NOT NULL,
+  source            VARCHAR(50) NOT NULL DEFAULT 'batchdata',
+  updatedAt         TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE property_validation_cache IS 
+  'Cache of BatchData validation results. Upserted by batchDataWebhookCallback.';

@@ -1,0 +1,259 @@
+// NOTE: statusCategory and status used in this file are BatchData fields — they ARE valid.
+// These are NOT RentCast fields. BatchData provides granular listing status:
+// Sold, Pending, Expired, Withdrawn, Cancelled — via both `status` and `statusCategory`.
+
+// ─────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────
+
+interface BatchDataProperty {
+  formattedAddress?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  listing?: {
+    status?: string;           // BatchData field — valid
+    statusCategory?: string;   // BatchData field — valid (NOT a RentCast field)
+    price?: number;
+    soldDate?: string;
+  };
+}
+
+interface BatchDataWebhookPayload {
+  requestId: string;
+  status: string;
+  data: {
+    results: {
+      properties: BatchDataProperty[];
+    };
+  };
+}
+
+type ValidationOutcome =
+  | 'SOLD_CONFIRMED'
+  | 'PENDING_CONFIRMATION'
+  | 'EXPIRED_WITHDRAWN_CONFIRMED';
+
+interface Database {
+  query(sql: string, params?: any[]): Promise<any>;
+}
+
+/**
+ * A record that the heuristic scorer classified as AMBIGUOUS and routed to BatchData.
+ */
+export interface AmbiguousRecord {
+  listingId: string;
+  formattedAddress: string;
+  /** Full address line, e.g. "123 Main St" */
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+}
+
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
+
+/**
+ * Normalises a BatchDataProperty to a single address string.
+ * Prefers the pre-formatted `formattedAddress` field; falls back to
+ * constructing one from address + city + state + zip components.
+ */
+function normaliseAddress(property: BatchDataProperty): string {
+  if (property.formattedAddress) {
+    return property.formattedAddress.trim();
+  }
+  return [property.address, property.city, property.state, property.zip]
+    .filter(Boolean)
+    .join(', ')
+    .trim();
+}
+
+/**
+ * Derives a ValidationOutcome from BatchData listing status fields.
+ * statusCategory and status are both BatchData fields — neither exists in RentCast.
+ */
+function deriveOutcome(property: BatchDataProperty): ValidationOutcome {
+  const statusCategory = property.listing?.statusCategory ?? '';
+  const status = property.listing?.status ?? '';
+
+  if (statusCategory === 'Sold' || status === 'Sold') {
+    return 'SOLD_CONFIRMED';
+  }
+  if (statusCategory === 'Pending' || status === 'Pending') {
+    return 'PENDING_CONFIRMATION';
+  }
+  return 'EXPIRED_WITHDRAWN_CONFIRMED';
+}
+
+// ─────────────────────────────────────────────
+// WEBHOOK HANDLER
+// ─────────────────────────────────────────────
+
+/**
+ * Handles BatchData async bulk webhook callback.
+ * Validates PIPELINE_SECRET header, parses results, upserts to property_validation_cache.
+ * NOTE: statusCategory and status here are BatchData fields — they ARE valid.
+ * These are NOT RentCast fields. BatchData has granular status: Sold, Pending, Expired, Withdrawn, Cancelled.
+ * @param req - HTTP request object with headers and body
+ * @param db - Database connection
+ */
+export async function batchDataWebhookCallback(
+  req: { headers: Record<string, string>; body: BatchDataWebhookPayload },
+  db: Database
+): Promise<{ status: number; message: string }> {
+  // ── 1. Authenticate ──────────────────────────────────────────────────────────
+  const incomingSecret = req.headers['x-pipeline-secret'];
+  if (!incomingSecret || incomingSecret !== process.env.PIPELINE_SECRET) {
+    return { status: 401, message: 'Unauthorized' };
+  }
+
+  // ── 2. Parse payload ─────────────────────────────────────────────────────────
+  const payload = req.body;
+  const properties: BatchDataProperty[] =
+    payload?.data?.results?.properties ?? [];
+
+  // ── 3. Process each property ─────────────────────────────────────────────────
+  for (const property of properties) {
+    const formattedAddress = normaliseAddress(property);
+    if (!formattedAddress) continue; // skip records with no usable address
+
+    const outcome: ValidationOutcome = deriveOutcome(property);
+    const soldDate = property.listing?.soldDate ?? null;
+    const price = property.listing?.price ?? null;
+    const requestId = payload.requestId;
+
+    // Upsert into property_validation_cache
+    await db.query(
+      `INSERT INTO property_validation_cache
+         (formatted_address, outcome, sold_date, price, batch_data_request_id, validated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (formatted_address)
+       DO UPDATE SET
+         outcome               = EXCLUDED.outcome,
+         sold_date             = EXCLUDED.sold_date,
+         price                 = EXCLUDED.price,
+         batch_data_request_id = EXCLUDED.batch_data_request_id,
+         validated_at          = NOW()`,
+      [formattedAddress, outcome, soldDate, price, requestId]
+    );
+
+    // Mark matching validation_queue items as completed
+    await db.query(
+      `UPDATE validation_queue
+       SET status       = 'completed',
+           completed_at = NOW()
+       WHERE formatted_address = $1
+         AND status = 'pending'`,
+      [formattedAddress]
+    );
+
+    if (outcome === 'SOLD_CONFIRMED') {
+      // Elevate MasterProperty confidence to 'verified'
+      await db.query(
+        `UPDATE master_properties
+         SET confidence    = 'verified',
+             last_updated  = NOW()
+         WHERE formatted_address = $1`,
+        [formattedAddress]
+      );
+    } else if (outcome === 'PENDING_CONFIRMATION') {
+      // Schedule a re-check 30 days from now
+      await db.query(
+        `INSERT INTO pending_confirmation_queue
+           (formatted_address, outcome, re_check_date, created_at)
+         VALUES ($1, $2, NOW() + INTERVAL '30 days', NOW())
+         ON CONFLICT (formatted_address)
+         DO UPDATE SET
+           re_check_date = NOW() + INTERVAL '30 days',
+           created_at    = NOW()`,
+        [formattedAddress, outcome]
+      );
+    }
+  }
+
+  return { status: 200, message: 'OK' };
+}
+
+// ─────────────────────────────────────────────
+// ASYNC BULK REQUEST SENDER
+// ─────────────────────────────────────────────
+
+/**
+ * Sends ambiguous records to BatchData async bulk endpoint.
+ * Results are returned via webhook to batchDataWebhookCallback.
+ * @param ambiguousRecords - Records with AMBIGUOUS heuristic classification
+ * @param jobId - Correlation ID for webhook callback matching
+ */
+export async function sendToBatchDataAsync(
+  ambiguousRecords: AmbiguousRecord[],
+  jobId: string
+): Promise<void> {
+  const apiKey = process.env.BATCHDATA_API_KEY;
+  const webhookUrl = process.env.BATCHDATA_WEBHOOK_URL;
+
+  if (!apiKey) throw new Error('BATCHDATA_API_KEY environment variable is not set');
+  if (!webhookUrl) throw new Error('BATCHDATA_WEBHOOK_URL environment variable is not set');
+
+  // Parse address components from formattedAddress when individual fields are absent.
+  // Expected format: "123 Main St, Springfield, IL, 62701"
+  const properties = ambiguousRecords.map((record) => {
+    if (record.address && record.city && record.state && record.zip) {
+      return {
+        address: record.address,
+        city: record.city,
+        state: record.state,
+        zip: record.zip,
+      };
+    }
+
+    // Fall back to splitting formattedAddress on commas
+    const parts = record.formattedAddress.split(',').map((p) => p.trim());
+    return {
+      address: parts[0] ?? '',
+      city: parts[1] ?? '',
+      state: parts[2] ?? '',
+      zip: parts[3] ?? '',
+    };
+  });
+
+  const requestBody = {
+    properties,
+    options: {
+      webhookUrl,
+      requestId: jobId,
+    },
+  };
+
+  let response: Response;
+  try {
+    response = await fetch('https://api.batchdata.com/api/v1/property/lookup/async', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(requestBody),
+    });
+  } catch (networkError) {
+    console.error('[sendToBatchDataAsync] Network error contacting BatchData API:', networkError);
+    throw networkError;
+  }
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '<unreadable>');
+    const err = new Error(
+      `[sendToBatchDataAsync] BatchData API returned ${response.status}: ${errorBody}`
+    );
+    console.error(err.message);
+    throw err;
+  }
+
+  const responseJson = await response.json().catch(() => null);
+  console.info(
+    `[sendToBatchDataAsync] Successfully submitted ${ambiguousRecords.length} records to BatchData. jobId=${jobId}`,
+    responseJson
+  );
+}

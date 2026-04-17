@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="https://cdn.tailwindcss.com"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FirstKnock War Room</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0A0A0F;
+    --bg2: #0F0F1A;
+    --bg3: #13131F;
+    --green: #00F5A0;
+    --green2: #00C97F;
+    --red: #FF4D6D;
+    --yellow: #FFD93D;
+    --blue: #4D9FFF;
+    --purple: #A855F6;
+    --border: rgba(0,245,160,0.15);
+    --glass: rgba(255,255,255,0.03);
+    --text: #E8E8F0;
+    --muted: #6B7280;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'Inter',system-ui,sans-serif; min-height:100vh; overflow-x:hidden; }
+  
+  /* HEADER */
+  .header { background:linear-gradient(135deg,#0A0A0F 0%,#0F0F1A 100%); border-bottom:1px solid var(--border); padding:20px 32px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; backdrop-filter:blur(20px); }
+  .logo { display:flex; align-items:center; gap:12px; }
+  .logo-icon { width:36px; height:36px; background:linear-gradient(135deg,var(--green),var(--green2)); border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:18px; box-shadow:0 0 20px rgba(0,245,160,0.4); }
+  .logo-text { font-size:18px; font-weight:700; color:var(--green); letter-spacing:-0.5px; }
+  .logo-sub { font-size:11px; color:var(--muted); letter-spacing:2px; text-transform:uppercase; }
+  .header-badge { background:rgba(0,245,160,0.1); border:1px solid var(--border); border-radius:20px; padding:6px 14px; font-size:12px; color:var(--green); font-weight:600; }
+
+  /* TABS */
+  .tabs { display:flex; gap:4px; padding:16px 32px; background:var(--bg2); border-bottom:1px solid var(--border); overflow-x:auto; scrollbar-width:none; }
+  .tabs::-webkit-scrollbar { display:none; }
+  .tab { padding:10px 20px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; transition:all 0.2s; white-space:nowrap; border:1px solid transparent; color:var(--muted); background:transparent; }
+  .tab:hover { color:var(--text); background:var(--glass); border-color:var(--border); }
+  .tab.active { color:var(--bg); background:var(--green); border-color:var(--green); box-shadow:0 0 20px rgba(0,245,160,0.3); }
+  .tab-num { display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:50%; background:rgba(255,255,255,0.15); font-size:10px; margin-right:6px; }
+  .tab.active .tab-num { background:rgba(0,0,0,0.2); }
+
+  /* SECTIONS */
+  .section { display:none; padding:32px; animation:fadeIn 0.3s ease; }
+  .section.active { display:block; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+
+  /* GLASS CARD */
+  .card { background:var(--glass); border:1px solid var(--border); border-radius:16px; padding:24px; backdrop-filter:blur(10px); transition:all 0.2s; }
+  .card:hover { border-color:rgba(0,245,160,0.3); box-shadow:0 8px 32px rgba(0,0,0,0.3); }
+  .card-title { font-size:14px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:16px; }
+
+  /* SECTION HEADER */
+  .section-header { margin-bottom:28px; }
+  .section-title { font-size:26px; font-weight:800; color:var(--text); letter-spacing:-0.5px; }
+  .section-title span { color:var(--green); }
+  .section-desc { font-size:14px; color:var(--muted); margin-top:6px; }
+
+  /* GRID */
+  .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; }
+  .grid-4 { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; }
+  @media(max-width:900px) { .grid-2,.grid-3,.grid-4 { grid-template-columns:1fr; } }
+
+  /* ===== SECTION 1: POSITIONING MAP ===== */
+  .chart-container { position:relative; height:420px; }
+  .toggle-row { display:flex; gap:8px; margin-bottom:20px; }
+  .toggle-btn { padding:8px 18px; border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; transition:all 0.2s; border:1px solid var(--border); color:var(--muted); background:transparent; }
+  .toggle-btn.active { color:var(--bg); background:var(--green); border-color:var(--green); }
+  .legend { display:flex; flex-wrap:wrap; gap:12px; margin-top:16px; }
+  .legend-item { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
+  .legend-dot { width:10px; height:10px; border-radius:50%; }
+
+  /* ===== SECTION 2: KILL SHOTS ===== */
+  .kill-card { background:var(--glass); border:1px solid var(--border); border-radius:16px; padding:24px; transition:all 0.3s; cursor:pointer; position:relative; overflow:hidden; }
+  .kill-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; background:linear-gradient(90deg,var(--red),transparent); }
+  .kill-card:hover { border-color:rgba(255,77,109,0.4); transform:translateY(-2px); box-shadow:0 12px 40px rgba(255,77,109,0.15); }
+  .kill-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; }
+  .competitor-name { font-size:18px; font-weight:800; color:var(--text); }
+  .steal-badge { background:rgba(0,245,160,0.1); border:1px solid rgba(0,245,160,0.3); border-radius:20px; padding:4px 12px; font-size:12px; font-weight:700; color:var(--green); }
+  .badge { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; }
+  .badge-red { background:rgba(255,77,109,0.15); color:var(--red); border:1px solid rgba(255,77,109,0.3); }
+  .badge-green { background:rgba(0,245,160,0.15); color:var(--green); border:1px solid rgba(0,245,160,0.3); }
+  .badge-yellow { background:rgba(255,217,61,0.15); color:var(--yellow); border:1px solid rgba(255,217,61,0.3); }
+  .kill-section { margin-bottom:14px; }
+  .kill-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--muted); margin-bottom:4px; }
+  .kill-value { font-size:13px; color:var(--text); line-height:1.5; }
+  .messaging-box { background:rgba(0,245,160,0.05); border:1px solid rgba(0,245,160,0.2); border-radius:10px; padding:12px 14px; font-size:13px; color:var(--green); font-style:italic; line-height:1.6; margin-top:8px; }
+  .price-tag { font-size:22px; font-weight:800; color:var(--red); }
+
+  /* ===== SECTION 3: TIMELINE ===== */
+  .timeline-wrapper { overflow-x:auto; padding-bottom:8px; }
+  .timeline-grid { min-width:800px; }
+  .timeline-header { display:grid; grid-template-columns:180px 1fr 1fr 1fr 1fr; gap:8px; margin-bottom:12px; }
+  .timeline-col-header { text-align:center; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1px; padding:8px; border-radius:8px; }
+  .col-now { background:rgba(0,245,160,0.1); color:var(--green); border:1px solid rgba(0,245,160,0.3); }
+  .col-q2 { background:rgba(77,159,255,0.1); color:var(--blue); border:1px solid rgba(77,159,255,0.3); }
+  .col-q3 { background:rgba(168,85,246,0.1); color:var(--purple); border:1px solid rgba(168,85,246,0.3); }
+  .col-q4 { background:rgba(255,217,61,0.1); color:var(--yellow); border:1px solid rgba(255,217,61,0.3); }
+  .timeline-row { display:grid; grid-template-columns:180px 1fr 1fr 1fr 1fr; gap:8px; margin-bottom:8px; align-items:start; }
+  .timeline-category { display:flex; align-items:center; gap:8px; font-size:12px; font-weight:700; color:var(--text); padding:8px 0; }
+  .cat-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .timeline-cell { min-height:40px; }
+  .feature-bar { border-radius:8px; padding:8px 10px; font-size:11px; font-weight:600; line-height:1.4; margin-bottom:4px; transition:all 0.2s; cursor:default; }
+  .feature-bar:hover { filter:brightness(1.2); transform:scale(1.01); }
+  .bar-now { background:rgba(0,245,160,0.15); border:1px solid rgba(0,245,160,0.4); color:var(--green); }
+  .bar-q2 { background:rgba(77,159,255,0.12); border:1px solid rgba(77,159,255,0.3); color:var(--blue); }
+  .bar-q3 { background:rgba(168,85,246,0.12); border:1px solid rgba(168,85,246,0.3); color:var(--purple); }
+  .bar-q4 { background:rgba(255,217,61,0.12); border:1px solid rgba(255,217,61,0.3); color:var(--yellow); }
+  .closes-badge { font-size:9px; opacity:0.7; margin-top:2px; }
+
+  /* ===== SECTION 4: FUNNEL ===== */
+  .funnel-container { max-width:700px; margin:0 auto; }
+  .funnel-stage { position:relative; margin-bottom:4px; }
+  .funnel-bar { border-radius:12px; padding:18px 24px; display:flex; align-items:center; justify-content:space-between; transition:all 0.3s; cursor:pointer; border:1px solid transparent; }
+  .funnel-bar:hover { filter:brightness(1.1); transform:scaleX(1.01); }
+  .funnel-stage-name { font-size:15px; font-weight:800; color:#fff; }
+  .funnel-rate { font-size:22px; font-weight:900; color:#fff; }
+  .funnel-arrow { text-align:center; color:var(--muted); font-size:18px; margin:2px 0; }
+  .funnel-detail { display:none; background:var(--glass); border:1px solid var(--border); border-radius:12px; padding:16px; margin-top:8px; margin-bottom:8px; }
+  .funnel-detail.open { display:block; animation:fadeIn 0.2s ease; }
+  .funnel-detail-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .friction-item { display:flex; align-items:flex-start; gap:8px; font-size:12px; line-height:1.5; }
+  .friction-dot { width:6px; height:6px; border-radius:50%; margin-top:4px; flex-shrink:0; }
+  .funnel-connector { width:2px; height:16px; background:linear-gradient(to bottom,var(--border),transparent); margin:0 auto; }
+
+  /* ===== SECTION 5: MOAT ===== */
+  .moat-item { margin-bottom:20px; }
+  .moat-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+  .moat-name { font-size:14px; font-weight:700; color:var(--text); }
+  .moat-months { font-size:12px; font-weight:600; color:var(--muted); }
+  .moat-bar-bg { height:12px; background:rgba(255,255,255,0.05); border-radius:6px; overflow:hidden; position:relative; }
+  .moat-bar-fill { height:100%; border-radius:6px; transition:width 1.5s cubic-bezier(0.4,0,0.2,1); position:relative; }
+  .moat-bar-fill::after { content:''; position:absolute; top:0; left:0; right:0; bottom:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,0.2),transparent); animation:shimmer 2s infinite; }
+  @keyframes shimmer { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
+  .moat-tags { display:flex; gap:6px; margin-top:6px; flex-wrap:wrap; }
+  .moat-tag { font-size:10px; padding:2px 8px; border-radius:4px; font-weight:600; }
+  .difficulty-score { font-size:48px; font-weight:900; color:var(--green); text-align:center; }
+  .difficulty-label { font-size:12px; color:var(--muted); text-align:center; text-transform:uppercase; letter-spacing:1px; }
+
+  /* PULSE ANIMATION */
+  @keyframes pulse-glow {
+    0%,100% { box-shadow:0 0 0 0 rgba(0,245,160,0.4), 0 0 20px rgba(0,245,160,0.3); }
+    50% { box-shadow:0 0 0 8px rgba(0,245,160,0), 0 0 40px rgba(0,245,160,0.6); }
+  }
+
+  /* STAT CARDS */
+  .stat-card { background:var(--glass); border:1px solid var(--border); border-radius:12px; padding:20px; text-align:center; }
+  .stat-value { font-size:32px; font-weight:900; color:var(--green); }
+  .stat-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; margin-top:4px; }
+
+  /* TOOLTIP */
+  .tooltip { position:fixed; background:rgba(15,15,26,0.95); border:1px solid var(--border); border-radius:10px; padding:12px 16px; font-size:12px; pointer-events:none; z-index:1000; max-width:220px; backdrop-filter:blur(20px); display:none; }
+  .tooltip.show { display:block; }
+  .tooltip-name { font-size:14px; font-weight:800; color:var(--green); margin-bottom:6px; }
+  .tooltip-row { display:flex; justify-content:space-between; gap:16px; color:var(--muted); margin-bottom:2px; }
+  .tooltip-val { color:var(--text); font-weight:600; }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width:6px; height:6px; }
+  ::-webkit-scrollbar-track { background:var(--bg2); }
+  ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+</style>
+</head>
+<body>
+
+<div class="tooltip" id="tooltip">
+  <div class="tooltip-name" id="tt-name"></div>
+  <div class="tooltip-row"><span>Price</span><span class="tooltip-val" id="tt-price"></span></div>
+  <div class="tooltip-row"><span>Data Intel</span><span class="tooltip-val" id="tt-intel"></span></div>
+  <div class="tooltip-row"><span>Ease of Use</span><span class="tooltip-val" id="tt-ease"></span></div>
+  <div class="tooltip-row"><span>Feature Depth</span><span class="tooltip-val" id="tt-depth"></span></div>
+  <div id="tt-note" style="margin-top:8px;color:#A0A0B0;font-style:italic;font-size:11px;"></div>
+</div>
+
+<!-- HEADER -->
+<div class="header">
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    <div>
+      <div class="logo-text">FirstKnock</div>
+      <div class="logo-sub">War Room · Competitive Attack Plan</div>
+    </div>
+  </div>
+  <div class="header-badge">🎯 Live Intelligence</div>
+</div>
+
+<!-- TABS -->
+<div class="tabs">
+  <div class="tab active" onclick="showTab(0)"><span class="tab-num">1</span>Market Map</div>
+  <div class="tab" onclick="showTab(1)"><span class="tab-num">2</span>Kill Shots</div>
+  <div class="tab" onclick="showTab(2)"><span class="tab-num">3</span>Feature Timeline</div>
+  <div class="tab" onclick="showTab(3)"><span class="tab-num">4</span>Acquisition Funnel</div>
+  <div class="tab" onclick="showTab(4)"><span class="tab-num">5</span>Competitive Moat</div>
+</div>
+
+<!-- ===== SECTION 1: MARKET MAP ===== -->
+<div class="section active" id="section-0">
+  <div class="section-header">
+    <div class="section-title">Market <span>Positioning</span> Map</div>
+    <div class="section-desc">Interactive competitive landscape — hover any bubble for details</div>
+  </div>
+  <div class="card">
+    <div class="toggle-row">
+      <button class="toggle-btn active" id="view1-btn" onclick="switchView(1)">📊 Price vs Data Intelligence</button>
+      <button class="toggle-btn" id="view2-btn" onclick="switchView(2)">🎯 Ease of Use vs Feature Depth</button>
+    </div>
+    <div class="chart-container">
+      <canvas id="positionChart"></canvas>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#00F5A0;box-shadow:0 0 8px #00F5A0"></div>FirstKnock (You)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#FF6B6B"></div>SalesRabbit</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#4D9FFF"></div>SPOTIO</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#FFD93D"></div>Knockio</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#A855F6"></div>Badger Maps</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#6B7280"></div>D2D CRM</div>
+    </div>
+  </div>
+  <div class="grid-4" style="margin-top:20px">
+    <div class="stat-card"><div class="stat-value">$49</div><div class="stat-label">Flat Monthly Price</div></div>
+    <div class="stat-card"><div class="stat-value">$0</div><div class="stat-label">Setup Fee</div></div>
+    <div class="stat-card"><div class="stat-value">7-day</div><div class="stat-label">Free Trial</div></div>
+    <div class="stat-card"><div class="stat-value">5 min</div><div class="stat-label">Onboarding Time</div></div>
+  </div>
+</div>
+
+<!-- ===== SECTION 2: KILL SHOTS ===== -->
+<div class="section" id="section-1">
+  <div class="section-header">
+    <div class="section-title">Kill Shot <span>Analysis</span></div>
+    <div class="section-desc">Exploit every competitor weakness with precision messaging</div>
+  </div>
+  <div class="grid-2" id="killshots-grid"></div>
+</div>
+
+<!-- ===== SECTION 3: TIMELINE ===== -->
+<div class="section" id="section-2">
+  <div class="section-header">
+    <div class="section-title">Feature Gap <span>Timeline</span></div>
+    <div class="section-desc">Roadmap of competitive gap closures by quarter</div>
+  </div>
+  <div class="card">
+    <div class="timeline-wrapper">
+      <div class="timeline-grid" id="timeline-grid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SECTION 4: FUNNEL ===== -->
+<div class="section" id="section-3">
+  <div class="section-header">
+    <div class="section-title">Rep Acquisition <span>Funnel</span></div>
+    <div class="section-desc">Click any stage to see friction points and solutions</div>
+  </div>
+  <div class="grid-2" style="align-items:start">
+    <div class="funnel-container" id="funnel-container"></div>
+    <div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Funnel Math</div>
+        <canvas id="funnelChart" height="200"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-title">Channel Mix</div>
+        <canvas id="channelChart" height="180"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== SECTION 5: MOAT ===== -->
+<div class="section" id="section-4">
+  <div class="section-header">
+    <div class="section-title">Competitive <span>Moat</span> Score</div>
+    <div class="section-desc">How long would it take a competitor to replicate each advantage?</div>
+  </div>
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Replication Difficulty</div>
+      <div id="moat-bars"></div>
+    </div>
+    <div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Moat Radar</div>
+        <canvas id="moatChart" height="260"></canvas>
+      </div>
+      <div class="card">
+        <div style="display:flex;gap:16px;align-items:center;justify-content:center;padding:8px 0">
+          <div>
+            <div class="difficulty-score">8.4</div>
+            <div class="difficulty-label">Overall Moat Score</div>
+          </div>
+          <div style="width:1px;height:60px;background:var(--border)"></div>
+          <div>
+            <div class="difficulty-score" style="color:var(--yellow)">18mo</div>
+            <div class="difficulty-label">Avg Replication Time</div>
+          </div>
+          <div style="width:1px;height:60px;background:var(--border)"></div>
+          <div>
+            <div class="difficulty-score" style="color:var(--blue)">$2M+</div>
+            <div class="difficulty-label">Est. Build Cost</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== DATA =====
+const competitors = [
+  { name:'FirstKnock', price:49, intel:9.2, ease:9.0, depth:8.5, color:'#00F5A0', size:28, note:'3-Step Validation Pipeline · Zero false positives · $0 setup', isFK:true },
+  { name:'SalesRabbit', price:59, intel:5.5, ease:5.0, depth:7.5, color:'#FF6B6B', size:22, note:'$399 setup fee · Enterprise-focused · 60+ integrations' },
+  { name:'SPOTIO', price:84, intel:5.0, ease:4.5, depth:7.0, color:'#4D9FFF', size:20, note:'Opaque pricing · No free trial · Complex for solo reps' },
+  { name:'Knockio', price:20, intel:3.0, ease:7.5, depth:3.5, color:'#FFD93D', size:16, note:'No data validation · Basic routes · No GPS proof' },
+  { name:'Badger Maps', price:58, intel:3.5, ease:6.0, depth:5.0, color:'#A855F6', size:18, note:'Not D2D-specific · No sold-home data · No canvassing workflow' },
+  { name:'D2D CRM', price:30, intel:2.5, ease:6.5, depth:3.0, color:'#6B7280', size:14, note:'Basic features · Limited data · No validation pipeline' },
+];
+
+const killShots = [
+  {
+    name:'SalesRabbit', color:'#FF6B6B', price:'$39–59/mo + $399 setup',
+    steal:'~15% of base',
+    weakness:'$399 setup fee + complex enterprise onboarding kills individual rep adoption before they ever knock a door.',
+    feature:'Zero setup fee · 7-day free trial · 5-minute onboarding · No credit card required',
+    messaging:'"SalesRabbit charges you $399 before you knock a single door. FirstKnock charges $0 to start — and you\'re knocking in 5 minutes."',
+    reps:'~45,000 reps',
+    angle:'Cost Shock'
+  },
+  {
+    name:'SPOTIO', color:'#4D9FFF', price:'$39–129/mo (opaque)',
+    steal:'~12% of base',
+    weakness:'Pricing opacity creates massive friction. Reps can\'t self-serve — they have to talk to sales just to know the price.',
+    feature:'Transparent $49/mo flat · Instant self-serve signup · No sales call required',
+    messaging:'"SPOTIO won\'t tell you the price until you talk to their sales team. FirstKnock is $49/month. Period. No surprises."',
+    reps:'~28,000 reps',
+    angle:'Transparency Play'
+  },
+  {
+    name:'Knockio', color:'#FFD93D', price:'~$20/mo',
+    steal:'~40% of base',
+    weakness:'No real data validation pipeline — reps are knocking on bad leads. No GPS proof, no manager command center, no real intelligence.',
+    feature:'3-Step Validation Pipeline · GPS proof-of-visit · H3 spatial indexing · Manager command center',
+    messaging:'"Knockio gives you a list. FirstKnock gives you verified sold-home intelligence. Stop knocking on dead leads."',
+    reps:'~18,000 reps',
+    angle:'Data Quality'
+  },
+  {
+    name:'Badger Maps', color:'#A855F6', price:'~$58/mo',
+    steal:'~20% of D2D segment',
+    weakness:'Built for B2B field sales, not D2D residential. No sold-home data, no canvassing workflow, no double-knock prevention.',
+    feature:'D2D-native workflow · Sold-home data · Real-time double-knock prevention · Canvassing-first UX',
+    messaging:'"Badger Maps was built for B2B reps selling to businesses. FirstKnock was built for you — knocking residential doors."',
+    reps:'~12,000 D2D reps',
+    angle:'Vertical Fit'
+  }
+];
+
+const timelineData = [
+  { category:'Data', color:'#00F5A0', features:[
+    { phase:'now', text:'3-Step Validation Pipeline', closes:'Knockio gap' },
+    { phase:'now', text:'RentCast + BatchData integration', closes:'All competitors' },
+    { phase:'q2', text:'Predictive lead scoring (ML)', closes:'SalesRabbit gap' },
+    { phase:'q3', text:'Permit data integration', closes:'New moat' },
+    { phase:'q4', text:'Neighborhood trend AI', closes:'New moat' },
+  ]},
+  { category:'Route', color:'#4D9FFF', features:[
+    { phase:'now', text:'2-opt TSP route optimizer', closes:'Knockio gap' },
+    { phase:'now', text:'Street sweep pattern', closes:'Knockio gap' },
+    { phase:'q2', text:'Multi-rep territory splitting', closes:'SalesRabbit gap' },
+    { phase:'q3', text:'Traffic-aware routing', closes:'Badger Maps gap' },
+    { phase:'q4', text:'AI route auto-generation', closes:'All competitors' },
+  ]},
+  { category:'AI', color:'#A855F6', features:[
+    { phase:'q2', text:'AI coaching tips per rep', closes:'SalesRabbit gap' },
+    { phase:'q2', text:'Appointment forecast model', closes:'SPOTIO gap' },
+    { phase:'q3', text:'Knock time optimizer AI', closes:'New moat' },
+    { phase:'q4', text:'Objection handler AI', closes:'New moat' },
+  ]},
+  { category:'Rep XP', color:'#FFD93D', features:[
+    { phase:'now', text:'Offline-first architecture', closes:'All competitors' },
+    { phase:'now', text:'GPS proof-of-visit', closes:'Knockio gap' },
+    { phase:'q2', text:'Earnings tracker + streaks', closes:'Retention moat' },
+    { phase:'q3', text:'Rep leaderboard gamification', closes:'Retention moat' },
+    { phase:'q4', text:'AR door-finder overlay', closes:'New moat' },
+  ]},
+  { category:'Manager', color:'#FF6B6B', features:[
+    { phase:'now', text:'Command center dashboard', closes:'Knockio gap' },
+    { phase:'now', text:'Real-time double-knock prevention', closes:'All competitors' },
+    { phase:'q2', text:'Auto-route dispatch (Uber-style)', closes:'SalesRabbit gap' },
+    { phase:'q3', text:'Territory heat intelligence', closes:'SPOTIO gap' },
+    { phase:'q4', text:'Multi-market manager view', closes:'Enterprise gap' },
+  ]},
+  { category:'Integrations', color:'#6B7280', features:[
+    { phase:'q2', text:'Zapier integration', closes:'SalesRabbit gap' },
+    { phase:'q3', text:'CRM sync (HubSpot/Salesforce)', closes:'SalesRabbit gap' },
+    { phase:'q3', text:'Slack/Teams notifications', closes:'SPOTIO gap' },
+    { phase:'q4', text:'Native iOS/Android apps', closes:'All competitors' },
+  ]},
+];
+
+const funnelStages = [
+  { name:'Discovery', rate:'100%', color:'#1a3a2a', border:'#00F5A0', width:'100%',
+    friction:['Crowded D2D tool market','Low brand awareness','Reps trust peer recommendations'],
+    solution:['Reddit D2D community presence','YouTube "how to knock more doors" SEO','Referral code system drives word-of-mouth'],
+    channels:'Reddit · YouTube · Google · Word of mouth' },
+  { name:'Landing', rate:'38%', color:'#1a2a3a', border:'#4D9FFF', width:'90%',
+    friction:['Skepticism about data quality','Price comparison with Knockio ($20)','Fear of another tool that doesn\'t work'],
+    solution:['No setup fee removes risk barrier','7-day free trial, no credit card','"Zero false positives" headline claim'],
+    channels:'Landing page · Competitor comparison page' },
+  { name:'Activation', rate:'71%', color:'#2a1a3a', border:'#A855F6', width:'78%',
+    friction:['First route generation confusion','Territory setup friction','Mobile app install barrier'],
+    solution:['5-minute onboarding wizard','ZIP code auto-suggest','PWA install prompt on first visit'],
+    channels:'In-app onboarding · Tutorial page' },
+  { name:'Conversion', rate:'52%', color:'#3a2a1a', border:'#FFD93D', width:'64%',
+    friction:['50-knock free limit feels low','Credit card entry friction','Comparing to Knockio price'],
+    solution:['Show ROI calculator at upgrade gate','Stripe one-click checkout','"$29 more than Knockio, infinite better data"'],
+    channels:'Upgrade gate · Email sequence' },
+  { name:'Retention', rate:'84%', color:'#1a2a1a', border:'#00C97F', width:'50%',
+    friction:['Seasonal D2D slowdowns','Rep job changes','Team manager churn'],
+    solution:['Earnings tracker shows ROI','Streak system builds habit','Team features create stickiness'],
+    channels:'In-app · Email · Push notifications' },
+  { name:'Referral', rate:'31%', color:'#2a1a1a', border:'#FF6B6B', width:'38%',
+    friction:['Reps forget to share','No incentive to refer','Invite code friction'],
+    solution:['Referral credit ($10/mo per referral)','One-tap share from rep home screen','Auto-prompt after first sale logged'],
+    channels:'In-app referral · Invite codes' },
+];
+
+const moatItems = [
+  { name:'3-Step Property Validation Pipeline', months:24, score:9.5, color:'#00F5A0',
+    tags:['Dual API integration','Heuristic scoring engine','BatchData verification'],
+    detail:'Requires RentCast + BatchData contracts, custom scoring engine, and months of calibration data.' },
+  { name:'GPS Proof-of-Visit System', months:8, score:6.5, color:'#4D9FFF',
+    tags:['Geolocation API','Accuracy validation','Tamper-proof logging'],
+    detail:'Technically replicable but requires careful UX design and legal framework for proof validity.' },
+  { name:'H3 Spatial Indexing (Uber)', months:12, score:7.8, color:'#A855F6',
+    tags:['H3 hex grid','Resolution 9 indexing','Spatial deduplication'],
+    detail:'Open-source H3 library but integration into property pipeline requires significant engineering.' },
+  { name:'Real-Time Double-Knock Prevention', months:10, score:7.2, color:'#FFD93D',
+    tags:['WebSocket sync','Conflict resolution','Offline queue merge'],
+    detail:'Requires real-time WebSocket infrastructure + offline-first conflict resolution logic.' },
+  { name:'Offline-First Architecture', months:14, score:8.1, color:'#FF6B6B',
+    tags:['IndexedDB caching','Sync queue','Conflict-free merges'],
+    detail:'Full offline-first with sync queue and conflict resolution is a significant engineering investment.' },
+];
+
+// ===== CHART INSTANCES =====
+let positionChart, funnelChart, channelChart, moatChart;
+let currentView = 1;
+
+// ===== TAB NAVIGATION =====
+function showTab(idx) {
+  document.querySelectorAll('.section').forEach((s,i) => s.classList.toggle('active', i===idx));
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===idx));
+  if(idx===0 && !positionChart) initPositionChart();
+  if(idx===3 && !funnelChart) initFunnelCharts();
+  if(idx===4 && !moatChart) { initMoatChart(); animateMoatBars(); }
+}
+
+// ===== SECTION 1: POSITION CHART =====
+function initPositionChart() {
+  const ctx = document.getElementById('positionChart').getContext('2d');
+  const data = buildChartData(1);
+  positionChart = new Chart(ctx, {
+    type:'bubble',
+    data: data,
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: {
+        legend:{ display:false },
+        tooltip:{ enabled:false }
+      },
+      scales: {
+        x: {
+          title:{ display:true, text:'Price (Low → High)', color:'#6B7280', font:{size:12,weight:'600'} },
+          min:0, max:120,
+          grid:{ color:'rgba(255,255,255,0.04)' },
+          ticks:{ color:'#6B7280', callback: v => '$'+v }
+        },
+        y: {
+          title:{ display:true, text:'Data Intelligence (Low → High)', color:'#6B7280', font:{size:12,weight:'600'} },
+          min:0, max:10,
+          grid:{ color:'rgba(255,255,255,0.04)' },
+          ticks:{ color:'#6B7280' }
+        }
+      },
+      onHover: (e, els) => {
+        if(els.length) showTooltip(e, els[0].datasetIndex);
+        else hideTooltip();
+      }
+    }
+  });
+  addFKPulse();
+}
+
+function buildChartData(view) {
+  return {
+    datasets: competitors.map(c => ({
+      label: c.name,
+      data: [{ x: view===1 ? c.price : c.ease*12, y: view===1 ? c.intel : c.depth, r: c.size }],
+      backgroundColor: c.isFK ? 'rgba(0,245,160,0.3)' : c.color+'33',
+      borderColor: c.color,
+      borderWidth: c.isFK ? 3 : 1.5,
+      hoverBorderWidth: 3,
+    }))
+  };
+}
+
+function switchView(v) {
+  currentView = v;
+  document.getElementById('view1-btn').classList.toggle('active', v===1);
+  document.getElementById('view2-btn').classList.toggle('active', v===2);
+  if(positionChart) {
+    positionChart.data = buildChartData(v);
+    positionChart.options.scales.x.title.text = v===1 ? 'Price (Low → High)' : 'Ease of Use (Low → High)';
+    positionChart.options.scales.y.title.text = v===1 ? 'Data Intelligence (Low → High)' : 'Feature Depth (Low → High)';
+    positionChart.options.scales.x.ticks.callback = v===1 ? val=>'$'+val : val=>val;
+    positionChart.update('active');
+  }
+}
+
+function addFKPulse() {
+  const canvas = document.getElementById('positionChart');
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    let closest = null, minDist = Infinity;
+    if(positionChart) {
+      positionChart.data.datasets.forEach((ds, i) => {
+        const meta = positionChart.getDatasetMeta(i);
+        if(meta.data[0]) {
+          const px = meta.data[0].x, py = meta.data[0].y;
+          const dist = Math.sqrt((x-px)**2+(y-py)**2);
+          if(dist < minDist) { minDist = dist; closest = i; }
+        }
+      });
+      if(minDist < 30) showTooltip(e, closest);
+      else hideTooltip();
+    }
+  });
+  canvas.addEventListener('mouseleave', hideTooltip);
+}
+
+function showTooltip(e, idx) {
+  const c = competitors[idx];
+  const tt = document.getElementById('tooltip');
+  document.getElementById('tt-name').textContent = c.name + (c.isFK ? ' ⚡' : '');
+  document.getElementById('tt-price').textContent = '$'+c.price+'/mo';
+  document.getElementById('tt-intel').textContent = c.intel+'/10';
+  document.getElementById('tt-ease').textContent = c.ease+'/10';
+  document.getElementById('tt-depth').textContent = c.depth+'/10';
+  document.getElementById('tt-note').textContent = c.note;
+  tt.style.left = (e.clientX+16)+'px';
+  tt.style.top = (e.clientY-10)+'px';
+  tt.classList.add('show');
+}
+function hideTooltip() { document.getElementById('tooltip').classList.remove('show'); }
+
+// ===== SECTION 2: KILL SHOTS =====
+function buildKillShots() {
+  const grid = document.getElementById('killshots-grid');
+  grid.innerHTML = killShots.map(k => `
+    <div class="kill-card">
+      <div class="kill-card-header">
+        <div>
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Competitor</div>
+          <div class="competitor-name" style="color:${k.color}">${k.name}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px">${k.price}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="steal-badge">${k.steal}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">${k.reps}</div>
+          <div style="margin-top:6px"><span class="badge badge-yellow">🎯 ${k.angle}</span></div>
+        </div>
+      </div>
+      <div class="kill-section">
+        <div class="badge badge-red">💀 Their Weakness</div>
+        <div class="kill-value">${k.weakness}</div>
+      </div>
+      <div class="kill-section">
+        <div class="badge badge-green">⚡ FK Exploit</div>
+        <div class="kill-value">${k.feature}</div>
+      </div>
+      <div class="kill-section">
+        <div class="kill-label">Messaging Angle</div>
+        <div class="messaging-box">${k.messaging}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ===== SECTION 3: TIMELINE =====
+function buildTimeline() {
+  const grid = document.getElementById('timeline-grid');
+  const header = `<div class="timeline-header">
+    <div></div>
+    <div class="timeline-col-header col-now">✅ Now (Live)</div>
+    <div class="timeline-col-header col-q2">Q2 2025</div>
+    <div class="timeline-col-header col-q3">Q3 2025</div>
+    <div class="timeline-col-header col-q4">Q4 2025</div>
+  </div>`;
+  
+  const rows = timelineData.map(cat => {
+    const phases = ['now','q2','q3','q4'];
+    const cells = phases.map(p => {
+      const feats = cat.features.filter(f=>f.phase===p);
+      return `<div class="timeline-cell">${feats.map(f=>`
+        <div class="feature-bar bar-${p}" title="Closes: ${f.closes}">
+          ${f.text}
+          <div class="closes-badge">→ closes ${f.closes}</div>
+        </div>`).join('')}</div>`;
+    }).join('');
+    return `<div class="timeline-row">
+      <div class="timeline-category">
+        <div class="cat-dot" style="background:${cat.color}"></div>
+        ${cat.category}
+      </div>
+      ${cells}
+    </div>`;
+  }).join('');
+  
+  grid.innerHTML = header + rows;
+}
+
+// ===== SECTION 4: FUNNEL =====
+function buildFunnel() {
+  const container = document.getElementById('funnel-container');
+  container.innerHTML = funnelStages.map((s,i) => `
+    <div class="funnel-stage">
+      <div class="funnel-bar" style="background:${s.color};border:1px solid ${s.border};width:${s.width}" onclick="toggleFunnelDetail(${i})">
+        <div>
+          <div class="funnel-stage-name">${s.name}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.5);margin-top:2px">${s.channels}</div>
+        </div>
+        <div class="funnel-rate">${s.rate}</div>
+      </div>
+      <div class="funnel-detail" id="funnel-detail-${i}">
+        <div class="funnel-detail-grid">
+          <div>
+            <div class="badge badge-red" style="margin-bottom:8px">⚠️ Friction Points</div>
+            ${s.friction.map(f=>`<div class="friction-item"><div class="friction-dot" style="background:var(--red)"></div>${f}</div>`).join('')}
+          </div>
+          <div>
+            <div class="badge badge-green" style="margin-bottom:8px">✅ FK Solution</div>
+            ${s.solution.map(sol=>`<div class="friction-item"><div class="friction-dot" style="background:var(--green)"></div>${sol}</div>`).join('')}
+          </div>
+        </div>
+      </div>
+      ${i < funnelStages.length-1 ? '<div class="funnel-connector"></div>' : ''}
+    </div>
+  `).join('');
+}
+
+function toggleFunnelDetail(i) {
+  const el = document.getElementById('funnel-detail-'+i);
+  el.classList.toggle('open');
+}
+
+function initFunnelCharts() {
+  const ctx1 = document.getElementById('funnelChart').getContext('2d');
+  funnelChart = new Chart(ctx1, {
+    type:'bar',
+    data:{
+      labels: funnelStages.map(s=>s.name),
+      datasets:[{
+        label:'Conversion %',
+        data: funnelStages.map(s=>parseInt(s.rate)),
+        backgroundColor: ['#00F5A033','#4D9FFF33','#A855F633','#FFD93D33','#00C97F33','#FF6B6B33'],
+        borderColor: ['#00F5A0','#4D9FFF','#A855F6','#FFD93D','#00C97F','#FF6B6B'],
+        borderWidth:2, borderRadius:6,
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales:{
+        x:{ grid:{color:'rgba(255,255,255,0.04)'}, ticks:{color:'#6B7280',font:{size:10}} },
+        y:{ grid:{color:'rgba(255,255,255,0.04)'}, ticks:{color:'#6B7280',callback:v=>v+'%'}, max:110 }
+      }
+    }
+  });
+
+  const ctx2 = document.getElementById('channelChart').getContext('2d');
+  channelChart = new Chart(ctx2, {
+    type:'doughnut',
+    data:{
+      labels:['Reddit/D2D Groups','Word of Mouth','YouTube SEO','Google Search','Direct/Other'],
+      datasets:[{
+        data:[32,28,18,14,8],
+        backgroundColor:['#00F5A033','#4D9FFF33','#A855F633','#FFD93D33','#6B728033'],
+        borderColor:['#00F5A0','#4D9FFF','#A855F6','#FFD93D','#6B7280'],
+        borderWidth:2,
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ position:'right', labels:{ color:'#6B7280', font:{size:11}, boxWidth:12 } }
+      }
+    }
+  });
+}
+
+// ===== SECTION 5: MOAT =====
+function buildMoatBars() {
+  const container = document.getElementById('moat-bars');
+  container.innerHTML = moatItems.map((m,i) => `
+    <div class="moat-item">
+      <div class="moat-header">
+        <div class="moat-name">${m.name}</div>
+        <div class="moat-months">${m.months} months to replicate</div>
+      </div>
+      <div class="moat-bar-bg">
+        <div class="moat-bar-fill" id="moat-bar-${i}" style="width:0%;background:linear-gradient(90deg,${m.color}88,${m.color})"></div>
+      </div>
+      <div class="moat-tags">
+        ${m.tags.map(t=>`<span class="moat-tag" style="background:${m.color}15;color:${m.color};border:1px solid ${m.color}30">${t}</span>`).join('')}
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">${m.detail}</div>
+    </div>
+  `).join('');
+}
+
+function animateMoatBars() {
+  moatItems.forEach((m,i) => {
+    setTimeout(() => {
+      const bar = document.getElementById('moat-bar-'+i);
+      if(bar) bar.style.width = (m.score*10)+'%';
+    }, i*150);
+  });
+}
+
+function initMoatChart() {
+  const ctx = document.getElementById('moatChart').getContext('2d');
+  moatChart = new Chart(ctx, {
+    type:'radar',
+    data:{
+      labels: moatItems.map(m => m.name.split(' ').slice(0,3).join(' ')),
+      datasets:[{
+        label:'Moat Strength',
+        data: moatItems.map(m=>m.score),
+        backgroundColor:'rgba(0,245,160,0.1)',
+        borderColor:'#00F5A0',
+        borderWidth:2,
+        pointBackgroundColor:'#00F5A0',
+        pointBorderColor:'#00F5A0',
+        pointRadius:4,
+      },{
+        label:'Competitor Best',
+        data:[4.5,5.5,3.0,3.5,2.5],
+        backgroundColor:'rgba(255,77,109,0.05)',
+        borderColor:'#FF4D6D',
+        borderWidth:1.5,
+        borderDash:[4,4],
+        pointBackgroundColor:'#FF4D6D',
+        pointRadius:3,
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ labels:{ color:'#6B7280', font:{size:11} } } },
+      scales:{
+        r:{
+          min:0, max:10,
+          grid:{ color:'rgba(255,255,255,0.06)' },
+          angleLines:{ color:'rgba(255,255,255,0.06)' },
+          ticks:{ display:false },
+          pointLabels:{ color:'#6B7280', font:{size:10} }
+        }
+      }
+    }
+  });
+}
+
+// ===== INIT =====
+buildKillShots();
+buildTimeline();
+buildFunnel();
+buildMoatBars();
+initPositionChart();
+</script>
+</body>
+</html>

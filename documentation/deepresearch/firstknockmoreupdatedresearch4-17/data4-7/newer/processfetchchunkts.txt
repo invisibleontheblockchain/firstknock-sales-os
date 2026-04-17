@@ -1,0 +1,1102 @@
+// IMPORTANT: statusCategory and soldPrice do NOT exist in RentCast API. Do not reference them.
+
+// ============================================================
+// processFetchChunk.ts
+// FirstKnock Data Pipeline — Production-Ready Implementation
+// RentCast API: GET https://api.rentcast.io/v1/properties
+// ============================================================
+
+// ---------------------------------------------------------------------------
+// Types & Interfaces
+// ---------------------------------------------------------------------------
+
+interface FetchJobConfig {
+  lat: number;
+  lng: number;
+  targetRadiusMiles: number; // ~9.77 for 300 sq mi
+  subCircleRadius: number;   // default: 5
+  gridLayout: 'hex_4x4' | 'grid_3x3';
+  zipCodes?: string[];       // alternative to lat/lng
+  saleDateRange?: number;    // ALWAYS 180 — never reduce
+  marketType?: 'dense_suburban' | 'sparse_rural' | 'default';
+  areaId?: string;
+}
+
+interface SubCircle {
+  lat: number;
+  lng: number;
+  radius: number;
+  chunkId: string;
+}
+
+interface PropertyRecord {
+  id?: string;
+  formattedAddress: string;
+  latitude?: number;
+  longitude?: number;
+  lastSaleDate?: string;
+  lastSalePrice?: number;
+  owner?: { names?: string[]; type?: string };
+  ownerOccupied?: boolean | null;
+  propertyType?: string;
+  lastSeenDate?: string;
+}
+
+interface FailedChunkRecord {
+  chunkId: string;
+  centerLat: number;
+  centerLng: number;
+  radius: number;
+  errorCode: number | string;
+  errorMessage: string;
+  timestamp: string;
+  retryCount: number;
+  retryExhausted: boolean;
+}
+
+interface JobMetrics {
+  total_fetched: number;
+  total_unique: number;
+  total_inserted: number;
+  total_api_calls: number;
+  total_chunks: number;
+  completed_chunks: number;
+  failed_chunks: number;
+  duplicate_count: number;
+  job_start_time: string;
+  job_end_time: string;
+  job_duration_ms: number;
+  failed_chunk_log: FailedChunkRecord[];
+}
+
+interface CoverageVerification {
+  expected_bbox: BoundingBox;
+  actual_bbox: BoundingBox;
+  coverage_pct: number;
+  empty_cells: EmptyCell[];
+  flagged_for_review: boolean;
+}
+
+interface BoundingBox {
+  min_lat: number;
+  max_lat: number;
+  min_lng: number;
+  max_lng: number;
+}
+
+interface EmptyCell {
+  row: number;
+  col: number;
+  bbox: BoundingBox;
+}
+
+interface ValidationResult {
+  valid: boolean;
+  action: 'insert' | 'discard' | 'investor_workflow' | 'flag_manual';
+  reason?: string;
+}
+
+/** Minimal database interface expected by this module */
+interface Database {
+  query(sql: string, params?: unknown[]): Promise<{ rows: unknown[] }>;
+}
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** HARDCODED — never reduce this value */
+const SALE_DATE_RANGE = 180;
+
+const DEFAULT_CONFIG = {
+  subCircleRadius: 5,
+  gridLayout: 'hex_4x4' as const,
+  saleDateRange: 180,
+};
+
+const MARKET_PRESETS: Record<
+  NonNullable<FetchJobConfig['marketType']>,
+  { subCircleRadius: number; gridLayout: 'hex_4x4' | 'grid_3x3' }
+> = {
+  dense_suburban: { subCircleRadius: 5, gridLayout: 'hex_4x4' },
+  sparse_rural:   { subCircleRadius: 6, gridLayout: 'grid_3x3' },
+  default:        { subCircleRadius: 5, gridLayout: 'hex_4x4' },
+};
+
+const CORPORATE_KEYWORDS = ['LLC', 'TRUST', 'BANK', 'INC', 'HOLDINGS', 'PROPERTIES'];
+const DISCARD_PROPERTY_TYPES = ['Commercial', 'Industrial', 'Vacant Land', 'Agricultural'];
+
+const RENTCAST_API_BASE = 'https://api.rentcast.io/v1/properties';
+const RENTCAST_API_KEY = process.env.RENTCAST_API_KEY ?? '';
+
+// ---------------------------------------------------------------------------
+// Utility
+// ---------------------------------------------------------------------------
+
+/**
+ * Pauses execution for the given number of milliseconds.
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Returns today's date minus `days` days as an ISO date string (YYYY-MM-DD).
+ */
+function daysAgoISO(days: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - days);
+  return d.toISOString().split('T')[0];
+}
+
+// ---------------------------------------------------------------------------
+// Grid Generation
+// ---------------------------------------------------------------------------
+
+/**
+ * Generates a hex-offset 4×4 grid of 16 sub-circles centred on (centerLat, centerLng).
+ * Horizontal spacing: 2r × cos(30°) ≈ 1.732r miles
+ * Vertical spacing:   1.5r miles
+ * Every other row is offset by half the horizontal spacing.
+ */
+function generateHex4x4Grid(
+  centerLat: number,
+  centerLng: number,
+  subCircleRadius: number,
+): SubCircle[] {
+  const circles: SubCircle[] = [];
+
+  const latRadians = (centerLat * Math.PI) / 180;
+  const milesPerDegLat = 69;
+  const milesPerDegLng = 69 * Math.cos(latRadians);
+
+  const hSpacingMiles = 2 * subCircleRadius * Math.cos(Math.PI / 6); // ≈ 1.732r
+  const vSpacingMiles = 1.5 * subCircleRadius;
+
+  const rows = 4;
+  const cols = 4;
+
+  // Centre the grid: offset so the grid is symmetric around the centre point
+  const totalWidthMiles  = (cols - 1) * hSpacingMiles;
+  const totalHeightMiles = (rows - 1) * vSpacingMiles;
+
+  for (let row = 0; row < rows; row++) {
+    const rowOffsetMiles = row % 2 === 1 ? hSpacingMiles / 2 : 0;
+    for (let col = 0; col < cols; col++) {
+      const xMiles = col * hSpacingMiles + rowOffsetMiles - totalWidthMiles / 2;
+      const yMiles = row * vSpacingMiles - totalHeightMiles / 2;
+
+      const lat = centerLat + yMiles / milesPerDegLat;
+      const lng = centerLng + xMiles / milesPerDegLng;
+
+      circles.push({
+        lat,
+        lng,
+        radius: subCircleRadius,
+        chunkId: `hex4x4_r${row}_c${col}`,
+      });
+    }
+  }
+
+  return circles;
+}
+
+/**
+ * Generates a uniform 3×3 grid of 9 sub-circles centred on (centerLat, centerLng).
+ * Spacing: 2r × 0.8 = 1.6r miles (20% overlap between adjacent circles).
+ */
+function generateGrid3x3(
+  centerLat: number,
+  centerLng: number,
+  subCircleRadius: number,
+): SubCircle[] {
+  const circles: SubCircle[] = [];
+
+  const latRadians = (centerLat * Math.PI) / 180;
+  const milesPerDegLat = 69;
+  const milesPerDegLng = 69 * Math.cos(latRadians);
+
+  const spacingMiles = 2 * subCircleRadius * 0.8; // 20% overlap
+
+  const rows = 3;
+  const cols = 3;
+
+  const totalWidthMiles  = (cols - 1) * spacingMiles;
+  const totalHeightMiles = (rows - 1) * spacingMiles;
+
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const xMiles = col * spacingMiles - totalWidthMiles / 2;
+      const yMiles = row * spacingMiles - totalHeightMiles / 2;
+
+      const lat = centerLat + yMiles / milesPerDegLat;
+      const lng = centerLng + xMiles / milesPerDegLng;
+
+      circles.push({
+        lat,
+        lng,
+        radius: subCircleRadius,
+        chunkId: `grid3x3_r${row}_c${col}`,
+      });
+    }
+  }
+
+  return circles;
+}
+
+// ---------------------------------------------------------------------------
+// Per-Chunk Fetch with Pagination
+// ---------------------------------------------------------------------------
+
+interface FetchChunkResult {
+  records: PropertyRecord[];
+  apiCalls: number;
+  failedChunk?: FailedChunkRecord;
+}
+
+/**
+ * Fetches all property records for a single sub-circle, handling full pagination
+ * and HTTP error retry logic.
+ *
+ * Pagination: offset increments by 500 until a page returns fewer than 500 records.
+ * Error handling:
+ *   - 401 → throws Error('HALT_401') — caller must abort the entire job
+ *   - 429 → exponential backoff 5s → 10s → 20s, then marks chunk failed
+ *   - 500 → waits 60s, retries once, then marks chunk failed
+ *   - Network timeout → retries 3× with 5s delay, then marks chunk failed
+ */
+async function fetchChunkWithPagination(
+  circle: SubCircle,
+  apiKey: string,
+): Promise<FetchChunkResult> {
+  const allRecords: PropertyRecord[] = [];
+  let offset = 0;
+  let apiCalls = 0;
+  const limit = 500;
+
+  const buildUrl = (off: number): string =>
+    `${RENTCAST_API_BASE}?latitude=${circle.lat}&longitude=${circle.lng}` +
+    `&radius=${circle.radius}&saleDateRange=${SALE_DATE_RANGE}&limit=${limit}&offset=${off}`;
+
+  const fetchWithRetry = async (url: string): Promise<PropertyRecord[]> => {
+    // 429 backoff schedule
+    const backoffDelays = [5_000, 10_000, 20_000];
+
+    // Network-timeout retry
+    const networkRetries = 3;
+
+    let attempt = 0;
+
+    while (true) {
+      apiCalls++;
+      let response: Response;
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30_000);
+
+        response = await fetch(url, {
+          headers: { 'X-Api-Key': apiKey },
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+      } catch (networkErr: unknown) {
+        // Network / timeout error
+        if (attempt < networkRetries) {
+          attempt++;
+          await sleep(5_000);
+          continue;
+        }
+        // Exhausted network retries
+        throw {
+          type: 'network',
+          message: networkErr instanceof Error ? networkErr.message : String(networkErr),
+        };
+      }
+
+      if (response.ok) {
+        const data = await response.json();
+        return Array.isArray(data) ? (data as PropertyRecord[]) : [];
+      }
+
+      if (response.status === 401) {
+        throw new Error('HALT_401');
+      }
+
+      if (response.status === 429) {
+        const delay = backoffDelays[attempt] ?? 20_000;
+        if (attempt < backoffDelays.length) {
+          await sleep(delay);
+          attempt++;
+          continue;
+        }
+        throw { type: 'rate_limit', code: 429, message: 'Rate limit exceeded after retries' };
+      }
+
+      if (response.status === 500) {
+        if (attempt === 0) {
+          await sleep(60_000);
+          attempt++;
+          continue;
+        }
+        throw { type: 'server_error', code: 500, message: 'Server error after retry' };
+      }
+
+      // Other HTTP errors — do not retry
+      throw { type: 'http_error', code: response.status, message: response.statusText };
+    }
+  };
+
+  try {
+    while (true) {
+      const url = buildUrl(offset);
+      const page = await fetchWithRetry(url);
+
+      allRecords.push(...page);
+
+      if (page.length < limit) break;
+      offset += limit;
+    }
+
+    return { records: allRecords, apiCalls };
+  } catch (err: unknown) {
+    if (err instanceof Error && err.message === 'HALT_401') {
+      throw err; // propagate immediately — caller aborts job
+    }
+
+    const errObj = err as { code?: number | string; message?: string };
+    const failedChunk: FailedChunkRecord = {
+      chunkId: circle.chunkId,
+      centerLat: circle.lat,
+      centerLng: circle.lng,
+      radius: circle.radius,
+      errorCode: errObj.code ?? 'UNKNOWN',
+      errorMessage: errObj.message ?? String(err),
+      timestamp: new Date().toISOString(),
+      retryCount: 3,
+      retryExhausted: true,
+    };
+
+    return { records: allRecords, apiCalls, failedChunk };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Data Quality Validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Validates a single property record and routes it to the appropriate action.
+ *
+ * Rules (in priority order):
+ *  1. Discard if lastSaleDate is null or older than 180 days
+ *  2. Discard if lastSalePrice ≤ 100 (non-arm's-length transfer)
+ *  3. Route to investor_workflow if owner name contains a corporate keyword
+ *  4. Discard if propertyType is in DISCARD_PROPERTY_TYPES
+ *  5. Flag for manual review if ownerOccupied is null
+ *  6. Otherwise: insert
+ */
+function validateRecord(record: PropertyRecord): ValidationResult {
+  // Rule 1 — sale date
+  if (!record.lastSaleDate) {
+    return { valid: false, action: 'discard', reason: 'Missing lastSaleDate' };
+  }
+
+  const saleDate = new Date(record.lastSaleDate);
+  const cutoff = new Date(daysAgoISO(SALE_DATE_RANGE));
+  if (saleDate < cutoff) {
+    return {
+      valid: false,
+      action: 'discard',
+      reason: `lastSaleDate ${record.lastSaleDate} is outside the ${SALE_DATE_RANGE}-day window`,
+    };
+  }
+
+  // Rule 2 — sale price
+  if (record.lastSalePrice !== undefined && record.lastSalePrice <= 100) {
+    return {
+      valid: false,
+      action: 'discard',
+      reason: `lastSalePrice ${record.lastSalePrice} indicates non-arm's-length transfer`,
+    };
+  }
+
+  // Rule 3 — corporate owner
+  if (record.owner?.names && record.owner.names.length > 0) {
+    const upperNames = record.owner.names.map((n) => n.toUpperCase());
+    const isCorporate = CORPORATE_KEYWORDS.some((kw) =>
+      upperNames.some((name) => name.includes(kw)),
+    );
+    if (isCorporate) {
+      return {
+        valid: true,
+        action: 'investor_workflow',
+        reason: 'Corporate owner detected',
+      };
+    }
+  }
+
+  // Rule 4 — property type
+  if (record.propertyType && DISCARD_PROPERTY_TYPES.includes(record.propertyType)) {
+    return {
+      valid: false,
+      action: 'discard',
+      reason: `propertyType '${record.propertyType}' is not eligible`,
+    };
+  }
+
+  // Rule 5 — ownerOccupied unknown
+  if (record.ownerOccupied === null || record.ownerOccupied === undefined) {
+    return {
+      valid: true,
+      action: 'flag_manual',
+      reason: 'ownerOccupied is null — requires manual review',
+    };
+  }
+
+  return { valid: true, action: 'insert' };
+}
+
+// ---------------------------------------------------------------------------
+// Cross-Chunk Deduplication
+// ---------------------------------------------------------------------------
+
+/**
+ * Deduplicates an array of PropertyRecord objects across chunks.
+ *
+ * Key strategy:
+ *  - Primary key: record.id
+ *  - Fallback key: record.formattedAddress (normalised to lower-case trimmed)
+ * On collision: keep the record with the more recent lastSaleDate or lastSeenDate.
+ *
+ * NOTE: Deduplication is intentionally performed ONLY in this merge phase,
+ * never within a single chunk's raw results.
+ */
+function deduplicateRecords(records: PropertyRecord[]): PropertyRecord[] {
+  const map = new Map<string, PropertyRecord>();
+
+  const getKey = (r: PropertyRecord): string =>
+    r.id ?? r.formattedAddress.trim().toLowerCase();
+
+  const getLatestDate = (r: PropertyRecord): Date => {
+    const dates: Date[] = [];
+    if (r.lastSaleDate) dates.push(new Date(r.lastSaleDate));
+    if (r.lastSeenDate) dates.push(new Date(r.lastSeenDate));
+    return dates.length > 0
+      ? dates.reduce((a, b) => (a > b ? a : b))
+      : new Date(0);
+  };
+
+  for (const record of records) {
+    const key = getKey(record);
+    const existing = map.get(key);
+
+    if (!existing) {
+      map.set(key, record);
+    } else {
+      const existingDate = getLatestDate(existing);
+      const incomingDate = getLatestDate(record);
+      if (incomingDate > existingDate) {
+        map.set(key, record);
+      }
+    }
+  }
+
+  return Array.from(map.values());
+}
+
+// ---------------------------------------------------------------------------
+// Coverage Verification
+// ---------------------------------------------------------------------------
+
+/**
+ * Verifies that the returned property records adequately cover the target area.
+ *
+ * - Computes the actual bounding box of all returned coordinates.
+ * - Compares against the expected bounding box derived from config centre + targetRadiusMiles.
+ * - Flags for manual review if coverage < 95%.
+ * - Checks a 10×10 grid for empty cells (cells containing no properties).
+ */
+function verifyCoverage(
+  records: PropertyRecord[],
+  config: FetchJobConfig,
+): CoverageVerification {
+  const latRadians = (config.lat * Math.PI) / 180;
+  const milesPerDegLat = 69;
+  const milesPerDegLng = 69 * Math.cos(latRadians);
+
+  const latDelta = config.targetRadiusMiles / milesPerDegLat;
+  const lngDelta = config.targetRadiusMiles / milesPerDegLng;
+
+  const expected_bbox: BoundingBox = {
+    min_lat: config.lat - latDelta,
+    max_lat: config.lat + latDelta,
+    min_lng: config.lng - lngDelta,
+    max_lng: config.lng + lngDelta,
+  };
+
+  // Actual bounding box from returned records
+  const coordRecords = records.filter(
+    (r) => r.latitude !== undefined && r.longitude !== undefined,
+  );
+
+  let actual_bbox: BoundingBox;
+  if (coordRecords.length === 0) {
+    actual_bbox = { min_lat: 0, max_lat: 0, min_lng: 0, max_lng: 0 };
+  } else {
+    actual_bbox = {
+      min_lat: Math.min(...coordRecords.map((r) => r.latitude!)),
+      max_lat: Math.max(...coordRecords.map((r) => r.latitude!)),
+      min_lng: Math.min(...coordRecords.map((r) => r.longitude!)),
+      max_lng: Math.max(...coordRecords.map((r) => r.longitude!)),
+    };
+  }
+
+  // Coverage percentage: ratio of actual area to expected area
+  const expectedLatSpan = expected_bbox.max_lat - expected_bbox.min_lat;
+  const expectedLngSpan = expected_bbox.max_lng - expected_bbox.min_lng;
+  const actualLatSpan   = Math.min(actual_bbox.max_lat - actual_bbox.min_lat, expectedLatSpan);
+  const actualLngSpan   = Math.min(actual_bbox.max_lng - actual_bbox.min_lng, expectedLngSpan);
+
+  const expectedArea = expectedLatSpan * expectedLngSpan;
+  const actualArea   = actualLatSpan * actualLngSpan;
+  const coverage_pct = expectedArea > 0 ? Math.min((actualArea / expectedArea) * 100, 100) : 0;
+
+  // 10×10 grid empty-cell check
+  const gridSize = 10;
+  const cellLatStep = expectedLatSpan / gridSize;
+  const cellLngStep = expectedLngSpan / gridSize;
+  const empty_cells: EmptyCell[] = [];
+
+  for (let row = 0; row < gridSize; row++) {
+    for (let col = 0; col < gridSize; col++) {
+      const cellBbox: BoundingBox = {
+        min_lat: expected_bbox.min_lat + row * cellLatStep,
+        max_lat: expected_bbox.min_lat + (row + 1) * cellLatStep,
+        min_lng: expected_bbox.min_lng + col * cellLngStep,
+        max_lng: expected_bbox.min_lng + (col + 1) * cellLngStep,
+      };
+
+      const hasRecord = coordRecords.some(
+        (r) =>
+          r.latitude! >= cellBbox.min_lat &&
+          r.latitude! < cellBbox.max_lat &&
+          r.longitude! >= cellBbox.min_lng &&
+          r.longitude! < cellBbox.max_lng,
+      );
+
+      if (!hasRecord) {
+        empty_cells.push({ row, col, bbox: cellBbox });
+      }
+    }
+  }
+
+  return {
+    expected_bbox,
+    actual_bbox,
+    coverage_pct,
+    empty_cells,
+    flagged_for_review: coverage_pct < 95,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Post-Job Invariant Assertions
+// ---------------------------------------------------------------------------
+
+/**
+ * Asserts critical invariants on the completed job metrics.
+ * Throws if any hard invariant is violated; warns on soft invariants.
+ */
+function assertJobInvariants(metrics: JobMetrics): void {
+  if (metrics.total_unique > metrics.total_fetched) {
+    throw new Error(
+      `Invariant violated: total_unique (${metrics.total_unique}) > total_fetched (${metrics.total_fetched}). ` +
+        'Deduplication logic is broken.',
+    );
+  }
+
+  if (metrics.completed_chunks + metrics.failed_chunks !== metrics.total_chunks) {
+    throw new Error(
+      `Invariant violated: completed_chunks (${metrics.completed_chunks}) + ` +
+        `failed_chunks (${metrics.failed_chunks}) !== total_chunks (${metrics.total_chunks}). ` +
+        'Chunk accounting is broken.',
+    );
+  }
+
+  if (metrics.total_fetched === metrics.total_inserted && metrics.total_chunks > 1) {
+    console.warn(
+      '[processFetchChunk] WARNING: total_fetched === total_inserted with multiple chunks. ' +
+        'Cross-chunk deduplication may not be functioning correctly.',
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Database Upsert
+// ---------------------------------------------------------------------------
+
+/**
+ * Upserts a batch of validated property records into the database.
+ * Uses ON CONFLICT (id) DO UPDATE to handle re-runs idempotently.
+ */
+async function upsertRecords(
+  records: PropertyRecord[],
+  db: Database,
+): Promise<number> {
+  if (records.length === 0) return 0;
+
+  let inserted = 0;
+
+  for (const record of records) {
+    await db.query(
+      `INSERT INTO properties (
+         id, formatted_address, latitude, longitude,
+         last_sale_date, last_sale_price,
+         owner_names, owner_type, owner_occupied,
+         property_type, last_seen_date
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       ON CONFLICT (id) DO UPDATE SET
+         formatted_address = EXCLUDED.formatted_address,
+         latitude          = EXCLUDED.latitude,
+         longitude         = EXCLUDED.longitude,
+         last_sale_date    = EXCLUDED.last_sale_date,
+         last_sale_price   = EXCLUDED.last_sale_price,
+         owner_names       = EXCLUDED.owner_names,
+         owner_type        = EXCLUDED.owner_type,
+         owner_occupied    = EXCLUDED.owner_occupied,
+         property_type     = EXCLUDED.property_type,
+         last_seen_date    = EXCLUDED.last_seen_date`,
+      [
+        record.id ?? null,
+        record.formattedAddress,
+        record.latitude ?? null,
+        record.longitude ?? null,
+        record.lastSaleDate ?? null,
+        record.lastSalePrice ?? null,
+        record.owner?.names ? JSON.stringify(record.owner.names) : null,
+        record.owner?.type ?? null,
+        record.ownerOccupied ?? null,
+        record.propertyType ?? null,
+        record.lastSeenDate ?? null,
+      ],
+    );
+    inserted++;
+  }
+
+  return inserted;
+}
+
+/**
+ * Persists job metrics to the job_runs table for audit and monitoring.
+ */
+async function persistJobMetrics(
+  metrics: JobMetrics,
+  config: FetchJobConfig,
+  coverage: CoverageVerification,
+  db: Database,
+): Promise<void> {
+  await db.query(
+    `INSERT INTO job_runs (
+       area_id, job_start_time, job_end_time, job_duration_ms,
+       total_fetched, total_unique, total_inserted,
+       total_api_calls, total_chunks, completed_chunks, failed_chunks,
+       duplicate_count, failed_chunk_log,
+       coverage_pct, flagged_for_review, empty_cell_count
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+    [
+      config.areaId ?? null,
+      metrics.job_start_time,
+      metrics.job_end_time,
+      metrics.job_duration_ms,
+      metrics.total_fetched,
+      metrics.total_unique,
+      metrics.total_inserted,
+      metrics.total_api_calls,
+      metrics.total_chunks,
+      metrics.completed_chunks,
+      metrics.failed_chunks,
+      metrics.duplicate_count,
+      JSON.stringify(metrics.failed_chunk_log),
+      coverage.coverage_pct,
+      coverage.flagged_for_review,
+      coverage.empty_cells.length,
+    ],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Exported Function
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetches property data across a 300 sq mile area using a grid of overlapping sub-circles.
+ * Handles pagination, deduplication, data quality validation, and job metrics.
+ *
+ * Pipeline:
+ *  1. Resolve market preset (if config.marketType provided)
+ *  2. Generate sub-circle grid based on gridLayout
+ *  3. Fetch each sub-circle with full pagination (independent try/catch per chunk)
+ *     - 401 → abort entire job immediately
+ *     - Other errors → log to failed_chunk_log, continue
+ *  4. Cross-chunk deduplication
+ *  5. Data quality validation on each unique record
+ *  6. Upsert valid records to database
+ *  7. Coverage verification
+ *  8. Post-job invariant assertions
+ *  9. Persist job metrics to job_runs table
+ * 10. Return JobMetrics
+ *
+ * @param config - Job configuration including centre coordinates and grid parameters
+ * @param db     - Database connection for upsert operations
+ * @returns JobMetrics with full audit trail
+ */
+export async function processFetchChunk(
+  config: FetchJobConfig,
+  db: Database,
+): Promise<JobMetrics> {
+  const jobStartTime = new Date();
+
+  // Step 1 — resolve market preset
+  const preset = config.marketType ? MARKET_PRESETS[config.marketType] : null;
+  const resolvedConfig: FetchJobConfig = {
+    ...DEFAULT_CONFIG,
+    ...preset,
+    ...config,
+    saleDateRange: SALE_DATE_RANGE, // always 180 — never allow override
+  };
+
+  // Step 2 — generate sub-circle grid
+  const circles: SubCircle[] =
+    resolvedConfig.gridLayout === 'hex_4x4'
+      ? generateHex4x4Grid(resolvedConfig.lat, resolvedConfig.lng, resolvedConfig.subCircleRadius)
+      : generateGrid3x3(resolvedConfig.lat, resolvedConfig.lng, resolvedConfig.subCircleRadius);
+
+  const metrics: JobMetrics = {
+    total_fetched: 0,
+    total_unique: 0,
+    total_inserted: 0,
+    total_api_calls: 0,
+    total_chunks: circles.length,
+    completed_chunks: 0,
+    failed_chunks: 0,
+    duplicate_count: 0,
+    job_start_time: jobStartTime.toISOString(),
+    job_end_time: '',
+    job_duration_ms: 0,
+    failed_chunk_log: [],
+  };
+
+  // Step 3 — fetch each sub-circle
+  const allRawRecords: PropertyRecord[] = [];
+
+  for (const circle of circles) {
+    try {
+      const result = await fetchChunkWithPagination(circle, RENTCAST_API_KEY);
+      metrics.total_api_calls += result.apiCalls;
+
+      if (result.failedChunk) {
+        metrics.failed_chunks++;
+        metrics.failed_chunk_log.push(result.failedChunk);
+      } else {
+        metrics.completed_chunks++;
+        allRawRecords.push(...result.records);
+        metrics.total_fetched += result.records.length;
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === 'HALT_401') {
+        console.error('[processFetchChunk] 401 Unauthorized — aborting job immediately.');
+        // Finalise metrics before throwing
+        const now = new Date();
+        metrics.job_end_time = now.toISOString();
+        metrics.job_duration_ms = now.getTime() - jobStartTime.getTime();
+        throw err;
+      }
+      // Unexpected error — treat as failed chunk
+      metrics.failed_chunks++;
+      metrics.failed_chunk_log.push({
+        chunkId: circle.chunkId,
+        centerLat: circle.lat,
+        centerLng: circle.lng,
+        radius: circle.radius,
+        errorCode: 'UNEXPECTED',
+        errorMessage: err instanceof Error ? err.message : String(err),
+        timestamp: new Date().toISOString(),
+        retryCount: 0,
+        retryExhausted: true,
+      });
+    }
+  }
+
+  // Step 4 — cross-chunk deduplication
+  const uniqueRecords = deduplicateRecords(allRawRecords);
+  metrics.total_unique = uniqueRecords.length;
+  metrics.duplicate_count = metrics.total_fetched - metrics.total_unique;
+
+  // Step 5 — data quality validation
+  const insertRecords: PropertyRecord[]          = [];
+  const investorWorkflowRecords: PropertyRecord[] = [];
+  const flagManualRecords: PropertyRecord[]       = [];
+
+  for (const record of uniqueRecords) {
+    const validation = validateRecord(record);
+    if (!validation.valid) continue; // discard
+
+    switch (validation.action) {
+      case 'insert':
+        insertRecords.push(record);
+        break;
+      case 'investor_workflow':
+        investorWorkflowRecords.push(record);
+        break;
+      case 'flag_manual':
+        flagManualRecords.push(record);
+        break;
+    }
+  }
+
+  // Step 6 — upsert valid records
+  // Insert standard records + investor workflow records + flagged records
+  const recordsToUpsert = [...insertRecords, ...investorWorkflowRecords, ...flagManualRecords];
+  metrics.total_inserted = await upsertRecords(recordsToUpsert, db);
+
+  // Step 7 — coverage verification
+  const coverage = verifyCoverage(uniqueRecords, resolvedConfig);
+  if (coverage.flagged_for_review) {
+    console.warn(
+      `[processFetchChunk] Coverage ${coverage.coverage_pct.toFixed(1)}% < 95% — flagged for review. ` +
+        `Empty cells: ${coverage.empty_cells.length}`,
+    );
+  }
+
+  // Finalise timing
+  const jobEndTime = new Date();
+  metrics.job_end_time = jobEndTime.toISOString();
+  metrics.job_duration_ms = jobEndTime.getTime() - jobStartTime.getTime();
+
+  // Step 8 — post-job invariant assertions
+  assertJobInvariants(metrics);
+
+  // Step 9 — persist job metrics
+  await persistJobMetrics(metrics, resolvedConfig, coverage, db);
+
+  return metrics;
+}
+
+// ---------------------------------------------------------------------------
+// ZIP-Code Variant
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetches property data by ZIP code instead of lat/lng coordinates.
+ * Uses the same pagination, deduplication, and validation logic as processFetchChunk.
+ *
+ * Each ZIP code is treated as an independent fetch unit. Results are merged,
+ * deduplicated, validated, and upserted using the same pipeline.
+ *
+ * @param zipCodes - Array of ZIP code strings to fetch
+ * @param db       - Database connection for upsert operations
+ * @param config   - Optional partial job configuration overrides
+ * @returns JobMetrics with full audit trail
+ */
+export async function processFetchChunkByZip(
+  zipCodes: string[],
+  db: Database,
+  config?: Partial<FetchJobConfig>,
+): Promise<JobMetrics> {
+  const jobStartTime = new Date();
+
+  const resolvedConfig: FetchJobConfig = {
+    lat: 0,
+    lng: 0,
+    targetRadiusMiles: 9.77,
+    subCircleRadius: DEFAULT_CONFIG.subCircleRadius,
+    gridLayout: DEFAULT_CONFIG.gridLayout,
+    saleDateRange: SALE_DATE_RANGE,
+    ...config,
+    zipCodes,
+  };
+
+  const metrics: JobMetrics = {
+    total_fetched: 0,
+    total_unique: 0,
+    total_inserted: 0,
+    total_api_calls: 0,
+    total_chunks: zipCodes.length,
+    completed_chunks: 0,
+    failed_chunks: 0,
+    duplicate_count: 0,
+    job_start_time: jobStartTime.toISOString(),
+    job_end_time: '',
+    job_duration_ms: 0,
+    failed_chunk_log: [],
+  };
+
+  const allRawRecords: PropertyRecord[] = [];
+
+  for (let i = 0; i < zipCodes.length; i++) {
+    const zip = zipCodes[i];
+    const chunkId = `zip_${zip}`;
+    let offset = 0;
+    const limit = 500;
+    let apiCalls = 0;
+    let chunkFailed = false;
+    let failedChunkRecord: FailedChunkRecord | undefined;
+
+    const buildZipUrl = (off: number): string =>
+      `${RENTCAST_API_BASE}?zipCode=${zip}&saleDateRange=${SALE_DATE_RANGE}&limit=${limit}&offset=${off}`;
+
+    try {
+      while (true) {
+        const url = buildZipUrl(offset);
+        apiCalls++;
+        metrics.total_api_calls++;
+
+        let response: Response;
+        let networkAttempt = 0;
+
+        while (true) {
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30_000);
+            response = await fetch(url, {
+              headers: { 'X-Api-Key': RENTCAST_API_KEY },
+              signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+            break;
+          } catch {
+            if (networkAttempt < 3) {
+              networkAttempt++;
+              await sleep(5_000);
+              metrics.total_api_calls++;
+              continue;
+            }
+            throw { type: 'network', code: 'NETWORK_TIMEOUT', message: 'Network timeout after retries' };
+          }
+        }
+
+        if (response.status === 401) {
+          throw new Error('HALT_401');
+        }
+
+        if (response.status === 429) {
+          const backoffs = [5_000, 10_000, 20_000];
+          let rateLimitAttempt = 0;
+          let retryResponse: Response | null = null;
+
+          while (rateLimitAttempt < backoffs.length) {
+            await sleep(backoffs[rateLimitAttempt]);
+            rateLimitAttempt++;
+            metrics.total_api_calls++;
+            try {
+              retryResponse = await fetch(url, { headers: { 'X-Api-Key': RENTCAST_API_KEY } });
+              if (retryResponse.ok) break;
+              if (retryResponse.status !== 429) break;
+            } catch {
+              // continue retrying
+            }
+          }
+
+          if (!retryResponse || !retryResponse.ok) {
+            throw { type: 'rate_limit', code: 429, message: 'Rate limit exceeded after retries' };
+          }
+          response = retryResponse;
+        }
+
+        if (response.status === 500) {
+          await sleep(60_000);
+          metrics.total_api_calls++;
+          const retryResponse = await fetch(url, { headers: { 'X-Api-Key': RENTCAST_API_KEY } });
+          if (!retryResponse.ok) {
+            throw { type: 'server_error', code: 500, message: 'Server error after retry' };
+          }
+          response = retryResponse;
+        }
+
+        if (!response.ok) {
+          throw { type: 'http_error', code: response.status, message: response.statusText };
+        }
+
+        const page: PropertyRecord[] = await response.json();
+        allRawRecords.push(...page);
+        metrics.total_fetched += page.length;
+
+        if (page.length < limit) break;
+        offset += limit;
+      }
+
+      metrics.completed_chunks++;
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message === 'HALT_401') {
+        console.error('[processFetchChunkByZip] 401 Unauthorized — aborting job immediately.');
+        const now = new Date();
+        metrics.job_end_time = now.toISOString();
+        metrics.job_duration_ms = now.getTime() - jobStartTime.getTime();
+        throw err;
+      }
+
+      chunkFailed = true;
+      const errObj = err as { code?: number | string; message?: string };
+      failedChunkRecord = {
+        chunkId,
+        centerLat: 0,
+        centerLng: 0,
+        radius: 0,
+        errorCode: errObj.code ?? 'UNKNOWN',
+        errorMessage: errObj.message ?? String(err),
+        timestamp: new Date().toISOString(),
+        retryCount: 3,
+        retryExhausted: true,
+      };
+
+      metrics.failed_chunks++;
+      metrics.failed_chunk_log.push(failedChunkRecord);
+    }
+
+    void chunkFailed; // suppress unused-variable warning
+    void failedChunkRecord;
+  }
+
+  // Cross-chunk deduplication
+  const uniqueRecords = deduplicateRecords(allRawRecords);
+  metrics.total_unique = uniqueRecords.length;
+  metrics.duplicate_count = metrics.total_fetched - metrics.total_unique;
+
+  // Data quality validation
+  const insertRecords: PropertyRecord[]          = [];
+  const investorWorkflowRecords: PropertyRecord[] = [];
+  const flagManualRecords: PropertyRecord[]       = [];
+
+  for (const record of uniqueRecords) {
+    const validation = validateRecord(record);
+    if (!validation.valid) continue;
+
+    switch (validation.action) {
+      case 'insert':            insertRecords.push(record);           break;
+      case 'investor_workflow': investorWorkflowRecords.push(record); break;
+      case 'flag_manual':       flagManualRecords.push(record);       break;
+    }
+  }
+
+  const recordsToUpsert = [...insertRecords, ...investorWorkflowRecords, ...flagManualRecords];
+  metrics.total_inserted = await upsertRecords(recordsToUpsert, db);
+
+  // Coverage verification (ZIP-based jobs use a synthetic centre if not provided)
+  const coverage = verifyCoverage(uniqueRecords, resolvedConfig);
+  if (coverage.flagged_for_review) {
+    console.warn(
+      `[processFetchChunkByZip] Coverage ${coverage.coverage_pct.toFixed(1)}% < 95% — flagged for review.`,
+    );
+  }
+
+  const jobEndTime = new Date();
+  metrics.job_end_time = jobEndTime.toISOString();
+  metrics.job_duration_ms = jobEndTime.getTime() - jobStartTime.getTime();
+
+  assertJobInvariants(metrics);
+  await persistJobMetrics(metrics, resolvedConfig, coverage, db);
+
+  return metrics;
+}

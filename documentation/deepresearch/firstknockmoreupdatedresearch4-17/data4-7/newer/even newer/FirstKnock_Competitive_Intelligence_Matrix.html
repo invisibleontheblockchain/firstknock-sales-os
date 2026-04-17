@@ -1,0 +1,1288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FirstKnock Sales OS — Competitive Intelligence Matrix</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-dark: #0A0A0F;
+            --neon-green: #00F5A0;
+            --neon-blue: #00C9FF;
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --glass-bg: rgba(255, 255, 255, 0.03);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.5);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        /* Hero Banner */
+        .hero {
+            position: relative;
+            padding: 80px 20px;
+            text-align: center;
+            overflow: hidden;
+            background: linear-gradient(135deg, 
+                rgba(0, 245, 160, 0.1) 0%, 
+                rgba(0, 201, 255, 0.1) 50%, 
+                rgba(0, 245, 160, 0.05) 100%);
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(circle at 20% 80%, rgba(0, 245, 160, 0.15) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 20%, rgba(0, 201, 255, 0.15) 0%, transparent 50%);
+            pointer-events: none;
+        }
+
+        /* Animated Particles */
+        .particles {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            pointer-events: none;
+        }
+
+        .particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: var(--neon-green);
+            border-radius: 50%;
+            opacity: 0.6;
+            animation: float 20s infinite;
+        }
+
+        .particle:nth-child(1) { left: 10%; top: 20%; animation-delay: 0s; animation-duration: 25s; }
+        .particle:nth-child(2) { left: 20%; top: 80%; animation-delay: 2s; animation-duration: 20s; }
+        .particle:nth-child(3) { left: 30%; top: 40%; animation-delay: 4s; animation-duration: 28s; }
+        .particle:nth-child(4) { left: 40%; top: 60%; animation-delay: 1s; animation-duration: 22s; }
+        .particle:nth-child(5) { left: 50%; top: 30%; animation-delay: 3s; animation-duration: 26s; }
+        .particle:nth-child(6) { left: 60%; top: 70%; animation-delay: 5s; animation-duration: 24s; }
+        .particle:nth-child(7) { left: 70%; top: 50%; animation-delay: 2s; animation-duration: 21s; }
+        .particle:nth-child(8) { left: 80%; top: 20%; animation-delay: 4s; animation-duration: 27s; }
+        .particle:nth-child(9) { left: 90%; top: 90%; animation-delay: 1s; animation-duration: 23s; }
+        .particle:nth-child(10) { left: 15%; top: 50%; animation-delay: 3s; animation-duration: 19s; }
+        .particle:nth-child(11) { left: 85%; top: 40%; animation-delay: 0s; animation-duration: 30s; background: var(--neon-blue); }
+        .particle:nth-child(12) { left: 45%; top: 85%; animation-delay: 2s; animation-duration: 18s; background: var(--neon-blue); }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0) translateX(0); opacity: 0.6; }
+            25% { transform: translateY(-30px) translateX(10px); opacity: 0.8; }
+            50% { transform: translateY(-15px) translateX(-10px); opacity: 0.4; }
+            75% { transform: translateY(-40px) translateX(5px); opacity: 0.7; }
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 1;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .hero h1 {
+            font-size: clamp(1.8rem, 5vw, 3rem);
+            font-weight: 700;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, var(--neon-green), var(--neon-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero p {
+            font-size: clamp(1rem, 2.5vw, 1.25rem);
+            color: var(--text-secondary);
+        }
+
+        /* Sticky Nav */
+        .nav {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background: rgba(10, 10, 15, 0.95);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--glass-border);
+            padding: 0 20px;
+        }
+
+        .nav-inner {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+            padding: 12px 0;
+        }
+
+        .nav-brand {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--neon-green);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .nav-tabs {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .nav-tab {
+            padding: 10px 20px;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            position: relative;
+        }
+
+        .nav-tab:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .nav-tab.active {
+            color: var(--neon-green);
+            background: rgba(0, 245, 160, 0.1);
+        }
+
+        .nav-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60%;
+            height: 2px;
+            background: var(--neon-green);
+            border-radius: 2px;
+        }
+
+        /* Main Content */
+        .main-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        .tab-panel {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* Glass Card */
+        .glass-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 24px;
+            transition: all 0.2s ease;
+        }
+
+        /* Table Styles */
+        .table-wrapper {
+            overflow-x: auto;
+            border-radius: 16px;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+        }
+
+        .feature-table {
+            width: 100%;
+            border-collapse: collapse;
+            min-width: 800px;
+        }
+
+        .feature-table th,
+        .feature-table td {
+            padding: 16px 20px;
+            text-align: center;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .feature-table th {
+            position: sticky;
+            top: 0;
+            background: rgba(10, 10, 15, 0.98);
+            backdrop-filter: blur(16px);
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+        }
+
+        .feature-table th:first-child,
+        .feature-table td:first-child {
+            text-align: left;
+            font-weight: 500;
+        }
+
+        .feature-table th.highlight {
+            color: var(--neon-green);
+            border-left: 2px solid var(--neon-green);
+            border-right: 2px solid var(--neon-green);
+            background: rgba(0, 245, 160, 0.08);
+        }
+
+        .feature-table td.highlight {
+            border-left: 2px solid rgba(0, 245, 160, 0.3);
+            border-right: 2px solid rgba(0, 245, 160, 0.3);
+            background: rgba(0, 245, 160, 0.03);
+        }
+
+        .feature-table tbody tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .feature-table tbody tr:last-child td {
+            border-bottom: none;
+        }
+
+        .cell-content {
+            position: relative;
+            cursor: help;
+            display: inline-block;
+        }
+
+        .cell-content:hover .tooltip {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(-8px);
+        }
+
+        .tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%) translateY(0);
+            background: rgba(20, 20, 30, 0.98);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 12px 16px;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            max-width: 300px;
+            white-space: normal;
+            z-index: 100;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s ease;
+            pointer-events: none;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 6px solid transparent;
+            border-top-color: rgba(20, 20, 30, 0.98);
+        }
+
+        /* Radar Chart Section */
+        .chart-container {
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .chart-legend {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 24px;
+            margin-top: 24px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+        }
+
+        .legend-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 4px;
+        }
+
+        .chart-insight {
+            text-align: center;
+            margin-top: 32px;
+            padding: 20px;
+            background: rgba(0, 245, 160, 0.05);
+            border: 1px solid rgba(0, 245, 160, 0.2);
+            border-radius: 12px;
+            color: var(--text-secondary);
+            font-size: 1rem;
+        }
+
+        .chart-insight strong {
+            color: var(--neon-green);
+        }
+
+        /* Pricing Cards */
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin-bottom: 48px;
+        }
+
+        .pricing-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 28px;
+            transition: all 0.2s ease;
+        }
+
+        .pricing-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .pricing-card.featured {
+            border-color: rgba(0, 245, 160, 0.4);
+            box-shadow: 0 0 40px rgba(0, 245, 160, 0.15);
+            position: relative;
+        }
+
+        .pricing-card.featured::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: 16px;
+            padding: 1px;
+            background: linear-gradient(135deg, var(--neon-green), var(--neon-blue));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+        }
+
+        .pricing-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, var(--neon-green), var(--neon-blue));
+            color: var(--bg-dark);
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 4px 12px;
+            border-radius: 20px;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .pricing-card h3 {
+            font-size: 1.4rem;
+            margin-bottom: 8px;
+        }
+
+        .pricing-card.featured h3 {
+            color: var(--neon-green);
+        }
+
+        .pricing-price {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+
+        .pricing-price span {
+            font-size: 1rem;
+            font-weight: 400;
+            color: var(--text-secondary);
+        }
+
+        .pricing-details {
+            list-style: none;
+        }
+
+        .pricing-details li {
+            padding: 8px 0;
+            border-bottom: 1px solid var(--glass-border);
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+        }
+
+        .pricing-details li:last-child {
+            border-bottom: none;
+        }
+
+        .pricing-details .label {
+            color: var(--text-secondary);
+        }
+
+        .pricing-details .value {
+            font-weight: 500;
+        }
+
+        /* TCO Calculator */
+        .tco-section {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 32px;
+        }
+
+        .tco-section h3 {
+            font-size: 1.5rem;
+            margin-bottom: 8px;
+        }
+
+        .tco-subtitle {
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+
+        .slider-container {
+            margin-bottom: 32px;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .slider-value {
+            color: var(--neon-green);
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+
+        .slider {
+            width: 100%;
+            height: 8px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--neon-green);
+            cursor: pointer;
+            box-shadow: 0 0 16px rgba(0, 245, 160, 0.5);
+            transition: all 0.2s ease;
+        }
+
+        .slider::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+        }
+
+        .slider::-moz-range-thumb {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: var(--neon-green);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 16px rgba(0, 245, 160, 0.5);
+        }
+
+        .tco-chart-container {
+            height: 300px;
+        }
+
+        .tco-note {
+            margin-top: 16px;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        /* Moat Cards */
+        .moat-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .moat-header h2 {
+            font-size: clamp(1.5rem, 4vw, 2rem);
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, var(--neon-green), var(--neon-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .moat-header p {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .moat-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 24px;
+        }
+
+        .moat-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(0, 245, 160, 0.15);
+            border-radius: 16px;
+            padding: 28px;
+            transition: all 0.2s ease;
+        }
+
+        .moat-card:hover {
+            transform: translateY(-6px);
+            border-color: rgba(0, 245, 160, 0.4);
+            box-shadow: 0 12px 40px rgba(0, 245, 160, 0.1);
+        }
+
+        .moat-icon {
+            font-size: 2rem;
+            margin-bottom: 16px;
+            display: inline-block;
+            filter: drop-shadow(0 0 8px rgba(0, 245, 160, 0.5));
+        }
+
+        .moat-card h3 {
+            font-size: 1.2rem;
+            margin-bottom: 12px;
+            color: var(--neon-green);
+        }
+
+        .moat-card p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            line-height: 1.7;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 32px 20px;
+            border-top: 1px solid var(--glass-border);
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .nav-inner {
+                justify-content: center;
+            }
+
+            .nav-tabs {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .nav-tab {
+                padding: 8px 14px;
+                font-size: 0.85rem;
+            }
+
+            .hero {
+                padding: 60px 20px;
+            }
+
+            .moat-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .pricing-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .tco-chart-container {
+                height: 400px;
+            }
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .section-title::before {
+            content: '';
+            width: 4px;
+            height: 28px;
+            background: linear-gradient(180deg, var(--neon-green), var(--neon-blue));
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Hero Banner -->
+    <header class="hero">
+        <div class="particles">
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+            <div class="particle"></div>
+        </div>
+        <div class="hero-content">
+            <h1>FirstKnock Sales OS — Competitive Intelligence Matrix</h1>
+            <p>Real-time competitive analysis for the field intelligence platform</p>
+        </div>
+    </header>
+
+    <!-- Sticky Nav -->
+    <nav class="nav">
+        <div class="nav-inner">
+            <div class="nav-brand">⚡ FirstKnock</div>
+            <div class="nav-tabs">
+                <button class="nav-tab active" data-tab="features">Feature Matrix</button>
+                <button class="nav-tab" data-tab="radar">Radar Chart</button>
+                <button class="nav-tab" data-tab="pricing">Pricing & TCO</button>
+                <button class="nav-tab" data-tab="moat">Competitive Moat</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Tab 1: Feature Matrix -->
+        <section id="features" class="tab-panel active">
+            <h2 class="section-title">Feature Comparison Matrix</h2>
+            <div class="table-wrapper">
+                <table class="feature-table">
+                    <thead>
+                        <tr>
+                            <th>Feature</th>
+                            <th class="highlight">FirstKnock</th>
+                            <th>SalesRabbit</th>
+                            <th>SPOTIO</th>
+                            <th>Knockio</th>
+                            <th>Badger Maps</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>3-Step Data Validation Pipeline</td>
+                            <td class="highlight"><span class="cell-content">✅<span class="tooltip">RentCast dual-stream → Heuristic Scoring → BatchData Verification. Zero false-positive leads guaranteed.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">No multi-step validation. Relies on single data source without verification.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">Basic data import only. No validation pipeline.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">Manual data entry. No automated validation.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">Route-focused only. No property validation features.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>Route Optimization Quality</td>
+                            <td class="highlight"><span class="cell-content">✅<span class="tooltip">2-opt TSP solver with street sweep pattern and turn minimization.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">AI-powered route optimization included. Industry-leading.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Advanced routing with territory optimization.</span></span></td>
+                            <td><span class="cell-content">⚠️<span class="tooltip">Basic routing. Limited optimization algorithms.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Lasso route planning with multi-stop optimization.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>GPS Proof-of-Visit</td>
+                            <td class="highlight"><span class="cell-content">✅<span class="tooltip">Timestamped GPS + photo capture at every door. Sub-meter accuracy.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">GPS tracking with check-in verification.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Location intelligence with visit verification.</span></span></td>
+                            <td><span class="cell-content">⚠️<span class="tooltip">Basic GPS tracking. Limited proof features.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">No GPS proof-of-visit functionality.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>Real-Time Double-Knock Prevention</td>
+                            <td class="highlight"><span class="cell-content">✅<span class="tooltip">H3 spatial indexing detects simultaneous approaches in real-time.</span></span></td>
+                            <td><span class="cell-content">⚠️<span class="tooltip">Territory assignment only. No real-time collision detection.</span></span></td>
+                            <td><span class="cell-content">⚠️<span class="tooltip">Team assignments help but no instant sync.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">No real-time team sync to prevent duplicate visits.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">Individual user focus. No team coordination.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>Offline Mode</td>
+                            <td class="highlight"><span class="cell-content">✅<span class="tooltip">Full offline capability with IndexedDB caching and sync queue.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Offline mode available for field work.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Offline data access supported.</span></span></td>
+                            <td><span class="cell-content">⚠️<span class="tooltip">Limited offline functionality.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Offline maps and route access.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>AI/ML Features</td>
+                            <td class="highlight"><span class="cell-content">✅<span class="tooltip">Lead scoring, coaching tips, and predictive appointment forecasting.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">AI-powered insights and recommendations.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Machine learning for territory optimization.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">No AI/ML capabilities.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">Traditional routing only. No AI features.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>Manager Command Center</td>
+                            <td class="highlight"><span class="cell-content">✅<span class="tooltip">Real-time territory dashboard with live rep tracking and analytics.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Comprehensive admin dashboard included.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Manager visibility and reporting tools.</span></span></td>
+                            <td><span class="cell-content">⚠️<span class="tooltip">Basic team management features only.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">Individual user focus. Limited team management.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>Pricing Transparency</td>
+                            <td class="highlight"><span class="cell-content">✅<span class="tooltip">$49/month flat. All pricing public. No hidden costs.</span></span></td>
+                            <td><span class="cell-content">⚠️<span class="tooltip">Base pricing shown. Add-ons and tiers require inquiry.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">Pricing not publicly listed. Requires sales call.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Clear pricing tiers displayed publicly.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Transparent pricing on website.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>Setup Fees</td>
+                            <td class="highlight"><span class="cell-content">✅ None<span class="tooltip">Zero setup fees. Start immediately with no upfront costs.</span></span></td>
+                            <td><span class="cell-content">❌ $399<span class="tooltip">One-time $399 onboarding fee required.</span></span></td>
+                            <td><span class="cell-content">❌ Hidden<span class="tooltip">Setup fees not disclosed. Varies by contract.</span></span></td>
+                            <td><span class="cell-content">✅ None<span class="tooltip">No setup fees required.</span></span></td>
+                            <td><span class="cell-content">✅ None<span class="tooltip">No onboarding fees.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>Contract Requirements</td>
+                            <td class="highlight"><span class="cell-content">✅ None<span class="tooltip">Month-to-month. Cancel anytime. No commitments.</span></span></td>
+                            <td><span class="cell-content">⚠️ Annual opt<span class="tooltip">Annual contracts available with discount.</span></span></td>
+                            <td><span class="cell-content">❌ Annual<span class="tooltip">Annual contract required. No month-to-month option.</span></span></td>
+                            <td><span class="cell-content">✅ None<span class="tooltip">No contract requirements.</span></span></td>
+                            <td><span class="cell-content">⚠️ Annual opt<span class="tooltip">Monthly available, annual encouraged.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>Industry Versatility</td>
+                            <td class="highlight"><span class="cell-content">✅<span class="tooltip">Solar, Roofing, Pest Control, HVAC, Security, Windows/Siding.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Multi-industry support with customization.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Field sales across multiple verticals.</span></span></td>
+                            <td><span class="cell-content">⚠️<span class="tooltip">Primarily D2D sales focused.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">General route planning. Not D2D specific.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>Mobile UX Quality</td>
+                            <td class="highlight"><span class="cell-content">✅<span class="tooltip">Mobile-first design. One-handed operation optimized.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Well-designed mobile app experience.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Solid mobile application.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Simple, focused mobile interface.</span></span></td>
+                            <td><span class="cell-content">⚠️<span class="tooltip">Desktop-first design adapted for mobile.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>Heatmap Visualization</td>
+                            <td class="highlight"><span class="cell-content">✅<span class="tooltip">Dynamic heatmaps with H3 hex clustering.</span></span></td>
+                            <td><span class="cell-content">⚠️<span class="tooltip">Basic heat mapping available.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Heat maps for territory analysis.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">No heatmap features.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">Standard map view only.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>Territory Management</td>
+                            <td class="highlight"><span class="cell-content">✅<span class="tooltip">Polygon drawing, ZIP assignment, and rep territories.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Advanced territory creation and assignment.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Territory mapping and management.</span></span></td>
+                            <td><span class="cell-content">⚠️<span class="tooltip">Basic area assignment only.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Territory optimization tools.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>Appointment Scheduling</td>
+                            <td class="highlight"><span class="cell-content">✅<span class="tooltip">Built-in scheduling with auto-schedule from callbacks.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Appointment setting included.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Scheduling capabilities available.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Appointment features included.</span></span></td>
+                            <td><span class="cell-content">🔒<span class="tooltip">Available as paid add-on only.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>CRM Integrations</td>
+                            <td class="highlight"><span class="cell-content">⚠️<span class="tooltip">Native integrations expanding. Zapier available for 1000+ apps.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Native CRM integrations available.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Salesforce, HubSpot, and more.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">CRM sync capabilities.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Wide CRM integration support.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>E-Signatures</td>
+                            <td class="highlight"><span class="cell-content">✅<span class="tooltip">Digital signature capture at the door.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">E-signature functionality included.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Electronic signatures supported.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Signature capture available.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">No e-signature features.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>Gamification/Leaderboards</td>
+                            <td class="highlight"><span class="cell-content">✅<span class="tooltip">Team leaderboards with conversion tracking.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Built-in gamification features.</span></span></td>
+                            <td><span class="cell-content">⚠️<span class="tooltip">Basic leaderboard functionality.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">No gamification features.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">Individual user focus only.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>Homeowner Contact Data</td>
+                            <td class="highlight"><span class="cell-content">✅<span class="tooltip">Powered by RentCast + BatchData APIs. Included in base price.</span></span></td>
+                            <td><span class="cell-content">🔒<span class="tooltip">DataGrid add-on required for contact data.</span></span></td>
+                            <td><span class="cell-content">🔒<span class="tooltip">Lead Machine add-on with additional cost.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">No built-in contact data.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">Route planning only. No lead data.</span></span></td>
+                        </tr>
+                        <tr>
+                            <td>Free Trial Available</td>
+                            <td class="highlight"><span class="cell-content">✅<span class="tooltip">7-day free trial. No credit card required to start.</span></span></td>
+                            <td><span class="cell-content">⚠️<span class="tooltip">Demo only. No self-serve trial.</span></span></td>
+                            <td><span class="cell-content">❌<span class="tooltip">No free trial. Demo only.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Free trial available.</span></span></td>
+                            <td><span class="cell-content">✅<span class="tooltip">Free trial offered.</span></span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Tab 2: Radar Chart -->
+        <section id="radar" class="tab-panel">
+            <h2 class="section-title">Competitive Radar Analysis</h2>
+            <div class="glass-card">
+                <div class="chart-container">
+                    <canvas id="radarChart"></canvas>
+                </div>
+                <div class="chart-legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #00F5A0;"></div>
+                        <span>FirstKnock</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #FF6B6B;"></div>
+                        <span>SalesRabbit</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #00C9FF;"></div>
+                        <span>SPOTIO</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: #FFC107;"></div>
+                        <span>Knockio</span>
+                    </div>
+                </div>
+                <div class="chart-insight">
+                    <strong>FirstKnock</strong> leads in <strong>Data Quality</strong>, <strong>Pricing Value</strong>, and <strong>Ease of Setup</strong> — the three dimensions that matter most for D2D team adoption.
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab 3: Pricing & TCO -->
+        <section id="pricing" class="tab-panel">
+            <h2 class="section-title">Pricing Comparison</h2>
+            
+            <div class="pricing-grid">
+                <div class="pricing-card featured">
+                    <span class="pricing-badge">Best Value</span>
+                    <h3>FirstKnock</h3>
+                    <div class="pricing-price">$49<span>/mo per rep</span></div>
+                    <ul class="pricing-details">
+                        <li><span class="label">Setup Fee</span><span class="value">$0</span></li>
+                        <li><span class="label">Contract</span><span class="value">None (month-to-month)</span></li>
+                        <li><span class="label">Year 1 (1 rep)</span><span class="value">$588</span></li>
+                        <li><span class="label">Free Trial</span><span class="value">✅ Yes</span></li>
+                    </ul>
+                </div>
+                
+                <div class="pricing-card">
+                    <h3>SalesRabbit</h3>
+                    <div class="pricing-price">$39–$59<span>/mo per rep</span></div>
+                    <ul class="pricing-details">
+                        <li><span class="label">Setup Fee</span><span class="value">$399</span></li>
+                        <li><span class="label">Contract</span><span class="value">Optional annual</span></li>
+                        <li><span class="label">Year 1 (1 rep)</span><span class="value">$867–$1,107</span></li>
+                        <li><span class="label">Free Trial</span><span class="value">⚠️ Demo only</span></li>
+                    </ul>
+                </div>
+                
+                <div class="pricing-card">
+                    <h3>SPOTIO</h3>
+                    <div class="pricing-price">$39–$129<span>/mo per rep</span></div>
+                    <ul class="pricing-details">
+                        <li><span class="label">Setup Fee</span><span class="value">Hidden</span></li>
+                        <li><span class="label">Contract</span><span class="value">Annual required</span></li>
+                        <li><span class="label">Year 1 (1 rep)</span><span class="value">$468–$1,548+</span></li>
+                        <li><span class="label">Free Trial</span><span class="value">❌ No</span></li>
+                    </ul>
+                </div>
+                
+                <div class="pricing-card">
+                    <h3>Knockio</h3>
+                    <div class="pricing-price">~$20<span>/mo per rep</span></div>
+                    <ul class="pricing-details">
+                        <li><span class="label">Setup Fee</span><span class="value">$0</span></li>
+                        <li><span class="label">Contract</span><span class="value">None</span></li>
+                        <li><span class="label">Year 1 (1 rep)</span><span class="value">$240</span></li>
+                        <li><span class="label">Free Trial</span><span class="value">✅ Yes</span></li>
+                    </ul>
+                </div>
+                
+                <div class="pricing-card">
+                    <h3>Badger Maps</h3>
+                    <div class="pricing-price">~$58<span>/mo per rep</span></div>
+                    <ul class="pricing-details">
+                        <li><span class="label">Setup Fee</span><span class="value">$0</span></li>
+                        <li><span class="label">Contract</span><span class="value">Optional annual</span></li>
+                        <li><span class="label">Year 1 (1 rep)</span><span class="value">$696</span></li>
+                        <li><span class="label">Free Trial</span><span class="value">✅ Yes</span></li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="tco-section">
+                <h3>Total Cost of Ownership Calculator</h3>
+                <p class="tco-subtitle">See how costs scale with your team size</p>
+                
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Team Size</span>
+                        <span class="slider-value" id="sliderValue">10 reps</span>
+                    </div>
+                    <input type="range" class="slider" id="teamSlider" min="1" max="50" value="10">
+                </div>
+                
+                <div class="tco-chart-container">
+                    <canvas id="tcoChart"></canvas>
+                </div>
+                
+                <p class="tco-note">* SPOTIO setup fees not included due to lack of transparency</p>
+            </div>
+        </section>
+
+        <!-- Tab 4: Competitive Moat -->
+        <section id="moat" class="tab-panel">
+            <div class="moat-header">
+                <h2>The FirstKnock Unfair Advantage</h2>
+                <p>Six proprietary capabilities no competitor has replicated</p>
+            </div>
+            
+            <div class="moat-grid">
+                <div class="moat-card">
+                    <div class="moat-icon">🔬</div>
+                    <h3>3-Step Validation Pipeline</h3>
+                    <p>RentCast dual-stream ingestion → Proprietary heuristic scoring → BatchData cross-verification. The only D2D platform guaranteeing zero false-positive leads. Every knock counts.</p>
+                </div>
+                
+                <div class="moat-card">
+                    <div class="moat-icon">📍</div>
+                    <h3>GPS Proof-of-Visit + Photo</h3>
+                    <p>Timestamped GPS coordinates with photo capture at every door. Irrefutable visit verification for managers and compliance teams. No more "I knocked" disputes.</p>
+                </div>
+                
+                <div class="moat-card">
+                    <div class="moat-icon">🚫</div>
+                    <h3>Real-Time Double-Knock Prevention</h3>
+                    <p>H3 spatial indexing detects when two reps approach the same property simultaneously. Instant alerts prevent wasted effort and awkward customer encounters.</p>
+                </div>
+                
+                <div class="moat-card">
+                    <div class="moat-icon">🗺️</div>
+                    <h3>H3 Spatial Indexing</h3>
+                    <p>Uber's H3 hexagonal grid system powers sub-meter territory precision. Dynamic heatmaps reveal untapped density clusters competitors can't see.</p>
+                </div>
+                
+                <div class="moat-card">
+                    <div class="moat-icon">💰</div>
+                    <h3>Zero Friction Pricing</h3>
+                    <p>$49/month flat. No setup fees. No annual contracts. No hidden costs. Start knocking on day one. Cancel anytime. The only platform that respects your cash flow.</p>
+                </div>
+                
+                <div class="moat-card">
+                    <div class="moat-icon">🏭</div>
+                    <h3>Multi-Vertical Intelligence</h3>
+                    <p>Purpose-built data pipelines for Solar, Roofing, Pest Control, HVAC, Home Security, and Windows/Siding. One platform, six industries, infinite territory.</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        Data current as of Q2 2026 · FirstKnock Sales OS · Built for D2D teams
+    </footer>
+
+    <script>
+        // Tab Navigation
+        const tabs = document.querySelectorAll('.nav-tab');
+        const panels = document.querySelectorAll('.tab-panel');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const targetId = tab.dataset.tab;
+                
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                
+                panels.forEach(panel => {
+                    panel.classList.remove('active');
+                    if (panel.id === targetId) {
+                        panel.classList.add('active');
+                    }
+                });
+
+                // Initialize charts when their tab becomes active
+                if (targetId === 'radar' && !radarChartInstance) {
+                    initRadarChart();
+                }
+                if (targetId === 'pricing' && !tcoChartInstance) {
+                    initTCOChart(10);
+                }
+            });
+        });
+
+        // Chart instances
+        let radarChartInstance = null;
+        let tcoChartInstance = null;
+
+        // Radar Chart
+        function initRadarChart() {
+            const ctx = document.getElementById('radarChart').getContext('2d');
+            
+            radarChartInstance = new Chart(ctx, {
+                type: 'radar',
+                data: {
+                    labels: [
+                        'Data Quality & Validation',
+                        'Route Intelligence',
+                        'Team Management',
+                        'Mobile Experience',
+                        'Pricing Value',
+                        'Ease of Setup',
+                        'AI/ML Capabilities',
+                        'Industry Versatility'
+                    ],
+                    datasets: [
+                        {
+                            label: 'FirstKnock',
+                            data: [10, 8, 8, 9, 10, 10, 8, 9],
+                            backgroundColor: 'rgba(0, 245, 160, 0.2)',
+                            borderColor: '#00F5A0',
+                            pointBackgroundColor: '#00F5A0',
+                            pointBorderColor: '#00F5A0',
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'SalesRabbit',
+                            data: [5, 9, 9, 8, 6, 6, 8, 8],
+                            backgroundColor: 'rgba(255, 107, 107, 0.2)',
+                            borderColor: '#FF6B6B',
+                            pointBackgroundColor: '#FF6B6B',
+                            pointBorderColor: '#FF6B6B',
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'SPOTIO',
+                            data: [5, 9, 8, 8, 5, 5, 8, 8],
+                            backgroundColor: 'rgba(0, 201, 255, 0.2)',
+                            borderColor: '#00C9FF',
+                            pointBackgroundColor: '#00C9FF',
+                            pointBorderColor: '#00C9FF',
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'Knockio',
+                            data: [3, 6, 5, 7, 9, 8, 3, 6],
+                            backgroundColor: 'rgba(255, 193, 7, 0.2)',
+                            borderColor: '#FFC107',
+                            pointBackgroundColor: '#FFC107',
+                            pointBorderColor: '#FFC107',
+                            borderWidth: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 10,
+                            ticks: {
+                                stepSize: 2,
+                                color: 'rgba(255, 255, 255, 0.5)',
+                                backdropColor: 'transparent'
+                            },
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            angleLines: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            pointLabels: {
+                                color: '#ffffff',
+                                font: {
+                                    size: 11
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+
+        // TCO Chart
+        function initTCOChart(reps) {
+            const ctx = document.getElementById('tcoChart').getContext('2d');
+            
+            const data = calculateTCO(reps);
+            
+            if (tcoChartInstance) {
+                tcoChartInstance.destroy();
+            }
+            
+            tcoChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: ['FirstKnock', 'SalesRabbit', 'SPOTIO', 'Knockio', 'Badger Maps'],
+                    datasets: [{
+                        label: 'Annual Cost',
+                        data: data,
+                        backgroundColor: ['#00F5A0', '#FF6B6B', '#00C9FF', '#FFC107', '#9B59B6'],
+                        borderWidth: 0,
+                        borderRadius: 8
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: 'rgba(255, 255, 255, 0.7)',
+                                callback: function(value) {
+                                    return '$' + value.toLocaleString();
+                                }
+                            }
+                        },
+                        y: {
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                color: '#ffffff',
+                                font: {
+                                    weight: '500'
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return '$' + context.raw.toLocaleString() + ' / year';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function calculateTCO(reps) {
+            return [
+                reps * 49 * 12,           // FirstKnock
+                reps * 49 * 12 + 399,     // SalesRabbit (with setup)
+                reps * 84 * 12,           // SPOTIO (mid-tier estimate)
+                reps * 20 * 12,           // Knockio
+                reps * 58 * 12            // Badger Maps
+            ];
+        }
+
+        // Slider functionality
+        const slider = document.getElementById('teamSlider');
+        const sliderValue = document.getElementById('sliderValue');
+
+        slider.addEventListener('input', (e) => {
+            const reps = parseInt(e.target.value);
+            sliderValue.textContent = `${reps} rep${reps > 1 ? 's' : ''}`;
+            
+            if (tcoChartInstance) {
+                tcoChartInstance.data.datasets[0].data = calculateTCO(reps);
+                tcoChartInstance.update();
+            }
+        });
+
+        // Initialize radar chart on page load if it's the active tab
+        document.addEventListener('DOMContentLoaded', () => {
+            // Charts will be initialized when their respective tabs are clicked
+        });
+    </script>
+</body>
+</html>
