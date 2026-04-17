@@ -332,11 +332,13 @@ Deno.serve(async (req) => {
                         });
                         if (!res.ok) return { hash: cm.address_hash, verifiedSold: false };
                         const data = await res.json();
-                        const results = data?.results || {};
-                        const listing = results.property?.listing || results.listing || {};
+                        const properties = data?.results?.properties || [];
+                        const topResult = properties[0] || {};
+                        const listing = topResult.listing || data?.results?.listing || {};
                         const apiStatus = (listing.status || '').toLowerCase();
                         const statusCat = (listing.statusCategory || '').toLowerCase();
-                        const isSold = apiStatus.includes('sold') || statusCat === 'sold' || (listing.soldPrice > 0);
+                        const soldPrice = listing.soldPrice || listing.price || 0;
+                        const isSold = apiStatus.includes('sold') || statusCat === 'sold' || (soldPrice > 0);
                         return { hash: cm.address_hash, verifiedSold: isSold };
                     } catch (e) {
                         return { hash: cm.address_hash, verifiedSold: false };

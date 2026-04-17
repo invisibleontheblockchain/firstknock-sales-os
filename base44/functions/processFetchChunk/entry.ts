@@ -812,13 +812,14 @@ Deno.serve(async (req) => {
                                         return { hash: cm.address_hash, outcome: 'skip' };
                                     }
                                     const data = await res.json();
-                                    const results = data?.results || {};
-                                    const listing = results.property?.listing || results.listing || {};
+                                    const properties = data?.results?.properties || [];
+                                    const topResult = properties[0] || {};
+                                    const listing = topResult.listing || data?.results?.listing || {};
                                     
                                     // BatchData has statusCategory and soldPrice — the fields RentCast doesn't have
                                     const apiStatus = (listing.status || '').toLowerCase();
                                     const statusCat = (listing.statusCategory || '').toLowerCase();
-                                    const soldPrice = listing.soldPrice || 0;
+                                    const soldPrice = listing.soldPrice || listing.price || 0;
                                     const soldDate = listing.soldDate || null;
 
                                     if (apiStatus.includes('sold') || statusCat === 'sold' || soldPrice > 0) {
