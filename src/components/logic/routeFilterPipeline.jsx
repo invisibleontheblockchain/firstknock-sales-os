@@ -110,6 +110,25 @@ export function applyRouteFilters({
     // --- Confidence / Rejection Filters ---
     workingSet = workingSet.filter(p => p.original_status !== 'REJECTED');
 
+    // v15 HARD GATE: Block ALL unverified RentCast MLS data from routes.
+    // Only RentCast-sourced properties that have been verified (by deed cross-ref
+    // or BatchData) are allowed through. This catches old pre-v15 data that has
+    // sale_confidence='medium' from the broken heuristic (HEURISTIC_SOLD).
+    const beforeMlsGate = workingSet.length;
+    workingSet = workingSet.filter(p => {
+        // Not from RentCast? Let it through (it's a deed record).
+        if (p.data_source !== 'rentcast') return true;
+        // RentCast + deed cross-ref? Verified. Let through.
+        if (p.data_source === 'rentcast_crossref') return true;
+        // RentCast + verified by deed or BatchData? Let through.
+        if (p.sale_confidence === 'high' || p.sale_confidence === 'verified') return true;
+        if (p.original_status === 'DEED_CONFIRMED' || p.original_status === 'BATCHDATA_CONFIRMED') return true;
+        // Everything else from RentCast is unverified MLS garbage — block it.
+        return false;
+    });
+    const mlsGateDropped = beforeMlsGate - workingSet.length;
+    if (mlsGateDropped > 0) console.log(`[routeFilter] v15 MLS gate: blocked ${mlsGateDropped} unverified RentCast properties`);
+
     // GLOBAL DEED CROSS-REF: If an MLS listing (HEURISTIC_SOLD) shares an address_hash
     // with a deed-confirmed record (sale_confidence='high' / 'verified' / status='SOLD'),
     // auto-promote the MLS record to 'verified'. This fixes the bug where cross-ref only
