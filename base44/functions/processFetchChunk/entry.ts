@@ -131,18 +131,21 @@ function isValidSoldProperty(p) {
 }
 
 // ── MLS Listing Sanity Check ──
-// Reject listings that are clearly NOT a sale (expired/withdrawn/cancelled/pending).
-// These are the "for-sale sign in yard" leads we've been wasting reps on.
-// Returns { reject: boolean, reason: string }
+// Reject listings that are clearly NOT a sale, AND require a POSITIVE sold signal
+// before treating a listing as a likely sale. Previous version returned "clean" for
+// any listing with no visible status signals — but RentCast's /listings/sale?status=Inactive
+// endpoint routinely returns listings with NO status fields populated (we already
+// filtered server-side). "No signal" is NOT the same as "sold" — it's ambiguous at best,
+// and in the field it routinely turns out to be "seller withdrew / sign still up".
+// This was the root cause of "first 5 doors had for-sale signs".
+// Returns { reject: boolean, hasSoldSignal: boolean, reason: string }
 function checkMlsListingSanity(p) {
-    // Collect every status signal we can see
     const signals = [];
     if (p.status) signals.push(String(p.status).toLowerCase());
     if (p.mlsStatus) signals.push(String(p.mlsStatus).toLowerCase());
     if (p.listingStatus) signals.push(String(p.listingStatus).toLowerCase());
-    // Recent history entries (last 2 events are most relevant)
     if (p.history && typeof p.history === 'object') {
-        const entries = Object.values(p.history).slice(-2);
+        const entries = Object.values(p.history).slice(-3);
         for (const e of entries) {
             if (e && typeof e === 'object') {
                 if (e.event) signals.push(String(e.event).toLowerCase());
@@ -152,19 +155,22 @@ function checkMlsListingSanity(p) {
     }
     const joined = signals.join(' ');
 
-    // HARD REJECT — seller still owns, listing just fell off MLS
+    // HARD REJECT — explicitly not a sale
     if (/\b(expired|withdrawn|cancell?ed|canceled|terminated|released)\b/.test(joined)) {
-        return { reject: true, reason: 'mls_non_sale_status' };
+        return { reject: true, hasSoldSignal: false, reason: 'mls_non_sale_status' };
     }
-    // HARD REJECT — still under contract but not closed (not a sale yet)
+    // HARD REJECT — under contract but not closed
     if (/\b(pending|contingent|under[ _-]?contract|active[ _-]?under[ _-]?contract)\b/.test(joined)) {
-        return { reject: true, reason: 'mls_pending_not_closed' };
+        return { reject: true, hasSoldSignal: false, reason: 'mls_pending_not_closed' };
     }
-    // HARD REJECT — listing is actively on market (would have for-sale sign up!)
+    // HARD REJECT — still active on market (for-sale sign definitely up)
     if (/\bactive\b/.test(joined) && !/\b(sold|closed)\b/.test(joined)) {
-        return { reject: true, reason: 'mls_still_active' };
+        return { reject: true, hasSoldSignal: false, reason: 'mls_still_active' };
     }
-    return { reject: false, reason: null };
+
+    // Positive sold signal required for high/medium-confidence classification
+    const hasSoldSignal = /\b(sold|closed)\b/.test(joined);
+    return { reject: false, hasSoldSignal, reason: null };
 }
 
 const CORPORATE_KEYWORDS = ['LLC', 'INC', 'TRUST', 'HOLDINGS', 'BANK', 'PROPERTIES', 'CORP', 'COMPANY'];
@@ -615,6 +621,10 @@ Deno.serve(async (req) => {
                     phase2Stats.mlsStatusRejected++;
                     continue;
                 }
+                // Track whether we saw a *positive* sold/closed signal. Used below
+                // to gate HEURISTIC_SOLD classification — we never label a listing
+                // as "sold" purely on DOM heuristics anymore.
+                const hasSoldSignal = sanity.hasSoldSignal;
 
                 const addressLine = p.addressLine1 || (p.formattedAddress ? p.formattedAddress.split(',')[0] : "");
                 const pZip = p.zipCode || '00000';
@@ -680,32 +690,38 @@ Deno.serve(async (req) => {
                 if (lastSeen && (removed.getTime() - lastSeen.getTime()) >= 7 * 86400000) hScore += 1;
                 if (p.history && typeof p.history === 'object' && Object.keys(p.history).length === 1) hScore += 1;
 
-                // Classification — Hardened Tiered Approach
-                // - score ≥ 3 + DOM < 60 → 'medium' (strong sold signal, widened from DOM<30)
-                // - score ≥ 3 + DOM ≥ 60 → 'low'
-                // - score 1-2           → 'low'
-                // - score -1 to 0       → REJECT (was "ambiguousKept" — too risky, these are
-                //                         the borderline listings most likely to still be on market)
-                // - score ≤ -2          → REJECT (clearly not sold)
+                // Classification — Sold-Signal-Required Approach (field-test fix)
+                // Previously: score ≥ 3 + DOM < 60 → labeled 'HEURISTIC_SOLD' with medium confidence.
+                // Problem: in the field, 5/5 of these had for-sale signs in the yard. The DOM-based
+                // heuristic alone CANNOT distinguish "quickly sold" from "quickly withdrawn".
+                //
+                // New rule: a listing only becomes 'HEURISTIC_SOLD' if there's a *positive*
+                // sold/closed signal in the MLS status fields OR history. Without that signal,
+                // it's saved as 'RECENT_OFF_MARKET' (a distinct status — UI treats as radar-only,
+                // NOT routed as a prime new-homeowner lead).
+                //
+                // Cross-reference with deed records (below) can still promote these to
+                // 'DEED_CONFIRMED' / 'verified' when the county deed actually shows up.
                 let mlsConfidence = 'low';
                 let origStatus = 'RECENT_OFF_MARKET';
-                const isFreshListing = dom < 60; // widened from 30
+                const isFreshListing = dom < 60;
 
                 if (hScore <= 0) {
-                    // REJECT both ambiguous (-1 to 0) AND negative (-2 to -4).
-                    // These are the listings most likely to still have a for-sale sign.
+                    // Ambiguous (-1 to 0) and clearly-not-sold (≤ -2) — drop.
                     if (hScore <= -2) phase2Stats.heuristicRejected++;
                     else phase2Stats.ambiguousRejected++;
                     continue;
-                } else if (hScore >= 3) {
+                } else if (hasSoldSignal && hScore >= 3) {
+                    // Strong positive signal AND supporting heuristics — safe to label as likely sold.
                     origStatus = 'HEURISTIC_SOLD';
                     mlsConfidence = isFreshListing ? 'medium' : 'low';
                     phase2Stats.heuristicLikelySold++;
                     if (isFreshListing) phase2Stats.batchdataEligible++;
                     else phase2Stats.domGatedToLow++;
                 } else {
-                    // score 1 or 2: save as low-confidence, never send to BatchData
-                    origStatus = 'HEURISTIC_SOLD';
+                    // No sold signal (or weak heuristic) — keep as radar-only signal.
+                    // UI will surface these at lower priority than deed-confirmed sales.
+                    origStatus = 'RECENT_OFF_MARKET';
                     mlsConfidence = 'low';
                     phase2Stats.heuristicLikelySold++;
                 }
