@@ -481,38 +481,15 @@ Deno.serve(async (req) => {
                     totalExpected = 0;
                     console.log(`[chunk-v15] Phase 1 sub-circle ${currentSubCircle + 1} done, advancing to sub-circle ${nextSubCircle + 1}`);
                 } else {
-                    // Only advance to Phase 2 if include_mls is enabled on the job
-                    const includeMls = job.include_mls || false;
-                    if (includeMls) {
-                        nextPhase = 'listings_records';
-                        nextSubCircle = 0;
-                        nextOffset = 0;
-                        totalExpected = 0;
-                        console.log(`[chunk-v15] Phase 1 COMPLETE for all sub-circles. Advancing to Phase 2 (listings).`);
-                    } else {
-                        // Skip Phase 2 entirely — deed records only
-                        console.log(`[chunk-v15] Phase 1 COMPLETE. MLS early signals DISABLED — skipping Phase 2, marking job complete.`);
-                        const completedAt = new Date().toISOString();
-                        const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
-                        chunkTimings.push(chunkDuration);
-                        await base44.asServiceRole.entities.FetchJob.update(jobId, {
-                            status: 'completed', phase: 'complete', progress_pct: 100, completed_at: completedAt,
-                            total_fetched: totalFetched, total_inserted: totalInserted, total_existed: totalExisted,
-                            total_updated: totalUpdated, total_api_calls: totalApiCalls, zip_codes_found: zipCodesFound,
-                            chunk_number: nextChunkNumber, chunk_timings: chunkTimings, error_log: errorLog
-                        });
-                        try {
-                            const users = await base44.asServiceRole.entities.User.filter({ email: job.user_email }, null, 1);
-                            const userArr = Array.isArray(users) ? users : (users?.items || []);
-                            if (userArr.length > 0) {
-                                await base44.asServiceRole.entities.User.update(userArr[0].id, {
-                                    has_pulled_data: true, last_data_pull: completedAt, territory_property_count: totalInserted + totalExisted
-                                });
-                            }
-                        } catch (_e) { /* non-fatal */ }
-                        console.log(`[chunk-v15] JOB COMPLETE (deed-only) | apiCalls=${totalApiCalls} | inserted=${totalInserted} | existed=${totalExisted} | updated=${totalUpdated}`);
-                        return Response.json({ status: 'completed', job_id: jobId, phase: 'deed_only' });
-                    }
+                    // v15: Phase 2 ALWAYS runs — it covers the "clerk gap" (last 30 days
+                    // where county deeds haven't been recorded yet). Since all MLS listings
+                    // are now verified through BatchData, there's zero risk of false positives.
+                    // The include_mls toggle is no longer needed as a safety gate.
+                    nextPhase = 'listings_records';
+                    nextSubCircle = 0;
+                    nextOffset = 0;
+                    totalExpected = 0;
+                    console.log(`[chunk-v15] Phase 1 COMPLETE for all sub-circles. Advancing to Phase 2 (MLS + BatchData verification).`);
                 }
             } else {
             console.log(`[chunk-v15] Phase 1 sub-circle ${currentSubCircle + 1} needs more pages (nextOffset=${nextOffset})`);
@@ -743,7 +720,7 @@ Deno.serve(async (req) => {
                         if (Date.now() - chunkStart > 50000) break;
                         const zipBatch = uniqueZips.slice(zi, zi + 20);
                         const promises = zipBatch.map(zip =>
-                            base44.asServiceRole.entities.MasterProperty.filter({ zip_code: zip, sale_confidence: 'high' }, null, 5000)
+                            base44.asServiceRole.entities.MasterProperty.filter({ zip_code: zip, sale_type: 'Deed' }, null, 5000)
                                 .then(res => {
                                     const arr = Array.isArray(res) ? res : (res?.items || []);
                                     arr.forEach(mp => deedHashSet.add(mp.address_hash));
