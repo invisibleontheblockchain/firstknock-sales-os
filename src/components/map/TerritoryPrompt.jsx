@@ -259,7 +259,7 @@ export default function TerritoryPrompt({
                     window.dispatchEvent(new CustomEvent('fk-territory-data-ready'));
 
                     if (onPullComplete) {
-                        onPullComplete(fetchMonths, true);
+                        onPullComplete(fetchMonths, isPaid);
                         setShowCompare(true);
                     } else {
                         queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
@@ -332,7 +332,7 @@ export default function TerritoryPrompt({
                 radius: radius,
                 polygon: drawnPolygon,
                 sold_months: fetchMonths,
-                include_mls: true
+                include_mls: isPaid
             });
             const d = res.data || {};
 
@@ -448,20 +448,42 @@ export default function TerritoryPrompt({
                         {drawSizeMiles === 300 && (
                             <div className="text-[9px] text-cyan-400 text-center font-semibold">Heads up — 300mi² × {fetchMonths}mo is a big pull. Expect longer import times.</div>
                         )}
-                        {/* v15: Phase 2 (MLS + BatchData) always runs automatically */}
+                        {/* v15: MLS Verified — paid users only */}
                         <div className="border-t border-white/10 pt-2 mt-1">
-                            <div className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                                    <span className="text-[10px] font-bold text-emerald-400">
-                                        MLS Verified
-                                    </span>
-                                </div>
-                                <Zap className="w-3 h-3 text-emerald-400" />
-                            </div>
-                            <p className="text-[8px] text-emerald-400/70 mt-1 leading-tight px-1">
-                                ✅ Recently sold MLS listings are automatically verified before appearing on your route — no false "For Sale" signs.
-                            </p>
+                            {isPaid ? (
+                                <>
+                                    <div className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                            <span className="text-[10px] font-bold text-emerald-400">
+                                                MLS Verified
+                                            </span>
+                                        </div>
+                                        <Zap className="w-3 h-3 text-emerald-400" />
+                                    </div>
+                                    <p className="text-[8px] text-emerald-400/70 mt-1 leading-tight px-1">
+                                        ✅ Recently sold MLS listings are automatically verified before appearing on your route — no false "For Sale" signs.
+                                    </p>
+                                </>
+                            ) : (
+                                <>
+                                    <button
+                                        onClick={() => navigate('/Billing')}
+                                        className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-yellow-500/10 hover:border-yellow-500/30 transition-all cursor-pointer group"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <Lock className="w-3 h-3 text-gray-500 group-hover:text-yellow-400 transition-colors" />
+                                            <span className="text-[10px] font-bold text-gray-400 group-hover:text-yellow-400 transition-colors">
+                                                Enable MLS
+                                            </span>
+                                        </div>
+                                        <ArrowRight className="w-3 h-3 text-gray-500 group-hover:text-yellow-400 transition-colors" />
+                                    </button>
+                                    <p className="text-[8px] text-gray-500 mt-1 leading-tight px-1">
+                                        Upgrade to Pro to unlock verified MLS listings that fill the gap between county records and recent sales.
+                                    </p>
+                                </>
+                            )}
                         </div>
                         <p className="text-[10px] text-yellow-400/70 text-center">Tap the map to place your territory</p>
                     </div>
