@@ -67,6 +67,11 @@
       ],
       "description": "Origin of this record for data quality tracking"
     },
+    "route_active": {
+      "type": "boolean",
+      "default": true,
+      "description": "Whether this property is currently eligible to appear on active routes"
+    },
     "owner_full_name": {
       "type": "string",
       "description": "Owner full name returned by BatchData owner dataset"

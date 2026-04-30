@@ -319,7 +319,14 @@ Deno.serve(async (req) => {
                     base44.asServiceRole.entities.MasterProperty.filter({ zip_code: zip }, null, 5000)
                         .then(res => {
                             const arr = Array.isArray(res) ? res : (res?.items || []);
-                            arr.forEach(p => existingHashToId.set(p.address_hash, { id: p.id, soldDate: p.sold_date, price: p.price }));
+                            arr.forEach(p => existingHashToId.set(p.address_hash, {
+                                id: p.id,
+                                soldDate: p.sold_date,
+                                price: p.price,
+                                saleConfidence: p.sale_confidence,
+                                originalStatus: p.original_status,
+                                routeActive: p.route_active !== false
+                            }));
                         })
                         .catch(() => {})
                 );
@@ -338,11 +345,15 @@ Deno.serve(async (req) => {
                     chunkExisted++;
                     const existingSaleDate = existing.soldDate ? new Date(existing.soldDate) : new Date(0);
                     const incomingSaleDate = p.sold_date ? new Date(p.sold_date) : new Date(0);
-                    if (incomingSaleDate > existingSaleDate) {
+                    const statusChanged = p.sale_confidence !== existing.saleConfidence || p.original_status !== existing.originalStatus;
+                    const routeActiveChanged = p.route_active !== undefined && p.route_active !== existing.routeActive;
+                    const shouldDeactivateRoute = p.route_active === false || p.original_status === 'REJECTED' || p.sale_confidence === 'REJECTED';
+
+                    if (incomingSaleDate > existingSaleDate || statusChanged || routeActiveChanged || shouldDeactivateRoute) {
                         const { address_hash, ...updatePayload } = p;
-                        toUpdate.push({ id: existing.id, ...updatePayload });
+                        toUpdate.push({ id: existing.id, ...updatePayload, ...(shouldDeactivateRoute ? { route_active: false } : {}) });
                     }
-                } else {
+                } else if (p.route_active !== false && p.original_status !== 'REJECTED' && p.sale_confidence !== 'REJECTED') {
                     toInsert.push(p);
                 }
             }
@@ -478,7 +489,7 @@ Deno.serve(async (req) => {
                             lat: p.latitude, lng: p.longitude, original_status, beds: p.bedrooms || 0, baths: p.bathrooms || 0,
                             sqft: p.squareFootage || 0, lot_size: p.lotSize || 0, year_built: p.yearBuilt || 0, price: p.lastSalePrice || 0,
                             sold_date: p.lastSaleDate || null, sale_type: corporate ? 'Corporate' : 'Deed', property_type: p.propertyType || 'Single Family', data_source: 'rentcast',
-                            sale_confidence: confidence
+                            sale_confidence: confidence, route_active: true
                         });
                     }
                 }
@@ -750,7 +761,8 @@ Deno.serve(async (req) => {
                     sqft: p.squareFootage || 0, lot_size: p.lotSize || 0, year_built: p.yearBuilt || 0, price: p.price || 0,
                     sold_date: p.removedDate || p.listedDate || null, sale_type: 'MLS', property_type: p.propertyType || 'Single Family', data_source: 'rentcast',
                     sale_confidence: mlsConfidence,
-                    mls_id: listingId || ''
+                    mls_id: listingId || '',
+                    route_active: true
                 });
             }
 
@@ -808,6 +820,7 @@ Deno.serve(async (req) => {
                         !phase1DeedHashSet.has(m.address_hash);
                 });
                 const batchdataCandidates = ambiguousMls;
+                console.log(`[chunk-v15] Phase 2 BatchData candidates: ${batchdataCandidates.length} properties`);
 
                 if (batchdataCandidates.length > 0) {
                     console.log(`[chunk-v15] Step 3: Sending ${batchdataCandidates.length} MLS listings to BatchData for verification`);
@@ -947,6 +960,17 @@ Deno.serve(async (req) => {
                         m.original_status = 'REJECTED';
                     }
                 }
+            }
+
+            // Deactivate existing rejected Phase 2 records without deleting their DB history.
+            const rejectedForDeactivation = mapped
+                .filter(m => m.original_status === 'REJECTED' || m.sale_confidence === 'REJECTED')
+                .map(m => ({ ...m, route_active: false }));
+            if (rejectedForDeactivation.length > 0) {
+                const deactivationResult = await writeToDb(rejectedForDeactivation);
+                totalExisted += deactivationResult.chunkExisted;
+                totalUpdated += deactivationResult.chunkUpdated;
+                console.log(`[chunk-v15] Delta sync deactivated ${deactivationResult.chunkUpdated} rejected existing route records; deed records preserved`);
             }
 
             // Filter out REJECTED records (from heuristic scoring or BatchData Step 3)
