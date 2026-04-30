@@ -61,15 +61,15 @@ Make FirstKnock scalable beyond the current Base44 property-storage bottleneck b
 ## Implementation Roadmap
 
 ### Phase 1 — Finish Neon read cutover for map and route generation
-- [ ] Create/review `getRouteCandidatesFromNeon` backend function.
-- [ ] Query Neon by user_email/workspace, route_active, zip, sold_date, bounds/polygon prefilter, and confidence/status.
-- [ ] Return capped, route-ready records only.
-- [ ] Replace `Home` initial property query with Neon function.
-- [ ] Replace zip-specific `MasterProperty.filter` reads in route generation with Neon function calls.
-- [ ] Keep `SavedRoute`, `InteractionLog`, and team reads in Base44.
+- [x] Create/review `getRouteCandidatesFromNeon` backend function.
+- [x] Query Neon by user_email/workspace, route_active, zip, sold_date, bounds/polygon prefilter, and confidence/status.
+- [x] Return capped, route-ready records only.
+- [x] Replace `Home` initial property query with Neon function.
+- [x] Replace zip-specific `MasterProperty.filter` reads in route generation with Neon function calls.
+- [x] Keep `SavedRoute`, `InteractionLog`, and team reads in Base44.
 
 ### Phase 2 — Remove remaining heavy `MasterProperty` dependencies
-- [ ] Review `fetchZipProperties` and migrate heavy writes/reads to Neon.
+- [x] Review `fetchZipProperties` and migrate heavy writes/reads to Neon.
 - [ ] Remove Base44 cache checks in `fetchAreaProperties` or replace with Neon stats/candidate checks.
 - [ ] Keep `MasterProperty` only as legacy/backward-compatible fallback until confidence is high.
 - [ ] Add a feature flag or env mode for rollback if Neon query path fails.
@@ -81,7 +81,7 @@ Make FirstKnock scalable beyond the current Base44 property-storage bottleneck b
 - [ ] Return saved route summaries and property hashes, not huge route payloads.
 
 ### Phase 4 — Production hardening
-- [ ] Add `healthCheck` backend function checking Base44 auth availability, Neon connectivity, and required secrets.
+- [x] Add `healthCheck` backend function checking Base44 auth availability, Neon connectivity, and required secrets.
 - [ ] Add admin-only diagnostics page or function for storage, job status, and recent failures.
 - [ ] Add error alerting strategy for failed jobs/webhooks.
 - [ ] Add runbook for stuck fetch jobs, Stripe webhook failures, RentCast failures, and Neon capacity.
@@ -103,5 +103,34 @@ Make FirstKnock scalable beyond the current Base44 property-storage bottleneck b
 ## Recommended Immediate Next Step
 Implement Phase 1 first: create/use a Neon route-candidate backend function and switch `Home` route/map property reads away from Base44 `MasterProperty`.
 
+## Active Implementation Plan
+
+### Pass 1 Scope
+- [x] Add Neon route-candidate backend API.
+- [x] Switch `Home` map/route property reads from heavy `MasterProperty` reads to Neon route-candidate API.
+- [x] Keep Base44 for auth, saved routes, logs, teams, and templates.
+- [x] Add production health check backend function.
+- [x] Verify new backend functions with test calls.
+- [x] Update this review with completed work and remaining items.
+
 ## Review
-Plan created only; no implementation changes made yet.
+Pass 1 implemented and verified.
+
+### Completed
+- Added `getRouteCandidatesFromNeon` and verified it returns Neon candidates successfully.
+- Updated `Home` initial property loading to use `getRouteCandidatesFromNeon` instead of large `MasterProperty` queries.
+- Updated route generation zip reads to use `getRouteCandidatesFromNeon`.
+- Migrated `fetchZipProperties` cache, dedup, and writes to Neon.
+- Added `healthCheck` admin function and verified Base44 auth, Neon, required secrets, and job counts.
+
+### Verification Results
+- `getRouteCandidatesFromNeon` test returned 200 and successfully returned property candidates.
+- `getRouteCandidatesFromNeon` with `limit: 5` returned 200 in 403ms.
+- `healthCheck` returned 200 with Neon OK, all required secrets present, and no running jobs.
+- `fetchZipProperties` usage-only path returned 200 after Neon migration.
+
+### Remaining Work
+- Move `fetchAreaProperties` cache checks fully to Neon.
+- Add backend route generation for large working sets.
+- Add admin diagnostics UI/function, error alerting, and runbooks.
+- Run larger storage/query/load tests and add indexes if query plans require them.

@@ -1,11 +1,81 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { latLngToCell } from 'npm:h3-js@4.1.0';
+import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
 // v8 - Lean fetch: Only recently sold + MLS. No density fill. Respects sold_months param.
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
 const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
 const PAGE_SIZE = 500;
+const DATABASE_URL = Deno.env.get('DATABASE_URL');
+
+function toNullableDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+async function getNeonZipCache(sql, zip, userEmail) {
+  const rows = await sql`
+    SELECT COUNT(*)::int AS count, MAX(p.created_at) AS newest_created_at
+    FROM workspace_properties wp
+    JOIN properties p ON p.id = wp.property_id
+    WHERE wp.user_email = ${userEmail} AND p.zip_code = ${zip}
+  `;
+  return rows[0] || { count: 0, newest_created_at: null };
+}
+
+async function getExistingNeonHashes(sql, zip) {
+  const rows = await sql`SELECT address_hash FROM properties WHERE zip_code = ${zip}`;
+  return new Set(rows.map(row => row.address_hash).filter(Boolean));
+}
+
+async function writeZipPropertiesToNeon(sql, properties, userEmail) {
+  let successCount = 0;
+
+  for (const p of properties) {
+    const soldDate = toNullableDate(p.sold_date);
+    const rawPayload = JSON.stringify(p);
+    const inserted = await sql`
+      INSERT INTO properties (
+        address_hash, legacy_hash, full_address, house_number, street_name, city, state, zip_code,
+        lat, lng, h3_index, owner_full_name, beds, baths, sqft, lot_size, year_built, price,
+        sold_date, sale_type, property_type, mls_id, url, data_source, sale_confidence,
+        original_status, raw_payload, updated_at
+      ) VALUES (
+        ${p.address_hash}, ${p.legacy_hash || null}, ${p.full_address || `${p.house_number || ''} ${p.street_name || ''}`.trim()},
+        ${p.house_number || null}, ${p.street_name || null}, ${p.city || null}, ${p.state || null}, ${p.zip_code || null},
+        ${p.lat || null}, ${p.lng || null}, ${p.h3_index || null}, ${p.owner_full_name || null}, ${p.beds || null},
+        ${p.baths || null}, ${p.sqft || null}, ${p.lot_size || null}, ${p.year_built || null}, ${p.price || null},
+        ${soldDate}, ${p.sale_type || null}, ${p.property_type || null}, ${p.mls_id || null}, ${p.url || null},
+        ${p.data_source || null}, ${p.sale_confidence || null}, ${p.original_status || null}, ${rawPayload}, NOW()
+      )
+      ON CONFLICT (address_hash)
+      DO UPDATE SET
+        full_address = COALESCE(EXCLUDED.full_address, properties.full_address),
+        lat = COALESCE(EXCLUDED.lat, properties.lat),
+        lng = COALESCE(EXCLUDED.lng, properties.lng),
+        sold_date = COALESCE(EXCLUDED.sold_date, properties.sold_date),
+        price = COALESCE(EXCLUDED.price, properties.price),
+        sale_confidence = COALESCE(EXCLUDED.sale_confidence, properties.sale_confidence),
+        original_status = COALESCE(EXCLUDED.original_status, properties.original_status),
+        raw_payload = EXCLUDED.raw_payload,
+        updated_at = NOW()
+      RETURNING id
+    `;
+
+    const propertyId = inserted[0].id;
+    await sql`
+      INSERT INTO workspace_properties (property_id, user_email, route_active, status, updated_at)
+      VALUES (${propertyId}, ${userEmail}, ${p.original_status !== 'REJECTED' && p.sale_confidence !== 'REJECTED'}, ${p.original_status || null}, NOW())
+      ON CONFLICT (property_id, user_email)
+      DO UPDATE SET route_active = EXCLUDED.route_active, status = EXCLUDED.status, updated_at = NOW()
+    `;
+    successCount++;
+  }
+
+  return successCount;
+}
 
 async function fetchAllPages(baseUrl, params, label, apiKey) {
   params.set('limit', String(PAGE_SIZE));
@@ -93,20 +163,19 @@ Deno.serve(async (req) => {
       } catch (e) { console.error(`[FetchZip-v8] Territory update failed:`, e.message); }
     }
 
+    const sql = DATABASE_URL ? neon(DATABASE_URL) : null;
+
     // Stale cache check
-    if (!force_sync) {
-      const existing = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 1);
-      const existingArr = Array.isArray(existing) ? existing : (existing?.items || []);
-      if (existingArr.length > 0) {
-        const lastUpdated = existingArr[0]?.created_date ? new Date(existingArr[0].created_date) : null;
+    if (!force_sync && sql) {
+      const cache = await getNeonZipCache(sql, zip, user.email);
+      if (cache.count > 0) {
+        const lastUpdated = cache.newest_created_at ? new Date(cache.newest_created_at) : null;
         const isStale = !lastUpdated || (Date.now() - lastUpdated.getTime() > STALE_THRESHOLD_MS);
         if (!isStale) {
-          const countResult = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000);
-          const totalCount = (Array.isArray(countResult) ? countResult : (countResult?.items || [])).length;
-          console.log(`[FetchZip-v8] Cache hit — ${totalCount} props, ${Math.round((Date.now() - lastUpdated.getTime()) / 3600000)}h old`);
-          return Response.json({ status: 'exists', count: totalCount, message: `${totalCount} properties cached for ${zip}` });
+          console.log(`[FetchZip-v8] Neon cache hit — ${cache.count} props, ${Math.round((Date.now() - lastUpdated.getTime()) / 3600000)}h old`);
+          return Response.json({ status: 'exists', count: cache.count, message: `${cache.count} properties cached for ${zip}` });
         }
-        console.log(`[FetchZip-v8] Cache stale, re-syncing...`);
+        console.log(`[FetchZip-v8] Neon cache stale, re-syncing...`);
       }
     }
 
@@ -193,12 +262,11 @@ Deno.serve(async (req) => {
       return Response.json({ status: 'empty', count: 0, message: `No recently sold properties found for ${zip} in last ${sold_months} months.`, api_calls: totalApiCalls });
     }
 
-    // Dedup against existing DB records
+    // Dedup against existing Neon records
     let existingHashes = new Set();
     try {
-      const existingProps = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000);
-      existingHashes = new Set((Array.isArray(existingProps) ? existingProps : (existingProps?.items || [])).map(p => p.address_hash));
-    } catch (e) { console.warn(`[FetchZip-v8] Dedup fetch failed:`, e.message); }
+      existingHashes = sql ? await getExistingNeonHashes(sql, zip) : new Set();
+    } catch (e) { console.warn(`[FetchZip-v8] Neon dedup fetch failed:`, e.message); }
 
 
     // Map to schema — deed-only, no MLS
@@ -372,24 +440,10 @@ Deno.serve(async (req) => {
       return Response.json({ status: 'exists', count: 0, message: `All properties already in database.`, api_calls: totalApiCalls });
     }
 
-    // Bulk insert
-    let successCount = 0;
-    const CHUNK_SIZE = 500;
-    for (let i = 0; i < finalMapped.length; i += CHUNK_SIZE) {
-      const chunk = finalMapped.slice(i, i + CHUNK_SIZE);
-      try {
-        await base44.entities.MasterProperty.bulkCreate(chunk);
-        successCount += chunk.length;
-      } catch (e) {
-        console.error(`[FetchZip-v8] Chunk failed:`, e.message);
-        // Retry with smaller chunks
-        for (let j = 0; j < chunk.length; j += 100) {
-          const small = chunk.slice(j, j + 100);
-          try { await base44.entities.MasterProperty.bulkCreate(small); successCount += small.length; } catch {}
-        }
-      }
-      if (i + CHUNK_SIZE < finalMapped.length) await new Promise(r => setTimeout(r, 500));
-    }
+    if (!sql) return Response.json({ error: 'DATABASE_URL is not configured' }, { status: 500 });
+
+    // Neon upsert
+    const successCount = await writeZipPropertiesToNeon(sql, finalMapped, user.email);
 
     console.log(`[FetchZip-v8] Done! Imported ${successCount}/${finalMapped.length}, used ${totalApiCalls} API calls`);
 

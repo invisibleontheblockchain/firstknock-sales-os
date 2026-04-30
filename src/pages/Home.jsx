@@ -261,6 +261,17 @@ export default function Home() {
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
 
+    const fetchRouteCandidatesFromNeon = useCallback(async ({ zipCodes = [], zipCodeFilterValue = '', soldMonths = null, polygon = null, limit = 100000 } = {}) => {
+        const res = await base44.functions.invoke('getRouteCandidatesFromNeon', {
+            zip_codes: zipCodes,
+            zip_code_filter: zipCodeFilterValue,
+            sold_months: soldMonths,
+            polygon,
+            limit
+        });
+        return Array.isArray(res.data?.properties) ? res.data.properties : [];
+    }, []);
+
     // Load navigation preference from user settings on load
     useEffect(() => {
         if (user?.navigation_app) {
@@ -415,64 +426,17 @@ export default function Home() {
             if (!user) return [];
 
             try {
-                let items = [];
                 const t0 = performance.now();
-                const MAX_PROPERTIES = 100000; // Dense metros can exceed 50K
-                const PER_QUERY_CAP = 10000;   // Max the DB returns per filter call
-                const PARALLEL_ZIPS = 4;       // Fetch 4 zips concurrently — empirically the sweet spot before 429s
-                const _delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-                // ── ZIP-BASED FETCH ──
-                // Polygon is a LOCAL filter — we don't refetch when it changes. See queryKey comment above.
                 const allZips = Array.from(new Set([...(user.territory_zip_codes || []), ...(user.generated_zip_codes || [])]));
-
-                if (allZips.length > 0) {
-                    console.log(`[Home] Fetching properties for ${allZips.length} zips (parallel=${PARALLEL_ZIPS}, cap=${PER_QUERY_CAP}/zip)`);
-
-                    const fetchZipWithRetry = async (zip, attempt = 0) => {
-                        try {
-                            const res = await base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', PER_QUERY_CAP);
-                            return Array.isArray(res) ? res : (res?.items || []);
-                        } catch (err) {
-                            const msg = err?.message || '';
-                            const isRateLimit = msg.includes('Rate limit') || msg.includes('429');
-                            if (isRateLimit && attempt < 3) {
-                                const backoff = 800 * Math.pow(2, attempt); // 0.8s, 1.6s, 3.2s
-                                console.warn(`[Home] Zip ${zip} rate-limited, retry in ${backoff}ms`);
-                                await _delay(backoff);
-                                return fetchZipWithRetry(zip, attempt + 1);
-                            }
-                            console.warn(`[Home] Zip ${zip} fetch failed:`, msg);
-                            return [];
-                        }
-                    };
-
-                    // OPT: Parallel batches of PARALLEL_ZIPS. Previously sequential with 250ms pacing
-                    // between every zip — 20 zips = ~5s just in idle delay. Now all zips finish in the
-                    // time of the slowest batch (~2-4 concurrent requests).
-                    const seenHashes = new Set();
-                    for (let i = 0; i < allZips.length; i += PARALLEL_ZIPS) {
-                        if (items.length >= MAX_PROPERTIES) break;
-                        const batch = allZips.slice(i, i + PARALLEL_ZIPS);
-                        const batchResults = await Promise.all(batch.map(fetchZipWithRetry));
-                        for (const zipItems of batchResults) {
-                            for (const p of zipItems) {
-                                const k = p.address_hash || p.id;
-                                if (k && !seenHashes.has(k)) { seenHashes.add(k); items.push(p); }
-                            }
-                        }
-                    }
-
-                    if (items.length > MAX_PROPERTIES) items = items.slice(0, MAX_PROPERTIES);
-                    console.log(`[Home] Fetched ${items.length} properties in ${Math.round(performance.now() - t0)}ms`);
-                } else {
-                    const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', PER_QUERY_CAP);
-                    items = Array.isArray(result) ? result : (result?.items || []);
-                }
-
+                const items = await fetchRouteCandidatesFromNeon({
+                    zipCodes: allZips,
+                    soldMonths: 'all',
+                    limit: 100000
+                });
+                console.log(`[Home] Fetched ${items.length} Neon properties in ${Math.round(performance.now() - t0)}ms`);
                 return items;
             } catch (e) {
-                console.log('[Home] Error fetching properties:', e);
+                console.log('[Home] Error fetching Neon properties:', e);
                 return [];
             }
         },
@@ -993,17 +957,11 @@ export default function Home() {
                 // Check if we need to fetch (simple check: do we have enough data for these zips?)
                 // We'll just fetch to be safe and merge.
                 // Note: Parallel fetch for multiple zips
-                const fetchPromises = targetZips.map(zip =>
-                    base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000)
-                        .then(res => Array.isArray(res) ? res : (res?.items || []))
-                        .catch(err => {
-                            console.warn(`Failed to fetch zip ${zip}`, err);
-                            return [];
-                        })
-                );
-
-                const results = await Promise.all(fetchPromises);
-                let flattened = results.flat();
+                let flattened = await fetchRouteCandidatesFromNeon({
+                    zipCodes: targetZips,
+                    soldMonths: 'all',
+                    limit: 50000
+                });
 
                 const userGeneratedZips = user?.generated_zip_codes || [];
                 const ungeneratedZips = targetZips.filter(z => !userGeneratedZips.includes(z));
@@ -1043,13 +1001,11 @@ export default function Home() {
                     toast.success("Data synced!", { id: 'fetch-zip' });
 
                     // Re-fetch after import
-                    const retryPromises = targetZips.map(zip =>
-                        base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000)
-                            .then(res => Array.isArray(res) ? res : (res?.items || []))
-                            .catch(() => [])
-                    );
-                    const retryResults = await Promise.all(retryPromises);
-                    flattened = retryResults.flat();
+                    flattened = await fetchRouteCandidatesFromNeon({
+                        zipCodes: targetZips,
+                        soldMonths: 'all',
+                        limit: 50000
+                    });
                 }
 
                 if (flattened.length > 0) {
@@ -1189,7 +1145,7 @@ export default function Home() {
             // (we re-check generationError via a functional setState)
             setRoutesGenerating(false);
         }
-    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, frozenWorkingSet, effectiveProperties]);
+    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, frozenWorkingSet, effectiveProperties, fetchRouteCandidatesFromNeon]);
 
     // Reorder: re-run filtering + routing on frozen data without re-fetching
     const handleReorder = useCallback(async () => {
