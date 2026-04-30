@@ -136,6 +136,7 @@ export default function Home() {
 
     const [showRoutePanel, setShowRoutePanel] = useState(false);
     const [showCompare, setShowCompare] = useState(false);
+    const [routes, setRoutes] = useState([]);
     const [housesPerRoute, setHousesPerRoute] = useState(10000); // Default: All-in-One route
     const ROUTE_SIZE_OPTIONS = [25, 50, 75, 100];
     const [sortBy, setSortBy] = useState('score'); // score, houses, distance
@@ -944,7 +945,6 @@ export default function Home() {
     }, [savedRoutes, effectiveProperties, activeRoute]);
 
     // Generate routes with configurable houses per route
-    const [routes, setRoutes] = useState([]);
     const [routesGenerating, setRoutesGenerating] = useState(false);
     const [generationStage, setGenerationStage] = useState('Preparing data...');
 
