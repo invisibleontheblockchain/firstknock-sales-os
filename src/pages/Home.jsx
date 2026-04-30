@@ -1104,7 +1104,13 @@ export default function Home() {
             setGenerationStage(`Optimizing ${finalCount.toLocaleString()} doors — ~${Math.max(2, Math.round(finalCount / 1500))}s`);
             toast.loading(`Optimizing ${finalCount.toLocaleString()} properties${filteredOut > 0 ? ` (${filteredOut.toLocaleString()} filtered)` : ''}... ~${Math.max(2, Math.round(finalCount / 1500))}s`, { id: 'build-routes' });
             console.log(`[generateRoutes] Opt start | n=${finalCount} | 2opt=${effectiveUse2Opt}`);
-            const generated = await new Promise(resolve => setTimeout(() => resolve(generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: routeConfig.returnToStart, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights)), 50));
+            const generated = finalCount > 5000
+                ? (await base44.functions.invoke('generateRoutesBackend', {
+                    properties: workingSet,
+                    houses_per_route: housesPerRoute,
+                    start_location: start
+                })).data.routes
+                : await new Promise(resolve => setTimeout(() => resolve(generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: routeConfig.returnToStart, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights)), 50));
             console.log(`[generateRoutes] Done in ${Math.round(performance.now() - optStart)}ms: ${generated.length} routes`);
             if (!generated || generated.length === 0) { toast.dismiss('build-routes'); setGenerationError(`Optimizer returned 0 routes from ${finalCount.toLocaleString()} properties. Try relaxing filters or pulling fresh data.`); return; }
             if (generated['_cooldownInfo']) setCooldownInfo(generated['_cooldownInfo']);
@@ -1168,7 +1174,13 @@ export default function Home() {
             const workingSet = filterResult.workingSet;
             const effectiveUse2Opt = workingSet.length > 3000 ? false : routeConfig.use2Opt;
             const start = startLocation || (mapRef.current ? { lat: mapRef.current.getCenter().lat, lng: mapRef.current.getCenter().lng } : null);
-            const generated = generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: routeConfig.returnToStart, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights);
+            const generated = workingSet.length > 5000
+                ? (await base44.functions.invoke('generateRoutesBackend', {
+                    properties: workingSet,
+                    houses_per_route: housesPerRoute,
+                    start_location: start
+                })).data.routes
+                : generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: routeConfig.returnToStart, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights);
             setRoutes(generated);
             if (generated.length > 0) {
                 const bulkId = toast.loading(`Auto-saving ${generated.length} routes...`);

@@ -70,21 +70,21 @@ Make FirstKnock scalable beyond the current Base44 property-storage bottleneck b
 
 ### Phase 2 — Remove remaining heavy `MasterProperty` dependencies
 - [x] Review `fetchZipProperties` and migrate heavy writes/reads to Neon.
-- [ ] Remove Base44 cache checks in `fetchAreaProperties` or replace with Neon stats/candidate checks.
+- [x] Remove Base44 cache checks in `fetchAreaProperties` or replace with Neon stats/candidate checks.
 - [ ] Keep `MasterProperty` only as legacy/backward-compatible fallback until confidence is high.
 - [ ] Add a feature flag or env mode for rollback if Neon query path fails.
 
 ### Phase 3 — Move heavy route computation off the browser where needed
-- [ ] Add backend route-generation function for large working sets.
-- [ ] Keep browser route optimization for small sets.
-- [ ] Use threshold-based behavior: small routes client-side, large routes backend-side.
+- [x] Add backend route-generation function for large working sets.
+- [x] Keep browser route optimization for small sets.
+- [x] Use threshold-based behavior: small routes client-side, large routes backend-side.
 - [ ] Return saved route summaries and property hashes, not huge route payloads.
 
 ### Phase 4 — Production hardening
 - [x] Add `healthCheck` backend function checking Base44 auth availability, Neon connectivity, and required secrets.
-- [ ] Add admin-only diagnostics page or function for storage, job status, and recent failures.
+- [x] Add admin-only diagnostics page or function for storage, job status, and recent failures.
 - [ ] Add error alerting strategy for failed jobs/webhooks.
-- [ ] Add runbook for stuck fetch jobs, Stripe webhook failures, RentCast failures, and Neon capacity.
+- [x] Add runbook for stuck fetch jobs, Stripe webhook failures, RentCast failures, and Neon capacity.
 
 ### Phase 5 — Database scale validation
 - [ ] Run `measureNeonStorage` after a larger pull.
@@ -95,7 +95,7 @@ Make FirstKnock scalable beyond the current Base44 property-storage bottleneck b
 
 ### Phase 6 — Load and failure testing
 - [ ] Simulate multiple users loading Home at once.
-- [ ] Simulate repeated route candidate queries.
+- [x] Simulate repeated route candidate queries.
 - [ ] Simulate failed RentCast/BatchData calls.
 - [ ] Simulate stuck fetch job and watchdog recovery.
 - [ ] Confirm app remains usable under partial external API failure.
@@ -130,7 +130,23 @@ Pass 1 implemented and verified.
 - `fetchZipProperties` usage-only path returned 200 after Neon migration.
 
 ### Remaining Work
-- Move `fetchAreaProperties` cache checks fully to Neon.
-- Add backend route generation for large working sets.
-- Add admin diagnostics UI/function, error alerting, and runbooks.
-- Run larger storage/query/load tests and add indexes if query plans require them.
+- [x] Move `fetchAreaProperties` cache checks fully to Neon.
+- [x] Add backend route generation for large working sets.
+- [x] Add admin diagnostics function for storage, job status, and recent failures.
+- [x] Add runbook for stuck fetch jobs, Stripe webhook failures, RentCast failures, and Neon capacity.
+- [x] Add route-candidate load-test helper.
+- [x] Verify new/changed functions.
+- [x] Update review with final pass results.
+
+### Final Pass Results
+- Added `adminDiagnostics` and verified storage/job diagnostics returned successfully.
+- Added `loadTestRouteCandidates` and verified repeated route-candidate query testing returned avg 219ms, p95 281ms for 2 runs at limit 50.
+- Added `generateRoutesBackend` and verified backend route generation returned routes successfully.
+- Updated `fetchAreaProperties` cache linking to use Neon instead of Base44 `MasterProperty`.
+- Added `docs/production-runbook.md` covering stuck jobs, Neon, Stripe, RentCast, BatchData, and pre-launch checks.
+
+### Still Not Fully Complete
+- Error alerting is documented as needed but not wired to email/SMS/Slack yet.
+- Backend large-route generation uses a simpler nearest-neighbor algorithm than the rich frontend optimizer.
+- Saved route payloads still store property hashes in Base44; acceptable now, but route summary-only persistence can be improved later.
+- Full multi-user load testing and backup restore testing still need to be run outside the app runtime.

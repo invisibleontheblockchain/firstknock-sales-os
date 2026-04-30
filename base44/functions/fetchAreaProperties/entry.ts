@@ -1,9 +1,11 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
 // v9 — Grid Subdivision: breaks large areas into overlapping sub-circles (≤5mi)
 // per RentCast support guidance. Large-radius queries silently drop records.
 // Uses ONLY /v1/properties?saleDateRange (county deed records)
 // MLS /listings/sale is permanently retired — Inactive status includes expired/withdrawn/cancelled
+const DATABASE_URL = Deno.env.get('DATABASE_URL');
 
 function computeBoundingCircle(polygon) {
     if (!polygon || polygon.length < 3) return null;
@@ -82,16 +84,14 @@ async function findDeltaWatermark(base44, lat, lng, radius) {
         for (const job of jobs) {
             if (!job.completed_at || !job.latitude || !job.longitude) continue;
             
-            // Check if this job covers roughly the same area
             const dLat = Math.abs(job.latitude - lat);
             const dLng = Math.abs(job.longitude - lng);
-            const overlapDegrees = 0.1; // ~7 miles tolerance
+            const overlapDegrees = 0.1;
             
             if (dLat < overlapDegrees && dLng < overlapDegrees && job.radius >= radius * 0.8) {
                 const ageMs = Date.now() - new Date(job.completed_at).getTime();
                 const ageDays = ageMs / (1000 * 60 * 60 * 24);
                 
-                // Only use as watermark if less than 90 days old
                 if (ageDays < 90) {
                     console.log(`[fetchArea-v8] Found delta watermark from ${Math.round(ageDays)}d ago (job ${job.id})`);
                     return {
@@ -108,6 +108,24 @@ async function findDeltaWatermark(base44, lat, lng, radius) {
         console.warn(`[fetchArea-v8] Delta watermark check failed (non-fatal): ${e.message}`);
     }
     return null;
+}
+
+async function getNeonCachedZipCodes(lat, lng, radius, userEmail) {
+    if (!DATABASE_URL) return [];
+    const sql = neon(DATABASE_URL);
+    const latRange = radius / 69.0;
+    const lngRange = radius / (69.0 * Math.cos(lat * Math.PI / 180));
+    const rows = await sql`
+        SELECT DISTINCT p.zip_code
+        FROM workspace_properties wp
+        JOIN properties p ON p.id = wp.property_id
+        WHERE wp.user_email = ${userEmail}
+          AND p.zip_code IS NOT NULL
+          AND p.lat BETWEEN ${lat - latRange} AND ${lat + latRange}
+          AND p.lng BETWEEN ${lng - lngRange} AND ${lng + lngRange}
+        LIMIT 100
+    `;
+    return rows.map(row => row.zip_code).filter(Boolean);
 }
 
 Deno.serve(async (req) => {
@@ -218,32 +236,19 @@ Deno.serve(async (req) => {
             console.log(`[fetchArea-v8] Full pull — no previous data found for this area`);
         }
 
-        // === SHARED PROPERTY CACHE — link existing zips to user ===
+        // === SHARED PROPERTY CACHE — link existing Neon zips to user ===
         try {
-            const latRange = optimizedRadius / 69.0;
-            const lngRange = optimizedRadius / (69.0 * Math.cos(optimizedLat * Math.PI / 180));
-            const sampleProps = await base44.asServiceRole.entities.MasterProperty.filter(
-                { 
-                    lat: { $gte: optimizedLat - latRange, $lte: optimizedLat + latRange },
-                    lng: { $gte: optimizedLng - lngRange, $lte: optimizedLng + lngRange }
-                }, null, 500
-            );
-            const sampleArr = Array.isArray(sampleProps) ? sampleProps : (sampleProps?.items || []);
-            
-            if (sampleArr.length > 0) {
-                const zipSet = new Set();
-                sampleArr.forEach(p => { if (p.zip_code) zipSet.add(p.zip_code); });
-                const cachedZipCodes = [...zipSet];
-                
+            const cachedZipCodes = await getNeonCachedZipCodes(optimizedLat, optimizedLng, optimizedRadius, user.email);
+            if (cachedZipCodes.length > 0) {
                 const existingUserZips = user.territory_zip_codes || [];
                 const mergedZips = [...new Set([...existingUserZips, ...cachedZipCodes])];
                 if (mergedZips.length > existingUserZips.length) {
                     await base44.auth.updateMe({ territory_zip_codes: mergedZips });
                 }
-                console.log(`[fetchArea-v8] Cache: ${sampleArr.length} existing props across ${cachedZipCodes.length} zips`);
+                console.log(`[fetchArea-v9] Neon cache: ${cachedZipCodes.length} existing zips linked to user`);
             }
         } catch (cacheErr) {
-            console.warn(`[fetchArea-v8] Cache check failed (non-fatal): ${cacheErr.message}`);
+            console.warn(`[fetchArea-v9] Neon cache check failed (non-fatal): ${cacheErr.message}`);
         }
 
         // === GRID SUBDIVISION ===
