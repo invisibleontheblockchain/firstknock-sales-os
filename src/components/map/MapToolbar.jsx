@@ -154,7 +154,7 @@ export default function MapToolbar({
                                     toast.error("Close the active route first");
                                     return;
                                 }
-                                setMode('generate');
+                                setShowRoutePanel(false);
                             }}
                             className={`px-2 py-1.5 sm:px-4 sm:py-2.5 rounded-md sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : activeRoute ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
                         >
