@@ -110,6 +110,28 @@ export function applyRouteFilters({
     // --- Confidence / Rejection Filters ---
     workingSet = workingSet.filter(p => p.original_status !== 'REJECTED');
 
+    // Exclude records explicitly deactivated by cleanup or delta sync.
+    workingSet = workingSet.filter(p => p.route_active !== false);
+
+    // Match MLS_CLERK_GAP_DAYS in processFetchChunk.
+    const MLS_WINDOW_DAYS = 30;
+
+    // Block stale MLS records from route generation even if they exist in the DB.
+    workingSet = workingSet.filter(p => {
+        const saleType = String(p.sale_type || '').toUpperCase();
+        if (saleType !== 'MLS') return true;
+
+        if (!p.sold_date) return false;
+
+        const soldDate = new Date(p.sold_date);
+        if (Number.isNaN(soldDate.getTime())) return false;
+
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - MLS_WINDOW_DAYS);
+
+        return soldDate >= cutoff;
+    });
+
     // v15 HARD GATE: Block ALL unverified MLS data from routes.
     // Only deed-sourced properties OR MLS properties that have been verified
     // (by deed cross-ref or BatchData) are allowed through.
