@@ -1,5 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
-import { neon } from 'npm:@neondatabase/serverless@0.9.0';
+import { Client } from 'npm:@neondatabase/serverless@0.9.0';
 
 function toNullableDate(value) {
     if (!value) return null;
@@ -11,94 +11,115 @@ function valueOrNull(value) {
     return value === undefined || value === '' ? null : value;
 }
 
-async function upsertProperty(sql, property, workspaceEmail) {
-    const existingRows = await sql`
-        SELECT id, sold_date, sale_confidence, original_status
-        FROM properties
-        WHERE address_hash = ${property.address_hash}
-        LIMIT 1
-    `;
+function buildValues(rows, columns) {
+    const params = [];
+    const placeholders = rows.map((row, rowIndex) => {
+        const values = columns.map((column) => row[column]);
+        params.push(...values);
+        const start = rowIndex * columns.length;
+        return `(${values.map((_, valueIndex) => `$${start + valueIndex + 1}`).join(', ')})`;
+    }).join(', ');
+    return { placeholders, params };
+}
 
-    const soldDate = toNullableDate(property.sold_date);
-    const rawPayload = JSON.stringify(property);
-    const fullAddress = property.full_address || `${property.house_number || ''} ${property.street_name || ''}`.trim();
+async function bulkUpsertProperties(sql, properties) {
+    if (properties.length === 0) return [];
 
-    if (existingRows.length === 0) {
-        const inserted = await sql`
-            INSERT INTO properties (
-                address_hash, legacy_hash, full_address, house_number, street_name, city, state, zip_code,
-                lat, lng, h3_index, owner_full_name, beds, baths, sqft, lot_size, year_built, price,
-                sold_date, sale_type, property_type, mls_id, url, data_source, sale_confidence,
-                original_status, raw_payload, updated_at
-            ) VALUES (
-                ${property.address_hash}, ${valueOrNull(property.legacy_hash)}, ${valueOrNull(fullAddress)},
-                ${valueOrNull(property.house_number)}, ${valueOrNull(property.street_name)}, ${valueOrNull(property.city)}, ${valueOrNull(property.state)}, ${valueOrNull(property.zip_code)},
-                ${valueOrNull(property.lat)}, ${valueOrNull(property.lng)}, ${valueOrNull(property.h3_index)}, ${valueOrNull(property.owner_full_name)}, ${valueOrNull(property.beds)},
-                ${valueOrNull(property.baths)}, ${valueOrNull(property.sqft)}, ${valueOrNull(property.lot_size)}, ${valueOrNull(property.year_built)}, ${valueOrNull(property.price)},
-                ${soldDate}, ${valueOrNull(property.sale_type)}, ${valueOrNull(property.property_type)}, ${valueOrNull(property.mls_id)}, ${valueOrNull(property.url)},
-                ${valueOrNull(property.data_source)}, ${valueOrNull(property.sale_confidence)}, ${valueOrNull(property.original_status)}, ${rawPayload}, NOW()
-            )
-            RETURNING id
-        `;
+    const rows = properties.map(property => ({
+        address_hash: property.address_hash,
+        legacy_hash: valueOrNull(property.legacy_hash),
+        full_address: valueOrNull(property.full_address || `${property.house_number || ''} ${property.street_name || ''}`.trim()),
+        house_number: valueOrNull(property.house_number),
+        street_name: valueOrNull(property.street_name),
+        city: valueOrNull(property.city),
+        state: valueOrNull(property.state),
+        zip_code: valueOrNull(property.zip_code),
+        lat: valueOrNull(property.lat),
+        lng: valueOrNull(property.lng),
+        h3_index: valueOrNull(property.h3_index),
+        owner_full_name: valueOrNull(property.owner_full_name),
+        beds: valueOrNull(property.beds),
+        baths: valueOrNull(property.baths),
+        sqft: valueOrNull(property.sqft),
+        lot_size: valueOrNull(property.lot_size),
+        year_built: valueOrNull(property.year_built),
+        price: valueOrNull(property.price),
+        sold_date: toNullableDate(property.sold_date),
+        sale_type: valueOrNull(property.sale_type),
+        property_type: valueOrNull(property.property_type),
+        mls_id: valueOrNull(property.mls_id),
+        url: valueOrNull(property.url),
+        data_source: valueOrNull(property.data_source),
+        sale_confidence: valueOrNull(property.sale_confidence),
+        original_status: valueOrNull(property.original_status),
+        raw_payload: JSON.stringify(property)
+    }));
 
-        await sql`
-            INSERT INTO workspace_properties (property_id, user_email, fetch_job_id, route_active, status, updated_at)
-            VALUES (${inserted[0].id}, ${workspaceEmail}, 'base44_backfill', ${property.route_active !== false}, ${valueOrNull(property.original_status)}, NOW())
-            ON CONFLICT (property_id, user_email)
-            DO UPDATE SET route_active = EXCLUDED.route_active, status = EXCLUDED.status, updated_at = NOW()
-        `;
+    const columns = Object.keys(rows[0]);
+    const { placeholders, params } = buildValues(rows, columns);
 
-        return 'inserted';
-    }
+    return await sql.query(`
+        INSERT INTO properties (${columns.join(', ')}, updated_at)
+        VALUES ${placeholders.replace(/\)/g, ', NOW())')}
+        ON CONFLICT (address_hash)
+        DO UPDATE SET
+            legacy_hash = COALESCE(EXCLUDED.legacy_hash, properties.legacy_hash),
+            full_address = COALESCE(EXCLUDED.full_address, properties.full_address),
+            house_number = COALESCE(EXCLUDED.house_number, properties.house_number),
+            street_name = COALESCE(EXCLUDED.street_name, properties.street_name),
+            city = COALESCE(EXCLUDED.city, properties.city),
+            state = COALESCE(EXCLUDED.state, properties.state),
+            zip_code = COALESCE(EXCLUDED.zip_code, properties.zip_code),
+            lat = COALESCE(EXCLUDED.lat, properties.lat),
+            lng = COALESCE(EXCLUDED.lng, properties.lng),
+            h3_index = COALESCE(EXCLUDED.h3_index, properties.h3_index),
+            owner_full_name = COALESCE(EXCLUDED.owner_full_name, properties.owner_full_name),
+            beds = COALESCE(EXCLUDED.beds, properties.beds),
+            baths = COALESCE(EXCLUDED.baths, properties.baths),
+            sqft = COALESCE(EXCLUDED.sqft, properties.sqft),
+            lot_size = COALESCE(EXCLUDED.lot_size, properties.lot_size),
+            year_built = COALESCE(EXCLUDED.year_built, properties.year_built),
+            price = COALESCE(EXCLUDED.price, properties.price),
+            sold_date = COALESCE(EXCLUDED.sold_date, properties.sold_date),
+            sale_type = COALESCE(EXCLUDED.sale_type, properties.sale_type),
+            property_type = COALESCE(EXCLUDED.property_type, properties.property_type),
+            mls_id = COALESCE(EXCLUDED.mls_id, properties.mls_id),
+            url = COALESCE(EXCLUDED.url, properties.url),
+            data_source = COALESCE(EXCLUDED.data_source, properties.data_source),
+            sale_confidence = COALESCE(EXCLUDED.sale_confidence, properties.sale_confidence),
+            original_status = COALESCE(EXCLUDED.original_status, properties.original_status),
+            raw_payload = EXCLUDED.raw_payload,
+            updated_at = NOW()
+        RETURNING id, address_hash
+    `, params);
+}
 
-    const existing = existingRows[0];
-    const existingSaleDate = existing.sold_date ? new Date(existing.sold_date) : new Date(0);
-    const incomingSaleDate = soldDate ? new Date(soldDate) : new Date(0);
-    const statusChanged = property.sale_confidence !== existing.sale_confidence || property.original_status !== existing.original_status;
-    const shouldUpdate = incomingSaleDate > existingSaleDate || statusChanged || property.route_active === false;
+async function bulkUpsertWorkspace(sql, propertyRows, propertyMap, workspaceEmail) {
+    if (propertyRows.length === 0) return;
 
-    if (shouldUpdate) {
-        await sql`
-            UPDATE properties SET
-                legacy_hash = COALESCE(${valueOrNull(property.legacy_hash)}, legacy_hash),
-                full_address = COALESCE(${valueOrNull(fullAddress)}, full_address),
-                house_number = COALESCE(${valueOrNull(property.house_number)}, house_number),
-                street_name = COALESCE(${valueOrNull(property.street_name)}, street_name),
-                city = COALESCE(${valueOrNull(property.city)}, city),
-                state = COALESCE(${valueOrNull(property.state)}, state),
-                zip_code = COALESCE(${valueOrNull(property.zip_code)}, zip_code),
-                lat = COALESCE(${valueOrNull(property.lat)}, lat),
-                lng = COALESCE(${valueOrNull(property.lng)}, lng),
-                h3_index = COALESCE(${valueOrNull(property.h3_index)}, h3_index),
-                owner_full_name = COALESCE(${valueOrNull(property.owner_full_name)}, owner_full_name),
-                beds = COALESCE(${valueOrNull(property.beds)}, beds),
-                baths = COALESCE(${valueOrNull(property.baths)}, baths),
-                sqft = COALESCE(${valueOrNull(property.sqft)}, sqft),
-                lot_size = COALESCE(${valueOrNull(property.lot_size)}, lot_size),
-                year_built = COALESCE(${valueOrNull(property.year_built)}, year_built),
-                price = COALESCE(${valueOrNull(property.price)}, price),
-                sold_date = COALESCE(${soldDate}, sold_date),
-                sale_type = COALESCE(${valueOrNull(property.sale_type)}, sale_type),
-                property_type = COALESCE(${valueOrNull(property.property_type)}, property_type),
-                mls_id = COALESCE(${valueOrNull(property.mls_id)}, mls_id),
-                url = COALESCE(${valueOrNull(property.url)}, url),
-                data_source = COALESCE(${valueOrNull(property.data_source)}, data_source),
-                sale_confidence = COALESCE(${valueOrNull(property.sale_confidence)}, sale_confidence),
-                original_status = COALESCE(${valueOrNull(property.original_status)}, original_status),
-                raw_payload = ${rawPayload},
-                updated_at = NOW()
-            WHERE id = ${existing.id}
-        `;
-    }
+    const rows = propertyRows.map(property => ({
+        property_id: propertyMap.get(property.address_hash),
+        user_email: workspaceEmail,
+        fetch_job_id: 'base44_backfill',
+        route_active: property.route_active !== false,
+        status: valueOrNull(property.original_status)
+    })).filter(row => row.property_id);
 
-    await sql`
-        INSERT INTO workspace_properties (property_id, user_email, fetch_job_id, route_active, status, updated_at)
-        VALUES (${existing.id}, ${workspaceEmail}, 'base44_backfill', ${property.route_active !== false}, ${valueOrNull(property.original_status)}, NOW())
+    if (rows.length === 0) return;
+
+    const columns = Object.keys(rows[0]);
+    const { placeholders, params } = buildValues(rows, columns);
+
+    await sql.query(`
+        INSERT INTO workspace_properties (${columns.join(', ')}, updated_at)
+        VALUES ${placeholders.replace(/\)/g, ', NOW())')}
         ON CONFLICT (property_id, user_email)
-        DO UPDATE SET route_active = EXCLUDED.route_active, status = EXCLUDED.status, updated_at = NOW()
-    `;
-
-    return shouldUpdate ? 'updated' : 'skipped';
+        DO UPDATE SET
+            fetch_job_id = EXCLUDED.fetch_job_id,
+            route_active = EXCLUDED.route_active,
+            status = EXCLUDED.status,
+            updated_at = NOW()
+    `, params);
 }
 
 Deno.serve(async (req) => {
@@ -117,11 +138,17 @@ Deno.serve(async (req) => {
 
         const body = await req.json().catch(() => ({}));
         const workspaceEmail = body.user_email || user.email;
-        const limit = Math.min(Number(body.limit || 10000), 10000);
+        const limit = Math.min(Number(body.limit || 5000), 10000);
         const dryRun = body.dry_run === true;
 
         const base44Properties = await base44.asServiceRole.entities.MasterProperty.list('created_date', limit);
-        const properties = Array.isArray(base44Properties) ? base44Properties : (base44Properties?.items || []);
+        const rawProperties = (Array.isArray(base44Properties) ? base44Properties : (base44Properties?.items || []))
+            .filter(property => property.address_hash);
+        const propertiesByHash = new Map();
+        for (const property of rawProperties) {
+            propertiesByHash.set(property.address_hash, property);
+        }
+        const properties = Array.from(propertiesByHash.values());
 
         if (dryRun) {
             return Response.json({
@@ -133,44 +160,33 @@ Deno.serve(async (req) => {
             });
         }
 
-        const sql = neon(databaseUrl);
-        let inserted = 0;
-        let updated = 0;
-        let skipped = 0;
-        let invalid = 0;
+        const client = new Client(databaseUrl);
+        await client.connect();
 
-        for (const property of properties) {
-            if (!property.address_hash) {
-                invalid++;
-                continue;
-            }
+        const propertyResult = await bulkUpsertProperties(client, properties);
+        const propertyRows = propertyResult.rows || propertyResult;
+        const propertyMap = new Map(propertyRows.map(row => [row.address_hash, row.id]));
+        await bulkUpsertWorkspace(client, properties, propertyMap, workspaceEmail);
 
-            const result = await upsertProperty(sql, property, workspaceEmail);
-            if (result === 'inserted') inserted++;
-            if (result === 'updated') updated++;
-            if (result === 'skipped') skipped++;
-        }
+        await client.query(
+            `INSERT INTO ingestion_metrics (fetch_job_id, user_email, records_fetched, records_inserted, records_updated, records_skipped)
+             VALUES ($1, $2, $3, $4, 0, 0)`,
+            ['base44_backfill', workspaceEmail, properties.length, propertyRows.length]
+        );
 
-        await sql`
-            INSERT INTO ingestion_metrics (fetch_job_id, user_email, records_fetched, records_inserted, records_updated, records_skipped)
-            VALUES ('base44_backfill', ${workspaceEmail}, ${properties.length}, ${inserted}, ${updated}, ${skipped + invalid})
-        `;
+        const neonCount = await client.query(
+            `SELECT COUNT(*)::int AS total_properties FROM workspace_properties WHERE user_email = $1`,
+            [workspaceEmail]
+        );
 
-        const neonCount = await sql`
-            SELECT COUNT(*)::int AS total_properties
-            FROM workspace_properties
-            WHERE user_email = ${workspaceEmail}
-        `;
+        await client.end();
 
         return Response.json({
             success: true,
             workspace_user_email: workspaceEmail,
             base44_records_read: properties.length,
-            neon_workspace_records: neonCount[0]?.total_properties || 0,
-            inserted,
-            updated,
-            skipped,
-            invalid,
+            neon_workspace_records: neonCount.rows?.[0]?.total_properties || 0,
+            upserted: propertyRows.length,
             safe_to_rerun: true
         });
     } catch (error) {
