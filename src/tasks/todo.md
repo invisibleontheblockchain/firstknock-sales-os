@@ -195,3 +195,16 @@ Pass 1 implemented and verified.
 - Runtime logs still showed `dynamic=0`, meaning the polygon fetch path was skipped by current UI state.
 - The drawn-area fetch now always runs whenever a polygon is active, regardless of zip/filter state.
 - Added a concise console log showing how many properties the drawn-area candidate fetch returns.
+
+## Root-Cause Plan — Polygon State Not Reaching Generate
+- [x] Inspect runtime logs: no drawn-area candidate fetch log appears.
+- [x] Inspect Home generation path and state names.
+- [x] Use the confirmed drawn polygon plus draft polygon fallback when generating.
+- [x] Pass the same active polygon to the filter pipeline.
+- [x] Verify backend candidate function still returns properties.
+- [x] Record final result.
+
+### Root-Cause Result
+- Runtime logs showed no drawn-area fetch log, so the frontend was not passing an active polygon into generation.
+- Generation now resolves the polygon from confirmed state, draft state, or saved local storage before fetching candidates.
+- The same resolved polygon is passed into filtering, preventing a mismatch between fetched candidates and the geography filter.

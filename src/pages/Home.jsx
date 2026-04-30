@@ -951,10 +951,22 @@ export default function Home() {
             // If a drawn polygon is active, load candidates for that area on-demand.
             // The initial map cache can be zip-scoped and may be empty for polygon-only generation.
             let dynamicProps = [];
-            const hasActiveDrawnPolygon = drawnPolygon && drawnPolygon.length > 2;
-            if (hasActiveDrawnPolygon) {
+            let storedPolygon = null;
+            try {
+                const savedPolygon = localStorage.getItem('fk_drawnPolygon');
+                storedPolygon = savedPolygon ? JSON.parse(savedPolygon) : null;
+            } catch { }
+            const activeGenerationPolygon = Array.isArray(drawnPolygon) && drawnPolygon.length > 2
+                ? drawnPolygon
+                : Array.isArray(draftPolygon) && draftPolygon.length > 2
+                    ? draftPolygon
+                    : Array.isArray(storedPolygon) && storedPolygon.length > 2
+                        ? storedPolygon
+                        : null;
+            console.log(`[generateRoutes] Polygon source: state=${Array.isArray(drawnPolygon) ? drawnPolygon.length : 0}, draft=${Array.isArray(draftPolygon) ? draftPolygon.length : 0}, stored=${Array.isArray(storedPolygon) ? storedPolygon.length : 0}`);
+            if (activeGenerationPolygon) {
                 const polygonProps = await fetchRouteCandidatesFromNeon({
-                    polygon: drawnPolygon,
+                    polygon: activeGenerationPolygon,
                     soldMonths: 'all',
                     limit: 50000
                 });
@@ -1092,7 +1104,7 @@ export default function Home() {
 
             // 3. FILTERING — delegated to routeFilterPipeline for clarity + diagnostics
             const filterResult = applyRouteFilters({
-                initialSet, drawnPolygon, zipCodeFilter,
+                initialSet, drawnPolygon: activeGenerationPolygon, zipCodeFilter,
                 territoryZipCodes: user?.territory_zip_codes,
                 soldDateFilter, routeConfig, lastPullMode, logsByAddress,
             });
@@ -1173,7 +1185,7 @@ export default function Home() {
             // (we re-check generationError via a functional setState)
             setRoutesGenerating(false);
         }
-    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, frozenWorkingSet, effectiveProperties, fetchRouteCandidatesFromNeon]);
+    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, draftPolygon, frozenWorkingSet, effectiveProperties, fetchRouteCandidatesFromNeon]);
 
     // Reorder: re-run filtering + routing on frozen data without re-fetching
     const handleReorder = useCallback(async () => {
