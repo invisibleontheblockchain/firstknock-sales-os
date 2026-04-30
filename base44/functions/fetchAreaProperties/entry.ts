@@ -259,7 +259,7 @@ Deno.serve(async (req) => {
             radius: optimizedRadius,
             polygon: polygon || [],
             sold_months: effectiveSoldMonths,
-            include_mls: !!include_mls,
+            include_mls: include_mls !== false,
             is_delta_pull: isDeltaPull,
             delta_watermark: isDeltaPull ? deltaInfo.watermark : null,
             delta_savings: isDeltaPull ? { estimated_full_calls: deltaInfo.previousApiCalls, actual_calls: 0, savings_pct: 0 } : null,

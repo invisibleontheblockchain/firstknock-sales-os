@@ -278,7 +278,30 @@ Deno.serve(async (req) => {
         }
 
         const monthsBack = job.sold_months || 12;
+        const phase1End = new Date();
+        const phase1Start = new Date(phase1End);
+        phase1Start.setMonth(phase1Start.getMonth() - monthsBack);
+        const phase2End = new Date();
+        const phase2Start = new Date(phase2End);
+        phase2Start.setDate(phase2Start.getDate() - 30);
+        console.log(`[chunk-v15] Date windows | phase1Start=${phase1Start.toISOString()} | phase1End=${phase1End.toISOString()} | phase2Start=${phase2Start.toISOString()} | phase2End=${phase2End.toISOString()}`);
         const filterPoint = (lat, lng) => (!polygon || polygon.length < 3) ? true : isPointInPolygon({ lat, lng }, polygon);
+
+        let knockedHashesCache = null;
+        async function loadKnockedHashes() {
+            if (knockedHashesCache) return knockedHashesCache;
+            knockedHashesCache = new Set();
+            const logs = await base44.asServiceRole.entities.InteractionLog.list('-created_date', 10000).catch(e => {
+                logError(`Delta sync knocked-log load failed: phase=delta api=InteractionLog.list error=${e.message}`);
+                return [];
+            });
+            const logArr = Array.isArray(logs) ? logs : (logs?.items || []);
+            for (const log of logArr) {
+                if (log.address_hash && log.parsed_status) knockedHashesCache.add(log.address_hash);
+            }
+            console.log(`[chunk-v15] Delta sync loaded ${knockedHashesCache.size} knocked property hashes to preserve`);
+            return knockedHashesCache;
+        }
 
         // ── Helper: write mapped properties to DB ──
         async function writeToDb(mapped) {
@@ -286,6 +309,7 @@ Deno.serve(async (req) => {
             if (mapped.length === 0) return { chunkInserted, chunkExisted, chunkUpdated };
 
             const uniqueZips = [...new Set(mapped.map(p => p.zip_code))];
+            const knockedHashes = isDeltaPull ? await loadKnockedHashes() : new Set();
             const existingHashToId = new Map();
 
             for (let i = 0; i < uniqueZips.length; i += 20) {
@@ -305,6 +329,11 @@ Deno.serve(async (req) => {
             const toInsert = [], toUpdate = [];
             for (const p of mapped) {
                 const existing = existingHashToId.get(p.address_hash);
+                if (existing && knockedHashes.has(p.address_hash)) {
+                    chunkExisted++;
+                    console.log(`[chunk-v15] Delta sync skip knocked property: ${p.full_address || `${p.house_number} ${p.street_name}`} (${p.address_hash})`);
+                    continue;
+                }
                 if (existing) {
                     chunkExisted++;
                     const existingSaleDate = existing.soldDate ? new Date(existing.soldDate) : new Date(0);
@@ -380,12 +409,9 @@ Deno.serve(async (req) => {
         // PHASE 1: DEED RECORDS — /v1/properties?saleDateRange
         // ======================================================================
         if (currentPhase === 'deed_records') {
-            // Phase 1 = deed ground-truth window only: [today - sold_months] → today.
+            // Phase 1 = deed ground-truth window only: [phase1Start] → [phase1End].
             // Do not pull or store older deed records for this job; they are outside the route window.
-            const now = new Date();
-            const soldCutoff = new Date(now);
-            soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
-            const saleDateRange = Math.min(Math.ceil((now.getTime() - soldCutoff.getTime()) / (1000 * 3600 * 24)) + 1, 730);
+            const saleDateRange = Math.min(Math.ceil((phase1End.getTime() - phase1Start.getTime()) / (1000 * 3600 * 24)) + 1, 730);
             let reachedEnd = false;
 
             // OPT: Single-pass fetch+map. Previously we accumulated every raw record in `allRaw`
@@ -417,6 +443,11 @@ Deno.serve(async (req) => {
 
                 // Inline map — process each record immediately, don't buffer.
                 for (const r of results) {
+                    if (r.status !== 200) {
+                        const apiCall = `${RENTCAST_BASE}/properties?saleDateRange=${saleDateRange}&offset=${currentOffset}`;
+                        logError(`Phase 1 hard failure: phase=phase1 property=area api=${apiCall} status=${r.status}`);
+                        throw new Error(`Phase 1 failed while fetching deed records (status ${r.status}). Not proceeding to Phase 2.`);
+                    }
                     if (r.total && !totalExpected) totalExpected = parseInt(r.total, 10);
                     rawFetchedThisChunk += r.records.length;
                     if (r.records.length < LIMIT) reachedEnd = true;
@@ -425,7 +456,7 @@ Deno.serve(async (req) => {
                         if (!p.latitude || !p.longitude || !filterPoint(p.latitude, p.longitude)) { rejectedByPolygon++; continue; }
                         if (!isValidSoldProperty(p)) { rejectedByFilter++; continue; }
                         const saleDate = new Date(p.lastSaleDate);
-                        if (isNaN(saleDate.getTime()) || saleDate < soldCutoff || saleDate > now) { rejectedByFilter++; continue; }
+                        if (isNaN(saleDate.getTime()) || saleDate < phase1Start || saleDate > phase1End) { rejectedByFilter++; continue; }
                         const addressLine = p.addressLine1 || (p.formattedAddress ? p.formattedAddress.split(',')[0] : "");
                         const pZip = p.zipCode || '00000';
                         const hash = generateNormalizedHash(addressLine, pZip);
@@ -477,7 +508,7 @@ Deno.serve(async (req) => {
                     // v15: Phase 2 covers the "clerk gap" (last 30 days).
                     // Gated behind include_mls flag which is set by frontend based on
                     // paid subscription status. Free/trial users only get Phase 1 deeds.
-                    const includeMls = job.include_mls || false;
+                    const includeMls = job.include_mls !== false;
                     if (includeMls) {
                         nextPhase = 'listings_records';
                         nextSubCircle = 0;
@@ -485,8 +516,8 @@ Deno.serve(async (req) => {
                         totalExpected = 0;
                         console.log(`[chunk-v15] Phase 1 COMPLETE. Advancing to Phase 2 (MLS + verification) — paid user.`);
                     } else {
-                        // Free/trial user — skip Phase 2, complete with deeds only
-                        console.log(`[chunk-v15] Phase 1 COMPLETE. Phase 2 skipped — free/trial user.`);
+                        // Phase 2 explicitly disabled — complete with deeds only
+                        console.log(`[chunk-v15] Phase 1 COMPLETE. Phase 2 skipped because include_mls=false.`);
                         const completedAt = new Date().toISOString();
                         const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
                         chunkTimings.push(chunkDuration);
@@ -609,11 +640,7 @@ Deno.serve(async (req) => {
                 }
             }
 
-            // FIXED: soldCutoff is now 30 days back (matches MLS_CLERK_GAP_DAYS)
-            // Previously: soldCutoff = monthsBack months ago (up to 12 months of MLS!)
-            const soldCutoff = new Date();
-            soldCutoff.setDate(soldCutoff.getDate() - MLS_CLERK_GAP_DAYS);
-
+            // Phase 2 uses the runtime clerk-gap window: [phase2Start] → [phase2End].
             const mapped = [];
             const seenHashes = new Set();
             let phase2Stats = { total: 0, outsideWindowRejected: 0, heuristicRejected: 0, heuristicPassed: 0, ambiguousRejected: 0, batchdataVerified: 0, batchdataDropped: 0, deltaSkipped: 0, mlsStatusRejected: 0, deedCrossRef: 0 };
@@ -623,7 +650,7 @@ Deno.serve(async (req) => {
                 
                 if (!p.removedDate) continue;
                 const removed = new Date(p.removedDate);
-                if (isNaN(removed.getTime()) || removed < soldCutoff) continue;
+                if (isNaN(removed.getTime()) || removed < phase2Start || removed > phase2End) continue;
 
                 // ── HARD GATE: Reject if MLS status signals clearly say "not sold" ──
                 // Expired / Withdrawn / Cancelled / Pending / Active = for-sale sign still up.
@@ -663,8 +690,8 @@ Deno.serve(async (req) => {
                 // ── FILTER 1: 30-Day Window Enforcement ──
                 // Since we only asked RentCast for 30 days, this is a safety net.
                 // Anything somehow older than our clerk gap window gets dropped.
-                const daysSinceRemoved = Math.round((Date.now() - removed.getTime()) / (1000 * 3600 * 24));
-                if (daysSinceRemoved > MLS_CLERK_GAP_DAYS) {
+                const daysSinceRemoved = Math.round((phase2End.getTime() - removed.getTime()) / (1000 * 3600 * 24));
+                if (removed < phase2Start || removed > phase2End) {
                     phase2Stats.outsideWindowRejected++;
                     continue;
                 }
@@ -729,6 +756,7 @@ Deno.serve(async (req) => {
             console.log(`[chunk-v15] Phase 2 stats (30-day window): ${JSON.stringify(phase2Stats)}`);
 
             // ── Cross-reference with Phase 1 deed records (FREE verification) ──
+            let phase1DeedsForUnion = [];
             if (mapped.length > 0) {
                 try {
                     const uniqueZips = [...new Set(mapped.map(m => m.zip_code))];
@@ -740,6 +768,7 @@ Deno.serve(async (req) => {
                             base44.asServiceRole.entities.MasterProperty.filter({ zip_code: zip, sale_type: 'Deed' }, null, 5000)
                                 .then(res => {
                                     const arr = Array.isArray(res) ? res : (res?.items || []);
+                                    phase1DeedsForUnion.push(...arr);
                                     arr.forEach(mp => deedHashSet.add(mp.address_hash));
                                 })
                                 .catch(() => {})
@@ -782,6 +811,7 @@ Deno.serve(async (req) => {
                     let bdVerified = 0, bdRejected = 0, bdErrors = 0;
 
                     try {
+                        let batchDataAttempted = 0;
                         for (let b = 0; b < batchdataCandidates.length; b += 10) {
                             // Time guard — don't let BatchData calls push us past function timeout
                             if (Date.now() - chunkStart > 45000) {
@@ -790,19 +820,22 @@ Deno.serve(async (req) => {
                             }
 
                             const batch = batchdataCandidates.slice(b, b + 10);
+                            batchDataAttempted += batch.length;
                             const promises = batch.map(async (cm) => {
                                 try {
                                     const query = `${cm.house_number} ${cm.street_name}, ${cm.city}, ${cm.state} ${cm.zip_code}`;
                                     const res = await fetch('https://api.batchdata.com/api/v1/property/search', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BATCH_DATA_API_KEY}` },
-                                        body: JSON.stringify({ searchCriteria: { query } })
+                                        body: JSON.stringify({ searchCriteria: { query }, options: { skipTrace: false, includePropertyDetails: true } })
                                     });
                                     if (!res.ok) {
                                         // If credits exhausted (402) or auth failed (401), don't count as error per-record
                                         if (res.status === 402 || res.status === 401) {
+                                            logError(`BatchData fatal failure: phase=phase2 property=${query} api=property/search status=${res.status}`);
                                             return { hash: cm.address_hash, outcome: 'api_error', status: res.status };
                                         }
+                                        logError(`BatchData property failure: phase=phase2 property=${query} api=property/search status=${res.status}`);
                                         return { hash: cm.address_hash, outcome: 'skip' };
                                     }
                                     const data = await res.json();
@@ -825,6 +858,7 @@ Deno.serve(async (req) => {
                                     // Expired, withdrawn, cancelled, or no match → not sold
                                     return { hash: cm.address_hash, outcome: 'not_sold' };
                                 } catch (e) {
+                                    logError(`BatchData exception: phase=phase2 property=${cm.house_number} ${cm.street_name}, ${cm.city}, ${cm.state} ${cm.zip_code} api=property/search error=${e.message}`);
                                     return { hash: cm.address_hash, outcome: 'skip' };
                                 }
                             });
@@ -834,6 +868,7 @@ Deno.serve(async (req) => {
                             // Check if we hit a fatal API error (credits/auth) — stop sending more
                             const fatalError = batchResults.find(r => r.outcome === 'api_error');
                             if (fatalError) {
+                                logError(`Phase 2 partial failure: BatchData returned ${fatalError.status}; Phase 1 deed records remain committed and unverified MLS will be rejected.`);
                                 console.warn(`[chunk-v15] Step 3 stopping: BatchData returned ${fatalError.status} — likely credits exhausted or auth issue`);
                                 break;
                             }
@@ -876,7 +911,7 @@ Deno.serve(async (req) => {
                         phase2Stats.batchdataVerified += bdVerified;
                         phase2Stats.batchdataDropped += bdRejected;
                         
-                        console.log(`[chunk-v15] Step 3 BatchData credit usage: attempted=${bdVerified + bdRejected + bdErrors}, verified=${bdVerified}, rejected=${bdRejected}, errors=${bdErrors}`);
+                        console.log(`[chunk-v15] Step 3 BatchData credit usage: sent=${batchDataAttempted}, creditsConsumed=${batchDataAttempted}, verified=${bdVerified}, rejected=${bdRejected}, errors=${bdErrors}`);
                         console.log(`[chunk-v15] Step 3 results: ${bdVerified} verified sold, ${bdRejected} rejected (not sold/pending/expired/withdrawn), ${bdErrors} errors/skipped`);
                     } catch (err) {
                         // Non-fatal to the job, but unverified MLS must never pass through to routes.
@@ -907,7 +942,20 @@ Deno.serve(async (req) => {
                 console.log(`[chunk-v15] Filtered out ${mapped.length - finalMapped.length} REJECTED records before DB write`);
             }
 
-            const dbResult = await writeToDb(finalMapped);
+            // Phase 1 + Phase 2 union before final write: deeds stay, verified MLS gap-fill joins, no duplicates.
+            const unionByKey = new Map();
+            for (const p of phase1DeedsForUnion) {
+                const key = p.parcel_id || p.apn || p.address_hash || generateNormalizedHash(p.full_address || `${p.house_number || ''} ${p.street_name || ''}`, p.zip_code || '00000');
+                if (key) unionByKey.set(key, p);
+            }
+            for (const p of finalMapped) {
+                const key = p.parcel_id || p.apn || p.address_hash || generateNormalizedHash(`${p.house_number || ''} ${p.street_name || ''}`, p.zip_code || '00000');
+                if (key && !unionByKey.has(key)) unionByKey.set(key, p);
+            }
+            const combinedRouteCandidates = Array.from(unionByKey.values());
+            console.log(`[chunk-v15] Phase union/dedup before write: phase1=${phase1DeedsForUnion.length}, phase2=${finalMapped.length}, combined=${combinedRouteCandidates.length}`);
+
+            const dbResult = await writeToDb(combinedRouteCandidates);
             totalInserted += dbResult.chunkInserted;
             totalExisted += dbResult.chunkExisted;
             totalUpdated += dbResult.chunkUpdated;
