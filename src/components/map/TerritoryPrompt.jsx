@@ -98,13 +98,26 @@ export default function TerritoryPrompt({
                     const pendingList = Array.isArray(pendingJobs) ? pendingJobs : (pendingJobs?.items || []);
                     job = pendingList[0];
                 }
+
+                if (!job) {
+                    const completedJobs = await base44.entities.FetchJob.filter(
+                        { user_email: user.email, status: 'completed' },
+                        '-completed_at',
+                        1
+                    );
+                    const completedList = Array.isArray(completedJobs) ? completedJobs : (completedJobs?.items || []);
+                    const completedJob = completedList[0];
+                    if (completedJob?.polygon?.length > 2 && !cancelled && (!drawnPolygon || drawnPolygon.length === 0)) {
+                        console.log('[TerritoryPrompt] Restoring completed job area:', completedJob.id);
+                        setDrawnPolygon(completedJob.polygon);
+                        setMode('generate');
+                        setShowRoutePanel(false);
+                        setShowCompare(true);
+                    }
+                    return;
+                }
                 
                 if (job && !cancelled && !pulling) {
-                    // If job already completed, skip resume
-                    if (job.status === 'completed') {
-                        console.log('[TerritoryPrompt] Job already completed, skipping resume');
-                        return;
-                    }
                     console.log('[TerritoryPrompt] Resuming running job:', job.id);
                     setPulling(true);
                     setPullProgress('Resuming data import...');
@@ -117,13 +130,13 @@ export default function TerritoryPrompt({
                     startPolling(job.id);
                 }
             } catch (e) {
-                console.warn('[TerritoryPrompt] Error checking running jobs:', e);
+                console.warn('[TerritoryPrompt] Error checking running/completed jobs:', e);
             }
         };
         
         checkRunningJobs();
         return () => { cancelled = true; };
-    }, [user?.email]);
+    }, [user?.email, drawnPolygon]);
 
     // Clear drawing mode and polygon when switching away from builder tab
     useEffect(() => {
@@ -259,13 +272,17 @@ export default function TerritoryPrompt({
                     window.dispatchEvent(new CustomEvent('fk-territory-data-ready'));
 
                     if (onPullComplete) {
-                        onPullComplete(fetchMonths, isPaid);
+                        setMode('generate');
+                        setShowRoutePanel(false);
+                        await onPullComplete(fetchMonths, isPaid);
+                        setMode('generate');
                         setShowCompare(true);
                     } else {
                         queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
                         queryClient.invalidateQueries({ queryKey: ['user'] });
+                        setMode('generate');
+                        setShowRoutePanel(false);
                         setShowCompare(true);
-                        setDrawnPolygon(null);
                     }
                 } else if (d.status === 'failed') {
                     clearInterval(pollRef.current);
