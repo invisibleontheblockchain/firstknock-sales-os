@@ -489,6 +489,7 @@ Deno.serve(async (req) => {
 
             totalFetched += rawFetchedThisChunk;
             console.log(`[chunk-v15] Phase 1 inline-mapped ${mapped.length}/${rawFetchedThisChunk} raw (polygon-rej=${rejectedByPolygon}, filter-rej=${rejectedByFilter}, dupe=${rejectedByDupe}, totalExpected=${totalExpected})`);
+            if (rawFetchedThisChunk > 0 && mapped.length === 0) throw new Error('Phase 1 hard failure: zero deed records survived validation. Not proceeding to Phase 2.');
 
             const dbResult = await writeToDb(mapped);
             totalInserted += dbResult.chunkInserted;
@@ -757,10 +758,10 @@ Deno.serve(async (req) => {
 
             // ── Cross-reference with Phase 1 deed records (FREE verification) ──
             let phase1DeedsForUnion = [];
+            const phase1DeedHashSet = new Set();
             if (mapped.length > 0) {
                 try {
                     const uniqueZips = [...new Set(mapped.map(m => m.zip_code))];
-                    const deedHashSet = new Set();
                     for (let zi = 0; zi < uniqueZips.length; zi += 20) {
                         if (Date.now() - chunkStart > 50000) break;
                         const zipBatch = uniqueZips.slice(zi, zi + 20);
@@ -769,7 +770,7 @@ Deno.serve(async (req) => {
                                 .then(res => {
                                     const arr = Array.isArray(res) ? res : (res?.items || []);
                                     phase1DeedsForUnion.push(...arr);
-                                    arr.forEach(mp => deedHashSet.add(mp.address_hash));
+                                    arr.forEach(mp => phase1DeedHashSet.add(mp.address_hash));
                                 })
                                 .catch(() => {})
                         );
@@ -778,7 +779,7 @@ Deno.serve(async (req) => {
 
                     let crossRefCount = 0;
                     for (const m of mapped) {
-                        if (deedHashSet.has(m.address_hash)) {
+                        if (phase1DeedHashSet.has(m.address_hash)) {
                             m.sale_confidence = 'verified';
                             m.original_status = 'DEED_CONFIRMED';
                             m.data_source = 'rentcast_crossref';
@@ -800,10 +801,12 @@ Deno.serve(async (req) => {
             const BATCH_DATA_API_KEY = Deno.env.get("BATCH_DATA_API_KEY");
             if (BATCH_DATA_API_KEY && mapped.length > 0) {
                 // Send ALL non-deed-confirmed MLS listings to BatchData
-                const ambiguousMls = mapped.filter(m => 
-                    m.sale_confidence === 'low' && 
-                    m.original_status !== 'DEED_CONFIRMED'
-                );
+                const ambiguousMls = mapped.filter(m => {
+                    const removedDate = new Date(m.sold_date);
+                    return m.sale_confidence === 'low' &&
+                        removedDate >= phase2Start && removedDate <= phase2End &&
+                        !phase1DeedHashSet.has(m.address_hash);
+                });
                 const batchdataCandidates = ambiguousMls;
 
                 if (batchdataCandidates.length > 0) {
