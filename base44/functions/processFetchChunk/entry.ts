@@ -1,4 +1,5 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
 // v15 — "Clerk Gap" Architecture:
 //   Phase 1 = 6-12 months of county deed records (verified ground truth)
@@ -15,6 +16,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.23';
 
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
+const DATABASE_URL = Deno.env.get("DATABASE_URL");
+const PROPERTY_STORAGE_MODE = (Deno.env.get("PROPERTY_STORAGE_MODE") || "dual").toLowerCase(); // base44 | dual | neon
 
 // Configurable deed lag cutoff — default 120 days per Harris County worst-case research
 // (90-day clerk backlog + 30-60 day RentCast propagation lag)
@@ -100,6 +103,116 @@ function generateNormalizedHash(addressLine, zipCode) {
     const normAddr = normalizeAddress(addressLine);
     const normZip = (zipCode || '00000').trim().slice(0, 5);
     return `${normAddr}|${normZip}`;
+}
+
+function toNullableDate(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    return isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+async function writePropertiesToNeon(sql, properties, job) {
+    let chunkInserted = 0;
+    let chunkExisted = 0;
+    let chunkUpdated = 0;
+
+    if (!sql || properties.length === 0) return { chunkInserted, chunkExisted, chunkUpdated };
+
+    for (const p of properties) {
+        const existingRows = await sql`
+            SELECT id, sold_date, sale_confidence, original_status
+            FROM properties
+            WHERE address_hash = ${p.address_hash}
+            LIMIT 1
+        `;
+
+        const soldDate = toNullableDate(p.sold_date);
+        const rawPayload = JSON.stringify(p);
+
+        if (existingRows.length === 0) {
+            const inserted = await sql`
+                INSERT INTO properties (
+                    address_hash, legacy_hash, full_address, house_number, street_name, city, state, zip_code,
+                    lat, lng, h3_index, owner_full_name, beds, baths, sqft, lot_size, year_built, price,
+                    sold_date, sale_type, property_type, mls_id, url, data_source, sale_confidence,
+                    original_status, raw_payload, updated_at
+                ) VALUES (
+                    ${p.address_hash}, ${p.legacy_hash || null}, ${p.full_address || `${p.house_number || ''} ${p.street_name || ''}`.trim()},
+                    ${p.house_number || null}, ${p.street_name || null}, ${p.city || null}, ${p.state || null}, ${p.zip_code || null},
+                    ${p.lat || null}, ${p.lng || null}, ${p.h3_index || null}, ${p.owner_full_name || null}, ${p.beds || null},
+                    ${p.baths || null}, ${p.sqft || null}, ${p.lot_size || null}, ${p.year_built || null}, ${p.price || null},
+                    ${soldDate}, ${p.sale_type || null}, ${p.property_type || null}, ${p.mls_id || null}, ${p.url || null},
+                    ${p.data_source || null}, ${p.sale_confidence || null}, ${p.original_status || null}, ${rawPayload}, NOW()
+                )
+                RETURNING id
+            `;
+            const propertyId = inserted[0].id;
+            await sql`
+                INSERT INTO workspace_properties (property_id, user_email, fetch_job_id, route_active, status, updated_at)
+                VALUES (${propertyId}, ${job.user_email || 'unknown'}, ${job.id}, ${p.route_active !== false}, ${p.original_status || null}, NOW())
+                ON CONFLICT (property_id, user_email)
+                DO UPDATE SET fetch_job_id = EXCLUDED.fetch_job_id, route_active = EXCLUDED.route_active, status = EXCLUDED.status, updated_at = NOW()
+            `;
+            chunkInserted++;
+            continue;
+        }
+
+        const existing = existingRows[0];
+        chunkExisted++;
+        const existingSaleDate = existing.sold_date ? new Date(existing.sold_date) : new Date(0);
+        const incomingSaleDate = soldDate ? new Date(soldDate) : new Date(0);
+        const statusChanged = p.sale_confidence !== existing.sale_confidence || p.original_status !== existing.original_status;
+        const shouldUpdate = incomingSaleDate > existingSaleDate || statusChanged || p.route_active === false;
+
+        if (shouldUpdate) {
+            await sql`
+                UPDATE properties SET
+                    legacy_hash = COALESCE(${p.legacy_hash || null}, legacy_hash),
+                    full_address = COALESCE(${p.full_address || `${p.house_number || ''} ${p.street_name || ''}`.trim()}, full_address),
+                    house_number = COALESCE(${p.house_number || null}, house_number),
+                    street_name = COALESCE(${p.street_name || null}, street_name),
+                    city = COALESCE(${p.city || null}, city),
+                    state = COALESCE(${p.state || null}, state),
+                    zip_code = COALESCE(${p.zip_code || null}, zip_code),
+                    lat = COALESCE(${p.lat || null}, lat),
+                    lng = COALESCE(${p.lng || null}, lng),
+                    h3_index = COALESCE(${p.h3_index || null}, h3_index),
+                    owner_full_name = COALESCE(${p.owner_full_name || null}, owner_full_name),
+                    beds = COALESCE(${p.beds || null}, beds),
+                    baths = COALESCE(${p.baths || null}, baths),
+                    sqft = COALESCE(${p.sqft || null}, sqft),
+                    lot_size = COALESCE(${p.lot_size || null}, lot_size),
+                    year_built = COALESCE(${p.year_built || null}, year_built),
+                    price = COALESCE(${p.price || null}, price),
+                    sold_date = COALESCE(${soldDate}, sold_date),
+                    sale_type = COALESCE(${p.sale_type || null}, sale_type),
+                    property_type = COALESCE(${p.property_type || null}, property_type),
+                    mls_id = COALESCE(${p.mls_id || null}, mls_id),
+                    url = COALESCE(${p.url || null}, url),
+                    data_source = COALESCE(${p.data_source || null}, data_source),
+                    sale_confidence = COALESCE(${p.sale_confidence || null}, sale_confidence),
+                    original_status = COALESCE(${p.original_status || null}, original_status),
+                    raw_payload = ${rawPayload},
+                    updated_at = NOW()
+                WHERE id = ${existing.id}
+            `;
+            chunkUpdated++;
+        }
+
+        await sql`
+            INSERT INTO workspace_properties (property_id, user_email, fetch_job_id, route_active, status, updated_at)
+            VALUES (${existing.id}, ${job.user_email || 'unknown'}, ${job.id}, ${p.route_active !== false}, ${p.original_status || null}, NOW())
+            ON CONFLICT (property_id, user_email)
+            DO UPDATE SET fetch_job_id = EXCLUDED.fetch_job_id, route_active = EXCLUDED.route_active, status = EXCLUDED.status, updated_at = NOW()
+        `;
+    }
+
+    await sql`
+        INSERT INTO ingestion_metrics (fetch_job_id, user_email, records_inserted, records_updated, records_skipped)
+        VALUES (${job.id}, ${job.user_email || 'unknown'}, ${chunkInserted}, ${chunkUpdated}, ${chunkExisted})
+    `;
+
+    return { chunkInserted, chunkExisted, chunkUpdated };
 }
 
 function isPointInPolygon(point, vs) {
@@ -251,6 +364,10 @@ Deno.serve(async (req) => {
         }
 
         let currentPhase = job.phase || 'deed_records';
+        const neonSql = DATABASE_URL && PROPERTY_STORAGE_MODE !== 'base44' ? neon(DATABASE_URL) : null;
+        const useBase44Storage = PROPERTY_STORAGE_MODE === 'base44' || PROPERTY_STORAGE_MODE === 'dual';
+        const useNeonStorage = PROPERTY_STORAGE_MODE === 'neon' || PROPERTY_STORAGE_MODE === 'dual';
+        console.log(`[chunk-v15] Property storage mode=${PROPERTY_STORAGE_MODE} | base44=${useBase44Storage} | neon=${useNeonStorage}`);
         const subCircles = (job.sub_circles && job.sub_circles.length > 0) 
             ? job.sub_circles 
             : [{ lat: job.latitude, lng: job.longitude, radius: job.radius }];
@@ -308,6 +425,16 @@ Deno.serve(async (req) => {
         async function writeToDb(mapped) {
             let chunkInserted = 0, chunkExisted = 0, chunkUpdated = 0;
             if (mapped.length === 0) return { chunkInserted, chunkExisted, chunkUpdated };
+
+            if (useNeonStorage) {
+                if (!neonSql) throw new Error('PROPERTY_STORAGE_MODE requires Neon but DATABASE_URL is not configured');
+                const neonResult = await writePropertiesToNeon(neonSql, mapped, job);
+                chunkInserted += neonResult.chunkInserted;
+                chunkExisted += neonResult.chunkExisted;
+                chunkUpdated += neonResult.chunkUpdated;
+            }
+
+            if (!useBase44Storage) return { chunkInserted, chunkExisted, chunkUpdated };
 
             const uniqueZips = [...new Set(mapped.map(p => p.zip_code))];
             const knockedHashes = isDeltaPull ? await loadKnockedHashes() : new Set();
