@@ -442,9 +442,9 @@ export default function TerritoryPrompt({
                                 }}
                                 className="flex-1 bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
                             >
+                                <option value={5}>Test · 5 sq mi</option>
                                 <option value={40}>40 sq mi</option>
                                 <option value={300}>300 sq mi {isPaid ? '' : '🔒 PRO'}</option>
-                                {!hasPulledData && <option value={5}>Test · 5 sq mi</option>}
                             </select>
                         </div>
                         {/* Months Selector — same options for 40mi² and 300mi² */}

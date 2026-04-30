@@ -181,7 +181,7 @@ export default function Home() {
     };
     const [draftPolygon, setDraftPolygon] = useState([]);
     const [drawShape, setDrawShape] = useState('circle');
-    const [drawSizeMiles, setDrawSizeMiles] = useState(40);
+    const [drawSizeMiles, setDrawSizeMiles] = useState(5);
     const [showTimingPanel, setShowTimingPanel] = useState(false);
     const [selectedProperty, setSelectedProperty] = useState(null);
     const [zoomLevel, setZoomLevel] = useState(15);

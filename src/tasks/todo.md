@@ -196,6 +196,14 @@ Pass 1 implemented and verified.
 - The drawn-area fetch now always runs whenever a polygon is active, regardless of zip/filter state.
 - Added a concise console log showing how many properties the drawn-area candidate fetch returns.
 
+## Plan — 5 sq mile test circle
+- [x] Set map drawing default area to 5 sq mi.
+- [x] Make the 5 sq mi test option always visible.
+- [x] Keep all data pull behavior unchanged except the smaller default area.
+
+### Review — 5 sq mile test circle
+- The route builder now defaults new drawn circles to 5 sq mi, with 40 sq mi and 300 sq mi still available manually.
+
 ## Plan — Neon Route Builder End-to-End
 - [x] Check runtime logs for generation and Neon fetch behavior.
 - [x] Audit RouteBuilderSettings, Home generation, route filter pipeline, and Neon candidate function.
