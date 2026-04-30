@@ -947,8 +947,29 @@ export default function Home() {
 
         const t0 = performance.now();
         try {
-            // 1. DYNAMIC DATA FETCHING (if zip code is set)
+            // 1. DYNAMIC DATA FETCHING
+            // If a drawn polygon is active, load candidates for that area on-demand.
+            // The initial map cache can be zip-scoped and may be empty for polygon-only generation.
             let dynamicProps = [];
+            const hasActiveDrawnPolygon = drawnPolygon && drawnPolygon.length > 2;
+            if (hasActiveDrawnPolygon && !(zipCodeFilter && zipCodeFilter.trim())) {
+                const polygonProps = await fetchRouteCandidatesFromNeon({
+                    polygon: drawnPolygon,
+                    soldMonths: 'all',
+                    limit: 50000
+                });
+
+                if (polygonProps.length > 0) {
+                    console.log(`[Generate] Fetched ${polygonProps.length} properties from backend for drawn area`);
+                    dynamicProps = polygonProps;
+                    setFetchedProperties(prev => {
+                        const existingIds = new Set(prev.map(p => p.address_hash || p.id));
+                        const newUnique = polygonProps.filter(p => !existingIds.has(p.address_hash || p.id));
+                        return prev.concat(newUnique);
+                    });
+                }
+            }
+
             if (zipCodeFilter && zipCodeFilter.trim()) {
                 const targetZips = zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean);
 

@@ -168,3 +168,17 @@ Pass 1 implemented and verified.
 - A second bottleneck appeared near 90%+: Phase 2 was rewriting all Phase 1 deed records on every MLS sub-circle, causing long upsert loops and a timeout.
 - Phase 2 now writes only verified MLS gap-fill records; deed records remain preserved from Phase 1.
 - Verified via `adminDiagnostics`: job `69f3a64c26b80535a492d82a` completed at 100% with no running jobs.
+
+## Incident Plan — Route Generation Shows 0 Properties
+- [x] Check runtime logs for the failed generation.
+- [x] Confirm frontend loaded 0 Neon properties before filtering.
+- [x] Inspect Neon candidate ownership/linking logic for email mismatch or workspace scoping issues.
+- [x] Patch the smallest safe query/load path fix.
+- [x] Verify route candidates return for the affected completed pull.
+- [x] Document outcome.
+
+### Route Generation Outcome
+- Runtime logs showed route generation started with `base=0, dynamic=0`, so the polygon filter had no candidates to work with.
+- The initial Home query can be zip/user-cache scoped and may load 0 properties before a polygon-only generation.
+- `generateRoutes` now fetches Neon candidates for the active drawn polygon on demand before applying route filters.
+- Verified `getRouteCandidatesFromNeon` returns polygon candidates successfully: test polygon returned 111 route candidates.
