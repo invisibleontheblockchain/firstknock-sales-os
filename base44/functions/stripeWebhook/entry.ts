@@ -1,7 +1,7 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.14.0';
 
-const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || Deno.env.get('STRIPE_TEST_SECRET_KEY'));
+const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const endpointSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
 
 // Helper to manage invite codes
