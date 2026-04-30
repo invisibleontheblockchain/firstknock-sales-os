@@ -150,6 +150,13 @@
         "type": "string"
       }
     },
+    "phase1_union_records": {
+      "type": "array",
+      "description": "Phase 1 deed records fetched and mapped during the current run, persisted for Phase 2 union/cross-reference",
+      "items": {
+        "type": "object"
+      }
+    },
     "chunk_number": {
       "type": "integer",
       "default": 0

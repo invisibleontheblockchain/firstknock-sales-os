@@ -502,6 +502,10 @@ Deno.serve(async (req) => {
             console.log(`[chunk-v15] Phase 1 inline-mapped ${mapped.length}/${rawFetchedThisChunk} raw (polygon-rej=${rejectedByPolygon}, filter-rej=${rejectedByFilter}, dupe=${rejectedByDupe}, totalExpected=${totalExpected})`);
             if (rawFetchedThisChunk > 0 && mapped.length === 0) throw new Error('Phase 1 hard failure: zero deed records survived validation. Not proceeding to Phase 2.');
 
+            const phase1UnionRecords = [...(job.phase1_union_records || []), ...mapped];
+            const phase1UnionHashSet = new Set(phase1UnionRecords.map(p => p.address_hash).filter(Boolean));
+            console.log(`[chunk-v15] Phase 1 union seed captured from current fetch: added=${mapped.length}, total=${phase1UnionRecords.length}, hashes=${phase1UnionHashSet.size}`);
+
             const dbResult = await writeToDb(mapped);
             totalInserted += dbResult.chunkInserted;
             totalExisted += dbResult.chunkExisted;
@@ -566,7 +570,7 @@ Deno.serve(async (req) => {
                 total_expected: totalExpected, total_fetched: totalFetched, total_inserted: totalInserted,
                 total_existed: totalExisted, total_updated: totalUpdated,
                 total_api_calls: totalApiCalls, progress_pct: progressPct,
-                zip_codes_found: zipCodesFound, chunk_number: nextChunkNumber,
+                zip_codes_found: zipCodesFound, phase1_union_records: phase1UnionRecords, chunk_number: nextChunkNumber,
                 chunk_timings: chunkTimings, error_log: errorLog
             });
 
@@ -607,11 +611,13 @@ Deno.serve(async (req) => {
                         offset: String(offset), status: 'Inactive',
                         daysOld: String(MLS_CLERK_GAP_DAYS)
                     });
+                    if (offset === 0 && currentOffset === 0) params.set('includeTotalCount', 'true');
                     return fetchWithBackoff(`${RENTCAST_BASE}/listings/sale?${params}`, { accept: 'application/json', 'X-Api-Key': RENTCAST_API_KEY }, logError);
                 });
                 const results = await Promise.all(promises);
                 totalApiCalls += results.length;
                 for (const r of results) {
+                    if (r.total && currentOffset === 0) console.log(`[chunk-v15] Phase 2 RentCast total available: ${parseInt(r.total, 10)} listings for last ${MLS_CLERK_GAP_DAYS} days`);
                     allRaw.push(...r.records);
                     if (r.records.length < LIMIT) reachedEnd = true;
                 }
@@ -769,40 +775,20 @@ Deno.serve(async (req) => {
             console.log(`[chunk-v15] Phase 2 stats (30-day window): ${JSON.stringify(phase2Stats)}`);
 
             // ── Cross-reference with Phase 1 deed records (FREE verification) ──
-            let phase1DeedsForUnion = [];
-            const phase1DeedHashSet = new Set();
-            if (mapped.length > 0) {
-                try {
-                    const uniqueZips = [...new Set(mapped.map(m => m.zip_code))];
-                    for (let zi = 0; zi < uniqueZips.length; zi += 20) {
-                        if (Date.now() - chunkStart > 50000) break;
-                        const zipBatch = uniqueZips.slice(zi, zi + 20);
-                        const promises = zipBatch.map(zip =>
-                            base44.asServiceRole.entities.MasterProperty.filter({ zip_code: zip, sale_type: 'Deed' }, null, 5000)
-                                .then(res => {
-                                    const arr = Array.isArray(res) ? res : (res?.items || []);
-                                    phase1DeedsForUnion.push(...arr);
-                                    arr.forEach(mp => phase1DeedHashSet.add(mp.address_hash));
-                                })
-                                .catch(() => {})
-                        );
-                        await Promise.all(promises);
-                    }
+            const phase1DeedsForUnion = job.phase1_union_records || [];
+            const phase1DeedHashSet = new Set(phase1DeedsForUnion.map(p => p.address_hash).filter(Boolean));
+            console.log(`[chunk-v15] Phase 1 union seed loaded from current run memory: phase1=${phase1DeedsForUnion.length}, hashes=${phase1DeedHashSet.size}`);
 
-                    let crossRefCount = 0;
-                    for (const m of mapped) {
-                        if (phase1DeedHashSet.has(m.address_hash)) {
-                            m.sale_confidence = 'verified';
-                            m.original_status = 'DEED_CONFIRMED';
-                            m.data_source = 'rentcast_crossref';
-                            crossRefCount++;
-                        }
-                    }
-                    if (crossRefCount > 0) console.log(`[chunk-v15] Cross-ref verified ${crossRefCount} listings against deed records`);
-                } catch (err) {
-                    logError(`Cross-ref failed (non-fatal): ${err.message}`);
+            let crossRefCount = 0;
+            for (const m of mapped) {
+                if (phase1DeedHashSet.has(m.address_hash)) {
+                    m.sale_confidence = 'verified';
+                    m.original_status = 'DEED_CONFIRMED';
+                    m.data_source = 'rentcast_crossref';
+                    crossRefCount++;
                 }
             }
+            if (crossRefCount > 0) console.log(`[chunk-v15] Cross-ref verified ${crossRefCount} listings against deed records`);
 
             // ── Step 3: BatchData Verification — ALL Phase 2 MLS Listings ──
             // v15: Since Phase 2 now only pulls the last 30 days, there's no need
@@ -1024,16 +1010,40 @@ Deno.serve(async (req) => {
 
             // Phase 1 + Phase 2 union before final write: deeds stay, verified MLS gap-fill joins, no duplicates.
             const unionByKey = new Map();
+            let phase1KeyCollisions = 0;
+            let phase1NullKeys = 0;
+
+            const getUnionKey = (p) => {
+                const fallback = generateNormalizedHash(p.full_address || `${p.house_number || ''} ${p.street_name || ''}`, p.zip_code || '00000');
+                return String(p.parcel_id || p.apn || p.address_hash || fallback || '').trim();
+            };
+
             for (const p of phase1DeedsForUnion) {
-                const key = p.parcel_id || p.apn || p.address_hash || generateNormalizedHash(p.full_address || `${p.house_number || ''} ${p.street_name || ''}`, p.zip_code || '00000');
-                if (key) unionByKey.set(key, p);
+                const key = getUnionKey(p);
+                if (!key) {
+                    phase1NullKeys++;
+                    console.warn(`[chunk-v15] Union key null — skipped: ${p.full_address || `${p.house_number || ''} ${p.street_name || ''}`}`);
+                    continue;
+                }
+
+                if (unionByKey.has(key)) {
+                    phase1KeyCollisions++;
+                    const existing = unionByKey.get(key);
+                    const existingDate = existing?.sold_date ? new Date(existing.sold_date) : new Date(0);
+                    const incomingDate = p.sold_date ? new Date(p.sold_date) : new Date(0);
+                    console.warn(`[chunk-v15] Union key collision — keeping newest sold_date for key=${key}`);
+                    if (incomingDate > existingDate) unionByKey.set(key, p);
+                    continue;
+                }
+
+                unionByKey.set(key, p);
             }
             for (const p of finalMapped) {
-                const key = p.parcel_id || p.apn || p.address_hash || generateNormalizedHash(`${p.house_number || ''} ${p.street_name || ''}`, p.zip_code || '00000');
+                const key = getUnionKey(p);
                 if (key && !unionByKey.has(key)) unionByKey.set(key, p);
             }
             const combinedRouteCandidates = Array.from(unionByKey.values());
-            console.log(`[chunk-v15] Phase union/dedup before write: phase1=${phase1DeedsForUnion.length}, phase2=${finalMapped.length}, combined=${combinedRouteCandidates.length}`);
+            console.log(`[chunk-v15] Phase union/dedup before write: phase1=${phase1DeedsForUnion.length}, phase2=${finalMapped.length}, combined=${combinedRouteCandidates.length}, phase1KeyCollisions=${phase1KeyCollisions}, phase1NullKeys=${phase1NullKeys}`);
 
             const dbResult = await writeToDb(combinedRouteCandidates);
             totalInserted += dbResult.chunkInserted;
