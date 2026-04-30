@@ -973,6 +973,49 @@ Deno.serve(async (req) => {
                 console.log(`[chunk-v15] Delta sync deactivated ${deactivationResult.chunkUpdated} rejected existing route records; deed records preserved`);
             }
 
+            // Age out stale Phase 2 records from prior runs that are now outside the 30-day clerk-gap window.
+            // These records will not appear in the current RentCast 30-day MLS response, so they must be
+            // explicitly deactivated during refetch if no Phase 1 deed record has since confirmed them.
+            if (isDeltaPull) {
+                const stalePhase2ForDeactivation = [];
+                const staleCutoff = phase2Start;
+                const lookupZips = [...new Set([...zipCodesFound, ...mapped.map(m => m.zip_code)].filter(Boolean))];
+
+                for (let zi = 0; zi < lookupZips.length; zi += 20) {
+                    if (Date.now() - chunkStart > 50000) break;
+                    const zipBatch = lookupZips.slice(zi, zi + 20);
+                    const promises = zipBatch.map(zip =>
+                        base44.asServiceRole.entities.MasterProperty.filter({ zip_code: zip }, null, 5000)
+                            .then(res => {
+                                const arr = Array.isArray(res) ? res : (res?.items || []);
+                                for (const existingProp of arr) {
+                                    if (!existingProp.lat || !existingProp.lng || !filterPoint(existingProp.lat, existingProp.lng)) continue;
+                                    if (phase1DeedHashSet.has(existingProp.address_hash)) continue;
+                                    if (!['BATCHDATA_CONFIRMED', 'MLS_PENDING_VERIFICATION'].includes(existingProp.original_status)) continue;
+                                    if (!existingProp.sold_date || new Date(existingProp.sold_date) >= staleCutoff) continue;
+                                    if (existingProp.route_active === false) continue;
+
+                                    stalePhase2ForDeactivation.push({
+                                        ...existingProp,
+                                        route_active: false,
+                                        sale_confidence: 'REJECTED',
+                                        original_status: 'REJECTED'
+                                    });
+                                }
+                            })
+                            .catch(e => logError(`Stale Phase 2 age-out lookup failed for zip ${zip}: ${e.message}`))
+                    );
+                    await Promise.all(promises);
+                }
+
+                if (stalePhase2ForDeactivation.length > 0) {
+                    const staleResult = await writeToDb(stalePhase2ForDeactivation);
+                    totalExisted += staleResult.chunkExisted;
+                    totalUpdated += staleResult.chunkUpdated;
+                    console.log(`[chunk-v15] Delta sync aged out ${staleResult.chunkUpdated} stale Phase 2 MLS records older than 30 days; no deed match found`);
+                }
+            }
+
             // Filter out REJECTED records (from heuristic scoring or BatchData Step 3)
             const finalMapped = mapped.filter(m => m.original_status !== 'REJECTED' && (m.original_status === 'DEED_CONFIRMED' || m.original_status === 'BATCHDATA_CONFIRMED' || m.sale_confidence === 'verified'));
             if (finalMapped.length < mapped.length) {
