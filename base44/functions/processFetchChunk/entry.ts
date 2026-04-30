@@ -17,7 +17,7 @@ import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
 const DATABASE_URL = Deno.env.get("DATABASE_URL");
-const PROPERTY_STORAGE_MODE = "dual"; // safe migration mode: writes to both Base44 and Neon
+const PROPERTY_STORAGE_MODE = ((Deno.env.toObject().PROPERTY_STORAGE_MODE) || "dual").toLowerCase(); // base44 | dual | neon
 
 // Configurable deed lag cutoff — default 120 days per Harris County worst-case research
 // (90-day clerk backlog + 30-60 day RentCast propagation lag)
