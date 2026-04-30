@@ -182,3 +182,16 @@ Pass 1 implemented and verified.
 - The initial Home query can be zip/user-cache scoped and may load 0 properties before a polygon-only generation.
 - `generateRoutes` now fetches Neon candidates for the active drawn polygon on demand before applying route filters.
 - Verified `getRouteCandidatesFromNeon` returns polygon candidates successfully: test polygon returned 111 route candidates.
+
+## Follow-up Plan — Route Generation Still Starts With 0
+- [x] Check runtime logs after the first fix.
+- [x] Patch drawn-area fetch to run even when zip/filter state is present.
+- [x] Add minimal diagnostic logging for drawn-area candidate fetch count.
+- [x] Verify backend polygon candidates are available for generation.
+- [x] Document result.
+
+### Follow-up Result
+- The first fix only fetched polygon candidates when no zip filter text was present.
+- Runtime logs still showed `dynamic=0`, meaning the polygon fetch path was skipped by current UI state.
+- The drawn-area fetch now always runs whenever a polygon is active, regardless of zip/filter state.
+- Added a concise console log showing how many properties the drawn-area candidate fetch returns.

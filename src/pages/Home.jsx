@@ -952,12 +952,13 @@ export default function Home() {
             // The initial map cache can be zip-scoped and may be empty for polygon-only generation.
             let dynamicProps = [];
             const hasActiveDrawnPolygon = drawnPolygon && drawnPolygon.length > 2;
-            if (hasActiveDrawnPolygon && !(zipCodeFilter && zipCodeFilter.trim())) {
+            if (hasActiveDrawnPolygon) {
                 const polygonProps = await fetchRouteCandidatesFromNeon({
                     polygon: drawnPolygon,
                     soldMonths: 'all',
                     limit: 50000
                 });
+                console.log(`[Generate] Drawn area candidate fetch returned ${polygonProps.length} properties`);
 
                 if (polygonProps.length > 0) {
                     console.log(`[Generate] Fetched ${polygonProps.length} properties from backend for drawn area`);
