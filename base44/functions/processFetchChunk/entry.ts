@@ -852,13 +852,15 @@ Deno.serve(async (req) => {
                                     const soldPrice = listing.soldPrice || listing.price || 0;
                                     const soldDate = listing.soldDate || null;
 
-                                    if (apiStatus.includes('sold') || statusCat === 'sold' || soldPrice > 0) {
+                                    if (apiStatus.includes('sold') || statusCat === 'sold') {
                                         return { hash: cm.address_hash, outcome: 'sold', soldPrice, soldDate };
                                     }
-                                    if (statusCat === 'pending' || apiStatus.includes('pending')) {
-                                        return { hash: cm.address_hash, outcome: 'pending' };
+                                    if (statusCat === 'pending' || apiStatus.includes('pending') ||
+                                        statusCat === 'expired' || apiStatus.includes('expired') ||
+                                        statusCat === 'withdrawn' || apiStatus.includes('withdrawn')) {
+                                        return { hash: cm.address_hash, outcome: 'rejected' };
                                     }
-                                    // Expired, withdrawn, cancelled, or no match → not sold
+                                    // Cancelled, active, unknown, or no match → not sold
                                     return { hash: cm.address_hash, outcome: 'not_sold' };
                                 } catch (e) {
                                     logError(`BatchData exception: phase=phase2 property=${cm.house_number} ${cm.street_name}, ${cm.city}, ${cm.state} ${cm.zip_code} api=property/search error=${e.message}`);
@@ -891,7 +893,7 @@ Deno.serve(async (req) => {
                                     match.sale_confidence = 'REJECTED';
                                     match.original_status = 'REJECTED';
                                     bdRejected++;
-                                } else if (result.outcome === 'pending') {
+                                } else if (result.outcome === 'pending' || result.outcome === 'rejected') {
                                     match.sale_confidence = 'REJECTED';
                                     match.original_status = 'REJECTED';
                                     bdRejected++;
