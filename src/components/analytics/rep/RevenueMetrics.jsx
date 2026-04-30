@@ -55,9 +55,9 @@ export default function RevenueMetrics({ logs, dateDays }) {
       <div className="relative">
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-gray-500">Revenue</p>
-            <h3 className="mt-1 text-2xl md:text-3xl font-black text-white tracking-tight">{fmt(revenueData.totalRevenue)}</h3>
-            <p className="mt-1 text-[11px] text-gray-500">{revenueData.totalDeals} closed deals in this period</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-gray-500">Revenue Trend</p>
+            <h3 className="mt-1 text-lg md:text-xl font-black text-white tracking-tight">Weekly performance</h3>
+            <p className="mt-1 text-[11px] text-gray-500">Revenue timing, deal size, and week-over-week movement</p>
           </div>
           <div className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[10px] md:text-xs font-bold border ${
             revenueData.velocityPct >= 0 ? 'bg-green-500/10 text-green-300 border-green-400/20' : 'bg-red-500/10 text-red-300 border-red-400/20'
@@ -70,7 +70,7 @@ export default function RevenueMetrics({ logs, dateDays }) {
         <div className="grid grid-cols-2 gap-2.5 mb-4">
           {[
             { icon: Percent, value: fmt(revenueData.avgDeal), label: 'Average Deal', color: '#f59e0b' },
-            { icon: TrendingUp, value: fmt(revenueData.thisWeekRev), label: 'This Week', color: '#60a5fa' },
+            { icon: DollarSign, value: revenueData.totalDeals, label: 'Closed Deals', color: '#22c55e' },
           ].map((s) => {
             const Icon = s.icon;
             return (
