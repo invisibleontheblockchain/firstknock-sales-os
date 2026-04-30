@@ -830,7 +830,12 @@ Deno.serve(async (req) => {
                                     const res = await fetch('https://api.batchdata.com/api/v1/property/search', {
                                         method: 'POST',
                                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BATCH_DATA_API_KEY}` },
-                                        body: JSON.stringify({ searchCriteria: { query }, options: { skipTrace: false, includePropertyDetails: true } })
+                                        body: JSON.stringify({
+                                            searchCriteria: { query },
+                                            options: {
+                                                datasets: ['basic', 'listing', 'owner']
+                                            }
+                                        })
                                     });
                                     if (!res.ok) {
                                         // If credits exhausted (402) or auth failed (401), don't count as error per-record
@@ -845,15 +850,18 @@ Deno.serve(async (req) => {
                                     const properties = data?.results?.properties || [];
                                     const topResult = properties[0] || {};
                                     const listing = topResult.listing || data?.results?.listing || {};
+                                    const owner = topResult.owner || {};
                                     
-                                    // BatchData has statusCategory and soldPrice — the fields RentCast doesn't have
+                                    // BatchData listing fields
                                     const apiStatus = (listing.status || '').toLowerCase();
                                     const statusCat = (listing.statusCategory || '').toLowerCase();
-                                    const soldPrice = listing.soldPrice || listing.price || 0;
                                     const soldDate = listing.soldDate || null;
 
+                                    // BatchData owner dataset field
+                                    const ownerFullName = owner.fullName || owner.names?.[0]?.full || null;
+
                                     if (apiStatus.includes('sold') || statusCat === 'sold') {
-                                        return { hash: cm.address_hash, outcome: 'sold', soldPrice, soldDate };
+                                        return { hash: cm.address_hash, outcome: 'sold', soldDate, ownerFullName };
                                     }
                                     if (statusCat === 'pending' || apiStatus.includes('pending') ||
                                         statusCat === 'expired' || apiStatus.includes('expired') ||
@@ -886,8 +894,8 @@ Deno.serve(async (req) => {
                                     match.sale_confidence = 'verified';
                                     match.original_status = 'BATCHDATA_CONFIRMED';
                                     match.data_source = 'batchdata_verified';
-                                    if (result.soldPrice) match.price = result.soldPrice;
                                     if (result.soldDate) match.sold_date = result.soldDate;
+                                    if (result.ownerFullName) match.owner_full_name = result.ownerFullName;
                                     bdVerified++;
                                 } else if (result.outcome === 'not_sold') {
                                     match.sale_confidence = 'REJECTED';

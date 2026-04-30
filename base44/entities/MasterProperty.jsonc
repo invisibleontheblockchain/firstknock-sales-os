@@ -1,0 +1,115 @@
+{
+  "name": "MasterProperty",
+  "type": "object",
+  "properties": {
+    "address_hash": {
+      "type": "string",
+      "description": "Unique hash of the address for robust linking"
+    },
+    "legacy_hash": {
+      "type": "string",
+      "description": "Original Base64 hash from CSV import, preserved for interaction log linkage"
+    },
+    "house_number": {
+      "type": "integer",
+      "description": "Numeric part of address for sorting/interpolation"
+    },
+    "street_name": {
+      "type": "string",
+      "description": "Street name for grouping"
+    },
+    "full_address": {
+      "type": "string",
+      "description": "Display address"
+    },
+    "city": {
+      "type": "string",
+      "description": "City"
+    },
+    "state": {
+      "type": "string",
+      "description": "State"
+    },
+    "zip_code": {
+      "type": "string",
+      "description": "Zip Code"
+    },
+    "lat": {
+      "type": "number",
+      "description": "Latitude"
+    },
+    "lng": {
+      "type": "number",
+      "description": "Longitude"
+    },
+    "h3_index": {
+      "type": "string",
+      "description": "H3 Resolution 9 index for spatial clustering"
+    },
+    "original_status": {
+      "type": "string",
+      "enum": [
+        "ELIGIBLE",
+        "SOLD",
+        "HARD_NO",
+        "DO_NOT_KNOCK",
+        "UNVERIFIED"
+      ],
+      "default": "ELIGIBLE",
+      "description": "The baseline status from the Master File"
+    },
+    "data_source": {
+      "type": "string",
+      "enum": [
+        "rentcast",
+        "csv_import",
+        "manual"
+      ],
+      "description": "Origin of this record for data quality tracking"
+    },
+    "owner_full_name": {
+      "type": "string",
+      "description": "Owner full name returned by BatchData owner dataset"
+    },
+    "beds": {
+      "type": "number"
+    },
+    "baths": {
+      "type": "number"
+    },
+    "sqft": {
+      "type": "number"
+    },
+    "lot_size": {
+      "type": "number"
+    },
+    "year_built": {
+      "type": "integer"
+    },
+    "price": {
+      "type": "number"
+    },
+    "sold_date": {
+      "type": "string"
+    },
+    "sale_type": {
+      "type": "string"
+    },
+    "property_type": {
+      "type": "string"
+    },
+    "mls_id": {
+      "type": "string"
+    },
+    "url": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "address_hash",
+    "house_number",
+    "street_name",
+    "lat",
+    "lng"
+  ]
+}
