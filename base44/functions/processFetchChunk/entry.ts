@@ -365,6 +365,7 @@ Deno.serve(async (req) => {
                 await base44.asServiceRole.entities.MasterProperty.bulkCreate(batch)
                     .then(() => chunkInserted += batch.length)
                     .catch(e => logError(`Bulk insert error: ${e.message}`));
+                if (i + 500 < toInsert.length) await sleep(200);
             }
             for (let i = 0; i < toUpdate.length; i++) {
                 if (Date.now() - chunkStart > 58000) break;
