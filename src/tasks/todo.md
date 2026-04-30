@@ -150,3 +150,21 @@ Pass 1 implemented and verified.
 - Backend large-route generation uses a simpler nearest-neighbor algorithm than the rich frontend optimizer.
 - Saved route payloads still store property hashes in Base44; acceptable now, but route summary-only persistence can be improved later.
 - Full multi-user load testing and backup restore testing still need to be run outside the app runtime.
+
+## Incident Plan — Data Pull Stuck at 86%
+- [x] Check runtime logs and latest `FetchJob` state.
+- [x] Identify root cause: resume flow invoked `processFetchChunk` with `expected_chunk: 0` while the resumed job was already at chunk 9.
+- [x] Patch resume trigger to use the job’s current `chunk_number`.
+- [x] Verify `processFetchChunk` resumes without mutex skip.
+- [ ] Patch self-chain invocation to use service mode after 403 on the next automatic chunk.
+- [x] Verify the pull advances again after the service-mode patch.
+- [x] Remove redundant Phase 1 rewrites during Phase 2 to prevent chunk timeouts near 90%+.
+- [x] Verify the current pull reaches completion.
+- [x] Document outcome.
+
+### Incident Outcome
+- The data pull was stuck at 86% because `fetchAreaProperties` resumed an existing job with `expected_chunk: 0` while the job was already at chunk 9, causing the mutex to skip processing.
+- After fixing resume chunk selection, the job advanced to 89% and then 91%.
+- A second bottleneck appeared near 90%+: Phase 2 was rewriting all Phase 1 deed records on every MLS sub-circle, causing long upsert loops and a timeout.
+- Phase 2 now writes only verified MLS gap-fill records; deed records remain preserved from Phase 1.
+- Verified via `adminDiagnostics`: job `69f3a64c26b80535a492d82a` completed at 100% with no running jobs.

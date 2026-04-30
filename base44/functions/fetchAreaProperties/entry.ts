@@ -327,8 +327,9 @@ Deno.serve(async (req) => {
             await base44.auth.updateMe({ area_pulls_count: pullCount + 1 });
         } catch (e) { console.warn('Failed to update pull count:', e.message); }
 
+        const resumeExpectedChunk = job.chunk_number || 0;
         setTimeout(() => {
-            base44.functions.invoke('processFetchChunk', { expected_chunk: 0 }).catch(e => {
+            base44.functions.invoke('processFetchChunk', { expected_chunk: resumeExpectedChunk }).catch(e => {
                 console.warn('[fetchArea-v9] Background chunk invoke failed:', e.message);
             });
         }, 500);

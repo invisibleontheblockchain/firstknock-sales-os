@@ -513,7 +513,7 @@ Deno.serve(async (req) => {
             const delays = [500, 2000, 5000, 10000, 20000];
             let attempt = 0;
             const tryInvoke = () => {
-                base44.functions.invoke('processFetchChunk', { expected_chunk: nextChunkNumber })
+                base44.asServiceRole.functions.invoke('processFetchChunk', { expected_chunk: nextChunkNumber })
                     .catch(async (e) => {
                         const msg = e?.message || String(e);
                         const is429 = /429|rate limit/i.test(msg);
@@ -1162,47 +1162,18 @@ Deno.serve(async (req) => {
                 console.log(`[chunk-v15] Filtered out ${mapped.length - finalMapped.length} REJECTED records before DB write`);
             }
 
-            // Phase 1 + Phase 2 union before final write: deeds stay, verified MLS gap-fill joins, no duplicates.
-            const unionByKey = new Map();
-            let phase1KeyCollisions = 0;
-            let phase1NullKeys = 0;
-
-            const getUnionKey = (p) => {
-                const fallback = generateNormalizedHash(p.full_address || `${p.house_number || ''} ${p.street_name || ''}`, p.zip_code || '00000');
-                return String(p.parcel_id || p.apn || p.address_hash || fallback || '').trim();
-            };
-
-            for (const p of phase1DeedsForUnion) {
-                const key = getUnionKey(p);
-                if (!key) {
-                    phase1NullKeys++;
-                    console.warn(`[chunk-v15] Union key null — skipped: ${p.full_address || `${p.house_number || ''} ${p.street_name || ''}`}`);
-                    continue;
-                }
-
-                if (unionByKey.has(key)) {
-                    phase1KeyCollisions++;
-                    const existing = unionByKey.get(key);
-                    const existingDate = existing?.sold_date ? new Date(existing.sold_date) : new Date(0);
-                    const incomingDate = p.sold_date ? new Date(p.sold_date) : new Date(0);
-                    console.warn(`[chunk-v15] Union key collision — keeping newest sold_date for key=${key}`);
-                    if (incomingDate > existingDate) unionByKey.set(key, p);
-                    continue;
-                }
-
-                unionByKey.set(key, p);
+            // Phase 1 deed records were already persisted during Phase 1.
+            // In Phase 2, only write newly verified MLS gap-fill records; rewriting every Phase 1 deed
+            // on every MLS sub-circle causes long Neon upsert loops and can time out near 90%+ progress.
+            if (finalMapped.length > 0) {
+                console.log(`[chunk-v15] Phase 2 verified gap-fill write: ${finalMapped.length} records`);
+                const dbResult = await writeToDb(finalMapped);
+                totalInserted += dbResult.chunkInserted;
+                totalExisted += dbResult.chunkExisted;
+                totalUpdated += dbResult.chunkUpdated;
+            } else {
+                console.log('[chunk-v15] Phase 2 verified gap-fill write skipped: no verified MLS records');
             }
-            for (const p of finalMapped) {
-                const key = getUnionKey(p);
-                if (key && !unionByKey.has(key)) unionByKey.set(key, p);
-            }
-            const combinedRouteCandidates = Array.from(unionByKey.values());
-            console.log(`[chunk-v15] Phase union/dedup before write: phase1=${phase1DeedsForUnion.length}, phase2=${finalMapped.length}, combined=${combinedRouteCandidates.length}, phase1KeyCollisions=${phase1KeyCollisions}, phase1NullKeys=${phase1NullKeys}`);
-
-            const dbResult = await writeToDb(combinedRouteCandidates);
-            totalInserted += dbResult.chunkInserted;
-            totalExisted += dbResult.chunkExisted;
-            totalUpdated += dbResult.chunkUpdated;
 
             const subCircleDone = reachedEnd || allRaw.length === 0;
             let nextSubCircle = currentSubCircle;
