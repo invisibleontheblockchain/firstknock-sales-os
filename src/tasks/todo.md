@@ -210,6 +210,7 @@ Pass 1 implemented and verified.
 - Guarded the builder settings button so it only opens after a drawn area has data ready.
 - Saved generated/merged routes assigned to the current user by default so they appear in the Knock tab route switcher.
 - Removed nested buttons inside Knock property cards to prevent unreliable mobile/desktop click behavior.
+- Fixed the Builder toggle button so clicking it actually switches into Builder mode without opening the settings panel.
 
 ## Plan — Fix RouteCommandPanel dynamic import crash
 - [x] Check runtime logs for the reported module import error.

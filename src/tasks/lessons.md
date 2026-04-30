@@ -10,3 +10,4 @@
 - When removing a lazy import wrapper, update both the wrapper and every callsite import; otherwise the page bundle may still reference the stale dynamic path.
 - If manager-generated routes must appear in the Knock tab immediately, save them assigned to the creator by default; unassigned routes are easy to miss in rep-facing route switchers.
 - Avoid nesting interactive buttons inside route/property card buttons; use a clickable container with separate child buttons to prevent React DOM warnings and unreliable mobile taps.
+- When changing mode-toggle behavior, verify the click handler updates the mode state itself; hiding panels without calling the mode setter makes the button appear broken.
