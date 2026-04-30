@@ -951,6 +951,12 @@ export default function Home() {
             // If a drawn polygon is active, load candidates for that area on-demand.
             // The initial map cache can be zip-scoped and may be empty for polygon-only generation.
             let dynamicProps = [];
+            const addDynamicProps = (newProps) => {
+                if (!Array.isArray(newProps) || newProps.length === 0) return;
+                const merged = new Map(dynamicProps.map(p => [p.address_hash || p.id, p]));
+                newProps.forEach(p => merged.set(p.address_hash || p.id, p));
+                dynamicProps = Array.from(merged.values());
+            };
             let storedPolygon = null;
             try {
                 const savedPolygon = localStorage.getItem('fk_drawnPolygon');
@@ -974,7 +980,7 @@ export default function Home() {
 
                 if (polygonProps.length > 0) {
                     console.log(`[Generate] Fetched ${polygonProps.length} properties from backend for drawn area`);
-                    dynamicProps = polygonProps;
+                    addDynamicProps(polygonProps);
                     setFetchedProperties(prev => {
                         const existingIds = new Set(prev.map(p => p.address_hash || p.id));
                         const newUnique = polygonProps.filter(p => !existingIds.has(p.address_hash || p.id));
@@ -1044,7 +1050,7 @@ export default function Home() {
 
                 if (flattened.length > 0) {
                     console.log(`[Generate] Fetched ${flattened.length} properties from backend for zips: ${targetZips.join(', ')}`);
-                    dynamicProps = flattened;
+                    addDynamicProps(flattened);
                     // Update state to show on map (will trigger re-render eventually, but we use local var for now)
                     setFetchedProperties(prev => {
                         // Dedup with existing fetched
@@ -1053,6 +1059,17 @@ export default function Home() {
                         return prev.concat(newUnique);
                     });
                 }
+            }
+
+            if (!activeGenerationPolygon && !(zipCodeFilter && zipCodeFilter.trim())) {
+                const territoryZips = Array.from(new Set([...(user?.territory_zip_codes || []), ...(user?.generated_zip_codes || [])]));
+                const territoryProps = await fetchRouteCandidatesFromNeon({
+                    zipCodes: territoryZips,
+                    soldMonths: 'all',
+                    limit: 50000
+                });
+                console.log(`[Generate] Neon territory candidate fetch returned ${territoryProps.length} properties`);
+                addDynamicProps(territoryProps);
             }
 
             // 2. PREPARE DATA FOR ROUTING
@@ -1185,7 +1202,7 @@ export default function Home() {
             // (we re-check generationError via a functional setState)
             setRoutesGenerating(false);
         }
-    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, draftPolygon, frozenWorkingSet, effectiveProperties, fetchRouteCandidatesFromNeon]);
+    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, draftPolygon, frozenWorkingSet, effectiveProperties, fetchRouteCandidatesFromNeon, user?.territory_zip_codes, user?.generated_zip_codes, user?.email]);
 
     // Reorder: re-run filtering + routing on frozen data without re-fetching
     const handleReorder = useCallback(async () => {

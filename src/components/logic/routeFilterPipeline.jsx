@@ -63,7 +63,8 @@ export function applyRouteFilters({
             if (p.original_status === 'PENDING') return true;
             if (p.original_status === 'RECENT_OFF_MARKET' && p.sale_confidence !== 'low') return true;
             const hasInteraction = ['CALLBACK', 'NO_ANSWER', 'QUALIFIED'].includes(p.effective_status);
-            if (!p.sold_date) return hasInteraction;
+            const isImportedCandidate = ['csv_import', 'manual'].includes(String(p.data_source || '').toLowerCase()) || p.original_status === 'UNVERIFIED';
+            if (!p.sold_date) return hasInteraction || isImportedCandidate;
             try {
                 const date = new Date(p.sold_date);
                 if (isNaN(date.getTime())) return hasInteraction;

@@ -196,6 +196,21 @@ Pass 1 implemented and verified.
 - The drawn-area fetch now always runs whenever a polygon is active, regardless of zip/filter state.
 - Added a concise console log showing how many properties the drawn-area candidate fetch returns.
 
+## Plan — Neon Route Builder End-to-End
+- [x] Check runtime logs for generation and Neon fetch behavior.
+- [x] Audit RouteBuilderSettings, Home generation, route filter pipeline, and Neon candidate function.
+- [x] Patch route generation to merge Neon candidates instead of overwriting polygon candidates with zip candidates.
+- [x] Patch route generation to fetch territory candidates directly from Neon when no polygon/zip is active.
+- [x] Refresh generation callback when user territory data changes.
+- [x] Keep imported/Neon candidates without sold dates eligible instead of dropping them under the default sold-date filter.
+- [x] Verify backend candidate retrieval and document result.
+
+### Neon Route Builder Result
+- Route generation now fetches from Neon during generation, not just from the local page cache.
+- Polygon, zip, and territory Neon candidates are merged instead of overwriting each other.
+- The filter pipeline no longer removes imported Neon candidates just because they do not have a sold date.
+- Verified `getRouteCandidatesFromNeon` returns active candidates for zip 29621.
+
 ## Root-Cause Plan — Polygon State Not Reaching Generate
 - [x] Inspect runtime logs: no drawn-area candidate fetch log appears.
 - [x] Inspect Home generation path and state names.
