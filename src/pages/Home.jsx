@@ -47,7 +47,7 @@ import { applyRouteFilters, formatStageCounts } from '../components/logic/routeF
 import RouteGenerationOverlay from '../components/routes/RouteGenerationOverlay';
 import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../components/logic/heatmapLogic';
 const RouteChecklist = React.lazy(() => import('../components/routes/RouteChecklist'));
-import LazyRouteCommandPanel from '../components/routes/LazyRouteCommandPanel';
+import RouteCommandPanel from '../components/routes/RouteCommandPanel';
 import KnockTimeBanner from '../components/timing/KnockTimeBanner';
 // MarketSetupPrompt removed — onboarding handled by MarketOnboarding + TerritoryPrompt
 import TerritoryPrompt from '../components/map/TerritoryPrompt';
@@ -1657,7 +1657,7 @@ export default function Home() {
             {/* Routes Panel - Refactored Command Panel */}
             {showRoutePanel && (
                 <React.Suspense fallback={null}>
-                    <LazyRouteCommandPanel
+                    <RouteCommandPanel
                         generatedRoutes={routes}
                         savedRoutes={hydratedSavedRoutes}
                         filteredRoutes={filteredRoutes}

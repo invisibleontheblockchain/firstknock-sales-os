@@ -204,7 +204,8 @@ Pass 1 implemented and verified.
 - [x] Document the result.
 
 ### Review — RouteCommandPanel import crash
-- Replaced the lazy dynamic import wrapper with a direct import of `RouteCommandPanel`, so the app no longer fetches `RouteCommandPanel.jsx` as a separate dynamic module at runtime.
+- Replaced the lazy dynamic import wrapper with a direct import of `RouteCommandPanel`.
+- Also updated `pages/Home` to import `RouteCommandPanel` directly, fully bypassing the stale lazy wrapper path that was still referenced by the current page bundle.
 
 ## Plan — 5 sq mile test circle
 - [x] Set map drawing default area to 5 sq mi.
