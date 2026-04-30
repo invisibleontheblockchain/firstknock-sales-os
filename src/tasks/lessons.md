@@ -8,3 +8,5 @@
 - For Neon route generation, audit the whole funnel: candidate fetch, merge behavior, and post-fetch filters. A successful Neon query can still produce zero routes if local filters drop imported records.
 - If a critical UI panel fails with `Failed to fetch dynamically imported module`, prefer a direct import over retrying lazy imports so the panel cannot break on stale preview chunks.
 - When removing a lazy import wrapper, update both the wrapper and every callsite import; otherwise the page bundle may still reference the stale dynamic path.
+- If manager-generated routes must appear in the Knock tab immediately, save them assigned to the creator by default; unassigned routes are easy to miss in rep-facing route switchers.
+- Avoid nesting interactive buttons inside route/property card buttons; use a clickable container with separate child buttons to prevent React DOM warnings and unreliable mobile taps.

@@ -196,6 +196,21 @@ Pass 1 implemented and verified.
 - The drawn-area fetch now always runs whenever a polygon is active, regardless of zip/filter state.
 - Added a concise console log showing how many properties the drawn-area candidate fetch returns.
 
+## Plan — Fix route builder auto-opening and Knock route visibility
+- [x] Capture runtime logs for the reported behavior.
+- [x] Inspect the map toolbar, territory prompt, Home state triggers, and RepHome route loading.
+- [x] Stop route builder/custom draw controls from opening on ordinary map clicks.
+- [x] Make the Map tab default to the routes section instead of the builder.
+- [x] Ensure generated/merged routes are visible from the Knock tab when appropriate.
+- [x] Verify with runtime/log review and document the result.
+
+### Review — Route builder opening and Knock route visibility
+- Disabled automatic restoration of old completed fetch polygons, which was forcing Custom Area Active and reopening the builder.
+- Changed Home to default to Routes mode instead of Builder mode.
+- Guarded the builder settings button so it only opens after a drawn area has data ready.
+- Saved generated/merged routes assigned to the current user by default so they appear in the Knock tab route switcher.
+- Removed nested buttons inside Knock property cards to prevent unreliable mobile/desktop click behavior.
+
 ## Plan — Fix RouteCommandPanel dynamic import crash
 - [x] Check runtime logs for the reported module import error.
 - [x] Inspect the lazy route panel wrapper and target panel module.

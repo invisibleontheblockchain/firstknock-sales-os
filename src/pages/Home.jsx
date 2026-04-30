@@ -156,7 +156,7 @@ export default function Home() {
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
-    const [mode, setModeRaw] = useState('generate'); // Default to generate mode
+    const [mode, setModeRaw] = useState('analyze'); // Default to routes mode
     const setMode = (newMode) => {
         setModeRaw(newMode);
         // Logic moved to useEffect to be smarter about when to open
@@ -520,6 +520,9 @@ export default function Home() {
     });
 
     const handleSaveRoute = async (route, assignedRepId = null, assignedRepName = null, silent = false) => {
+        const defaultAssigneeId = assignedRepId || user?.id;
+        const defaultAssigneeName = assignedRepName || user?.full_name || 'Me';
+
         // @ts-ignore - 'mutateAsync' incorrectly expects 'void' instead of the data object
         return await createRouteMutation.mutateAsync({
             name: route.name,
@@ -531,8 +534,8 @@ export default function Home() {
             },
             status: 'ACTIVE',
             start_location: startLocation,
-            assigned_to: assignedRepId,
-            assigned_to_name: assignedRepName,
+            assigned_to: defaultAssigneeId,
+            assigned_to_name: defaultAssigneeName,
             manager_id: user.id,
             silent // Pass silent flag to mutation
         });

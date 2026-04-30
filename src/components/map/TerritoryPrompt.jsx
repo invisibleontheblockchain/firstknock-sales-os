@@ -101,21 +101,6 @@ export default function TerritoryPrompt({
                 }
 
                 if (!job) {
-                    const completedJobs = await base44.entities.FetchJob.filter(
-                        { user_email: user.email, status: 'completed' },
-                        '-completed_at',
-                        1
-                    );
-                    const completedList = Array.isArray(completedJobs) ? completedJobs : (completedJobs?.items || []);
-                    const completedJob = completedList[0];
-                    if (completedJob?.polygon?.length > 2 && !restoredCompletedJobRef.current && !cancelled && (!drawnPolygon || drawnPolygon.length === 0)) {
-                        restoredCompletedJobRef.current = true;
-                        console.log('[TerritoryPrompt] Restoring completed job area:', completedJob.id);
-                        setDrawnPolygon(completedJob.polygon);
-                        setMode('generate');
-                        setShowRoutePanel(false);
-                        setShowCompare(true);
-                    }
                     return;
                 }
                 

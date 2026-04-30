@@ -18,9 +18,12 @@ export default function PropertyCard({ property, index, onSelect }) {
     const age = formatPropertyAge(property.sold_date);
 
     return (
-        <button
+        <div
             onClick={() => onSelect(property, index)}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 active:scale-[0.98] group ${!isDone ? 'hover:bg-[#1A1A24] hover:shadow-[0_0_20px_rgba(255,255,255,0.15)] hover:border-white/30' : ''}`}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(property, index); }}
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 active:scale-[0.98] group cursor-pointer ${!isDone ? 'hover:bg-[#1A1A24] hover:shadow-[0_0_20px_rgba(255,255,255,0.15)] hover:border-white/30' : ''}`}
             style={{
                 background: isDone ? '#0A0A0F' : '#111',
                 border: `1px solid ${isDone ? '#151515' : '#1F1F1F'}`,
@@ -79,6 +82,6 @@ export default function PropertyCard({ property, index, onSelect }) {
                     <Navigation className="w-3.5 h-3.5 text-gray-400" />
                 </button>
             )}
-        </button>
+        </div>
     );
 }

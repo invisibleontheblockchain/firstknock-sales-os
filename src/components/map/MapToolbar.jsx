@@ -182,7 +182,13 @@ export default function MapToolbar({
                             )}
                         </Button>
                         <Button
-                            onClick={() => setShowCompare(true)}
+                            onClick={() => {
+                                if (mode === 'generate' && (!hasDrawnArea || !territoryDataReady)) {
+                                    toast.info(hasDrawnArea ? "Pull property data before opening the builder." : "Draw a custom area first.");
+                                    return;
+                                }
+                                setShowCompare(true);
+                            }}
                             size="icon"
                             className="bg-black/80 hover:bg-black backdrop-blur-md rounded-lg sm:rounded-xl h-8 w-8 sm:h-11 sm:w-11 font-bold shadow-xl border border-yellow-500/40"
                         >
