@@ -21,8 +21,7 @@ const RENTCAST_BASE = "https://api.rentcast.io/v1";
 const DEED_LAG_CUTOFF_DAYS = parseInt(Deno.env.get("DEED_LAG_CUTOFF_DAYS") || '120', 10);
 
 const MAX_RETRIES = 3;
-const BASE_BACKOFF_MS = 1500;
-const MAX_BACKOFF_MS = 20000;
+const RATE_LIMIT_BACKOFFS_MS = [5000, 10000, 20000];
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -35,25 +34,25 @@ async function fetchWithBackoff(url, headers, logError) {
 
         if (!res) {
             if (attempt < MAX_RETRIES) {
-                const backoff = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * Math.pow(2, attempt));
-                await sleep(backoff + Math.random() * backoff * 0.3);
+                const waitMs = RATE_LIMIT_BACKOFFS_MS[attempt] || 20000;
+                await sleep(waitMs);
                 continue;
             }
-            return { records: [], total: null, status: 0 };
+            throw new Error(`RentCast network failure after ${MAX_RETRIES + 1} attempts`);
         }
 
         if (res.status === 429) {
             logError(`RATE LIMITED (429) — attempt ${attempt + 1}/${MAX_RETRIES + 1}`);
             if (attempt < MAX_RETRIES) {
                 const retryAfter = res.headers.get('Retry-After');
-                const waitMs = retryAfter 
-                    ? parseInt(retryAfter) * 1000 
-                    : Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * Math.pow(2, attempt + 1));
+                const waitMs = retryAfter
+                    ? parseInt(retryAfter, 10) * 1000
+                    : RATE_LIMIT_BACKOFFS_MS[attempt];
                 console.log(`[backoff] Waiting ${Math.round(waitMs)}ms before retry`);
-                await sleep(waitMs + Math.random() * waitMs * 0.3);
+                await sleep(waitMs);
                 continue;
             }
-            return { records: [], total: null, status: 429 };
+            throw new Error(`RentCast rate limit exhausted after ${MAX_RETRIES + 1} attempts`);
         }
 
         if (!res.ok) {
@@ -61,7 +60,8 @@ async function fetchWithBackoff(url, headers, logError) {
             logError(`API ${res.status}: ${errText.slice(0, 200)}`);
             if (res.status === 401) return { records: [], total: null, status: 401 };
             if (res.status >= 500 && attempt < MAX_RETRIES) {
-                await sleep(BASE_BACKOFF_MS * Math.pow(2, attempt) + Math.random() * 1000);
+                const waitMs = RATE_LIMIT_BACKOFFS_MS[attempt] || 20000;
+                await sleep(waitMs);
                 continue;
             }
             return { records: [], total: null, status: res.status };
@@ -71,7 +71,8 @@ async function fetchWithBackoff(url, headers, logError) {
         const records = await res.json();
         return { records: Array.isArray(records) ? records : [], total, status: 200 };
     }
-    return { records: [], total: null, status: 0 };
+
+    throw new Error(`RentCast request exhausted retries`);
 }
 
 // ── Address Normalization ──
@@ -124,7 +125,7 @@ function isValidSoldProperty(p) {
     if (!isNonDisclosure) {
         // $10K floor catches nominal/zero-dollar transfers while preserving low-value,
         // distressed, rural, estate, and below-market residential deed leads.
-        if (p.lastSalePrice === null || p.lastSalePrice === undefined || p.lastSalePrice < 10000) return false;
+        if (p.lastSalePrice !== null && p.lastSalePrice !== undefined && p.lastSalePrice < 10000) return false;
         if (p.assessedValue && p.assessedValue > 0 && p.lastSalePrice < p.assessedValue * 0.15) return false;
     } else {
         if (p.lastSalePrice !== null && p.lastSalePrice !== undefined && p.lastSalePrice > 0 && p.lastSalePrice < 1000) return false;
@@ -439,7 +440,9 @@ Deno.serve(async (req) => {
             for (let i = 0; i < offsets.length; i += MAX_PARALLEL) {
                 if (Date.now() - chunkStart > 40000) break;
                 const batch = offsets.slice(i, i + MAX_PARALLEL);
-                const promises = batch.map(offset => {
+                const promises = batch.map(async (offset, batchIndex) => {
+                    await sleep(batchIndex * 150);
+
                     const params = new URLSearchParams({
                         latitude: String(fetchLat), longitude: String(fetchLng),
                         radius: String(fetchRadius), limit: String(LIMIT),
@@ -500,6 +503,9 @@ Deno.serve(async (req) => {
 
             totalFetched += rawFetchedThisChunk;
             console.log(`[chunk-v15] Phase 1 inline-mapped ${mapped.length}/${rawFetchedThisChunk} raw (polygon-rej=${rejectedByPolygon}, filter-rej=${rejectedByFilter}, dupe=${rejectedByDupe}, totalExpected=${totalExpected})`);
+            if (!reachedEnd && rawFetchedThisChunk >= PAGES_PER_CHUNK * LIMIT) {
+                logError(`Pagination cap warning: Phase 1 hit ${PAGES_PER_CHUNK * LIMIT} records for sub-circle ${currentSubCircle + 1}/${totalSubCircles} at offset ${currentOffset}. More records may exist beyond this chunk. ZIPs seen so far: ${zipCodesFound.join(', ')}`);
+            }
             if (rawFetchedThisChunk > 0 && mapped.length === 0) throw new Error('Phase 1 hard failure: zero deed records survived validation. Not proceeding to Phase 2.');
 
             const phase1UnionSeed = mapped.map(p => ({
@@ -614,7 +620,9 @@ Deno.serve(async (req) => {
             for (let i = 0; i < offsets.length; i += MAX_PARALLEL) {
                 if (Date.now() - chunkStart > 40000) break;
                 const batch = offsets.slice(i, i + MAX_PARALLEL);
-                const promises = batch.map(offset => {
+                const promises = batch.map(async (offset, batchIndex) => {
+                    await sleep(batchIndex * 150);
+
                     const params = new URLSearchParams({
                         latitude: String(fetchLat), longitude: String(fetchLng),
                         radius: String(fetchRadius), limit: String(LIMIT),
@@ -1124,24 +1132,25 @@ Deno.serve(async (req) => {
     } catch (error) {
         console.error('[chunk-v15] FATAL:', error.message, error.stack);
 
-        // Attempt to mark the job as failed so it doesn't stay stuck in 'running' forever
+        // Rate-limit/network exhaustion is resumable: move back to pending so cron/user retry resumes from current offset.
         try {
-            const base44Recovery = createClientFromRequest(req);
-            const stuckJobs = await base44Recovery.asServiceRole.entities.FetchJob.filter({ status: 'running' }, '-updated_date', 1);
-            const stuckArr = Array.isArray(stuckJobs) ? stuckJobs : (stuckJobs?.items || []);
-            if (stuckArr.length > 0) {
-                const job = stuckArr[0];
-                const existingLog = job.error_log || [];
-                existingLog.push(`[${new Date().toISOString()}] FATAL: ${error.message}`);
-                await base44Recovery.asServiceRole.entities.FetchJob.update(job.id, {
-                    status: 'failed',
-                    error_message: `Processing crashed: ${error.message}`,
-                    error_log: existingLog
-                });
-                console.log(`[chunk-v15] Marked job ${job.id} as failed after fatal error`);
-            }
+        const base44Recovery = createClientFromRequest(req);
+        const stuckJobs = await base44Recovery.asServiceRole.entities.FetchJob.filter({ status: 'running' }, '-updated_date', 1);
+        const stuckArr = Array.isArray(stuckJobs) ? stuckJobs : (stuckJobs?.items || []);
+        if (stuckArr.length > 0) {
+            const job = stuckArr[0];
+            const existingLog = job.error_log || [];
+            const isResumable = /RentCast rate limit exhausted|RentCast network failure|RentCast request exhausted retries/i.test(error.message || '');
+            existingLog.push(`[${new Date().toISOString()}] ${isResumable ? 'STALLED' : 'FATAL'}: ${error.message}`);
+            await base44Recovery.asServiceRole.entities.FetchJob.update(job.id, {
+                status: isResumable ? 'pending' : 'failed',
+                error_message: isResumable ? `Stalled, will resume: ${error.message}` : `Processing crashed: ${error.message}`,
+                error_log: existingLog
+            });
+            console.log(`[chunk-v15] Marked job ${job.id} as ${isResumable ? 'pending for resume' : 'failed'} after error`);
+        }
         } catch (recoveryErr) {
-            console.error('[chunk-v15] Could not mark job as failed during recovery:', recoveryErr.message);
+        console.error('[chunk-v15] Could not update job during recovery:', recoveryErr.message);
         }
 
         return Response.json({ error: error.message }, { status: 500 });

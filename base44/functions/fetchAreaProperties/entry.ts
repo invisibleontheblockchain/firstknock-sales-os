@@ -251,35 +251,65 @@ Deno.serve(async (req) => {
         // Break into ≤5mi sub-circles and combine results.
         const subCircles = generateSubCircles(optimizedLat, optimizedLng, optimizedRadius);
 
-        // Create FetchJob with delta state + sub-circles
-        const job = await base44.entities.FetchJob.create({
-            status: 'pending',
-            latitude: optimizedLat,
-            longitude: optimizedLng,
-            radius: optimizedRadius,
-            polygon: polygon || [],
-            sold_months: effectiveSoldMonths,
-            include_mls: include_mls !== false,
-            is_delta_pull: isDeltaPull,
-            delta_watermark: isDeltaPull ? deltaInfo.watermark : null,
-            delta_savings: isDeltaPull ? { estimated_full_calls: deltaInfo.previousApiCalls, actual_calls: 0, savings_pct: 0 } : null,
-            current_offset: 0,
-            total_expected: 0,
-            total_fetched: 0,
-            total_inserted: 0,
-            total_existed: 0,
-            total_updated: 0,
-            total_api_calls: 0,
-            user_email: user.email,
-            progress_pct: 0,
-            zip_codes_found: [],
-            error_log: [],
-            chunk_timings: [],
-            phase: 'deed_records',
-            sub_circles: subCircles,
-            current_sub_circle: 0,
-            total_sub_circles: subCircles.length
+        // Resume recent failed job for the same area instead of starting over.
+        const recentFailedJobs = await base44.asServiceRole.entities.FetchJob.filter(
+            { user_email: user.email, status: 'failed' },
+            '-updated_date',
+            20
+        );
+        const failedList = Array.isArray(recentFailedJobs) ? recentFailedJobs : (recentFailedJobs?.items || []);
+        const sixHoursAgo = Date.now() - (6 * 60 * 60 * 1000);
+        const resumableJob = failedList.find(job => {
+            const updatedAt = job.updated_date ? new Date(job.updated_date).getTime() : 0;
+            if (updatedAt < sixHoursAgo) return false;
+            const dLat = Math.abs((job.latitude || 0) - optimizedLat);
+            const dLng = Math.abs((job.longitude || 0) - optimizedLng);
+            const radiusClose = Math.abs((job.radius || 0) - optimizedRadius) <= Math.max(0.5, optimizedRadius * 0.1);
+            return dLat < 0.02 && dLng < 0.02 && radiusClose;
         });
+
+        let job;
+        if (resumableJob) {
+            const resumedLog = [
+                ...(resumableJob.error_log || []),
+                `[${new Date().toISOString()}] Resuming failed job from sub-circle ${(resumableJob.current_sub_circle || 0) + 1}, offset ${resumableJob.current_offset || 0}`
+            ];
+            job = await base44.asServiceRole.entities.FetchJob.update(resumableJob.id, {
+                status: 'pending',
+                error_message: null,
+                error_log: resumedLog
+            });
+        } else {
+            // Create FetchJob with delta state + sub-circles
+            job = await base44.entities.FetchJob.create({
+                status: 'pending',
+                latitude: optimizedLat,
+                longitude: optimizedLng,
+                radius: optimizedRadius,
+                polygon: polygon || [],
+                sold_months: effectiveSoldMonths,
+                include_mls: include_mls !== false,
+                is_delta_pull: isDeltaPull,
+                delta_watermark: isDeltaPull ? deltaInfo.watermark : null,
+                delta_savings: isDeltaPull ? { estimated_full_calls: deltaInfo.previousApiCalls, actual_calls: 0, savings_pct: 0 } : null,
+                current_offset: 0,
+                total_expected: 0,
+                total_fetched: 0,
+                total_inserted: 0,
+                total_existed: 0,
+                total_updated: 0,
+                total_api_calls: 0,
+                user_email: user.email,
+                progress_pct: 0,
+                zip_codes_found: [],
+                error_log: [],
+                chunk_timings: [],
+                phase: 'deed_records',
+                sub_circles: subCircles,
+                current_sub_circle: 0,
+                total_sub_circles: subCircles.length
+            });
+        }
 
         const now = new Date();
         const deedCutoff = new Date(now);
