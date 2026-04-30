@@ -281,9 +281,12 @@ Deno.serve(async (req) => {
             total_sub_circles: subCircles.length
         });
 
-        const computedSaleDateRange = (effectiveSoldMonths * 30) + 90;
+        const now = new Date();
+        const deedCutoff = new Date(now);
+        deedCutoff.setMonth(deedCutoff.getMonth() - effectiveSoldMonths);
+        const computedSaleDateRange = Math.ceil((now.getTime() - deedCutoff.getTime()) / (1000 * 3600 * 24)) + 1;
         const gridMsg = subCircles.length > 1 ? ` | GRID: ${subCircles.length} sub-circles (r=${SUB_CIRCLE_RADIUS}mi)` : ' | single circle';
-        console.log(`[fetchArea-v9] Created FetchJob ${job.id} | delta=${isDeltaPull} | lat=${optimizedLat} lng=${optimizedLng} r=${optimizedRadius}mi | saleDateRange=${computedSaleDateRange}${gridMsg}`);
+        console.log(`[fetchArea-v9] Created FetchJob ${job.id} | delta=${isDeltaPull} | lat=${optimizedLat} lng=${optimizedLng} r=${optimizedRadius}mi | deedWindowDays=${computedSaleDateRange} | mlsWindowDays=30${gridMsg}`);
 
         try {
             await base44.auth.updateMe({ area_pulls_count: pullCount + 1 });

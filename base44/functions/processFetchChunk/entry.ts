@@ -380,22 +380,17 @@ Deno.serve(async (req) => {
         // PHASE 1: DEED RECORDS — /v1/properties?saleDateRange
         // ======================================================================
         if (currentPhase === 'deed_records') {
-            // OPT: Tightened saleDateRange. Phase 1 filters by soldCutoff in JS below (line ~380)
-            // so anything older than monthsBack is discarded — pulling extra 90 days was pure waste.
-            // Keep a 45-day buffer for month-boundary edge cases + RentCast propagation. Floor at
-            // 120d so a 1-month pull still catches late-recorded deeds.
-            // Before: Math.max(180, monthsBack*30 + 90) → 12mo = 450d fetched
-            // After:  Math.max(120, monthsBack*31 + 45) → 12mo = 417d fetched (~7% reduction)
-            //         But 1mo: 120d (was 180d) → 33% reduction on small pulls
-            const saleDateRange = Math.max(120, Math.min((monthsBack * 31) + 45, 730));
+            // Phase 1 = deed ground-truth window only: [today - sold_months] → today.
+            // Do not pull or store older deed records for this job; they are outside the route window.
+            const now = new Date();
+            const soldCutoff = new Date(now);
+            soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
+            const saleDateRange = Math.min(Math.ceil((now.getTime() - soldCutoff.getTime()) / (1000 * 3600 * 24)) + 1, 730);
             let reachedEnd = false;
 
             // OPT: Single-pass fetch+map. Previously we accumulated every raw record in `allRaw`
             // then looped again to map. At 5K records/chunk that's 2x memory + 2x iteration for
             // zero benefit. Now we map inline as each page arrives — same logic, half the memory.
-            const soldCutoff = new Date();
-            soldCutoff.setMonth(soldCutoff.getMonth() - monthsBack);
-
             const mapped = [];
             const seenHashes = new Set();
             let rawFetchedThisChunk = 0; // tracks raw record count for offset advancement
@@ -429,6 +424,8 @@ Deno.serve(async (req) => {
                     for (const p of r.records) {
                         if (!p.latitude || !p.longitude || !filterPoint(p.latitude, p.longitude)) { rejectedByPolygon++; continue; }
                         if (!isValidSoldProperty(p)) { rejectedByFilter++; continue; }
+                        const saleDate = new Date(p.lastSaleDate);
+                        if (isNaN(saleDate.getTime()) || saleDate < soldCutoff || saleDate > now) { rejectedByFilter++; continue; }
                         const addressLine = p.addressLine1 || (p.formattedAddress ? p.formattedAddress.split(',')[0] : "");
                         const pZip = p.zipCode || '00000';
                         const hash = generateNormalizedHash(addressLine, pZip);
@@ -440,11 +437,7 @@ Deno.serve(async (req) => {
                         const house_number = addressMatch ? parseInt(addressMatch[1]) : 0;
                         const street_name = addressMatch ? addressMatch[2] : (addressLine || "Unknown");
 
-                        let original_status = 'SOLD';
-                        if (p.lastSaleDate) {
-                            const saleDate = new Date(p.lastSaleDate);
-                            if (!isNaN(saleDate.getTime()) && saleDate <= soldCutoff) original_status = 'ELIGIBLE';
-                        }
+                        const original_status = 'SOLD';
 
                         const corporate = isCorporateOwner(p);
                         const confidence = computeSaleConfidence(p, corporate);
@@ -774,7 +767,7 @@ Deno.serve(async (req) => {
             // for a secondary date filter. ALL MLS listings that survived the
             // heuristic and aren't already deed-confirmed get sent to BatchData.
             // This is the ONLY way MLS data reaches the route — no exceptions.
-            // Cost: ~$0.10/record, capped at 50 per chunk = $5 max per chunk.
+            // Cost control is now handled by the 30-day MLS window — no artificial 50-record cap.
             const BATCH_DATA_API_KEY = Deno.env.get("BATCH_DATA_API_KEY");
             if (BATCH_DATA_API_KEY && mapped.length > 0) {
                 // Send ALL non-deed-confirmed MLS listings to BatchData
@@ -782,10 +775,10 @@ Deno.serve(async (req) => {
                     m.sale_confidence === 'low' && 
                     m.original_status !== 'DEED_CONFIRMED'
                 );
-                const batchdataCandidates = ambiguousMls.slice(0, 50); // Cost cap
+                const batchdataCandidates = ambiguousMls;
 
                 if (batchdataCandidates.length > 0) {
-                    console.log(`[chunk-v15] Step 3: Sending ${batchdataCandidates.length}/${ambiguousMls.length} MLS listings to BatchData for verification`);
+                    console.log(`[chunk-v15] Step 3: Sending ${batchdataCandidates.length} MLS listings to BatchData for verification`);
                     let bdVerified = 0, bdRejected = 0, bdErrors = 0;
 
                     try {
@@ -861,10 +854,12 @@ Deno.serve(async (req) => {
                                     match.original_status = 'REJECTED';
                                     bdRejected++;
                                 } else if (result.outcome === 'pending') {
-                                    // Pending = under contract, keep as RECENT_OFF_MARKET (will confirm later when deed records)
-                                    match.original_status = 'RECENT_OFF_MARKET';
-                                    match.sale_confidence = 'low';
+                                    match.sale_confidence = 'REJECTED';
+                                    match.original_status = 'REJECTED';
+                                    bdRejected++;
                                 } else {
+                                    match.sale_confidence = 'REJECTED';
+                                    match.original_status = 'REJECTED';
                                     bdErrors++;
                                 }
                             }
@@ -881,18 +876,33 @@ Deno.serve(async (req) => {
                         phase2Stats.batchdataVerified += bdVerified;
                         phase2Stats.batchdataDropped += bdRejected;
                         
-                        console.log(`[chunk-v15] Step 3 results: ${bdVerified} verified sold, ${bdRejected} rejected (not sold), ${bdErrors} errors/skipped`);
+                        console.log(`[chunk-v15] Step 3 BatchData credit usage: attempted=${bdVerified + bdRejected + bdErrors}, verified=${bdVerified}, rejected=${bdRejected}, errors=${bdErrors}`);
+                        console.log(`[chunk-v15] Step 3 results: ${bdVerified} verified sold, ${bdRejected} rejected (not sold/pending/expired/withdrawn), ${bdErrors} errors/skipped`);
                     } catch (err) {
-                        // Non-fatal — if BatchData is completely down, listings pass through as-is
-                        logError(`Step 3 BatchData failed (non-fatal): ${err.message}`);
+                        // Non-fatal to the job, but unverified MLS must never pass through to routes.
+                        logError(`Step 3 BatchData failed (phase2 only, deeds preserved): ${err.message}`);
+                        for (const m of mapped) {
+                            if (m.sale_confidence === 'low' && m.original_status !== 'DEED_CONFIRMED') {
+                                m.sale_confidence = 'REJECTED';
+                                m.original_status = 'REJECTED';
+                            }
+                        }
                     }
                 } else {
                     console.log(`[chunk-v15] Step 3 skipped: no ambiguous MLS listings to verify`);
                 }
+            } else if (mapped.length > 0) {
+                logError('Step 3 BatchData skipped: BATCH_DATA_API_KEY missing. Rejecting unverified MLS and preserving Phase 1 deeds.');
+                for (const m of mapped) {
+                    if (m.sale_confidence === 'low' && m.original_status !== 'DEED_CONFIRMED') {
+                        m.sale_confidence = 'REJECTED';
+                        m.original_status = 'REJECTED';
+                    }
+                }
             }
 
             // Filter out REJECTED records (from heuristic scoring or BatchData Step 3)
-            const finalMapped = mapped.filter(m => m.original_status !== 'REJECTED');
+            const finalMapped = mapped.filter(m => m.original_status !== 'REJECTED' && (m.original_status === 'DEED_CONFIRMED' || m.original_status === 'BATCHDATA_CONFIRMED' || m.sale_confidence === 'verified'));
             if (finalMapped.length < mapped.length) {
                 console.log(`[chunk-v15] Filtered out ${mapped.length - finalMapped.length} REJECTED records before DB write`);
             }
