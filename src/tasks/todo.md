@@ -196,6 +196,16 @@ Pass 1 implemented and verified.
 - The drawn-area fetch now always runs whenever a polygon is active, regardless of zip/filter state.
 - Added a concise console log showing how many properties the drawn-area candidate fetch returns.
 
+## Plan — Fix RouteCommandPanel dynamic import crash
+- [x] Check runtime logs for the reported module import error.
+- [x] Inspect the lazy route panel wrapper and target panel module.
+- [x] Patch the loading path to avoid the failed dynamic import.
+- [x] Verify by removing the separate dynamic module fetch path that was failing.
+- [x] Document the result.
+
+### Review — RouteCommandPanel import crash
+- Replaced the lazy dynamic import wrapper with a direct import of `RouteCommandPanel`, so the app no longer fetches `RouteCommandPanel.jsx` as a separate dynamic module at runtime.
+
 ## Plan — 5 sq mile test circle
 - [x] Set map drawing default area to 5 sq mi.
 - [x] Make the 5 sq mi test option always visible.
