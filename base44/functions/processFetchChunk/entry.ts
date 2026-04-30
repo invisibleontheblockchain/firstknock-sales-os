@@ -122,10 +122,10 @@ function isValidSoldProperty(p) {
     if (!p.lastSaleDate) return false;
     const isNonDisclosure = p.state && NON_DISCLOSURE_STATES.has(p.state.toUpperCase());
     if (!isNonDisclosure) {
-        // Raised floor from $10K → $30K. Under $30K in a disclosure state is almost always
-        // a quitclaim / family transfer / tax sale, not an arm's-length sale → bad lead.
-        if (p.lastSalePrice === null || p.lastSalePrice === undefined || p.lastSalePrice < 30000) return false;
-        if (p.assessedValue && p.assessedValue > 0 && p.lastSalePrice < p.assessedValue * 0.3) return false;
+        // $10K floor catches nominal/zero-dollar transfers while preserving low-value,
+        // distressed, rural, estate, and below-market residential deed leads.
+        if (p.lastSalePrice === null || p.lastSalePrice === undefined || p.lastSalePrice < 10000) return false;
+        if (p.assessedValue && p.assessedValue > 0 && p.lastSalePrice < p.assessedValue * 0.15) return false;
     } else {
         if (p.lastSalePrice !== null && p.lastSalePrice !== undefined && p.lastSalePrice > 0 && p.lastSalePrice < 1000) return false;
     }
@@ -365,7 +365,7 @@ Deno.serve(async (req) => {
                     .then(() => chunkInserted += batch.length)
                     .catch(e => logError(`Bulk insert error: ${e.message}`));
             }
-            for (let i = 0; i < Math.min(toUpdate.length, 50); i++) {
+            for (let i = 0; i < toUpdate.length; i++) {
                 if (Date.now() - chunkStart > 58000) break;
                 const { id, ...payload } = toUpdate[i];
                 await base44.asServiceRole.entities.MasterProperty.update(id, payload).then(() => chunkUpdated++).catch(() => {});
