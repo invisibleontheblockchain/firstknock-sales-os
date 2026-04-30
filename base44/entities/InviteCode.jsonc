@@ -1,0 +1,50 @@
+{
+  "name": "InviteCode",
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string",
+      "description": "The secret PIN code"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "rep",
+        "manager",
+        "admin"
+      ],
+      "description": "Role to assign when used"
+    },
+    "label": {
+      "type": "string",
+      "description": "Description of who this code is for"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "max_uses": {
+      "type": "integer",
+      "default": 1,
+      "description": "Maximum number of times this code can be used"
+    },
+    "used_count": {
+      "type": "integer",
+      "default": 0,
+      "description": "Number of times this code has been used"
+    },
+    "linked_user_id": {
+      "type": "string",
+      "description": "ID of the manager who owns this code (if linked to subscription)"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Optional description or notes for this record"
+    }
+  },
+  "required": [
+    "code",
+    "role"
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "name": "TeamMember",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Full name of team member"
+    },
+    "email": {
+      "type": "string",
+      "description": "Email address (for login matching)"
+    },
+    "phone": {
+      "type": "string",
+      "description": "Phone number"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "rep",
+        "manager",
+        "admin"
+      ],
+      "default": "rep",
+      "description": "Role in the organization"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive"
+      ],
+      "default": "active"
+    },
+    "color": {
+      "type": "string",
+      "description": "Assigned color for map visualization"
+    },
+    "manager_id": {
+      "type": "string",
+      "description": "ID of the manager this rep belongs to"
+    },
+    "invite_code": {
+      "type": "string",
+      "description": "The specific invite code used to join the team"
+    },
+    "assigned_zip_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of zip codes assigned to this rep"
+    },
+    "auto_assign_enabled": {
+      "type": "boolean",
+      "default": false,
+      "description": "Automatically assign new routes when current one is completed"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Optional description or notes for this record"
+    }
+  },
+  "required": [
+    "name",
+    "email",
+    "role"
+  ]
+}

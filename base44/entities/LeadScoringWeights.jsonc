@@ -1,0 +1,32 @@
+{
+  "name": "LeadScoringWeights",
+  "type": "object",
+  "properties": {
+    "weights": {
+      "type": "object",
+      "description": "Bayesian posterior weights, feature priors, and ADWIN drift state"
+    },
+    "last_trained": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "accuracy": {
+      "type": "number",
+      "description": "Weighted base conversion rate"
+    },
+    "model_version": {
+      "type": "string",
+      "description": "Model version identifier (e.g. bayesian_v3)"
+    },
+    "training_stats": {
+      "type": "object",
+      "description": "Training metadata: logs analyzed, drift detected, window sizes"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Optional description or notes for this record"
+    }
+  },
+  "required": []
+}

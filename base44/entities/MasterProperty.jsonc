@@ -76,6 +76,11 @@
       "type": "string",
       "description": "Owner full name returned by BatchData owner dataset"
     },
+    "description": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Optional description or notes for this record"
+    },
     "beds": {
       "type": "number"
     },

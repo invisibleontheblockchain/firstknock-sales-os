@@ -1,0 +1,55 @@
+{
+  "name": "TeamMessage",
+  "type": "object",
+  "properties": {
+    "sender_name": {
+      "type": "string",
+      "description": "Display name of sender"
+    },
+    "sender_email": {
+      "type": "string",
+      "description": "Email of sender"
+    },
+    "sender_role": {
+      "type": "string",
+      "enum": [
+        "rep",
+        "manager",
+        "admin"
+      ],
+      "description": "Role of sender"
+    },
+    "channel": {
+      "type": "string",
+      "description": "Channel ID - 'general' for all, manager_id for team, 'group_<id>' for custom groups, 'dm_<hash>' for DMs"
+    },
+    "channel_name": {
+      "type": "string",
+      "description": "Human-readable channel name for display"
+    },
+    "message": {
+      "type": "string",
+      "description": "Message content"
+    },
+    "message_type": {
+      "type": "string",
+      "enum": [
+        "text",
+        "alert",
+        "celebration",
+        "system"
+      ],
+      "default": "text"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Optional description or notes for this record"
+    }
+  },
+  "required": [
+    "sender_name",
+    "message",
+    "channel"
+  ]
+}

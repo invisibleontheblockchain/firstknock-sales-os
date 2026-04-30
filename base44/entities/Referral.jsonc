@@ -1,0 +1,58 @@
+{
+  "name": "Referral",
+  "type": "object",
+  "properties": {
+    "referrer_email": {
+      "type": "string",
+      "description": "Email of the user who referred"
+    },
+    "referred_email": {
+      "type": "string",
+      "description": "Email of the referred user"
+    },
+    "referred_name": {
+      "type": "string",
+      "description": "Name of the referred user"
+    },
+    "referral_code": {
+      "type": "string",
+      "description": "The referral code used"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "signed_up",
+        "subscribed",
+        "paid_out"
+      ],
+      "default": "signed_up",
+      "description": "Status of the referral"
+    },
+    "commission_amount": {
+      "type": "number",
+      "default": 0,
+      "description": "Commission earned from this referral in dollars"
+    },
+    "subscription_tier": {
+      "type": "string",
+      "description": "The tier the referred user subscribed to"
+    },
+    "paid_out_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the commission was paid out"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Optional description or notes for this record"
+    }
+  },
+  "required": [
+    "referrer_email",
+    "referred_email",
+    "referral_code",
+    "status"
+  ]
+}

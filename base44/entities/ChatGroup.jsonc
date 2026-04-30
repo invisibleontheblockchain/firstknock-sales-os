@@ -1,0 +1,34 @@
+{
+  "name": "ChatGroup",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Group name"
+    },
+    "member_emails": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of member emails in this group"
+    },
+    "manager_id": {
+      "type": "string",
+      "description": "Manager who created this group"
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Optional description or notes for this record"
+    }
+  },
+  "required": [
+    "name",
+    "member_emails"
+  ]
+}
