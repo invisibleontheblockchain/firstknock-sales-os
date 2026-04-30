@@ -502,9 +502,19 @@ Deno.serve(async (req) => {
             console.log(`[chunk-v15] Phase 1 inline-mapped ${mapped.length}/${rawFetchedThisChunk} raw (polygon-rej=${rejectedByPolygon}, filter-rej=${rejectedByFilter}, dupe=${rejectedByDupe}, totalExpected=${totalExpected})`);
             if (rawFetchedThisChunk > 0 && mapped.length === 0) throw new Error('Phase 1 hard failure: zero deed records survived validation. Not proceeding to Phase 2.');
 
-            const phase1UnionRecords = [...(job.phase1_union_records || []), ...mapped];
+            const phase1UnionSeed = mapped.map(p => ({
+                address_hash: p.address_hash,
+                zip_code: p.zip_code,
+                sold_date: p.sold_date,
+                full_address: p.full_address,
+                house_number: p.house_number,
+                street_name: p.street_name,
+                sale_type: p.sale_type,
+                data_source: p.data_source
+            }));
+            const phase1UnionRecords = [...(job.phase1_union_records || []), ...phase1UnionSeed];
             const phase1UnionHashSet = new Set(phase1UnionRecords.map(p => p.address_hash).filter(Boolean));
-            console.log(`[chunk-v15] Phase 1 union seed captured from current fetch: added=${mapped.length}, total=${phase1UnionRecords.length}, hashes=${phase1UnionHashSet.size}`);
+            console.log(`[chunk-v15] Phase 1 union seed captured from current fetch: added=${phase1UnionSeed.length}, total=${phase1UnionRecords.length}, hashes=${phase1UnionHashSet.size}`);
 
             const dbResult = await writeToDb(mapped);
             totalInserted += dbResult.chunkInserted;
