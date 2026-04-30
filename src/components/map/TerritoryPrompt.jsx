@@ -47,6 +47,7 @@ export default function TerritoryPrompt({
     const animRef = useRef(null);
     const pctHistoryRef = useRef([]);
     const targetPctRef = useRef(0);
+    const restoredCompletedJobRef = useRef(false);
 
     // Smooth progress animation — ticks display forward toward real target
     useEffect(() => {
@@ -107,7 +108,8 @@ export default function TerritoryPrompt({
                     );
                     const completedList = Array.isArray(completedJobs) ? completedJobs : (completedJobs?.items || []);
                     const completedJob = completedList[0];
-                    if (completedJob?.polygon?.length > 2 && !cancelled && (!drawnPolygon || drawnPolygon.length === 0)) {
+                    if (completedJob?.polygon?.length > 2 && !restoredCompletedJobRef.current && !cancelled && (!drawnPolygon || drawnPolygon.length === 0)) {
+                        restoredCompletedJobRef.current = true;
                         console.log('[TerritoryPrompt] Restoring completed job area:', completedJob.id);
                         setDrawnPolygon(completedJob.polygon);
                         setMode('generate');
