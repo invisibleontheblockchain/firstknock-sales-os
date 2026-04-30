@@ -50,44 +50,60 @@ export default function RevenueMetrics({ logs, dateDays }) {
   };
 
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-[#111113] p-3 md:p-4">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-xs md:text-sm font-black text-white">Revenue</h3>
-        <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] md:text-[10px] font-bold ${
-          revenueData.velocityPct >= 0 ? 'bg-green-500/10 text-green-400' : 'bg-red-500/10 text-red-400'
-        }`}>
-          <TrendingUp className="w-2.5 h-2.5" />
-          {revenueData.velocityPct >= 0 ? '+' : ''}{revenueData.velocityPct}% WoW
+    <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-br from-[#121216] via-[#0d0d11] to-[#070708] p-4 md:p-5 shadow-2xl shadow-black/30">
+      <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-green-500/10 blur-3xl" />
+      <div className="relative">
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-gray-500">Revenue</p>
+            <h3 className="mt-1 text-2xl md:text-3xl font-black text-white tracking-tight">{fmt(revenueData.totalRevenue)}</h3>
+            <p className="mt-1 text-[11px] text-gray-500">{revenueData.totalDeals} closed deals in this period</p>
+          </div>
+          <div className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[10px] md:text-xs font-bold border ${
+            revenueData.velocityPct >= 0 ? 'bg-green-500/10 text-green-300 border-green-400/20' : 'bg-red-500/10 text-red-300 border-red-400/20'
+          }`}>
+            <TrendingUp className="w-3 h-3" />
+            {revenueData.velocityPct >= 0 ? '+' : ''}{revenueData.velocityPct}% WoW
+          </div>
         </div>
-      </div>
 
-      <div className="grid grid-cols-3 gap-1.5 mb-2">
-        {[
-          { icon: DollarSign, value: fmt(revenueData.totalRevenue), label: 'Total', color: '#22c55e' },
-          { icon: Percent, value: fmt(revenueData.avgDeal), label: 'Avg Deal', color: '#f59e0b' },
-          { icon: TrendingUp, value: fmt(revenueData.thisWeekRev), label: 'This Week', color: '#3b82f6' },
-        ].map((s) => {
-          const Icon = s.icon;
-          return (
-            <div key={s.label} className="bg-white/[0.03] rounded-lg p-2 text-center">
-              <Icon className="w-2.5 h-2.5 mx-auto mb-0.5" style={{ color: s.color }} />
-              <div className="text-xs md:text-sm font-black text-white">{s.value}</div>
-              <p className="text-[7px] md:text-[8px] text-gray-500">{s.label}</p>
-            </div>
-          );
-        })}
-      </div>
+        <div className="grid grid-cols-2 gap-2.5 mb-4">
+          {[
+            { icon: Percent, value: fmt(revenueData.avgDeal), label: 'Average Deal', color: '#f59e0b' },
+            { icon: TrendingUp, value: fmt(revenueData.thisWeekRev), label: 'This Week', color: '#60a5fa' },
+          ].map((s) => {
+            const Icon = s.icon;
+            return (
+              <div key={s.label} className="rounded-xl border border-white/[0.06] bg-white/[0.035] p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/25">
+                    <Icon className="w-3.5 h-3.5" style={{ color: s.color }} />
+                  </div>
+                  <p className="text-[10px] font-semibold text-gray-500">{s.label}</p>
+                </div>
+                <div className="text-lg md:text-xl font-black text-white">{s.value}</div>
+              </div>
+            );
+          })}
+        </div>
 
-      <div className="h-[120px] md:h-[160px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={revenueData.weeklyData} margin={{ top: 5, right: 0, left: -25, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff06" vertical={false} />
-            <XAxis dataKey="week" stroke="#444" fontSize={9} tickLine={false} dy={5} />
-            <YAxis stroke="#333" fontSize={8} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1000 ? `${v/1000}k` : v} />
-            <Tooltip content={<CustomTooltip />} />
-            <Bar dataKey="revenue" fill="#22c55e" radius={[3, 3, 0, 0]} maxBarSize={28} />
-          </BarChart>
-        </ResponsiveContainer>
+        <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500">Weekly trend</p>
+            <DollarSign className="w-3.5 h-3.5 text-green-400" />
+          </div>
+          <div className="h-[140px] md:h-[180px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={revenueData.weeklyData} margin={{ top: 8, right: 6, left: -18, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" vertical={false} />
+                <XAxis dataKey="week" stroke="#6b7280" fontSize={10} tickLine={false} axisLine={false} dy={6} />
+                <YAxis stroke="#4b5563" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1000 ? `${v/1000}k` : v} />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                <Bar dataKey="revenue" fill="#22c55e" radius={[6, 6, 2, 2]} maxBarSize={34} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
       </div>
     </div>
   );
