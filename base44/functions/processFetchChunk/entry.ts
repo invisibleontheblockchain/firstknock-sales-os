@@ -833,6 +833,7 @@ Deno.serve(async (req) => {
 
                     try {
                         let batchDataAttempted = 0;
+                        let batchDataUnavailable = false;
                         for (let b = 0; b < batchdataCandidates.length; b += 10) {
                             // Time guard — don't let BatchData calls push us past function timeout
                             if (Date.now() - chunkStart > 45000) {
@@ -856,9 +857,9 @@ Deno.serve(async (req) => {
                                         })
                                     });
                                     if (!res.ok) {
-                                        // If credits exhausted (402) or auth failed (401), don't count as error per-record
-                                        if (res.status === 402 || res.status === 401) {
-                                            logError(`BatchData fatal failure: phase=phase2 property=${query} api=property/search status=${res.status}`);
+                                        // If credits are exhausted or auth/quota fails, stop BatchData and complete with deeds only.
+                                        if (res.status === 402 || res.status === 401 || res.status === 403) {
+                                            logError(`BatchData unavailable: phase=phase2 property=${query} api=property/search status=${res.status}. Completing with deed records only.`);
                                             return { hash: cm.address_hash, outcome: 'api_error', status: res.status };
                                         }
                                         logError(`BatchData property failure: phase=phase2 property=${query} api=property/search status=${res.status}`);
@@ -896,11 +897,12 @@ Deno.serve(async (req) => {
 
                             const batchResults = await Promise.all(promises);
                             
-                            // Check if we hit a fatal API error (credits/auth) — stop sending more
+                            // Check if BatchData credits/auth/quota failed — stop sending more and complete with deeds only.
                             const fatalError = batchResults.find(r => r.outcome === 'api_error');
                             if (fatalError) {
-                                logError(`Phase 2 partial failure: BatchData returned ${fatalError.status}; Phase 1 deed records remain committed and unverified MLS will be rejected.`);
-                                console.warn(`[chunk-v15] Step 3 stopping: BatchData returned ${fatalError.status} — likely credits exhausted or auth issue`);
+                                batchDataUnavailable = true;
+                                logError(`Phase 2 BatchData unavailable (${fatalError.status}); completing with Phase 1 deed records only and rejecting unverified MLS.`);
+                                console.warn(`[chunk-v15] Step 3 stopping: BatchData returned ${fatalError.status} — credits/auth/quota unavailable`);
                                 break;
                             }
 
@@ -934,10 +936,16 @@ Deno.serve(async (req) => {
                             if (b + 10 < batchdataCandidates.length) await sleep(250);
                         }
 
-                        // Filter out BatchData-rejected listings
-                        const preRejectCount = mapped.length;
-                        const rejectedHashes = new Set(mapped.filter(m => m.original_status === 'REJECTED').map(m => m.address_hash));
-                        // Don't splice mapped — just mark, writeToDb will handle filtering
+                        if (batchDataUnavailable) {
+                            for (const m of mapped) {
+                                if (m.sale_confidence === 'low' && m.original_status !== 'DEED_CONFIRMED') {
+                                    m.sale_confidence = 'REJECTED';
+                                    m.original_status = 'REJECTED';
+                                }
+                            }
+                        }
+
+                        // Don't splice mapped — just mark, writeToDb/final filtering will preserve deeds only.
                         
                         phase2Stats.batchdataVerified += bdVerified;
                         phase2Stats.batchdataDropped += bdRejected;
