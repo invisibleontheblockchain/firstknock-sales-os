@@ -1,12 +1,11 @@
-# Current Task: Recover stalled 16-cell ingestion job and reduce write pressure
+# Current Task: Explain 1200+ pulled properties vs 428 route properties
 
 ## Plan
-- [x] Confirm whether the latest job stopped, failed, or is still running.
-- [x] Identify why it stopped and why runtime increased.
-- [x] Make Base44 429 processor errors resumable instead of terminal failures.
-- [x] Reduce ingestion storage writes by defaulting property writes to Neon only.
-- [x] Allow the processor to resume the failed rate-limit job from saved progress.
-- [x] Verify the processor accepts the resumed job.
+- [x] Check the latest fetch job totals and completion status.
+- [x] Check the latest generated route size and saved route metadata.
+- [x] Compare raw fetched, mapped, inserted/existing/updated, and route candidate counts.
+- [x] Identify whether records are being dropped by ingestion, deduplication, eligibility filters, or route limits.
+- [ ] Fix any confirmed loss point and verify with a backend check.
 
 ## Review
-The latest 16-cell job failed at 10/16 completed cells after a Base44 429 during the end-of-chunk progress write. Runtime increased because the corrected grid now fetches 16 cells instead of the prior under-covered 11, and the old default still wrote property records to Base44 as well as Neon. Updated the processor so Base44 429s are resumable and new processing defaults to Neon-only storage. Verification resumed job `69f41abc7f4381fa9d25f154` successfully from sub-circle 11/16 and advanced it after fetching 235 raw / 228 mapped records.
+The latest job completed all 16 grid cells. The high pull number was not the final route-eligible unique house count: it included raw RentCast records from overlapping circles plus duplicates and records later filtered out. Route generation fetched 484 properties for the drawn area, geography kept 477, and the property-type route filter reduced that to 428. The main confirmed gap is filtering/deduping, not the job stopping; next step is to inspect whether the property-type filter is too strict.
