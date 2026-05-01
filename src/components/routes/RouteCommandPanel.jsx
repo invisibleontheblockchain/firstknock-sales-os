@@ -300,8 +300,16 @@ export default function RouteCommandPanel({
                                                     rank={idx + 1}
                                                     isActive={activeRouteId === route.id}
                                                     recommendation={getRepRecommendations?.(route.properties[0])?.[0]}
-                                                    onSelect={() => selectRouteForMapAndKnock(route)}
-                                                    onSave={(repId, repName) => onSaveRoute(route, repId, repName)}
+                                                    onSelect={() => selectRouteForMapAndKnock({
+                                                        ...route,
+                                                        route_number: idx + 1,
+                                                        name: (!route.name || /^Route\s+\d+$/i.test(route.name)) ? `Route ${idx + 1}` : route.name
+                                                    })}
+                                                    onSave={(repId, repName) => onSaveRoute({
+                                                        ...route,
+                                                        route_number: idx + 1,
+                                                        name: (!route.name || /^Route\s+\d+$/i.test(route.name)) ? `Route ${idx + 1}` : route.name
+                                                    }, repId, repName)}
                                                     logs={logs}
                                                 />
                                             ))}
@@ -515,6 +523,8 @@ function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRou
 }
 
 function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave, logs = [] }) {
+    const displayName = (!route.name || /^Route\s+\d+$/i.test(route.name)) ? `Route ${rank}` : route.name;
+
     // Compute knock stats from logs
     const knockStats = useMemo(() => {
         const hashes = new Set((route.properties || []).map(p => p.address_hash).filter(Boolean));
@@ -553,7 +563,7 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave,
                 <div className="flex items-center justify-between mb-2 gap-2 min-w-0">
                     <span className="font-bold text-white flex items-center gap-2 min-w-0 flex-1">
                         {rank > 3 && <span className="text-gray-500 text-xs">#{rank}</span>}
-                        <span className="truncate">{route.name}</span>
+                        <span className="truncate">{displayName}</span>
                     </span>
                     <div className="flex items-center gap-2 shrink-0">
                         {dateRange && (
@@ -635,6 +645,8 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
         setEditing(false);
     };
 
+    const displayName = routeNumber && (!route.name || /^Route\s+\d+$/i.test(route.name)) ? `Route ${routeNumber}` : route.name;
+
     return (
         <div className="relative group">
             <div
@@ -670,7 +682,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                                         {routeNumber}
                                     </span>
                                 )}
-                                <span className="font-bold text-sm text-white truncate">{route.name}</span>
+                                <span className="font-bold text-sm text-white truncate">{displayName}</span>
                                 <button
                                     onClick={e => { e.stopPropagation(); setEditing(true); }}
                                     className="p-0.5 text-gray-600 hover:text-white transition-colors opacity-0 group-hover:opacity-100"

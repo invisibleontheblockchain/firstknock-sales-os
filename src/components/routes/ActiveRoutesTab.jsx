@@ -330,7 +330,7 @@ function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRou
                     routeNumber={routeNumberMap?.get(route.id)}
                     repColor={route.assigned_to ? repColors[route.assigned_to] : '#666'}
                     isActive={activeRouteId === route.id}
-                    onSelect={() => onSelectRoute(route)}
+                    onSelect={() => onSelectRoute({ ...route, route_number: routeNumberMap?.get(route.id) })}
                     onDelete={() => onDeleteRoute && onDeleteRoute(route)}
                     logs={logs}
                     onReoptimize={onReoptimize}
@@ -373,6 +373,8 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
         queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
         setEditing(false);
     };
+
+    const displayName = routeNumber && (!route.name || /^Route\s+\d+$/i.test(route.name)) ? `Route ${routeNumber}` : route.name;
 
     return (
         <div className={`relative group flex items-start gap-2 ${isSelected ? 'ring-2 ring-purple-500 rounded-xl' : ''}`}>
@@ -421,7 +423,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                                             {routeNumber}
                                         </span>
                                     )}
-                                    <span className="font-bold text-sm text-white truncate">{route.name}</span>
+                                    <span className="font-bold text-sm text-white truncate">{displayName}</span>
                                     {!isMultiSelect && (
                                         <button
                                             onClick={e => { e.stopPropagation(); setEditing(true); }}

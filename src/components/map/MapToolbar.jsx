@@ -245,7 +245,7 @@ export default function MapToolbar({
                                 </div>
                             ) : (
                                 <button onClick={handleStartRename} className="group/name flex items-center gap-1 min-w-0 shrink" title="Rename">
-                                    <span className="text-[11px] md:text-xs font-bold truncate max-w-[90px] md:max-w-[160px]" style={{ color: BRAND.gold }}>{activeRoute.name}</span>
+                                    <span className="text-[11px] md:text-xs font-bold truncate max-w-[90px] md:max-w-[160px]" style={{ color: BRAND.gold }}>{activeRoute.route_number && (!activeRoute.name || /^Route\s+\d+$/i.test(activeRoute.name)) ? `Route ${activeRoute.route_number}` : activeRoute.name}</span>
                                     <Pencil className="w-2.5 h-2.5 text-gray-600 opacity-0 group-hover/name:opacity-100 shrink-0" />
                                 </button>
                             )}

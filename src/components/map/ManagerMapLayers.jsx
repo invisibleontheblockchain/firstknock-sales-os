@@ -546,7 +546,8 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
             {/* --- GENERATE MODE: New Routes --- */}
             <LayerGroup>
                 {mode === 'generate' && !activeRoute && filteredRoutes.length > 0 && filteredRoutes.map((route, rIdx) => {
-                    const routeColor = getRouteColor(route, rIdx + 1);
+                    const routeNumber = route.route_number || rIdx + 1;
+                    const routeColor = getRouteColor(route, routeNumber);
                     const centerProp = route.properties[Math.floor(route.properties.length / 2)];
 
                     return (
@@ -556,10 +557,10 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                                     center={[centerProp.lat, centerProp.lng]}
                                     radius={16}
                                     pathOptions={{ fillColor: 'black', fillOpacity: 0.8, color: routeColor, weight: 3 }}
-                                    eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: rIdx + 1, display_color: routeColor }); } }}
+                                    eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: routeNumber, display_color: routeColor }); } }}
                                 >
                                     <Tooltip permanent direction="center" className="route-number-tooltip">
-                                        <span style={{ color: routeColor, fontWeight: '900', fontSize: '14px' }}>#{rIdx + 1}</span>
+                                        <span style={{ color: routeColor, fontWeight: '900', fontSize: '14px' }}>#{routeNumber}</span>
                                     </Tooltip>
                                 </CircleMarker>
                             )}
@@ -569,13 +570,13 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                                     <CircleMarker
                                         center={[p.lat, p.lng]}
                                         radius={28}
-                                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: rIdx + 1, display_color: routeColor }); } }}
+                                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: routeNumber, display_color: routeColor }); } }}
                                         pathOptions={{ fillColor: 'transparent', color: 'transparent', interactive: true, stroke: false }}
                                     />
                                     <CircleMarker
                                         center={[p.lat, p.lng]}
                                         radius={pinSize + 1}
-                                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: rIdx + 1, display_color: routeColor }); } }}
+                                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: routeNumber, display_color: routeColor }); } }}
                                         pathOptions={{
                                             fillColor: routeColor,
                                             fillOpacity: 0.6 * mapSettings.pinOpacity,
