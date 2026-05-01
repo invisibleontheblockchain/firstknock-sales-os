@@ -677,7 +677,7 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 
     console.log(`[routeOptimizer] Scoring done in ${Date.now() - t0}ms`);
 
-    // MAIL CARRIER: Always generate a single route — all properties in one contiguous sweep
+    // MAIL CARRIER: Geographic cluster pre-separation happens inside mailCarrierOrder.
     let clustered = scored.map(p => ({ ...p, cluster: 0 }));
 
     // Generate routes
@@ -814,16 +814,24 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 
 // ─── Mail-Carrier (Boustrophedon) Algorithm ─────────────────────────────────
 
-/** Strip directional prefixes, suffixes, and type words to unify street names. */
+const STREET_SUFFIXES = new Set([
+    'ST', 'STREET', 'AVE', 'AVENUE', 'BLVD', 'BOULEVARD', 'DR', 'DRIVE',
+    'LN', 'LANE', 'CT', 'COURT', 'PL', 'PLACE', 'WAY', 'RD', 'ROAD',
+    'CIR', 'CIRCLE', 'TRL', 'TRAIL', 'PKWY', 'PARKWAY'
+]);
+
+/** Strip trailing street type suffixes while preserving directional prefixes. */
 function normalizeStreetName(raw) {
-    if (!raw) return '';
-    let s = raw.toUpperCase().trim();
-    // Remove directional prefixes/suffixes
-    s = s.replace(/^(N\.?|S\.?|E\.?|W\.?|NE|NW|SE|SW|NORTH|SOUTH|EAST|WEST)\s+/i, '');
-    s = s.replace(/\s+(N\.?|S\.?|E\.?|W\.?|NE|NW|SE|SW|NORTH|SOUTH|EAST|WEST)$/i, '');
-    // Remove street type suffixes
-    s = s.replace(/\s+(ST|STREET|AVE|AVENUE|BLVD|BOULEVARD|DR|DRIVE|LN|LANE|CT|COURT|PL|PLACE|WAY|RD|ROAD|CIR|CIRCLE|TRL|TRAIL|PKWY|PARKWAY)\.?$/i, '');
-    return s.trim();
+    if (!raw || !raw.trim()) return '__UNKNOWN__';
+    const tokens = raw.toUpperCase().trim().split(/ +/).map(t => t.replace(/\.$/, ''));
+    // DO NOT strip directional prefix.
+    // 'N Main St' and 'S Main St' are different streets on opposite sides of an intersection.
+    // Stripping 'N'/'S' causes them to be grouped together and walked as one street.
+    // Strip trailing type suffix only (ST, AVE, BLVD, DR, RD, LN, WAY, CT, PL, CIR, etc.)
+    if (tokens.length > 1 && STREET_SUFFIXES.has(tokens[tokens.length - 1])) {
+        tokens.pop();
+    }
+    return tokens.join(' ') || '__UNKNOWN__';
 }
 
 /** Group properties by normalized street name. Unknown streets go to '_unknown'. */
@@ -967,8 +975,130 @@ function applyIntraStreet2Opt(props) {
     return props;
 }
 
-/** Full mail-carrier ordering: group by street, order streets, boustrophedon walk. */
-export function mailCarrierOrder(properties, startLocation) {
+/** Compute centroid for a property list. */
+function computeCentroid(properties) {
+    return {
+        lat: properties.reduce((s, p) => s + p.lat, 0) / properties.length,
+        lng: properties.reduce((s, p) => s + p.lng, 0) / properties.length,
+    };
+}
+
+/**
+ * Detect whether properties span multiple geographic clusters.
+ * Returns cluster assignments (0, 1, 2...) if spread > thresholdMiles, else all 0.
+ * This is a no-op for compact routes (spread <= 3 miles).
+ *
+ * @param {Array} properties - Array of property objects with .lat and .lng
+ * @param {number} thresholdMiles - Minimum spread to trigger clustering (default 3.0)
+ * @param {number} maxClusters - Maximum number of clusters (default 4)
+ * @returns {number[]} Cluster assignment for each property (0-indexed)
+ */
+function detectGeoClusters(properties, thresholdMiles = 3.0, maxClusters = 4) {
+    if (properties.length < 10) return properties.map(() => 0);
+
+    // Compute bounding box diagonal to estimate geographic spread
+    const lats = properties.map(p => p.lat);
+    const lngs = properties.map(p => p.lng);
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+    const spread = calculateDistanceFast(minLat, minLng, maxLat, maxLng);
+
+    // No-op for compact routes
+    if (spread <= thresholdMiles) return properties.map(() => 0);
+
+    // Determine k: 1 cluster per thresholdMiles, capped at maxClusters
+    const k = Math.min(maxClusters, Math.max(2, Math.round(spread / thresholdMiles)));
+
+    return kMeansAssign(properties, k);
+}
+
+/**
+ * K-Means++ assignment — returns cluster index (0..k-1) for each property.
+ * Uses K-Means++ initialization for well-spread initial centroids.
+ * Runs 15 iterations of Lloyd's algorithm.
+ *
+ * @param {Array} properties - Array of property objects with .lat and .lng
+ * @param {number} k - Number of clusters
+ * @returns {number[]} Cluster assignment for each property
+ */
+function kMeansAssign(properties, k) {
+    // K-Means++ initialization: first centroid is properties[0],
+    // each subsequent centroid chosen with probability proportional to D^2
+    const centroids = [];
+    centroids.push({ lat: properties[0].lat, lng: properties[0].lng });
+
+    for (let c = 1; c < k; c++) {
+        const dists = properties.map(p => {
+            const minD = Math.min(...centroids.map(ct =>
+                calculateDistanceFast(p.lat, p.lng, ct.lat, ct.lng)
+            ));
+            return minD * minD;
+        });
+        const total = dists.reduce((a, b) => a + b, 0);
+        let r = Math.random() * total;
+        let chosen = 0;
+        for (let i = 0; i < dists.length; i++) {
+            r -= dists[i];
+            if (r <= 0) { chosen = i; break; }
+        }
+        centroids.push({ lat: properties[chosen].lat, lng: properties[chosen].lng });
+    }
+
+    // Lloyd's algorithm — 15 iterations
+    let assignments = new Array(properties.length).fill(0);
+    for (let iter = 0; iter < 15; iter++) {
+        // Assign each property to nearest centroid
+        assignments = properties.map(p => {
+            let best = 0, bestD = Infinity;
+            centroids.forEach((c, ci) => {
+                const d = calculateDistanceFast(p.lat, p.lng, c.lat, c.lng);
+                if (d < bestD) { bestD = d; best = ci; }
+            });
+            return best;
+        });
+        // Update centroids to mean of assigned properties
+        for (let c = 0; c < k; c++) {
+            const pts = properties.filter((_, i) => assignments[i] === c);
+            if (pts.length > 0) {
+                centroids[c] = {
+                    lat: pts.reduce((s, p) => s + p.lat, 0) / pts.length,
+                    lng: pts.reduce((s, p) => s + p.lng, 0) / pts.length,
+                };
+            }
+        }
+    }
+    return assignments;
+}
+
+/**
+ * Order cluster centroids by nearest-neighbor from a start position.
+ * Returns an array of cluster indices in visit order.
+ *
+ * @param {Array} centroids - Array of {lat, lng} objects
+ * @param {number} startLat - Starting latitude
+ * @param {number} startLng - Starting longitude
+ * @returns {number[]} Cluster indices in nearest-neighbor order
+ */
+function orderClustersByNN(centroids, startLat, startLng) {
+    const unvisited = centroids.map((_, i) => i);
+    const order = [];
+    let curLat = startLat, curLng = startLng;
+    while (unvisited.length > 0) {
+        let bestIdx = 0, bestD = Infinity;
+        unvisited.forEach((ci, idx) => {
+            const d = calculateDistanceFast(curLat, curLng, centroids[ci].lat, centroids[ci].lng);
+            if (d < bestD) { bestD = d; bestIdx = idx; }
+        });
+        const chosen = unvisited.splice(bestIdx, 1)[0];
+        order.push(chosen);
+        curLat = centroids[chosen].lat;
+        curLng = centroids[chosen].lng;
+    }
+    return order;
+}
+
+/** Internal single-cluster mail-carrier ordering: group by street, order streets, boustrophedon walk. */
+function mailCarrierOrderSingleCluster(properties, startLocation) {
     if (!properties || properties.length === 0) return [];
 
     // Filter out properties with missing/NaN coordinates
@@ -1007,6 +1137,59 @@ export function mailCarrierOrder(properties, startLocation) {
         reverseNext = !reverseNext;
     }
 
+    return result;
+}
+
+/** Full mail-carrier ordering: cluster geographically, then route each cluster by street. */
+export function mailCarrierOrder(properties, startLocation) {
+    if (!properties || properties.length === 0) return [];
+    if (properties.length === 1) return [...properties];
+
+    // Filter out properties with missing/NaN coordinates
+    const validProperties = properties.filter(p =>
+        p && typeof p.lat === 'number' && !isNaN(p.lat) &&
+        typeof p.lng === 'number' && !isNaN(p.lng)
+    );
+    if (validProperties.length === 0) return [];
+
+    // Detect geographic clusters for spread-out routes.
+    // Returns all 0s (no-op) when spread <= 3 miles — compact routes unaffected.
+    const clusterAssignments = detectGeoClusters(validProperties);
+    const numClusters = Math.max(...clusterAssignments) + 1;
+
+    if (numClusters === 1) {
+        return mailCarrierOrderSingleCluster(validProperties, startLocation);
+    }
+
+    // Multi-cluster path: route within each cluster, connect clusters via NN
+    const clusters = Array.from({ length: numClusters }, () => []);
+    validProperties.forEach((p, i) => clusters[clusterAssignments[i]].push(p));
+
+    // Determine start point
+    const allCentroid = computeCentroid(validProperties);
+    const startLat = startLocation?.lat ?? allCentroid.lat;
+    const startLng = startLocation?.lng ?? allCentroid.lng;
+
+    // Order clusters by nearest-neighbor from start position
+    const clusterCentroids = clusters.map(computeCentroid);
+    const clusterOrder = orderClustersByNN(clusterCentroids, startLat, startLng);
+
+    // Route within each cluster and concatenate
+    const result = [];
+    let arrivalLat = startLat;
+    let arrivalLng = startLng;
+
+    for (const ci of clusterOrder) {
+        const clusterResult = mailCarrierOrderSingleCluster(
+            clusters[ci],
+            { lat: arrivalLat, lng: arrivalLng },
+        );
+        result.push(...clusterResult);
+        if (clusterResult.length > 0) {
+            arrivalLat = clusterResult[clusterResult.length - 1].lat;
+            arrivalLng = clusterResult[clusterResult.length - 1].lng;
+        }
+    }
     return result;
 }
 
