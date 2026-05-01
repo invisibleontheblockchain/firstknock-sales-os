@@ -193,7 +193,7 @@ export default function RouteCommandPanel({
                                                             GENERATION SUMMARY
                                                         </h3>
                                                         <p className="text-[10px] text-gray-500 mt-1">
-                                                            {zipCodeFilter || 'All Areas'} • {housesPerRoute} homes/route
+                                                            {genStats.totalHouses?.toLocaleString?.() || genStats.totalHouses} doors ready • {genStats.routeCount} route{genStats.routeCount === 1 ? '' : 's'}
                                                         </p>
                                                     </div>
                                                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full">
@@ -237,6 +237,9 @@ export default function RouteCommandPanel({
                                                                     const merged = generateOptimizedRoutes(allProps, allProps.length, null, [], { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest' });
                                                                     if (merged && merged.length > 0) {
                                                                         const big = { ...merged[0], id: 'route_merged', name: 'All-in-One Route' };
+                                                                        if (onSaveRoute) {
+                                                                            onSaveRoute(big);
+                                                                        }
                                                                         if (onReplaceRoutes) {
                                                                             onReplaceRoutes([big]);
                                                                         } else {

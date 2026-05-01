@@ -194,7 +194,7 @@ export default function RepHome() {
 
     // 2. Fetch Route Properties - batch filter by address_hash
     const { data: properties = [], isLoading: propsLoading } = useQuery({
-        queryKey: ['routeProperties', activeRoute?.id],
+        queryKey: ['routeProperties', activeRoute?.id, activeRoute?.property_hashes?.length || 0],
         queryFn: async () => {
             if (!activeRoute?.property_hashes?.length) return [];
             const hashes = activeRoute.property_hashes;
@@ -693,6 +693,7 @@ export default function RepHome() {
                 <RepAnalytics
                     logs={allMyLogs}
                     routeProperties={routeProperties}
+                    activeRoute={activeRoute}
                     onClose={() => setShowAnalytics(false)}
                 />
             )}

@@ -5,7 +5,7 @@ import { startOfDay, subDays, isToday } from 'date-fns';
 const SALES_STATUSES = ['SOLD', 'QUALIFIED'];
 const CONTACT_EXCLUDE = ['NO_ANSWER', 'ELIGIBLE'];
 
-export default function RepAnalytics({ logs, routeProperties, onClose }) {
+export default function RepAnalytics({ logs, routeProperties, activeRoute, onClose }) {
     const stats = useMemo(() => {
         if (!logs?.length) return null;
         const today = startOfDay(new Date());
@@ -32,8 +32,13 @@ export default function RepAnalytics({ logs, routeProperties, onClose }) {
         }
 
         // Route progress
-        const totalProps = routeProperties?.length || 0;
-        const doneProps = routeProperties?.filter(p => p.effective_status !== 'ELIGIBLE' && p.effective_status !== 'CALLBACK').length || 0;
+        const routeTotal = Math.max(
+            routeProperties?.length || 0,
+            activeRoute?.property_hashes?.length || 0,
+            activeRoute?.metrics?.house_count || activeRoute?.houseCount || 0
+        );
+        const totalProps = routeTotal;
+        const doneProps = routeProperties?.filter(p => p.effective_status !== 'ELIGIBLE').length || 0;
 
         // Hourly breakdown for today
         const hourly = [];
@@ -45,7 +50,7 @@ export default function RepAnalytics({ logs, routeProperties, onClose }) {
         const maxHourly = Math.max(...hourly.map(h => h.count), 1);
 
         return { knocks, sales, callbacks, noAnswer, hardNo, contacts, revenue, contactRate, convRate, streak, totalProps, doneProps, hourly, maxHourly };
-    }, [logs, routeProperties]);
+    }, [logs, routeProperties, activeRoute]);
 
     if (!stats) {
         return (

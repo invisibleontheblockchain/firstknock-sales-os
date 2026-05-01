@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { BarChart3, Loader2, Navigation, Sparkles } from 'lucide-react';
 import { isAfter, startOfDay, subDays } from 'date-fns';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
+import { hydrateRoutesForMap } from '@/components/logic/routeHydration';
 
 import TimeOfDayEffectiveness from '@/components/analytics/TimeOfDayEffectiveness';
 import RouteProgress from '@/components/analytics/RouteProgress';
@@ -46,14 +47,12 @@ export default function ListPage() {
         queryFn: async () => {
             if (!user) return [];
             const zipCodes = currentTeamMember?.assigned_zip_codes?.length ? currentTeamMember.assigned_zip_codes : user.territory_zip_codes;
-            if (zipCodes?.length > 0) {
-                const results = await Promise.all(
-                    zipCodes.map((zip) => base44.entities.MasterProperty.filter({ zip_code: zip }, '-created_date', 5000))
-                );
-                return results.flatMap((result) => Array.isArray(result) ? result : (result?.items || []));
-            }
-            const result = await base44.entities.MasterProperty.filter({ created_by: user.email }, '-created_date', 5000);
-            return Array.isArray(result) ? result : (result?.items || []);
+            const response = await base44.functions.invoke('getRouteCandidatesFromNeon', {
+                zip_codes: zipCodes || [],
+                sold_months: 'all',
+                limit: 100000
+            });
+            return Array.isArray(response.data?.properties) ? response.data.properties : [];
         },
         enabled: !!user,
     });
@@ -72,6 +71,13 @@ export default function ListPage() {
         enabled: !!user,
     });
     const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
+
+    const { data: hydratedRoutes = [], isLoading: hydratedRoutesLoading } = useQuery({
+        queryKey: ['analyticsHydratedRoutes', savedRoutes.map(route => route.id).join(','), user?.email],
+        queryFn: () => savedRoutes.length ? hydrateRoutesForMap(savedRoutes, user?.email, []) : [],
+        enabled: !!user?.email && savedRoutes.length > 0,
+        staleTime: 1000 * 60 * 2,
+    });
 
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs', user?.email],
@@ -112,6 +118,22 @@ export default function ListPage() {
             });
     }, [properties, logs]);
 
+    const analyticsProperties = useMemo(() => {
+        const seen = new Set();
+        const routeProps = [];
+        hydratedRoutes.forEach(route => {
+            const props = route.allProperties || route.properties || [];
+            props.forEach(property => {
+                const key = property.address_hash || property.id;
+                if (key && !seen.has(key)) {
+                    seen.add(key);
+                    routeProps.push(property);
+                }
+            });
+        });
+        return routeProps.length > 0 ? routeProps : effectiveProperties;
+    }, [hydratedRoutes, effectiveProperties]);
+
     const filteredLogs = useMemo(() => {
         const cutoff = startOfDay(subDays(new Date(), dateDays));
         return logs.filter((log) => log.created_date && isAfter(new Date(log.created_date), cutoff));
@@ -135,8 +157,9 @@ export default function ListPage() {
         const callbacks = filteredLogs.filter((log) => log.parsed_status === 'CALLBACK').length;
         const upcomingAppointments = filteredAppointments.filter((appointment) => ['scheduled', 'confirmed'].includes(appointment.status)).length;
         const noShows = filteredAppointments.filter((appointment) => appointment.status === 'no_show').length;
-        const workedDoors = new Set(logs.map((log) => log.address_hash).filter(Boolean)).size;
-        const totalDoors = effectiveProperties.length;
+        const analyticsHashes = new Set(analyticsProperties.map((property) => property.address_hash || property.id).filter(Boolean));
+        const workedDoors = new Set(logs.map((log) => log.address_hash).filter(hash => hash && (!analyticsHashes.size || analyticsHashes.has(hash)))).size;
+        const totalDoors = analyticsProperties.length;
         const activeRoutes = savedRoutes.filter((route) => ['ACTIVE', 'IN_PROGRESS'].includes(route.status)).length;
         const totalRevenue = filteredLogs.reduce((sum, log) => sum + (log.sale_amount || 0), 0);
 
@@ -176,9 +199,9 @@ export default function ListPage() {
             streak,
             totalRevenue,
         };
-    }, [logs, filteredLogs, filteredAppointments, effectiveProperties, savedRoutes]);
+    }, [logs, filteredLogs, filteredAppointments, analyticsProperties, savedRoutes]);
 
-    const isLoading = propsLoading || logsLoading || routesLoading || apptsLoading;
+    const isLoading = propsLoading || logsLoading || routesLoading || hydratedRoutesLoading || apptsLoading;
 
     const tabs = [
         { id: 'performance', label: 'Performance', icon: BarChart3 },
@@ -234,7 +257,7 @@ export default function ListPage() {
                                 <RepAnalyticsKpis metrics={analytics} dateDays={dateDays} />
                                 <RevenueMetrics logs={filteredLogs} dateDays={dateDays} />
                                 <RepAnalyticsPipeline metrics={analytics} />
-                                <StatusBreakdown properties={effectiveProperties} />
+                                <StatusBreakdown properties={analyticsProperties} />
                             </div>
                         )}
 
@@ -243,7 +266,7 @@ export default function ListPage() {
                                 <RepAdvancedAnalytics
                                     logs={logs}
                                     filteredLogs={filteredLogs}
-                                    properties={effectiveProperties}
+                                    properties={analyticsProperties}
                                     appointments={filteredAppointments}
                                     dateDays={dateDays}
                                 />
@@ -256,7 +279,7 @@ export default function ListPage() {
 
                         {activeTab === 'routes' && (
                             <div className="p-3 md:p-6 max-w-7xl mx-auto pb-24">
-                                <RouteProgress routes={savedRoutes} logs={logs} />
+                                <RouteProgress routes={hydratedRoutes.length > 0 ? hydratedRoutes : savedRoutes} logs={logs} />
                             </div>
                         )}
                     </>

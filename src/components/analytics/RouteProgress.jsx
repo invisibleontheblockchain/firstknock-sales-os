@@ -20,9 +20,11 @@ export default function RouteProgress({ routes, logs }) {
             .filter(r => r.status !== 'ARCHIVED')
             .map(route => {
                 const hashes = route.property_hashes || [];
+                const hydratedCount = Array.isArray(route.allProperties) ? route.allProperties.length : Array.isArray(route.properties) ? route.properties.length : 0;
+                const metricCount = route.metrics?.house_count || route.houseCount || 0;
                 const routeLogs = logs.filter(l => hashes.includes(l.address_hash));
                 const uniqueKnocked = new Set(routeLogs.map(l => l.address_hash)).size;
-                const total = hashes.length;
+                const total = Math.max(hydratedCount, metricCount, hashes.length);
                 const percent = total > 0 ? Math.round((uniqueKnocked / total) * 100) : 0;
                 const sales = routeLogs.filter(l => ['SOLD', 'QUALIFIED'].includes(l.parsed_status)).length;
                 return { ...route, uniqueKnocked, total, percent, sales, logCount: routeLogs.length };
