@@ -40,3 +40,4 @@
 - Rep-facing Knock and Checklist views must share one interpretation of interaction decisions; temporary outcomes like NO_ANSWER should still count as done until a user explicitly clears the decision back to Todo.
 - Saved route ordering must have one source of truth: `SavedRoute.property_hashes`. Checklist, map, and Knock should preserve that order and subscribe/refetch when the saved route changes; do not apply a second local optimizer in only one view.
 - When adding React hooks to existing components, update the destructured React import in the same edit batch; missing hook imports can make a correct sync fix fail at runtime.
+- Do not keep patching oversized files after the tool blocks edits; stop, re-plan, and extract the risky logic into smaller shared modules before changing behavior.

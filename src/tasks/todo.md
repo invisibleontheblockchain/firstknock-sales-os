@@ -40,7 +40,14 @@
 - [x] Persist the selected Knock route so reps with multiple routes stay on the same county/route context.
 - [x] Verify the touched flow and document the result.
 
-## Current Plan — Checklist/Knock Route Order Sync
+## Current Plan — Kevin Route Alignment
+- [x] Trace Kevin route rendering across map, checklist, knock, and optimize.
+- [x] Identify why map first stop can differ from checklist/knock and why optimize can empty homes.
+- [x] Patch the stale shared route hydration cache so refreshed saved route orders are not served stale.
+- [x] Patch already-hydrated route ordering so map/checklist/optimize receive the same SavedRoute order.
+- [x] Verify the selected Kevin route still loads all 64/64 properties; remaining runtime errors are Base44 rate-limit responses, not route-order code errors.
+
+## Previous Plan — Checklist/Knock Route Order Sync
 - [x] Document the suspected root cause and planned handling method.
 - [x] Stop Knock from locally reordering a saved route after Checklist/Optimize has saved a new order.
 - [x] Add route-update synchronization so Knock refetches when the selected SavedRoute changes.

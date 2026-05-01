@@ -7,6 +7,26 @@ function hasMapPoints(route) {
     return Array.isArray(route?.properties) && route.properties.some(p => p?.lat && p?.lng);
 }
 
+function orderRouteProperties(route) {
+    const hashes = Array.isArray(route?.property_hashes) ? route.property_hashes : [];
+    const sourceProps = [
+        ...(Array.isArray(route?.allProperties) ? route.allProperties : []),
+        ...(Array.isArray(route?.properties) ? route.properties : [])
+    ];
+    if (hashes.length === 0 || sourceProps.length === 0) return route;
+
+    const byHash = indexProperties(sourceProps);
+    const ordered = hashes.map(hash => byHash.get(hash)).filter(Boolean);
+    if (ordered.length === 0) return route;
+
+    return {
+        ...route,
+        properties: ordered,
+        allProperties: ordered,
+        houseCount: ordered.length || route.metrics?.house_count || hashes.length,
+    };
+}
+
 function indexProperties(properties = []) {
     const byHash = new Map();
     properties.forEach(p => {
@@ -19,12 +39,13 @@ function indexProperties(properties = []) {
 }
 
 export async function hydrateRouteForMap(route, userEmail = null) {
-    if (!route || hasMapPoints(route)) return route;
+    if (!route) return route;
+    if (hasMapPoints(route)) return orderRouteProperties(route);
 
     const hashes = Array.isArray(route.property_hashes) ? route.property_hashes : [];
     if (hashes.length === 0) return route;
 
-    const cacheKey = route.id || hashes.join('|');
+    const cacheKey = `${route.id || 'route'}:${route.updated_date || ''}:${hashes.join('|')}`;
     if (routeHydrationCache.has(cacheKey)) return routeHydrationCache.get(cacheKey);
     if (routeHydrationInflight.has(cacheKey)) return routeHydrationInflight.get(cacheKey);
 
@@ -59,7 +80,7 @@ export async function hydrateRoutesForMap(routes = [], userEmail = null, existin
 
     const existingByHash = indexProperties(existingProperties);
     const hydrated = await Promise.all(routes.map(async route => {
-        if (hasMapPoints(route)) return route;
+        if (hasMapPoints(route)) return orderRouteProperties(route);
         const hashes = Array.isArray(route.property_hashes) ? route.property_hashes : [];
         const existingOrdered = hashes.map(hash => existingByHash.get(hash)).filter(Boolean);
         if (existingOrdered.length > 0) {
