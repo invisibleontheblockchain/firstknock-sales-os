@@ -644,6 +644,23 @@ Deno.serve(async (req) => {
             const seenHashes = new Set();
             let rawFetchedThisChunk = 0; // tracks raw record count for offset advancement
             let rejectedByFilter = 0, rejectedByPolygon = 0, rejectedByDupe = 0;
+            const subCircleStats = {
+                phase: 'deed_records',
+                sub_circle: currentSubCircle + 1,
+                total_sub_circles: totalSubCircles,
+                center: { lat: fetchLat, lng: fetchLng },
+                radius: fetchRadius,
+                offset_start: currentOffset,
+                pages_requested: PAGES_PER_CHUNK,
+                raw: 0,
+                mapped: 0,
+                rejected_polygon: 0,
+                rejected_filter: 0,
+                rejected_dupe: 0,
+                reached_end: false,
+                hit_page_cap: false,
+                total_expected: totalExpected
+            };
 
             const offsets = [];
             for (let p = 0; p < PAGES_PER_CHUNK; p++) offsets.push(currentOffset + p * LIMIT);
@@ -675,6 +692,8 @@ Deno.serve(async (req) => {
                     }
                     if (r.total && !totalExpected) totalExpected = parseInt(r.total, 10);
                     rawFetchedThisChunk += r.records.length;
+                    subCircleStats.raw += r.records.length;
+                    subCircleStats.total_expected = totalExpected;
                     if (r.records.length < LIMIT) reachedEnd = true;
 
                     for (const p of r.records) {
@@ -713,8 +732,15 @@ Deno.serve(async (req) => {
             }
 
             totalFetched += rawFetchedThisChunk;
+            subCircleStats.mapped = mapped.length;
+            subCircleStats.rejected_polygon = rejectedByPolygon;
+            subCircleStats.rejected_filter = rejectedByFilter;
+            subCircleStats.rejected_dupe = rejectedByDupe;
+            subCircleStats.reached_end = reachedEnd;
+            subCircleStats.hit_page_cap = !reachedEnd && rawFetchedThisChunk >= PAGES_PER_CHUNK * LIMIT;
+            console.log(`[chunk-v15] SUB_CIRCLE_STATS ${JSON.stringify(subCircleStats)}`);
             console.log(`[chunk-v15] Phase 1 inline-mapped ${mapped.length}/${rawFetchedThisChunk} raw (polygon-rej=${rejectedByPolygon}, filter-rej=${rejectedByFilter}, dupe=${rejectedByDupe}, totalExpected=${totalExpected})`);
-            if (!reachedEnd && rawFetchedThisChunk >= PAGES_PER_CHUNK * LIMIT) {
+            if (subCircleStats.hit_page_cap) {
                 logError(`Pagination cap warning: Phase 1 hit ${PAGES_PER_CHUNK * LIMIT} records for sub-circle ${currentSubCircle + 1}/${totalSubCircles} at offset ${currentOffset}. More records may exist beyond this chunk. ZIPs seen so far: ${zipCodesFound.join(', ')}`);
             }
             if (rawFetchedThisChunk > 0 && mapped.length === 0) {

@@ -1,6 +1,13 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
+function extractZipFromHash(hash) {
+    const piped = String(hash || '').match(/\|(\d{5})(?:-\d{4})?$/);
+    if (piped) return piped[1];
+    const trailing = String(hash || '').match(/(?:-|,|\s)(\d{5})(?:-\d{4})?$/);
+    return trailing ? trailing[1] : null;
+}
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -135,8 +142,21 @@ Deno.serve(async (req) => {
         const missingHashes = hashes.filter(hash => !byHash.has(hash));
         if (missingHashes.length > 0) {
             try {
-                const addressMatches = await base44.asServiceRole.entities.MasterProperty.filter({ address_hash: missingHashes }, null, limit);
-                const stillMissing = missingHashes.filter(hash => !addressMatches.some(p => p.address_hash === hash));
+                const missingSet = new Set(missingHashes);
+                const zipCodes = [...new Set(missingHashes.map(extractZipFromHash).filter(Boolean))];
+                const addressMatches = [];
+
+                for (const zip of zipCodes) {
+                    const zipRows = await base44.asServiceRole.entities.MasterProperty.filter({ zip_code: zip }, null, 5000);
+                    const zipArr = Array.isArray(zipRows) ? zipRows : (zipRows?.items || []);
+                    zipArr.forEach(property => {
+                        if (missingSet.has(property.address_hash) || (property.legacy_hash && missingSet.has(property.legacy_hash))) {
+                            addressMatches.push(property);
+                        }
+                    });
+                }
+
+                const stillMissing = missingHashes.filter(hash => !addressMatches.some(p => p.address_hash === hash || p.legacy_hash === hash));
                 const legacyMatches = stillMissing.length > 0
                     ? await base44.asServiceRole.entities.MasterProperty.filter({ legacy_hash: stillMissing }, null, limit)
                     : [];

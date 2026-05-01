@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Check, X, Phone, Ban, Home, Navigation, Mic, MapPin, UserX, Clock } from 'lucide-react';
 import { getPropertyResultSummary } from '../logic/territoryLogic';
-import { openInMaps } from '../logic/navigation';
+import { buildFullAddress, openInMaps } from '../logic/navigation';
 import { formatPropertyAge } from '@/utils';
 
 const BRAND = {
@@ -79,14 +79,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
     }, [route.properties, propertyStatuses]);
 
     const handleNavigate = (prop) => {
-        let address = "";
-        if (prop.full_address) {
-            address = prop.full_address;
-            if (prop.city) address += `, ${prop.city}`;
-            if (prop.state) address += `, ${prop.state}`;
-            if (prop.zip_code) address += ` ${prop.zip_code}`;
-        }
-        openInMaps(prop.lat, prop.lng, address, navigationApp);
+        openInMaps(prop.lat, prop.lng, buildFullAddress(prop), navigationApp);
     };
 
     const handleSelectStatus = (property, statusId) => {

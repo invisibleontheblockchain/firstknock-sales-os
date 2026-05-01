@@ -3,6 +3,7 @@ import { X, Navigation, Camera, Loader2, Phone, Clock, ChevronUp, Mic, Check, Ho
 import { Button } from "@/components/ui/button";
 import { format } from 'date-fns';
 import PropertyHistory from './PropertyHistory';
+import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
 
 const STATUS_OPTIONS = [
     { id: 'SOLD', label: 'Sold', icon: Check, color: '#22c55e' },
@@ -13,7 +14,7 @@ const STATUS_OPTIONS = [
     { id: 'DM_NOT_HOME', label: 'DM Not Home', icon: UserX, color: '#06b6d4' },
 ];
 
-export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUpload, uploading, onClose, onViewOnMap, routePosition, totalStops }) {
+export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUpload, uploading, onClose, onViewOnMap, routePosition, totalStops, navigationApp = 'apple' }) {
     const [showMore, setShowMore] = useState(false);
     const [logNote, setLogNote] = useState('');
     const [callbackTime, setCallbackTime] = useState('');
@@ -149,14 +150,12 @@ export default function PropertyDetailSheet({ property, logs, onLog, onPhotoUplo
                         View on FirstKnock Map
                     </button>
                     <button
-                        onClick={() => {
-                            window.location.href = `https://maps.apple.com/?daddr=${property.lat},${property.lng}&dirflg=w`;
-                        }}
+                        onClick={() => openInMaps(property.lat, property.lng, buildFullAddress(property), navigationApp)}
                         className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95"
                         style={{ background: '#111', color: '#666' }}
                     >
                         <Navigation className="w-3.5 h-3.5" />
-                        Open in Apple Maps
+                        Open in {navigationApp === 'google' ? 'Google' : 'Apple'} Maps
                     </button>
                 </div>
 

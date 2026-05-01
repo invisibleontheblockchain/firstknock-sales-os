@@ -60,6 +60,17 @@ function generateSubCircles(centerLat, centerLng, radiusMiles) {
         }
     }
 
+    const coverageStats = {
+        requested_radius: radiusMiles,
+        sub_circle_radius: SUB_CIRCLE_RADIUS,
+        count: circles.length,
+        horizontal_spacing: Number(HEX_HORIZONTAL_SPACING.toFixed(2)),
+        vertical_spacing: Number(HEX_VERTICAL_SPACING.toFixed(2)),
+        estimated_circle_area_sqmi: Number((Math.PI * SUB_CIRCLE_RADIUS * SUB_CIRCLE_RADIUS * circles.length).toFixed(1)),
+        requested_area_sqmi: Number((Math.PI * radiusMiles * radiusMiles).toFixed(1)),
+        overlap_ratio: Number(((Math.PI * SUB_CIRCLE_RADIUS * SUB_CIRCLE_RADIUS * circles.length) / (Math.PI * radiusMiles * radiusMiles)).toFixed(2))
+    };
+    console.log(`[fetchArea-v10] GRID_COVERAGE ${JSON.stringify(coverageStats)}`);
     console.log(`[fetchArea-v10] Hex subdivision: ${radiusMiles}mi area → ${circles.length} sub-circles (r=${SUB_CIRCLE_RADIUS}mi, h=${HEX_HORIZONTAL_SPACING.toFixed(2)}mi, v=${HEX_VERTICAL_SPACING.toFixed(2)}mi)`);
     return circles;
 }
@@ -361,6 +372,12 @@ Deno.serve(async (req) => {
                 estimated_savings: '~85% fewer API calls'
             } : null,
             sub_circles: subCircles.length,
+            coverage_diagnostics: {
+                requested_radius: optimizedRadius,
+                requested_area_sqmi: Math.round(Math.PI * optimizedRadius * optimizedRadius),
+                sub_circle_radius: SUB_CIRCLE_RADIUS,
+                sub_circle_count: subCircles.length
+            },
             message: isDeltaPull 
                 ? `Delta pull started — only fetching changes since ${deltaInfo.ageDays}d ago. Estimated ~85% fewer API calls.`
                 : `${pullMode === 'full_refresh' ? 'Full refresh / fill gaps' : 'Full property fetch'} started (radius: ${optimizedRadius}mi, ${subCircles.length} grid cells). Running in background.`

@@ -45,6 +45,7 @@ export default function RepHome() {
     }, []);
 
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me().catch(() => null) });
+    const navigationApp = user?.navigation_app || 'apple';
 
     // 0. Fetch Team Member Profile (to link Auth User -> Team Member ID)
     // Also find ALL matching records (by email or name) to handle duplicates from different invite codes
@@ -614,6 +615,7 @@ export default function RepHome() {
                                 key={prop.address_hash}
                                 property={prop}
                                 index={idx}
+                                navigationApp={navigationApp}
                                 onSelect={(p, i) => { setSelectedProperty(p); setSelectedPropertyIndex(i); }}
                             />
                         ))}
@@ -697,6 +699,7 @@ export default function RepHome() {
                     onClose={() => { setSelectedProperty(null); setSelectedPropertyIndex(null); }}
                     routePosition={selectedPropertyIndex !== null ? selectedPropertyIndex + 1 : null}
                     totalStops={filteredProperties.length}
+                    navigationApp={navigationApp}
                     onViewOnMap={() => {
                         const prop = selectedProperty;
                         setSelectedProperty(null);

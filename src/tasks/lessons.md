@@ -25,3 +25,6 @@
 - If a page file has grown beyond the edit limit, do not force changes into it; move the fix to a smaller existing component or create a focused helper component/backend function.
 - Route hydration must be cached/deduplicated on the frontend, and backend fallbacks must use bulk lookups rather than one SDK query per property hash to avoid rate limits during repeated clicks.
 - Always verify route hydration against the real saved route hash format in production data, not hand-made sample hashes.
+- Map provider preferences must flow through one shared URL/address helper; hardcoded Apple/Google links in individual cards will drift and create inconsistent navigation behavior.
+- Large-area ingestion fixes need per-sub-circle raw/mapped/drop/cap diagnostics before rerunning expensive production pulls.
+- When converting JSX event handlers to one-line callbacks, always close the expression container with `}` before the next prop; verify the touched JSX snippets before marking done.

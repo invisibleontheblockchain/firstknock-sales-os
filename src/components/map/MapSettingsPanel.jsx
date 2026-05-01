@@ -354,10 +354,10 @@ export default function MapSettingsPanel({
             {/* ═══════════ PREFERENCES TAB ═══════════ */}
             {tab === 'preferences' && (<>
               <div>
-                <SectionLabel>Navigation App</SectionLabel>
+                <SectionLabel>Maps Provider</SectionLabel>
                 <div className="grid grid-cols-2 gap-2">
                   {[{ id:'apple', label:'Apple Maps' }, { id:'google', label:'Google Maps' }].map(opt => (
-                    <button key={opt.id} onClick={() => upd('navigationApp', opt.id)}
+                    <button key={opt.id} onClick={() => { upd('navigationApp', opt.id); setNavigationApp?.(opt.id); }}
                       className={`py-3 rounded-xl text-xs font-bold transition-all border ${local.navigationApp === opt.id ? 'bg-white/10 border-white/20 text-white' : 'bg-white/[0.02] border-white/[0.04] text-gray-500 hover:border-white/10'}`}
                     >{opt.label}</button>
                   ))}

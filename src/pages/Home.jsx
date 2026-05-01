@@ -58,6 +58,7 @@ import RouteBuilderSettings from '../components/map/RouteBuilderSettings';
 const TerritorySetupWizard = React.lazy(() => import('../components/manager/TerritorySetupWizard'));
 import { LayoutDashboard, Settings, Crosshair } from 'lucide-react';
 import { openInMaps } from '../components/logic/navigation';
+import { hydrateRoutesForMap } from '@/components/logic/routeHydration';
 import GpsTracker, { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../components/map/GpsTracker';
 import QuickMarkButtons from '../components/rep/QuickMarkButtons';
 import PropertyHistory from '../components/rep/PropertyHistory';
@@ -280,9 +281,10 @@ export default function Home() {
     }, [user]);
 
     // Update user preference when changed
-    const updateNavigationApp = (app) => {
+    const updateNavigationApp = async (app) => {
         setNavigationApp(app);
-        base44.auth.updateMe({ navigation_app: app });
+        await base44.auth.updateMe({ navigation_app: app });
+        queryClient.invalidateQueries({ queryKey: ['user'] });
     };
 
     // Fetch Route Templates
@@ -480,6 +482,7 @@ export default function Home() {
         enabled: !!user?.id
     });
     const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
+    const [serverHydratedSavedRoutes, setServerHydratedSavedRoutes] = useState([]);
 
     // Identify properties already assigned to saved routes
     const assignedHashes = useMemo(() => {
@@ -781,6 +784,20 @@ export default function Home() {
         return deduped;
     }, [properties, logs, user?.territory_zip_codes, user?.generated_zip_codes, zipCodeFilter, drawnPolygon]);
 
+    useEffect(() => {
+        let cancelled = false;
+        async function hydrateOnLoad() {
+            if (!user?.email || savedRoutes.length === 0) {
+                setServerHydratedSavedRoutes([]);
+                return;
+            }
+            const hydrated = await hydrateRoutesForMap(savedRoutes, user.email, effectiveProperties);
+            if (!cancelled) setServerHydratedSavedRoutes(hydrated);
+        }
+        hydrateOnLoad();
+        return () => { cancelled = true; };
+    }, [savedRoutes, user?.email, effectiveProperties]);
+
     // Smart Auto-Open/Close for Generate Mode
     useEffect(() => {
         if (mode === 'generate') {
@@ -808,11 +825,14 @@ export default function Home() {
         const propsByHash = new Map();
         effectiveProperties.forEach(p => propsByHash.set(p.address_hash, p));
 
-        return savedRoutes
+        const routesForDisplay = serverHydratedSavedRoutes.length > 0 ? serverHydratedSavedRoutes : savedRoutes;
+
+        return routesForDisplay
             .filter(r => repFilter === 'all' || (r.assigned_to_name && r.assigned_to_name.includes(repFilter)))
             .map(route => {
                 const routeHashes = Array.isArray(route.property_hashes) ? route.property_hashes : [];
-                const allRouteProps = routeHashes
+                const hydratedProps = Array.isArray(route.properties) ? route.properties.filter(p => p?.lat && p?.lng) : [];
+                const allRouteProps = hydratedProps.length > 0 ? hydratedProps : routeHashes
                     .map(hash => propsByHash.get(hash))
                     .filter(Boolean);
                 let routeProps = allRouteProps;
@@ -857,7 +877,7 @@ export default function Home() {
                 };
             }).filter(r => r.houseCount > 0)
             .sort((a, b) => (b.competitivenessScore || 0) - (a.competitivenessScore || 0));
-    }, [savedRoutes, effectiveProperties, repFilter, soldDateFilter]);
+    }, [savedRoutes, serverHydratedSavedRoutes, effectiveProperties, repFilter, soldDateFilter]);
 
     // Extract unique reps from saved routes for filter
     const uniqueReps = useMemo(() => {

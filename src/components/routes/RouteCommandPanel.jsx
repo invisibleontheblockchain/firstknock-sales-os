@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from "@tanstack/react-query";
+import { hydrateRouteForMap } from '@/components/logic/routeHydration';
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -21,49 +22,6 @@ const BRAND = {
     charcoal: '#1F1F1F',
     offWhite: '#E5E5E5'
 };
-
-const routeHydrationCache = new Map();
-const routeHydrationInflight = new Map();
-
-async function hydrateRouteForMap(route) {
-    const hasLoadedPoints = Array.isArray(route.properties) && route.properties.some(p => p?.lat && p?.lng);
-    if (hasLoadedPoints) return route;
-
-    const hashes = Array.isArray(route.property_hashes) ? route.property_hashes : [];
-    if (hashes.length === 0) return route;
-
-    const cacheKey = route.id || hashes.join('|');
-    if (routeHydrationCache.has(cacheKey)) return routeHydrationCache.get(cacheKey);
-    if (routeHydrationInflight.has(cacheKey)) return routeHydrationInflight.get(cacheKey);
-
-    const request = base44.functions.invoke('getRoutePropertiesByHashes', {
-        address_hashes: hashes,
-        limit: hashes.length
-    }).then(res => {
-        const loaded = Array.isArray(res.data?.properties) ? res.data.properties : [];
-        if (loaded.length === 0) return route;
-
-        const byHash = new Map();
-        loaded.forEach(p => {
-            byHash.set(p.address_hash, p);
-            if (p.legacy_hash) byHash.set(p.legacy_hash, p);
-        });
-        const ordered = hashes.map(hash => byHash.get(hash)).filter(Boolean);
-        const hydratedRoute = {
-            ...route,
-            properties: ordered,
-            allProperties: ordered,
-            houseCount: ordered.length,
-        };
-        routeHydrationCache.set(cacheKey, hydratedRoute);
-        return hydratedRoute;
-    }).catch(() => route).finally(() => {
-        routeHydrationInflight.delete(cacheKey);
-    });
-
-    routeHydrationInflight.set(cacheKey, request);
-    return request;
-}
 
 export default function RouteCommandPanel({
     generatedRoutes = [],

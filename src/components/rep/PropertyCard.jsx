@@ -1,6 +1,7 @@
 import React from 'react';
 import { Check, Navigation } from 'lucide-react';
 import { formatPropertyAge } from '@/utils';
+import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
 
 const STATUS_COLORS = {
     ELIGIBLE: '#FFD700',
@@ -12,7 +13,7 @@ const STATUS_COLORS = {
     RECENT_OFF_MARKET: '#FFD700'
 };
 
-export default function PropertyCard({ property, index, onSelect }) {
+export default function PropertyCard({ property, index, onSelect, navigationApp = 'apple' }) {
     const isDone = property.effective_status !== 'ELIGIBLE';
     const statusColor = STATUS_COLORS[property.effective_status] || '#555';
     const age = formatPropertyAge(property.sold_date);
@@ -75,7 +76,7 @@ export default function PropertyCard({ property, index, onSelect }) {
                 <button
                     onClick={(e) => {
                         e.stopPropagation();
-                        window.location.href = `https://maps.apple.com/?daddr=${property.lat},${property.lng}&dirflg=w`;
+                        openInMaps(property.lat, property.lng, buildFullAddress(property), navigationApp);
                     }}
                     className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all active:scale-95 bg-white/10 border border-white/10"
                 >

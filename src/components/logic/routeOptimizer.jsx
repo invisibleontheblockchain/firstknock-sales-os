@@ -1073,10 +1073,10 @@ export function exportRouteToJSON(route) {
 }
 
 /**
- * Generate Apple Maps URL for route
+ * Generate Maps URL for route using the selected provider
  * Returns { url, truncated, totalStops } so callers can warn users
  */
-export function generateAppleMapsUrl(route) {
+export function generateAppleMapsUrl(route, app = 'apple') {
     if (!route.properties || route.properties.length === 0) return { url: '', truncated: false, totalStops: 0 };
 
     const properties = route.properties;
@@ -1100,7 +1100,11 @@ export function generateAppleMapsUrl(route) {
     const destStr = `${destination.lat},${destination.lng}`;
 
     let url;
-    if (waypoints.length > 0) {
+    if (app === 'google') {
+        const destination = encodeURIComponent(destStr);
+        const waypointParam = waypoints.length > 0 ? `&waypoints=${encodeURIComponent(waypoints.map(p => `${p.lat},${p.lng}`).join('|'))}` : '';
+        url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originStr)}&destination=${destination}${waypointParam}&travelmode=walking`;
+    } else if (waypoints.length > 0) {
         const waypointsStr = waypoints.map(p => `${p.lat},${p.lng}`).join('+to:');
         url = `https://maps.apple.com/?saddr=${originStr}&daddr=${waypointsStr}+to:${destStr}&dirflg=w`;
     } else {

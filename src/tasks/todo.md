@@ -1,11 +1,14 @@
-# Current Task: Fix saved route hydration 500 error
+# Current Task: Fix build errors from map provider changes
 
 ## Plan
-- [x] Check runtime logs for the backend 500 error.
-- [x] Inspect the route hydration function path causing the failed request.
-- [x] Patch rate limiting by deduplicating frontend hydration requests and bulk-loading backend fallbacks.
-- [x] Add support for actual saved route hash format (`ADDRESS|ZIP`).
-- [x] Verify the function succeeds with actual saved route hashes and no new runtime errors appear.
+- [x] Review lessons and runtime logs before changing code.
+- [x] Inspect Kevin's user/team/route records and compare against healthy route records.
+- [x] Identify and patch any Kevin route visibility/active/assignment fields that block auto-rendering.
+- [x] Audit all map provider URL/deep-link creation paths.
+- [x] Implement one shared maps-provider/address-link helper and wire Checklist, Knock, route views, onboarding, and Settings to it.
+- [x] Add ingestion diagnostics for per-sub-circle counts, coverage gaps, dedupe impact, result caps, and merge totals.
+- [x] Verify Kevin route hydration, provider switching, address URL formatting, and ingestion diagnostics with logs/tests.
+- [x] Fix any verification-time issues before marking complete.
 
 ## Review
-Runtime logs show the 500 came from Base44 SDK rate limiting inside getRoutePropertiesByHashes after repeated route clicks triggered many per-property fallback lookups. Replaced per-hash fallback calls with bulk lookups and added frontend cache/in-flight protection so repeated clicks reuse one request. Verified actual saved-route hashes like `502 HOLLY CREEK DR|29621` return mapped coordinates successfully.
+Kevin route hydration now returns all tested migrated hashes for `kevin@reifenvironmental.com`, so saved routes can populate with coordinates on map load instead of only after manual route clicks. Map links now use one shared address formatter/provider helper across Checklist, Knock cards, rep/manager detail sheets, and route export helpers; Settings exposes an immediate Maps Provider switch. Large-area ingestion now logs `GRID_COVERAGE` at job creation and `SUB_CIRCLE_STATS` per processed cell, including raw/mapped counts, polygon/filter/dupe drops, and pagination-cap warnings.

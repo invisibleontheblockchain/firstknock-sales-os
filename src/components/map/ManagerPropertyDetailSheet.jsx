@@ -7,7 +7,7 @@ import { format } from 'date-fns';
 import { DarkRoomClient } from '@/components/logic/neonClient';
 import PropertyHistory from '@/components/rep/PropertyHistory';
 import QuickMarkButtons from '@/components/rep/QuickMarkButtons';
-import { openInMaps } from '@/components/logic/navigation';
+import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
 import ConfidenceBadge from '@/components/map/ConfidenceBadge';
 
 export default function ManagerPropertyDetailSheet({
@@ -173,16 +173,7 @@ export default function ManagerPropertyDetailSheet({
 
                     {/* Map Link */}
                     <Button 
-                        onClick={() => {
-                            let address = "";
-                            if (selectedProperty.full_address) {
-                                address = selectedProperty.full_address;
-                                if (selectedProperty.city) address += `, ${selectedProperty.city}`;
-                                if (selectedProperty.state) address += `, ${selectedProperty.state}`;
-                                if (selectedProperty.zip_code) address += ` ${selectedProperty.zip_code}`;
-                            }
-                            openInMaps(selectedProperty.lat, selectedProperty.lng, address, navigationApp);
-                        }}
+                        onClick={() => openInMaps(selectedProperty.lat, selectedProperty.lng, buildFullAddress(selectedProperty), navigationApp)}
                         className="block w-full py-3 bg-gray-800 hover:bg-gray-700 rounded-xl text-center font-bold text-sm text-white transition-colors flex items-center justify-center gap-2 h-auto shrink-0"
                     >
                         <Navigation className="w-4 h-4 text-yellow-500" />
