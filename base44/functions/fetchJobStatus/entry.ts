@@ -40,6 +40,9 @@ Deno.serve(async (req) => {
             total_updated: job.total_updated || 0,
             zip_codes_found: job.zip_codes_found || [],
             error_message: job.error_message || null,
+            pull_mode: job.pull_mode || (job.is_delta_pull ? 'delta_refresh' : 'full_refresh'),
+            completed_sub_circles: job.completed_sub_circles || 0,
+            total_sub_circles: job.total_sub_circles || 1,
             is_delta_pull: job.is_delta_pull || false,
             delta_savings: job.delta_savings || null
         });

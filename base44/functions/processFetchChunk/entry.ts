@@ -684,7 +684,8 @@ Deno.serve(async (req) => {
                         await base44.asServiceRole.entities.FetchJob.update(jobId, {
                             status: 'completed', phase: 'complete', progress_pct: 100, completed_at: completedAt,
                             total_fetched: totalFetched, total_inserted: totalInserted, total_existed: totalExisted,
-                            total_updated: totalUpdated, total_api_calls: totalApiCalls, zip_codes_found: zipCodesFound,
+                            total_updated: totalUpdated, completed_sub_circles: totalSubCircles,
+                            total_api_calls: totalApiCalls, zip_codes_found: zipCodesFound,
                             chunk_number: nextChunkNumber, chunk_timings: chunkTimings, error_log: errorLog
                         });
                         try {
@@ -713,6 +714,7 @@ Deno.serve(async (req) => {
                 status: 'running', phase: nextPhase, current_offset: nextOffset, current_sub_circle: nextSubCircle,
                 total_expected: totalExpected, total_fetched: totalFetched, total_inserted: totalInserted,
                 total_existed: totalExisted, total_updated: totalUpdated,
+                completed_sub_circles: subCircleDone ? currentSubCircle + 1 : (job.completed_sub_circles || 0),
                 total_api_calls: totalApiCalls, progress_pct: progressPct,
                 zip_codes_found: zipCodesFound, phase1_union_records: phase1UnionRecords, chunk_number: nextChunkNumber,
                 chunk_timings: chunkTimings, error_log: errorLog
@@ -1114,7 +1116,8 @@ Deno.serve(async (req) => {
                 await base44.asServiceRole.entities.FetchJob.update(jobId, {
                     status: 'completed', phase: 'complete', progress_pct: 100, completed_at: completedAt,
                     total_fetched: totalFetched, total_inserted: totalInserted, total_existed: totalExisted,
-                    total_updated: totalUpdated, total_api_calls: totalApiCalls, zip_codes_found: zipCodesFound,
+                    total_updated: totalUpdated, completed_sub_circles: totalSubCircles,
+                    total_api_calls: totalApiCalls, zip_codes_found: zipCodesFound,
                     chunk_number: nextChunkNumber, chunk_timings: chunkTimings, error_log: errorLog
                 });
 
@@ -1227,7 +1230,8 @@ Deno.serve(async (req) => {
                 await base44.asServiceRole.entities.FetchJob.update(jobId, {
                     status: 'completed', phase: 'complete', progress_pct: 100, completed_at: completedAt,
                     total_fetched: totalFetched, total_inserted: totalInserted, total_existed: totalExisted,
-                    total_updated: totalUpdated, total_api_calls: totalApiCalls, zip_codes_found: zipCodesFound,
+                    total_updated: totalUpdated, completed_sub_circles: totalSubCircles,
+                    total_api_calls: totalApiCalls, zip_codes_found: zipCodesFound,
                     chunk_number: nextChunkNumber, chunk_timings: chunkTimings, error_log: errorLog
                 });
                 
@@ -1252,6 +1256,7 @@ Deno.serve(async (req) => {
                     status: 'running', phase: 'listings_records', current_offset: nextOffset, current_sub_circle: nextSubCircle,
                     total_fetched: totalFetched, total_inserted: totalInserted, total_existed: totalExisted,
                     total_updated: totalUpdated, total_api_calls: totalApiCalls, progress_pct: progressPct,
+                    completed_sub_circles: subCircleDone ? currentSubCircle + 1 : (job.completed_sub_circles || totalSubCircles),
                     zip_codes_found: zipCodesFound, chunk_number: nextChunkNumber,
                     chunk_timings: chunkTimings, error_log: errorLog
                 });

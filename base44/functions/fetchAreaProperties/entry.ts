@@ -93,19 +93,27 @@ async function findDeltaWatermark(base44, lat, lng, radius) {
                 const ageDays = ageMs / (1000 * 60 * 60 * 24);
                 
                 if (ageDays < 90) {
-                    console.log(`[fetchArea-v8] Found delta watermark from ${Math.round(ageDays)}d ago (job ${job.id})`);
+                    const totalSubCircles = job.total_sub_circles || 1;
+                    const completedSubCircles = job.completed_sub_circles ?? (job.phase === 'complete' ? totalSubCircles : 0);
+                    const loadedRecords = (job.total_inserted || 0) + (job.total_existed || 0) + (job.total_updated || 0);
+                    const hasCompleteCoverage = completedSubCircles >= totalSubCircles && loadedRecords >= 50;
+                    console.log(`[fetchArea-v9] Found prior job ${job.id}: completeCoverage=${hasCompleteCoverage} (${completedSubCircles}/${totalSubCircles} cells, loaded=${loadedRecords})`);
                     return {
                         watermark: job.completed_at,
                         previousJobId: job.id,
                         ageDays: Math.round(ageDays),
                         previousApiCalls: job.total_api_calls || 0,
-                        previousInserted: job.total_inserted || 0
+                        previousInserted: job.total_inserted || 0,
+                        hasCompleteCoverage,
+                        completedSubCircles,
+                        totalSubCircles,
+                        loadedRecords
                     };
                 }
             }
         }
     } catch (e) {
-        console.warn(`[fetchArea-v8] Delta watermark check failed (non-fatal): ${e.message}`);
+        console.warn(`[fetchArea-v9] Delta watermark check failed (non-fatal): ${e.message}`);
     }
     return null;
 }
@@ -135,7 +143,7 @@ Deno.serve(async (req) => {
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
         const body = await req.json();
-        let { latitude, longitude, radius, polygon, sold_months, include_mls } = body;
+        let { latitude, longitude, radius, polygon, sold_months, include_mls, force_full_refresh } = body;
 
         if (!latitude || !longitude || !radius) {
             return Response.json({ error: 'Latitude, longitude, and radius are required' }, { status: 400 });
@@ -215,13 +223,21 @@ Deno.serve(async (req) => {
         // This is the single biggest API cost saver (~85% reduction on re-pulls)
         // ================================================================
         const deltaInfo = await findDeltaWatermark(base44, optimizedLat, optimizedLng, optimizedRadius);
-        let isDeltaPull = !!deltaInfo;
+        let isDeltaPull = !!deltaInfo && deltaInfo.hasCompleteCoverage && !force_full_refresh;
+        let pullMode = isDeltaPull ? 'delta_refresh' : (deltaInfo ? 'full_refresh' : 'new_area');
+        if (deltaInfo && !deltaInfo.hasCompleteCoverage) {
+            console.log(`[fetchArea-v9] Prior pull coverage is not trustworthy — using FULL REFRESH to fill gaps.`);
+        }
+        if (force_full_refresh) {
+            console.log(`[fetchArea-v9] User requested FULL REFRESH — bypassing delta mode.`);
+        }
         
         // Check if reconciliation flagged stale ZIPs — force full pull if so
         const staleZips = user.stale_zips || [];
         if (isDeltaPull && staleZips.length > 0) {
             console.log(`[fetchArea-v8] ⚠️ Stale ZIPs detected (${staleZips.length}) from reconciliation — forcing FULL pull to catch silent deletes`);
             isDeltaPull = false;
+            pullMode = 'full_refresh';
             // Clear the stale flag since we're doing a full refresh
             try {
                 await base44.auth.updateMe({ stale_zips: [] });
@@ -294,6 +310,8 @@ Deno.serve(async (req) => {
                 polygon: polygon || [],
                 sold_months: effectiveSoldMonths,
                 include_mls: include_mls !== false,
+                pull_mode: pullMode,
+                force_full_refresh: !!force_full_refresh,
                 is_delta_pull: isDeltaPull,
                 delta_watermark: isDeltaPull ? deltaInfo.watermark : null,
                 delta_savings: isDeltaPull ? { estimated_full_calls: deltaInfo.previousApiCalls, actual_calls: 0, savings_pct: 0 } : null,
@@ -341,6 +359,7 @@ Deno.serve(async (req) => {
             original_radius: radius,
             sold_months: effectiveSoldMonths,
             is_delta_pull: isDeltaPull,
+            pull_mode: pullMode,
             delta_info: isDeltaPull ? {
                 watermark: deltaInfo.watermark,
                 age_days: deltaInfo.ageDays,
@@ -349,7 +368,7 @@ Deno.serve(async (req) => {
             sub_circles: subCircles.length,
             message: isDeltaPull 
                 ? `Delta pull started — only fetching changes since ${deltaInfo.ageDays}d ago. Estimated ~85% fewer API calls.`
-                : `Full property fetch started (radius: ${optimizedRadius}mi, ${subCircles.length} grid cells). Running in background.`
+                : `${pullMode === 'full_refresh' ? 'Full refresh / fill gaps' : 'Full property fetch'} started (radius: ${optimizedRadius}mi, ${subCircles.length} grid cells). Running in background.`
         });
 
     } catch (error) {

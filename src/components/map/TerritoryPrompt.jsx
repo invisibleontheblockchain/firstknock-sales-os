@@ -42,6 +42,7 @@ export default function TerritoryPrompt({
     const [etaText, setEtaText] = useState('');
     const [totalExpected, setTotalExpected] = useState(0);
     const [isDeltaPull, setIsDeltaPull] = useState(false);
+    const [forceFullRefresh, setForceFullRefresh] = useState(false);
     // v15: MLS Phase 2 always runs with verification — no toggle needed
     const pollRef = useRef(null);
     const animRef = useRef(null);
@@ -336,7 +337,8 @@ export default function TerritoryPrompt({
                 radius: radius,
                 polygon: drawnPolygon,
                 sold_months: fetchMonths,
-                include_mls: isPaid
+                include_mls: isPaid,
+                force_full_refresh: forceFullRefresh
             });
             const d = res.data || {};
 
@@ -363,10 +365,11 @@ export default function TerritoryPrompt({
                     setIsDeltaPull(true);
                     toast.success('Smart refresh — only pulling changes since last import!');
                 } else {
-                    toast.success('Pulling property data now!');
+                    setIsDeltaPull(false);
+                    toast.success(d.pull_mode === 'full_refresh' ? 'Fill Gaps refresh started!' : 'Pulling property data now!');
                 }
                 targetPctRef.current = 5;
-                setPullProgress(d.is_delta_pull ? 'Delta sync — fetching only new & changed records...' : 'Scanning property records...');
+                setPullProgress(d.is_delta_pull ? 'Delta sync — fetching only new & changed records...' : (d.pull_mode === 'full_refresh' ? 'Fill Gaps — re-scanning every grid cell...' : 'Scanning property records...'));
                 startPolling(d.job_id);
             } else {
                 // Fallback for any other response shape
@@ -452,6 +455,12 @@ export default function TerritoryPrompt({
                         {drawSizeMiles === 300 && (
                             <div className="text-[9px] text-cyan-400 text-center font-semibold">Heads up — 300mi² × {fetchMonths}mo is a big pull. Expect longer import times.</div>
                         )}
+                        <button
+                            onClick={() => setForceFullRefresh(v => !v)}
+                            className={`text-[10px] font-bold py-1.5 rounded-md border transition-all ${forceFullRefresh ? 'bg-blue-500/20 text-blue-300 border-blue-400/50' : 'bg-white/5 text-gray-500 border-white/10 hover:text-white'}`}
+                        >
+                            {forceFullRefresh ? 'Fill Gaps: ON' : 'Fill Gaps / Full Refresh'}
+                        </button>
                         {/* v15: MLS Verified — paid users only */}
                         <div className="border-t border-white/10 pt-2 mt-1">
                             {isPaid ? (
@@ -566,7 +575,7 @@ export default function TerritoryPrompt({
                                     onClick={handleFetchData}
                                     className="text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]"
                                 >
-                                    {`Pull ${drawSizeMiles}mi² (${fetchMonths} Mo)`}
+                                    {`${forceFullRefresh ? 'Fill Gaps' : 'Pull'} ${drawSizeMiles}mi² (${fetchMonths} Mo)`}
                                 </Button>
                             )}
                         </div>

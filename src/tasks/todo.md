@@ -262,12 +262,21 @@ Pass 1 implemented and verified.
 - Re-pulling an area updates existing records; it does not create duplicates for doors already pulled.
 - Route generation now includes already-routed doors by default, and the skip option is renamed “Hide Already Routed” for clarity.
 
-## Investigation Plan — Fill blanks in an early problematic area pull
-- [x] Clarify the real concern: an early area pull may have been partial/incomplete, so re-pulls should fill coverage gaps instead of only refreshing existing records.
-- [ ] Inspect fetch job/chunk behavior for predefined/drawn-area pulls.
-- [ ] Verify whether candidate reads cover the whole drawn area or only previous zip/route-scoped data.
-- [ ] Identify a simple coverage diagnostic: fetched count, inserted count, existed count, updated count, sub-circle progress, and zip codes found.
-- [ ] Recommend or implement the safest way to prove whether the area is complete before generating routes.
+## Implementation Plan — Full Refresh / Fill Gaps mode
+- [x] Clarify the root concern: early incomplete pulls can become a bad delta baseline and leave permanent blank spots.
+- [x] Inspect fetch job/chunk behavior for predefined/drawn-area pulls.
+- [x] Add explicit FetchJob fields for pull mode and completed sub-circle coverage.
+- [x] Update delta auto-detection so delta only runs when prior coverage is trustworthy.
+- [x] Add manual `force_full_refresh` support to bypass delta mode.
+- [x] Track sub-circle completion during chunk processing.
+- [x] Verify handler deployment path as far as available; backend test tool currently fails before invoking functions because its payload argument is unavailable in this interface.
+- [x] Document final behavior and safety rules.
+
+### Review — Full Refresh / Fill Gaps mode
+- Fetch jobs now record `pull_mode`, `force_full_refresh`, and completed grid-cell coverage.
+- Delta refresh only activates when a prior completed pull has trustworthy coverage; otherwise the app uses full refresh/fill-gaps mode.
+- Users can manually turn on “Fill Gaps / Full Refresh” before pulling a drawn area.
+- Rep history remains preserved: this changes fetch mode only, not knocked history or interaction logs.
 
 ## Plan — Custom area disappeared after app reload/kickout
 - [x] Check runtime logs for reload/polling behavior.

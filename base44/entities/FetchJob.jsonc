@@ -45,6 +45,21 @@
       "default": false,
       "description": "Whether to include Phase 2 MLS early signal data (Inactive listings)"
     },
+    "pull_mode": {
+      "type": "string",
+      "enum": [
+        "new_area",
+        "delta_refresh",
+        "full_refresh"
+      ],
+      "default": "new_area",
+      "description": "Data pull mode: new area, delta refresh, or full refresh/fill gaps"
+    },
+    "force_full_refresh": {
+      "type": "boolean",
+      "default": false,
+      "description": "True when the user manually requested a full re-scan to fill missing grid cells"
+    },
     "is_delta_pull": {
       "type": "boolean",
       "default": false,
@@ -91,6 +106,11 @@
     "current_sub_circle": {
       "type": "integer",
       "default": 0
+    },
+    "completed_sub_circles": {
+      "type": "integer",
+      "default": 0,
+      "description": "Number of grid sub-circles fully processed during this job"
     },
     "total_sub_circles": {
       "type": "integer",
