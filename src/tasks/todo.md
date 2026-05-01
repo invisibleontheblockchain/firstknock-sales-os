@@ -264,7 +264,11 @@ Pass 1 implemented and verified.
 - [x] Identify crash point: Phase 2 hit Deno memory limit after BatchData returned 403, while Phase 1 deed records had already advanced.
 - [x] Patch Phase 2 failure path to complete safely with deed records only instead of continuing expensive cleanup.
 - [x] Unstick the current job so the UI exits the 80% progress state.
-- [ ] Verify runtime/job state after the patch.
+- [x] Verify runtime/job state after the patch.
+
+### Review — 80% stuck pull
+- Job `69f3f952e3a5536b2dd11f40` is now completed at 100% with phase `complete`.
+- Root cause was Phase 2 continuing expensive cleanup after BatchData became unavailable; future jobs now stop Phase 2 safely and complete with Phase 1 deed records.
 
 ### Review — Custom area persistence
 - The confirmed custom area is no longer cleared just because the app returns to analyze mode or reloads after a pull.
