@@ -263,7 +263,7 @@ Pass 1 implemented and verified.
 - [x] Check runtime logs and current FetchJob state.
 - [x] Identify crash point: Phase 2 hit Deno memory limit after BatchData returned 403, while Phase 1 deed records had already advanced.
 - [x] Patch Phase 2 failure path to complete safely with deed records only instead of continuing expensive cleanup.
-- [ ] Unstick the current job so the UI exits the 80% progress state.
+- [x] Unstick the current job so the UI exits the 80% progress state.
 - [ ] Verify runtime/job state after the patch.
 
 ### Review — Custom area persistence

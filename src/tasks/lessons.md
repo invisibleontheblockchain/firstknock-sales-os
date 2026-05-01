@@ -13,3 +13,4 @@
 - When changing mode-toggle behavior, verify the click handler updates the mode state itself; hiding panels without calling the mode setter makes the button appear broken.
 - Before approving a Neon cutover, verify backfill pagination/count coverage; a dry-run or capped first-page backfill is not sufficient evidence that historical Base44 `MasterProperty` data is fully migrated.
 - Do not clear confirmed drawn polygons on ordinary mode changes; only clear draft/in-progress drawing state unless the user explicitly taps Clear Area.
+- When using entity update tools, include the exact query and data payload even if the visible schema omits them; failed operational tools should trigger an immediate re-plan and corrected retry.
