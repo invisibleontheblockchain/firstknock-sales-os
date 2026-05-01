@@ -25,8 +25,64 @@ const DEED_LAG_CUTOFF_DAYS = parseInt(Deno.env.get("DEED_LAG_CUTOFF_DAYS") || '1
 
 const MAX_RETRIES = 3;
 const RATE_LIMIT_BACKOFFS_MS = [5000, 10000, 20000];
+const PIPELINE_LOCK_TTL_MS = 90 * 1000;
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function claimPipelineLock(base44, jobId, lockedBy) {
+    const now = Date.now();
+    const existing = await base44.asServiceRole.entities.PipelineLock.filter({ job_id: jobId }, '-created_date', 20).catch(() => []);
+    const locks = Array.isArray(existing) ? existing : (existing?.items || []);
+
+    for (const lock of locks) {
+        const lockedAtMs = new Date(lock.locked_at || lock.created_date).getTime();
+        const isExpired = !lockedAtMs || now - lockedAtMs > PIPELINE_LOCK_TTL_MS;
+        if (isExpired) {
+            await base44.asServiceRole.entities.PipelineLock.delete(lock.id).catch(() => {});
+        }
+    }
+
+    const active = locks.filter(lock => {
+        const lockedAtMs = new Date(lock.locked_at || lock.created_date).getTime();
+        return lockedAtMs && now - lockedAtMs <= PIPELINE_LOCK_TTL_MS;
+    });
+
+    if (active.length > 0) {
+        const current = active.sort((a, b) => new Date(a.locked_at) - new Date(b.locked_at))[0];
+        return { claimed: false, reason: 'active_lock', lockedBy: current.locked_by };
+    }
+
+    const lockedAt = new Date().toISOString();
+    const created = await base44.asServiceRole.entities.PipelineLock.create({
+        job_id: jobId,
+        locked_at: lockedAt,
+        expires_at: new Date(Date.now() + PIPELINE_LOCK_TTL_MS).toISOString(),
+        locked_by: lockedBy
+    });
+
+    const verifyRes = await base44.asServiceRole.entities.PipelineLock.filter({ job_id: jobId }, 'created_date', 20).catch(() => []);
+    const verifyLocks = (Array.isArray(verifyRes) ? verifyRes : (verifyRes?.items || []))
+        .filter(lock => {
+            const lockedAtMs = new Date(lock.locked_at || lock.created_date).getTime();
+            return lockedAtMs && Date.now() - lockedAtMs <= PIPELINE_LOCK_TTL_MS;
+        })
+        .sort((a, b) => new Date(a.locked_at || a.created_date) - new Date(b.locked_at || b.created_date));
+
+    const winner = verifyLocks[0];
+    if (!winner || winner.locked_by !== lockedBy) {
+        await base44.asServiceRole.entities.PipelineLock.delete(created.id).catch(() => {});
+        return { claimed: false, reason: 'lost_lock_race', lockedBy: winner?.locked_by };
+    }
+
+    return { claimed: true, lockId: created.id };
+}
+
+async function releasePipelineLock(base44, lockId) {
+    if (!lockId) return;
+    await base44.asServiceRole.entities.PipelineLock.delete(lockId).catch(e => {
+        console.warn(`[chunk-v15] PipelineLock release failed: ${e.message}`);
+    });
+}
 
 async function fetchWithBackoff(url, headers, logError) {
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -313,6 +369,8 @@ const MAX_PARALLEL = 2;        // Reduced from 3 — gentler on RentCast
 
 Deno.serve(async (req) => {
     const chunkStart = Date.now();
+    let activeLockId = null;
+    let activeLockBase44 = null;
 
     try {
         const base44 = createClientFromRequest(req);
@@ -346,6 +404,16 @@ Deno.serve(async (req) => {
         }
 
         const jobId = job.id;
+        const invocationId = crypto.randomUUID();
+        const lockClaim = await claimPipelineLock(base44, jobId, invocationId);
+        if (!lockClaim.claimed) {
+            console.log(`[chunk-v15] PipelineLock: job ${jobId} already locked by ${lockClaim.lockedBy || 'unknown'} (${lockClaim.reason}); skipping duplicate processor.`);
+            return Response.json({ skipped: true, reason: lockClaim.reason, job_id: jobId });
+        }
+        activeLockId = lockClaim.lockId;
+        activeLockBase44 = base44;
+        console.log(`[chunk-v15] PipelineLock claimed for job ${jobId} by ${invocationId}`);
+
         const errorLog = job.error_log || [];
         const chunkTimings = job.chunk_timings || [];
         const isDeltaPull = job.is_delta_pull || false;
@@ -360,6 +428,8 @@ Deno.serve(async (req) => {
         if (!RENTCAST_API_KEY) {
             logError('RENTCAST_API_KEY not configured');
             await base44.asServiceRole.entities.FetchJob.update(jobId, { status: 'failed', error_message: 'RENTCAST_API_KEY not configured', error_log: errorLog });
+            await releasePipelineLock(base44, activeLockId);
+            activeLockId = null;
             return Response.json({ error: 'No API key' });
         }
 
@@ -699,6 +769,8 @@ Deno.serve(async (req) => {
                                 });
                             }
                         } catch (_e) { /* non-fatal */ }
+                        await releasePipelineLock(base44, activeLockId);
+                        activeLockId = null;
                         return Response.json({ status: 'completed', job_id: jobId, phase: 'deed_only' });
                     }
                 }
@@ -722,6 +794,8 @@ Deno.serve(async (req) => {
                 chunk_timings: chunkTimings, error_log: errorLog
             });
 
+            await releasePipelineLock(base44, activeLockId);
+            activeLockId = null;
             scheduleNextChunk();
             return Response.json({ status: 'running', phase: 'deed_records', job_id: jobId, sub_circle: currentSubCircle + 1, done: subCircleDone, fetched: rawFetchedThisChunk, mapped: mapped.length });
         }
@@ -1134,6 +1208,8 @@ Deno.serve(async (req) => {
                 } catch (_e) { /* non-fatal */ }
 
                 console.log(`[chunk-v15] JOB COMPLETE WITH DEEDS ONLY | apiCalls=${totalApiCalls} | inserted=${totalInserted} | existed=${totalExisted} | updated=${totalUpdated}`);
+                await releasePipelineLock(base44, activeLockId);
+                activeLockId = null;
                 return Response.json({ status: 'completed', job_id: jobId, phase: 'deed_only_batchdata_unavailable' });
             }
 
@@ -1248,6 +1324,8 @@ Deno.serve(async (req) => {
                 } catch (_e) { /* non-fatal */ }
                 
                 console.log(`[chunk-v15] JOB COMPLETE | apiCalls=${totalApiCalls} | inserted=${totalInserted} | existed=${totalExisted} | updated=${totalUpdated}`);
+                await releasePipelineLock(base44, activeLockId);
+                activeLockId = null;
                 return Response.json({ status: 'completed', job_id: jobId });
             } else {
                 const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
@@ -1263,6 +1341,8 @@ Deno.serve(async (req) => {
                     chunk_timings: chunkTimings, error_log: errorLog
                 });
 
+                await releasePipelineLock(base44, activeLockId);
+                activeLockId = null;
                 scheduleNextChunk();
                 return Response.json({ status: 'running', phase: 'listings_records', job_id: jobId, sub_circle: currentSubCircle + 1 });
             }
@@ -1271,10 +1351,16 @@ Deno.serve(async (req) => {
         // Unknown phase — fail gracefully
         logError(`Unknown phase: ${currentPhase}`);
         await base44.asServiceRole.entities.FetchJob.update(jobId, { status: 'failed', error_message: `Unknown phase: ${currentPhase}`, error_log: errorLog });
+        await releasePipelineLock(base44, activeLockId);
+        activeLockId = null;
         return Response.json({ error: `Unknown phase: ${currentPhase}` });
 
     } catch (error) {
         console.error('[chunk-v15] FATAL:', error.message, error.stack);
+        if (activeLockBase44 && activeLockId) {
+            await releasePipelineLock(activeLockBase44, activeLockId);
+            activeLockId = null;
+        }
 
         // Rate-limit/network exhaustion is resumable: move back to pending so cron/user retry resumes from current offset.
         try {

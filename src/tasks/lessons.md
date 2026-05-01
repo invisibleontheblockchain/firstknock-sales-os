@@ -18,3 +18,4 @@
 - Delta pulls must only use a prior job as baseline when coverage is trustworthy; incomplete early pulls can create permanent blind spots unless the system falls back to full refresh/fill-gaps mode.
 - For grid-based geographic ingestion, include every sub-query circle that overlaps the requested area (`center distance <= requested radius + sub-query radius`); smaller edge cutoffs create under-populated boundaries even when jobs report 100% complete.
 - Edge sub-circles may legitimately return zero in-polygon survivors after polygon and deed filters; do not fail the entire ingestion job for a single empty grid cell—log it and advance.
+- Long-running self-chained processors need a durable per-job lock before touching job state; chunk-number checks alone do not prevent two invocations from starting the same chunk concurrently.

@@ -1,0 +1,29 @@
+{
+  "name": "PipelineLock",
+  "type": "object",
+  "properties": {
+    "job_id": {
+      "type": "string",
+      "description": "FetchJob ID this lock protects"
+    },
+    "locked_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this lock was claimed"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When this lock should be treated as stale"
+    },
+    "locked_by": {
+      "type": "string",
+      "description": "Processor invocation ID that claimed the lock"
+    }
+  },
+  "required": [
+    "job_id",
+    "locked_at",
+    "locked_by"
+  ]
+}
