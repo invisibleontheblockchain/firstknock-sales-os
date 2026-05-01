@@ -1177,7 +1177,7 @@ export default function Home() {
                 try {
                     await Promise.all(saveable.map(r => handleSaveRoute(r, null, null, true)));
                     toast.success(`Saved ${saveable.length} routes`, { id: bulkId, duration: 3000 });
-                    setRoutes([]); setModeRaw('analyze');
+                    setModeRaw('analyze');
                 } catch (error) { console.error('[Home] Auto-save failed:', error); toast.error('Auto-save failed.', { id: bulkId }); }
             } else if (generated.length > 0) {
                 toast.info(`Route has ${generated[0].houseCount} properties — too large to auto-save. View on map.`, { id: 'build-routes', duration: 5000 });
@@ -1238,7 +1238,7 @@ export default function Home() {
             setRoutes(generated);
             if (generated.length > 0) {
                 const bulkId = toast.loading(`Auto-saving ${generated.length} routes...`);
-                try { await Promise.all(generated.map(r => handleSaveRoute(r, null, null, true))); toast.success(`Reordered into ${generated.length} routes`, { id: bulkId, duration: 3000 }); setRoutes([]); setModeRaw('analyze'); } catch (e) { toast.error('Auto-save failed.', { id: bulkId }); }
+                try { await Promise.all(generated.map(r => handleSaveRoute(r, null, null, true))); toast.success(`Reordered into ${generated.length} routes`, { id: bulkId, duration: 3000 }); setModeRaw('analyze'); } catch (e) { toast.error('Auto-save failed.', { id: bulkId }); }
             }
             setShowRoutePanel(true); setShowCompare(false);
             toast.success(`Reordered! ${generated.length} route(s)`, { id: 'reorder-routes', duration: 5000 });

@@ -235,6 +235,16 @@ Pass 1 implemented and verified.
 - The generate-mode builder panel now renders without a lazy dynamic module fetch, removing the stale preview chunk failure path.
 - Runtime logs still show the old crash from the previous bundle timestamp, but the current source no longer contains that failing lazy import.
 
+## Plan — Generated routes fetched but not showing on map
+- [x] Check runtime logs for the generate flow.
+- [x] Identify that routes can be generated and then cleared immediately after auto-save.
+- [x] Keep generated routes in local map state after auto-save so they remain visible immediately.
+- [ ] Re-check runtime logs after the user retries generation.
+
+### Review — Generated routes map visibility
+- The generated route preview state is now preserved after auto-save instead of being cleared immediately.
+- Saved routes still refresh through the normal SavedRoute query, but the map no longer has a blank gap while waiting for that refresh.
+
 ## Plan — 5 sq mile test circle
 - [x] Set map drawing default area to 5 sq mi.
 - [x] Make the 5 sq mi test option always visible.
