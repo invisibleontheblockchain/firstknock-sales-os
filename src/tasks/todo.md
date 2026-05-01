@@ -223,6 +223,18 @@ Pass 1 implemented and verified.
 - Replaced the lazy dynamic import wrapper with a direct import of `RouteCommandPanel`.
 - Also updated `pages/Home` to import `RouteCommandPanel` directly, fully bypassing the stale lazy wrapper path that was still referenced by the current page bundle.
 
+## Plan — Fix RouteBuilderSettings dynamic import crash
+- [x] Check runtime logs for the reported module import error.
+- [x] Confirm the error came from a lazy-loaded `RouteBuilderSettings` chunk.
+- [x] Replace `RouteBuilderSettings` lazy import with a direct static import.
+- [x] Remove the `Suspense` wrapper around the Route Builder settings panel.
+- [x] Verify current `pages/Home` references `RouteBuilderSettings` directly with no lazy import path.
+
+### Review — RouteBuilderSettings import crash
+- `pages/Home` now imports `RouteBuilderSettings` directly.
+- The generate-mode builder panel now renders without a lazy dynamic module fetch, removing the stale preview chunk failure path.
+- Runtime logs still show the old crash from the previous bundle timestamp, but the current source no longer contains that failing lazy import.
+
 ## Plan — 5 sq mile test circle
 - [x] Set map drawing default area to 5 sq mi.
 - [x] Make the 5 sq mi test option always visible.
