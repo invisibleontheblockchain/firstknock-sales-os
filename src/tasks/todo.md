@@ -258,3 +258,19 @@ Pass 1 implemented and verified.
 - Runtime logs showed no drawn-area fetch log, so the frontend was not passing an active polygon into generation.
 - Generation now resolves the polygon from confirmed state, draft state, or saved local storage before fetching candidates.
 - The same resolved polygon is passed into filtering, preventing a mismatch between fetched candidates and the geography filter.
+
+## Plan — Neon Cutover With Approval Gates
+- [x] Audit current cutover-critical paths before touching production data.
+- [x] Confirm Home and route generation already call `getRouteCandidatesFromNeon` for candidate reads.
+- [x] Confirm `fetchAreaProperties` cache lookup uses Neon instead of Base44 `MasterProperty`.
+- [x] Identify remaining Base44 property bottleneck: `processFetchChunk` defaults to dual-write and still accesses `MasterProperty` when `PROPERTY_STORAGE_MODE` is unset.
+- [ ] Gate 1: verify backfill can cover the full live `MasterProperty` dataset, not just a limited first page.
+- [ ] Gate 2: run live backfill only after explicit approval and report Base44 vs Neon counts.
+- [ ] Gate 3: switch ingestion to Neon-only only after count verification passes.
+- [ ] Gate 4: run a small pull and route-generation verification after Neon-only switch.
+
+### Cutover Audit Result
+- No production data was changed.
+- The frontend route candidate path is already Neon-based in `pages/Home`: initial map load, polygon generation, zip generation, territory generation, and large backend route optimization all use Neon candidates.
+- The remaining risk is ingestion, not route reads: `processFetchChunk` still defaults `PROPERTY_STORAGE_MODE` to `dual`, so property pulls can still hit Base44 `MasterProperty` and trigger rate limits.
+- Before live backfill, `backfillMasterPropertyToNeon` must be hardened/verified for full pagination because its current request shape caps one run at a limited batch size.

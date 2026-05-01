@@ -11,3 +11,4 @@
 - If manager-generated routes must appear in the Knock tab immediately, save them assigned to the creator by default; unassigned routes are easy to miss in rep-facing route switchers.
 - Avoid nesting interactive buttons inside route/property card buttons; use a clickable container with separate child buttons to prevent React DOM warnings and unreliable mobile taps.
 - When changing mode-toggle behavior, verify the click handler updates the mode state itself; hiding panels without calling the mode setter makes the button appear broken.
+- Before approving a Neon cutover, verify backfill pagination/count coverage; a dry-run or capped first-page backfill is not sufficient evidence that historical Base44 `MasterProperty` data is fully migrated.
