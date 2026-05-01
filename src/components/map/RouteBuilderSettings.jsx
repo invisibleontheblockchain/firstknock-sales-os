@@ -80,7 +80,7 @@ export default function RouteBuilderSettings({
             returnToStart: false,
             excludeTerminal: true,
             includeCallbacks: true,
-            excludeAssigned: true,
+            excludeAssigned: false,
             excludeCommercial: true,
             excludeCondos: true,
             excludePreviouslyKnocked: true,
@@ -346,8 +346,8 @@ export default function RouteBuilderSettings({
                                     onChange={(v) => setRouteConfig(prev => ({ ...prev, includeCallbacks: v }))}
                                 />
                                 <ToggleOption
-                                    label="Hide Already Assigned"
-                                    description="Skip doors already saved inside another route"
+                                    label="Hide Already Routed"
+                                    description="Only turn this on when you want brand-new routes and do not want to reuse doors from saved routes"
                                     icon={<Route className="w-4 h-4 text-blue-400" />}
                                     checked={routeConfig.excludeAssigned}
                                     onChange={(v) => setRouteConfig(prev => ({ ...prev, excludeAssigned: v }))}

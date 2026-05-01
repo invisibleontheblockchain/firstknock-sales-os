@@ -246,7 +246,7 @@ export default function Home() {
         returnToStart: false,
         excludeTerminal: true,
         includeCallbacks: true,
-        excludeAssigned: true,
+        excludeAssigned: false,
         excludeCommercial: true,
         excludeCondos: true,
         excludePreviouslyKnocked: true,

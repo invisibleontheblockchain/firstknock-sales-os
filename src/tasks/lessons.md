@@ -14,3 +14,4 @@
 - Before approving a Neon cutover, verify backfill pagination/count coverage; a dry-run or capped first-page backfill is not sufficient evidence that historical Base44 `MasterProperty` data is fully migrated.
 - Do not clear confirmed drawn polygons on ordinary mode changes; only clear draft/in-progress drawing state unless the user explicitly taps Clear Area.
 - When using entity update tools, include the exact query and data payload even if the visible schema omits them; failed operational tools should trigger an immediate re-plan and corrected retry.
+- Do not default route generation to hiding already-routed doors after a data pull; users often re-pull the same territory to refresh records and expect existing eligible doors to remain available unless they explicitly opt out.

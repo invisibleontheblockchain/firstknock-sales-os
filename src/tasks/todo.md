@@ -252,6 +252,16 @@ Pass 1 implemented and verified.
 - [x] Patch the smallest safe issue: move assigned-door exclusion into the tracked filter pipeline and expose the toggle.
 - [ ] Verify with logs after the next generation attempt and document the result.
 
+## Incident Plan — Re-pulled area only shows 2 doors
+- [x] Check runtime logs and current route-candidate/filter code.
+- [x] Confirm likely cause: route builder defaulted to hiding doors that were already saved in routes, so re-pulled areas could appear mostly empty.
+- [x] Patch the default behavior so re-pulled areas can generate from existing doors unless the user explicitly hides assigned/routed doors.
+- [ ] Verify route generation candidates are not reduced to only new/unassigned doors.
+
+### Review — Re-pulled area only shows 2 doors
+- Re-pulling an area updates existing records; it does not create duplicates for doors already pulled.
+- Route generation now includes already-routed doors by default, and the skip option is renamed “Hide Already Routed” for clarity.
+
 ## Plan — Custom area disappeared after app reload/kickout
 - [x] Check runtime logs for reload/polling behavior.
 - [x] Identify that switching out of generate mode cleared the confirmed drawn polygon from state/storage.
