@@ -25,8 +25,9 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
 
         let newPoints = [];
         if (shape === 'circle') {
-            for (let i = 0; i < 32; i++) {
-                const angle = (i / 32) * Math.PI * 2;
+            const segments = 128;
+            for (let i = 0; i < segments; i++) {
+                const angle = (i / segments) * Math.PI * 2;
                 newPoints.push({
                     lat: centerLatlng.lat + (Math.cos(angle) * radiusLat),
                     lng: centerLatlng.lng + (Math.sin(angle) * radiusLng)

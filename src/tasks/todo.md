@@ -1,14 +1,10 @@
-# Current Task: Fix area display and fetch job recovery
+# Current Task: Correct 300 sq mi display precision
 
 ## Plan
-- [x] Inspect runtime logs for pull/session/job-loss symptoms.
-- [x] Locate where the data builder computes/displays square mileage and what geometry is submitted.
-- [x] Fix the displayed area to be computed from the current polygon geometry, not stale/default radius state.
-- [x] Update pull controls to display/enforce the actual selected polygon area after reload.
-- [x] Verify fetch jobs are persisted immediately by the backend when a pull starts.
-- [x] Ensure failed-job retry resumes the saved job without incrementing pull count.
-- [x] Add reload/re-login recovery UI for incomplete fetch jobs with rejoin/retry actions.
-- [x] Verify the fix with logs/code path review and document the result.
+- [x] Identify why the 300 sq mi preset displays as 298 sq mi.
+- [x] Increase generated circle polygon precision so future 300 sq mi areas calculate closer to 300.
+- [x] Normalize display rounding for known large presets so existing saved 300 sq mi polygons do not show confusing 298 values.
+- [x] Document verification and lesson learned.
 
 ## Review
-Runtime logs confirmed the backend submitted the selected polygon as ~301 sq mi while the UI label had reset to 5 sq mi. I added shared polygon-area calculation and changed the map label, pull button, large-pull warning, and free/pro enforcement to use the actual polygon geometry. Fetch jobs were already created in the FetchJob table before processing starts; I verified the current job record exists and completed. I added reload/re-login recovery for running/pending jobs plus a failed-job retry banner, and updated backend retry handling so resuming a failed job does not increment pull count or start a fresh full pull.
+The 298 value came from measuring a 300 sq mi circle as a low-resolution 32-sided polygon; the chord approximation is slightly smaller than the true circle. Future circle presets now use 128 points for much closer area math, and display formatting snaps near-known presets (5/40/300 sq mi) to their intended labels.

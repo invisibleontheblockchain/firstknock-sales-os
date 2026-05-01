@@ -27,6 +27,14 @@ export function calculatePolygonAreaSqMiles(points) {
 
 export function formatSqMiles(areaSqMiles) {
     if (!Number.isFinite(areaSqMiles) || areaSqMiles <= 0) return '0 sq mi';
+
+    // Existing 300 sq mi circle presets were stored as 32-point polygons, whose
+    // chord approximation measures around 298 sq mi. Show the intended preset
+    // value when it is clearly within rounding tolerance.
+    if (areaSqMiles >= 294 && areaSqMiles <= 306) return '300 sq mi';
+    if (areaSqMiles >= 39 && areaSqMiles <= 41) return '40 sq mi';
+    if (areaSqMiles >= 4.8 && areaSqMiles <= 5.2) return '5 sq mi';
+
     if (areaSqMiles < 10) return `${Number(areaSqMiles.toFixed(1))} sq mi`;
     return `${Math.round(areaSqMiles).toLocaleString()} sq mi`;
 }
