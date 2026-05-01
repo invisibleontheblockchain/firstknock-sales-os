@@ -2,8 +2,6 @@ import React from 'react';
 
 export default function DataStatusIndicator({ user }) {
     const hasPulledData = !!user?.has_pulled_data;
-    const propertyCount = user?.territory_property_count || 0;
-
     if (!user) return null;
 
     return (
@@ -14,7 +12,7 @@ export default function DataStatusIndicator({ user }) {
         }`}>
             <div className={`w-1.5 h-1.5 rounded-full ${hasPulledData ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
             {hasPulledData ? (
-                <span>{propertyCount > 0 ? propertyCount.toLocaleString() : 'LIVE'}</span>
+                <span>DATA READY</span>
             ) : (
                 <span>NO DATA</span>
             )}
