@@ -1,14 +1,10 @@
-# Current Task: Fix build errors from map provider changes
+# Current Task: Make saved routes render in distinct colors
 
 ## Plan
-- [x] Review lessons and runtime logs before changing code.
-- [x] Inspect Kevin's user/team/route records and compare against healthy route records.
-- [x] Identify and patch any Kevin route visibility/active/assignment fields that block auto-rendering.
-- [x] Audit all map provider URL/deep-link creation paths.
-- [x] Implement one shared maps-provider/address-link helper and wire Checklist, Knock, route views, onboarding, and Settings to it.
-- [x] Add ingestion diagnostics for per-sub-circle counts, coverage gaps, dedupe impact, result caps, and merge totals.
-- [x] Verify Kevin route hydration, provider switching, address URL formatting, and ingestion diagnostics with logs/tests.
-- [x] Fix any verification-time issues before marking complete.
+- [x] Find where route polylines/markers choose their colors.
+- [x] Identify why routes fall back to grey.
+- [x] Patch color assignment so every route gets a stable distinct color.
+- [x] Verify the route-color logic and document the result.
 
 ## Review
-Kevin route hydration now returns all tested migrated hashes for `kevin@reifenvironmental.com`, so saved routes can populate with coordinates on map load instead of only after manual route clicks. Map links now use one shared address formatter/provider helper across Checklist, Knock cards, rep/manager detail sheets, and route export helpers; Settings exposes an immediate Maps Provider switch. Large-area ingestion now logs `GRID_COVERAGE` at job creation and `SUB_CIRCLE_STATS` per processed cell, including raw/mapped counts, polygon/filter/dupe drops, and pagination-cap warnings.
+Routes were grey because completed saved routes were explicitly forced to `#6b7280`. That override is removed, and both saved and generated routes now use a stable hue rotation based on route number so each visible route gets its own color instead of repeating a short palette.

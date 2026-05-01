@@ -10,6 +10,11 @@ import { CONFIDENCE_COLORS } from '@/components/map/ConfidenceLegend';
  * hundreds of React-managed <CircleMarker> + <Tooltip permanent> combos.
  * This eliminates the ~15s delay when activating a route with many stops.
  */
+const getRouteColor = (route, routeNumber = 1) => {
+    if (route?.display_color) return route.display_color;
+    return `hsl(${((routeNumber - 1) * 47) % 360}, 85%, 58%)`;
+};
+
 function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setSelectedProperty }) {
     const map = useMap();
     const layerRef = useRef(null);
@@ -25,8 +30,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             fittedRouteIdRef.current = activeRoute.id;
         }
 
-        const isCompleted = activeRoute.isCompleted;
-        const routeColor = isCompleted ? '#6b7280' : BRAND.gold;
+        const routeColor = getRouteColor(activeRoute, activeRoute.route_number || 1);
 
         // Clean up previous layer
         if (layerRef.current) {
@@ -73,7 +77,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             // Circle pin (canvas-rendered, fast)
             const circle = L.circleMarker([p.lat, p.lng], {
                 radius: 5,
-                fillColor: isFirst ? '#22c55e' : (isCompleted ? '#6b7280' : '#f97316'),
+                fillColor: isFirst ? '#22c55e' : routeColor,
                 fillOpacity: 1,
                 color: '#fff',
                 weight: 1.5,
@@ -107,7 +111,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
                 layerRef.current = null;
             }
         };
-    }, [map, activeRoute, BRAND.gold, mapSettings.lineWidth, mapSettings.lineOpacity, lineDashArray, setSelectedProperty]);
+    }, [map, activeRoute, mapSettings.lineWidth, mapSettings.lineOpacity, lineDashArray, setSelectedProperty]);
 
     return null; // Imperative layer — no React DOM output
 }
@@ -354,14 +358,9 @@ function SavedRoutesLayer({
         (allSavedRoutes || hydratedSavedRoutes).forEach((r, i) => routeNumberMap.set(r.id, i + 1));
 
         filteredRoutes.forEach((route, routeIdx) => {
-            let repColor = route.assigned_to
-                ? (repColors[route.assigned_to] || '#3b82f6')
-                : ROUTE_COLORS[routeIdx % ROUTE_COLORS.length];
-
-            if (route.isCompleted) repColor = '#6b7280';
-
-            const isUnassigned = !route.assigned_to;
             const globalNumber = routeNumberMap.get(route.id) || (routeIdx + 1);
+            const repColor = getRouteColor(route, globalNumber);
+            const isUnassigned = !route.assigned_to;
             const centerProp = route.properties[Math.floor(route.properties.length / 2)];
 
             // Center marker with route number
@@ -545,7 +544,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
             {/* --- GENERATE MODE: New Routes --- */}
             <LayerGroup>
                 {mode === 'generate' && !activeRoute && filteredRoutes.length > 0 && filteredRoutes.map((route, rIdx) => {
-                    const routeColor = ROUTE_COLORS[rIdx % ROUTE_COLORS.length];
+                    const routeColor = getRouteColor(route, rIdx + 1);
                     const centerProp = route.properties[Math.floor(route.properties.length / 2)];
 
                     return (
