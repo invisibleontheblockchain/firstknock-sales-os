@@ -216,10 +216,15 @@ export default function RouteCommandPanel({
                                                                     const baseRoutes = (filteredRoutes && filteredRoutes.length > 0) ? filteredRoutes : generatedRoutes;
                                                                     const seen = new Set();
                                                                     const allProps = [];
-                                                                    baseRoutes.forEach(r => (r.properties || []).forEach(p => {
-                                                                        const key = p.address_hash || p.id;
-                                                                        if (key && !seen.has(key)) { seen.add(key); allProps.push(p); }
-                                                                    }));
+                                                                    baseRoutes.forEach(r => {
+                                                                        const props = r.allProperties || r.properties || [];
+                                                                        console.log(`[RoutePipeline] merge_all_input route=${r.id} hashes=${r.property_hashes?.length || 0} props=${props.length}`);
+                                                                        props.forEach(p => {
+                                                                            const key = p.address_hash || p.id;
+                                                                            if (key && !seen.has(key)) { seen.add(key); allProps.push(p); }
+                                                                        });
+                                                                    });
+                                                                    console.log(`[RoutePipeline] after_merge_all_union routes=${baseRoutes.length} union=${allProps.length}`);
                                                                     if (allProps.length === 0) return;
                                                                     const merged = generateOptimizedRoutes(allProps, allProps.length, null, [], { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest' });
                                                                     if (merged && merged.length > 0) {

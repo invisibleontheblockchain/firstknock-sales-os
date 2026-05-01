@@ -435,7 +435,7 @@ export default function Home() {
                     soldMonths: 'all',
                     limit: 100000
                 });
-                console.log(`[Home] Fetched ${items.length} Neon properties in ${Math.round(performance.now() - t0)}ms`);
+                console.log(`[RoutePipeline] after_ingestion_query count=${items.length} zips=${allZips.join(',') || 'none'} elapsed_ms=${Math.round(performance.now() - t0)}`);
                 return items;
             } catch (e) {
                 console.log('[Home] Error fetching Neon properties:', e);
@@ -1139,7 +1139,7 @@ export default function Home() {
 
             const initialSet = Array.from(combinedMap.values());
             const initialCount = initialSet.length;
-            console.log(`[generateRoutes] Initial: ${initialCount} (base=${baseProps.length}, dynamic=${processedDynamic.length})`);
+            console.log(`[RoutePipeline] before_route_command initial=${initialCount} base=${baseProps.length} dynamic=${processedDynamic.length} assigned=${assignedSet.size} polygon=${activeGenerationPolygon ? activeGenerationPolygon.length : 0} zipFilter=${zipCodeFilter || 'none'}`);
             setGenerationStage(`Filtering ${initialCount.toLocaleString()} properties...`);
             toast.loading(`Loaded ${initialCount.toLocaleString()} properties. Filtering...`, { id: 'build-routes' });
             await new Promise(r => setTimeout(r, 30));
@@ -1187,7 +1187,8 @@ export default function Home() {
                     start_location: start
                 })).data.routes
                 : await new Promise(resolve => setTimeout(() => resolve(generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: routeConfig.returnToStart, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights)), 50));
-            console.log(`[generateRoutes] Done in ${Math.round(performance.now() - optStart)}ms: ${generated.length} routes`);
+            const generatedDoorCount = Array.isArray(generated) ? generated.reduce((sum, route) => sum + (route.properties?.length || route.houseCount || 0), 0) : 0;
+            console.log(`[RoutePipeline] after_route_command routes=${generated?.length || 0} doors=${generatedDoorCount} elapsed_ms=${Math.round(performance.now() - optStart)}`);
             if (!generated || generated.length === 0) { toast.dismiss('build-routes'); setGenerationError(`Optimizer returned 0 routes from ${finalCount.toLocaleString()} properties. Try relaxing filters or pulling fresh data.`); return; }
             if (generated['_cooldownInfo']) setCooldownInfo(generated['_cooldownInfo']);
             setRoutes(generated);

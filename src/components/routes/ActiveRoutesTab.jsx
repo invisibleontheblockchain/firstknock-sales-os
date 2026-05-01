@@ -81,6 +81,7 @@ export default function ActiveRoutesTab({
         const allProps = [];
         for (const route of selectedRoutes) {
             const props = route.allProperties || route.properties || [];
+            console.log(`[RoutePipeline] merge_input route=${route.id} hashes=${route.property_hashes?.length || 0} props=${props.length}`);
             for (const p of props) {
                 const key = p.address_hash || p.id;
                 if (key && !seen.has(key)) {
@@ -89,6 +90,7 @@ export default function ActiveRoutesTab({
                 }
             }
         }
+        console.log(`[RoutePipeline] after_merge_union selected=${selectedRoutes.length} union=${allProps.length}`);
 
         if (allProps.length === 0) {
             toast.error("Selected routes have no properties to merge");
