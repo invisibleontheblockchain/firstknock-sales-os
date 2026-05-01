@@ -25,10 +25,14 @@ const LINE_STYLES = [
 ];
 
 const STATUS_FILTERS = [
-  { id: 'all', label: 'All', color: '#E5E5E5' },
-  { id: 'eligible', label: 'Not Visited', color: '#404040' },
-  { id: 'sold', label: 'Sold', color: '#00F5A0' },
-  { id: 'rejected', label: 'Undecided', color: '#FF6B6B' },
+  { id: 'all', label: 'All Statuses', color: '#E5E5E5' },
+  { id: 'eligible', label: 'ELIGIBLE', color: '#404040' },
+  { id: 'sold', label: 'SOLD', color: '#22c55e' },
+  { id: 'no_answer', label: 'NO_ANSWER', color: '#3b82f6' },
+  { id: 'callback', label: 'CALLBACK', color: '#eab308' },
+  { id: 'hard_no', label: 'HARD_NO', color: '#8B5CF6' },
+  { id: 'not_moved_in', label: 'NOT_MOVED_IN', color: '#f97316' },
+  { id: 'dm_not_home', label: 'DM_NOT_HOME', color: '#06b6d4' },
 ];
 
 const MAP_STYLES = [
@@ -316,15 +320,16 @@ export default function MapSettingsPanel({
             {tab === 'filters' && (<>
               {/* Status Filter */}
               <div>
-                <SectionLabel>Status Visibility</SectionLabel>
-                <div className="grid grid-cols-2 gap-2">
+                <SectionLabel>Pin Status Filter</SectionLabel>
+                <p className="text-[9px] text-gray-600 mb-3">Shows/hides property pins by decision status</p>
+                <div className="space-y-2">
                   {STATUS_FILTERS.map(f => (
                     <button key={f.id} onClick={() => setLiveQuickFilter(f.id)}
-                      className={`flex items-center gap-2 px-3 py-3 rounded-xl text-xs font-bold transition-all border ${local.quickFilter === f.id ? 'bg-white/[0.08] border-white/15 text-white' : 'bg-white/[0.02] border-white/[0.04] text-gray-500 hover:border-white/10'}`}
+                      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-bold transition-all border w-full ${local.quickFilter === f.id ? 'bg-white/[0.08] border-white/15 text-white' : 'bg-white/[0.02] border-white/[0.04] text-gray-500 hover:border-white/10'}`}
                     >
-                      <div className="w-2.5 h-2.5 rounded-full" style={{ background: f.color }} />
-                      {f.label}
-                      {local.quickFilter === f.id ? <Eye className="w-3 h-3 ml-auto" /> : <EyeOff className="w-3 h-3 ml-auto opacity-30" />}
+                      <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: f.color }} />
+                      <span className="flex-1 text-left">{f.label}</span>
+                      {local.quickFilter === f.id ? <Eye className="w-4 h-4 shrink-0" /> : <EyeOff className="w-4 h-4 shrink-0 opacity-30" />}
                     </button>
                   ))}
                 </div>
@@ -332,16 +337,16 @@ export default function MapSettingsPanel({
 
               {/* Toggles */}
               <div>
-                <SectionLabel>Display Options</SectionLabel>
-                <div className="space-y-1 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-                  <Row label="Show All Properties" sub="Pins not in any route">
-                    <Switch checked={local.showAllProperties} onCheckedChange={setLiveShowAll} />
-                  </Row>
-                  <div className="border-t border-white/[0.04] my-2" />
-                  <Row label="Highlight Recently Sold" sub="Magenta for last 30 days">
-                    <Switch checked={local.highlightRecentlySold} onCheckedChange={setLiveHighlight} />
-                  </Row>
-                </div>
+               <SectionLabel>Extra Display Options</SectionLabel>
+               <div className="space-y-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                 <Row label="Show All Properties" sub="Include pins not in any route">
+                   <Switch checked={local.showAllProperties} onCheckedChange={setLiveShowAll} />
+                 </Row>
+                 <div className="border-t border-white/[0.04] my-2" />
+                 <Row label="Highlight Recently Sold" sub="Last 30 days in magenta">
+                   <Switch checked={local.highlightRecentlySold} onCheckedChange={setLiveHighlight} />
+                 </Row>
+               </div>
               </div>
 
               {/* Sold Date */}
