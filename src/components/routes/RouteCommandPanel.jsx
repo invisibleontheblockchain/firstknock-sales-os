@@ -105,11 +105,11 @@ export default function RouteCommandPanel({
             <div
                 onPointerDown={(e) => e.stopPropagation()}
                 onTouchStart={(e) => e.stopPropagation()}
-                className="fixed top-0 bottom-0 left-0 w-full max-w-[100dvw] md:max-w-xl overflow-hidden flex flex-col z-[3000] backdrop-blur-xl shadow-2xl animate-in slide-in-from-left duration-300 border-r border-white/10 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+                className="fixed top-0 bottom-0 left-0 right-0 w-dvw max-w-[100dvw] md:right-auto md:max-w-xl overflow-hidden flex flex-col z-[3000] backdrop-blur-xl shadow-2xl animate-in slide-in-from-left duration-300 border-r border-white/10 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
                 style={{ background: 'rgba(10, 10, 10, 0.98)' }}
             >
                 {/* Header */}
-                <div className="p-4 border-b flex justify-between items-center shrink-0 min-w-0" style={{ borderColor: BRAND.charcoal }}>
+                <div className="px-3 py-3 sm:p-4 border-b flex justify-between items-center shrink-0 min-w-0 gap-2" style={{ borderColor: BRAND.charcoal }}>
                     <div className="min-w-0">
                         <h2 className="flex items-center gap-2 text-base sm:text-lg font-bold tracking-wide truncate" style={{ color: BRAND.gold }}>
                             <Navigation className="w-5 h-5 shrink-0" />
@@ -123,18 +123,18 @@ export default function RouteCommandPanel({
                     <button
                         onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
-                        className="p-3 -mr-1 hover:bg-white/5 rounded-lg transition-colors touch-manipulation"
+                        className="p-2 sm:p-3 -mr-1 hover:bg-white/5 rounded-lg transition-colors touch-manipulation shrink-0"
                     >
                         <X className="w-5 h-5" style={{ color: BRAND.offWhite }} />
                     </button>
                 </div>
 
                 {/* Tab Navigation */}
-                <div className="flex border-b px-2 sm:px-4 shrink-0 overflow-x-auto no-scrollbar" style={{ borderColor: BRAND.charcoal }}>
+                <div className="grid grid-cols-3 border-b px-1 sm:px-4 shrink-0 overflow-hidden" style={{ borderColor: BRAND.charcoal }}>
                     <button
                         onClick={() => !activeRouteId && mode === 'generate' && setActiveTab('new')}
                         disabled={!!activeRouteId || mode !== 'generate'}
-                        className={`flex-1 min-w-[92px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${(activeRouteId || mode !== 'generate') ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'new'
+                        className={`min-w-0 py-3 text-[9px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${(activeRouteId || mode !== 'generate') ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'new'
                             ? 'border-yellow-500 text-yellow-500'
                             : 'border-transparent text-gray-500 hover:text-white'
                             }`}
@@ -148,7 +148,7 @@ export default function RouteCommandPanel({
                     <button
                         onClick={() => !activeRouteId && setActiveTab('active')}
                         disabled={!!activeRouteId}
-                        className={`flex-1 min-w-[100px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeRouteId ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'active'
+                        className={`min-w-0 py-3 text-[9px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeRouteId ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'active'
                             ? 'border-blue-500 text-blue-500'
                             : 'border-transparent text-gray-500 hover:text-white'
                             }`}
@@ -162,7 +162,7 @@ export default function RouteCommandPanel({
                     <button
                         onClick={() => !activeRouteId && setActiveTab('team')}
                         disabled={!!activeRouteId}
-                        className={`flex-1 min-w-[100px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeRouteId ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'team'
+                        className={`min-w-0 py-3 text-[9px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeRouteId ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'team'
                             ? 'border-green-500 text-green-500'
                             : 'border-transparent text-gray-500 hover:text-white'
                             }`}
@@ -556,7 +556,7 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave,
 
     return (
         <div
-            className="p-4 rounded-xl border transition-all relative overflow-hidden w-full box-border"
+            className="p-2.5 sm:p-4 rounded-xl border transition-all relative overflow-hidden w-full max-w-full box-border"
             style={{
                 background: isActive ? `${BRAND.gold}15` : BRAND.charcoal,
                 borderColor: isActive ? BRAND.gold : '#333'
@@ -570,15 +570,15 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave,
                 </div>
             )}
 
-            <button onClick={onSelect} className={`w-full text-left ${rank <= 3 ? 'pl-8' : ''}`}>
+            <button onClick={onSelect} className={`w-full max-w-full text-left overflow-hidden ${rank <= 3 ? 'pl-8' : ''}`}>
                 <div className="flex items-center justify-between mb-2 gap-2 min-w-0">
                     <span className="font-bold text-white flex items-center gap-2 min-w-0 flex-1">
                         {rank > 3 && <span className="text-gray-500 text-xs">#{rank}</span>}
                         <span className="truncate">{displayName}</span>
                     </span>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0 max-w-[120px] sm:max-w-none overflow-hidden">
                         {dateRange && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 truncate max-w-[80px] sm:max-w-none">
                                 {dateRange}
                             </span>
                         )}
@@ -659,12 +659,12 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
     const displayName = routeNumber && (!route.name || /^Route\s+\d+$/i.test(route.name)) ? `Route ${routeNumber}` : route.name;
 
     return (
-        <div className="relative group">
+        <div className="relative group max-w-full overflow-hidden">
             <div
                 onClick={onSelect}
                 role="button"
                 tabIndex={0}
-                className="w-full p-3 rounded-xl border transition-all text-left hover:border-gray-600 cursor-pointer"
+                className="w-full max-w-full p-2.5 sm:p-3 rounded-xl border transition-all text-left hover:border-gray-600 cursor-pointer overflow-hidden"
                 style={{
                     background: isActive ? `${BRAND.gold}15` : '#151515',
                     borderColor: isActive ? BRAND.gold : '#222',
@@ -672,22 +672,22 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                     borderLeftColor: repColor
                 }}
             >
-                <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0 pr-12">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between min-w-0 gap-2 pr-12 sm:pr-0">
+                    <div className="flex-1 min-w-0">
                         {editing ? (
-                            <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                            <div className="flex items-center gap-1 min-w-0" onClick={e => e.stopPropagation()}>
                                 <input
                                     value={newName}
                                     onChange={e => setNewName(e.target.value)}
                                     onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setEditing(false); }}
-                                    className="bg-black/60 border border-gray-600 text-white text-sm font-bold rounded px-2 py-0.5 w-full"
+                                    className="bg-black/60 border border-gray-600 text-white text-sm font-bold rounded px-2 py-0.5 w-full min-w-0"
                                     autoFocus
                                 />
                                 <button onClick={handleRename} className="p-1 text-green-500 hover:text-green-400"><Check className="w-4 h-4" /></button>
                                 <button onClick={() => { setNewName(route.name); setEditing(false); }} className="p-1 text-gray-500 hover:text-white"><X className="w-4 h-4" /></button>
                             </div>
                         ) : (
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
                                 {routeNumber && (
                                     <span className="shrink-0 w-6 h-6 rounded-md bg-white/10 border border-white/20 flex items-center justify-center text-[11px] font-bold text-yellow-400">
                                         {routeNumber}
@@ -707,9 +707,9 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                             <span className="text-[10px] text-gray-500">{route.assigned_to_name}</span>
                         )}
                     </div>
-                    <div className="flex flex-col items-end gap-1.5 shrink-0">
+                    <div className="flex flex-row sm:flex-col items-center sm:items-end gap-1.5 min-w-0 sm:shrink-0">
                         {dateRange && (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 leading-none">
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 leading-none truncate max-w-[120px]">
                                 {dateRange}
                             </span>
                         )}
@@ -738,7 +738,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
             {onDelete && (
                 <button
                     onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                    className="absolute top-2 right-2 p-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-500 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute top-2 right-2 p-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-500 rounded opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity touch-manipulation"
                     title="Delete Route"
                 >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -747,7 +747,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
             {onReoptimize && (
                 <button
                     onClick={(e) => { e.stopPropagation(); onReoptimize(route); }}
-                    className="absolute top-2 right-10 p-1.5 bg-blue-500/20 hover:bg-blue-500/40 text-blue-400 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute top-2 right-10 p-1.5 bg-blue-500/20 hover:bg-blue-500/40 text-blue-400 rounded opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity touch-manipulation"
                     title={`Re-optimize order (${routeConfig?.walkingPattern?.replace(/_/g, ' ') || 'current pattern'})`}
                 >
                     <RefreshCw className="w-3.5 h-3.5" />

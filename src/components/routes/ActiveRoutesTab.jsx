@@ -166,16 +166,16 @@ export default function ActiveRoutesTab({
     return (
         <>
             {/* Header with actions */}
-            <div className="flex justify-between items-center mb-2 px-1 gap-2 min-w-0 overflow-hidden">
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wide shrink-0">All Campaigns</span>
-                <div className="flex items-center gap-1 sm:gap-2 min-w-0 overflow-x-auto no-scrollbar">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-2 px-1 gap-2 min-w-0 overflow-hidden">
+                <span className="text-[11px] sm:text-xs font-bold text-gray-500 uppercase tracking-wide shrink-0">All Campaigns</span>
+                <div className="grid grid-cols-2 sm:flex sm:items-center gap-1 sm:gap-2 min-w-0 w-full sm:w-auto">
                     {isMultiSelect && (
                         <>
                             <Button
                                 onClick={handleMerge}
                                 size="sm"
                                 disabled={selectedIds.size < 2}
-                                className="h-7 text-[10px] bg-purple-600 hover:bg-purple-500 text-white font-bold px-3"
+                                className="h-7 text-[9px] sm:text-[10px] bg-purple-600 hover:bg-purple-500 text-white font-bold px-2 sm:px-3 whitespace-nowrap"
                             >
                                 <Merge className="w-3 h-3 mr-1" />
                                 MERGE {selectedNumbers || selectedIds.size}
@@ -184,7 +184,7 @@ export default function ActiveRoutesTab({
                                 onClick={() => { setMergeMode(false); setSelectedIds(new Set()); }}
                                 variant="ghost"
                                 size="sm"
-                                className="h-6 text-[10px] text-gray-400 hover:text-white px-2"
+                                className="h-7 text-[9px] sm:text-[10px] text-gray-400 hover:text-white px-2 whitespace-nowrap"
                             >
                                 <X className="w-3 h-3 mr-1" /> CANCEL
                             </Button>
@@ -195,7 +195,7 @@ export default function ActiveRoutesTab({
                             onClick={() => setMergeMode(true)}
                             variant="ghost"
                             size="sm"
-                            className="h-6 text-[9px] sm:text-[10px] text-purple-400 hover:text-purple-300 hover:bg-purple-900/20 px-1.5 sm:px-2 whitespace-nowrap"
+                            className="h-7 text-[9px] sm:text-[10px] text-purple-400 hover:text-purple-300 hover:bg-purple-900/20 px-1.5 sm:px-2 whitespace-nowrap w-full sm:w-auto justify-center"
                         >
                             <Merge className="w-3 h-3 mr-1" /> SELECT TO MERGE
                         </Button>
@@ -209,7 +209,7 @@ export default function ActiveRoutesTab({
                             }}
                             variant="ghost"
                             size="sm"
-                            className="h-6 text-[9px] sm:text-[10px] text-red-500 hover:text-red-400 hover:bg-red-900/20 px-1.5 sm:px-2 whitespace-nowrap"
+                            className="h-7 text-[9px] sm:text-[10px] text-red-500 hover:text-red-400 hover:bg-red-900/20 px-1.5 sm:px-2 whitespace-nowrap w-full sm:w-auto justify-center"
                         >
                             <X className="w-3 h-3 mr-1" /> DELETE ALL
                         </Button>
@@ -316,9 +316,9 @@ function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRou
 
     return (
         <div className="space-y-2">
-            <button onClick={() => setIsExpanded(!isExpanded)} className="flex items-center gap-2 px-1 w-full text-left">
+            <button onClick={() => setIsExpanded(!isExpanded)} className="flex items-center gap-2 px-1 w-full text-left min-w-0">
                 {icon}
-                <span className="text-xs font-bold text-gray-400 uppercase">{title}</span>
+                <span className="text-xs font-bold text-gray-400 uppercase truncate min-w-0">{title}</span>
                 <Badge variant="outline" className="bg-white/10 text-white text-[9px]">{routes.length}</Badge>
                 <ChevronRight className={`w-4 h-4 text-gray-600 ml-auto transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
             </button>
@@ -377,7 +377,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
     const displayName = routeNumber && (!route.name || /^Route\s+\d+$/i.test(route.name)) ? `Route ${routeNumber}` : route.name;
 
     return (
-        <div className={`relative group flex items-start gap-2 min-w-0 max-w-full overflow-hidden ${isSelected ? 'ring-2 ring-purple-500 rounded-xl' : ''}`}>
+        <div className={`relative group flex items-start gap-1.5 sm:gap-2 min-w-0 max-w-full overflow-hidden ${isSelected ? 'ring-2 ring-purple-500 rounded-xl' : ''}`}>
             {/* Multi-select checkbox */}
             {isMultiSelect && (
                 <div className="flex items-center pt-4 pl-1 shrink-0" onClick={e => e.stopPropagation()}>
@@ -394,7 +394,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                     onClick={isMultiSelect ? onToggleSelect : onSelect}
                     role="button"
                     tabIndex={0}
-                    className="w-full max-w-full p-3 rounded-xl border transition-all text-left hover:border-gray-600 cursor-pointer overflow-hidden"
+                    className="w-full max-w-full p-2.5 sm:p-3 rounded-xl border transition-all text-left hover:border-gray-600 cursor-pointer overflow-hidden"
                     style={{
                         background: isActive ? `${BRAND.gold}15` : '#151515',
                         borderColor: isActive ? BRAND.gold : '#222',
@@ -402,22 +402,22 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                         borderLeftColor: repColor
                     }}
                 >
-                    <div className="flex items-center justify-between min-w-0 gap-2">
-                        <div className="flex-1 min-w-0 pr-12">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between min-w-0 gap-2 pr-12 sm:pr-0">
+                        <div className="flex-1 min-w-0">
                             {editing ? (
-                                <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                <div className="flex items-center gap-1 min-w-0" onClick={e => e.stopPropagation()}>
                                     <input
                                         value={newName}
                                         onChange={e => setNewName(e.target.value)}
                                         onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setEditing(false); }}
-                                        className="bg-black/60 border border-gray-600 text-white text-sm font-bold rounded px-2 py-0.5 w-full"
+                                        className="bg-black/60 border border-gray-600 text-white text-sm font-bold rounded px-2 py-0.5 w-full min-w-0"
                                         autoFocus
                                     />
                                     <button onClick={handleRename} className="p-1 text-green-500 hover:text-green-400"><Check className="w-4 h-4" /></button>
                                     <button onClick={() => { setNewName(route.name); setEditing(false); }} className="p-1 text-gray-500 hover:text-white"><X className="w-4 h-4" /></button>
                                 </div>
                             ) : (
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5 min-w-0">
                                     {routeNumber && (
                                         <span className="shrink-0 w-6 h-6 rounded-md bg-white/10 border border-white/20 flex items-center justify-center text-[11px] font-bold text-yellow-400">
                                             {routeNumber}
@@ -439,9 +439,9 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                                 <span className="text-[10px] text-gray-500">{route.assigned_to_name}</span>
                             )}
                         </div>
-                        <div className="flex flex-col items-end gap-1.5 shrink-0 max-w-[120px] sm:max-w-none">
+                        <div className="flex flex-row sm:flex-col items-center sm:items-end gap-1.5 min-w-0 sm:shrink-0 sm:max-w-none">
                             {dateRange && (
-                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 leading-none">
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 leading-none truncate max-w-[120px]">
                                     {dateRange}
                                 </span>
                             )}
@@ -471,7 +471,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                     <button
                         onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
-                        className="absolute top-2 right-2 p-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-500 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-2 right-2 p-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-500 rounded opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity touch-manipulation"
                         title="Delete Route"
                     >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -481,7 +481,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                     <button
                         onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReoptimize(route); }}
-                        className="absolute top-2 right-10 p-1.5 bg-blue-500/20 hover:bg-blue-500/40 text-blue-400 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="absolute top-2 right-10 p-1.5 bg-blue-500/20 hover:bg-blue-500/40 text-blue-400 rounded opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity touch-manipulation"
                         title={`Re-optimize order (${routeConfig?.walkingPattern?.replace(/_/g, ' ') || 'current pattern'})`}
                     >
                         <RefreshCw className="w-3.5 h-3.5" />

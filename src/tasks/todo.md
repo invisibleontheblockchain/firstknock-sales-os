@@ -20,9 +20,17 @@
 - [x] Stop mobile close/X taps from bubbling into map gestures that trigger the zoom bug.
 - [x] Verify touched UI paths and document the result.
 
+## Current Plan — Route Command Mobile Optimization
+- [x] Make the Route Command shell/header mobile-safe without changing route behavior.
+- [x] Reflow the Active/Queued header actions so Delete All and merge controls stay visible on small screens.
+- [x] Reflow Queued route cards so route count/status/actions stay inside the viewport.
+- [x] Verify runtime logs after the layout changes and document the result.
+
 ## Review
 Map settings are cleaner: Apple/Google navigation selection now lives in the Map tab and is saved/shared through localStorage plus an app event so both Route Checklist and Knock tab navigation buttons use the same preference. The unwanted Auto-build on Generate setting was removed, and changing the Sold Date Window no longer prompts or auto-generates routes. Navigation URLs now open directions to the selected property in the selected provider instead of generic search.
 
 Cancel import is now wired end-to-end: the loading overlay has a Cancel Import button, `cancelFetchJob` marks the user's active job as cancelled and releases locks, polling stops locally, and `processFetchChunk` checks cancellation before additional writes, completions, or self-chaining.
 
 Map/builder mobile fixes are in place: tapping the bottom Map tab now forces plain Routes/analyze mode and closes Builder/Route Command panels, Route Command only auto-opens New Routes while in Builder mode, mobile panel/card overflow is constrained, and mobile X/delete/optimize taps stop pointer bubbling to avoid map zoom side effects.
+
+Route Command mobile optimization is complete: the panel shell uses full viewport containment, the tab bar no longer has fixed mobile widths, Delete All/merge actions stack into a mobile grid, and Queued route cards now wrap status/count/action content within the viewport. Runtime review showed no new Route Command-specific errors in the interaction path.

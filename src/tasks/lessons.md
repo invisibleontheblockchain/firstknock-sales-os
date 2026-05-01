@@ -35,3 +35,4 @@
 - When adding a conditional JSX element beside an existing element inside a ternary branch, wrap siblings in a fragment; ternary branches must return one JSX expression.
 - Do not mark route/analytics fixes done when a planned edit hit a file-size limit; re-plan around smaller components and document any partial scope honestly.
 - For mobile map overlays, stop both pointer and click propagation on close/action buttons; click-only propagation guards can still leak gestures to Leaflet and cause zoom/pan side effects.
+- When optimizing a mobile panel, check the parent shell, tab row, section header actions, and cards together; fixing only the inner padding can leave fixed-width children off-screen.
