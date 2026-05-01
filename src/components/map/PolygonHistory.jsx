@@ -38,6 +38,10 @@ export default function PolygonHistory({ currentPolygon, mode }) {
         } catch {}
     }, [currentPolygon]);
 
+    useEffect(() => {
+        if (!isBuilder) setSelectedKey(null);
+    }, [isBuilder]);
+
     const currentKey = currentPolygon?.length > 2 ? polygonKey(currentPolygon) : null;
     const visibleHistory = history.filter(entry => polygonKey(entry.polygon) !== currentKey);
 
@@ -47,7 +51,7 @@ export default function PolygonHistory({ currentPolygon, mode }) {
         <>
             {visibleHistory.map((entry, i) => {
                 const key = polygonKey(entry.polygon);
-                const selected = key === selectedKey;
+                const selected = isBuilder && key === selectedKey;
                 const areaLabel = formatSqMiles(calculatePolygonAreaSqMiles(entry.polygon));
 
                 return (
@@ -60,16 +64,14 @@ export default function PolygonHistory({ currentPolygon, mode }) {
                             fillOpacity: selected ? 0.16 : 0.07,
                             weight: selected ? 3 : 1.5,
                             dashArray: selected ? null : '5,5',
-                            interactive: true
+                            interactive: isBuilder
                         }}
-                        eventHandlers={{
+                        eventHandlers={isBuilder ? {
                             click: () => {
                                 setSelectedKey(key);
-                                if (isBuilder) {
-                                    window.dispatchEvent(new CustomEvent('fk-select-polygon-history', { detail: entry }));
-                                }
+                                window.dispatchEvent(new CustomEvent('fk-select-polygon-history', { detail: entry }));
                             }
-                        }}
+                        } : {}}
                     >
                         <Tooltip direction="center" className="bg-black/80 text-gray-300 text-[9px] border border-gray-700 rounded px-1.5 py-0.5 text-center">
                             <div className="font-bold text-white">{areaLabel}</div>

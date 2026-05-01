@@ -52,7 +52,7 @@ export default function MapSettingsPanel({
   showRouteDetails, setShowRouteDetails,
   showAllProperties, setShowAllProperties,
   navigationApp, setNavigationApp,
-  pinSize = 5, setPinSize,
+  pinSize = 4, setPinSize,
   showRouteLines = false, setShowRouteLines,
   mapSettings, setMapSettings,
   soldDateFilter, setSoldDateFilter,
@@ -103,7 +103,7 @@ export default function MapSettingsPanel({
   const handleReset = () => {
     setLocal({
       mapSettings: { pinShape:'circle', colorScheme:'confidence', lineStyle:'dashed', lineWidth:2, lineOpacity:0.5, pinOpacity:0.85, pinBorderWidth:1, pinBorderColor:'#000', showLabels:false, labelType:'number', glowEffect:false, fillStyle:'solid' },
-      pinSize:5, showRouteLines:false, showRouteDetails:true, showAllProperties:false,
+      pinSize:4, showRouteLines:false, showRouteDetails:true, showAllProperties:false,
       mapTheme:'dark', navigationApp:'apple', quickFilter:'all',
       soldDateFilter:null, highlightRecentlySold:false, showZipOverlay:false,
     });
@@ -114,8 +114,8 @@ export default function MapSettingsPanel({
   /* ── tab state ── */
   const [tab, setTab] = useState('appearance');
   const tabs = [
-    { id: 'appearance', label: 'Appearance' },
-    { id: 'filters', label: 'Filters' },
+    { id: 'appearance', label: 'Map' },
+    { id: 'filters', label: 'Data' },
     { id: 'preferences', label: 'Prefs' },
   ];
 
@@ -126,7 +126,10 @@ export default function MapSettingsPanel({
 
         {/* Header */}
         <div className="px-5 py-4 flex items-center justify-between border-b border-white/[0.06] shrink-0">
-          <h2 className="text-sm font-black text-white uppercase tracking-widest">Settings</h2>
+          <div>
+            <h2 className="text-sm font-black text-white uppercase tracking-widest">Map Settings</h2>
+            <p className="text-[10px] text-gray-500 mt-0.5">Display, filters, and route preferences</p>
+          </div>
           <div className="flex items-center gap-2">
             <button onClick={handleReset} className="text-[9px] font-bold text-gray-500 hover:text-white flex items-center gap-1 px-2 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] transition-colors">
               <RotateCcw className="w-3 h-3" /> Reset
@@ -155,7 +158,7 @@ export default function MapSettingsPanel({
 
               {/* Labels */}
               <div>
-                <SectionLabel>Labels & Overlays</SectionLabel>
+                <SectionLabel>Overlays</SectionLabel>
                 <div className="space-y-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
                   {setShowZipOverlay && (
                     <Row label="Zip Boundaries">
@@ -200,15 +203,15 @@ export default function MapSettingsPanel({
 
               {/* Pin Settings */}
               <div>
-                <SectionLabel>Pins</SectionLabel>
+                <SectionLabel>Property Dots</SectionLabel>
                 <div className="space-y-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-                  <Row label="Show Pins">
+                  <Row label="Show route dots">
                     <Switch checked={local.showRouteDetails} onCheckedChange={v => upd('showRouteDetails', v)} />
                   </Row>
-                  <Row label="Pin Size" value={`${local.pinSize}px`}>
+                  <Row label="Dot size" value={`${local.pinSize}px`}>
                     <Slider value={[local.pinSize]} onValueChange={([v]) => upd('pinSize', v)} min={2} max={14} step={1} className="w-full" />
                   </Row>
-                  <Row label="Opacity" value={`${Math.round((ms.pinOpacity || 0.85) * 100)}%`}>
+                  <Row label="Dot opacity" value={`${Math.round((ms.pinOpacity || 0.85) * 100)}%`}>
                     <Slider value={[(ms.pinOpacity || 0.85) * 100]} onValueChange={([v]) => updMs('pinOpacity', v / 100)} min={20} max={100} step={5} className="w-full" />
                   </Row>
                   <Row label="Fill Style">
@@ -228,9 +231,9 @@ export default function MapSettingsPanel({
 
               {/* Route Lines */}
               <div>
-                <SectionLabel>Route Lines</SectionLabel>
+                <SectionLabel>Route Paths</SectionLabel>
                 <div className="space-y-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-                  <Row label="Show Lines">
+                  <Row label="Show paths">
                     <Switch checked={local.showRouteLines} onCheckedChange={v => upd('showRouteLines', v)} />
                   </Row>
                   {local.showRouteLines && (<>

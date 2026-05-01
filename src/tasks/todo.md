@@ -1,9 +1,11 @@
-# Current Task: Fix TerritoryPrompt JSX build error
+# Current Task: Map route display and settings cleanup
 
 ## Plan
-- [x] Inspect the Pull / Fill Gaps JSX block around the build error.
-- [x] Correct the JSX grouping without changing behavior.
-- [x] Document verification and lesson learned.
+- [x] Disable previous-area highlighting/selection on the Routes tab while keeping history visible.
+- [x] Make generated/saved route map colors default to a rotating palette instead of one gold color.
+- [x] Slightly reduce the default map pin size.
+- [x] Clean up the settings panel labels/organization without changing business logic.
+- [x] Document verification results.
 
 ## Review
-The build failed because the non-Pro branch of the conditional returned two sibling JSX nodes (`Pull` button plus conditional `Fill Gaps` button) without a wrapper. I wrapped them in a React fragment, preserving the same behavior while making the JSX valid.
+Previous drawn areas remain visible on Routes but are no longer interactive or highlightable unless Builder mode is active. Route map rendering now uses a rotating default palette for routes without saved display colors, so generated/saved route groups are individually colored by default. Default dot size was reduced from 5 to 4, and the settings panel labels were simplified around Map/Data/Prefs, overlays, property dots, and route paths. I avoided pushing route-color persistence into `pages/Home` because that file is over the edit limit; the renderer-level color default is the smaller safe fix for the requested map behavior.

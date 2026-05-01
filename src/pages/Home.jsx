@@ -198,7 +198,7 @@ export default function Home() {
     });
     const [pinSize, setPinSize] = useState(() => {
         const saved = localStorage.getItem('fk_pinSize_v2');
-        return saved ? JSON.parse(saved) : 5;
+        return saved ? JSON.parse(saved) : 4;
     });
     const [showRouteLines, setShowRouteLines] = useState(() => {
         const saved = localStorage.getItem('fk_showRouteLines_v2');

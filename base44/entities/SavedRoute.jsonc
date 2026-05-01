@@ -1,0 +1,86 @@
+{
+  "name": "SavedRoute",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "PENDING",
+        "ACTIVE",
+        "IN_PROGRESS",
+        "COMPLETED",
+        "ARCHIVED"
+      ],
+      "default": "PENDING"
+    },
+    "assigned_to": {
+      "type": "string",
+      "description": "TeamMember ID this route is assigned to"
+    },
+    "assigned_to_name": {
+      "type": "string",
+      "description": "Cached name for display"
+    },
+    "priority": {
+      "type": "integer",
+      "default": 0,
+      "description": "Queue order - lower number = higher priority"
+    },
+    "display_color": {
+      "type": "string",
+      "description": "Default map color assigned to this route"
+    },
+    "route_number": {
+      "type": "integer",
+      "description": "Default generated route number used for display color and labels"
+    },
+    "property_hashes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "distance": {
+          "type": "number"
+        },
+        "house_count": {
+          "type": "number"
+        },
+        "score": {
+          "type": "number"
+        }
+      }
+    },
+    "start_location": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        },
+        "address": {
+          "type": "string"
+        }
+      }
+    },
+    "manager_id": {
+      "type": "string",
+      "description": "ID of the manager who owns this route"
+    }
+  },
+  "required": [
+    "name",
+    "property_hashes"
+  ]
+}
