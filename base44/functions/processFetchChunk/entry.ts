@@ -17,7 +17,7 @@ import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
 const DATABASE_URL = Deno.env.get("DATABASE_URL");
-const PROPERTY_STORAGE_MODE = ((Deno.env.toObject().PROPERTY_STORAGE_MODE) || "dual").toLowerCase(); // base44 | dual | neon
+const PROPERTY_STORAGE_MODE = ((Deno.env.toObject().PROPERTY_STORAGE_MODE) || "neon").toLowerCase(); // base44 | dual | neon
 
 // Configurable deed lag cutoff — default 120 days per Harris County worst-case research
 // (90-day clerk backlog + 30-60 day RentCast propagation lag)
@@ -390,6 +390,19 @@ Deno.serve(async (req) => {
             const pendingJobs = await base44.asServiceRole.entities.FetchJob.filter({ status: 'pending' }, 'created_date', 1);
             const pendingArr = Array.isArray(pendingJobs) ? pendingJobs : (pendingJobs?.items || []);
             if (pendingArr.length > 0) job = pendingArr[0];
+        }
+
+        if (!job) {
+            const failedJobs = await base44.asServiceRole.entities.FetchJob.filter({ status: 'failed' }, '-updated_date', 5);
+            const failedArr = Array.isArray(failedJobs) ? failedJobs : (failedJobs?.items || []);
+            const resumableFailedJob = failedArr.find(j => /Rate limit exceeded|429/i.test(j.error_message || ''));
+            if (resumableFailedJob) {
+                job = await base44.asServiceRole.entities.FetchJob.update(resumableFailedJob.id, {
+                    status: 'pending',
+                    error_message: 'Resuming after temporary rate limit',
+                    error_log: [...(resumableFailedJob.error_log || []), `[${new Date().toISOString()}] Resuming after temporary Base44 rate limit.`]
+                });
+            }
         }
 
         if (!job) return Response.json({ idle: true, message: 'No active jobs' });
@@ -1370,7 +1383,7 @@ Deno.serve(async (req) => {
         if (stuckArr.length > 0) {
             const job = stuckArr[0];
             const existingLog = job.error_log || [];
-            const isResumable = /RentCast rate limit exhausted|RentCast network failure|RentCast request exhausted retries/i.test(error.message || '');
+            const isResumable = /Rate limit exceeded|429|RentCast rate limit exhausted|RentCast network failure|RentCast request exhausted retries/i.test(error.message || '');
             existingLog.push(`[${new Date().toISOString()}] ${isResumable ? 'STALLED' : 'FATAL'}: ${error.message}`);
             await base44Recovery.asServiceRole.entities.FetchJob.update(job.id, {
                 status: isResumable ? 'pending' : 'failed',
