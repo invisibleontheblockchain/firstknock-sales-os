@@ -118,12 +118,19 @@ export default function RepHome() {
                 const myEmail = (user.email || '').trim().toLowerCase();
                 const isManager = user.app_role === 'manager';
 
+                const selectedRouteId = (() => {
+                    try { return localStorage.getItem('fk_selectedKnockRouteId'); } catch { return null; }
+                })();
+
                 const myRoutes = allRoutes.filter(r => {
-                    // Match by any known ID
+                    // Route Command handoff: always show the route the manager just selected for Knock.
+                    if (selectedRouteId && r.id === selectedRouteId) return true;
+
+                    // Match by any known assignee ID
                     if (r.assigned_to && myIds.has(r.assigned_to)) return true;
 
-                    // Manager in Rep Mode: also show routes they own (created as manager)
-                    if (isManager && r.manager_id === user.id) return true;
+                    // Manager in Rep Mode: also show routes they own or created, including older routes without manager_id.
+                    if (isManager && (r.manager_id === user.id || r.created_by === user.email)) return true;
 
                     // Fallback: match by assigned_to_name (handles cases where assignment was by old/different ID)
                     if (r.assigned_to_name && myName) {
@@ -150,7 +157,7 @@ export default function RepHome() {
                     r.status !== 'COMPLETED' && r.status !== 'ARCHIVED'
                 );
 
-                console.log(`[RepHome] Found ${activeRoutes.length} active routes (${myRoutes.length} total) for IDs: [${[...myIds].join(', ')}], name: "${myName}"`);
+                console.log(`[RepHome] Found ${activeRoutes.length} active routes (${myRoutes.length} matched, ${allRoutes.length} visible) for IDs: [${[...myIds].join(', ')}], selected=${selectedRouteId || 'none'}, name: "${myName}"`);
 
                 // Cache routes for offline
                 if (activeRoutes.length > 0) {
@@ -170,7 +177,8 @@ export default function RepHome() {
 
     // Get the Active Route (Highest priority or most recent active)
     const [manualRouteId, setManualRouteId] = useState(() => {
-        try { return localStorage.getItem('fk_selectedKnockRouteId'); } catch { return null; }
+        const params = new URLSearchParams(window.location.search);
+        return params.get('route') || (() => { try { return localStorage.getItem('fk_selectedKnockRouteId'); } catch { return null; } })();
     });
     const [showRouteList, setShowRouteList] = useState(false);
 

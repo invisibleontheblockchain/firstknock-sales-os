@@ -314,7 +314,7 @@ export default function RouteCommandPanel({
                                 savedRoutes={savedRoutes}
                                 routesByStatus={routesByStatus}
                                 repColors={repColors}
-                                onSelectRoute={async (route) => onSelectRoute(await hydrateRouteForMap(route))}
+                                onSelectRoute={selectRouteForMapAndKnock}
                                 activeRouteId={activeRouteId}
                                 onDeleteRoute={onDeleteRoute}
                                 onDeleteAllRoutes={onDeleteAllRoutes}
