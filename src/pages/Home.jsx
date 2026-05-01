@@ -1986,7 +1986,6 @@ export default function Home() {
                         setSoldDateFilter={setSoldDateFilter}
                         highlightRecentlySold={highlightRecentlySold}
                         setHighlightRecentlySold={setHighlightRecentlySold}
-                        onRequestGenerate={generateRoutes}
                         showZipOverlay={showZipOverlay}
                         setShowZipOverlay={setShowZipOverlay}
                     />

@@ -45,7 +45,23 @@ export default function RepHome() {
     }, []);
 
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me().catch(() => null) });
-    const navigationApp = user?.navigation_app || 'apple';
+    const [localNavigationApp, setLocalNavigationApp] = useState(() => {
+        try { return localStorage.getItem('fk_navigation_app') || 'apple'; } catch { return 'apple'; }
+    });
+    const navigationApp = user?.navigation_app || localNavigationApp || 'apple';
+
+    React.useEffect(() => {
+        if (user?.navigation_app) setLocalNavigationApp(user.navigation_app);
+    }, [user?.navigation_app]);
+
+    React.useEffect(() => {
+        const handler = (event) => {
+            const nextApp = event.detail?.navigationApp;
+            if (nextApp === 'apple' || nextApp === 'google') setLocalNavigationApp(nextApp);
+        };
+        window.addEventListener('fk-navigation-app-changed', handler);
+        return () => window.removeEventListener('fk-navigation-app-changed', handler);
+    }, []);
 
     // 0. Fetch Team Member Profile (to link Auth User -> Team Member ID)
     // Also find ALL matching records (by email or name) to handle duplicates from different invite codes

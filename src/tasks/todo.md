@@ -1,9 +1,10 @@
 # Plan
 
-- [x] Inspect the selected Data Status indicator calculation.
-- [x] Confirm what the displayed number is meant to represent from surrounding usage.
-- [x] Fix the indicator with the smallest UI/data-label change.
-- [x] Verify there are no new runtime errors.
+- [x] Inspect current map settings, data status/settings, checklist navigation, and knock tab navigation preference usage.
+- [x] Identify why Apple/Google Maps preference is not consistently applied in both checklist and knock flows.
+- [x] Remove the unwanted builder auto-build/generate behavior from map/settings controls.
+- [x] Clean up data/map settings labels and controls with minimal UI changes.
+- [x] Verify runtime logs show no new errors after changes.
 
 ## Review
-The indicator was showing `user.territory_property_count`, which is a saved metadata value from prior pulls and can become stale compared with the current map/filters. To avoid displaying an inaccurate number, the status badge now shows a clear `DATA READY` state when data exists and `NO DATA` otherwise.
+Map settings are cleaner: Apple/Google navigation selection now lives in the Map tab and is saved/shared through localStorage plus an app event so both Route Checklist and Knock tab navigation buttons use the same preference. The unwanted Auto-build on Generate setting was removed, and changing the Sold Date Window no longer prompts or auto-generates routes. Navigation URLs now open directions to the selected property in the selected provider instead of generic search.

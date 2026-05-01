@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Sun, Moon, Globe, Mountain, Eye, EyeOff, Circle, Square, Diamond, Layers, Droplets, RotateCcw, Save, Calendar, MapPin, Zap, GitBranch, Type } from 'lucide-react';
+import { X, Sun, Moon, Globe, Mountain, Eye, EyeOff, RotateCcw, Save, Navigation } from 'lucide-react';
 
 /* ── constants ── */
 const REP_COLOR_OPTIONS = ['#FFD700','#ef4444','#22c55e','#3b82f6','#ec4899','#f97316','#8b5cf6','#06b6d4','#eab308','#14b8a6'];
@@ -57,7 +57,6 @@ export default function MapSettingsPanel({
   mapSettings, setMapSettings,
   soldDateFilter, setSoldDateFilter,
   highlightRecentlySold, setHighlightRecentlySold,
-  onRequestGenerate,
   showZipOverlay = false, setShowZipOverlay,
 }) {
   // Local buffered state
@@ -78,10 +77,6 @@ export default function MapSettingsPanel({
   const setLiveSoldDateFilter = (v) => {
     upd('soldDateFilter', v);
     setSoldDateFilter?.(v);
-    if (v !== null && v !== 'all') {
-      const confirmed = window.confirm(`Update filtering to "Sold in last ${v} months"?`);
-      if (confirmed && onRequestGenerate) onRequestGenerate();
-    }
   };
   const setLiveShowAll = (v) => { upd('showAllProperties', v); setShowAllProperties?.(v); };
   const setLiveHighlight = (v) => { upd('highlightRecentlySold', v); setHighlightRecentlySold?.(v); };
@@ -97,6 +92,8 @@ export default function MapSettingsPanel({
     setNavigationApp?.(local.navigationApp);
     setHighlightRecentlySold?.(local.highlightRecentlySold);
     setShowZipOverlay?.(local.showZipOverlay);
+    try { localStorage.setItem('fk_navigation_app', local.navigationApp); } catch {}
+    window.dispatchEvent(new CustomEvent('fk-navigation-app-changed', { detail: { navigationApp: local.navigationApp } }));
     onClose();
   };
 
@@ -199,6 +196,22 @@ export default function MapSettingsPanel({
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Navigation Provider */}
+              <div>
+                <SectionLabel>Navigation App</SectionLabel>
+                <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] p-2">
+                  {[{ id:'apple', label:'Apple Maps' }, { id:'google', label:'Google Maps' }].map(opt => (
+                    <button key={opt.id} onClick={() => { upd('navigationApp', opt.id); setNavigationApp?.(opt.id); try { localStorage.setItem('fk_navigation_app', opt.id); } catch {} window.dispatchEvent(new CustomEvent('fk-navigation-app-changed', { detail: { navigationApp: opt.id } })); }}
+                      className={`flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold transition-all border ${local.navigationApp === opt.id ? 'bg-white/10 border-white/20 text-white' : 'bg-black/20 border-white/[0.04] text-gray-500 hover:border-white/10'}`}
+                    >
+                      <Navigation className="w-3.5 h-3.5" />
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-[9px] text-gray-600 leading-relaxed">Used by Route Checklist and Knock tab navigation buttons.</p>
               </div>
 
               {/* Pin Settings */}
@@ -356,24 +369,11 @@ export default function MapSettingsPanel({
 
             {/* ═══════════ PREFERENCES TAB ═══════════ */}
             {tab === 'preferences' && (<>
-              <div>
-                <SectionLabel>Maps Provider</SectionLabel>
-                <div className="grid grid-cols-2 gap-2">
-                  {[{ id:'apple', label:'Apple Maps' }, { id:'google', label:'Google Maps' }].map(opt => (
-                    <button key={opt.id} onClick={() => { upd('navigationApp', opt.id); setNavigationApp?.(opt.id); }}
-                      className={`py-3 rounded-xl text-xs font-bold transition-all border ${local.navigationApp === opt.id ? 'bg-white/10 border-white/20 text-white' : 'bg-white/[0.02] border-white/[0.04] text-gray-500 hover:border-white/10'}`}
-                    >{opt.label}</button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <SectionLabel>Builder Behavior</SectionLabel>
-                <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-                  <Row label="Auto-build on Generate" sub="Build immediately when clicking Generate">
-                    <Switch checked={!!(ms.autoBuildOnGenerateButton)} onCheckedChange={v => updMs('autoBuildOnGenerateButton', v)} />
-                  </Row>
-                </div>
+              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                <SectionLabel>Saved Preferences</SectionLabel>
+                <p className="text-xs text-gray-400 leading-relaxed">
+                  Navigation now lives under Map so Apple/Google Maps applies consistently to Route Checklist and the Knock tab.
+                </p>
               </div>
             </>)}
 
