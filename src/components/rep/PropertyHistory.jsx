@@ -1,7 +1,7 @@
 import React from 'react';
 import { Badge } from "@/components/ui/badge";
 import { format } from 'date-fns';
-import { CheckCircle2, XCircle, Clock, Home, MessageSquare, Image, MapPin } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, Home, MessageSquare, Image, MapPin, Trash2 } from 'lucide-react';
 
 const STATUS_ICONS = {
     SOLD: { icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10' },
@@ -12,7 +12,7 @@ const STATUS_ICONS = {
     QUALIFIED: { icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10' },
 };
 
-export default function PropertyHistory({ logs }) {
+export default function PropertyHistory({ logs, onCancelSale }) {
     if (!logs || logs.length === 0) {
         return (
             <div className="text-center py-6 border border-dashed border-gray-800 rounded-xl bg-gray-900/20">
@@ -51,13 +51,24 @@ export default function PropertyHistory({ logs }) {
                                     </Badge>
                                 </div>
                             </div>
-                            <div className="text-right">
-                                <p className="text-[10px] text-gray-500">
-                                    {log.created_date ? format(new Date(log.created_date), 'MMM d, yyyy') : 'Unknown'}
-                                </p>
-                                <p className="text-[9px] text-gray-600">
-                                    {log.created_date ? format(new Date(log.created_date), 'h:mm a') : ''}
-                                </p>
+                            <div className="flex items-center gap-2">
+                                {log.parsed_status === 'SOLD' && onCancelSale && (
+                                    <button
+                                        onClick={() => onCancelSale(log)}
+                                        className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] font-bold active:scale-95"
+                                    >
+                                        <Trash2 className="w-3 h-3" />
+                                        Cancel sale
+                                    </button>
+                                )}
+                                <div className="text-right">
+                                    <p className="text-[10px] text-gray-500">
+                                        {log.created_date ? format(new Date(log.created_date), 'MMM d, yyyy') : 'Unknown'}
+                                    </p>
+                                    <p className="text-[9px] text-gray-600">
+                                        {log.created_date ? format(new Date(log.created_date), 'h:mm a') : ''}
+                                    </p>
+                                </div>
                             </div>
                         </div>
 

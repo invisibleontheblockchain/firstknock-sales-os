@@ -320,6 +320,21 @@ export default function RepHome() {
         }
     });
 
+    const cancelSaleMutation = useMutation({
+        mutationFn: (logId) => base44.entities.InteractionLog.delete(logId),
+        onSuccess: (_, logId) => {
+            if (selectedProperty?.address_hash) {
+                queryClient.setQueryData(['propertyHistory', selectedProperty.address_hash], old =>
+                    (old || []).filter(log => log.id !== logId)
+                );
+            }
+            queryClient.invalidateQueries({ queryKey: ['routeLogs'] });
+            queryClient.invalidateQueries({ queryKey: ['allMyLogs'] });
+            queryClient.invalidateQueries({ queryKey: ['propertyHistory'] });
+            toast.success('Sale cancelled');
+        }
+    });
+
     // Complete Route Mutation
     const completeRouteMutation = useMutation({
         mutationFn: () => base44.entities.SavedRoute.update(activeRoute.id, {
@@ -436,6 +451,13 @@ export default function RepHome() {
     }
 
     // --- RENDER HELPERS ---
+
+    const handleCancelSale = (log) => {
+        if (!log?.id) return;
+        if (confirm('Cancel this sale and put the home back on the route?')) {
+            cancelSaleMutation.mutate(log.id);
+        }
+    };
 
     const handleLog = (logData) => {
         if (!selectedProperty && !logData.address_hash) return;
@@ -672,6 +694,7 @@ export default function RepHome() {
                     property={selectedProperty}
                     logs={selectedPropertyLogs}
                     onLog={handleLog}
+                    onCancelSale={handleCancelSale}
                     onPhotoUpload={handlePhotoUpload}
                     uploading={uploading}
                     onClose={() => { setSelectedProperty(null); setSelectedPropertyIndex(null); }}
