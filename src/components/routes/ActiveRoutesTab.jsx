@@ -104,24 +104,55 @@ export default function ActiveRoutesTab({
             );
 
             if (merged && merged.length > 0) {
-                const mergedRoute = {
-                    ...merged[0],
-                    id: 'route_merged_' + Date.now(),
-                    name: `Merged (${selectedRoutes.length} routes, ${allProps.length} doors)`
+                const optimizedRoute = merged[0];
+                const firstRoute = selectedRoutes[0];
+                const sameAssignee = selectedRoutes.every(route => route.assigned_to === firstRoute.assigned_to);
+                const mergedRouteData = {
+                    name: `Merged (${selectedRoutes.length} routes, ${allProps.length} doors)`,
+                    property_hashes: optimizedRoute.properties.map(p => p.address_hash || p.id).filter(Boolean),
+                    metrics: {
+                        distance: optimizedRoute.totalDistance || 0,
+                        house_count: optimizedRoute.houseCount || allProps.length,
+                        score: optimizedRoute.competitivenessScore || 0
+                    },
+                    status: 'ACTIVE',
+                    manager_id: firstRoute.manager_id,
+                    assigned_to: sameAssignee ? firstRoute.assigned_to : null,
+                    assigned_to_name: sameAssignee ? firstRoute.assigned_to_name : null,
+                    start_location: firstRoute.start_location || null
                 };
 
-                // Delete original routes in batch — no individual confirmations
+                // Save the merged route first so Optimize and Knock use a real SavedRoute ID.
+                const savedMergedRoute = await base44.entities.SavedRoute.create(mergedRouteData);
+
+                // Delete original routes only after the replacement exists.
                 await Promise.all(
                     selectedRoutes.map(route => base44.entities.SavedRoute.delete(route.id).catch(() => {}))
                 );
                 queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
 
-                // Save the merged route
-                if (onReplaceRoutes) {
-                    onReplaceRoutes([mergedRoute]);
-                } else {
-                    onSelectRoute(mergedRoute);
-                }
+                const routeForDisplay = {
+                    ...savedMergedRoute,
+                    ...optimizedRoute,
+                    id: savedMergedRoute.id,
+                    name: savedMergedRoute.name,
+                    property_hashes: savedMergedRoute.property_hashes,
+                    metrics: savedMergedRoute.metrics,
+                    status: savedMergedRoute.status,
+                    manager_id: savedMergedRoute.manager_id,
+                    assigned_to: savedMergedRoute.assigned_to,
+                    assigned_to_name: savedMergedRoute.assigned_to_name,
+                    properties: optimizedRoute.properties,
+                    allProperties: optimizedRoute.properties,
+                    houseCount: optimizedRoute.houseCount || allProps.length,
+                    totalDistance: optimizedRoute.totalDistance || 0,
+                    competitivenessScore: optimizedRoute.competitivenessScore || 0,
+                    isSaved: true
+                };
+
+                if (onReplaceRoutes) onReplaceRoutes([]);
+                try { localStorage.setItem('fk_selectedKnockRouteId', routeForDisplay.id); } catch {}
+                onSelectRoute(routeForDisplay);
 
                 toast.success(`Merged ${selectedRoutes.length} routes → ${allProps.length} doors`);
                 setSelectedIds(new Set());

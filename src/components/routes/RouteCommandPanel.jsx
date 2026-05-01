@@ -46,6 +46,14 @@ export default function RouteCommandPanel({
     onReoptimizeRoute,
     routeConfig
 }) {
+    const selectRouteForMapAndKnock = async (route) => {
+        const hydratedRoute = await hydrateRouteForMap(route);
+        if (hydratedRoute?.id) {
+            try { localStorage.setItem('fk_selectedKnockRouteId', hydratedRoute.id); } catch {}
+        }
+        onSelectRoute(hydratedRoute);
+    };
+
     const [activeTab, setActiveTab] = useState(generatedRoutes.length > 0 ? 'new' : 'active');
 
     // Build a global route number map: route.id → #1, #2, #3...
@@ -289,7 +297,7 @@ export default function RouteCommandPanel({
                                                     rank={idx + 1}
                                                     isActive={activeRouteId === route.id}
                                                     recommendation={getRepRecommendations?.(route.properties[0])?.[0]}
-                                                    onSelect={async () => onSelectRoute(await hydrateRouteForMap(route))}
+                                                    onSelect={() => selectRouteForMapAndKnock(route)}
                                                     onSave={(repId, repName) => onSaveRoute(route, repId, repName)}
                                                     logs={logs}
                                                 />
@@ -343,7 +351,7 @@ export default function RouteCommandPanel({
                                                                      routeNumber={routeNumberMap.get(route.id)}
                                                                      repColor={repColors[member.id]}
                                                                      isActive={activeRouteId === route.id}
-                                                                     onSelect={async () => onSelectRoute(await hydrateRouteForMap(route))}
+                                                                     onSelect={() => selectRouteForMapAndKnock(route)}
                                                                      onDelete={() => onDeleteRoute && onDeleteRoute(route)}
                                                                      logs={logs}
                                                                      onReoptimize={onReoptimizeRoute}

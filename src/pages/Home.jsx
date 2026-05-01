@@ -1274,8 +1274,9 @@ export default function Home() {
         const toastId = toast.loading('Optimizing for shortest distance...', { id: 'reoptimize-route' });
         const savedView = mapRef.current ? { center: mapRef.current.getCenter(), zoom: mapRef.current.getZoom() } : null;
         try {
-            const hashes = route.property_hashes || (route.properties || []).map(p => p.address_hash);
-            const routeProperties = hashes.map(hash => effectiveProperties.find(p => p.address_hash === hash)).filter(Boolean);
+            const hashes = route.property_hashes || (route.properties || []).map(p => p.address_hash || p.id);
+            const routePropsByHash = new Map((route.properties || route.allProperties || []).map(p => [p.address_hash || p.id, p]));
+            const routeProperties = hashes.map(hash => effectiveProperties.find(p => p.address_hash === hash) || routePropsByHash.get(hash)).filter(Boolean);
             if (routeProperties.length === 0) { toast.error('No properties found for this route.', { id: 'reoptimize-route' }); return; }
             const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
             const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);

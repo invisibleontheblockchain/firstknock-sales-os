@@ -169,7 +169,9 @@ export default function RepHome() {
     // --- Derived State ---
 
     // Get the Active Route (Highest priority or most recent active)
-    const [manualRouteId, setManualRouteId] = useState(null);
+    const [manualRouteId, setManualRouteId] = useState(() => {
+        try { return localStorage.getItem('fk_selectedKnockRouteId'); } catch { return null; }
+    });
     const [showRouteList, setShowRouteList] = useState(false);
 
     const activeRoute = useMemo(() => {
@@ -661,7 +663,11 @@ export default function RepHome() {
                             {routes.map(route => (
                                 <button
                                     key={route.id}
-                                    onClick={() => { setManualRouteId(route.id); setShowRouteList(false); }}
+                                    onClick={() => {
+                                        setManualRouteId(route.id);
+                                        try { localStorage.setItem('fk_selectedKnockRouteId', route.id); } catch {}
+                                        setShowRouteList(false);
+                                    }}
                                     className={`w-full p-3 rounded-xl border text-left transition-all ${activeRoute?.id === route.id ? 'bg-yellow-500/10 border-yellow-500' : 'bg-gray-900 border-gray-800'
                                         }`}
                                 >
