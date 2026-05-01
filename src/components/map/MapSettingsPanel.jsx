@@ -113,7 +113,6 @@ export default function MapSettingsPanel({
   const tabs = [
     { id: 'appearance', label: 'Map' },
     { id: 'filters', label: 'Data' },
-    { id: 'preferences', label: 'Prefs' },
   ];
 
   return (
@@ -365,16 +364,6 @@ export default function MapSettingsPanel({
                   </div>
                 </div>
               )}
-            </>)}
-
-            {/* ═══════════ PREFERENCES TAB ═══════════ */}
-            {tab === 'preferences' && (<>
-              <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
-                <SectionLabel>Saved Preferences</SectionLabel>
-                <p className="text-xs text-gray-400 leading-relaxed">
-                  Navigation now lives under Map so Apple/Google Maps applies consistently to Route Checklist and the Knock tab.
-                </p>
-              </div>
             </>)}
 
           </div>
