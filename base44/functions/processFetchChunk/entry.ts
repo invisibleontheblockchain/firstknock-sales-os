@@ -634,7 +634,9 @@ Deno.serve(async (req) => {
             if (!reachedEnd && rawFetchedThisChunk >= PAGES_PER_CHUNK * LIMIT) {
                 logError(`Pagination cap warning: Phase 1 hit ${PAGES_PER_CHUNK * LIMIT} records for sub-circle ${currentSubCircle + 1}/${totalSubCircles} at offset ${currentOffset}. More records may exist beyond this chunk. ZIPs seen so far: ${zipCodesFound.join(', ')}`);
             }
-            if (rawFetchedThisChunk > 0 && mapped.length === 0) throw new Error('Phase 1 hard failure: zero deed records survived validation. Not proceeding to Phase 2.');
+            if (rawFetchedThisChunk > 0 && mapped.length === 0) {
+                console.log(`[chunk-v15] Phase 1 sub-circle ${currentSubCircle + 1} had ${rawFetchedThisChunk} raw records but zero valid in-polygon deed records after filters; continuing to next grid cell.`);
+            }
 
             const phase1UnionSeed = mapped.map(p => ({
                 address_hash: p.address_hash,

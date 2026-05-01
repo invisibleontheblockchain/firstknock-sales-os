@@ -1,10 +1,10 @@
-# Current Task: Explain and diagnose Redfin vs FirstKnock coverage gap
+# Current Task: Fix 300mi² Fill Gaps not running
 
 ## Plan
-- [x] Confirm the latest Anderson-area fetch job totals and completion state.
-- [x] Compare expected Redfin-style sold inventory vs FirstKnock's current ingestion windows.
-- [x] Identify whether the gap is caused by coverage, filters, source mismatch, or BatchData verification failure.
-- [x] Apply the smallest safe correction to grid edge coverage.
+- [x] Check runtime logs for frontend/backend errors when starting Fill Gaps.
+- [x] Inspect the latest FetchJob state to see whether the job was created, stuck, failed, or rejected.
+- [x] Identify the smallest safe fix.
+- [x] Apply the fix and re-enable the background job processor.
 
 ## Review
-The latest 300mi² Anderson pull completed all 7 generated sub-circles, but the grid generator was excluding edge circles unless their centers were within radius + 1.5mi. Because each sub-circle fetches a 5mi radius, valid edge coverage requires including all circles whose centers are within radius + 5mi. Updated the cutoff so future Fill Gaps pulls cover the full requested boundary more completely.
+The widened grid created 11 sub-circles, but the first edge sub-circle returned raw RentCast records that were outside the drawn polygon or failed sold-property filters. The processor incorrectly treated zero surviving deed records in that one edge cell as a fatal job failure. Updated it to skip that edge cell and continue. Also re-enabled the scheduled fetch processor so jobs can resume if a self-chain invocation stalls.

@@ -17,3 +17,4 @@
 - Do not default route generation to hiding already-routed doors after a data pull; users often re-pull the same territory to refresh records and expect existing eligible doors to remain available unless they explicitly opt out.
 - Delta pulls must only use a prior job as baseline when coverage is trustworthy; incomplete early pulls can create permanent blind spots unless the system falls back to full refresh/fill-gaps mode.
 - For grid-based geographic ingestion, include every sub-query circle that overlaps the requested area (`center distance <= requested radius + sub-query radius`); smaller edge cutoffs create under-populated boundaries even when jobs report 100% complete.
+- Edge sub-circles may legitimately return zero in-polygon survivors after polygon and deed filters; do not fail the entire ingestion job for a single empty grid cell—log it and advance.
