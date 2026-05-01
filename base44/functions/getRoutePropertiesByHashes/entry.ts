@@ -79,17 +79,76 @@ Deno.serve(async (req) => {
             if (property.legacy_hash) byHash.set(property.legacy_hash, property);
         });
 
-        const missingHashes = hashes.filter(hash => !byHash.has(hash));
-        for (const hash of missingHashes) {
-            const directMatches = await base44.asServiceRole.entities.MasterProperty.filter({ address_hash: hash }, null, 1);
-            const legacyMatches = directMatches.length > 0
-                ? []
-                : await base44.asServiceRole.entities.MasterProperty.filter({ legacy_hash: hash }, null, 1);
-            const property = directMatches[0] || legacyMatches[0];
-            if (property?.lat && property?.lng) {
-                byHash.set(hash, property);
+        const missingAfterWorkspace = hashes.filter(hash => !byHash.has(hash));
+        if (missingAfterWorkspace.length > 0) {
+            const directRows = await sql`
+                SELECT
+                    p.id,
+                    p.address_hash,
+                    p.legacy_hash,
+                    p.full_address,
+                    p.house_number,
+                    p.street_name,
+                    p.city,
+                    p.state,
+                    p.zip_code,
+                    p.lat,
+                    p.lng,
+                    p.h3_index,
+                    p.owner_full_name,
+                    p.beds,
+                    p.baths,
+                    p.sqft,
+                    p.lot_size,
+                    p.year_built,
+                    p.price,
+                    p.sold_date,
+                    p.sale_type,
+                    p.property_type,
+                    p.mls_id,
+                    p.url,
+                    p.data_source,
+                    p.sale_confidence,
+                    p.original_status,
+                    p.created_at,
+                    p.updated_at
+                FROM properties p
+                WHERE p.lat IS NOT NULL
+                  AND p.lng IS NOT NULL
+                  AND (p.address_hash = ANY(${missingAfterWorkspace}) OR p.legacy_hash = ANY(${missingAfterWorkspace}))
+                LIMIT ${limit}
+            `;
+
+            directRows.forEach(row => {
+                const property = {
+                    ...row,
+                    id: String(row.id),
+                    address_hash: row.address_hash || String(row.id),
+                    created_date: row.created_at,
+                    updated_date: row.updated_at
+                };
                 byHash.set(property.address_hash, property);
                 if (property.legacy_hash) byHash.set(property.legacy_hash, property);
+            });
+        }
+
+        const missingHashes = hashes.filter(hash => !byHash.has(hash));
+        if (missingHashes.length > 0) {
+            try {
+                const addressMatches = await base44.asServiceRole.entities.MasterProperty.filter({ address_hash: missingHashes }, null, limit);
+                const stillMissing = missingHashes.filter(hash => !addressMatches.some(p => p.address_hash === hash));
+                const legacyMatches = stillMissing.length > 0
+                    ? await base44.asServiceRole.entities.MasterProperty.filter({ legacy_hash: stillMissing }, null, limit)
+                    : [];
+
+                [...addressMatches, ...legacyMatches].forEach(property => {
+                    if (property?.lat && property?.lng) {
+                        byHash.set(property.address_hash, property);
+                        if (property.legacy_hash) byHash.set(property.legacy_hash, property);
+                    }
+                });
+            } catch (fallbackError) {
+                console.warn('MasterProperty fallback skipped:', fallbackError.message);
             }
         }
 

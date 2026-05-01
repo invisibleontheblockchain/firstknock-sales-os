@@ -22,6 +22,9 @@ const BRAND = {
     offWhite: '#E5E5E5'
 };
 
+const routeHydrationCache = new Map();
+const routeHydrationInflight = new Map();
+
 async function hydrateRouteForMap(route) {
     const hasLoadedPoints = Array.isArray(route.properties) && route.properties.some(p => p?.lat && p?.lng);
     if (hasLoadedPoints) return route;
@@ -29,26 +32,37 @@ async function hydrateRouteForMap(route) {
     const hashes = Array.isArray(route.property_hashes) ? route.property_hashes : [];
     if (hashes.length === 0) return route;
 
-    const res = await base44.functions.invoke('getRoutePropertiesByHashes', {
+    const cacheKey = route.id || hashes.join('|');
+    if (routeHydrationCache.has(cacheKey)) return routeHydrationCache.get(cacheKey);
+    if (routeHydrationInflight.has(cacheKey)) return routeHydrationInflight.get(cacheKey);
+
+    const request = base44.functions.invoke('getRoutePropertiesByHashes', {
         address_hashes: hashes,
         limit: hashes.length
-    });
-    const loaded = Array.isArray(res.data?.properties) ? res.data.properties : [];
-    if (loaded.length === 0) return route;
+    }).then(res => {
+        const loaded = Array.isArray(res.data?.properties) ? res.data.properties : [];
+        if (loaded.length === 0) return route;
 
-    const byHash = new Map();
-    loaded.forEach(p => {
-        byHash.set(p.address_hash, p);
-        if (p.legacy_hash) byHash.set(p.legacy_hash, p);
+        const byHash = new Map();
+        loaded.forEach(p => {
+            byHash.set(p.address_hash, p);
+            if (p.legacy_hash) byHash.set(p.legacy_hash, p);
+        });
+        const ordered = hashes.map(hash => byHash.get(hash)).filter(Boolean);
+        const hydratedRoute = {
+            ...route,
+            properties: ordered,
+            allProperties: ordered,
+            houseCount: ordered.length,
+        };
+        routeHydrationCache.set(cacheKey, hydratedRoute);
+        return hydratedRoute;
+    }).catch(() => route).finally(() => {
+        routeHydrationInflight.delete(cacheKey);
     });
-    const ordered = hashes.map(hash => byHash.get(hash)).filter(Boolean);
 
-    return {
-        ...route,
-        properties: ordered,
-        allProperties: ordered,
-        houseCount: ordered.length,
-    };
+    routeHydrationInflight.set(cacheKey, request);
+    return request;
 }
 
 export default function RouteCommandPanel({

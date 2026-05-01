@@ -1,11 +1,11 @@
-# Current Task: Fix saved route map popup/rendering
+# Current Task: Fix saved route hydration 500 error
 
 ## Plan
-- [x] Check runtime logs for route click and map render errors.
-- [x] Inspect Route Command selection and map active-route rendering path.
-- [x] Identify why hydrated routes still do not visibly pop up on the map.
-- [x] Apply the smallest fix so clicking a saved route opens it properly on the map.
-- [x] Verify with backend/function logs and behavior checks.
+- [x] Check runtime logs for the backend 500 error.
+- [x] Inspect the route hydration function path causing the failed request.
+- [x] Patch rate limiting by deduplicating frontend hydration requests and bulk-loading backend fallbacks.
+- [x] Add support for actual saved route hash format (`ADDRESS|ZIP`).
+- [x] Verify the function succeeds with actual saved route hashes and no new runtime errors appear.
 
 ## Review
-ActiveRoutesTab was bypassing the saved-route hydration wrapper, and active routes were not automatically fitting the map viewport. Patched both so selected saved routes load their coordinates and the map zooms to them. Verified the route property lookup returns mapped coordinates successfully.
+Runtime logs show the 500 came from Base44 SDK rate limiting inside getRoutePropertiesByHashes after repeated route clicks triggered many per-property fallback lookups. Replaced per-hash fallback calls with bulk lookups and added frontend cache/in-flight protection so repeated clicks reuse one request. Verified actual saved-route hashes like `502 HOLLY CREEK DR|29621` return mapped coordinates successfully.
