@@ -556,7 +556,7 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave,
 
     return (
         <div
-            className="p-2.5 sm:p-4 rounded-xl border transition-all relative overflow-hidden w-full max-w-full box-border"
+            className="p-2 sm:p-3 rounded-xl border transition-all relative overflow-hidden w-full max-w-full box-border"
             style={{
                 background: isActive ? `${BRAND.gold}15` : BRAND.charcoal,
                 borderColor: isActive ? BRAND.gold : '#333'
@@ -571,7 +571,7 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave,
             )}
 
             <button onClick={onSelect} className={`w-full max-w-full text-left overflow-hidden ${rank <= 3 ? 'pl-8' : ''}`}>
-                <div className="flex items-center justify-between mb-2 gap-2 min-w-0">
+                <div className="flex items-center justify-between mb-1.5 gap-2 min-w-0">
                     <span className="font-bold text-white flex items-center gap-2 min-w-0 flex-1">
                         {rank > 3 && <span className="text-gray-500 text-xs">#{rank}</span>}
                         <span className="truncate">{displayName}</span>
@@ -591,7 +591,7 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave,
                         </Badge>
                     </div>
                 </div>
-                <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
+                <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px] text-gray-500">
                     <span>{route.houseCount} doors</span>
                     <span>{route.streetCount || '?'} streets</span>
                     <span>{route.totalDistance} mi</span>
@@ -600,7 +600,7 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave,
                     )}
                 </div>
                 {knockStats.total > 0 && (
-                    <div className="mt-1.5 h-1 rounded-full overflow-hidden" style={{ background: '#222' }}>
+                    <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: '#222' }}>
                         <div className="h-full rounded-full transition-all" style={{ width: `${(knockStats.knocked / knockStats.total) * 100}%`, background: knockStats.knocked === knockStats.total ? '#22c55e' : '#FFD700' }} />
                     </div>
                 )}
@@ -664,7 +664,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                 onClick={onSelect}
                 role="button"
                 tabIndex={0}
-                className="w-full max-w-full p-2.5 sm:p-3 rounded-xl border transition-all text-left hover:border-gray-600 cursor-pointer overflow-hidden"
+                className="w-full max-w-full p-2 sm:p-2.5 rounded-xl border transition-all text-left hover:border-gray-600 cursor-pointer overflow-hidden"
                 style={{
                     background: isActive ? `${BRAND.gold}15` : '#151515',
                     borderColor: isActive ? BRAND.gold : '#222',
@@ -672,7 +672,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                     borderLeftColor: repColor
                 }}
             >
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between min-w-0 gap-2 pr-12 sm:pr-0">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between min-w-0 gap-1.5 pr-12 sm:pr-0">
                     <div className="flex-1 min-w-0">
                         {editing ? (
                             <div className="flex items-center gap-1 min-w-0" onClick={e => e.stopPropagation()}>
@@ -707,7 +707,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                             <span className="text-[10px] text-gray-500">{route.assigned_to_name}</span>
                         )}
                     </div>
-                    <div className="flex flex-row sm:flex-col items-center sm:items-end gap-1.5 min-w-0 sm:shrink-0">
+                    <div className="flex flex-row sm:flex-col items-center sm:items-end gap-1 min-w-0 sm:shrink-0">
                         {dateRange && (
                             <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 leading-none truncate max-w-[120px]">
                                 {dateRange}
@@ -722,7 +722,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                         </Badge>
                     </div>
                 </div>
-                <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-600 mt-1 min-w-0">
+                <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[10px] text-gray-600 mt-0.5 min-w-0">
                     <span>{route.houseCount || route.metrics?.house_count} doors</span>
                     <span>{route.competitivenessScore || route.metrics?.score || 0} score</span>
                     {knockStats.knocked > 0 && (
@@ -730,7 +730,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                     )}
                 </div>
                 {knockStats.total > 0 && (
-                    <div className="mt-1.5 h-1 rounded-full overflow-hidden" style={{ background: '#222' }}>
+                    <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: '#222' }}>
                         <div className="h-full rounded-full transition-all" style={{ width: `${(knockStats.knocked / knockStats.total) * 100}%`, background: knockStats.knocked === knockStats.total ? '#22c55e' : '#FFD700' }} />
                     </div>
                 )}

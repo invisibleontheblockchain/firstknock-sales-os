@@ -20,7 +20,13 @@
 - [x] Stop mobile close/X taps from bubbling into map gestures that trigger the zoom bug.
 - [x] Verify touched UI paths and document the result.
 
-## Current Plan — Route Command Mobile Optimization
+## Current Plan — Merge Mode Mobile Polish
+- [x] Keep the section arrow visible when Select to Merge is active on mobile.
+- [x] Make merge checkboxes easier to see/tap on mobile.
+- [x] Slightly reduce route card height across Route Command screens.
+- [x] Verify runtime logs after the UI polish.
+
+## Previous Plan — Route Command Mobile Optimization
 - [x] Make the Route Command shell/header mobile-safe without changing route behavior.
 - [x] Reflow the Active/Queued header actions so Delete All and merge controls stay visible on small screens.
 - [x] Reflow Queued route cards so route count/status/actions stay inside the viewport.
@@ -34,3 +40,5 @@ Cancel import is now wired end-to-end: the loading overlay has a Cancel Import b
 Map/builder mobile fixes are in place: tapping the bottom Map tab now forces plain Routes/analyze mode and closes Builder/Route Command panels, Route Command only auto-opens New Routes while in Builder mode, mobile panel/card overflow is constrained, and mobile X/delete/optimize taps stop pointer bubbling to avoid map zoom side effects.
 
 Route Command mobile optimization is complete: the panel shell uses full viewport containment, the tab bar no longer has fixed mobile widths, Delete All/merge actions stack into a mobile grid, and Queued route cards now wrap status/count/action content within the viewport. Runtime review showed no new Route Command-specific errors in the interaction path.
+
+Merge mode polish is complete: the section arrow is now forced visible on mobile, merge checkboxes are larger/high-contrast, and route cards are slightly shorter across Route Command views. Runtime review showed no new Route Command-specific errors after the polish.

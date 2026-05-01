@@ -315,12 +315,12 @@ function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRou
     const [isExpanded, setIsExpanded] = useState(!collapsed);
 
     return (
-        <div className="space-y-2">
+        <div className="space-y-1.5">
             <button onClick={() => setIsExpanded(!isExpanded)} className="flex items-center gap-2 px-1 w-full text-left min-w-0">
                 {icon}
                 <span className="text-xs font-bold text-gray-400 uppercase truncate min-w-0">{title}</span>
-                <Badge variant="outline" className="bg-white/10 text-white text-[9px]">{routes.length}</Badge>
-                <ChevronRight className={`w-4 h-4 text-gray-600 ml-auto transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                <Badge variant="outline" className="bg-white/10 text-white text-[9px] shrink-0">{routes.length}</Badge>
+                <ChevronRight className={`w-4 h-4 text-gray-400 ml-auto shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
             </button>
 
             {isExpanded && routes.map(route => (
@@ -380,11 +380,11 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
         <div className={`relative group flex items-start gap-1.5 sm:gap-2 min-w-0 max-w-full overflow-hidden ${isSelected ? 'ring-2 ring-purple-500 rounded-xl' : ''}`}>
             {/* Multi-select checkbox */}
             {isMultiSelect && (
-                <div className="flex items-center pt-4 pl-1 shrink-0" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center pt-2.5 pl-0.5 pr-0.5 shrink-0 z-10" onClick={e => e.stopPropagation()}>
                     <Checkbox
                         checked={isSelected}
                         onCheckedChange={onToggleSelect}
-                        className="border-gray-600 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
+                        className="h-5 w-5 shrink-0 border-2 border-purple-400 bg-black/70 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-500"
                     />
                 </div>
             )}
@@ -394,7 +394,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                     onClick={isMultiSelect ? onToggleSelect : onSelect}
                     role="button"
                     tabIndex={0}
-                    className="w-full max-w-full p-2.5 sm:p-3 rounded-xl border transition-all text-left hover:border-gray-600 cursor-pointer overflow-hidden"
+                    className="w-full max-w-full p-2 sm:p-2.5 rounded-xl border transition-all text-left hover:border-gray-600 cursor-pointer overflow-hidden"
                     style={{
                         background: isActive ? `${BRAND.gold}15` : '#151515',
                         borderColor: isActive ? BRAND.gold : '#222',
@@ -402,7 +402,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                         borderLeftColor: repColor
                     }}
                 >
-                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between min-w-0 gap-2 pr-12 sm:pr-0">
+                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between min-w-0 gap-1.5 pr-12 sm:pr-0">
                         <div className="flex-1 min-w-0">
                             {editing ? (
                                 <div className="flex items-center gap-1 min-w-0" onClick={e => e.stopPropagation()}>
@@ -439,7 +439,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                                 <span className="text-[10px] text-gray-500">{route.assigned_to_name}</span>
                             )}
                         </div>
-                        <div className="flex flex-row sm:flex-col items-center sm:items-end gap-1.5 min-w-0 sm:shrink-0 sm:max-w-none">
+                        <div className="flex flex-row sm:flex-col items-center sm:items-end gap-1 min-w-0 sm:shrink-0 sm:max-w-none">
                             {dateRange && (
                                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 leading-none truncate max-w-[120px]">
                                     {dateRange}
@@ -454,7 +454,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                             </Badge>
                         </div>
                     </div>
-                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-600 mt-1 min-w-0">
+                    <div className="flex flex-wrap gap-x-2.5 gap-y-0.5 text-[10px] text-gray-600 mt-0.5 min-w-0">
                         <span>{route.houseCount || route.metrics?.house_count} doors</span>
                         <span>{route.competitivenessScore || route.metrics?.score || 0} score</span>
                         {knockStats.knocked > 0 && (
@@ -462,7 +462,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                         )}
                     </div>
                     {knockStats.total > 0 && (
-                        <div className="mt-1.5 h-1 rounded-full overflow-hidden" style={{ background: '#222' }}>
+                        <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: '#222' }}>
                             <div className="h-full rounded-full transition-all" style={{ width: `${(knockStats.knocked / knockStats.total) * 100}%`, background: knockStats.knocked === knockStats.total ? '#22c55e' : '#FFD700' }} />
                         </div>
                     )}

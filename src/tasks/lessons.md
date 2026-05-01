@@ -36,3 +36,4 @@
 - Do not mark route/analytics fixes done when a planned edit hit a file-size limit; re-plan around smaller components and document any partial scope honestly.
 - For mobile map overlays, stop both pointer and click propagation on close/action buttons; click-only propagation guards can still leak gestures to Leaflet and cause zoom/pan side effects.
 - When optimizing a mobile panel, check the parent shell, tab row, section header actions, and cards together; fixing only the inner padding can leave fixed-width children off-screen.
+- In mobile multi-select lists, make selection controls and section expand arrows explicit, high-contrast, and non-shrinking; hover-only affordances do not work on touch screens.
