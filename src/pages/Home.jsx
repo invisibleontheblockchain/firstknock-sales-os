@@ -1104,14 +1104,13 @@ export default function Home() {
                     effective_status: determineEffectiveStatus(p, propLogs)
                 };
             }).filter(p =>
-                (routeConfig.excludeAssigned === false || !assignedSet.has(p.address_hash)) &&
                 p.lat && p.lng &&
                 !(Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001)
             );
 
             // Merge with existing availableProperties, deduping by address_hash
             const combinedMap = new Map();
-            const baseProps = routeConfig.excludeAssigned === false ? effectiveProperties : availableProperties;
+            const baseProps = effectiveProperties;
             baseProps.forEach(p => combinedMap.set(p.address_hash, p));
             processedDynamic.forEach(p => combinedMap.set(p.address_hash, p));
 
@@ -1126,7 +1125,7 @@ export default function Home() {
             const filterResult = applyRouteFilters({
                 initialSet, drawnPolygon: activeGenerationPolygon, zipCodeFilter,
                 territoryZipCodes: user?.territory_zip_codes,
-                soldDateFilter, routeConfig, lastPullMode, logsByAddress,
+                soldDateFilter, routeConfig, lastPullMode, logsByAddress, assignedHashes,
             });
             console.log(`[generateRoutes] Filter funnel: ${formatStageCounts(filterResult.stages)}`);
             if (filterResult.frozenSet) setFrozenWorkingSet(filterResult.frozenSet);
@@ -1221,7 +1220,7 @@ export default function Home() {
             const filterResult = applyRouteFilters({
                 initialSet: frozenWorkingSet, drawnPolygon, zipCodeFilter,
                 territoryZipCodes: user?.territory_zip_codes,
-                soldDateFilter, routeConfig, lastPullMode, logsByAddress: logsByAddr,
+                soldDateFilter, routeConfig, lastPullMode, logsByAddress: logsByAddr, assignedHashes,
             });
             console.log(`[handleReorder] Filter funnel: ${formatStageCounts(filterResult.stages)}`);
             if (filterResult.error) { toast.dismiss('reorder-routes'); setGenerationError(filterResult.error); return; }
@@ -1244,7 +1243,7 @@ export default function Home() {
             toast.success(`Reordered! ${generated.length} route(s)`, { id: 'reorder-routes', duration: 5000 });
         } catch (e) { console.error('Reorder error:', e); toast.error('Reorder failed.', { id: 'reorder-routes' }); }
         finally { setRoutesGenerating(false); }
-    }, [frozenWorkingSet, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, routeConfig, soldDateFilter, drawnPolygon, lastPullMode, learnedWeights, user?.territory_zip_codes]);
+    }, [frozenWorkingSet, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, routeConfig, soldDateFilter, drawnPolygon, lastPullMode, learnedWeights, user?.territory_zip_codes, assignedHashes]);
 
     // Re-optimize a single saved route's order in-place — pure distance minimization (NN + 2-Opt + Or-Opt)
     const handleReoptimizeRoute = useCallback(async (route) => {

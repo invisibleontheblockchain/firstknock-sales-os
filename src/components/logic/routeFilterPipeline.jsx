@@ -18,6 +18,7 @@ export function applyRouteFilters({
     routeConfig,
     lastPullMode,
     logsByAddress,
+    assignedHashes,
 }) {
     let workingSet = [...initialSet];
     const stages = [{ name: 'initial', count: workingSet.length }];
@@ -49,6 +50,13 @@ export function applyRouteFilters({
 
     // Freeze here — this is the geographically-constrained set (for reorder)
     const frozenSet = [...workingSet];
+
+    // --- Assigned Route Filter ---
+    // Keep this inside the pipeline so a large drop is visible in diagnostics.
+    if (routeConfig.excludeAssigned && assignedHashes) {
+        workingSet = workingSet.filter(p => !assignedHashes.has(p.address_hash || p.id));
+    }
+    track('assigned');
 
     // --- Sold Date Filter (THE BIG ONE — often culls 99% of properties) ---
     const beforeSoldDate = workingSet.length;

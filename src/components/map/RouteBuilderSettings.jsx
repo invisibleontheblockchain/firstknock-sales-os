@@ -346,6 +346,13 @@ export default function RouteBuilderSettings({
                                     onChange={(v) => setRouteConfig(prev => ({ ...prev, includeCallbacks: v }))}
                                 />
                                 <ToggleOption
+                                    label="Hide Already Assigned"
+                                    description="Skip doors already saved inside another route"
+                                    icon={<Route className="w-4 h-4 text-blue-400" />}
+                                    checked={routeConfig.excludeAssigned}
+                                    onChange={(v) => setRouteConfig(prev => ({ ...prev, excludeAssigned: v }))}
+                                />
+                                <ToggleOption
                                     label="Hide Knocked Doors"
                                     description="Never route a house you've already visited"
                                     icon={<Footprints className="w-4 h-4 text-green-400" />}

@@ -245,6 +245,13 @@ Pass 1 implemented and verified.
 - The generated route preview state is now preserved after auto-save instead of being cleared immediately.
 - Saved routes still refresh through the normal SavedRoute query, but the map no longer has a blank gap while waiting for that refresh.
 
+## Plan — Fetched hundreds but generated only one house
+- [x] Check runtime logs for the last data pull and generation clicks.
+- [x] Inspect Neon candidate query scoping and route filtering attrition.
+- [x] Identify the likely drop stage: already-assigned properties were excluded before the route filter funnel could report it.
+- [x] Patch the smallest safe issue: move assigned-door exclusion into the tracked filter pipeline and expose the toggle.
+- [ ] Verify with logs after the next generation attempt and document the result.
+
 ## Plan — 5 sq mile test circle
 - [x] Set map drawing default area to 5 sq mi.
 - [x] Make the 5 sq mi test option always visible.
