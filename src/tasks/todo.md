@@ -1,45 +1,28 @@
-# Current Task: Audit and correct Christian ingestion eligibility/dedup loss
+# Current Task: Fix Christian territory polygon coverage
 
 ## Plan
-- [x] Inspect the actual RentCast ingestion path and identify every active eligibility filter after raw fetch.
-- [x] Inspect dedup keys and normalization logic used before storage.
-- [x] Add read-only audit output that attributes dropped raw records to exact filter reasons and samples dropped/deduped records.
-- [x] Run the audit once using the confirmed Christian job to identify the broken filter(s), without changing routes or route generation.
-- [x] Patch only confirmed incorrect ingestion filters; do not delete/regenerate Christian routes and do not touch route generation/merge logic. No production filter was patched because the audit did not confirm a broken eligibility or dedup filter.
-- [x] Re-run the diagnostic after patching and document whether candidate counts increase. Diagnostic was re-run after adding read-only audit attribution; counts did not change because no production ingestion filter was modified.
+- [x] Add a focused admin-only polygon audit/fix function that does not touch eligibility filters, dedup logic, or route generation.
+- [x] Retrieve Christian's confirmed FetchJob polygon, sub-circles, and inferred creation metadata.
+- [x] Calculate current polygon area in square miles and compare it with the intended ~300 sq mi territory.
+- [x] Generate a candidate polygon from the outer boundary of the 16 RentCast sub-circles, constrained by a safety check instead of changing filters.
+- [x] Compare current polygon vs candidate sub-circle hull: area, bounds, sub-circle coverage, and per-sub-circle records clipped by the current polygon.
+- [x] Verify in dry-run mode whether the candidate polygon would reduce outside-polygon drops near zero.
+- [x] Apply only the corrected FetchJob polygon after dry-run verification; do not delete/regenerate Christian's route and do not alter filter/dedup logic. Application was blocked because the candidate area is unsafe.
+- [x] Re-run the ingestion diagnostic against the corrected polygon and document outside-polygon drop count plus RentCast per-sub-circle counts. Diagnostic dry-run completed; no production polygon was changed.
+- [x] Document final stored active count and note whether a separate re-ingestion is required to materialize newly included records.
 
 ## Review
-Audit completed without deleting/regenerating Christian's route and without modifying route generation or merge logic.
+Dry-run disproved the proposed polygon-expansion fix.
 
-Active ingestion filter criteria found:
-- Coordinates/geography: requires latitude and longitude; if a polygon exists, the point must be inside it. Missing coordinates are dropped; outside-polygon records are dropped.
-- Sale date: requires `lastSaleDate`; invalid dates or dates outside the 12-month deed window are dropped.
-- Price: missing sale price is kept. In disclosure states, explicit `lastSalePrice < 10000` is dropped, and `lastSalePrice < assessedValue * 0.15` is dropped only when `assessedValue` exists and is positive. In non-disclosure states, only explicit nominal sale prices under $1,000 are dropped.
-- Property type: exact `Commercial`, `Industrial`, `Vacant Land`, and `Agricultural` are dropped. Missing property type is kept. Multi-family, mobile home, condo, townhouse, and general residential types are not actively excluded in deed ingestion.
-- Optional fields: missing sqft, year built, lot size, beds/baths, assessed value, and property type do not drop a deed record.
-
-Drop counts from the confirmed Christian job:
-- Outside polygon: 739
-- Missing coordinates: 0
-- Missing last sale date: 0
-- Sale price below $10,000: 4
-- Sale price below 15% assessed value: 0
-- Non-disclosure nominal sale price: 0
-- Excluded property type: 0
-- Invalid/outside sale-date window: 5
-- Duplicate within sub-circle: 8
-
-Dedup audit:
-- Dedup key is normalized address line plus 5-digit ZIP.
-- Matching is exact after normalization, not fuzzy: uppercase, punctuation removal, whitespace collapse, and street suffix abbreviation.
-- The 128 global dedup removals are from overlapping sub-circles returning the same normalized address+ZIP, not fuzzy collapse of similar addresses.
-- No evidence was found that dedup is removing valid distinct unit-level properties in this sample; however, unit designators can be lost if RentCast omits them from `addressLine1`/formatted street portion.
-
-RentCast raw fetch gap:
-- Territory fetch uses 16 radius-based sub-circles, not one large query.
-- Each sub-circle uses `/v1/properties` with latitude, longitude, radius, limit 500, offset pagination, and saleDateRange for the deed window.
-- No sub-circle API errors were found. One sub-circle returned zero raw records; several returned raw records entirely outside the polygon.
-- No per-query cap was hit in this job; the processor can request up to 10 pages per chunk at 500 records each and logs cap warnings if reached.
+Findings:
+- Current Christian polygon area: 298.08 sq mi, which is 99.4% of the intended ~300 sq mi territory.
+- Current polygon bounds: lat 34.361098 to 34.644346, lng -82.808424 to -82.464718.
+- Candidate polygon made from the outer hull of all 16 RentCast 5-mile sub-circles: 1,223.78 sq mi, which is 407.9% of the intended territory.
+- The candidate hull would reduce outside-polygon drops from 739 to 0, but only by incorrectly expanding Christian's territory to roughly 4x the paid/intended area.
+- Therefore, the polygon is not actually too small relative to 300 sq mi; the 16 sub-circles are intentionally/accidentally much larger than the 300 sq mi polygon because each grid cell has a 5-mile radius and overlaps well outside the drawn boundary.
+- The geographic areas excluded by the current polygon are mostly NE (379), NW (156), E (79), N (61), W (51), S (12), and SW (1) relative to the territory center.
+- RentCast fetch cap scan: 16 sub-circles were queried independently, page limit is 500, total API calls were 16, and no sub-circle hit the safety cap. The raw total remained 1,362.
+- Final stored active candidate count remains 664 because no unsafe polygon expansion or route regeneration was applied.
 
 Decision:
-No production ingestion filter was changed because the audit shows the 756-property loss is overwhelmingly polygon clipping, not an accidental property-type/status/completeness filter. The only non-geographic eligibility loss is 9 records plus 8 within-cell duplicates. Patching polygon filtering without changing the user-defined territory would incorrectly include properties outside Christian's drawn area.
+No production polygon update was applied. Expanding the polygon to include all 739 clipped records would violate the 300 sq mi target. The safer next fix is to improve sub-circle generation/fetch efficiency so it does not overfetch huge areas outside the polygon, or explicitly define a larger paid territory if Christian truly intends coverage beyond 300 sq mi.
