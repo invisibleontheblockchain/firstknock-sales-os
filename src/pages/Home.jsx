@@ -54,7 +54,7 @@ import TerritoryPrompt from '../components/map/TerritoryPrompt';
 import { darkRoom, DarkRoomClient } from '@/components/logic/neonClient';
 const CommandCenterDashboard = React.lazy(() => import('../components/dashboard/CommandCenterDashboard'));
 const MapSettingsPanel = React.lazy(() => import('../components/map/MapSettingsPanel'));
-const RouteBuilderSettings = React.lazy(() => import('../components/map/RouteBuilderSettings'));
+import RouteBuilderSettings from '../components/map/RouteBuilderSettings';
 const TerritorySetupWizard = React.lazy(() => import('../components/manager/TerritorySetupWizard'));
 import { LayoutDashboard, Settings, Crosshair } from 'lucide-react';
 import { openInMaps } from '../components/logic/navigation';
@@ -1799,86 +1799,84 @@ export default function Home() {
 
             {/* Route Builder Settings - GENERATE MODE */}
             {showCompare && mode === 'generate' && (
-                <React.Suspense fallback={null}>
-                    <RouteBuilderSettings
-                        onDraw={() => {
-                            setShowCompare(false);
-                            setDrawingMode(true);
-                        }}
-                        housesPerRoute={housesPerRoute} setHousesPerRoute={setHousesPerRoute}
-                        streetCooldownDays={streetCooldownDays} setStreetCooldownDays={setStreetCooldownDays}
-                        minScore={minScore} setMinScore={setMinScore}
-                        zipCodeFilter={zipCodeFilter} setZipCodeFilter={setZipCodeFilter}
-                        startLocation={startLocation} setStartLocation={setStartLocation}
-                        startAddressInput={startAddressInput} setStartAddressInput={setStartAddressInput}
-                        sortBy={sortBy} setSortBy={setSortBy}
-                        soldDateFilter={soldDateFilter} setSoldDateFilter={setSoldDateFilter}
-                        lastPullMode={lastPullMode}
-                        routeConfig={routeConfig} setRouteConfig={setRouteConfig}
-                        onGenerate={generateRoutes} routesGenerating={routesGenerating}
-                        onReorder={handleReorder}
-                        hasFrozenData={!!frozenWorkingSet && frozenWorkingSet.length > 0}
-                        onClearPolygon={() => setDrawnPolygon(null)}
-                        onReset={() => {
-                            if (confirm("Reset all generated routes?")) {
-                                setRoutes([]);
-                                setFetchedProperties([]);
-                                setDrawnPolygon(null); // Clear polygon on reset
-                                setFrozenWorkingSet(null); // Clear frozen data so next generate refetches
-                                toast.success("Builder reset");
-                            }
-                        }}
-                        mapRef={mapRef}
-                        routeTemplates={routeTemplates}
-                        templateName={templateName} setTemplateName={setTemplateName}
-                        onSaveTemplate={() => {
-                            if (!templateName) return toast.error("Enter name");
-                            saveTemplateMutation.mutate({
-                                name: templateName,
-                                config: {
-                                    houses_per_route: housesPerRoute,
-                                    min_score: minScore,
-                                    street_cooldown_days: streetCooldownDays,
-                                    zip_code_filter: zipCodeFilter,
-                                    start_location: startLocation,
-                                    ...routeConfig
-                                },
-                                created_by: user?.email
+                <RouteBuilderSettings
+                    onDraw={() => {
+                        setShowCompare(false);
+                        setDrawingMode(true);
+                    }}
+                    housesPerRoute={housesPerRoute} setHousesPerRoute={setHousesPerRoute}
+                    streetCooldownDays={streetCooldownDays} setStreetCooldownDays={setStreetCooldownDays}
+                    minScore={minScore} setMinScore={setMinScore}
+                    zipCodeFilter={zipCodeFilter} setZipCodeFilter={setZipCodeFilter}
+                    startLocation={startLocation} setStartLocation={setStartLocation}
+                    startAddressInput={startAddressInput} setStartAddressInput={setStartAddressInput}
+                    sortBy={sortBy} setSortBy={setSortBy}
+                    soldDateFilter={soldDateFilter} setSoldDateFilter={setSoldDateFilter}
+                    lastPullMode={lastPullMode}
+                    routeConfig={routeConfig} setRouteConfig={setRouteConfig}
+                    onGenerate={generateRoutes} routesGenerating={routesGenerating}
+                    onReorder={handleReorder}
+                    hasFrozenData={!!frozenWorkingSet && frozenWorkingSet.length > 0}
+                    onClearPolygon={() => setDrawnPolygon(null)}
+                    onReset={() => {
+                        if (confirm("Reset all generated routes?")) {
+                            setRoutes([]);
+                            setFetchedProperties([]);
+                            setDrawnPolygon(null);
+                            setFrozenWorkingSet(null);
+                            toast.success("Builder reset");
+                        }
+                    }}
+                    mapRef={mapRef}
+                    routeTemplates={routeTemplates}
+                    templateName={templateName} setTemplateName={setTemplateName}
+                    onSaveTemplate={() => {
+                        if (!templateName) return toast.error("Enter name");
+                        saveTemplateMutation.mutate({
+                            name: templateName,
+                            config: {
+                                houses_per_route: housesPerRoute,
+                                min_score: minScore,
+                                street_cooldown_days: streetCooldownDays,
+                                zip_code_filter: zipCodeFilter,
+                                start_location: startLocation,
+                                ...routeConfig
+                            },
+                            created_by: user?.email
+                        });
+                    }}
+                    onLoadTemplate={loadTemplate}
+                    filteredRoutes={filteredRoutes}
+                    onSelectRoute={(route) => { setActiveRoute(route); setShowCompare(false); }}
+                    onClose={() => setShowCompare(false)}
+                    onForceSync={async () => {
+                        if (!confirm(`Force sync properties for ${zipCodeFilter}?`)) return;
+                        const toastId = toast.loading("Syncing...");
+                        try {
+                            const res = await base44.functions.invoke('fetchZipProperties', { 
+                                zip_code: zipCodeFilter, 
+                                force_sync: true,
+                                sold_months: 12
                             });
-                        }}
-                        onLoadTemplate={loadTemplate}
-                        filteredRoutes={filteredRoutes}
-                        onSelectRoute={(route) => { setActiveRoute(route); setShowCompare(false); }}
-                        onClose={() => setShowCompare(false)}
-                        onForceSync={async () => {
-                            if (!confirm(`Force sync properties for ${zipCodeFilter}?`)) return;
-                            const toastId = toast.loading("Syncing...");
-                            try {
-                                const res = await base44.functions.invoke('fetchZipProperties', { 
-                                    zip_code: zipCodeFilter, 
-                                    force_sync: true,
-                                    sold_months: 12 // Always fetch 12 months; UI slider filters locally
-                                });
-                                if (res.data?.error) {
-                                    toast.error(res.data.message || res.data.error, { id: toastId });
-                                    return;
-                                }
-                                if (res.data.count > 0) {
-                                    toast.success(`Synced ${res.data.count} new properties!`, { id: toastId });
-                                    queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
-                                } else {
-                                    toast.info(res.data.message || "Up to date", { id: toastId });
-                                }
-                            } catch (e) {
-                                toast.error("Sync failed", { id: toastId });
+                            if (res.data?.error) {
+                                toast.error(res.data.message || res.data.error, { id: toastId });
+                                return;
                             }
-                        }}
-                        user={user}
-                        hasDrawnArea={drawnPolygon && drawnPolygon.length > 2}
-                        maxDataMonths={maxDataMonths}
-                        hasMlsData={hasMlsData}
-                    />
-                </React.Suspense>
+                            if (res.data.count > 0) {
+                                toast.success(`Synced ${res.data.count} new properties!`, { id: toastId });
+                                queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
+                            } else {
+                                toast.info(res.data.message || "Up to date", { id: toastId });
+                            }
+                        } catch (e) {
+                            toast.error("Sync failed", { id: toastId });
+                        }
+                    }}
+                    user={user}
+                    hasDrawnArea={drawnPolygon && drawnPolygon.length > 2}
+                    maxDataMonths={maxDataMonths}
+                    hasMlsData={hasMlsData}
+                />
             )}
 
             {/* GPS HUD Overlay */}
