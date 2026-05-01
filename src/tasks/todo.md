@@ -32,8 +32,18 @@
 - [x] Reflow Queued route cards so route count/status/actions stay inside the viewport.
 - [x] Verify runtime logs after the layout changes and document the result.
 
+## Current Plan — Knock/Checklist Decision Sync
+- [x] Make Knock and Checklist use the same latest-decision status logic.
+- [x] Fix No Answer so it counts as done immediately on mobile.
+- [x] Add a Done decision filter beside the sale-date filter.
+- [x] Add a clear-decision action from the property history so a home returns to Todo.
+- [x] Persist the selected Knock route so reps with multiple routes stay on the same county/route context.
+- [x] Verify the touched flow and document the result.
+
 ## Review
-Map settings are cleaner: Apple/Google navigation selection now lives in the Map tab and is saved/shared through localStorage plus an app event so both Route Checklist and Knock tab navigation buttons use the same preference. The unwanted Auto-build on Generate setting was removed, and changing the Sold Date Window no longer prompts or auto-generates routes. Navigation URLs now open directions to the selected property in the selected provider instead of generic search.
+Knock and Checklist are now aligned around the same latest-decision status behavior: No Answer remains done, Done views can be filtered by every decision type, history has a Clear action that adds an ELIGIBLE reset entry to move the home back to Todo, and the selected Knock route is persisted so reps stay on the same route/county context.
+
+Map settings are cleaner: Apple/Google navigation selection now lives in the Map tab and is saved/shared through localStorage plus an app event so both Route Checklist and Knock tab navigation buttons use the same preference. The unwanted Auto-build on Generate setting was removed, and changing the Sold Date Window no longer prompts or auto-generates routes. Navigation URLs now open directions to the selected property in the selected provider.
 
 Cancel import is now wired end-to-end: the loading overlay has a Cancel Import button, `cancelFetchJob` marks the user's active job as cancelled and releases locks, polling stops locally, and `processFetchChunk` checks cancellation before additional writes, completions, or self-chaining.
 

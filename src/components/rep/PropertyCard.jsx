@@ -10,7 +10,9 @@ const STATUS_COLORS = {
     CALLBACK: '#eab308',
     NO_ANSWER: '#6b7280',
     QUALIFIED: '#3b82f6',
-    RECENT_OFF_MARKET: '#FFD700'
+    RECENT_OFF_MARKET: '#FFD700',
+    NOT_MOVED_IN: '#f97316',
+    DM_NOT_HOME: '#06b6d4'
 };
 
 export default function PropertyCard({ property, index, onSelect, navigationApp = 'apple' }) {
@@ -67,7 +69,7 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
             {isDone && (
                 <span className="text-[10px] font-bold px-2 py-1 rounded-full shrink-0"
                     style={{ background: statusColor + '20', color: statusColor }}>
-                    {property.effective_status === 'NO_ANSWER' ? 'N/A' : property.effective_status === 'HARD_NO' ? 'NO' : property.effective_status}
+                    {property.effective_status === 'NO_ANSWER' ? 'N/A' : property.effective_status === 'HARD_NO' ? 'NO' : property.effective_status === 'NOT_MOVED_IN' ? 'NMI' : property.effective_status === 'DM_NOT_HOME' ? 'DM' : property.effective_status}
                 </span>
             )}
 

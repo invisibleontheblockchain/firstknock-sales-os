@@ -1,7 +1,7 @@
 import React from 'react';
 import { Badge } from "@/components/ui/badge";
 import { format } from 'date-fns';
-import { CheckCircle2, XCircle, Clock, Home, MessageSquare, Image, MapPin, Trash2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Clock, Home, MessageSquare, Image, MapPin, Trash2, UserX } from 'lucide-react';
 
 const STATUS_ICONS = {
     SOLD: { icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10' },
@@ -10,9 +10,11 @@ const STATUS_ICONS = {
     NO_ANSWER: { icon: Home, color: 'text-orange-500', bg: 'bg-orange-500/10' },
     ELIGIBLE: { icon: Home, color: 'text-gray-500', bg: 'bg-gray-500/10' },
     QUALIFIED: { icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10' },
+    NOT_MOVED_IN: { icon: Clock, color: 'text-orange-500', bg: 'bg-orange-500/10' },
+    DM_NOT_HOME: { icon: UserX, color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
 };
 
-export default function PropertyHistory({ logs, onCancelSale }) {
+export default function PropertyHistory({ logs, onClearDecision }) {
     if (!logs || logs.length === 0) {
         return (
             <div className="text-center py-6 border border-dashed border-gray-800 rounded-xl bg-gray-900/20">
@@ -52,13 +54,13 @@ export default function PropertyHistory({ logs, onCancelSale }) {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
-                                {log.parsed_status === 'SOLD' && onCancelSale && (
+                                {log.parsed_status !== 'ELIGIBLE' && onClearDecision && idx === 0 && (
                                     <button
-                                        onClick={() => onCancelSale(log)}
+                                        onClick={() => onClearDecision(log)}
                                         className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] font-bold active:scale-95"
                                     >
                                         <Trash2 className="w-3 h-3" />
-                                        Cancel sale
+                                        Clear
                                     </button>
                                 )}
                                 <div className="text-right">

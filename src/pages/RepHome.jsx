@@ -31,6 +31,7 @@ export default function RepHome() {
     const [showChat, setShowChat] = useState(false);
     const [showUpgradeGate, setShowUpgradeGate] = useState(false);
     const [soldDateFilter, setSoldDateFilter] = useState('all');
+    const [decisionFilter, setDecisionFilter] = useState('all');
 
     // Offline Listener
     React.useEffect(() => {
@@ -208,6 +209,11 @@ export default function RepHome() {
         return routes.find(r => r.status === 'IN_PROGRESS') || routes.find(r => r.status === 'ACTIVE') || routes[0];
     }, [routes, manualRouteId]);
 
+    React.useEffect(() => {
+        if (!activeRoute?.id) return;
+        try { localStorage.setItem('fk_selectedKnockRouteId', activeRoute.id); } catch {}
+    }, [activeRoute?.id]);
+
     // 2. Fetch Route Properties - batch filter by address_hash
     const { data: properties = [], isLoading: propsLoading } = useQuery({
         queryKey: ['routeProperties', activeRoute?.id, activeRoute?.property_hashes?.length || 0],
@@ -336,18 +342,21 @@ export default function RepHome() {
         }
     });
 
-    const cancelSaleMutation = useMutation({
-        mutationFn: (logId) => base44.entities.InteractionLog.delete(logId),
-        onSuccess: (_, logId) => {
-            if (selectedProperty?.address_hash) {
-                queryClient.setQueryData(['propertyHistory', selectedProperty.address_hash], old =>
-                    (old || []).filter(log => log.id !== logId)
-                );
-            }
+    const clearDecisionMutation = useMutation({
+        mutationFn: (log) => base44.entities.InteractionLog.create({
+            address_hash: log.address_hash,
+            raw_input_text: 'Decision cleared — moved back to Todo',
+            parsed_status: 'ELIGIBLE',
+            route_id: activeRoute?.id || null,
+            gps_proof_lat: selectedProperty?.lat,
+            gps_proof_lng: selectedProperty?.lng,
+            gps_accuracy: 0
+        }),
+        onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['routeLogs'] });
             queryClient.invalidateQueries({ queryKey: ['allMyLogs'] });
             queryClient.invalidateQueries({ queryKey: ['propertyHistory'] });
-            toast.success('Sale cancelled');
+            toast.success('Moved back to Todo');
         }
     });
 
@@ -431,10 +440,13 @@ export default function RepHome() {
             const isDone = p.effective_status !== 'ELIGIBLE';
 
             if (filterStatus === 'todo') return !isDone;
-            if (filterStatus === 'done') return isDone;
+            if (filterStatus === 'done') {
+                if (!isDone) return false;
+                return decisionFilter === 'all' || p.effective_status === decisionFilter;
+            }
             return true;
         });
-    }, [routeProperties, filterStatus, searchQuery, soldDateFilter]);
+    }, [routeProperties, filterStatus, searchQuery, soldDateFilter, decisionFilter]);
 
     const knockWindow = getKnockWindowLabel(new Date());
 
@@ -468,10 +480,10 @@ export default function RepHome() {
 
     // --- RENDER HELPERS ---
 
-    const handleCancelSale = (log) => {
-        if (!log?.id) return;
-        if (confirm('Cancel this sale and put the home back on the route?')) {
-            cancelSaleMutation.mutate(log.id);
+    const handleClearDecision = (log) => {
+        if (!log?.address_hash) return;
+        if (confirm('Clear this decision and move the home back to Todo?')) {
+            clearDecisionMutation.mutate(log);
         }
     };
 
@@ -571,7 +583,7 @@ export default function RepHome() {
                 {/* Bottom Row: Date Filter & Search */}
                 <div className="flex items-center gap-2">
                     {/* Sold Date Filter */}
-                    <div className="relative flex-1">
+                    <div className="relative flex-1 min-w-0">
                         <select
                             value={soldDateFilter}
                             onChange={(e) => setSoldDateFilter(e.target.value)}
@@ -588,6 +600,24 @@ export default function RepHome() {
                         </select>
                         <CalendarDays className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#8888A0] pointer-events-none" />
                     </div>
+
+                    {filterStatus === 'done' && (
+                        <div className="relative flex-1 min-w-0">
+                            <select
+                                value={decisionFilter}
+                                onChange={(e) => setDecisionFilter(e.target.value)}
+                                className="appearance-none w-full h-8 pl-3 pr-6 text-[11px] font-bold bg-black/40 border border-white/5 text-white rounded-xl outline-none focus:border-white/15 cursor-pointer [color-scheme:dark]"
+                            >
+                                <option value="all">Decision: All</option>
+                                <option value="SOLD">Sold</option>
+                                <option value="NO_ANSWER">No Answer</option>
+                                <option value="CALLBACK">Callback</option>
+                                <option value="HARD_NO">Not Interested</option>
+                                <option value="NOT_MOVED_IN">Not Moved In</option>
+                                <option value="DM_NOT_HOME">DM Not Home</option>
+                            </select>
+                        </div>
+                    )}
 
                     {/* Inline search */}
                     {routeProperties.length > 8 && (
@@ -676,6 +706,7 @@ export default function RepHome() {
                                     onClick={() => {
                                         setManualRouteId(route.id);
                                         try { localStorage.setItem('fk_selectedKnockRouteId', route.id); } catch {}
+                                        window.history.replaceState({}, '', `${window.location.pathname}?route=${route.id}`);
                                         setShowRouteList(false);
                                     }}
                                     className={`w-full p-3 rounded-xl border text-left transition-all ${activeRoute?.id === route.id ? 'bg-yellow-500/10 border-yellow-500' : 'bg-gray-900 border-gray-800'
@@ -710,7 +741,7 @@ export default function RepHome() {
                     property={selectedProperty}
                     logs={selectedPropertyLogs}
                     onLog={handleLog}
-                    onCancelSale={handleCancelSale}
+                    onClearDecision={handleClearDecision}
                     onPhotoUpload={handlePhotoUpload}
                     uploading={uploading}
                     onClose={() => { setSelectedProperty(null); setSelectedPropertyIndex(null); }}

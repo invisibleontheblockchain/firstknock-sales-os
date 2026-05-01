@@ -38,6 +38,7 @@ const STATUS_COLORS = {
 export default function RouteChecklist({ route, logs, onLogResult, onClose, navigationApp = 'apple', activeRouteSoldFilter, setActiveRouteSoldFilter }) {
     const [expandedId, setExpandedId] = useState(null);
     const [filter, setFilter] = useState('all');
+    const [decisionFilter, setDecisionFilter] = useState('all');
     const [callbackPhone, setCallbackPhone] = useState('');
     const [selectedAction, setSelectedAction] = useState(null);
     const [isListening, setIsListening] = useState(false);
@@ -63,10 +64,13 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
         return route.properties.filter(p => {
             const status = propertyStatuses[p.address_hash];
             if (filter === 'pending') return !status || status === 'ELIGIBLE';
-            if (filter === 'done') return status && status !== 'ELIGIBLE';
+            if (filter === 'done') {
+                if (!status || status === 'ELIGIBLE') return false;
+                return decisionFilter === 'all' || status === decisionFilter;
+            }
             return true;
         });
-    }, [route.properties, propertyStatuses, filter]);
+    }, [route.properties, propertyStatuses, filter, decisionFilter]);
 
     const stats = useMemo(() => {
         let pending = 0, done = 0;
@@ -192,7 +196,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                         <select
                             value={activeRouteSoldFilter}
                             onChange={(e) => setActiveRouteSoldFilter(e.target.value)}
-                            className="bg-[#1a1a1a] text-[#888] text-[10px] font-bold px-2 py-1.5 rounded-lg border-none outline-none cursor-pointer"
+                            className="bg-[#1a1a1a] text-[#888] text-[10px] font-bold px-2 py-1.5 rounded-lg border-none outline-none cursor-pointer min-w-0"
                         >
                             <option value="all">All Time</option>
                             <option value="0.25">1 Week</option>
@@ -202,6 +206,21 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                             <option value="6">6 Months</option>
                             <option value="9">9 Months</option>
                             <option value="12">1 Year</option>
+                        </select>
+                    )}
+                    {filter === 'done' && (
+                        <select
+                            value={decisionFilter}
+                            onChange={(e) => setDecisionFilter(e.target.value)}
+                            className="bg-[#1a1a1a] text-[#888] text-[10px] font-bold px-2 py-1.5 rounded-lg border-none outline-none cursor-pointer min-w-0"
+                        >
+                            <option value="all">All Decisions</option>
+                            <option value="SOLD">Sold</option>
+                            <option value="NO_ANSWER">No Answer</option>
+                            <option value="CALLBACK">Callback</option>
+                            <option value="HARD_NO">Not Interested</option>
+                            <option value="NOT_MOVED_IN">Not Moved In</option>
+                            <option value="DM_NOT_HOME">DM Not Home</option>
                         </select>
                     )}
                     <button

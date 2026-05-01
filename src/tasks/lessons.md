@@ -37,3 +37,4 @@
 - For mobile map overlays, stop both pointer and click propagation on close/action buttons; click-only propagation guards can still leak gestures to Leaflet and cause zoom/pan side effects.
 - When optimizing a mobile panel, check the parent shell, tab row, section header actions, and cards together; fixing only the inner padding can leave fixed-width children off-screen.
 - In mobile multi-select lists, make selection controls and section expand arrows explicit, high-contrast, and non-shrinking; hover-only affordances do not work on touch screens.
+- Rep-facing Knock and Checklist views must share one interpretation of interaction decisions; temporary outcomes like NO_ANSWER should still count as done until a user explicitly clears the decision back to Todo.

@@ -44,14 +44,10 @@ export const determineEffectiveStatus = (masterProp, logs) => {
         return latestLog.parsed_status;
     }
 
-    // Check cooldown for NO_ANSWER
+    // NO_ANSWER is still a completed knock decision for checklist/knock progress.
+    // Re-adding it to Todo should happen only when the decision is cleared.
     if (latestLog.parsed_status === 'NO_ANSWER') {
-        const cooldownDate = new Date(latestLog.next_eligible_date);
-        if (cooldownDate && new Date() < cooldownDate) {
-            return 'COOLDOWN'; // Still cooling down
-        } else {
-            return 'ELIGIBLE'; // Cooldown expired
-        }
+        return 'NO_ANSWER';
     }
 
     // CALLBACK - check if callback date has passed

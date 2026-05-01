@@ -14,7 +14,7 @@ const STATUS_OPTIONS = [
     { id: 'DM_NOT_HOME', label: 'DM Not Home', icon: UserX, color: '#06b6d4' },
 ];
 
-export default function PropertyDetailSheet({ property, logs, onLog, onCancelSale, onPhotoUpload, uploading, onClose, onViewOnMap, routePosition, totalStops, navigationApp = 'apple' }) {
+export default function PropertyDetailSheet({ property, logs, onLog, onClearDecision, onPhotoUpload, uploading, onClose, onViewOnMap, routePosition, totalStops, navigationApp = 'apple' }) {
     const [showMore, setShowMore] = useState(false);
     const [logNote, setLogNote] = useState('');
     const [callbackTime, setCallbackTime] = useState('');
@@ -242,7 +242,7 @@ export default function PropertyDetailSheet({ property, logs, onLog, onCancelSal
                     {logs?.length > 0 && (
                         <div className="space-y-2">
                             <p className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">History</p>
-                            <PropertyHistory logs={logs} onCancelSale={onCancelSale} />
+                            <PropertyHistory logs={logs} onClearDecision={onClearDecision} />
                         </div>
                     )}
                 </div>
