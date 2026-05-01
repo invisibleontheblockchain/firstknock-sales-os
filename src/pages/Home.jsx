@@ -811,7 +811,8 @@ export default function Home() {
         return savedRoutes
             .filter(r => repFilter === 'all' || (r.assigned_to_name && r.assigned_to_name.includes(repFilter)))
             .map(route => {
-                const allRouteProps = route.property_hashes
+                const routeHashes = Array.isArray(route.property_hashes) ? route.property_hashes : [];
+                const allRouteProps = routeHashes
                     .map(hash => propsByHash.get(hash))
                     .filter(Boolean);
                 let routeProps = allRouteProps;
@@ -848,13 +849,13 @@ export default function Home() {
                     id: route.id,
                     properties: routeProps,
                     allProperties: allRouteProps,
-                    houseCount: routeProps.length,
+                    houseCount: routeProps.length || route.metrics?.house_count || routeHashes.length,
                     totalDistance: route.metrics?.distance || 0,
                     competitivenessScore: route.metrics?.score || 0,
                     isSaved: true,
                     isCompleted
                 };
-            }).filter(r => r.properties.length > 0)
+            }).filter(r => r.houseCount > 0)
             .sort((a, b) => (b.competitivenessScore || 0) - (a.competitivenessScore || 0));
     }, [savedRoutes, effectiveProperties, repFilter, soldDateFilter]);
 

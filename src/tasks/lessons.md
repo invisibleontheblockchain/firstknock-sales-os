@@ -21,3 +21,4 @@
 - Long-running self-chained processors need a durable per-job lock before touching job state; chunk-number checks alone do not prevent two invocations from starting the same chunk concurrently.
 - For geographic grid fixes, verify the generated cell count against the target spec after applying edge filters; a correct spacing formula can still under-cover if the filter removes planned boundary cells.
 - If Base44 is only the control plane and Neon is the source of truth for high-volume property storage, default ingestion processors to Neon-only writes; dual writes can reintroduce Base44 429s even after job updates are batched.
+- Never hide saved routes solely because their full property details fail to hydrate; Route Command should still show saved route shells using `property_hashes`/metrics so users can see and recover active routes.
