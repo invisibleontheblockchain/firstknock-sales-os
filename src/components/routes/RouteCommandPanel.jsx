@@ -22,6 +22,35 @@ const BRAND = {
     offWhite: '#E5E5E5'
 };
 
+async function hydrateRouteForMap(route) {
+    const hasLoadedPoints = Array.isArray(route.properties) && route.properties.some(p => p?.lat && p?.lng);
+    if (hasLoadedPoints) return route;
+
+    const hashes = Array.isArray(route.property_hashes) ? route.property_hashes : [];
+    if (hashes.length === 0) return route;
+
+    const res = await base44.functions.invoke('getRoutePropertiesByHashes', {
+        address_hashes: hashes,
+        limit: hashes.length
+    });
+    const loaded = Array.isArray(res.data?.properties) ? res.data.properties : [];
+    if (loaded.length === 0) return route;
+
+    const byHash = new Map();
+    loaded.forEach(p => {
+        byHash.set(p.address_hash, p);
+        if (p.legacy_hash) byHash.set(p.legacy_hash, p);
+    });
+    const ordered = hashes.map(hash => byHash.get(hash)).filter(Boolean);
+
+    return {
+        ...route,
+        properties: ordered,
+        allProperties: ordered,
+        houseCount: ordered.length,
+    };
+}
+
 export default function RouteCommandPanel({
     generatedRoutes = [],
     savedRoutes = [],
@@ -283,7 +312,7 @@ export default function RouteCommandPanel({
                                                     rank={idx + 1}
                                                     isActive={activeRouteId === route.id}
                                                     recommendation={getRepRecommendations?.(route.properties[0])?.[0]}
-                                                    onSelect={() => onSelectRoute(route)}
+                                                    onSelect={async () => onSelectRoute(await hydrateRouteForMap(route))}
                                                     onSave={(repId, repName) => onSaveRoute(route, repId, repName)}
                                                     logs={logs}
                                                 />
@@ -337,7 +366,7 @@ export default function RouteCommandPanel({
                                                                      routeNumber={routeNumberMap.get(route.id)}
                                                                      repColor={repColors[member.id]}
                                                                      isActive={activeRouteId === route.id}
-                                                                     onSelect={() => onSelectRoute(route)}
+                                                                     onSelect={async () => onSelectRoute(await hydrateRouteForMap(route))}
                                                                      onDelete={() => onDeleteRoute && onDeleteRoute(route)}
                                                                      logs={logs}
                                                                      onReoptimize={onReoptimizeRoute}
@@ -365,7 +394,7 @@ export default function RouteCommandPanel({
                                                 routeNumber={routeNumberMap.get(route.id)}
                                                 repColor="#666"
                                                 isActive={activeRouteId === route.id}
-                                                onSelect={() => onSelectRoute(route)}
+                                                onSelect={async () => onSelectRoute(await hydrateRouteForMap(route))}
                                                 onDelete={() => onDeleteRoute && onDeleteRoute(route)}
                                                 logs={logs}
                                                 onReoptimize={onReoptimizeRoute}

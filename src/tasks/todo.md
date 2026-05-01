@@ -1,11 +1,11 @@
-# Current Task: Fix Kevin route visibility in Route Command
+# Current Task: Fix saved route click-to-map hydration
 
 ## Plan
-- [x] Check runtime logs for Route Command load/filter behavior.
-- [x] Inspect route loading and Route Command filtering logic.
-- [x] Verify Kevin’s account/team ownership fields against the UI filters.
-- [x] Correct route ownership/status fields if data is hidden by filtering.
-- [x] Verify routes appear-eligible for Route Command after the fix.
+- [x] Check runtime logs for click/open errors.
+- [x] Inspect saved route selection and map rendering path.
+- [x] Add a focused route-property hydration backend path for saved routes with empty map properties.
+- [x] Wire hydration into Route Command card selection instead of editing oversized Home directly.
+- [x] Verify Kevin’s routes can load full map points after selection.
 
 ## Review
-Found the Route Command bug: saved routes were filtered out when their properties could not hydrate from the currently loaded map dataset. The route records were ACTIVE, but `hydratedSavedRoutes` dropped routes with `properties.length === 0`, so Route Command showed none when Neon returned 0 properties. Patched saved-route hydration to keep saved routes visible using saved metrics/property hashes even when property details are not loaded yet.
+Initial Home edit was blocked because the file is over the platform edit limit. Re-planned the fix into Route Command, where saved-route card clicks already originate. Added a MasterProperty fallback because Kevin route hashes may not exist in the current Neon workspace query. The click handler now hydrates route properties before opening the route on the map.
