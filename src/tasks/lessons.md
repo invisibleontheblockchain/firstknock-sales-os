@@ -29,3 +29,4 @@
 - Large-area ingestion fixes need per-sub-circle raw/mapped/drop/cap diagnostics before rerunning expensive production pulls.
 - When converting JSX event handlers to one-line callbacks, always close the expression container with `}` before the next prop; verify the touched JSX snippets before marking done.
 - For suspected route truncation, trust stage-count logs over assumptions: prove counts at data query, pre-route merge, filter funnel, optimizer output, save hashes, and merge UNION before deleting or regenerating routes.
+- When moving dry-run logic earlier in a backend function, remove the original later declaration in the same edit batch; duplicate `const` declarations cause deploy boot failures.

@@ -15,12 +15,56 @@ function computeBoundingCircle(polygon) {
     const centerLng = sumLng / polygon.length;
     let maxDistMiles = 0;
     for (const p of polygon) {
-        const dLat = (p.lat - centerLat) * 69.0;
-        const dLng = (p.lng - centerLng) * 69.0 * Math.cos(centerLat * Math.PI / 180);
-        const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+        const dist = distanceMiles(centerLat, centerLng, p.lat, p.lng, centerLat);
         if (dist > maxDistMiles) maxDistMiles = dist;
     }
     return { lat: centerLat, lng: centerLng, radius: Math.ceil((maxDistMiles * 1.05) * 10) / 10 };
+}
+
+function distanceMiles(lat1, lng1, lat2, lng2, referenceLat = lat1) {
+    const dLat = (lat2 - lat1) * 69.0;
+    const dLng = (lng2 - lng1) * 69.0 * Math.cos(referenceLat * Math.PI / 180);
+    return Math.sqrt(dLat * dLat + dLng * dLng);
+}
+
+function isPointInPolygon(lat, lng, polygon) {
+    let inside = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i].lng, yi = polygon[i].lat;
+        const xj = polygon[j].lng, yj = polygon[j].lat;
+        const intersects = ((yi > lat) !== (yj > lat)) &&
+            (lng < (xj - xi) * (lat - yi) / ((yj - yi) || 1e-12) + xi);
+        if (intersects) inside = !inside;
+    }
+    return inside;
+}
+
+function distancePointToSegmentMiles(point, a, b, referenceLat) {
+    const px = (point.lng) * 69.0 * Math.cos(referenceLat * Math.PI / 180);
+    const py = point.lat * 69.0;
+    const ax = a.lng * 69.0 * Math.cos(referenceLat * Math.PI / 180);
+    const ay = a.lat * 69.0;
+    const bx = b.lng * 69.0 * Math.cos(referenceLat * Math.PI / 180);
+    const by = b.lat * 69.0;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    const t = lenSq === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+    const closestX = ax + t * dx;
+    const closestY = ay + t * dy;
+    return Math.sqrt((px - closestX) ** 2 + (py - closestY) ** 2);
+}
+
+function circleOverlapsPolygon(circle, polygon) {
+    if (!polygon || polygon.length < 3) return true;
+    if (isPointInPolygon(circle.lat, circle.lng, polygon)) return true;
+    const center = { lat: circle.lat, lng: circle.lng };
+    for (let i = 0; i < polygon.length; i++) {
+        const a = polygon[i];
+        const b = polygon[(i + 1) % polygon.length];
+        if (distancePointToSegmentMiles(center, a, b, circle.lat) <= circle.radius) return true;
+    }
+    return false;
 }
 
 /**
@@ -32,10 +76,19 @@ const SUB_CIRCLE_RADIUS = 5; // miles — sweet spot per RentCast support
 const HEX_HORIZONTAL_SPACING = 2 * SUB_CIRCLE_RADIUS * Math.cos(Math.PI / 6); // 8.66mi
 const HEX_VERTICAL_SPACING = 1.5 * SUB_CIRCLE_RADIUS; // 7.5mi
 
-function generateSubCircles(centerLat, centerLng, radiusMiles) {
+function generateSubCircles(centerLat, centerLng, radiusMiles, polygon = null) {
     if (radiusMiles <= SUB_CIRCLE_RADIUS) {
         // No subdivision needed — single circle covers it
-        return [{ lat: centerLat, lng: centerLng, radius: radiusMiles }];
+        const singleCircle = [{ lat: centerLat, lng: centerLng, radius: radiusMiles }];
+        singleCircle.diagnostics = {
+            original_count: 1,
+            pruned_count: 1,
+            removed_count: 0,
+            estimated_original_fetch_area_sqmi: Number((Math.PI * radiusMiles * radiusMiles).toFixed(1)),
+            estimated_pruned_fetch_area_sqmi: Number((Math.PI * radiusMiles * radiusMiles).toFixed(1)),
+            estimated_api_savings_pct: 0
+        };
+        return singleCircle;
     }
 
     const latMilesToDegrees = 1 / 69.0;
@@ -60,19 +113,32 @@ function generateSubCircles(centerLat, centerLng, radiusMiles) {
         }
     }
 
+    const boundaryFiltered = circles.filter(circle =>
+        distanceMiles(centerLat, centerLng, circle.lat, circle.lng, centerLat) <= radiusMiles + SUB_CIRCLE_RADIUS
+    );
+    const prunedCircles = boundaryFiltered.filter(circle => circleOverlapsPolygon(circle, polygon));
+    const originalFetchArea = Math.PI * SUB_CIRCLE_RADIUS * SUB_CIRCLE_RADIUS * circles.length;
+    const prunedFetchArea = Math.PI * SUB_CIRCLE_RADIUS * SUB_CIRCLE_RADIUS * prunedCircles.length;
     const coverageStats = {
         requested_radius: radiusMiles,
         sub_circle_radius: SUB_CIRCLE_RADIUS,
-        count: circles.length,
+        original_count: circles.length,
+        boundary_filtered_count: boundaryFiltered.length,
+        pruned_count: prunedCircles.length,
+        removed_count: circles.length - prunedCircles.length,
         horizontal_spacing: Number(HEX_HORIZONTAL_SPACING.toFixed(2)),
         vertical_spacing: Number(HEX_VERTICAL_SPACING.toFixed(2)),
-        estimated_circle_area_sqmi: Number((Math.PI * SUB_CIRCLE_RADIUS * SUB_CIRCLE_RADIUS * circles.length).toFixed(1)),
+        estimated_original_fetch_area_sqmi: Number(originalFetchArea.toFixed(1)),
+        estimated_pruned_fetch_area_sqmi: Number(prunedFetchArea.toFixed(1)),
         requested_area_sqmi: Number((Math.PI * radiusMiles * radiusMiles).toFixed(1)),
-        overlap_ratio: Number(((Math.PI * SUB_CIRCLE_RADIUS * SUB_CIRCLE_RADIUS * circles.length) / (Math.PI * radiusMiles * radiusMiles)).toFixed(2))
+        original_overlap_ratio: Number((originalFetchArea / (Math.PI * radiusMiles * radiusMiles)).toFixed(2)),
+        pruned_overlap_ratio: Number((prunedFetchArea / (Math.PI * radiusMiles * radiusMiles)).toFixed(2)),
+        estimated_api_savings_pct: Number((circles.length ? ((circles.length - prunedCircles.length) / circles.length) * 100 : 0).toFixed(1))
     };
-    console.log(`[fetchArea-v10] GRID_COVERAGE ${JSON.stringify(coverageStats)}`);
-    console.log(`[fetchArea-v10] Hex subdivision: ${radiusMiles}mi area → ${circles.length} sub-circles (r=${SUB_CIRCLE_RADIUS}mi, h=${HEX_HORIZONTAL_SPACING.toFixed(2)}mi, v=${HEX_VERTICAL_SPACING.toFixed(2)}mi)`);
-    return circles;
+    prunedCircles.diagnostics = coverageStats;
+    console.log(`[fetchArea-v11] GRID_COVERAGE ${JSON.stringify(coverageStats)}`);
+    console.log(`[fetchArea-v11] Hex subdivision: ${radiusMiles}mi area → ${prunedCircles.length}/${circles.length} sub-circles after polygon-aware pruning (r=${SUB_CIRCLE_RADIUS}mi, h=${HEX_HORIZONTAL_SPACING.toFixed(2)}mi, v=${HEX_VERTICAL_SPACING.toFixed(2)}mi)`);
+    return prunedCircles;
 }
 
 /**
@@ -149,7 +215,7 @@ Deno.serve(async (req) => {
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
         const body = await req.json();
-        let { latitude, longitude, radius, polygon, sold_months, include_mls, force_full_refresh } = body;
+        let { latitude, longitude, radius, polygon, sold_months, include_mls, force_full_refresh, dry_run } = body;
 
         if (!latitude || !longitude || !radius) {
             return Response.json({ error: 'Latitude, longitude, and radius are required' }, { status: 400 });
@@ -207,6 +273,21 @@ Deno.serve(async (req) => {
             }, { status: 400 });
         }
 
+        const effectiveSoldMonths = sold_months || 12;
+
+        if (dry_run === true) {
+            const previewSubCircles = generateSubCircles(optimizedLat, optimizedLng, optimizedRadius, polygon);
+            return Response.json({
+                status: 'dry_run',
+                optimized_radius: optimizedRadius,
+                original_radius: radius,
+                sold_months: effectiveSoldMonths,
+                sub_circles: previewSubCircles.length,
+                coverage_diagnostics: previewSubCircles.diagnostics || null,
+                message: `Dry run only — polygon-aware pruning would use ${previewSubCircles.length} grid cells and create no FetchJob.`
+            });
+        }
+
         // Fix #4: Server-side area enforcement (40 sq mi for free, 300 sq mi for paid)
         const areaSqMiles = Math.PI * optimizedRadius * optimizedRadius;
         const isPaid = user.subscription_status === 'active' || user.is_owner;
@@ -220,8 +301,6 @@ Deno.serve(async (req) => {
                     : `Your drawn area (~${Math.round(areaSqMiles)} sq mi) exceeds the 40 sq mi free limit. Upgrade to pull larger territories.`
             }, { status: 400 });
         }
-
-        const effectiveSoldMonths = sold_months || 12;
 
         // ================================================================
         // CDC DELTA-PULL CHECK
@@ -275,8 +354,9 @@ Deno.serve(async (req) => {
 
         // === GRID SUBDIVISION ===
         // RentCast support: large-radius queries silently drop records.
-        // Break into ≤5mi sub-circles and combine results.
-        const subCircles = generateSubCircles(optimizedLat, optimizedLng, optimizedRadius);
+        // Break into ≤5mi sub-circles and combine results, pruning cells that do not overlap the drawn polygon.
+        const subCircles = generateSubCircles(optimizedLat, optimizedLng, optimizedRadius, polygon);
+        const subCircleDiagnostics = subCircles.diagnostics || null;
 
         // Resume recent failed job for the same area instead of starting over.
         const recentFailedJobs = await base44.asServiceRole.entities.FetchJob.filter(
@@ -372,7 +452,7 @@ Deno.serve(async (req) => {
                 estimated_savings: '~85% fewer API calls'
             } : null,
             sub_circles: subCircles.length,
-            coverage_diagnostics: {
+            coverage_diagnostics: subCircleDiagnostics || {
                 requested_radius: optimizedRadius,
                 requested_area_sqmi: Math.round(Math.PI * optimizedRadius * optimizedRadius),
                 sub_circle_radius: SUB_CIRCLE_RADIUS,
