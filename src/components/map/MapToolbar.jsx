@@ -117,6 +117,35 @@ export default function MapToolbar({
         }
     };
 
+    const handleSaveVisibleFilteredRoute = async () => {
+        if (!activeRoute?.properties?.length || !user?.id) return;
+        const filterLabels = [];
+        if (activeRouteSoldFilter !== 'all') filterLabels.push(`${activeRouteSoldFilter}M`);
+        if (activeRoutePhaseFilter !== 'all') filterLabels.push(activeRoutePhaseFilter);
+        if (activeRoutePriceFilter !== 'all') filterLabels.push(`$${Number(activeRoutePriceFilter).toLocaleString()}+`);
+
+        const routeName = `${activeRoute.name || 'Route'} (${filterLabels.join(', ') || 'Filtered'} Filter)`;
+        await base44.entities.SavedRoute.create({
+            name: routeName,
+            property_hashes: activeRoute.properties.map(p => p.address_hash || p.id).filter(Boolean),
+            metrics: {
+                distance: activeRoute.totalDistance || activeRoute.metrics?.distance || 0,
+                house_count: activeRoute.properties.length,
+                score: activeRoute.competitivenessScore || activeRoute.metrics?.score || 0
+            },
+            status: 'ACTIVE',
+            assigned_to: activeRoute.assigned_to || user.id,
+            assigned_to_name: activeRoute.assigned_to_name || user.full_name || 'Me',
+            manager_id: user.id
+        });
+        queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+        setActiveRoute(prev => prev ? { ...prev, name: routeName } : prev);
+        setActiveRouteSoldFilter?.('all');
+        setActiveRoutePhaseFilter?.('all');
+        setActiveRoutePriceFilter?.('all');
+        toast.success('Filtered route saved');
+    };
+
     return (
         <>
             {/* Top Stats Bar */}
@@ -276,7 +305,7 @@ export default function MapToolbar({
                             )}
 
                             {(activeRouteSoldFilter !== 'all' || activeRoutePhaseFilter !== 'all' || activeRoutePriceFilter !== 'all') && onSaveFilteredRoute && (
-                                <button onClick={(e) => { e.stopPropagation(); onSaveFilteredRoute(); }} className="h-5 md:h-6 px-1.5 md:px-2 text-[9px] md:text-[10px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-md flex items-center gap-0.5 shrink-0">
+                                <button onClick={(e) => { e.stopPropagation(); handleSaveVisibleFilteredRoute(); }} className="h-5 md:h-6 px-1.5 md:px-2 text-[9px] md:text-[10px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-md flex items-center gap-0.5 shrink-0">
                                     <Save className="w-2.5 h-2.5" /> SAVE
                                 </button>
                             )}

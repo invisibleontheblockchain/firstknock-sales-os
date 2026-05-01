@@ -12,7 +12,7 @@ import { CONFIDENCE_COLORS } from '@/components/map/ConfidenceLegend';
  */
 const getRouteColor = (route, routeNumber = 1) => {
     if (route?.display_color) return route.display_color;
-    return `hsl(${((routeNumber - 1) * 47) % 360}, 85%, 58%)`;
+    return '#FFD700';
 };
 
 function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setSelectedProperty }) {

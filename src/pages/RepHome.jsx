@@ -200,46 +200,21 @@ export default function RepHome() {
             const hashes = activeRoute.property_hashes;
 
             try {
-                let allProps = [];
+                console.log(`[RepHome] Fetching ${hashes.length} route properties from route lookup`);
 
-                // Batch fetch in chunks of 20 hashes at a time using filter
-                const BATCH_SIZE = 20;
-                const batches = [];
-                for (let i = 0; i < hashes.length; i += BATCH_SIZE) {
-                    batches.push(hashes.slice(i, i + BATCH_SIZE));
+                const response = await base44.functions.invoke('getRoutePropertiesByHashes', {
+                    address_hashes: hashes,
+                    user_email: activeRoute.created_by,
+                    limit: hashes.length
+                });
+
+                const loaded = Array.isArray(response.data?.properties) ? response.data.properties : [];
+                console.log(`[RepHome] Found ${loaded.length}/${hashes.length} properties`);
+
+                if (loaded.length > 0) {
+                    localforage.setItem(`cached_props_${activeRoute.id}`, loaded);
                 }
-
-                console.log(`[RepHome] Fetching ${hashes.length} properties in ${batches.length} batches`);
-
-                const results = await Promise.all(
-                    batches.map(batch =>
-                        base44.entities.MasterProperty.filter(
-                            { address_hash: batch },
-                            '-created_date',
-                            batch.length
-                        ).then(r => Array.isArray(r) ? r : (r?.items || []))
-                            .catch(err => {
-                                console.warn('[RepHome] Batch fetch failed, trying individually', err);
-                                // Fallback: fetch individually for this batch
-                                return Promise.all(
-                                    batch.map(hash =>
-                                        base44.entities.MasterProperty.filter({ address_hash: hash }, '-created_date', 1)
-                                            .then(r => Array.isArray(r) ? r : (r?.items || []))
-                                            .catch(() => [])
-                                    )
-                                ).then(results => results.flat());
-                            })
-                    )
-                );
-
-                allProps = results.flat();
-                console.log(`[RepHome] Found ${allProps.length}/${hashes.length} properties`);
-
-                // Cache for offline
-                if (allProps.length > 0) {
-                    localforage.setItem(`cached_props_${activeRoute.id}`, allProps);
-                }
-                return allProps;
+                return loaded;
             } catch (e) {
                 console.error("Error fetching properties", e);
                 const cached = await localforage.getItem(`cached_props_${activeRoute.id}`);
@@ -362,34 +337,23 @@ export default function RepHome() {
     const routeProperties = useMemo(() => {
         if (!activeRoute || routesLoading || !properties.length) return [];
 
-        // Build the physical property list directly from the route hashes
-        // The Clean Route button natively deletes rejected hashes from this array, so dynamic filtering is no longer needed
-        const rawProps = (activeRoute.property_hashes || [])
-            .map(hash => properties.find(p => p.address_hash === hash))
-            .filter(Boolean);
-
-        // Deduplicate properties by normalized address
-        const uniqueMap = new Map();
-        rawProps.forEach(p => {
-            const key = `${p.house_number || ''}_${p.street_name || ''}_${p.zip_code || ''}`.toLowerCase().trim();
-            // Optional: resolve conflicts by taking the one with the newest sold_date or just take the first one
-            if (!uniqueMap.has(key)) {
-                uniqueMap.set(key, p);
-            } else {
-                const existing = uniqueMap.get(key);
-                const isNewer = p.sold_date && (!existing.sold_date || new Date(p.sold_date) > new Date(existing.sold_date));
-                if (isNewer) uniqueMap.set(key, p);
-            }
+        const byHash = new Map();
+        properties.forEach(p => {
+            if (p.address_hash) byHash.set(p.address_hash, p);
+            if (p.legacy_hash) byHash.set(p.legacy_hash, p);
         });
 
-        const dedupedProps = Array.from(uniqueMap.values()).map(p => {
-            const pLogs = logs.filter(l => l.address_hash === p.address_hash);
-            const status = determineEffectiveStatus(p, pLogs);
-            return { ...p, effective_status: status };
-        });
+        const orderedProps = (activeRoute.property_hashes || [])
+            .map(hash => byHash.get(hash))
+            .filter(Boolean)
+            .map(p => {
+                const pLogs = logs.filter(l => l.address_hash === p.address_hash || (p.legacy_hash && l.address_hash === p.legacy_hash));
+                const status = determineEffectiveStatus(p, pLogs);
+                return { ...p, effective_status: status };
+            });
 
-        // Optimize sort based on time
-        return optimizeRouteForTime(dedupedProps, new Date());
+        // Optimize sort based on time without changing the route's stop count
+        return optimizeRouteForTime(orderedProps, new Date());
     }, [activeRoute, properties, logs]);
 
     // Stats

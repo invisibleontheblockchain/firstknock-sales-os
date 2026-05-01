@@ -1,10 +1,12 @@
-# Current Task: Correct 300 sq mi display precision
+# Current Task: Fix Anderson route count, route line color, and sold-route save
 
 ## Plan
-- [x] Identify why the 300 sq mi preset displays as 298 sq mi.
-- [x] Increase generated circle polygon precision so future 300 sq mi areas calculate closer to 300.
-- [x] Normalize display rounding for known large presets so existing saved 300 sq mi polygons do not show confusing 298 values.
-- [x] Document verification and lesson learned.
+- [x] Check runtime logs for save failures and route-loading errors.
+- [x] Trace why the Knock tab shows 281 homes for the Anderson County route when the source route has 415.
+- [x] Fix route hydration/display so saved route shells keep the full property count even if some property details are missing.
+- [x] Change default mail-carrier route lines from red to gold.
+- [x] Fix the Home sold-route save button failure.
+- [x] Verify via code path/log review and document the result.
 
 ## Review
-The 298 value came from measuring a 300 sq mi circle as a low-resolution 32-sided polygon; the chord approximation is slightly smaller than the true circle. Future circle presets now use 128 points for much closer area math, and display formatting snaps near-known presets (5/40/300 sq mi) to their intended labels.
+Runtime logs showed Anderson County generated 415 doors, but Knock loaded route homes from old Base44 MasterProperty batches, where only 281 records were available. RepHome now uses the Neon-backed route lookup used elsewhere and preserves the saved route hash order without address deduping away stops. Route lines now default to gold, and filtered-route SAVE now creates the visible filtered route directly from the toolbar so price/date/phase filtered views save correctly.
