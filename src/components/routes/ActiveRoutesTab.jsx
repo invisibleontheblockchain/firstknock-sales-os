@@ -166,9 +166,9 @@ export default function ActiveRoutesTab({
     return (
         <>
             {/* Header with actions */}
-            <div className="flex justify-between items-center mb-2 px-1 gap-2">
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">All Campaigns</span>
-                <div className="flex items-center gap-2">
+            <div className="flex justify-between items-center mb-2 px-1 gap-2 min-w-0 overflow-hidden">
+                <span className="text-xs font-bold text-gray-500 uppercase tracking-wide shrink-0">All Campaigns</span>
+                <div className="flex items-center gap-1 sm:gap-2 min-w-0 overflow-x-auto no-scrollbar">
                     {isMultiSelect && (
                         <>
                             <Button
@@ -195,7 +195,7 @@ export default function ActiveRoutesTab({
                             onClick={() => setMergeMode(true)}
                             variant="ghost"
                             size="sm"
-                            className="h-6 text-[10px] text-purple-400 hover:text-purple-300 hover:bg-purple-900/20 px-2"
+                            className="h-6 text-[9px] sm:text-[10px] text-purple-400 hover:text-purple-300 hover:bg-purple-900/20 px-1.5 sm:px-2 whitespace-nowrap"
                         >
                             <Merge className="w-3 h-3 mr-1" /> SELECT TO MERGE
                         </Button>
@@ -209,7 +209,7 @@ export default function ActiveRoutesTab({
                             }}
                             variant="ghost"
                             size="sm"
-                            className="h-6 text-[10px] text-red-500 hover:text-red-400 hover:bg-red-900/20 px-2"
+                            className="h-6 text-[9px] sm:text-[10px] text-red-500 hover:text-red-400 hover:bg-red-900/20 px-1.5 sm:px-2 whitespace-nowrap"
                         >
                             <X className="w-3 h-3 mr-1" /> DELETE ALL
                         </Button>
@@ -377,7 +377,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
     const displayName = routeNumber && (!route.name || /^Route\s+\d+$/i.test(route.name)) ? `Route ${routeNumber}` : route.name;
 
     return (
-        <div className={`relative group flex items-start gap-2 ${isSelected ? 'ring-2 ring-purple-500 rounded-xl' : ''}`}>
+        <div className={`relative group flex items-start gap-2 min-w-0 max-w-full overflow-hidden ${isSelected ? 'ring-2 ring-purple-500 rounded-xl' : ''}`}>
             {/* Multi-select checkbox */}
             {isMultiSelect && (
                 <div className="flex items-center pt-4 pl-1 shrink-0" onClick={e => e.stopPropagation()}>
@@ -389,12 +389,12 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                 </div>
             )}
 
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 max-w-full overflow-hidden">
                 <div
                     onClick={isMultiSelect ? onToggleSelect : onSelect}
                     role="button"
                     tabIndex={0}
-                    className="w-full p-3 rounded-xl border transition-all text-left hover:border-gray-600 cursor-pointer"
+                    className="w-full max-w-full p-3 rounded-xl border transition-all text-left hover:border-gray-600 cursor-pointer overflow-hidden"
                     style={{
                         background: isActive ? `${BRAND.gold}15` : '#151515',
                         borderColor: isActive ? BRAND.gold : '#222',
@@ -402,7 +402,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                         borderLeftColor: repColor
                     }}
                 >
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between min-w-0 gap-2">
                         <div className="flex-1 min-w-0 pr-12">
                             {editing ? (
                                 <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
@@ -439,7 +439,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                                 <span className="text-[10px] text-gray-500">{route.assigned_to_name}</span>
                             )}
                         </div>
-                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                        <div className="flex flex-col items-end gap-1.5 shrink-0 max-w-[120px] sm:max-w-none">
                             {dateRange && (
                                 <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 leading-none">
                                     {dateRange}
@@ -454,7 +454,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                             </Badge>
                         </div>
                     </div>
-                    <div className="flex gap-3 text-[10px] text-gray-600 mt-1">
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-600 mt-1 min-w-0">
                         <span>{route.houseCount || route.metrics?.house_count} doors</span>
                         <span>{route.competitivenessScore || route.metrics?.score || 0} score</span>
                         {knockStats.knocked > 0 && (
@@ -469,7 +469,8 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                 </div>
                 {!isMultiSelect && onDelete && (
                     <button
-                        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(); }}
                         className="absolute top-2 right-2 p-1.5 bg-red-500/20 hover:bg-red-500/40 text-red-500 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                         title="Delete Route"
                     >
@@ -478,7 +479,8 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                 )}
                 {!isMultiSelect && onReoptimize && (
                     <button
-                        onClick={(e) => { e.stopPropagation(); onReoptimize(route); }}
+                        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReoptimize(route); }}
                         className="absolute top-2 right-10 p-1.5 bg-blue-500/20 hover:bg-blue-500/40 text-blue-400 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                         title={`Re-optimize order (${routeConfig?.walkingPattern?.replace(/_/g, ' ') || 'current pattern'})`}
                     >

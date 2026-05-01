@@ -277,7 +277,10 @@ function LayoutInner({ children }) {
 function NavItem({ icon: Icon, label, to, active }) {
     return (
         <Link 
-            to={to} 
+            to={to}
+            onClick={() => {
+                if (label === 'Map') window.dispatchEvent(new CustomEvent('fk-map-tab-open'));
+            }}
             className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-all duration-300 ${
                 active ? 'text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.8)]' : 'text-[#9CA3AF] hover:text-gray-300'
             }`}

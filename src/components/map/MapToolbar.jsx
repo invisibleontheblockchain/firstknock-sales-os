@@ -89,6 +89,17 @@ export default function MapToolbar({
         return () => window.removeEventListener('fk-territory-data-ready', handler);
     }, []);
 
+    // Bottom Map tab should return to plain map view and close Builder/Route Command.
+    useEffect(() => {
+        const handler = () => {
+            setMode('analyze');
+            setShowCompare(false);
+            setShowRoutePanel(false);
+        };
+        window.addEventListener('fk-map-tab-open', handler);
+        return () => window.removeEventListener('fk-map-tab-open', handler);
+    }, [setMode, setShowCompare, setShowRoutePanel]);
+
     // Inline route name editing state
     const [editingName, setEditingName] = useState(false);
     const [draftName, setDraftName] = useState('');
@@ -172,7 +183,11 @@ export default function MapToolbar({
                     {/* MODE TOGGLE - Absolutely centered */}
                     <div className="pointer-events-auto absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/80 backdrop-blur-md rounded-lg sm:rounded-xl p-0.5 sm:p-1 border border-gray-800 flex gap-0.5 shadow-xl">
                         <button
-                            onClick={() => { setMode('analyze'); }}
+                            onClick={() => {
+                                setMode('analyze');
+                                setShowCompare(false);
+                                setShowRoutePanel(false);
+                            }}
                             className={`px-2 py-1.5 sm:px-4 sm:py-2.5 rounded-md sm:rounded-lg text-[9px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'analyze' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}
                         >
                             ROUTES
@@ -257,7 +272,7 @@ export default function MapToolbar({
                                 <button onClick={(e) => { e.stopPropagation(); if (onReoptimizeRoute) onReoptimizeRoute(activeRoute); }} className="h-5 md:h-6 px-1.5 md:px-2 text-[9px] md:text-[10px] font-bold bg-yellow-500 hover:bg-yellow-400 text-black rounded-md flex items-center gap-0.5" title="Optimize">
                                     <Zap className="w-2.5 h-2.5" /><span>OPTIMIZE</span>
                                 </button>
-                                <button onClick={(e) => { e.stopPropagation(); setActiveRoute(null); }} className="flex items-center gap-0.5 h-5 md:h-6 px-1.5 md:px-2 rounded-md border border-white/10 text-[9px] md:text-[10px] font-bold text-gray-400 hover:text-white hover:bg-white/10 shrink-0">
+                                <button onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveRoute(null); }} className="flex items-center gap-0.5 h-5 md:h-6 px-1.5 md:px-2 rounded-md border border-white/10 text-[9px] md:text-[10px] font-bold text-gray-400 hover:text-white hover:bg-white/10 shrink-0 touch-manipulation">
                                     <X className="w-2.5 h-2.5" /><span className="hidden sm:inline">CLOSE</span>
                                 </button>
                             </div>

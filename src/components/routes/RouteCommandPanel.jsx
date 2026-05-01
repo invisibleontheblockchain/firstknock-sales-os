@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { HelpCircle } from 'lucide-react';
 import ActiveRoutesTab from './ActiveRoutesTab';
@@ -44,7 +44,8 @@ export default function RouteCommandPanel({
     housesPerRoute = 50,
     logs = [],
     onReoptimizeRoute,
-    routeConfig
+    routeConfig,
+    mode = 'analyze'
 }) {
     const selectRouteForMapAndKnock = async (route) => {
         const hydratedRoute = await hydrateRouteForMap(route);
@@ -54,7 +55,11 @@ export default function RouteCommandPanel({
         onSelectRoute(hydratedRoute);
     };
 
-    const [activeTab, setActiveTab] = useState(generatedRoutes.length > 0 ? 'new' : 'active');
+    const [activeTab, setActiveTab] = useState(mode === 'generate' && generatedRoutes.length > 0 ? 'new' : 'active');
+
+    useEffect(() => {
+        if (mode !== 'generate' && activeTab === 'new') setActiveTab('active');
+    }, [mode, activeTab]);
 
     // Build a global route number map: route.id → #1, #2, #3...
     const routeNumberMap = useMemo(() => {
@@ -95,17 +100,19 @@ export default function RouteCommandPanel({
     }, [savedRoutes, teamMembers]);
 
     return (
-        <div className="fixed inset-0 z-[2000]">
+        <div className="fixed inset-0 z-[2000] overflow-hidden touch-manipulation">
             <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
             <div
-                className="fixed top-0 bottom-0 left-0 w-full md:max-w-xl overflow-hidden flex flex-col z-[3000] backdrop-blur-xl shadow-2xl animate-in slide-in-from-left duration-300 border-r border-white/10 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
+                onPointerDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
+                className="fixed top-0 bottom-0 left-0 w-full max-w-[100dvw] md:max-w-xl overflow-hidden flex flex-col z-[3000] backdrop-blur-xl shadow-2xl animate-in slide-in-from-left duration-300 border-r border-white/10 pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]"
                 style={{ background: 'rgba(10, 10, 10, 0.98)' }}
             >
                 {/* Header */}
-                <div className="p-4 border-b flex justify-between items-center shrink-0" style={{ borderColor: BRAND.charcoal }}>
-                    <div>
-                        <h2 className="flex items-center gap-2 text-lg font-bold tracking-wide" style={{ color: BRAND.gold }}>
-                            <Navigation className="w-5 h-5" />
+                <div className="p-4 border-b flex justify-between items-center shrink-0 min-w-0" style={{ borderColor: BRAND.charcoal }}>
+                    <div className="min-w-0">
+                        <h2 className="flex items-center gap-2 text-base sm:text-lg font-bold tracking-wide truncate" style={{ color: BRAND.gold }}>
+                            <Navigation className="w-5 h-5 shrink-0" />
                             ROUTE COMMAND
                         </h2>
                         <p className="text-[10px] mt-1" style={{ color: '#666' }}>
@@ -113,7 +120,11 @@ export default function RouteCommandPanel({
                             {savedRoutes.length} Active Campaigns
                         </p>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-lg transition-colors">
+                    <button
+                        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
+                        className="p-3 -mr-1 hover:bg-white/5 rounded-lg transition-colors touch-manipulation"
+                    >
                         <X className="w-5 h-5" style={{ color: BRAND.offWhite }} />
                     </button>
                 </div>
@@ -121,9 +132,9 @@ export default function RouteCommandPanel({
                 {/* Tab Navigation */}
                 <div className="flex border-b px-2 sm:px-4 shrink-0 overflow-x-auto no-scrollbar" style={{ borderColor: BRAND.charcoal }}>
                     <button
-                        onClick={() => !activeRouteId && setActiveTab('new')}
-                        disabled={!!activeRouteId}
-                        className={`flex-1 min-w-[100px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${activeRouteId ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'new'
+                        onClick={() => !activeRouteId && mode === 'generate' && setActiveTab('new')}
+                        disabled={!!activeRouteId || mode !== 'generate'}
+                        className={`flex-1 min-w-[92px] py-3 text-[10px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${(activeRouteId || mode !== 'generate') ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'new'
                             ? 'border-yellow-500 text-yellow-500'
                             : 'border-transparent text-gray-500 hover:text-white'
                             }`}
@@ -164,7 +175,7 @@ export default function RouteCommandPanel({
                 {/* Content */}
                 <div className="flex-1 min-h-0">
                     <ScrollArea className="h-full w-full">
-                        <div className="p-4 space-y-4">
+                        <div className="p-3 sm:p-4 space-y-4 w-full max-w-full overflow-x-hidden">
 
                         {/* NEW ROUTES TAB */}
                         {activeTab === 'new' && (
@@ -711,7 +722,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                         </Badge>
                     </div>
                 </div>
-                <div className="flex gap-3 text-[10px] text-gray-600 mt-1">
+                <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-gray-600 mt-1 min-w-0">
                     <span>{route.houseCount || route.metrics?.house_count} doors</span>
                     <span>{route.competitivenessScore || route.metrics?.score || 0} score</span>
                     {knockStats.knocked > 0 && (
