@@ -257,7 +257,7 @@ export default function MapToolbar({
                                 <button onClick={(e) => { e.stopPropagation(); if (onReoptimizeRoute) onReoptimizeRoute(activeRoute); }} className="h-5 md:h-6 px-1.5 md:px-2 text-[9px] md:text-[10px] font-bold bg-yellow-500 hover:bg-yellow-400 text-black rounded-md flex items-center gap-0.5" title="Optimize">
                                     <Zap className="w-2.5 h-2.5" /><span>OPTIMIZE</span>
                                 </button>
-                                <button onClick={() => { setActiveRoute(null); if (mapRef.current) { try { if (mapRef.current._mapPane) mapRef.current.setZoom(Math.max(13, mapRef.current.getZoom() - 2)); } catch (e) { } } }} className="flex items-center gap-0.5 h-5 md:h-6 px-1.5 md:px-2 rounded-md border border-white/10 text-[9px] md:text-[10px] font-bold text-gray-400 hover:text-white hover:bg-white/10 shrink-0">
+                                <button onClick={(e) => { e.stopPropagation(); setActiveRoute(null); }} className="flex items-center gap-0.5 h-5 md:h-6 px-1.5 md:px-2 rounded-md border border-white/10 text-[9px] md:text-[10px] font-bold text-gray-400 hover:text-white hover:bg-white/10 shrink-0">
                                     <X className="w-2.5 h-2.5" /><span className="hidden sm:inline">CLOSE</span>
                                 </button>
                             </div>

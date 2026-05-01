@@ -1,9 +1,8 @@
 # Plan
 
-- [x] Find where sale confirmation creates the SOLD history/log.
-- [x] Find the sold history UI and whether it has delete/cancel controls.
-- [x] Add a minimal cancel/delete sale action that removes the sale log and refreshes route/property state.
-- [x] Verify the impacted files and update this review with results.
+- [x] Confirm why the close route button changes zoom.
+- [x] Update only the close button behavior so it closes the active route without changing map zoom.
+- [x] Verify the code path no longer calls map zoom APIs.
 
 ## Review
-Sale confirmation creates a SOLD InteractionLog from `PropertyDetailSheet`, and the history UI showed the log but had no removal control. I added a `Cancel sale` button only on SOLD history entries, wired it to delete that InteractionLog, immediately remove it from the open history sheet, refresh route/log analytics queries, and show a confirmation toast. This puts the property back into route eligibility once the SOLD log is gone.
+The selected close button had an inline handler that called `mapRef.current.setZoom(Math.max(13, mapRef.current.getZoom() - 2))` after closing the active route. That forced a zoom change and could feel like a buggy zoom jump depending on the current map state. I removed only that map zoom call and kept the route close behavior intact, with `stopPropagation()` added so the click does not bubble into map/UI handlers.
