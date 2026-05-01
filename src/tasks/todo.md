@@ -1,11 +1,11 @@
-# Current Task: Fix saved route click-to-map hydration
+# Current Task: Fix saved route map popup/rendering
 
 ## Plan
-- [x] Check runtime logs for click/open errors.
-- [x] Inspect saved route selection and map rendering path.
-- [x] Add a focused route-property hydration backend path for saved routes with empty map properties.
-- [x] Wire hydration into Route Command card selection instead of editing oversized Home directly.
-- [x] Verify Kevin’s routes can load full map points after selection.
+- [x] Check runtime logs for route click and map render errors.
+- [x] Inspect Route Command selection and map active-route rendering path.
+- [x] Identify why hydrated routes still do not visibly pop up on the map.
+- [x] Apply the smallest fix so clicking a saved route opens it properly on the map.
+- [x] Verify with backend/function logs and behavior checks.
 
 ## Review
-Initial Home edit was blocked because the file is over the platform edit limit. Re-planned the fix into Route Command, where saved-route card clicks already originate. Added a MasterProperty fallback because Kevin route hashes may not exist in the current Neon workspace query. The click handler now hydrates route properties before opening the route on the map.
+ActiveRoutesTab was bypassing the saved-route hydration wrapper, and active routes were not automatically fitting the map viewport. Patched both so selected saved routes load their coordinates and the map zooms to them. Verified the route property lookup returns mapped coordinates successfully.

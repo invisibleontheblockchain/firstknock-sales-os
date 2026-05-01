@@ -13,9 +13,17 @@ import { CONFIDENCE_COLORS } from '@/components/map/ConfidenceLegend';
 function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setSelectedProperty }) {
     const map = useMap();
     const layerRef = useRef(null);
+    const fittedRouteIdRef = useRef(null);
 
     useEffect(() => {
         if (!map || !activeRoute?.properties?.length) return;
+
+        const routePoints = activeRoute.properties.filter(p => p && p.lat && p.lng);
+        if (routePoints.length > 0 && fittedRouteIdRef.current !== activeRoute.id) {
+            const bounds = L.latLngBounds(routePoints.map(p => [p.lat, p.lng]));
+            map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16, animate: true });
+            fittedRouteIdRef.current = activeRoute.id;
+        }
 
         const isCompleted = activeRoute.isCompleted;
         const routeColor = isCompleted ? '#6b7280' : BRAND.gold;
@@ -27,7 +35,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
         }
 
         const group = L.layerGroup();
-        const props = activeRoute.properties.filter(p => p && p.lat && p.lng);
+        const props = routePoints;
 
         // 1. Route line
         if (props.length > 1) {
