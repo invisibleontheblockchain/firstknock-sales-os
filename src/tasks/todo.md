@@ -40,7 +40,12 @@
 - [x] Persist the selected Knock route so reps with multiple routes stay on the same county/route context.
 - [x] Verify the touched flow and document the result.
 
-## Current Plan — Kevin Route Alignment
+## Current Plan — Kevin Optimize Keeps Houses
+- [x] Fix Optimize so it preserves the already-loaded optimized properties instead of rebuilding from possibly-empty Home territory data.
+- [x] Keep saved `property_hashes`, metrics, active route properties, checklist, and map in one order after Optimize.
+- [x] Verify Kevin’s selected route still loads all 64 houses; runtime still shows the separate Home render-loop warning to refactor next.
+
+## Previous Plan — Kevin Route Alignment
 - [x] Trace Kevin route rendering across map, checklist, knock, and optimize.
 - [x] Identify why map first stop can differ from checklist/knock and why optimize can empty homes.
 - [x] Patch the stale shared route hydration cache so refreshed saved route orders are not served stale.

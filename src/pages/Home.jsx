@@ -1290,12 +1290,11 @@ export default function Home() {
             }
             newDistance = Math.round(newDistance * 100) / 100;
             const oldDistance = route.metrics?.distance || route.totalDistance || 0;
-            const newOrder = optimized.map(p => p.address_hash);
-            await base44.entities.SavedRoute.update(route.id, { property_hashes: newOrder, metrics: { ...route.metrics, distance: newDistance } });
+            const newOrder = optimized.map(p => p.address_hash || p.id).filter(Boolean);
+            await base44.entities.SavedRoute.update(route.id, { property_hashes: newOrder, metrics: { ...route.metrics, distance: newDistance, house_count: optimized.length } });
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
             if (activeRoute && activeRoute.id === route.id) {
-                const updatedProps = newOrder.map(hash => effectiveProperties.find(p => p.address_hash === hash)).filter(Boolean);
-                setActiveRoute(prev => ({ ...prev, properties: updatedProps, totalDistance: newDistance }));
+                setActiveRoute(prev => ({ ...prev, property_hashes: newOrder, properties: optimized, allProperties: optimized, houseCount: optimized.length, totalDistance: newDistance, metrics: { ...prev?.metrics, distance: newDistance, house_count: optimized.length } }));
             }
             // Restore map view to prevent zoom-out from fitBounds reacting to property reorder
             if (savedView && mapRef.current) { try { mapRef.current.setView(savedView.center, savedView.zoom, { animate: false }); } catch (e) {} }
