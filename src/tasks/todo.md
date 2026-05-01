@@ -262,6 +262,13 @@ Pass 1 implemented and verified.
 - Re-pulling an area updates existing records; it does not create duplicates for doors already pulled.
 - Route generation now includes already-routed doors by default, and the skip option is renamed “Hide Already Routed” for clarity.
 
+## Investigation Plan — Fill blanks in an early problematic area pull
+- [x] Clarify the real concern: an early area pull may have been partial/incomplete, so re-pulls should fill coverage gaps instead of only refreshing existing records.
+- [ ] Inspect fetch job/chunk behavior for predefined/drawn-area pulls.
+- [ ] Verify whether candidate reads cover the whole drawn area or only previous zip/route-scoped data.
+- [ ] Identify a simple coverage diagnostic: fetched count, inserted count, existed count, updated count, sub-circle progress, and zip codes found.
+- [ ] Recommend or implement the safest way to prove whether the area is complete before generating routes.
+
 ## Plan — Custom area disappeared after app reload/kickout
 - [x] Check runtime logs for reload/polling behavior.
 - [x] Identify that switching out of generate mode cleared the confirmed drawn polygon from state/storage.
