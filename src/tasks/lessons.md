@@ -32,3 +32,4 @@
 - When moving dry-run logic earlier in a backend function, remove the original later declaration in the same edit batch; duplicate `const` declarations cause deploy boot failures.
 - Generated circle areas are polygon approximations in the UI; use enough vertices and snap labels near known presets so a 300 sq mi preset does not display as 298 sq mi.
 - Rep-facing route screens must hydrate saved route properties through the same Neon-backed hash lookup as manager screens; falling back to old Base44 MasterProperty reads can silently undercount routes.
+- When adding a conditional JSX element beside an existing element inside a ternary branch, wrap siblings in a fragment; ternary branches must return one JSX expression.

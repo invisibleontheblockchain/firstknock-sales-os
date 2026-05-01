@@ -1593,7 +1593,7 @@ export default function Home() {
                 )}
 
                 {/* Previous drawn area history */}
-                <PolygonHistory currentPolygon={drawnPolygon} />
+                <PolygonHistory currentPolygon={drawnPolygon} mode={mode} />
 
                 {/* GPS TRACKER LAYERS */}
                 <GpsTrackerMapLayers

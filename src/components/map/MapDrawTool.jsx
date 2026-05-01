@@ -5,6 +5,7 @@ import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/g
 
 export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPolygon, drawShape = 'circle', drawSizeMiles = 10 }) {
     const [points, setPoints] = useState([]);
+    const [builderMode, setBuilderMode] = useState(false);
     const map = useMap();
     const cursorLineRef = useRef(null);
 
@@ -50,6 +51,12 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
         }
         return newPoints;
     };
+
+    useEffect(() => {
+        const handler = (event) => setBuilderMode(event.detail?.mode === 'generate');
+        window.addEventListener('fk-builder-mode-change', handler);
+        return () => window.removeEventListener('fk-builder-mode-change', handler);
+    }, []);
 
     // Change cursor when active — do NOT disable dragging (causes frozen map)
     useEffect(() => {
@@ -166,7 +173,7 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
         }
     }, [active, map]);
 
-    const displayPoints = active ? points : (drawnPolygon || []);
+    const displayPoints = active ? points : (builderMode ? (drawnPolygon || []) : []);
 
     // Calculate preview radius in meters from drawSizeMiles
     const previewRadiusMeters = React.useMemo(() => {

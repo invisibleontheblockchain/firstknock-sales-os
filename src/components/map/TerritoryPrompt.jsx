@@ -44,6 +44,7 @@ export default function TerritoryPrompt({
     const [totalExpected, setTotalExpected] = useState(0);
     const [isDeltaPull, setIsDeltaPull] = useState(false);
     const [forceFullRefresh, setForceFullRefresh] = useState(false);
+    const [selectedHistoryArea, setSelectedHistoryArea] = useState(null);
     const [recoverableJob, setRecoverableJob] = useState(null);
     // v15: MLS Phase 2 always runs with verification — no toggle needed
     const pollRef = useRef(null);
@@ -142,18 +143,36 @@ export default function TerritoryPrompt({
     // Clear only in-progress drawing when switching away; keep the confirmed area
     // so users can return after a pull/reload and still generate routes for it.
     useEffect(() => {
+        window.dispatchEvent(new CustomEvent('fk-builder-mode-change', { detail: { mode } }));
         if (mode !== 'generate') {
             setDrawingMode(false);
             setDraftPolygon([]);
+            setForceFullRefresh(false);
+            setSelectedHistoryArea(null);
         }
     }, [mode]);
 
-    // Listen for toolbar draw button event
+    // Listen for toolbar draw button and previous-area selection events
     useEffect(() => {
-        const handler = () => setDrawingMode(true);
-        window.addEventListener('fk-start-drawing', handler);
-        return () => window.removeEventListener('fk-start-drawing', handler);
-    }, []);
+        const drawHandler = () => setDrawingMode(true);
+        const historyHandler = (event) => {
+            const polygon = event.detail?.polygon;
+            if (!polygon || polygon.length < 3) return;
+            setMode('generate');
+            setDrawnPolygon(polygon);
+            setDraftPolygon([]);
+            setDrawingMode(false);
+            setSelectedHistoryArea(event.detail || { polygon });
+            setForceFullRefresh(false);
+            toast.success('Previous area selected');
+        };
+        window.addEventListener('fk-start-drawing', drawHandler);
+        window.addEventListener('fk-select-polygon-history', historyHandler);
+        return () => {
+            window.removeEventListener('fk-start-drawing', drawHandler);
+            window.removeEventListener('fk-select-polygon-history', historyHandler);
+        };
+    }, [setMode, setDrawnPolygon, setDraftPolygon, setDrawingMode]);
 
     const actualAreaSqMiles = useMemo(() => calculatePolygonAreaSqMiles(drawnPolygon), [drawnPolygon]);
     const actualAreaLabel = actualAreaSqMiles > 0 ? formatSqMiles(actualAreaSqMiles) : `${drawSizeMiles}mi²`;
@@ -494,12 +513,6 @@ export default function TerritoryPrompt({
                         {isLargeArea && (
                             <div className="text-[9px] text-cyan-400 text-center font-semibold">Heads up — {actualAreaLabel} × {fetchMonths}mo is a big pull. Expect longer import times.</div>
                         )}
-                        <button
-                            onClick={() => setForceFullRefresh(v => !v)}
-                            className={`text-[10px] font-bold py-1.5 rounded-md border transition-all ${forceFullRefresh ? 'bg-blue-500/20 text-blue-300 border-blue-400/50' : 'bg-white/5 text-gray-500 border-white/10 hover:text-white'}`}
-                        >
-                            {forceFullRefresh ? 'Fill Gaps: ON' : 'Fill Gaps / Full Refresh'}
-                        </button>
                         {/* v15: MLS Verified — paid users only */}
                         <div className="border-t border-white/10 pt-2 mt-1">
                             {isPaid ? (
@@ -623,13 +636,24 @@ export default function TerritoryPrompt({
                                     <span>PRO — {actualAreaLabel}</span>
                                 </button>
                             ) : (
-                                <Button
-                                    disabled={pulling}
-                                    onClick={handleFetchData}
-                                    className="text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]"
-                                >
-                                    {`${forceFullRefresh ? 'Fill Gaps' : 'Pull'} ${actualAreaLabel} (${fetchMonths} Mo)`}
-                                </Button>
+                                <>
+                                    <Button
+                                        disabled={pulling}
+                                        onClick={handleFetchData}
+                                        className="text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]"
+                                    >
+                                        {`Pull ${actualAreaLabel} (${fetchMonths} Mo)`}
+                                    </Button>
+                                    {selectedHistoryArea && (
+                                        <Button
+                                            disabled={pulling}
+                                            onClick={() => { setForceFullRefresh(true); setTimeout(handleFetchData, 0); }}
+                                            className="text-black text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide bg-yellow-500 hover:bg-yellow-400"
+                                        >
+                                            Fill Gaps
+                                        </Button>
+                                    )}
+                                </>
                             )}
                         </div>
                     ) : (

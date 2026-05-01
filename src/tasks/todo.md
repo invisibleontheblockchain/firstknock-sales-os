@@ -1,12 +1,9 @@
-# Current Task: Fix Anderson route count, route line color, and sold-route save
+# Current Task: Fix TerritoryPrompt JSX build error
 
 ## Plan
-- [x] Check runtime logs for save failures and route-loading errors.
-- [x] Trace why the Knock tab shows 281 homes for the Anderson County route when the source route has 415.
-- [x] Fix route hydration/display so saved route shells keep the full property count even if some property details are missing.
-- [x] Change default mail-carrier route lines from red to gold.
-- [x] Fix the Home sold-route save button failure.
-- [x] Verify via code path/log review and document the result.
+- [x] Inspect the Pull / Fill Gaps JSX block around the build error.
+- [x] Correct the JSX grouping without changing behavior.
+- [x] Document verification and lesson learned.
 
 ## Review
-Runtime logs showed Anderson County generated 415 doors, but Knock loaded route homes from old Base44 MasterProperty batches, where only 281 records were available. RepHome now uses the Neon-backed route lookup used elsewhere and preserves the saved route hash order without address deduping away stops. Route lines now default to gold, and filtered-route SAVE now creates the visible filtered route directly from the toolbar so price/date/phase filtered views save correctly.
+The build failed because the non-Pro branch of the conditional returned two sibling JSX nodes (`Pull` button plus conditional `Fill Gaps` button) without a wrapper. I wrapped them in a React fragment, preserving the same behavior while making the JSX valid.
