@@ -16,3 +16,4 @@
 - When using entity update tools, include the exact query and data payload even if the visible schema omits them; failed operational tools should trigger an immediate re-plan and corrected retry.
 - Do not default route generation to hiding already-routed doors after a data pull; users often re-pull the same territory to refresh records and expect existing eligible doors to remain available unless they explicitly opt out.
 - Delta pulls must only use a prior job as baseline when coverage is trustworthy; incomplete early pulls can create permanent blind spots unless the system falls back to full refresh/fill-gaps mode.
+- For grid-based geographic ingestion, include every sub-query circle that overlaps the requested area (`center distance <= requested radius + sub-query radius`); smaller edge cutoffs create under-populated boundaries even when jobs report 100% complete.

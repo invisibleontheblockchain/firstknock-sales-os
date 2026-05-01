@@ -58,8 +58,10 @@ function generateSubCircles(centerLat, centerLng, radiusMiles) {
             const dLng = (subLng - centerLng) * 69.0 * Math.cos(centerLat * Math.PI / 180);
             const dist = Math.sqrt(dLat * dLat + dLng * dLng);
 
-            // Include if the sub-circle would overlap with the original area
-            if (dist <= radiusMiles + SUB_CIRCLE_RADIUS * 0.3) {
+            // Include every sub-circle that overlaps the requested area.
+            // The previous edge cutoff only allowed +1.5mi beyond the boundary, which under-covered
+            // large 300mi² pulls; a 5mi fetch circle can still cover valid edge homes up to 5mi out.
+            if (dist <= radiusMiles + SUB_CIRCLE_RADIUS) {
                 circles.push({ lat: Math.round(subLat * 1e6) / 1e6, lng: Math.round(subLng * 1e6) / 1e6, radius: SUB_CIRCLE_RADIUS });
             }
         }
