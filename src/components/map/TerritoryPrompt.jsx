@@ -48,6 +48,7 @@ export default function TerritoryPrompt({
     const [recoverableJob, setRecoverableJob] = useState(null);
     // v15: MLS Phase 2 always runs with verification — no toggle needed
     const pollRef = useRef(null);
+    const activeJobIdRef = useRef(null);
     const animRef = useRef(null);
     const pctHistoryRef = useRef([]);
     const targetPctRef = useRef(0);
@@ -189,6 +190,7 @@ export default function TerritoryPrompt({
 
     const startPolling = (jobId) => {
         if (pollRef.current) clearInterval(pollRef.current);
+        activeJobIdRef.current = jobId;
         
         let pollCount = 0;
         const MAX_POLLS = 450; // ~30 minutes at slower intervals
@@ -266,6 +268,7 @@ export default function TerritoryPrompt({
                 if (d.status === 'completed') {
                     clearInterval(pollRef.current);
                     pollRef.current = null;
+                    activeJobIdRef.current = null;
                     // Immediately show 100% — skip animation
                     setPullPct(100);
                     targetPctRef.current = 100;
@@ -308,9 +311,18 @@ export default function TerritoryPrompt({
                         setShowRoutePanel(false);
                         setShowCompare(true);
                     }
+                } else if (d.status === 'cancelled') {
+                    clearInterval(pollRef.current);
+                    pollRef.current = null;
+                    activeJobIdRef.current = null;
+                    setPulling(false);
+                    setEtaText('');
+                    setPullProgress('Cancelled');
+                    toast.info('Data import cancelled.');
                 } else if (d.status === 'failed') {
                     clearInterval(pollRef.current);
                     pollRef.current = null;
+                    activeJobIdRef.current = null;
                     setPulling(false);
                     toast.error(d.error_message || 'Fetch job failed.');
                 }
@@ -324,6 +336,24 @@ export default function TerritoryPrompt({
         pollRef.current = setInterval(doPoll, 1000);
         // Also fire first poll immediately
         doPoll();
+    };
+
+    const handleCancelImport = async () => {
+        const jobId = activeJobIdRef.current;
+        if (!jobId) {
+            setPulling(false);
+            return;
+        }
+        if (!confirm('Cancel this data import? Any data already saved will stay, but no more records will be added.')) return;
+        await base44.functions.invoke('cancelFetchJob', { job_id: jobId });
+        if (pollRef.current) clearInterval(pollRef.current);
+        pollRef.current = null;
+        activeJobIdRef.current = null;
+        setPulling(false);
+        setEtaText('');
+        setPullProgress('Cancelled');
+        queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
+        toast.info('Data import cancelled.');
     };
 
     const retryRecoverableJob = async () => {
@@ -613,8 +643,16 @@ export default function TerritoryPrompt({
                                                         : '✅ Done! Your territory is ready to route.')}
                             </p>
                         </div>
+                        <div className="mt-3 flex items-center justify-center">
+                            <button
+                                onClick={handleCancelImport}
+                                className="px-4 py-1.5 rounded-lg text-[10px] font-bold tracking-wide border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 transition-colors"
+                            >
+                                Cancel Import
+                            </button>
+                        </div>
                         <p className="text-[9px] text-gray-600 mt-1.5 text-center">
-                            Safe to leave — data imports continue in the background
+                            Safe to leave — data imports continue in the background unless cancelled
                         </p>
                     </div>
                 </div>

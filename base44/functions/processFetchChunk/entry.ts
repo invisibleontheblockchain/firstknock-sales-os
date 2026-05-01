@@ -407,6 +407,11 @@ Deno.serve(async (req) => {
 
         if (!job) return Response.json({ idle: true, message: 'No active jobs' });
 
+        if (job.status === 'cancelled') {
+            console.log(`[chunk-v15] Job ${job.id} is cancelled — stopping processor.`);
+            return Response.json({ status: 'cancelled', job_id: job.id });
+        }
+
         // ── MUTEX CHECK: Prevent duplicate processing ──
         // If we were invoked with an expected_chunk and the job has moved past it,
         // another instance already processed this chunk. Bail out silently.
@@ -430,6 +435,18 @@ Deno.serve(async (req) => {
         const errorLog = job.error_log || [];
         const chunkTimings = job.chunk_timings || [];
         const isDeltaPull = job.is_delta_pull || false;
+
+        async function stopIfCancelled() {
+            const latestJobs = await base44.asServiceRole.entities.FetchJob.filter({ id: jobId }, null, 1);
+            const latestArr = Array.isArray(latestJobs) ? latestJobs : (latestJobs?.items || []);
+            if (latestArr[0]?.status === 'cancelled') {
+                console.log(`[chunk-v15] Job ${jobId} cancelled — releasing lock and stopping.`);
+                await releasePipelineLock(base44, activeLockId);
+                activeLockId = null;
+                return true;
+            }
+            return false;
+        }
 
         const logError = (msg) => {
             const entry = `[${new Date().toISOString()}] ${msg}`;
@@ -632,6 +649,7 @@ Deno.serve(async (req) => {
         // PHASE 1: DEED RECORDS — /v1/properties?saleDateRange
         // ======================================================================
         if (currentPhase === 'deed_records') {
+            if (await stopIfCancelled()) return Response.json({ status: 'cancelled', job_id: jobId });
             // Phase 1 = deed ground-truth window only: [phase1Start] → [phase1End].
             // Do not pull or store older deed records for this job; they are outside the route window.
             const saleDateRange = Math.min(Math.ceil((phase1End.getTime() - phase1Start.getTime()) / (1000 * 3600 * 24)) + 1, 730);
@@ -761,6 +779,8 @@ Deno.serve(async (req) => {
             const phase1UnionHashSet = new Set(phase1UnionRecords.map(p => p.address_hash).filter(Boolean));
             console.log(`[chunk-v15] Phase 1 union seed captured from current fetch: added=${phase1UnionSeed.length}, total=${phase1UnionRecords.length}, hashes=${phase1UnionHashSet.size}`);
 
+            if (await stopIfCancelled()) return Response.json({ status: 'cancelled', job_id: jobId });
+
             const dbResult = await writeToDb(mapped);
             totalInserted += dbResult.chunkInserted;
             totalExisted += dbResult.chunkExisted;
@@ -823,6 +843,8 @@ Deno.serve(async (req) => {
                 ? Math.round(((nextSubCircle + (nextOffset > 0 ? 0.5 : 0)) / totalSubCircles) * 80) 
                 : 80;
 
+            if (await stopIfCancelled()) return Response.json({ status: 'cancelled', job_id: jobId });
+
             await base44.asServiceRole.entities.FetchJob.update(jobId, {
                 status: 'running', phase: nextPhase, current_offset: nextOffset, current_sub_circle: nextSubCircle,
                 total_expected: totalExpected, total_fetched: totalFetched, total_inserted: totalInserted,
@@ -853,6 +875,7 @@ Deno.serve(async (req) => {
         // Now we only ask RentCast for 30 days, and ALL survivors go to BatchData.
         // ======================================================================
         if (currentPhase === 'listings_records') {
+            if (await stopIfCancelled()) return Response.json({ status: 'cancelled', job_id: jobId });
             // FIXED: Only pull last 30 days of MLS data (the clerk gap)
             // Previously: Math.min((monthsBack * 30) + 90, 730) = 450+ days
             const MLS_CLERK_GAP_DAYS = 30;
@@ -1228,6 +1251,8 @@ Deno.serve(async (req) => {
                 chunkTimings.push(chunkDuration);
                 errorLog.push(`[${completedAt}] Phase 2 skipped safely because BatchData was unavailable; completed with Phase 1 deed records only.`);
 
+                if (await stopIfCancelled()) return Response.json({ status: 'cancelled', job_id: jobId });
+
                 await base44.asServiceRole.entities.FetchJob.update(jobId, {
                     status: 'completed', phase: 'complete', progress_pct: 100, completed_at: completedAt,
                     total_fetched: totalFetched, total_inserted: totalInserted, total_existed: totalExisted,
@@ -1257,6 +1282,8 @@ Deno.serve(async (req) => {
                 .filter(m => m.original_status === 'REJECTED' || m.sale_confidence === 'REJECTED')
                 .map(m => ({ ...m, route_active: false }));
             if (rejectedForDeactivation.length > 0) {
+                if (await stopIfCancelled()) return Response.json({ status: 'cancelled', job_id: jobId });
+
                 const deactivationResult = await writeToDb(rejectedForDeactivation);
                 totalExisted += deactivationResult.chunkExisted;
                 totalUpdated += deactivationResult.chunkUpdated;
@@ -1299,6 +1326,8 @@ Deno.serve(async (req) => {
                 }
 
                 if (stalePhase2ForDeactivation.length > 0) {
+                    if (await stopIfCancelled()) return Response.json({ status: 'cancelled', job_id: jobId });
+
                     const staleResult = await writeToDb(stalePhase2ForDeactivation);
                     totalExisted += staleResult.chunkExisted;
                     totalUpdated += staleResult.chunkUpdated;
@@ -1317,6 +1346,7 @@ Deno.serve(async (req) => {
             // on every MLS sub-circle causes long Neon upsert loops and can time out near 90%+ progress.
             if (finalMapped.length > 0) {
                 console.log(`[chunk-v15] Phase 2 verified gap-fill write: ${finalMapped.length} records`);
+                if (await stopIfCancelled()) return Response.json({ status: 'cancelled', job_id: jobId });
                 const dbResult = await writeToDb(finalMapped);
                 totalInserted += dbResult.chunkInserted;
                 totalExisted += dbResult.chunkExisted;
@@ -1344,6 +1374,8 @@ Deno.serve(async (req) => {
                 const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
                 chunkTimings.push(chunkDuration);
                 
+                if (await stopIfCancelled()) return Response.json({ status: 'cancelled', job_id: jobId });
+
                 await base44.asServiceRole.entities.FetchJob.update(jobId, {
                     status: 'completed', phase: 'complete', progress_pct: 100, completed_at: completedAt,
                     total_fetched: totalFetched, total_inserted: totalInserted, total_existed: totalExisted,
@@ -1370,6 +1402,8 @@ Deno.serve(async (req) => {
                 const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
                 chunkTimings.push(chunkDuration);
                 const progressPct = 80 + Math.round(((nextSubCircle + (nextOffset > 0 ? 0.5 : 0)) / totalSubCircles) * 20);
+
+                if (await stopIfCancelled()) return Response.json({ status: 'cancelled', job_id: jobId });
 
                 await base44.asServiceRole.entities.FetchJob.update(jobId, {
                     status: 'running', phase: 'listings_records', current_offset: nextOffset, current_sub_circle: nextSubCircle,
