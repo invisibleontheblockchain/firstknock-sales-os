@@ -108,29 +108,18 @@ export default function ActiveRoutesTab({
                     name: `Merged (${selectedRoutes.length} routes, ${allProps.length} doors)`
                 };
 
-                const sourceRoute = selectedRoutes[0];
-                const savedMergedRoute = await base44.entities.SavedRoute.create({
-                    name: mergedRoute.name,
-                    property_hashes: mergedRoute.properties.map(p => p.address_hash),
-                    metrics: {
-                        distance: mergedRoute.totalDistance,
-                        house_count: mergedRoute.houseCount,
-                        score: mergedRoute.competitivenessScore
-                    },
-                    status: sourceRoute.status || 'ACTIVE',
-                    assigned_to: sourceRoute.assigned_to || null,
-                    assigned_to_name: sourceRoute.assigned_to_name || null,
-                    manager_id: sourceRoute.manager_id,
-                    start_location: sourceRoute.start_location || null
-                });
-
-                // Delete original routes only after the merged route is safely saved.
+                // Delete original routes in batch — no individual confirmations
                 await Promise.all(
                     selectedRoutes.map(route => base44.entities.SavedRoute.delete(route.id).catch(() => {}))
                 );
                 queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
 
-                onSelectRoute({ ...mergedRoute, ...savedMergedRoute, properties: mergedRoute.properties, allProperties: mergedRoute.properties, isSaved: true });
+                // Save the merged route
+                if (onReplaceRoutes) {
+                    onReplaceRoutes([mergedRoute]);
+                } else {
+                    onSelectRoute(mergedRoute);
+                }
 
                 toast.success(`Merged ${selectedRoutes.length} routes → ${allProps.length} doors`);
                 setSelectedIds(new Set());

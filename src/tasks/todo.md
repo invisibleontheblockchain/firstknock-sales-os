@@ -1,11 +1,12 @@
-# Current Task: Fix optimize button after route merge
+# Current Task: Explain why merging 3 routes shows only 431 doors
 
 ## Plan
-- [x] Confirm the runtime behavior after merging routes.
-- [x] Trace whether merged routes are saved active routes or temporary generated routes.
-- [x] Patch merge so the merged route is saved back as an active route.
-- [x] Keep full-property merge behavior from the previous fix.
-- [x] Verify the merged route can still be selected and re-optimized.
+- [x] Inspect the merge UI code for generated and saved routes.
+- [x] Check runtime logs around the route generation and merge action.
+- [x] Inspect saved route hydration behavior.
+- [x] Verify whether merge uses filtered hydrated route properties instead of original saved route hashes.
+- [x] Fix merge logic if it is losing saved-route doors.
+- [x] Verify with the current route data.
 
 ## Review
-The merge flow was creating a temporary generated route via `onReplaceRoutes`, not a saved active route. The optimize/re-optimize action belongs to saved active routes, so after merging there was no proper saved route target for that button. Updated merge to create a new `SavedRoute` first, then delete the original routes, preserve assignment/manager/start-location metadata, and select the saved merged route. Runtime check shows no new merge/optimize exception after the patch.
+The active-route merge was using `route.properties`, which is the currently hydrated/display-filtered route list. That means sold-date filters, missing hydration, or visible-route filtering could shrink the merged route before merge. Updated saved-route hydration to preserve `allProperties` and changed merge to use that full list while still deduping duplicate addresses. Verified the current saved routes are present and the merge code now reads the full saved-route property list instead of the filtered display list.
