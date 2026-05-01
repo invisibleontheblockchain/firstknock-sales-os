@@ -39,3 +39,4 @@
 - In mobile multi-select lists, make selection controls and section expand arrows explicit, high-contrast, and non-shrinking; hover-only affordances do not work on touch screens.
 - Rep-facing Knock and Checklist views must share one interpretation of interaction decisions; temporary outcomes like NO_ANSWER should still count as done until a user explicitly clears the decision back to Todo.
 - Saved route ordering must have one source of truth: `SavedRoute.property_hashes`. Checklist, map, and Knock should preserve that order and subscribe/refetch when the saved route changes; do not apply a second local optimizer in only one view.
+- When adding React hooks to existing components, update the destructured React import in the same edit batch; missing hook imports can make a correct sync fix fail at runtime.

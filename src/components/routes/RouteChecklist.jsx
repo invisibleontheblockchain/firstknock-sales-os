@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -6,6 +6,7 @@ import { Check, X, Phone, Ban, Home, Navigation, Mic, MapPin, UserX, Clock } fro
 import { getPropertyResultSummary } from '../logic/territoryLogic';
 import { buildFullAddress, openInMaps } from '../logic/navigation';
 import { formatPropertyAge } from '@/utils';
+import { base44 } from '@/api/base44Client';
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -36,6 +37,7 @@ const STATUS_COLORS = {
 };
 
 export default function RouteChecklist({ route, logs, onLogResult, onClose, navigationApp = 'apple', activeRouteSoldFilter, setActiveRouteSoldFilter }) {
+    const [latestRoute, setLatestRoute] = useState(route);
     const [expandedId, setExpandedId] = useState(null);
     const [filter, setFilter] = useState('all');
     const [decisionFilter, setDecisionFilter] = useState('all');
@@ -43,14 +45,52 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
     const [selectedAction, setSelectedAction] = useState(null);
     const [isListening, setIsListening] = useState(false);
 
+    useEffect(() => {
+        setLatestRoute(route);
+    }, [route]);
+
+    useEffect(() => {
+        if (!route?.id) return;
+
+        const applySavedRouteOrder = (savedRoute) => {
+            if (!savedRoute?.property_hashes?.length) return;
+            const propsByHash = new Map((route.properties || []).map(p => [p.address_hash || p.id, p]));
+            const orderedProperties = savedRoute.property_hashes
+                .map(hash => propsByHash.get(hash))
+                .filter(Boolean);
+
+            if (orderedProperties.length === 0) return;
+            setLatestRoute(prev => ({
+                ...(prev || route),
+                ...savedRoute,
+                properties: orderedProperties,
+                houseCount: orderedProperties.length,
+                totalDistance: savedRoute.metrics?.distance ?? prev?.totalDistance ?? route.totalDistance,
+                competitivenessScore: savedRoute.metrics?.score ?? prev?.competitivenessScore ?? route.competitivenessScore
+            }));
+        };
+
+        base44.entities.SavedRoute.filter({ id: route.id }, '-updated_date', 1).then(res => {
+            const savedRoute = Array.isArray(res) ? res[0] : res?.items?.[0];
+            applySavedRouteOrder(savedRoute);
+        });
+
+        const unsubscribe = base44.entities.SavedRoute.subscribe((event) => {
+            if (event?.id === route.id && event.data) applySavedRouteOrder(event.data);
+        });
+        return unsubscribe;
+    }, [route]);
+
+    const displayRoute = latestRoute || route;
+
     const propertyData = useMemo(() => {
         const dataMap = {};
-        route.properties.forEach(p => {
+        displayRoute.properties.forEach(p => {
             const propLogs = logs.filter(l => l.address_hash === p.address_hash);
             dataMap[p.address_hash] = getPropertyResultSummary(propLogs);
         });
         return dataMap;
-    }, [route.properties, logs]);
+    }, [displayRoute.properties, logs]);
 
     const propertyStatuses = useMemo(() => {
         const statusMap = {};
@@ -61,7 +101,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
     }, [propertyData]);
 
     const filteredProperties = useMemo(() => {
-        return route.properties.filter(p => {
+        return displayRoute.properties.filter(p => {
             const status = propertyStatuses[p.address_hash];
             if (filter === 'pending') return !status || status === 'ELIGIBLE';
             if (filter === 'done') {
@@ -70,17 +110,17 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
             }
             return true;
         });
-    }, [route.properties, propertyStatuses, filter, decisionFilter]);
+    }, [displayRoute.properties, propertyStatuses, filter, decisionFilter]);
 
     const stats = useMemo(() => {
         let pending = 0, done = 0;
-        route.properties.forEach(p => {
+        displayRoute.properties.forEach(p => {
             const status = propertyStatuses[p.address_hash];
             if (!status || status === 'ELIGIBLE') pending++;
             else done++;
         });
-        return { pending, done, total: route.properties.length };
-    }, [route.properties, propertyStatuses]);
+        return { pending, done, total: displayRoute.properties.length };
+    }, [displayRoute.properties, propertyStatuses]);
 
     const handleNavigate = (prop) => {
         openInMaps(prop.lat, prop.lng, buildFullAddress(prop), navigationApp);
@@ -149,9 +189,9 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                             <Navigation className="w-4 h-4" style={{ color: BRAND.voidBlack }} />
                         </div>
                         <div className="min-w-0">
-                            <h2 className="text-base font-bold leading-tight truncate" style={{ color: BRAND.offWhite }}>{route.name}</h2>
+                            <h2 className="text-base font-bold leading-tight truncate" style={{ color: BRAND.offWhite }}>{displayRoute.name}</h2>
                             <p className="text-[11px] leading-tight" style={{ color: '#666' }}>
-                                {route.assigned_to_name && <span className="text-blue-400 mr-1">{route.assigned_to_name} •</span>}
+                                {displayRoute.assigned_to_name && <span className="text-blue-400 mr-1">{displayRoute.assigned_to_name} •</span>}
                                 {stats.total} stops
                             </p>
                         </div>
