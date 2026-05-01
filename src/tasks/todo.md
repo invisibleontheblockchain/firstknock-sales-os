@@ -252,6 +252,17 @@ Pass 1 implemented and verified.
 - [x] Patch the smallest safe issue: move assigned-door exclusion into the tracked filter pipeline and expose the toggle.
 - [ ] Verify with logs after the next generation attempt and document the result.
 
+## Plan — Custom area disappeared after app reload/kickout
+- [x] Check runtime logs for reload/polling behavior.
+- [x] Identify that switching out of generate mode cleared the confirmed drawn polygon from state/storage.
+- [x] Preserve the confirmed custom area and only clear unfinished draft drawing points.
+- [x] Slow fetch-status polling after the first 30 seconds to reduce rate-limit pressure.
+- [ ] Verify the custom area remains available after returning to the route builder.
+
+### Review — Custom area persistence
+- The confirmed custom area is no longer cleared just because the app returns to analyze mode or reloads after a pull.
+- Fetch status polling now backs off more aggressively after the first 30 seconds, reducing Base44 rate-limit pressure during long pulls.
+
 ## Plan — 5 sq mile test circle
 - [x] Set map drawing default area to 5 sq mi.
 - [x] Make the 5 sq mi test option always visible.

@@ -125,12 +125,12 @@ export default function TerritoryPrompt({
         return () => { cancelled = true; };
     }, [user?.email, drawnPolygon]);
 
-    // Clear drawing mode and polygon when switching away from builder tab
+    // Clear only in-progress drawing when switching away; keep the confirmed area
+    // so users can return after a pull/reload and still generate routes for it.
     useEffect(() => {
         if (mode !== 'generate') {
             setDrawingMode(false);
             setDraftPolygon([]);
-            setDrawnPolygon(null);
         }
     }, [mode]);
 
@@ -154,7 +154,7 @@ export default function TerritoryPrompt({
         if (pollRef.current) clearInterval(pollRef.current);
         
         let pollCount = 0;
-        const MAX_POLLS = 1800; // 30 minutes at 1s intervals
+        const MAX_POLLS = 450; // ~30 minutes at slower intervals
         const pollStartTime = Date.now();
 
         const doPoll = async () => {
@@ -167,10 +167,10 @@ export default function TerritoryPrompt({
                 return;
             }
 
-            // After first 30s, slow polling to 2s intervals
+            // After first 30s, slow polling to reduce backend rate-limit pressure.
             if (pollCount === 30) {
                 clearInterval(pollRef.current);
-                pollRef.current = setInterval(doPoll, 2000);
+                pollRef.current = setInterval(doPoll, 5000);
             }
 
             try {
