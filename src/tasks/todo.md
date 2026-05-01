@@ -1,11 +1,10 @@
-# Current Task: Investigate Kevin route disappearance and recovery
+# Current Task: Reinstate Kevin’s routes
 
 ## Plan
-- [x] Check runtime logs for route deletion/merge actions.
-- [x] Inspect SavedRoute records for Kevin / assigned route ownership.
-- [x] Inspect TeamMember records to identify Kevin’s manager/member IDs.
-- [x] Determine whether routes were deleted, reassigned, filtered out, or hidden by hydration.
-- [x] Assess recovery options and restore if records still exist or can be reconstructed.
+- [x] Create a focused admin restore function for Kevin’s SavedRoute records.
+- [x] Set all Kevin-owned routes back to ACTIVE without changing property lists.
+- [x] Verify the route count and statuses after restoration.
+- [x] Document the final result.
 
 ## Review
-Kevin’s routes are recoverable because they still exist in SavedRoute: the diagnostic found 8 routes, including route `69e7ccfe9c5c8562469540a6` named `upper mount p` with 65 saved properties. They do not appear deleted; if they are missing from the current UI, they are likely hidden by account/team ownership or route hydration/filtering rather than permanently lost.
+Restored/confirmed 8 Kevin-owned routes as ACTIVE on his account without changing their property lists. Verified route IDs include `69c057fea7bec340758d7f10`, `69c54aac053f2bdaee15660a`, `69c0546995978acd12cba7bf`, `69e7ccfe9c5c8562469540a6`, `69b32c9f220aae23a33b6ad4`, `69e7cc9752015a8554197346`, `69b97117aaa5bec0f02263aa`, and `69b32b4c9315c42b8aa0f507`.
