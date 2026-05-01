@@ -1,12 +1,32 @@
-# Current Task: Fix route-command property truncation
+# Current Task: Investigate Christian ingestion/eligibility candidate gap
 
 ## Plan
-- [x] Inspect runtime logs for the current route/drop behavior.
-- [x] Search route creation, backend generation, hydration, and route command code for 400/500-style caps.
-- [x] Identify whether truncation happens before generation, during route creation, or during merge/save.
-- [x] Patch the root cause so data-layer route creation uses the full property set.
-- [x] Add clear count logging around pre-route, post-route, and merge stages.
-- [x] Verify with targeted tests/log review and document whether the current route should be deleted.
+- [x] Use runtime/backend evidence to identify the latest Christian full-territory fetch job and its stored fetch counters.
+- [x] Inspect existing diagnostic functions for reusable Neon/RentCast count tooling before adding anything new.
+- [x] Produce stage counts: raw fetch total, after eligibility/status filter, after deduplication, final stored active candidates.
+- [x] Check all 16 sub-circles for zero-result/error gaps and confirm whether each contributed records.
+- [x] Check ingestion filters, dedup logic, and any stored caps/batch limits for the big ~2,000 → 664 drop.
+- [x] If existing tooling cannot expose these counts, create a focused backend diagnostic function without changing route generation.
+- [x] Run the diagnostic and document findings in this file.
 
 ## Review
-Runtime logs show the route command did not silently truncate 1,400–2,000 properties: the current Christian run loaded 489 properties into Home, fetched 485 for the drawn polygon, deduped/merged to 489 before route generation, then filters reduced it to 430 (`propertyType` removed 48). The route optimizer output stayed at 430; pre-route, post-route, and merge UNION stages are now logged, but extra save logging was skipped because Home.jsx is already over the edit-size threshold and should be refactored before adding more code there. Backend verification for `christian@nativapest.com` returned 664 active route candidates total and no 400/500 route cap; the only 500 constants found are ingestion/API page sizes, not route object limits. Merge now logs each selected route's hash/property count and the final UNION count, using `allProperties || properties` so display filters do not shrink merges. Do not delete the current route yet; the missing expected ~2k appears upstream of route command, likely in ingestion eligibility/verification/date-window/BatchData rejection or expectation mismatch, not in the route merge/save layer.
+Diagnostic function `investigateChristianIngestionGap` was added as read-only and does not modify route generation or stored candidate data.
+
+Christian job inspected: `69f4c4874afc1c64585ce193` for `christian@nativapest.com`.
+
+Stage counts:
+- Raw fetch total across 16 sub-circles: 1,362
+- After ingestion eligibility/status filter: 606
+- After global deduplication: 478
+- Final stored total in workspace: 729
+- Final stored active candidates: 664
+- Stored inactive/rejected: 65
+
+Conclusion:
+The expected ~2,000 properties are not being fetched by the current ingestion query. RentCast returned only 1,362 raw deed records for the 12-month deed window over the 16 sub-circles. The biggest proven loss inside our pipeline is the eligibility/polygon layer: 1,362 → 606. Dedup then removes 128 more overlapping sub-circle duplicates: 606 → 478. The stored 664 active count is higher than the latest job's unique phase-1 hashes because the workspace also contains earlier/other valid records.
+
+Sub-circle coverage:
+All 16 sub-circles completed; no API errors were found. Some cells returned zero raw or zero eligible records, but that is due to area/polygon geometry and RentCast result distribution, not silent job failure.
+
+Likely culprit:
+There is no evidence of a stored candidate cap. Drop 1 is mainly caused by (a) RentCast's deed-only 12-month query returning far fewer than the Redfin residential reference, and (b) ingestion eligibility/polygon filters removing more than half of the raw deed records. The Redfin ~2,000 number may include all residential properties or a broader listing window, while the app currently ingests recent sale/deed candidates only.
