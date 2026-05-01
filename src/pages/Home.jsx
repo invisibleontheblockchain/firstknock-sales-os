@@ -811,9 +811,10 @@ export default function Home() {
         return savedRoutes
             .filter(r => repFilter === 'all' || (r.assigned_to_name && r.assigned_to_name.includes(repFilter)))
             .map(route => {
-                let routeProps = route.property_hashes
+                const allRouteProps = route.property_hashes
                     .map(hash => propsByHash.get(hash))
                     .filter(Boolean);
+                let routeProps = allRouteProps;
 
                 // Apply soldDateFilter to saved routes if active
                 if (soldDateFilter !== null && soldDateFilter !== 'all') {
@@ -846,6 +847,7 @@ export default function Home() {
                     ...route,
                     id: route.id,
                     properties: routeProps,
+                    allProperties: allRouteProps,
                     houseCount: routeProps.length,
                     totalDistance: route.metrics?.distance || 0,
                     competitivenessScore: route.metrics?.score || 0,

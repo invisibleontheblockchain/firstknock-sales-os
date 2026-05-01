@@ -76,11 +76,11 @@ export default function ActiveRoutesTab({
             return;
         }
 
-        // Collect all properties from selected routes
+        // Collect all full saved-route properties; display filters should not shrink merged routes.
         const seen = new Set();
         const allProps = [];
         for (const route of selectedRoutes) {
-            const props = route.properties || [];
+            const props = route.allProperties || route.properties || [];
             for (const p of props) {
                 const key = p.address_hash || p.id;
                 if (key && !seen.has(key)) {
