@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { base44 } from '@/api/base44Client';
 import { Map as MapIcon, Pencil, X, Trash2, Loader2, List, Zap, Lock, ArrowRight } from 'lucide-react';
@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
+import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
 
 
 export default function TerritoryPrompt({
@@ -43,6 +44,7 @@ export default function TerritoryPrompt({
     const [totalExpected, setTotalExpected] = useState(0);
     const [isDeltaPull, setIsDeltaPull] = useState(false);
     const [forceFullRefresh, setForceFullRefresh] = useState(false);
+    const [recoverableJob, setRecoverableJob] = useState(null);
     // v15: MLS Phase 2 always runs with verification — no toggle needed
     const pollRef = useRef(null);
     const animRef = useRef(null);
@@ -102,9 +104,20 @@ export default function TerritoryPrompt({
                 }
 
                 if (!job) {
+                    const failedJobs = await base44.entities.FetchJob.filter(
+                        { user_email: user.email, status: 'failed' },
+                        '-updated_date',
+                        1
+                    );
+                    const failedList = Array.isArray(failedJobs) ? failedJobs : (failedJobs?.items || []);
+                    const failedJob = failedList[0];
+                    if (failedJob && !cancelled) {
+                        setRecoverableJob(failedJob);
+                    }
                     return;
                 }
                 
+                setRecoverableJob(null);
                 if (job && !cancelled && !pulling) {
                     console.log('[TerritoryPrompt] Resuming running job:', job.id);
                     setPulling(true);
@@ -141,6 +154,10 @@ export default function TerritoryPrompt({
         window.addEventListener('fk-start-drawing', handler);
         return () => window.removeEventListener('fk-start-drawing', handler);
     }, []);
+
+    const actualAreaSqMiles = useMemo(() => calculatePolygonAreaSqMiles(drawnPolygon), [drawnPolygon]);
+    const actualAreaLabel = actualAreaSqMiles > 0 ? formatSqMiles(actualAreaSqMiles) : `${drawSizeMiles}mi²`;
+    const isLargeArea = actualAreaSqMiles >= 250 || drawSizeMiles === 300;
 
     const hasPulledData = !!user?.has_pulled_data;
     const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
@@ -290,13 +307,35 @@ export default function TerritoryPrompt({
         doPoll();
     };
 
+    const retryRecoverableJob = async () => {
+        if (!recoverableJob) return;
+        setRecoverableJob(null);
+        setPulling(true);
+        setPullProgress('Retrying incomplete import from last checkpoint...');
+        setPullPct(recoverableJob.progress_pct || 0);
+        setDisplayPct(Math.max((recoverableJob.progress_pct || 0) - 5, 0));
+        targetPctRef.current = recoverableJob.progress_pct || 0;
+        setEtaText('Retrying...');
+        const res = await base44.functions.invoke('fetchAreaProperties', {
+            latitude: recoverableJob.latitude,
+            longitude: recoverableJob.longitude,
+            radius: recoverableJob.radius,
+            polygon: recoverableJob.polygon || [],
+            sold_months: recoverableJob.sold_months || fetchMonths,
+            include_mls: recoverableJob.include_mls !== false,
+            force_full_refresh: recoverableJob.force_full_refresh || false
+        });
+        const data = res.data || {};
+        startPolling(data.job_id || recoverableJob.id);
+    };
+
     const handleFetchData = async () => {
         // Don't allow double-trigger
         if (pulling) return;
 
-        // Block 300mi pull for non-subscribers
-        if (drawSizeMiles === 300 && !isPaid) {
-            toast.error('The 300 sq mi pull requires an active FirstKnock subscription. Upgrade to unlock!', { duration: 5000 });
+        // Block large-area pulls for non-subscribers using the actual submitted polygon area.
+        if (actualAreaSqMiles > 50 && !isPaid) {
+            toast.error(`This ${formatSqMiles(actualAreaSqMiles)} pull requires an active FirstKnock subscription. Upgrade to unlock!`, { duration: 5000 });
             return;
         }
 
@@ -360,7 +399,7 @@ export default function TerritoryPrompt({
                 return;
             }
 
-            if (d.status === 'started' && d.job_id) {
+            if ((d.status === 'started' || d.status === 'resumed') && d.job_id) {
                 if (d.is_delta_pull) {
                     setIsDeltaPull(true);
                     toast.success('Smart refresh — only pulling changes since last import!');
@@ -452,8 +491,8 @@ export default function TerritoryPrompt({
                                 </button>
                             ))}
                         </div>
-                        {drawSizeMiles === 300 && (
-                            <div className="text-[9px] text-cyan-400 text-center font-semibold">Heads up — 300mi² × {fetchMonths}mo is a big pull. Expect longer import times.</div>
+                        {isLargeArea && (
+                            <div className="text-[9px] text-cyan-400 text-center font-semibold">Heads up — {actualAreaLabel} × {fetchMonths}mo is a big pull. Expect longer import times.</div>
                         )}
                         <button
                             onClick={() => setForceFullRefresh(v => !v)}
@@ -499,6 +538,20 @@ export default function TerritoryPrompt({
                             )}
                         </div>
                         <p className="text-[10px] text-yellow-400/70 text-center">Tap the map to place your territory</p>
+                    </div>
+                </div>
+            )}
+
+            {/* Recover incomplete fetch job */}
+            {!pulling && recoverableJob && mode === 'generate' && (
+                <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[2000] w-11/12 max-w-sm animate-in fade-in">
+                    <div className="bg-black/90 backdrop-blur-md border border-yellow-500/50 rounded-xl p-4 shadow-2xl">
+                        <p className="text-xs font-bold text-white mb-1">Incomplete data pull found</p>
+                        <p className="text-[10px] text-gray-400 mb-3">Your last import stopped at {Math.round(recoverableJob.progress_pct || 0)}%. Retry resumes from the saved job instead of starting a new full pull.</p>
+                        <div className="flex gap-2">
+                            <Button onClick={retryRecoverableJob} className="h-8 flex-1 text-xs bg-yellow-500 text-black hover:bg-yellow-400">Retry Import</Button>
+                            <Button onClick={() => setRecoverableJob(null)} variant="outline" className="h-8 text-xs">Dismiss</Button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -561,13 +614,13 @@ export default function TerritoryPrompt({
                     <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
                     {canPullAgain ? (
                         <div className="flex items-center gap-1.5 ml-2">
-                            {drawSizeMiles === 300 && !isPaid ? (
+                            {actualAreaSqMiles > 50 && !isPaid ? (
                                 <button
                                     onClick={() => navigate('/Billing')}
                                     className="flex items-center gap-1.5 text-[10px] font-bold text-yellow-500 hover:text-yellow-400 transition-colors bg-yellow-500/10 border border-yellow-500/30 rounded-md px-2 py-1"
                                 >
                                     <Lock className="w-3 h-3" />
-                                    <span>PRO — 300mi²</span>
+                                    <span>PRO — {actualAreaLabel}</span>
                                 </button>
                             ) : (
                                 <Button
@@ -575,7 +628,7 @@ export default function TerritoryPrompt({
                                     onClick={handleFetchData}
                                     className="text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]"
                                 >
-                                    {`${forceFullRefresh ? 'Fill Gaps' : 'Pull'} ${drawSizeMiles}mi² (${fetchMonths} Mo)`}
+                                    {`${forceFullRefresh ? 'Fill Gaps' : 'Pull'} ${actualAreaLabel} (${fetchMonths} Mo)`}
                                 </Button>
                             )}
                         </div>
@@ -596,9 +649,10 @@ export default function TerritoryPrompt({
                         <Trash2 className="w-3 h-3" />
                     </button>
                     {canPullAgain && (
-                        <div className="absolute top-full left-0 mt-2 w-48 bg-black/90 border border-gray-800 rounded-lg p-2 shadow-xl animate-in fade-in slide-in-from-top-1">
+                        <div className="absolute top-full left-0 mt-2 w-56 bg-black/90 border border-gray-800 rounded-lg p-2 shadow-xl animate-in fade-in slide-in-from-top-1">
                             <p className="text-[9px] text-gray-400 leading-tight">
-                                <span className="text-blue-400 font-bold">Note:</span> Public records have a <span className="text-white">1-3 month recording lag</span>. Very recent sales may not appear until digitized by the county.
+                                <span className="text-blue-400 font-bold">Area:</span> pulling the actual selected polygon, about <span className="text-white">{actualAreaLabel}</span>.
+                                <br />Public records have a <span className="text-white">1-3 month recording lag</span>.
                             </p>
                         </div>
                     )}

@@ -1,11 +1,14 @@
-# Current Task: Fix Knock tab route visibility
+# Current Task: Fix area display and fetch job recovery
 
 ## Plan
-- [x] Verify from runtime logs why RepHome says there are no active routes.
-- [x] Patch RepHome route matching so the explicitly selected route from Route Command is included.
-- [x] Add manager/creator fallback matching for saved routes that do not have manager_id populated.
-- [x] Patch the Active Routes tab selection path so it stores the selected route for Knock.
-- [x] Add URL-based selected-route handoff from the Knock nav item.
+- [x] Inspect runtime logs for pull/session/job-loss symptoms.
+- [x] Locate where the data builder computes/displays square mileage and what geometry is submitted.
+- [x] Fix the displayed area to be computed from the current polygon geometry, not stale/default radius state.
+- [x] Update pull controls to display/enforce the actual selected polygon area after reload.
+- [x] Verify fetch jobs are persisted immediately by the backend when a pull starts.
+- [x] Ensure failed-job retry resumes the saved job without incrementing pull count.
+- [x] Add reload/re-login recovery UI for incomplete fetch jobs with rejoin/retry actions.
+- [x] Verify the fix with logs/code path review and document the result.
 
 ## Review
-RepHome was filtering out routes unless they were explicitly assigned to the current auth/team-member ID. I updated it to also include the route selected from Route Command, and to include manager-created routes even when older records are missing `manager_id`. Route Command now stores the selected route for Knock, and the Knock nav passes that route ID in the URL as a backup.
+Runtime logs confirmed the backend submitted the selected polygon as ~301 sq mi while the UI label had reset to 5 sq mi. I added shared polygon-area calculation and changed the map label, pull button, large-pull warning, and free/pro enforcement to use the actual polygon geometry. Fetch jobs were already created in the FetchJob table before processing starts; I verified the current job record exists and completed. I added reload/re-login recovery for running/pending jobs plus a failed-job retry banner, and updated backend retry handling so resuming a failed job does not increment pull count or start a fresh full pull.

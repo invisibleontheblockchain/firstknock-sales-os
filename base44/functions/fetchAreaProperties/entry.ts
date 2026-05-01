@@ -376,6 +376,7 @@ Deno.serve(async (req) => {
         });
 
         let job;
+        let resumedExistingJob = false;
         if (resumableJob) {
             const resumedLog = [
                 ...(resumableJob.error_log || []),
@@ -386,6 +387,7 @@ Deno.serve(async (req) => {
                 error_message: null,
                 error_log: resumedLog
             });
+            resumedExistingJob = true;
         } else {
             // Create FetchJob with delta state + sub-circles
             job = await base44.entities.FetchJob.create({
@@ -427,9 +429,11 @@ Deno.serve(async (req) => {
         const gridMsg = subCircles.length > 1 ? ` | GRID: ${subCircles.length} sub-circles (r=${SUB_CIRCLE_RADIUS}mi)` : ' | single circle';
         console.log(`[fetchArea-v9] Created FetchJob ${job.id} | delta=${isDeltaPull} | lat=${optimizedLat} lng=${optimizedLng} r=${optimizedRadius}mi | deedWindowDays=${computedSaleDateRange} | mlsWindowDays=30${gridMsg}`);
 
-        try {
-            await base44.auth.updateMe({ area_pulls_count: pullCount + 1 });
-        } catch (e) { console.warn('Failed to update pull count:', e.message); }
+        if (!resumedExistingJob) {
+            try {
+                await base44.auth.updateMe({ area_pulls_count: pullCount + 1 });
+            } catch (e) { console.warn('Failed to update pull count:', e.message); }
+        }
 
         const resumeExpectedChunk = job.chunk_number || 0;
         setTimeout(() => {
@@ -439,7 +443,7 @@ Deno.serve(async (req) => {
         }, 500);
 
         return Response.json({
-            status: 'started',
+            status: resumedExistingJob ? 'resumed' : 'started',
             job_id: job.id,
             optimized_radius: optimizedRadius,
             original_radius: radius,
