@@ -38,3 +38,4 @@
 - When optimizing a mobile panel, check the parent shell, tab row, section header actions, and cards together; fixing only the inner padding can leave fixed-width children off-screen.
 - In mobile multi-select lists, make selection controls and section expand arrows explicit, high-contrast, and non-shrinking; hover-only affordances do not work on touch screens.
 - Rep-facing Knock and Checklist views must share one interpretation of interaction decisions; temporary outcomes like NO_ANSWER should still count as done until a user explicitly clears the decision back to Todo.
+- Saved route ordering must have one source of truth: `SavedRoute.property_hashes`. Checklist, map, and Knock should preserve that order and subscribe/refetch when the saved route changes; do not apply a second local optimizer in only one view.

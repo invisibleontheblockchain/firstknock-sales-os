@@ -40,7 +40,17 @@
 - [x] Persist the selected Knock route so reps with multiple routes stay on the same county/route context.
 - [x] Verify the touched flow and document the result.
 
+## Current Plan — Checklist/Knock Route Order Sync
+- [x] Document the suspected root cause and planned handling method.
+- [x] Stop Knock from locally reordering a saved route after Checklist/Optimize has saved a new order.
+- [x] Add route-update synchronization so Knock refetches when the selected SavedRoute changes.
+- [x] Make route property hydration react to route order changes, not just route length.
+- [x] Verify the Knock-side sync code path and document the result.
+- [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
+
 ## Review
+Checklist/Knock route order sync is fixed on the Knock side: Knock now treats SavedRoute.property_hashes as the source of truth, refetches when the selected saved route changes, and no longer applies its own time-based reorder that could fight the Checklist/Optimize order. I also found an unrelated Home maximum-update-depth warning, but Home is over the safe edit limit and should be split before patching that separately.
+
 Knock and Checklist are now aligned around the same latest-decision status behavior: No Answer remains done, Done views can be filtered by every decision type, history has a Clear action that adds an ELIGIBLE reset entry to move the home back to Todo, and the selected Knock route is persisted so reps stay on the same route/county context.
 
 Map settings are cleaner: Apple/Google navigation selection now lives in the Map tab and is saved/shared through localStorage plus an app event so both Route Checklist and Knock tab navigation buttons use the same preference. The unwanted Auto-build on Generate setting was removed, and changing the Sold Date Window no longer prompts or auto-generates routes. Navigation URLs now open directions to the selected property in the selected provider.

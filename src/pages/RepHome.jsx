@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { optimizeRouteForTime, getKnockWindowLabel } from '@/components/logic/knockTimeOptimizer';
+import { getKnockWindowLabel } from '@/components/logic/knockTimeOptimizer';
 import { determineEffectiveStatus } from '@/components/logic/territoryLogic';
 import RepMapView from '@/components/rep/RepMapView';
 import RepHeader from '@/components/rep/RepHeader';
@@ -214,9 +214,27 @@ export default function RepHome() {
         try { localStorage.setItem('fk_selectedKnockRouteId', activeRoute.id); } catch {}
     }, [activeRoute?.id]);
 
+    React.useEffect(() => {
+        if (!user) return;
+        const unsubscribe = base44.entities.SavedRoute.subscribe((event) => {
+            if (!event?.id) return;
+            const isSelectedRoute = event.id === activeRoute?.id || event.id === manualRouteId;
+            if (isSelectedRoute || event.type === 'create') {
+                queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
+                queryClient.invalidateQueries({ queryKey: ['routeProperties'] });
+            }
+        });
+        return unsubscribe;
+    }, [user, activeRoute?.id, manualRouteId, queryClient]);
+
+    const activeRouteOrderKey = React.useMemo(
+        () => (activeRoute?.property_hashes || []).join('|'),
+        [activeRoute?.property_hashes]
+    );
+
     // 2. Fetch Route Properties - batch filter by address_hash
     const { data: properties = [], isLoading: propsLoading } = useQuery({
-        queryKey: ['routeProperties', activeRoute?.id, activeRoute?.property_hashes?.length || 0],
+        queryKey: ['routeProperties', activeRoute?.id, activeRoute?.updated_date, activeRouteOrderKey],
         queryFn: async () => {
             if (!activeRoute?.property_hashes?.length) return [];
             const hashes = activeRoute.property_hashes;
@@ -392,8 +410,9 @@ export default function RepHome() {
                 return { ...p, effective_status: status };
             });
 
-        // Optimize sort based on time without changing the route's stop count
-        return optimizeRouteForTime(orderedProps, new Date());
+        // SavedRoute.property_hashes is the source of truth. Checklist/Optimize writes this order,
+        // so Knock must preserve it exactly instead of applying another local reorder.
+        return orderedProps;
     }, [activeRoute, properties, logs]);
 
     // Stats
