@@ -1,13 +1,12 @@
-# Current Task: Add ingestion processor lock and batched job updates
+# Current Task: Fix 300 sq mi grid sub-circle coverage
 
 ## Plan
-- [x] Create a `PipelineLock` entity with one logical lock per `FetchJob`.
-- [x] Add a 90-second expiring lock at the start of `processFetchChunk`.
-- [x] Release the lock before every self-invocation or terminal return.
-- [x] Batch normal `FetchJob` progress writes to one write per chunk.
-- [x] Keep `failed` and `completed` writes immediate.
-- [x] Test duplicate invocation behavior with a safe stale expected-chunk payload.
-- [x] Document before/after write-count impact.
+- [x] Replace the square-ish dynamic spacing in `fetchAreaProperties.generateSubCircles` with true 5-mile hex packing.
+- [x] Use horizontal spacing `2r*cos(30°)` and vertical spacing `1.5r`.
+- [x] Ensure a ~300 sq mi / ~9.77mi radius area generates a 4×4 16-circle grid.
+- [x] Keep single-circle behavior for areas at or below 5 miles.
+- [x] Document the before/after coverage and expected sub-circle count.
+- [x] Verify deployment/syntax with a safe backend function test.
 
 ## Review
-Implemented `PipelineLock` and wrapped `processFetchChunk` so duplicate processors for the same `FetchJob` exit before doing work. Normal chunk progress remains one end-of-chunk `FetchJob` write, while completed/failed writes stay immediate. Added `docs/pipeline-lock-batching-diff.md` with the before/after behavior and write-count impact.
+Updated `fetchAreaProperties.generateSubCircles` to use true hex spacing and retain the full planned grid, so a ~300 sq mi territory now creates 16 sub-circles. Added `docs/hex-grid-300sqmi-coverage-diff.md` documenting the before/after coverage behavior.

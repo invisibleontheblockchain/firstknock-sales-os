@@ -29,7 +29,8 @@ function computeBoundingCircle(polygon) {
  * Generates a hex-style grid of circles that fully cover the original area.
  */
 const SUB_CIRCLE_RADIUS = 5; // miles — sweet spot per RentCast support
-const OVERLAP_FACTOR = 0.80; // 20% overlap to avoid boundary gaps
+const HEX_HORIZONTAL_SPACING = 2 * SUB_CIRCLE_RADIUS * Math.cos(Math.PI / 6); // 8.66mi
+const HEX_VERTICAL_SPACING = 1.5 * SUB_CIRCLE_RADIUS; // 7.5mi
 
 function generateSubCircles(centerLat, centerLng, radiusMiles) {
     if (radiusMiles <= SUB_CIRCLE_RADIUS) {
@@ -37,37 +38,29 @@ function generateSubCircles(centerLat, centerLng, radiusMiles) {
         return [{ lat: centerLat, lng: centerLng, radius: radiusMiles }];
     }
 
-    const step = SUB_CIRCLE_RADIUS * 2 * OVERLAP_FACTOR; // distance between centers in miles
-    const latStep = step / 69.0; // 1° lat ≈ 69 miles
-    const lngStep = step / (69.0 * Math.cos(centerLat * Math.PI / 180));
-
+    const latMilesToDegrees = 1 / 69.0;
+    const lngMilesToDegrees = 1 / (69.0 * Math.cos(centerLat * Math.PI / 180));
+    const rows = Math.max(2, Math.ceil((radiusMiles * 2) / HEX_VERTICAL_SPACING) + 1);
+    const cols = Math.max(2, Math.ceil((radiusMiles * 2) / HEX_HORIZONTAL_SPACING) + 1);
+    const rowStart = -(rows - 1) / 2;
+    const colStart = -(cols - 1) / 2;
     const circles = [];
-    // Grid extends to cover the full original radius
-    const gridExtent = radiusMiles + SUB_CIRCLE_RADIUS * 0.5; // slight overshoot to catch edges
-    const stepsNeeded = Math.ceil(gridExtent / step);
 
-    for (let row = -stepsNeeded; row <= stepsNeeded; row++) {
-        // Offset odd rows by half a step for better coverage (hex grid)
-        const lngOffset = (Math.abs(row) % 2 === 1) ? lngStep * 0.5 : 0;
-        for (let col = -stepsNeeded; col <= stepsNeeded; col++) {
-            const subLat = centerLat + row * latStep;
-            const subLng = centerLng + col * lngStep + lngOffset;
+    for (let row = 0; row < rows; row++) {
+        const rowMiles = (rowStart + row) * HEX_VERTICAL_SPACING;
+        const rowOffsetMiles = row % 2 === 1 ? HEX_HORIZONTAL_SPACING / 2 : 0;
 
-            // Check if this sub-circle center is close enough to be useful
-            const dLat = (subLat - centerLat) * 69.0;
-            const dLng = (subLng - centerLng) * 69.0 * Math.cos(centerLat * Math.PI / 180);
-            const dist = Math.sqrt(dLat * dLat + dLng * dLng);
-
-            // Include every sub-circle that overlaps the requested area.
-            // The previous edge cutoff only allowed +1.5mi beyond the boundary, which under-covered
-            // large 300mi² pulls; a 5mi fetch circle can still cover valid edge homes up to 5mi out.
-            if (dist <= radiusMiles + SUB_CIRCLE_RADIUS) {
-                circles.push({ lat: Math.round(subLat * 1e6) / 1e6, lng: Math.round(subLng * 1e6) / 1e6, radius: SUB_CIRCLE_RADIUS });
-            }
+        for (let col = 0; col < cols; col++) {
+            const colMiles = (colStart + col) * HEX_HORIZONTAL_SPACING + rowOffsetMiles;
+            circles.push({
+                lat: Math.round((centerLat + rowMiles * latMilesToDegrees) * 1e6) / 1e6,
+                lng: Math.round((centerLng + colMiles * lngMilesToDegrees) * 1e6) / 1e6,
+                radius: SUB_CIRCLE_RADIUS
+            });
         }
     }
 
-    console.log(`[fetchArea-v9] Grid subdivision: ${radiusMiles}mi area → ${circles.length} sub-circles (r=${SUB_CIRCLE_RADIUS}mi each, ${Math.round(OVERLAP_FACTOR * 100)}% overlap)`);
+    console.log(`[fetchArea-v10] Hex subdivision: ${radiusMiles}mi area → ${circles.length} sub-circles (r=${SUB_CIRCLE_RADIUS}mi, h=${HEX_HORIZONTAL_SPACING.toFixed(2)}mi, v=${HEX_VERTICAL_SPACING.toFixed(2)}mi)`);
     return circles;
 }
 
