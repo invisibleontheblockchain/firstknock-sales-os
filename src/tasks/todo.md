@@ -259,6 +259,13 @@ Pass 1 implemented and verified.
 - [x] Slow fetch-status polling after the first 30 seconds to reduce rate-limit pressure.
 - [ ] Verify the custom area remains available after returning to the route builder.
 
+## Incident Plan — Data pull stuck at 80%
+- [x] Check runtime logs and current FetchJob state.
+- [x] Identify crash point: Phase 2 hit Deno memory limit after BatchData returned 403, while Phase 1 deed records had already advanced.
+- [x] Patch Phase 2 failure path to complete safely with deed records only instead of continuing expensive cleanup.
+- [ ] Unstick the current job so the UI exits the 80% progress state.
+- [ ] Verify runtime/job state after the patch.
+
 ### Review — Custom area persistence
 - The confirmed custom area is no longer cleared just because the app returns to analyze mode or reloads after a pull.
 - Fetch status polling now backs off more aggressively after the first 30 seconds, reducing Base44 rate-limit pressure during long pulls.

@@ -943,6 +943,7 @@ Deno.serve(async (req) => {
             // This is the ONLY way MLS data reaches the route — no exceptions.
             // Cost control is now handled by the 30-day MLS window — no artificial 50-record cap.
             const BATCH_DATA_API_KEY = Deno.env.get("BATCH_DATA_API_KEY");
+            let completeWithDeedsOnly = false;
             if (BATCH_DATA_API_KEY && mapped.length > 0) {
                 // Send ALL non-deed-confirmed MLS listings to BatchData
                 const ambiguousMls = mapped.filter(m => {
@@ -1064,6 +1065,7 @@ Deno.serve(async (req) => {
                         }
 
                         if (batchDataUnavailable) {
+                            completeWithDeedsOnly = true;
                             for (const m of mapped) {
                                 if (m.sale_confidence === 'low' && m.original_status !== 'DEED_CONFIRMED') {
                                     m.sale_confidence = 'REJECTED';
@@ -1093,6 +1095,7 @@ Deno.serve(async (req) => {
                     console.log(`[chunk-v15] Step 3 skipped: no ambiguous MLS listings to verify`);
                 }
             } else if (mapped.length > 0) {
+                completeWithDeedsOnly = true;
                 logError('Step 3 BatchData skipped: BATCH_DATA_API_KEY missing. Rejecting unverified MLS and preserving Phase 1 deeds.');
                 for (const m of mapped) {
                     if (m.sale_confidence === 'low' && m.original_status !== 'DEED_CONFIRMED') {
@@ -1100,6 +1103,33 @@ Deno.serve(async (req) => {
                         m.original_status = 'REJECTED';
                     }
                 }
+            }
+
+            if (completeWithDeedsOnly) {
+                const completedAt = new Date().toISOString();
+                const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
+                chunkTimings.push(chunkDuration);
+                errorLog.push(`[${completedAt}] Phase 2 skipped safely because BatchData was unavailable; completed with Phase 1 deed records only.`);
+
+                await base44.asServiceRole.entities.FetchJob.update(jobId, {
+                    status: 'completed', phase: 'complete', progress_pct: 100, completed_at: completedAt,
+                    total_fetched: totalFetched, total_inserted: totalInserted, total_existed: totalExisted,
+                    total_updated: totalUpdated, total_api_calls: totalApiCalls, zip_codes_found: zipCodesFound,
+                    chunk_number: nextChunkNumber, chunk_timings: chunkTimings, error_log: errorLog
+                });
+
+                try {
+                    const users = await base44.asServiceRole.entities.User.filter({ email: job.user_email }, null, 1);
+                    const userArr = Array.isArray(users) ? users : (users?.items || []);
+                    if (userArr.length > 0) {
+                        await base44.asServiceRole.entities.User.update(userArr[0].id, {
+                            has_pulled_data: true, last_data_pull: completedAt, territory_property_count: totalInserted + totalExisted
+                        });
+                    }
+                } catch (_e) { /* non-fatal */ }
+
+                console.log(`[chunk-v15] JOB COMPLETE WITH DEEDS ONLY | apiCalls=${totalApiCalls} | inserted=${totalInserted} | existed=${totalExisted} | updated=${totalUpdated}`);
+                return Response.json({ status: 'completed', job_id: jobId, phase: 'deed_only_batchdata_unavailable' });
             }
 
             // Deactivate existing rejected Phase 2 records without deleting their DB history.
