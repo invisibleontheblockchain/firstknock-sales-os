@@ -1,6 +1,13 @@
 # Plan
 
-## Current Plan — Mobile FirstKnock Map Performance
+## Current Plan — Mobile FirstKnock Map Zoom/Tap Responsiveness
+- [x] Remove the React Fragment warning that is spamming one warning per pin render.
+- [x] Move dense route/pin/GPS vector drawing onto Leaflet canvas to reduce SVG DOM work during zoom.
+- [x] Tune the mobile map and tile layer animation settings for smoother pinch zoom.
+- [x] Make map buttons and invisible pin targets more responsive to thumb taps.
+- [x] Verify runtime logs after the responsiveness changes and document the result.
+
+## Previous Plan — Mobile FirstKnock Map Performance
 - [x] Remove always-on house number labels from every pin and show the label only when a pin is tapped.
 - [x] Decouple live GPS updates so the property pin layer does not redraw on every location heartbeat.
 - [x] Use a single active tile layer instead of stacking satellite plus labels on mobile route view.
@@ -69,6 +76,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Mobile FirstKnock Map zoom/tap responsiveness was improved by removing the Fragment warning spam, drawing dense vector layers with Leaflet canvas, disabling expensive zoom/fade marker animations, delaying tile updates until zoom settles, increasing pin hit targets to 56px, and making map controls larger/touch-optimized. Runtime review still shows the unrelated Home render-loop warning, but the RepMapView Fragment warning was addressed.
+
 Mobile FirstKnock Map performance was improved by removing permanent labels from every house pin, memoizing the pin layer, using only one tile layer, and adding invisible 48px touch targets around pins while preserving the visible pin size. Runtime review showed existing unrelated backend rate-limit noise, with no new RepMapView-specific error surfaced.
 
 Checklist/Knock route order sync is fixed on both sides: Knock now treats SavedRoute.property_hashes as the source of truth and refetches when the selected saved route changes, while Checklist also refreshes the latest saved order directly so stale Home activeRoute state cannot leave the two views out of sync. I also found an unrelated Home maximum-update-depth warning, but Home is over the safe edit limit and should be split before patching that separately.

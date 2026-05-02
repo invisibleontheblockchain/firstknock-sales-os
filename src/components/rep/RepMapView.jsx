@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, Tooltip, useMap, Marker } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, Tooltip, useMap, Marker, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -27,11 +27,12 @@ import { Button } from "@/components/ui/button";
 import { Navigation, X, Locate, ChevronUp, ChevronDown } from 'lucide-react';
 
 const BRAND = { gold: '#FFD93D', voidBlack: '#0A0A0F' };
+const CANVAS_RENDERER = L.canvas({ padding: 0.5 });
 const TOUCH_TARGET_ICON = L.divIcon({
     className: 'fk-property-touch-target',
-    html: '<div style="width:48px;height:48px;border-radius:9999px;background:transparent;"></div>',
-    iconSize: [48, 48],
-    iconAnchor: [24, 24]
+    html: '<div style="width:56px;height:56px;border-radius:9999px;background:transparent;touch-action:manipulation;"></div>',
+    iconSize: [56, 56],
+    iconAnchor: [28, 28]
 });
 
 const STATUS_COLORS = {
@@ -83,8 +84,10 @@ const GpsLayer = React.memo(function GpsLayer({ position, accuracy }) {
     return (
         <>
             <Circle center={[position.lat, position.lng]} radius={accuracy}
+                renderer={CANVAS_RENDERER}
                 pathOptions={{ fillColor: BRAND.gold, fillOpacity: 0.08, color: BRAND.gold, weight: 1, dashArray: '4,4' }} />
             <CircleMarker center={[position.lat, position.lng]} radius={10}
+                renderer={CANVAS_RENDERER}
                 pathOptions={{ fillColor: BRAND.gold, fillOpacity: 1, color: '#000', weight: 3 }}>
                 <Tooltip permanent direction="top" className="route-number-tooltip">
                     <span style={{ color: BRAND.gold, fontWeight: '900', fontSize: '10px', textShadow: '0 0 6px #000' }}>YOU</span>
@@ -102,17 +105,20 @@ function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
             : p.effective_status;
         const color = STATUS_COLORS[effColorStatus] || '#6b7280';
         return (
-            <React.Fragment key={p.address_hash}>
+            <LayerGroup key={p.address_hash}>
                 <Marker
                     position={[p.lat, p.lng]}
                     icon={TOUCH_TARGET_ICON}
                     zIndexOffset={1000}
                     eventHandlers={{ click: () => onSelectProperty(p) }}
+                    bubblingMouseEvents={false}
                 />
                 <CircleMarker
                     center={[p.lat, p.lng]}
                     radius={isNearby ? 8 : 6}
+                    renderer={CANVAS_RENDERER}
                     eventHandlers={{ click: () => onSelectProperty(p) }}
+                    bubblingMouseEvents={false}
                     pathOptions={{
                         fillColor: idx === 0 ? '#22c55e' : color,
                         fillOpacity: 1,
@@ -131,7 +137,7 @@ function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
                         </span>
                     </Tooltip>
                 </CircleMarker>
-            </React.Fragment>
+            </LayerGroup>
         );
     }) || null;
 }
@@ -224,7 +230,7 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                 <Button
                     onClick={onClose}
                     size="sm"
-                    className="pointer-events-auto bg-black/80 backdrop-blur-xl text-white border border-gray-700 hover:bg-gray-800 rounded-full h-10 px-4 shadow-xl"
+                    className="pointer-events-auto touch-manipulation select-none bg-black/80 backdrop-blur-xl text-white border border-gray-700 hover:bg-gray-800 rounded-full h-12 px-5 shadow-xl active:scale-95"
                 >
                     <X className="w-4 h-4 mr-1" /> Close Map
                 </Button>
@@ -241,7 +247,7 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                             }
                         }}
                         size="icon"
-                        className="bg-black/80 backdrop-blur-xl border border-yellow-500/50 text-yellow-500 hover:bg-yellow-500 hover:text-black rounded-full w-10 h-10 shadow-xl"
+                        className="touch-manipulation select-none bg-black/80 backdrop-blur-xl border border-yellow-500/50 text-yellow-500 hover:bg-yellow-500 hover:text-black rounded-full w-12 h-12 shadow-xl active:scale-95"
                     >
                         <Locate className="w-5 h-5" />
                     </Button>
@@ -253,15 +259,25 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                 <MapContainer
                     center={center}
                     zoom={18}
-                    style={{ height: '100%', width: '100%' }}
+                    style={{ height: '100%', width: '100%', touchAction: 'pan-x pan-y pinch-zoom' }}
                     zoomControl={false}
                     attributionControl={false}
+                    preferCanvas={true}
+                    zoomAnimation={false}
+                    fadeAnimation={false}
+                    markerZoomAnimation={false}
+                    inertia={true}
+                    inertiaDeceleration={3000}
+                    tapTolerance={24}
                 >
                     <MapRefCapture mapRef={mapRef} />
                     {focusProperty && <FlyToProperty focusProperty={focusProperty} />}
                     <TileLayer
                         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                         attribution="&copy; Esri"
+                        updateWhenZooming={false}
+                        updateWhenIdle={true}
+                        keepBuffer={1}
                     />
 
                     {/* GPS Position */}
@@ -271,6 +287,7 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                     {position && nearbyProps.slice(0, 3).map((p, i) => (
                         <Polyline key={`line-${i}`}
                             positions={[[position.lat, position.lng], [p.lat, p.lng]]}
+                            renderer={CANVAS_RENDERER}
                             pathOptions={{ color: BRAND.gold, weight: 1.5, opacity: 0.4, dashArray: '4,8' }}
                         />
                     ))}
@@ -279,6 +296,8 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                     {properties?.length > 0 && (
                         <Polyline
                             positions={properties.map(p => [p.lat, p.lng])}
+                            renderer={CANVAS_RENDERER}
+                            smoothFactor={2}
                             pathOptions={{ 
                                 color: BRAND.gold, 
                                 weight: mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4, 
@@ -303,7 +322,7 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                     {/* Toggle Bar */}
                     <button
                         onClick={() => setHudExpanded(!hudExpanded)}
-                        className="w-full flex items-center justify-between px-4 py-3"
+                        className="w-full touch-manipulation select-none flex items-center justify-between px-4 py-4 active:bg-white/5"
                     >
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -327,7 +346,7 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                                     <button
                                         key={p.address_hash}
                                         onClick={() => onSelectProperty(p)}
-                                        className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-800/50 transition-colors border-b border-gray-800/50 last:border-0"
+                                        className="w-full touch-manipulation select-none flex items-center gap-3 px-4 py-3.5 hover:bg-gray-800/50 active:bg-gray-800/70 transition-colors border-b border-gray-800/50 last:border-0"
                                     >
                                         <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
                                             style={{ background: STATUS_COLORS[p.effective_status] || '#333', color: '#fff' }}>
