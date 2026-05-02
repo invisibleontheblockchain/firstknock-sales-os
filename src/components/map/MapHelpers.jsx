@@ -161,6 +161,9 @@ export function MapController({ fitBounds, onZoomChange, onMoveEnd }) {
     const lastBoundsRef = useRef(null);
 
     useEffect(() => {
+        if (typeof window !== 'undefined' && window.__fkSuppressMapFitUntil && Date.now() < window.__fkSuppressMapFitUntil) {
+            return;
+        }
         if (fitBounds?.length > 0) {
             try {
                 const bounds = L.latLngBounds(fitBounds);

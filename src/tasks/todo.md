@@ -1,6 +1,15 @@
 # Plan
 
-## Current Plan — Mobile FirstKnock Map Zoom/Tap Responsiveness
+## Current Plan — Optimize Button Must Not Zoom Map
+- [x] Trace the optimize button, re-optimize handler, and map fit controller.
+- [x] Prevent mobile/tablet pointer/touch bubbling from reaching Leaflet map gestures.
+- [x] Add a short no-fit guard around re-optimization so route-order updates cannot trigger map fit/zoom.
+- [x] Verify runtime logs and document the result.
+
+### Re-plan note
+- Direct Home edits were blocked because the file is over the safe edit limit, so the fix was localized to the optimize button and shared map controller instead of expanding the oversized Home page.
+
+## Previous Plan — Mobile FirstKnock Map Zoom/Tap Responsiveness
 - [x] Remove the React Fragment warning that is spamming one warning per pin render.
 - [x] Move dense route/pin/GPS vector drawing onto Leaflet canvas to reduce SVG DOM work during zoom.
 - [x] Tune the mobile map and tile layer animation settings for smoother pinch zoom.
@@ -76,6 +85,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Optimize button zoom-out fix is localized: mobile/tablet pointer events now hard-stop before reaching the Leaflet map, the Optimize button is easier to tap, and the shared map-fit controller ignores fit requests briefly while route optimization starts so optimization cannot trigger a continental zoom-out. Runtime review still shows unrelated backend rate-limit/dedup log noise, not a new optimize-button error.
+
 Mobile FirstKnock Map zoom/tap responsiveness was improved by removing the Fragment warning spam, drawing dense vector layers with Leaflet canvas, disabling expensive zoom/fade marker animations, delaying tile updates until zoom settles, increasing pin hit targets to 56px, and making map controls larger/touch-optimized. Runtime review still shows the unrelated Home render-loop warning, but the RepMapView Fragment warning was addressed.
 
 Mobile FirstKnock Map performance was improved by removing permanent labels from every house pin, memoizing the pin layer, using only one tile layer, and adding invisible 48px touch targets around pins while preserving the visible pin size. Runtime review showed existing unrelated backend rate-limit noise, with no new RepMapView-specific error surfaced.

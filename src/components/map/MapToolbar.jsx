@@ -269,7 +269,13 @@ export default function MapToolbar({
                             <span className="text-[9px] md:text-[10px] font-mono text-gray-500 shrink-0">{activeRoute.houseCount || activeRoute.properties?.length || 0}h</span>
 
                             <div className="ml-auto flex items-center gap-1 shrink-0">
-                                <button onClick={(e) => { e.stopPropagation(); if (onReoptimizeRoute) onReoptimizeRoute(activeRoute); }} className="h-5 md:h-6 px-1.5 md:px-2 text-[9px] md:text-[10px] font-bold bg-yellow-500 hover:bg-yellow-400 text-black rounded-md flex items-center gap-0.5" title="Optimize">
+                                <button
+                                    onPointerDown={(e) => { window.__fkSuppressMapFitUntil = Date.now() + 1500; e.preventDefault(); e.stopPropagation(); e.nativeEvent?.stopImmediatePropagation?.(); }}
+                                    onTouchStart={(e) => { window.__fkSuppressMapFitUntil = Date.now() + 1500; e.stopPropagation(); e.nativeEvent?.stopImmediatePropagation?.(); }}
+                                    onClick={(e) => { window.__fkSuppressMapFitUntil = Date.now() + 1500; e.preventDefault(); e.stopPropagation(); e.nativeEvent?.stopImmediatePropagation?.(); if (onReoptimizeRoute) onReoptimizeRoute(activeRoute); }}
+                                    className="h-8 md:h-7 px-2.5 md:px-2 text-[10px] md:text-[10px] font-bold bg-yellow-500 hover:bg-yellow-400 text-black rounded-md flex items-center gap-1 touch-manipulation select-none active:scale-95"
+                                    title="Optimize"
+                                >
                                     <Zap className="w-2.5 h-2.5" /><span>OPTIMIZE</span>
                                 </button>
                                 <button onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveRoute(null); }} className="flex items-center gap-0.5 h-5 md:h-6 px-1.5 md:px-2 rounded-md border border-white/10 text-[9px] md:text-[10px] font-bold text-gray-400 hover:text-white hover:bg-white/10 shrink-0 touch-manipulation">
