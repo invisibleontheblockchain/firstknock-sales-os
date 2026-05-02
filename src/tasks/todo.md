@@ -1,6 +1,12 @@
 # Plan
 
-## Current Plan — Optimize Button Must Not Zoom Map
+## Current Plan — Builder Custom Area Active Bar
+- [x] Make the Custom Area Active toolbar fit within mobile width without clipping.
+- [x] Keep the data pull and fill-gaps actions readable/tappable on phones.
+- [x] Stop Builder from re-entering area redraw/confirm mode when a confirmed area already exists.
+- [x] Verify runtime logs and document the result.
+
+## Previous Plan — Optimize Button Must Not Zoom Map
 - [x] Trace the optimize button, re-optimize handler, and map fit controller.
 - [x] Prevent mobile/tablet pointer/touch bubbling from reaching Leaflet map gestures.
 - [x] Add a short no-fit guard around re-optimization so route-order updates cannot trigger map fit/zoom.
@@ -85,6 +91,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Builder custom-area UI is fixed for mobile: the active area bar wraps within the viewport, pull/fill actions remain tappable, the helper box no longer clips offscreen, and returning to Builder with an existing area points users to the active bar instead of forcing a redraw/tap-to-confirm flow.
+
 Route banner close control now shows “X CLOSE” on mobile and has a larger touch target so users can clearly exit the active route view.
 
 Optimize button zoom-out fix is localized: mobile/tablet pointer events now hard-stop before reaching the Leaflet map, the Optimize button is easier to tap, and the shared map-fit controller ignores fit requests briefly while route optimization starts so optimization cannot trigger a continental zoom-out. Runtime review still shows unrelated backend rate-limit/dedup log noise, not a new optimize-button error.

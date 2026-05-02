@@ -155,7 +155,10 @@ export default function TerritoryPrompt({
 
     // Listen for toolbar draw button and previous-area selection events
     useEffect(() => {
-        const drawHandler = () => setDrawingMode(true);
+        const drawHandler = () => {
+            setDraftPolygon([]);
+            setDrawingMode(true);
+        };
         const historyHandler = (event) => {
             const polygon = event.detail?.polygon;
             if (!polygon || polygon.length < 3) return;
@@ -660,11 +663,11 @@ export default function TerritoryPrompt({
 
             {/* Drawn Polygon Controls */}
             {!drawingMode && !pulling && drawnPolygon && drawnPolygon.length > 2 && mode === 'generate' && (
-                <div className="absolute top-11 sm:top-16 left-1 sm:left-4 z-[1001] bg-black/90 backdrop-blur-md border border-gray-800 rounded-full px-3 py-1.5 sm:px-4 sm:py-2 shadow-2xl flex items-center gap-2 sm:gap-3 animate-in fade-in slide-in-from-top-2">
+                <div className="absolute top-11 sm:top-16 left-2 right-2 sm:left-4 sm:right-auto z-[1001] max-w-[calc(100vw-1rem)] sm:max-w-none bg-black/90 backdrop-blur-md border border-gray-800 rounded-2xl sm:rounded-full px-2 py-2 sm:px-4 sm:py-2 shadow-2xl flex flex-wrap sm:flex-nowrap items-center gap-1.5 sm:gap-3 animate-in fade-in slide-in-from-top-2 overflow-visible">
                     <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
-                    <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
+                    <span className="text-[11px] sm:text-xs font-bold text-white whitespace-nowrap shrink-0">Custom Area Active</span>
                     {canPullAgain ? (
-                        <div className="flex items-center gap-1.5 ml-2">
+                        <div className="flex items-center gap-1.5 flex-1 sm:flex-none min-w-0 sm:ml-2">
                             {actualAreaSqMiles > 50 && !isPaid ? (
                                 <button
                                     onClick={() => navigate('/Billing')}
@@ -678,15 +681,15 @@ export default function TerritoryPrompt({
                                     <Button
                                         disabled={pulling}
                                         onClick={handleFetchData}
-                                        className="text-white text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]"
+                                        className="text-white text-[10px] h-8 sm:h-6 px-2 sm:px-3 py-0 rounded-md font-bold tracking-wide bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)] flex-1 sm:flex-none min-w-0"
                                     >
-                                        {`Pull ${actualAreaLabel} (${fetchMonths} Mo)`}
+                                        <span className="sm:hidden">{`Pull ${actualAreaLabel}`}</span><span className="hidden sm:inline">{`Pull ${actualAreaLabel} (${fetchMonths} Mo)`}</span>
                                     </Button>
                                     {selectedHistoryArea && (
                                         <Button
                                             disabled={pulling}
                                             onClick={() => { setForceFullRefresh(true); setTimeout(handleFetchData, 0); }}
-                                            className="text-black text-[10px] h-6 px-3 py-0 rounded-md font-bold tracking-wide bg-yellow-500 hover:bg-yellow-400"
+                                            className="text-black text-[10px] h-8 sm:h-6 px-2 sm:px-3 py-0 rounded-md font-bold tracking-wide bg-yellow-500 hover:bg-yellow-400 shrink-0"
                                         >
                                             Fill Gaps
                                         </Button>
@@ -697,7 +700,7 @@ export default function TerritoryPrompt({
                     ) : (
                         <Link
                             to={createPageUrl('Billing')}
-                            className="flex items-center gap-1.5 ml-2 text-[10px] font-bold text-yellow-500 hover:text-yellow-400 transition-colors bg-yellow-500/10 border border-yellow-500/30 rounded-md px-2 py-1"
+                            className="flex items-center gap-1.5 ml-auto text-[10px] font-bold text-yellow-500 hover:text-yellow-400 transition-colors bg-yellow-500/10 border border-yellow-500/30 rounded-md px-2 py-1"
                         >
                             <Lock className="w-3 h-3" />
                             <span>Upgrade</span>
@@ -705,13 +708,13 @@ export default function TerritoryPrompt({
                         </Link>
                     )}
                     <button
-                        onClick={() => { setDrawnPolygon(null); setDraftPolygon([]); }}
-                        className="text-gray-400 hover:text-red-500 transition-colors p-1 bg-white/5 rounded-full"
+                        onClick={() => { setDrawnPolygon(null); setDraftPolygon([]); setDrawingMode(false); }}
+                        className="text-gray-400 hover:text-red-500 transition-colors p-2 sm:p-1 bg-white/5 rounded-full shrink-0 ml-auto sm:ml-0"
                     >
                         <Trash2 className="w-3 h-3" />
                     </button>
                     {canPullAgain && (
-                        <div className="absolute top-full left-0 mt-2 w-56 bg-black/90 border border-gray-800 rounded-lg p-2 shadow-xl animate-in fade-in slide-in-from-top-1">
+                        <div className="absolute top-full left-0 right-0 sm:right-auto mt-2 w-auto sm:w-56 bg-black/90 border border-gray-800 rounded-lg p-2 shadow-xl animate-in fade-in slide-in-from-top-1">
                             <p className="text-[9px] text-gray-400 leading-tight">
                                 <span className="text-blue-400 font-bold">Area:</span> pulling the actual selected polygon, about <span className="text-white">{actualAreaLabel}</span>.
                                 <br />Public records have a <span className="text-white">1-3 month recording lag</span>.

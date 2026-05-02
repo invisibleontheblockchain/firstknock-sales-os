@@ -435,7 +435,8 @@ export default function MapToolbar({
                             onClick={() => {
                                 if (hasDrawnArea) {
                                     if (!territoryDataReady) {
-                                        toast.error("Pull property data first!", { duration: 4000 });
+                                        setShowCompare(false);
+                                        toast.info("Use the Custom Area Active bar to pull data for this area.", { duration: 3500 });
                                         return;
                                     }
                                     setShowCompare(true);
@@ -444,8 +445,8 @@ export default function MapToolbar({
                                     window.dispatchEvent(new CustomEvent('fk-start-drawing'));
                                 }
                             }}
-                            disabled={routesGenerating || (hasDrawnArea && !territoryDataReady)}
-                            className={`rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] transition-all active:scale-95 whitespace-nowrap ${hasDrawnArea && !territoryDataReady ? 'opacity-50' : ''}`}
+                            disabled={routesGenerating}
+                            className="rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] transition-all active:scale-95 whitespace-nowrap"
                             style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
                         >
                             {routesGenerating ? (
