@@ -278,8 +278,8 @@ export default function MapToolbar({
                                 >
                                     <Zap className="w-2.5 h-2.5" /><span>OPTIMIZE</span>
                                 </button>
-                                <button onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveRoute(null); }} className="flex items-center gap-0.5 h-5 md:h-6 px-1.5 md:px-2 rounded-md border border-white/10 text-[9px] md:text-[10px] font-bold text-gray-400 hover:text-white hover:bg-white/10 shrink-0 touch-manipulation">
-                                    <X className="w-2.5 h-2.5" /><span className="hidden sm:inline">CLOSE</span>
+                                <button onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); setActiveRoute(null); }} className="flex items-center gap-1 h-8 md:h-6 px-2.5 md:px-2 rounded-md border border-white/10 text-[10px] md:text-[10px] font-bold text-gray-300 hover:text-white hover:bg-white/10 shrink-0 touch-manipulation active:scale-95">
+                                    <X className="w-3 h-3 md:w-2.5 md:h-2.5" /><span>CLOSE</span>
                                 </button>
                             </div>
                         </div>
