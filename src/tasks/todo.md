@@ -1,5 +1,12 @@
 # Plan
 
+## Current Plan — Mobile FirstKnock Map Performance
+- [x] Remove always-on house number labels from every pin and show the label only when a pin is tapped.
+- [x] Decouple live GPS updates so the property pin layer does not redraw on every location heartbeat.
+- [x] Use a single active tile layer instead of stacking satellite plus labels on mobile route view.
+- [x] Add an invisible thumb-sized hit area around each pin while keeping the visible pin size unchanged.
+- [x] Verify runtime logs after the map changes and document the result.
+
 - [x] Inspect current map settings, data status/settings, checklist navigation, and knock tab navigation preference usage.
 - [x] Identify why Apple/Google Maps preference is not consistently applied in both checklist and knock flows.
 - [x] Remove the unwanted builder auto-build/generate behavior from map/settings controls.
@@ -62,6 +69,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Mobile FirstKnock Map performance was improved by removing permanent labels from every house pin, memoizing the pin layer, using only one tile layer, and adding invisible 48px touch targets around pins while preserving the visible pin size. Runtime review showed existing unrelated backend rate-limit noise, with no new RepMapView-specific error surfaced.
+
 Checklist/Knock route order sync is fixed on both sides: Knock now treats SavedRoute.property_hashes as the source of truth and refetches when the selected saved route changes, while Checklist also refreshes the latest saved order directly so stale Home activeRoute state cannot leave the two views out of sync. I also found an unrelated Home maximum-update-depth warning, but Home is over the safe edit limit and should be split before patching that separately.
 
 Knock and Checklist are now aligned around the same latest-decision status behavior: No Answer remains done, Done views can be filtered by every decision type, history has a Clear action that adds an ELIGIBLE reset entry to move the home back to Todo, and the selected Knock route is persisted so reps stay on the same route/county context.

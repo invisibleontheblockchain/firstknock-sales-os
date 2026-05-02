@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, Tooltip, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, Tooltip, useMap, Marker } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -27,6 +27,12 @@ import { Button } from "@/components/ui/button";
 import { Navigation, X, Locate, ChevronUp, ChevronDown } from 'lucide-react';
 
 const BRAND = { gold: '#FFD93D', voidBlack: '#0A0A0F' };
+const TOUCH_TARGET_ICON = L.divIcon({
+    className: 'fk-property-touch-target',
+    html: '<div style="width:48px;height:48px;border-radius:9999px;background:transparent;"></div>',
+    iconSize: [48, 48],
+    iconAnchor: [24, 24]
+});
 
 const STATUS_COLORS = {
     ELIGIBLE: '#8888A0',
@@ -72,7 +78,7 @@ function FlyToProperty({ focusProperty }) {
     return null;
 }
 
-function GpsLayer({ position, accuracy }) {
+const GpsLayer = React.memo(function GpsLayer({ position, accuracy }) {
     if (!position) return null;
     return (
         <>
@@ -86,7 +92,51 @@ function GpsLayer({ position, accuracy }) {
             </CircleMarker>
         </>
     );
+});
+
+function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
+    return properties?.map((p, idx) => {
+        const isNearby = nearbyHashes.has(p.address_hash);
+        const effColorStatus = p.effective_status === 'ELIGIBLE' && p.original_status && ['SOLD', 'RECENT_OFF_MARKET', 'PENDING'].includes(p.original_status)
+            ? p.original_status
+            : p.effective_status;
+        const color = STATUS_COLORS[effColorStatus] || '#6b7280';
+        return (
+            <React.Fragment key={p.address_hash}>
+                <Marker
+                    position={[p.lat, p.lng]}
+                    icon={TOUCH_TARGET_ICON}
+                    zIndexOffset={1000}
+                    eventHandlers={{ click: () => onSelectProperty(p) }}
+                />
+                <CircleMarker
+                    center={[p.lat, p.lng]}
+                    radius={isNearby ? 8 : 6}
+                    eventHandlers={{ click: () => onSelectProperty(p) }}
+                    pathOptions={{
+                        fillColor: idx === 0 ? '#22c55e' : color,
+                        fillOpacity: 1,
+                        color: '#fff',
+                        weight: isNearby ? 2 : 1
+                    }}
+                >
+                    <Tooltip direction="top" offset={[0, -5]} className="route-number-tooltip">
+                        <span style={{
+                            color: '#fff',
+                            fontSize: isNearby ? '12px' : '10px',
+                            fontWeight: 'bold',
+                            textShadow: '0 1px 3px #000, 0 0 5px #000'
+                        }}>
+                            {p.house_number || idx + 1}
+                        </span>
+                    </Tooltip>
+                </CircleMarker>
+            </React.Fragment>
+        );
+    }) || null;
 }
+
+const MemoizedPropertyPinLayer = React.memo(PropertyPinLayer);
 
 export default function RepMapView({ properties, onSelectProperty, onClose, focusProperty }) {
     const mapRef = useRef(null);
@@ -143,15 +193,20 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
     const nearbyProps = useMemo(() => {
         if (!position || !properties?.length) return [];
         return properties
-            .map(p => ({
-                ...p,
-                _dist: haversine(position.lat, position.lng, p.lat, p.lng),
-                _distFt: Math.round(haversine(position.lat, position.lng, p.lat, p.lng) * 5280)
-            }))
+            .map(p => {
+                const distance = haversine(position.lat, position.lng, p.lat, p.lng);
+                return {
+                    ...p,
+                    _dist: distance,
+                    _distFt: Math.round(distance * 5280)
+                };
+            })
             .filter(p => p._dist <= 0.15) // ~800 ft
             .sort((a, b) => a._dist - b._dist)
             .slice(0, 15);
     }, [position, properties]);
+
+    const nearbyHashes = useMemo(() => new Set(nearbyProps.map(p => p.address_hash)), [nearbyProps]);
 
     // Map center: prioritize focused property, then GPS, then first property
     const center = focusProperty
@@ -208,11 +263,6 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                         attribution="&copy; Esri"
                     />
-                    {/* Street labels on top of satellite */}
-                    <TileLayer
-                        url="https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png"
-                        attribution=""
-                    />
 
                     {/* GPS Position */}
                     <GpsLayer position={position} accuracy={accuracy} />
@@ -239,38 +289,11 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                     )}
 
                     {/* Property Pins */}
-                    {properties?.map((p, idx) => {
-                        const isNearby = nearbyProps.some(n => n.address_hash === p.address_hash);
-                        const effColorStatus = p.effective_status === 'ELIGIBLE' && p.original_status && ['SOLD', 'RECENT_OFF_MARKET', 'PENDING'].includes(p.original_status)
-                            ? p.original_status
-                            : p.effective_status;
-                        const color = STATUS_COLORS[effColorStatus] || '#6b7280';
-                        return (
-                            <CircleMarker
-                                key={p.address_hash}
-                                center={[p.lat, p.lng]}
-                                radius={isNearby ? 8 : 6}
-                                eventHandlers={{ click: () => onSelectProperty(p) }}
-                                pathOptions={{
-                                    fillColor: idx === 0 ? '#22c55e' : color,
-                                    fillOpacity: 1,
-                                    color: '#fff',
-                                    weight: isNearby ? 2 : 1
-                                }}
-                            >
-                                <Tooltip permanent direction="top" offset={[0, -5]} className="route-number-tooltip">
-                                    <span style={{ 
-                                        color: '#fff', 
-                                        fontSize: isNearby ? '12px' : '10px', 
-                                        fontWeight: 'bold', 
-                                        textShadow: '0 1px 3px #000, 0 0 5px #000' 
-                                    }}>
-                                        {p.house_number || idx + 1}
-                                    </span>
-                                </Tooltip>
-                            </CircleMarker>
-                        );
-                    })}
+                    <MemoizedPropertyPinLayer
+                        properties={properties}
+                        nearbyHashes={nearbyHashes}
+                        onSelectProperty={onSelectProperty}
+                    />
                 </MapContainer>
             </div>
 
