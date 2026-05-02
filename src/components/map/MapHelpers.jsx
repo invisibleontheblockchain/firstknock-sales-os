@@ -2,6 +2,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import { CircleMarker, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 
+if (typeof window !== 'undefined' && !window.__fkLeafletFitBoundsGuardInstalled) {
+    window.__fkLeafletFitBoundsGuardInstalled = true;
+    const originalFitBounds = L.Map.prototype.fitBounds;
+    L.Map.prototype.fitBounds = function (...args) {
+        if (window.__fkSuppressMapFitUntil && Date.now() < window.__fkSuppressMapFitUntil) {
+            return this;
+        }
+        return originalFitBounds.apply(this, args);
+    };
+}
+
 export function LocationMarker({ autoCenter, userLocation }) {
     const [watchPosition, setWatchPosition] = useState(null);
     const [accuracy, setAccuracy] = useState(null);

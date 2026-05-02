@@ -1,6 +1,13 @@
 # Plan
 
-## Current Plan — Builder Custom Area Active Bar
+## Current Plan — Builder Tap-to-Select Zoom Guard
+- [x] Trace the tap-to-confirm/select area viewport behavior.
+- [x] Prevent confirmed-area selection from fitting to oversized bounds or zooming out.
+- [x] Keep the confirmed area visible without changing the user’s current zoom level.
+- [x] Re-plan around Home file size limit by guarding Leaflet fit calls in a smaller map helper.
+- [x] Verify runtime logs and document the result.
+
+## Previous Plan — Builder Custom Area Active Bar
 - [x] Make the Custom Area Active toolbar fit within mobile width without clipping.
 - [x] Keep the data pull and fill-gaps actions readable/tappable on phones.
 - [x] Stop Builder from re-entering area redraw/confirm mode when a confirmed area already exists.
@@ -91,6 +98,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Builder tap-to-select now preserves the current zoom: area confirmation activates the map-fit suppression guard before saving state, pans to the selected area center at the existing zoom, and a shared Leaflet fitBounds guard ignores any programmatic fit attempt during that tap-select window.
+
 Builder custom-area UI is fixed for mobile: the active area bar wraps within the viewport, pull/fill actions remain tappable, the helper box no longer clips offscreen, and returning to Builder with an existing area points users to the active bar instead of forcing a redraw/tap-to-confirm flow.
 
 Route banner close control now shows “X CLOSE” on mobile and has a larger touch target so users can clearly exit the active route view.

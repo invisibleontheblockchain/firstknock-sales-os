@@ -78,35 +78,23 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
         click(e) {
             if (!active) return;
             const generated = generateShape(e.latlng, drawShape, drawSizeMiles);
+            window.__fkSuppressMapFitUntil = Date.now() + 1800;
             setPoints(generated);
             if (onPointsUpdate) {
                 onPointsUpdate(generated);
             }
-            // Fire confirm FIRST so parent can do its work (state updates, polygon save).
+            // Fire confirm after the no-fit guard is active so parent effects cannot zoom out.
             if (onConfirm) {
                 onConfirm(generated);
             }
-            // Then focus the drawn area as the main subject WITHOUT zooming out.
-            // We run this LAST (and on next tick) so it wins over any caller-side fitBounds
-            // that would expand the view and zoom OUT from where the user tapped.
-            //   • If the shape already fits in current view → just pan to its center
-            //   • If it doesn't fit → fit bounds but cap max-zoom at current zoom
-            //     (so we never zoom further in/out than the user was).
-            // The requestAnimationFrame ensures this runs after React flushes parent state
-            // (including any fitBounds the parent's onConfirm may trigger).
+            // Preserve the user's zoom on confirm. Using fitBounds here can zoom far out
+            // for larger selected areas, so we only pan to the selected area's center.
             requestAnimationFrame(() => {
                 try {
                     if (generated && generated.length > 2) {
                         const b = L.latLngBounds(generated.map(pt => [pt.lat, pt.lng]));
                         if (b.isValid() && map?._mapPane) {
-                            const center = b.getCenter();
-                            const curZoom = map.getZoom();
-                            const curBounds = map.getBounds();
-                            if (curBounds.contains(b)) {
-                                map.panTo(center, { animate: true, duration: 0.4 });
-                            } else {
-                                map.fitBounds(b, { padding: [40, 40], maxZoom: curZoom, animate: true });
-                            }
+                            map.setView(b.getCenter(), map.getZoom(), { animate: true });
                         }
                     }
                 } catch (err) { /* non-fatal focus adjustment */ }

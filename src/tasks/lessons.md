@@ -43,3 +43,4 @@
 - Do not keep patching oversized files after the tool blocks edits; stop, re-plan, and extract the risky logic into smaller shared modules before changing behavior.
 - For route optimize flows, never rebuild the active route UI from broad territory data after optimization; preserve the optimized property objects that were actually used, then save hashes from those objects.
 - For mobile Leaflet route maps, avoid permanent labels and stacked tile layers on dense routes; use memoized marker layers plus invisible 44px+ hit targets for thumb-friendly interaction.
+- When fixing map zoom-out bugs, audit every viewport writer in the flow, not just the visible button handler: draw confirmation, initial-fit effects, MapController fitBounds, and post-state-update effects can all fight the user's zoom.
