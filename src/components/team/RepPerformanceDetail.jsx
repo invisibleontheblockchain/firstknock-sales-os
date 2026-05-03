@@ -50,7 +50,7 @@ export default function RepPerformanceDetail({ member, logs, teamAverage, onClos
             .sort((a, b) => new Date(a.date) - new Date(b.date))
             .map(d => ({
                 ...d,
-                conversion: d.knocks > 0 ? ((d.sales / d.knocks) * 100).toFixed(1) : 0
+                conversion: d.knocks > 0 ? Number(((d.sales / d.knocks) * 100).toFixed(1)) : 0
             }));
     }, [logs, member]);
 
@@ -136,24 +136,44 @@ export default function RepPerformanceDetail({ member, logs, teamAverage, onClos
             </div>
 
             {/* Progress Chart */}
-            <Card className="bg-[#111] border-gray-800">
+            <Card className="bg-[#111] border-gray-800 overflow-hidden">
                 <CardHeader className="px-3 md:px-6 py-3 md:py-4">
                     <CardTitle className="text-xs md:text-sm font-bold text-gray-400 uppercase">Performance Trend</CardTitle>
                 </CardHeader>
-                <CardContent className="h-[200px] md:h-[300px] px-2 md:px-6">
-                    <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={chartData}>
+                <CardContent className="h-[220px] md:h-[300px] px-1 md:px-4 pb-3 overflow-hidden">
+                    <ResponsiveContainer width="100%" height="100%" debounce={50}>
+                        <LineChart data={chartData} margin={{ top: 8, right: 4, left: -10, bottom: 4 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#333" />
-                            <XAxis dataKey="date" stroke="#666" fontSize={10} interval="preserveStartEnd" />
-                            <YAxis yAxisId="left" stroke="#666" fontSize={10} />
-                            <YAxis yAxisId="right" orientation="right" stroke="#666" fontSize={10} />
-                            <ReTooltip 
-                                contentStyle={{ backgroundColor: '#000', border: '1px solid #333' }}
-                                labelStyle={{ color: '#fff' }}
+                            <XAxis
+                                dataKey="date"
+                                stroke="#666"
+                                fontSize={10}
+                                interval="preserveStartEnd"
+                                minTickGap={12}
+                                tickMargin={6}
+                                tickFormatter={(value) => {
+                                    const date = new Date(value);
+                                    return `${date.getMonth() + 1}/${date.getDate()}`;
+                                }}
                             />
-                            <Legend wrapperStyle={{ fontSize: '10px' }} />
-                            <Line yAxisId="left" type="monotone" dataKey="knocks" stroke="#3b82f6" name="Knocks" strokeWidth={2} />
-                            <Line yAxisId="right" type="monotone" dataKey="conversion" stroke="#22c55e" name="Conv %" strokeWidth={2} />
+                            <YAxis yAxisId="left" stroke="#666" fontSize={10} width={34} tickMargin={2} allowDecimals={false} />
+                            <YAxis
+                                yAxisId="right"
+                                orientation="right"
+                                stroke="#666"
+                                fontSize={10}
+                                width={38}
+                                tickMargin={2}
+                                tickFormatter={(value) => `${value}%`}
+                            />
+                            <ReTooltip 
+                                contentStyle={{ backgroundColor: '#000', border: '1px solid #333', fontSize: '12px' }}
+                                labelStyle={{ color: '#fff' }}
+                                formatter={(value, name) => [name === 'Conv %' ? `${value}%` : value, name]}
+                            />
+                            <Legend wrapperStyle={{ fontSize: '10px', lineHeight: '16px' }} />
+                            <Line yAxisId="left" type="monotone" dataKey="knocks" stroke="#3b82f6" name="Knocks" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                            <Line yAxisId="right" type="monotone" dataKey="conversion" stroke="#22c55e" name="Conv %" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
                         </LineChart>
                     </ResponsiveContainer>
                 </CardContent>

@@ -1,6 +1,12 @@
 # Plan
 
-## Current Plan — Builder Tap-to-Select Zoom Guard
+## Current Plan — Rep Performance Graph Overflow
+- [x] Keep the performance trend chart inside its card on narrow/mobile app views.
+- [x] Tighten chart margins and axis widths so Knocks and Conv % labels do not clip or overflow.
+- [x] Keep chart data numeric and readable without changing the underlying metrics.
+- [x] Verify runtime logs and document the result.
+
+## Previous Plan — Builder Tap-to-Select Zoom Guard
 - [x] Trace the tap-to-confirm/select area viewport behavior.
 - [x] Prevent confirmed-area selection from fitting to oversized bounds or zooming out.
 - [x] Keep the confirmed area visible without changing the user’s current zoom level.
@@ -98,6 +104,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Rep Performance graph is now mobile-safe: the chart card clips overflow, uses tighter margins and fixed axis widths, shortens date labels, formats Conv % cleanly, and keeps lines readable without changing the underlying metrics.
+
 Mobile ROUTES/BUILDER toggle is slightly larger with improved touch padding and a max-width guard so it stays centered without overlapping side icons.
 
 Builder tap-to-select now preserves the current zoom: area confirmation activates the map-fit suppression guard before saving state, pans to the selected area center at the existing zoom, and a shared Leaflet fitBounds guard ignores any programmatic fit attempt during that tap-select window.
