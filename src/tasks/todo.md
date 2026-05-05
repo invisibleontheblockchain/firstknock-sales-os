@@ -1,6 +1,9 @@
 # Plan
 
-## Current Plan — Knock Tab Black Header Seam
+## Current Plan — Property Detail Close Button
+- [x] Increase the close button tap target so it is easier to click on mobile.
+
+## Previous Plan — Knock Tab Black Header Seam
 - [x] Remove the faint divider line under the FirstKnock app header on the Knock tab.
 - [x] Normalize the Knock tab top/background blacks so the screen reads as mostly black.
 - [x] Verify with runtime logs and document the result.

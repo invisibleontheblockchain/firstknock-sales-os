@@ -70,7 +70,7 @@ export default function PropertyDetailSheet({ property, logs, onLog, onClearDeci
                 </div>
 
                 {/* Close */}
-                <button onClick={onClose} className="absolute top-3 right-3 w-7 h-7 rounded-full bg-white/5 flex items-center justify-center">
+                <button onClick={onClose} className="absolute top-1 right-1 w-11 h-11 rounded-full bg-white/5 flex items-center justify-center">
                     <X className="w-3.5 h-3.5 text-gray-500" />
                 </button>
 
