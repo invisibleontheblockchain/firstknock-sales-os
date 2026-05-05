@@ -14,7 +14,7 @@ export default function RepHeader({ user, isOffline, activeRoute, stats, knockWi
   { dot: 'bg-[#00F5A0]', text: 'text-[#00F5A0]', label: 'SYNCED', icon: CheckCircle2 };
 
   return (
-    <div className="sticky top-0 z-30 backdrop-blur-md border-b border-white/5 px-4 pt-4 pb-4 space-y-3 bg-[#030303]">
+    <div className="sticky top-0 z-30 backdrop-blur-md border-b border-white/5 px-4 pt-4 pb-4 space-y-3 bg-[#0f0000]">
             {/* Top row */}
             <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-[0_0_15px_rgba(108,92,231,0.4)]" style={{ background: 'linear-gradient(135deg, #6C5CE7, #A29BFE)' }}>
