@@ -568,7 +568,7 @@ export default function RepHome() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#0A0A0F] text-[#F0F0F5]">
+    <div className="h-full flex flex-col bg-black text-[#F0F0F5]">
             {/* Compact Header */}
             <RepHeader
         user={user}
@@ -583,7 +583,7 @@ export default function RepHome() {
       
 
             {/* Filter tabs + search */}
-            <div className="px-4 pt-2 pb-3 space-y-2.5 border-b border-white/5 bg-[#000000]">
+            <div className="px-4 pt-2 pb-3 space-y-2.5 border-b border-black bg-black">
                 {/* Top Row: Segmented Control */}
                 <div className="flex bg-black/40 p-0.5 rounded-xl border border-white/5">
                     {[
@@ -662,7 +662,7 @@ export default function RepHome() {
             </div>
 
             {/* Property List */}
-            <div className="flex-1 overflow-y-auto px-3 py-2 pb-20 bg-[hsl(var(--card-foreground))]">
+            <div className="flex-1 overflow-y-auto px-3 py-2 pb-20 bg-black">
                 {filteredProperties.length === 0 ?
         <div className="text-center py-16">
                         <div className="w-14 h-14 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-3">

@@ -1,6 +1,11 @@
 # Plan
 
-## Current Plan — Route Tab Account/Route Handoff
+## Current Plan — Knock Tab Black Header Seam
+- [x] Remove the faint divider line under the FirstKnock app header on the Knock tab.
+- [x] Normalize the Knock tab top/background blacks so the screen reads as mostly black.
+- [x] Verify with runtime logs and document the result.
+
+## Previous Plan — Route Tab Account/Route Handoff
 - [x] Persist the currently active manager route before the user opens the Knock/Route tab.
 - [x] Prevent stale selected route IDs from another account from being accepted in RepHome.
 - [ ] Stop Home route hydration from setting equivalent state repeatedly and triggering the maximum-update-depth loop after splitting Home.
@@ -134,6 +139,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Knock tab visuals are now mostly black: the FirstKnock header uses a black background with no visible divider on RepHome, and the RepHome shell, filter bar, and list area now use black backgrounds to remove the mismatched dark hues.
+
 The Route/Knock handoff now saves the active route from the map toolbar and RepHome rejects stale selected route IDs that do not belong to the current account, so tapping the route tab should no longer appear to switch/log out of the email. The remaining Home render-loop warning still needs the already-planned Home page split because direct Home edits are blocked by file size.
 
 About now uses a full-height scroll container with extra bottom padding so content is not cut off behind the app shell, and Contact now shows and links to firstknockhelp@gmail.com.
