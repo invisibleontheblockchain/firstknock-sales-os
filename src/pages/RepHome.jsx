@@ -659,7 +659,7 @@ export default function RepHome() {
             </div>
 
             {/* Property List */}
-            <div className="flex-1 overflow-y-auto px-3 py-2 pb-20 bg-[hsl(var(--foreground))]">
+            <div className="flex-1 overflow-y-auto px-3 py-2 pb-20 bg-[hsl(var(--card-foreground))]">
                 {filteredProperties.length === 0 ?
         <div className="text-center py-16">
                         <div className="w-14 h-14 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-3">
