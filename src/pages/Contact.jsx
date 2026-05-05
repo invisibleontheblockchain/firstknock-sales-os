@@ -14,7 +14,7 @@ export default function Contact() {
                         Have questions about using FirstKnock, improving your field sales routes, managing a canvassing team, or preparing your organization for growth? Reach out and we will help point you in the right direction.
                     </p>
                     <a
-                        href="mailto:support@firstknock.app"
+                        href="mailto:firstknockhelp@gmail.com"
                         className="flex items-center justify-between gap-4 rounded-2xl bg-white/5 border border-white/10 p-5 hover:bg-white/10 transition-colors"
                     >
                         <div className="flex items-center gap-4">
@@ -23,7 +23,7 @@ export default function Contact() {
                             </div>
                             <div>
                                 <h2 className="text-lg font-bold">Email support</h2>
-                                <p className="text-[#8888A0]">support@firstknock.app</p>
+                                <p className="text-[#8888A0]">firstknockhelp@gmail.com</p>
                             </div>
                         </div>
                         <ArrowRight className="w-5 h-5 text-[#A29BFE]" />

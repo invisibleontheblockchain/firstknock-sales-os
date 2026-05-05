@@ -1,6 +1,11 @@
 # Plan
 
-## Current Plan — Faster FirstKnock Map Zoom Range
+## Current Plan — About Scroll + Contact Email
+- [x] Fix the About page container so the full page can scroll inside the app shell.
+- [x] Replace the Contact page support email with firstknockhelp@gmail.com in both the visible text and mail link.
+- [x] Verify runtime logs and document the result.
+
+## Previous Plan — Faster FirstKnock Map Zoom Range
 - [x] Increase zoom step distance so each pinch/two-finger zoom changes more area.
 - [x] Preserve the smoother zoom animation/tile behavior from the previous tuning.
 - [x] Verify runtime logs and document the result.
@@ -120,6 +125,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+About now uses a full-height scroll container with extra bottom padding so content is not cut off behind the app shell, and Contact now shows and links to firstknockhelp@gmail.com.
+
 FirstKnock map zoom now covers more distance per gesture by increasing zoom delta and making wheel/pinch input more responsive while keeping the smoother animation and tile buffering intact.
 
 FirstKnock map zoom now feels smoother by using smaller zoom increments, faster wheel/pinch response, enabled zoom animation, and live tile updates with a larger tile buffer; no route, pin, GPS, or selection logic was changed.

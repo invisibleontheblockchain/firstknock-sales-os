@@ -44,3 +44,5 @@
 - For route optimize flows, never rebuild the active route UI from broad territory data after optimization; preserve the optimized property objects that were actually used, then save hashes from those objects.
 - For mobile Leaflet route maps, avoid permanent labels and stacked tile layers on dense routes; use memoized marker layers plus invisible 44px+ hit targets for thumb-friendly interaction.
 - When fixing map zoom-out bugs, audit every viewport writer in the flow, not just the visible button handler: draw confirmation, initial-fit effects, MapController fitBounds, and post-state-update effects can all fight the user's zoom.
+- Pages rendered inside the fixed-height app shell need an explicit `h-full overflow-y-auto` scroll container plus bottom padding for the mobile nav; `min-h-full` can leave content clipped with no usable scroll.
+- Support/contact email addresses must be updated in both visible copy and `mailto:` links whenever corrected.
