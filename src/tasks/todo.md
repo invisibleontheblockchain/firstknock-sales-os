@@ -1,6 +1,11 @@
 # Plan
 
-## Current Plan — Property Detail Close Button
+## Current Plan — Rep Map Close Button Responsiveness
+- [x] Make the map close button respond immediately on press instead of waiting for click delay.
+- [x] Stop map touch events from stealing the close button tap.
+- [x] Slightly enlarge the button for easier mobile tapping.
+
+## Previous Plan — Property Detail Close Button
 - [x] Increase the close button tap target so it is easier to click on mobile.
 
 ## Previous Plan — Knock Tab Black Header Seam
@@ -142,6 +147,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+The Rep map close button now responds immediately on press, stops the tap from reaching the map underneath, and has a slightly larger mobile tap target for smoother closing after the map loads.
+
 Knock tab visuals are now mostly black: the FirstKnock header uses a black background with no visible divider on RepHome, and the RepHome shell, filter bar, and list area now use black backgrounds to remove the mismatched dark hues.
 
 The Route/Knock handoff now saves the active route from the map toolbar and RepHome rejects stale selected route IDs that do not belong to the current account, so tapping the route tab should no longer appear to switch/log out of the email. The remaining Home render-loop warning still needs the already-planned Home page split because direct Home edits are blocked by file size.

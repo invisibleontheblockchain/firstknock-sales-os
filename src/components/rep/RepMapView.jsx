@@ -239,9 +239,17 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
             {/* Header */}
             <div className="absolute top-0 left-0 right-0 z-[1100] p-3 flex items-center justify-between pointer-events-none">
                 <Button
-                    onClick={onClose}
+                    onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onClose();
+                    }}
+                    onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }}
                     size="sm"
-                    className="pointer-events-auto touch-manipulation select-none bg-black/80 backdrop-blur-xl text-white border border-gray-700 hover:bg-gray-800 rounded-full h-12 px-5 shadow-xl active:scale-95"
+                    className="pointer-events-auto touch-manipulation select-none bg-black/90 backdrop-blur-xl text-white border border-gray-700 hover:bg-gray-800 rounded-full h-14 px-6 shadow-xl active:scale-95"
                 >
                     <X className="w-4 h-4 mr-1" /> Close Map
                 </Button>
