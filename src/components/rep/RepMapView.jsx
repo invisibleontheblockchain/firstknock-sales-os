@@ -60,6 +60,15 @@ function MapRefCapture({ mapRef }) {
             map.whenReady(() => { mapRef.current = map; });
         }
     }, [map, mapRef]);
+
+    useEffect(() => {
+        if (!map) return;
+        map.options.wheelPxPerZoomLevel = 72;
+        map.options.wheelDebounceTime = 40;
+        map.options.zoomAnimationThreshold = 6;
+        map.options.easeLinearity = 0.18;
+    }, [map]);
+
     return null;
 }
 
@@ -260,15 +269,19 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                     center={center}
                     zoom={18}
                     maxZoom={22}
-                    zoomSnap={0.25}
-                    zoomDelta={0.5}
+                    zoomSnap={0.1}
+                    zoomDelta={0.25}
+                    wheelPxPerZoomLevel={72}
+                    wheelDebounceTime={40}
                     style={{ height: '100%', width: '100%', touchAction: 'pan-x pan-y pinch-zoom' }}
                     zoomControl={false}
                     attributionControl={false}
                     preferCanvas={true}
-                    zoomAnimation={false}
-                    fadeAnimation={false}
+                    zoomAnimation={true}
+                    fadeAnimation={true}
                     markerZoomAnimation={false}
+                    zoomAnimationThreshold={6}
+                    easeLinearity={0.18}
                     inertia={true}
                     inertiaDeceleration={3000}
                     tapTolerance={24}
@@ -280,9 +293,10 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                         attribution="&copy; Esri"
                         maxNativeZoom={19}
                         maxZoom={22}
-                        updateWhenZooming={false}
-                        updateWhenIdle={true}
-                        keepBuffer={1}
+                        updateWhenZooming={true}
+                        updateWhenIdle={false}
+                        updateInterval={80}
+                        keepBuffer={3}
                     />
 
                     {/* GPS Position */}

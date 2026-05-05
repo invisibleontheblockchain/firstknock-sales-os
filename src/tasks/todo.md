@@ -1,6 +1,11 @@
 # Plan
 
-## Current Plan — FirstKnock Map Zoom Snap
+## Current Plan — Smooth FirstKnock Map Zoom
+- [x] Tune only the Rep FirstKnock map zoom settings.
+- [x] Smooth pinch/wheel zoom without changing pins, route order, GPS, or selection behavior.
+- [x] Verify runtime logs and document the result.
+
+## Previous Plan — FirstKnock Map Zoom Snap
 - [x] Trace the View on FirstKnock Map handoff from property detail into the map overlay.
 - [x] Identify which map effect is re-centering or refitting after user zoom.
 - [x] Make the FirstKnock map support safe over-zooming instead of snapping back at the default tile limit.
@@ -110,6 +115,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+FirstKnock map zoom now feels smoother by using smaller zoom increments, faster wheel/pinch response, enabled zoom animation, and live tile updates with a larger tile buffer; no route, pin, GPS, or selection logic was changed.
+
 FirstKnock map zoom snap is fixed by raising the RepMapView max zoom and allowing satellite tiles to over-zoom past their native limit, so pinching in after “View on FirstKnock Map” no longer gets forced back out by the tile zoom cap.
 
 Rep Performance graph is now mobile-safe: the chart card clips overflow, uses tighter margins and fixed axis widths, shortens date labels, formats Conv % cleanly, and keeps lines readable without changing the underlying metrics.
