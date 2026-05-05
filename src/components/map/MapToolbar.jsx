@@ -100,6 +100,11 @@ export default function MapToolbar({
         return () => window.removeEventListener('fk-map-tab-open', handler);
     }, [setMode, setShowCompare, setShowRoutePanel]);
 
+    useEffect(() => {
+        if (!activeRoute?.id) return;
+        try { localStorage.setItem('fk_selectedKnockRouteId', activeRoute.id); } catch {}
+    }, [activeRoute?.id]);
+
     // Inline route name editing state
     const [editingName, setEditingName] = useState(false);
     const [draftName, setDraftName] = useState('');

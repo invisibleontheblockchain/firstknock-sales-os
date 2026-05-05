@@ -1,6 +1,15 @@
 # Plan
 
-## Current Plan — About Scroll + Contact Email
+## Current Plan — Route Tab Account/Route Handoff
+- [x] Persist the currently active manager route before the user opens the Knock/Route tab.
+- [x] Prevent stale selected route IDs from another account from being accepted in RepHome.
+- [ ] Stop Home route hydration from setting equivalent state repeatedly and triggering the maximum-update-depth loop after splitting Home.
+- [x] Verify runtime logs and document the result.
+
+### Re-plan note
+- Direct Home edits are blocked because the page has grown past the safe edit limit, so the account/route handoff fix is being applied through smaller components first.
+
+## Previous Plan — About Scroll + Contact Email
 - [x] Fix the About page container so the full page can scroll inside the app shell.
 - [x] Replace the Contact page support email with firstknockhelp@gmail.com in both the visible text and mail link.
 - [x] Verify runtime logs and document the result.
@@ -125,6 +134,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+The Route/Knock handoff now saves the active route from the map toolbar and RepHome rejects stale selected route IDs that do not belong to the current account, so tapping the route tab should no longer appear to switch/log out of the email. The remaining Home render-loop warning still needs the already-planned Home page split because direct Home edits are blocked by file size.
+
 About now uses a full-height scroll container with extra bottom padding so content is not cut off behind the app shell, and Contact now shows and links to firstknockhelp@gmail.com.
 
 FirstKnock map zoom now covers more distance per gesture by increasing zoom delta and making wheel/pinch input more responsive while keeping the smoother animation and tile buffering intact.

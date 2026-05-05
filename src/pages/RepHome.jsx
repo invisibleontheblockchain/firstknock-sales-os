@@ -140,14 +140,17 @@ export default function RepHome() {
         })();
 
         const myRoutes = allRoutes.filter((r) => {
-          // Route Command handoff: always show the route the manager just selected for Knock.
-          if (selectedRouteId && r.id === selectedRouteId) return true;
+          const isAssignedToMe = !!(r.assigned_to && myIds.has(r.assigned_to));
+          const isOwnedByMe = !!(isManager && (r.manager_id === user.id || r.created_by === user.email));
+
+          // Route Command handoff: only accept the selected route if it belongs to this account.
+          if (selectedRouteId && r.id === selectedRouteId && (isAssignedToMe || isOwnedByMe)) return true;
 
           // Match by any known assignee ID
-          if (r.assigned_to && myIds.has(r.assigned_to)) return true;
+          if (isAssignedToMe) return true;
 
           // Manager in Rep Mode: also show routes they own or created, including older routes without manager_id.
-          if (isManager && (r.manager_id === user.id || r.created_by === user.email)) return true;
+          if (isOwnedByMe) return true;
 
           // Fallback: match by assigned_to_name (handles cases where assignment was by old/different ID)
           if (r.assigned_to_name && myName) {

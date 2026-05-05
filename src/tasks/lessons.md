@@ -46,3 +46,5 @@
 - When fixing map zoom-out bugs, audit every viewport writer in the flow, not just the visible button handler: draw confirmation, initial-fit effects, MapController fitBounds, and post-state-update effects can all fight the user's zoom.
 - Pages rendered inside the fixed-height app shell need an explicit `h-full overflow-y-auto` scroll container plus bottom padding for the mobile nav; `min-h-full` can leave content clipped with no usable scroll.
 - Support/contact email addresses must be updated in both visible copy and `mailto:` links whenever corrected.
+- Manager-to-Knock route handoff must persist the currently active route ID and reject stale selected IDs that do not belong to the current account; otherwise the Knock tab can appear to switch users/routes.
+- Async hydration effects should compare a compact route signature before setting hydrated route state, because equivalent new arrays can create render loops in fixed map pages.
