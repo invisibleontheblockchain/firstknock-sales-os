@@ -1,6 +1,11 @@
 # Plan
 
-## Current Plan — Smooth FirstKnock Map Zoom
+## Current Plan — Faster FirstKnock Map Zoom Range
+- [x] Increase zoom step distance so each pinch/two-finger zoom changes more area.
+- [x] Preserve the smoother zoom animation/tile behavior from the previous tuning.
+- [x] Verify runtime logs and document the result.
+
+## Previous Plan — Smooth FirstKnock Map Zoom
 - [x] Tune only the Rep FirstKnock map zoom settings.
 - [x] Smooth pinch/wheel zoom without changing pins, route order, GPS, or selection behavior.
 - [x] Verify runtime logs and document the result.
@@ -115,6 +120,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+FirstKnock map zoom now covers more distance per gesture by increasing zoom delta and making wheel/pinch input more responsive while keeping the smoother animation and tile buffering intact.
+
 FirstKnock map zoom now feels smoother by using smaller zoom increments, faster wheel/pinch response, enabled zoom animation, and live tile updates with a larger tile buffer; no route, pin, GPS, or selection logic was changed.
 
 FirstKnock map zoom snap is fixed by raising the RepMapView max zoom and allowing satellite tiles to over-zoom past their native limit, so pinching in after “View on FirstKnock Map” no longer gets forced back out by the tile zoom cap.

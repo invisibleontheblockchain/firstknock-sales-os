@@ -63,8 +63,10 @@ function MapRefCapture({ mapRef }) {
 
     useEffect(() => {
         if (!map) return;
-        map.options.wheelPxPerZoomLevel = 72;
-        map.options.wheelDebounceTime = 40;
+        map.options.wheelPxPerZoomLevel = 48;
+        map.options.wheelDebounceTime = 35;
+        map.options.zoomDelta = 1;
+        map.options.zoomSnap = 0.25;
         map.options.zoomAnimationThreshold = 6;
         map.options.easeLinearity = 0.18;
     }, [map]);
@@ -269,10 +271,10 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                     center={center}
                     zoom={18}
                     maxZoom={22}
-                    zoomSnap={0.1}
-                    zoomDelta={0.25}
-                    wheelPxPerZoomLevel={72}
-                    wheelDebounceTime={40}
+                    zoomSnap={0.25}
+                    zoomDelta={1}
+                    wheelPxPerZoomLevel={48}
+                    wheelDebounceTime={35}
                     style={{ height: '100%', width: '100%', touchAction: 'pan-x pan-y pinch-zoom' }}
                     zoomControl={false}
                     attributionControl={false}
