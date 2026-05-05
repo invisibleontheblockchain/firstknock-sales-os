@@ -259,6 +259,9 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                 <MapContainer
                     center={center}
                     zoom={18}
+                    maxZoom={22}
+                    zoomSnap={0.25}
+                    zoomDelta={0.5}
                     style={{ height: '100%', width: '100%', touchAction: 'pan-x pan-y pinch-zoom' }}
                     zoomControl={false}
                     attributionControl={false}
@@ -275,6 +278,8 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                     <TileLayer
                         url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
                         attribution="&copy; Esri"
+                        maxNativeZoom={19}
+                        maxZoom={22}
                         updateWhenZooming={false}
                         updateWhenIdle={true}
                         keepBuffer={1}

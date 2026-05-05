@@ -1,6 +1,12 @@
 # Plan
 
-## Current Plan — Rep Performance Graph Overflow
+## Current Plan — FirstKnock Map Zoom Snap
+- [x] Trace the View on FirstKnock Map handoff from property detail into the map overlay.
+- [x] Identify which map effect is re-centering or refitting after user zoom.
+- [x] Make the FirstKnock map support safe over-zooming instead of snapping back at the default tile limit.
+- [x] Verify runtime logs and document the result.
+
+## Previous Plan — Rep Performance Graph Overflow
 - [x] Keep the performance trend chart inside its card on narrow/mobile app views.
 - [x] Tighten chart margins and axis widths so Knocks and Conv % labels do not clip or overflow.
 - [x] Keep chart data numeric and readable without changing the underlying metrics.
@@ -104,6 +110,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+FirstKnock map zoom snap is fixed by raising the RepMapView max zoom and allowing satellite tiles to over-zoom past their native limit, so pinching in after “View on FirstKnock Map” no longer gets forced back out by the tile zoom cap.
+
 Rep Performance graph is now mobile-safe: the chart card clips overflow, uses tighter margins and fixed axis widths, shortens date labels, formats Conv % cleanly, and keeps lines readable without changing the underlying metrics.
 
 Mobile ROUTES/BUILDER toggle is slightly larger with improved touch padding and a max-width guard so it stays centered without overlapping side icons.
