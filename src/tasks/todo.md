@@ -1,6 +1,11 @@
 # Plan
 
-## Current Plan — Rep Map Close Button Responsiveness
+## Current Plan — Compact Territory Drawing Prompt
+- [x] Move the drawing prompt away from the center of the map.
+- [x] Reformat controls into a smaller horizontal layout.
+- [x] Reduce panel height/visual weight so the 300 sq mile circle remains visible.
+
+## Previous Plan — Rep Map Close Button Responsiveness
 - [x] Make the map close button respond immediately on press instead of waiting for click delay.
 - [x] Stop map touch events from stealing the close button tap.
 - [x] Slightly enlarge the button for easier mobile tapping.
@@ -147,6 +152,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+The territory drawing prompt is now a smaller top-left horizontal bar with compact controls, so it covers much less of the 300 sq mile circle while keeping the same actions available.
+
 The Rep map close button now responds immediately on press, stops the tap from reaching the map underneath, and has a slightly larger mobile tap target for smoother closing after the map loads.
 
 Knock tab visuals are now mostly black: the FirstKnock header uses a black background with no visible divider on RepHome, and the RepHome shell, filter bar, and list area now use black backgrounds to remove the mismatched dark hues.

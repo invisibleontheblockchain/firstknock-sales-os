@@ -481,59 +481,49 @@ export default function TerritoryPrompt({
 
             {/* Active Drawing Controls */}
             {drawingMode && (
-                <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[2000] animate-in slide-in-from-top-4">
-                    <div className="bg-black/90 backdrop-blur-md border border-yellow-500/30 rounded-2xl px-4 py-3 shadow-2xl flex flex-col gap-2.5 min-w-[260px]">
-                        {/* Header */}
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-full bg-yellow-500/20 flex items-center justify-center">
-                                    <Pencil className="w-3 h-3 text-yellow-400" />
-                                </div>
-                                <span className="text-xs font-bold text-white">Draw Territory</span>
+                <div className="absolute top-3 left-3 right-3 sm:top-16 sm:left-4 sm:right-auto z-[2000] animate-in slide-in-from-top-4">
+                    <div className="bg-black/85 backdrop-blur-md border border-yellow-500/30 rounded-2xl px-3 py-2 shadow-2xl flex flex-wrap items-center gap-2 max-w-[calc(100vw-1.5rem)] sm:max-w-[640px]">
+                        <div className="flex items-center gap-2 shrink-0">
+                            <div className="w-6 h-6 rounded-full bg-yellow-500/20 flex items-center justify-center">
+                                <Pencil className="w-3 h-3 text-yellow-400" />
                             </div>
-                            <button
-                                onClick={() => { setDrawingMode(false); setDraftPolygon([]); }}
-                                className="w-6 h-6 rounded-full bg-white/5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 flex items-center justify-center transition-all"
-                            >
-                                <X className="w-3 h-3" />
-                            </button>
+                            <span className="text-xs font-bold text-white whitespace-nowrap">Draw Territory</span>
                         </div>
-                        {/* Shape + Size Row */}
-                        <div className="flex items-center gap-2">
-                            <select
-                                value={drawShape || 'circle'}
-                                onChange={(e) => setDrawShape(e.target.value)}
-                                className="bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
-                            >
-                                <option value="circle">Circle</option>
-                                <option value="square">Square</option>
-                            </select>
-                            <select
-                                value={drawSizeMiles}
-                                onChange={(e) => {
-                                    const newSize = Number(e.target.value);
-                                    if (newSize === 300 && !isPaid) {
-                                        toast.error('300 sq mi requires a Pro subscription.', { duration: 3000 });
-                                        setTimeout(() => navigate('/Billing'), 1500);
-                                        return;
-                                    }
-                                    setDrawSizeMiles(newSize);
-                                }}
-                                className="flex-1 bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors"
-                            >
-                                <option value={5}>Test · 5 sq mi</option>
-                                <option value={40}>40 sq mi</option>
-                                <option value={300}>300 sq mi {isPaid ? '' : '🔒 PRO'}</option>
-                            </select>
-                        </div>
-                        {/* Months Selector — same options for 40mi² and 300mi² */}
-                        <div className="flex items-center gap-1">
-                            <span className="text-[9px] text-gray-500 font-bold mr-1">DATA:</span>
+
+                        <select
+                            value={drawShape || 'circle'}
+                            onChange={(e) => setDrawShape(e.target.value)}
+                            className="bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors shrink-0"
+                        >
+                            <option value="circle">Circle</option>
+                            <option value="square">Square</option>
+                        </select>
+
+                        <select
+                            value={drawSizeMiles}
+                            onChange={(e) => {
+                                const newSize = Number(e.target.value);
+                                if (newSize === 300 && !isPaid) {
+                                    toast.error('300 sq mi requires a Pro subscription.', { duration: 3000 });
+                                    setTimeout(() => navigate('/Billing'), 1500);
+                                    return;
+                                }
+                                setDrawSizeMiles(newSize);
+                            }}
+                            className="bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors min-w-[118px] flex-1 sm:flex-none"
+                        >
+                            <option value={5}>Test · 5 sq mi</option>
+                            <option value={40}>40 sq mi</option>
+                            <option value={300}>300 sq mi {isPaid ? '' : '🔒 PRO'}</option>
+                        </select>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-[9px] text-gray-500 font-bold">DATA</span>
                             {[6, 12].map(m => (
                                 <button
                                     key={m}
                                     onClick={() => setFetchMonths(m)}
-                                    className={`flex-1 text-[10px] font-bold py-1 rounded-md transition-all ${
+                                    className={`text-[10px] font-bold px-2 py-1 rounded-md transition-all ${
                                         fetchMonths === m
                                             ? 'bg-yellow-500 text-black shadow-[0_0_8px_rgba(255,215,0,0.4)]'
                                             : 'bg-white/5 text-gray-400 hover:bg-white/10'
@@ -543,47 +533,36 @@ export default function TerritoryPrompt({
                                 </button>
                             ))}
                         </div>
-                        {isLargeArea && (
-                            <div className="text-[9px] text-cyan-400 text-center font-semibold">Heads up — {actualAreaLabel} × {fetchMonths}mo is a big pull. Expect longer import times.</div>
+
+                        {isPaid ? (
+                            <div className="hidden sm:flex items-center gap-2 px-2 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 shrink-0">
+                                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                                <span className="text-[10px] font-bold text-emerald-400">MLS Verified</span>
+                                <Zap className="w-3 h-3 text-emerald-400" />
+                            </div>
+                        ) : (
+                            <button
+                                onClick={() => navigate('/Billing')}
+                                className="hidden sm:flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-yellow-500/10 hover:border-yellow-500/30 transition-all cursor-pointer group shrink-0"
+                            >
+                                <Lock className="w-3 h-3 text-gray-500 group-hover:text-yellow-400 transition-colors" />
+                                <span className="text-[10px] font-bold text-gray-400 group-hover:text-yellow-400 transition-colors">Enable MLS</span>
+                                <ArrowRight className="w-3 h-3 text-gray-500 group-hover:text-yellow-400 transition-colors" />
+                            </button>
                         )}
-                        {/* v15: MLS Verified — paid users only */}
-                        <div className="border-t border-white/10 pt-2 mt-1">
-                            {isPaid ? (
-                                <>
-                                    <div className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                                            <span className="text-[10px] font-bold text-emerald-400">
-                                                MLS Verified
-                                            </span>
-                                        </div>
-                                        <Zap className="w-3 h-3 text-emerald-400" />
-                                    </div>
-                                    <p className="text-[8px] text-emerald-400/70 mt-1 leading-tight px-1">
-                                        ✅ Recently sold MLS listings are automatically verified before appearing on your route — no false "For Sale" signs.
-                                    </p>
-                                </>
-                            ) : (
-                                <>
-                                    <button
-                                        onClick={() => navigate('/Billing')}
-                                        className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-yellow-500/10 hover:border-yellow-500/30 transition-all cursor-pointer group"
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            <Lock className="w-3 h-3 text-gray-500 group-hover:text-yellow-400 transition-colors" />
-                                            <span className="text-[10px] font-bold text-gray-400 group-hover:text-yellow-400 transition-colors">
-                                                Enable MLS
-                                            </span>
-                                        </div>
-                                        <ArrowRight className="w-3 h-3 text-gray-500 group-hover:text-yellow-400 transition-colors" />
-                                    </button>
-                                    <p className="text-[8px] text-gray-500 mt-1 leading-tight px-1">
-                                        Upgrade to Pro to unlock verified MLS listings that fill the gap between county records and recent sales.
-                                    </p>
-                                </>
-                            )}
-                        </div>
-                        <p className="text-[10px] text-yellow-400/70 text-center">Tap the map to place your territory</p>
+
+                        <span className="text-[10px] text-yellow-400/70 shrink-0">Tap map to place</span>
+
+                        {isLargeArea && (
+                            <div className="basis-full text-[9px] text-cyan-400 font-semibold">Heads up — {actualAreaLabel} × {fetchMonths}mo is a big pull.</div>
+                        )}
+
+                        <button
+                            onClick={() => { setDrawingMode(false); setDraftPolygon([]); }}
+                            className="ml-auto w-7 h-7 rounded-full bg-white/5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 flex items-center justify-center transition-all shrink-0"
+                        >
+                            <X className="w-3 h-3" />
+                        </button>
                     </div>
                 </div>
             )}
