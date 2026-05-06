@@ -1,6 +1,11 @@
 # Plan
 
-## Current Plan — Compact Territory Drawing Prompt
+## Current Plan — Persist Incomplete Import Dismiss
+- [x] Identify why the incomplete import prompt reappears after dismiss.
+- [x] Remember dismissed failed import jobs locally by job ID.
+- [x] Keep Retry behavior unchanged for users who choose to resume.
+
+## Previous Plan — Compact Territory Drawing Prompt
 - [x] Move the drawing prompt away from the center of the map.
 - [x] Reformat controls into a smaller horizontal layout.
 - [x] Reduce panel height/visual weight so the 300 sq mile circle remains visible.
@@ -152,6 +157,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Dismiss now remembers the specific incomplete import job, so that recovery popup will stay hidden after you dismiss it while Retry still works normally.
+
 The territory drawing prompt is now a smaller top-left horizontal bar with compact controls, so it covers much less of the 300 sq mile circle while keeping the same actions available.
 
 The Rep map close button now responds immediately on press, stops the tap from reaching the map underneath, and has a slightly larger mobile tap target for smoother closing after the map loads.

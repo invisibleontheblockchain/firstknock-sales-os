@@ -114,7 +114,10 @@ export default function TerritoryPrompt({
                     const failedList = Array.isArray(failedJobs) ? failedJobs : (failedJobs?.items || []);
                     const failedJob = failedList[0];
                     if (failedJob && !cancelled) {
-                        setRecoverableJob(failedJob);
+                        const dismissedKey = `fk_dismissedRecoverableJob_${failedJob.id}`;
+                        if (localStorage.getItem(dismissedKey) !== '1') {
+                            setRecoverableJob(failedJob);
+                        }
                     }
                     return;
                 }
@@ -575,7 +578,18 @@ export default function TerritoryPrompt({
                         <p className="text-[10px] text-gray-400 mb-3">Your last import stopped at {Math.round(recoverableJob.progress_pct || 0)}%. Retry resumes from the saved job instead of starting a new full pull.</p>
                         <div className="flex gap-2">
                             <Button onClick={retryRecoverableJob} className="h-8 flex-1 text-xs bg-yellow-500 text-black hover:bg-yellow-400">Retry Import</Button>
-                            <Button onClick={() => setRecoverableJob(null)} variant="outline" className="h-8 text-xs">Dismiss</Button>
+                            <Button
+                                onClick={() => {
+                                    if (recoverableJob?.id) {
+                                        localStorage.setItem(`fk_dismissedRecoverableJob_${recoverableJob.id}`, '1');
+                                    }
+                                    setRecoverableJob(null);
+                                }}
+                                variant="outline"
+                                className="h-8 text-xs"
+                            >
+                                Dismiss
+                            </Button>
                         </div>
                     </div>
                 </div>
