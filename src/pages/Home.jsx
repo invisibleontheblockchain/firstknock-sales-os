@@ -1534,9 +1534,7 @@ export default function Home() {
                     active={drawingMode}
                     onPointsUpdate={setDraftPolygon}
                     onConfirm={(polygon) => {
-                        // Just save state. MapDrawTool handles the "pan to shape without zooming out" focus
-                        // internally — we used to call fitBounds(maxZoom:17) here which zoomed IN to small
-                        // shapes AND OUT to fit large ones, fighting the user's tap location. Not needed.
+                        // One active builder shape at a time: every map tap replaces the prior territory.
                         savePolygonToHistory(polygon); setDrawnPolygon(polygon); setDraftPolygon([]); setDrawingMode(false);
                         toast.success("Area selected! Now fetch data or generate routes.");
                     }}
@@ -1592,7 +1590,7 @@ export default function Home() {
                 )}
 
                 {/* Previous drawn area history */}
-                <PolygonHistory currentPolygon={drawnPolygon} mode={mode} />
+                {!drawingMode && <PolygonHistory currentPolygon={drawnPolygon} mode={mode} />}
 
                 {/* GPS TRACKER LAYERS */}
                 <GpsTrackerMapLayers
@@ -1826,6 +1824,8 @@ export default function Home() {
                 <RouteBuilderSettings
                     onDraw={() => {
                         setShowCompare(false);
+                        setDrawnPolygon(null);
+                        setDraftPolygon([]);
                         setDrawingMode(true);
                     }}
                     housesPerRoute={housesPerRoute} setHousesPerRoute={setHousesPerRoute}

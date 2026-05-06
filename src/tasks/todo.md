@@ -1,6 +1,12 @@
 # Plan
 
-## Current Plan — Persist Incomplete Import Dismiss
+## Current Plan — Builder Single Shape + Square Area Fix
+- [x] Trace how Builder places circle/square territory polygons from map taps.
+- [x] Ensure each new placement replaces the existing draft/confirmed territory instead of accumulating multiple circles.
+- [x] Correct square dimensions so 40 and 300 square-mile selections create true area-sized squares.
+- [x] Verify runtime logs and document the result.
+
+## Previous Plan — Persist Incomplete Import Dismiss
 - [x] Identify why the incomplete import prompt reappears after dismiss.
 - [x] Remember dismissed failed import jobs locally by job ID.
 - [x] Keep Retry behavior unchanged for users who choose to resume.
@@ -157,6 +163,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Builder drawing now keeps only one active territory shape at a time, hides previous territory history while drawing, and squares now use true 40/300 square-mile side lengths instead of the broken sizing.
+
 Dismiss now remembers the specific incomplete import job, so that recovery popup will stay hidden after you dismiss it while Retry still works normally.
 
 The territory drawing prompt is now a smaller top-left horizontal bar with compact controls, so it covers much less of the 300 sq mile circle while keeping the same actions available.

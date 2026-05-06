@@ -11,18 +11,25 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
 
     // Helper: generate shape points around a center
     const generateShape = (centerLatlng, shape, areaSqMiles) => {
+        const safeArea = Math.max(Number(areaSqMiles) || 1, 0.01);
         let radiusInMiles = 1;
+        let halfSideMiles = 1;
         if (shape === 'circle') {
-            radiusInMiles = Math.sqrt(areaSqMiles / Math.PI);
+            radiusInMiles = Math.sqrt(safeArea / Math.PI);
         } else if (shape === 'square') {
-            radiusInMiles = Math.sqrt(areaSqMiles) / 2; // half side-length
+            halfSideMiles = Math.sqrt(safeArea) / 2; // true half side-length: 40 sq mi => 6.32mi side, 300 => 17.32mi side
+            radiusInMiles = halfSideMiles;
         } else if (shape === 'triangle') {
-            radiusInMiles = Math.sqrt(areaSqMiles / 2);
+            radiusInMiles = Math.sqrt(safeArea / 2);
         }
 
-        // Mercator-corrected deltas
-        const radiusLat = radiusInMiles / 69.0;
-        const radiusLng = radiusInMiles / (69.0 * Math.cos(centerLatlng.lat * Math.PI / 180));
+        // Local tangent-plane conversion keeps preset square areas accurate at 40/300 sq mi.
+        const milesPerLat = 69.0;
+        const milesPerLng = Math.max(1, 69.0 * Math.cos(centerLatlng.lat * Math.PI / 180));
+        const radiusLat = radiusInMiles / milesPerLat;
+        const radiusLng = radiusInMiles / milesPerLng;
+        const halfSideLat = halfSideMiles / milesPerLat;
+        const halfSideLng = halfSideMiles / milesPerLng;
 
         let newPoints = [];
         if (shape === 'circle') {
@@ -35,13 +42,11 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
                 });
             }
         } else if (shape === 'square') {
-            // Mercator-corrected square: 4 corners + closing 5th point
-            const nw = { lat: centerLatlng.lat + radiusLat, lng: centerLatlng.lng - radiusLng };
-            const ne = { lat: centerLatlng.lat + radiusLat, lng: centerLatlng.lng + radiusLng };
-            const se = { lat: centerLatlng.lat - radiusLat, lng: centerLatlng.lng + radiusLng };
-            const sw = { lat: centerLatlng.lat - radiusLat, lng: centerLatlng.lng - radiusLng };
-            // Closed ring (5 points) so downstream polygon checks work
-            newPoints = [nw, ne, se, sw, nw];
+            const nw = { lat: centerLatlng.lat + halfSideLat, lng: centerLatlng.lng - halfSideLng };
+            const ne = { lat: centerLatlng.lat + halfSideLat, lng: centerLatlng.lng + halfSideLng };
+            const se = { lat: centerLatlng.lat - halfSideLat, lng: centerLatlng.lng + halfSideLng };
+            const sw = { lat: centerLatlng.lat - halfSideLat, lng: centerLatlng.lng - halfSideLng };
+            newPoints = [nw, ne, se, sw];
         } else if (shape === 'triangle') {
             newPoints = [
                 { lat: centerLatlng.lat + radiusLat, lng: centerLatlng.lng },
@@ -168,7 +173,7 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
         if (!active || !mapCenter) return 0;
         const radiusMiles = drawShape === 'circle'
             ? Math.sqrt(drawSizeMiles / Math.PI)
-            : Math.sqrt(drawSizeMiles / 4);
+            : Math.sqrt(drawSizeMiles) / 2;
         return radiusMiles * 1609.34; // miles to meters
     }, [active, mapCenter, drawSizeMiles, drawShape]);
 

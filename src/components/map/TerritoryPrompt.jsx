@@ -159,6 +159,7 @@ export default function TerritoryPrompt({
     // Listen for toolbar draw button and previous-area selection events
     useEffect(() => {
         const drawHandler = () => {
+            setDrawnPolygon(null);
             setDraftPolygon([]);
             setDrawingMode(true);
         };
