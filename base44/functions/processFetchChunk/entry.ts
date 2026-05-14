@@ -38,7 +38,7 @@ async function claimPipelineLock(base44, jobId, lockedBy) {
         const lockedAtMs = new Date(lock.locked_at || lock.created_date).getTime();
         const isExpired = !lockedAtMs || now - lockedAtMs > PIPELINE_LOCK_TTL_MS;
         if (isExpired) {
-            await base44.asServiceRole.entities.PipelineLock.delete(lock.id).catch(() => {});
+            await base44.asServiceRole.entities.PipelineLock.delete(lock.id).catch(() => { });
         }
     }
 
@@ -70,7 +70,7 @@ async function claimPipelineLock(base44, jobId, lockedBy) {
 
     const winner = verifyLocks[0];
     if (!winner || winner.locked_by !== lockedBy) {
-        await base44.asServiceRole.entities.PipelineLock.delete(created.id).catch(() => {});
+        await base44.asServiceRole.entities.PipelineLock.delete(created.id).catch(() => { });
         return { claimed: false, reason: 'lost_lock_race', lockedBy: winner?.locked_by };
     }
 
@@ -292,13 +292,27 @@ function isValidSoldProperty(p) {
     if (!p.lastSaleDate) return false;
     const isNonDisclosure = p.state && NON_DISCLOSURE_STATES.has(p.state.toUpperCase());
     if (!isNonDisclosure) {
-        // $10K floor catches nominal/zero-dollar transfers while preserving low-value,
-        // distressed, rural, estate, and below-market residential deed leads.
-        if (p.lastSalePrice !== null && p.lastSalePrice !== undefined && p.lastSalePrice < 10000) return false;
-        if (p.assessedValue && p.assessedValue > 0 && p.lastSalePrice < p.assessedValue * 0.15) return false;
+        // v16 Fix 1: $30K floor eliminates derelict/abandoned/tax-lien properties (~11% FP reduction)
+        const MIN_PRICE = 30000;
+        const ASSESSED_VALUE_RATIO = 0.25;
+        const MIN_ASSESSED_VALUE = 25000;
+        if (p.lastSalePrice !== null && p.lastSalePrice !== undefined && p.lastSalePrice < MIN_PRICE) return false;
+        if (p.assessedValue && p.assessedValue > 0 && p.lastSalePrice < p.assessedValue * ASSESSED_VALUE_RATIO) return false;
+        // v16 Fix 1b: Absolute assessed value floor — reject regardless of sale price
+        if (p.assessedValue !== undefined && p.assessedValue !== null && p.assessedValue < MIN_ASSESSED_VALUE) return false;
     } else {
         if (p.lastSalePrice !== null && p.lastSalePrice !== undefined && p.lastSalePrice > 0 && p.lastSalePrice < 1000) return false;
     }
+
+    // v16 Fix 3: Active Listing Suppression — reject properties still listed for sale (~15% FP reduction)
+    if (p.listingStatus) {
+        const lstatus = String(p.listingStatus).toLowerCase();
+        if (lstatus === 'active' || lstatus === 'for sale') {
+            console.log('[isValidSoldProperty] Suppressed active listing:', p.addressLine1, 'status:', p.listingStatus);
+            return false;
+        }
+    }
+
     const badTypes = ['Commercial', 'Industrial', 'Vacant Land', 'Agricultural'];
     if (p.propertyType && badTypes.includes(p.propertyType)) return false;
     return true;
@@ -357,7 +371,7 @@ function computeSaleConfidence(p, isCorporate) {
 
 function isCorporateOwner(p) {
     if (!p.owner || !Array.isArray(p.owner.names) || p.owner.names.length === 0) return false;
-    return p.owner.names.some(name => 
+    return p.owner.names.some(name =>
         CORPORATE_KEYWORDS.some(kw => name.toUpperCase().includes(kw))
     );
 }
@@ -368,6 +382,7 @@ const LIMIT = 500;
 const MAX_PARALLEL = 2;        // Reduced from 3 — gentler on RentCast
 
 Deno.serve(async (req) => {
+    console.log('[processFetchChunk v16] invoked');
     const chunkStart = Date.now();
     let activeLockId = null;
     let activeLockBase44 = null;
@@ -468,8 +483,8 @@ Deno.serve(async (req) => {
         const useBase44Storage = PROPERTY_STORAGE_MODE === 'base44' || PROPERTY_STORAGE_MODE === 'dual';
         const useNeonStorage = PROPERTY_STORAGE_MODE === 'neon' || PROPERTY_STORAGE_MODE === 'dual';
         console.log(`[chunk-v15] Property storage mode=${PROPERTY_STORAGE_MODE} | base44=${useBase44Storage} | neon=${useNeonStorage}`);
-        const subCircles = (job.sub_circles && job.sub_circles.length > 0) 
-            ? job.sub_circles 
+        const subCircles = (job.sub_circles && job.sub_circles.length > 0)
+            ? job.sub_circles
             : [{ lat: job.latitude, lng: job.longitude, radius: job.radius }];
         let currentSubCircle = job.current_sub_circle || 0;
         const totalSubCircles = job.total_sub_circles || subCircles.length;
@@ -556,7 +571,7 @@ Deno.serve(async (req) => {
                                 routeActive: p.route_active !== false
                             }));
                         })
-                        .catch(() => {})
+                        .catch(() => { })
                 );
                 await Promise.all(promises);
             }
@@ -597,7 +612,7 @@ Deno.serve(async (req) => {
             for (let i = 0; i < toUpdate.length; i++) {
                 if (Date.now() - chunkStart > 58000) break;
                 const { id, ...payload } = toUpdate[i];
-                await base44.asServiceRole.entities.MasterProperty.update(id, payload).then(() => chunkUpdated++).catch(() => {});
+                await base44.asServiceRole.entities.MasterProperty.update(id, payload).then(() => chunkUpdated++).catch(() => { });
             }
             return { chunkInserted, chunkExisted, chunkUpdated };
         }
@@ -834,13 +849,13 @@ Deno.serve(async (req) => {
                     }
                 }
             } else {
-            console.log(`[chunk-v15] Phase 1 sub-circle ${currentSubCircle + 1} needs more pages (nextOffset=${nextOffset})`);
+                console.log(`[chunk-v15] Phase 1 sub-circle ${currentSubCircle + 1} needs more pages (nextOffset=${nextOffset})`);
             }
 
             const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
             chunkTimings.push(chunkDuration);
-            const progressPct = nextPhase === 'deed_records' 
-                ? Math.round(((nextSubCircle + (nextOffset > 0 ? 0.5 : 0)) / totalSubCircles) * 80) 
+            const progressPct = nextPhase === 'deed_records'
+                ? Math.round(((nextSubCircle + (nextOffset > 0 ? 0.5 : 0)) / totalSubCircles) * 80)
                 : 80;
 
             if (await stopIfCancelled()) return Response.json({ status: 'cancelled', job_id: jobId });
@@ -879,7 +894,7 @@ Deno.serve(async (req) => {
             // FIXED: Only pull last 30 days of MLS data (the clerk gap)
             // Previously: Math.min((monthsBack * 30) + 90, 730) = 450+ days
             const MLS_CLERK_GAP_DAYS = 30;
-            
+
             const allRaw = [];
             let reachedEnd = false;
             const offsets = [];
@@ -933,7 +948,7 @@ Deno.serve(async (req) => {
                                         if (mp.mls_id) seenListingIds.add(mp.mls_id);
                                     });
                                 })
-                                .catch(() => {})
+                                .catch(() => { })
                         );
                         await Promise.all(promises);
                     }
@@ -951,7 +966,7 @@ Deno.serve(async (req) => {
 
             for (const p of allRaw) {
                 if (!p.latitude || !p.longitude || !filterPoint(p.latitude, p.longitude)) continue;
-                
+
                 if (!p.removedDate) continue;
                 const removed = new Date(p.removedDate);
                 if (isNaN(removed.getTime()) || removed < phase2Start || removed > phase2End) continue;
@@ -971,7 +986,7 @@ Deno.serve(async (req) => {
 
                 const addressLine = p.addressLine1 || (p.formattedAddress ? p.formattedAddress.split(',')[0] : "");
                 const pZip = p.zipCode || '00000';
-                
+
                 const hash = generateNormalizedHash(addressLine, pZip);
                 if (seenHashes.has(hash)) continue;
                 seenHashes.add(hash);
@@ -1003,8 +1018,8 @@ Deno.serve(async (req) => {
                 const dom = p.daysOnMarket || daysSinceRemoved;
                 const listed = p.listedDate ? new Date(p.listedDate) : null;
                 const lastSeen = p.lastSeenDate ? new Date(p.lastSeenDate) : null;
-                const listingDuration = (listed && !isNaN(removed.getTime()) && !isNaN(listed.getTime())) 
-                    ? Math.round((removed.getTime() - listed.getTime()) / (1000 * 3600 * 24)) 
+                const listingDuration = (listed && !isNaN(removed.getTime()) && !isNaN(listed.getTime()))
+                    ? Math.round((removed.getTime() - listed.getTime()) / (1000 * 3600 * 24))
                     : dom;
 
                 // ── FILTER 3: Heuristic Scoring ──
@@ -1120,7 +1135,10 @@ Deno.serve(async (req) => {
                                         body: JSON.stringify({
                                             searchCriteria: { query },
                                             options: {
-                                                datasets: ['basic', 'listing', 'owner']
+                                                // v16 Fix 10: Tier 2 adds 'deed' dataset when DEED_FILTER_ENABLED=true
+                                                datasets: Deno.env.get('DEED_FILTER_ENABLED') === 'true'
+                                                    ? ['basic', 'listing', 'deed', 'owner']
+                                                    : ['basic', 'listing', 'owner']
                                             }
                                         })
                                     });
@@ -1138,16 +1156,55 @@ Deno.serve(async (req) => {
                                     const topResult = properties[0] || {};
                                     const listing = topResult.listing || data?.results?.listing || {};
                                     const owner = topResult.owner || {};
-                                    
+
                                     // BatchData listing fields
                                     const apiStatus = (listing.status || '').toLowerCase();
                                     const statusCat = (listing.statusCategory || '').toLowerCase();
                                     const soldDate = listing.soldDate || null;
 
+                                    // v16 Fix 2: Rental Property Suppression (~5-8% FP reduction)
+                                    // Graceful fallback: if listing.rental is undefined (dataset inactive), skip check
+                                    if (listing?.rental === true) {
+                                        console.log('[processFetchChunk] Suppressed rental property:', query);
+                                        return { hash: cm.address_hash, outcome: 'rejected' };
+                                    }
+
+                                    // v16 Fix 3b: Active Listing Suppression in BatchData response (~15% FP reduction)
+                                    if (apiStatus === 'active' || apiStatus === 'for sale' ||
+                                        statusCat === 'active' || statusCat === 'for sale') {
+                                        console.log('[isValidSoldProperty] Suppressed active listing from BatchData:', query, 'status:', listing.status);
+                                        return { hash: cm.address_hash, outcome: 'rejected' };
+                                    }
+
                                     // BatchData owner dataset field
                                     const ownerFullName = owner.fullName || owner.names?.[0]?.full || null;
 
+                                    // v16 Fix 6: ownerOccupied Investor Suppression (~20% FP reduction)
+                                    // Graceful fallback: if ownerOccupied is undefined (owner dataset not active), skip check
+                                    if (owner?.ownerOccupied === false) {
+                                        console.log('[processFetchChunk] Suppressed non-owner-occupied property:', query);
+                                        return { hash: cm.address_hash, outcome: 'rejected' };
+                                    }
+
                                     if (apiStatus.includes('sold') || statusCat === 'sold') {
+                                        // v16 Fix 7 & 8 (Tier 2): Deed recording date verification
+                                        if (Deno.env.get('DEED_FILTER_ENABLED') === 'true') {
+                                            const sale = topResult.sale || {};
+                                            const deedHistory = topResult.deedHistory || [];
+                                            const recordingDate = sale?.lastTransfer?.recordingDate || deedHistory?.[0]?.recordingDate;
+                                            if (!recordingDate) {
+                                                console.log('[isValidSoldProperty][Tier2] No deed recording date — suppressed:', query);
+                                                return { hash: cm.address_hash, outcome: 'rejected' };
+                                            }
+                                            // Fix 8: 90-day deed recency filter
+                                            const recorded = new Date(recordingDate);
+                                            const cutoff = new Date();
+                                            cutoff.setDate(cutoff.getDate() - 90);
+                                            if (recorded < cutoff) {
+                                                console.log('[isValidSoldProperty][Tier2] Stale deed recording date — suppressed:', query, recordingDate);
+                                                return { hash: cm.address_hash, outcome: 'rejected' };
+                                            }
+                                        }
                                         return { hash: cm.address_hash, outcome: 'sold', soldDate, ownerFullName };
                                     }
                                     if (statusCat === 'pending' || apiStatus.includes('pending') ||
@@ -1155,6 +1212,17 @@ Deno.serve(async (req) => {
                                         statusCat === 'withdrawn' || apiStatus.includes('withdrawn')) {
                                         return { hash: cm.address_hash, outcome: 'rejected' };
                                     }
+
+                                    // v16 Fix 9 (Tier 2): Absentee Owner Mailing Address Filter
+                                    if (Deno.env.get('DEED_FILTER_ENABLED') === 'true') {
+                                        const mailingStreet = owner?.mailingAddress?.street?.toLowerCase().trim();
+                                        const propertyStreet = cm.street_name?.toLowerCase().trim();
+                                        if (mailingStreet && propertyStreet && mailingStreet !== propertyStreet) {
+                                            console.log('[processFetchChunk][Tier2] Absentee owner mailing mismatch — suppressed:', query);
+                                            return { hash: cm.address_hash, outcome: 'rejected' };
+                                        }
+                                    }
+
                                     // Cancelled, active, unknown, or no match → not sold
                                     return { hash: cm.address_hash, outcome: 'not_sold' };
                                 } catch (e) {
@@ -1164,7 +1232,7 @@ Deno.serve(async (req) => {
                             });
 
                             const batchResults = await Promise.all(promises);
-                            
+
                             // Check if BatchData credits/auth/quota failed — stop sending more and complete with deeds only.
                             const fatalError = batchResults.find(r => r.outcome === 'api_error');
                             if (fatalError) {
@@ -1215,10 +1283,10 @@ Deno.serve(async (req) => {
                         }
 
                         // Don't splice mapped — just mark, writeToDb/final filtering will preserve deeds only.
-                        
+
                         phase2Stats.batchdataVerified += bdVerified;
                         phase2Stats.batchdataDropped += bdRejected;
-                        
+
                         console.log(`[chunk-v15] Step 3 BatchData credit usage: sent=${batchDataAttempted}, creditsConsumed=${batchDataAttempted}, verified=${bdVerified}, rejected=${bdRejected}, errors=${bdErrors}`);
                         console.log(`[chunk-v15] Step 3 results: ${bdVerified} verified sold, ${bdRejected} rejected (not sold/pending/expired/withdrawn), ${bdErrors} errors/skipped`);
                     } catch (err) {
@@ -1373,7 +1441,7 @@ Deno.serve(async (req) => {
                 const completedAt = new Date().toISOString();
                 const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
                 chunkTimings.push(chunkDuration);
-                
+
                 if (await stopIfCancelled()) return Response.json({ status: 'cancelled', job_id: jobId });
 
                 await base44.asServiceRole.entities.FetchJob.update(jobId, {
@@ -1383,7 +1451,7 @@ Deno.serve(async (req) => {
                     total_api_calls: totalApiCalls, zip_codes_found: zipCodesFound,
                     chunk_number: nextChunkNumber, chunk_timings: chunkTimings, error_log: errorLog
                 });
-                
+
                 try {
                     const users = await base44.asServiceRole.entities.User.filter({ email: job.user_email }, null, 1);
                     const userArr = Array.isArray(users) ? users : (users?.items || []);
@@ -1393,7 +1461,7 @@ Deno.serve(async (req) => {
                         });
                     }
                 } catch (_e) { /* non-fatal */ }
-                
+
                 console.log(`[chunk-v15] JOB COMPLETE | apiCalls=${totalApiCalls} | inserted=${totalInserted} | existed=${totalExisted} | updated=${totalUpdated}`);
                 await releasePipelineLock(base44, activeLockId);
                 activeLockId = null;
@@ -1437,23 +1505,23 @@ Deno.serve(async (req) => {
 
         // Rate-limit/network exhaustion is resumable: move back to pending so cron/user retry resumes from current offset.
         try {
-        const base44Recovery = createClientFromRequest(req);
-        const stuckJobs = await base44Recovery.asServiceRole.entities.FetchJob.filter({ status: 'running' }, '-updated_date', 1);
-        const stuckArr = Array.isArray(stuckJobs) ? stuckJobs : (stuckJobs?.items || []);
-        if (stuckArr.length > 0) {
-            const job = stuckArr[0];
-            const existingLog = job.error_log || [];
-            const isResumable = /Rate limit exceeded|429|RentCast rate limit exhausted|RentCast network failure|RentCast request exhausted retries/i.test(error.message || '');
-            existingLog.push(`[${new Date().toISOString()}] ${isResumable ? 'STALLED' : 'FATAL'}: ${error.message}`);
-            await base44Recovery.asServiceRole.entities.FetchJob.update(job.id, {
-                status: isResumable ? 'pending' : 'failed',
-                error_message: isResumable ? `Stalled, will resume: ${error.message}` : `Processing crashed: ${error.message}`,
-                error_log: existingLog
-            });
-            console.log(`[chunk-v15] Marked job ${job.id} as ${isResumable ? 'pending for resume' : 'failed'} after error`);
-        }
+            const base44Recovery = createClientFromRequest(req);
+            const stuckJobs = await base44Recovery.asServiceRole.entities.FetchJob.filter({ status: 'running' }, '-updated_date', 1);
+            const stuckArr = Array.isArray(stuckJobs) ? stuckJobs : (stuckJobs?.items || []);
+            if (stuckArr.length > 0) {
+                const job = stuckArr[0];
+                const existingLog = job.error_log || [];
+                const isResumable = /Rate limit exceeded|429|RentCast rate limit exhausted|RentCast network failure|RentCast request exhausted retries/i.test(error.message || '');
+                existingLog.push(`[${new Date().toISOString()}] ${isResumable ? 'STALLED' : 'FATAL'}: ${error.message}`);
+                await base44Recovery.asServiceRole.entities.FetchJob.update(job.id, {
+                    status: isResumable ? 'pending' : 'failed',
+                    error_message: isResumable ? `Stalled, will resume: ${error.message}` : `Processing crashed: ${error.message}`,
+                    error_log: existingLog
+                });
+                console.log(`[chunk-v15] Marked job ${job.id} as ${isResumable ? 'pending for resume' : 'failed'} after error`);
+            }
         } catch (recoveryErr) {
-        console.error('[chunk-v15] Could not update job during recovery:', recoveryErr.message);
+            console.error('[chunk-v15] Could not update job during recovery:', recoveryErr.message);
         }
 
         return Response.json({ error: error.message }, { status: 500 });

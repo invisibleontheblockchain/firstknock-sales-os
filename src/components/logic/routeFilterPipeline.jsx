@@ -114,6 +114,12 @@ export function applyRouteFilters({
         const kw = ['land', 'lot', 'vacant', 'acreage', 'farm'];
         workingSet = workingSet.filter(p => !p.property_type || !kw.some(k => p.property_type.toLowerCase().includes(k)));
     }
+    // v16 Fix 5: SFR Hard Filter — always applied, not a routeConfig toggle (~5% FP reduction)
+    // Graceful fallback: null/undefined property_type passes through
+    workingSet = workingSet.filter(p => {
+        if (!p.property_type) return true;
+        return p.property_type.toLowerCase().includes('single family');
+    });
     track('propertyType');
 
     // --- Confidence / Rejection Filters ---

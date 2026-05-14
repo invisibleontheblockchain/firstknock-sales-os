@@ -129,10 +129,10 @@ export default function Home() {
         const hD = activeRouteSoldFilter !== 'all', hP = activeRoutePhaseFilter !== 'all', hPr = activeRoutePriceFilter !== 'all';
         if (!hD && !hP && !hPr) return activeRoute;
         let fp = activeRoute.properties;
-        if (hD) { let c; if (activeRouteSoldFilter==='0.25') c=subDays(new Date(),7); else if (activeRouteSoldFilter==='0.5') c=subDays(new Date(),14); else c=subMonths(new Date(),Number(activeRouteSoldFilter)); fp=fp.filter(p=>{if(!p.sold_date)return false;try{const d=new Date(p.sold_date);return !isNaN(d.getTime())&&isAfter(d,c);}catch{return false;}}); }
-        if (hP) fp=fp.filter(p=>activeRoutePhaseFilter==='deeds'?(!p.mls_id&&p.original_status!=='PENDING'&&p.original_status!=='RECENT_OFF_MARKET'):activeRoutePhaseFilter==='listings'?(!!p.mls_id||p.original_status==='PENDING'||p.original_status==='RECENT_OFF_MARKET'):activeRoutePhaseFilter==='verified'?p.sale_confidence==='verified':true);
-        if (hPr) { const min=Number(activeRoutePriceFilter); fp=fp.filter(p=>p.price&&p.price>=min); }
-        return {...activeRoute,_originalId:activeRoute.id,properties:fp,houseCount:fp.length};
+        if (hD) { let c; if (activeRouteSoldFilter === '0.25') c = subDays(new Date(), 7); else if (activeRouteSoldFilter === '0.5') c = subDays(new Date(), 14); else c = subMonths(new Date(), Number(activeRouteSoldFilter)); fp = fp.filter(p => { if (!p.sold_date) return false; try { const d = new Date(p.sold_date); return !isNaN(d.getTime()) && isAfter(d, c); } catch { return false; } }); }
+        if (hP) fp = fp.filter(p => activeRoutePhaseFilter === 'deeds' ? (!p.mls_id && p.original_status !== 'PENDING' && p.original_status !== 'RECENT_OFF_MARKET') : activeRoutePhaseFilter === 'listings' ? (!!p.mls_id || p.original_status === 'PENDING' || p.original_status === 'RECENT_OFF_MARKET') : activeRoutePhaseFilter === 'verified' ? p.sale_confidence === 'verified' : true);
+        if (hPr) { const min = Number(activeRoutePriceFilter); fp = fp.filter(p => p.price && p.price >= min); }
+        return { ...activeRoute, _originalId: activeRoute.id, properties: fp, houseCount: fp.length };
     }, [activeRoute, activeRouteSoldFilter, activeRoutePhaseFilter, activeRoutePriceFilter]);
 
     const [showRoutePanel, setShowRoutePanel] = useState(false);
@@ -307,7 +307,7 @@ export default function Home() {
 
     const loadTemplate = (template) => {
         if (!template.config) return;
-        
+
         // Restore base settings (default 10000 = all-in-one route)
         setHousesPerRoute(template.config.houses_per_route || 10000);
         if (template.config.min_score) setMinScore(template.config.min_score);
@@ -546,7 +546,7 @@ export default function Home() {
 
     const handleSaveFilteredRoute = useCallback(() => {
         if (!activeRoute || !filteredActiveRoute || activeRouteSoldFilter === 'all') return;
-        
+
         const newRoute = {
             ...filteredActiveRoute,
             id: `route-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -555,7 +555,7 @@ export default function Home() {
 
         // Auto-save to backend/local storage
         handleSaveRoute(newRoute);
-        
+
         setActiveRoute(newRoute);
         setActiveRouteSoldFilter('all');
         // toast.success moved to handleSaveRoute/createRouteMutation onSuccess
@@ -567,7 +567,7 @@ export default function Home() {
         queryFn: () => user ? base44.entities.InteractionLog.list('-created_date', 5000) : [],
         enabled: !!user
     });
-    
+
     // CRITICAL: Filter logs to only show interactions from this user's organization to prevent cross-account leaks
     const logs = useMemo(() => {
         const rawArray = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
@@ -860,7 +860,7 @@ export default function Home() {
                 }
 
                 // Route is completed if all properties have been knocked (non-ELIGIBLE status)
-                const isCompleted = routeProps.length > 0 && routeProps.every(p => 
+                const isCompleted = routeProps.length > 0 && routeProps.every(p =>
                     p.effective_status !== 'ELIGIBLE' && p.effective_status !== 'OTHER'
                 );
 
@@ -1040,9 +1040,9 @@ export default function Home() {
 
                     for (const zip of zipsToFetch) {
                         try {
-                            const res = await base44.functions.invoke('fetchZipProperties', { 
-                                zip_code: zip, 
-                                sold_months: 12 // Always fetch 12 months; UI slider filters locally
+                            const res = await base44.functions.invoke('fetchZipProperties', {
+                                zip_code: zip,
+                                sold_months: 3 // v16 Fix 4A: Tightened from 12→3 months (90 days)
                             });
                             console.log(`[Generate] Fetch result for ${zip}:`, JSON.stringify(res.data));
                             if (res.data?.error) {
@@ -1208,10 +1208,10 @@ export default function Home() {
             setShowRoutePanel(true); setShowCompare(false);
             let skippedDueToAssigned = 0;
             if (routeConfig.excludeAssigned) {
-                skippedDueToAssigned = (effectiveProperties.length - availableProperties.length) + 
+                skippedDueToAssigned = (effectiveProperties.length - availableProperties.length) +
                     (dynamicProps ? dynamicProps.filter(p => assignedHashes.has(p.address_hash || p.id)).length : 0);
             }
-            
+
             const routeWord = generated.length === 1 ? 'route' : 'routes';
             const totalHouses = generated.reduce((s, r) => s + r.houseCount, 0);
             const toastMsg = `Built ${generated.length} ${routeWord} (${totalHouses.toLocaleString()} doors)` + (skippedDueToAssigned > 0 ? ` — ${skippedDueToAssigned} already assigned` : '');
@@ -1284,9 +1284,9 @@ export default function Home() {
             if (!optimized || optimized.length === 0) { toast.error('Optimization produced no results.', { id: 'reoptimize-route' }); return; }
             let newDistance = 0;
             for (let i = 0; i < optimized.length - 1; i++) {
-                const R = 3959, dLat = (optimized[i+1].lat - optimized[i].lat) * Math.PI / 180, dLng = (optimized[i+1].lng - optimized[i].lng) * Math.PI / 180;
-                const a = Math.sin(dLat/2)**2 + Math.cos(optimized[i].lat * Math.PI/180) * Math.cos(optimized[i+1].lat * Math.PI/180) * Math.sin(dLng/2)**2;
-                newDistance += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+                const R = 3959, dLat = (optimized[i + 1].lat - optimized[i].lat) * Math.PI / 180, dLng = (optimized[i + 1].lng - optimized[i].lng) * Math.PI / 180;
+                const a = Math.sin(dLat / 2) ** 2 + Math.cos(optimized[i].lat * Math.PI / 180) * Math.cos(optimized[i + 1].lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+                newDistance += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
             }
             newDistance = Math.round(newDistance * 100) / 100;
             const oldDistance = route.metrics?.distance || route.totalDistance || 0;
@@ -1297,7 +1297,7 @@ export default function Home() {
                 setActiveRoute(prev => ({ ...prev, property_hashes: newOrder, properties: optimized, allProperties: optimized, houseCount: optimized.length, totalDistance: newDistance, metrics: { ...prev?.metrics, distance: newDistance, house_count: optimized.length } }));
             }
             // Restore map view to prevent zoom-out from fitBounds reacting to property reorder
-            if (savedView && mapRef.current) { try { mapRef.current.setView(savedView.center, savedView.zoom, { animate: false }); } catch (e) {} }
+            if (savedView && mapRef.current) { try { mapRef.current.setView(savedView.center, savedView.zoom, { animate: false }); } catch (e) { } }
             const savedMiles = Math.round((oldDistance - newDistance) * 100) / 100;
             const msg = savedMiles > 0 ? `Route optimized! Saved ~${savedMiles} miles (${newDistance} mi total)` : `Route optimized (${newDistance} mi total)`;
             toast.success(msg, { id: 'reoptimize-route', duration: 4000 });
@@ -1361,7 +1361,7 @@ export default function Home() {
                 .map(p => [p.lat, p.lng]);
         }
         return null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeRouteId]);
 
     // Initial Fit Effect
@@ -1523,7 +1523,7 @@ export default function Home() {
 
 
                 {/* Map Controls Handlers */}
-                
+
                 <MapController
                     fitBounds={fitBounds}
                     onZoomChange={setZoomLevel}
@@ -1637,7 +1637,7 @@ export default function Home() {
                 onSaveFilteredRoute={handleSaveFilteredRoute}
                 onReoptimizeRoute={handleReoptimizeRoute}
                 hasMlsData={hasMlsData}
-                />
+            />
 
             {/* Territory Prompt - Drawing Controls + Initial Prompt */}
             <TerritoryPrompt
@@ -1663,8 +1663,8 @@ export default function Home() {
                 setZipCodeFilter={setZipCodeFilter}
                 onPullComplete={async (pullFetchMonths, pulledWithMls) => {
                     setFrozenWorkingSet(null); setRoutes([]); await queryClient.refetchQueries({ queryKey: ['masterProperties'] }); await queryClient.refetchQueries({ queryKey: ['user'] });
-                    setMode('generate'); setShowCompare(true); const pm = pullFetchMonths || 12; setMaxDataMonths(pm); try { localStorage.setItem('fk_maxDataMonths', String(pm)); } catch {}
-                    setHasMlsData(!!pulledWithMls); try { localStorage.setItem('fk_hasMlsData', pulledWithMls ? 'true' : 'false'); } catch {}
+                    setMode('generate'); setShowCompare(true); const pm = pullFetchMonths || 12; setMaxDataMonths(pm); try { localStorage.setItem('fk_maxDataMonths', String(pm)); } catch { }
+                    setHasMlsData(!!pulledWithMls); try { localStorage.setItem('fk_hasMlsData', pulledWithMls ? 'true' : 'false'); } catch { }
                     setMode('analyze'); setShowCompare(false); setShowRoutePanel(false);
                     // Unified: 40mi² and 300mi² pulls are handled identically downstream.
                     // soldDateFilter mirrors what was actually pulled; lastPullMode is retained as '40mi'
@@ -1877,10 +1877,10 @@ export default function Home() {
                         if (!confirm(`Force sync properties for ${zipCodeFilter}?`)) return;
                         const toastId = toast.loading("Syncing...");
                         try {
-                            const res = await base44.functions.invoke('fetchZipProperties', { 
-                                zip_code: zipCodeFilter, 
+                            const res = await base44.functions.invoke('fetchZipProperties', {
+                                zip_code: zipCodeFilter,
                                 force_sync: true,
-                                sold_months: 12
+                                sold_months: 3 // v16 Fix 4A: Tightened from 12→3 months (90 days)
                             });
                             if (res.data?.error) {
                                 toast.error(res.data.message || res.data.error, { id: toastId });

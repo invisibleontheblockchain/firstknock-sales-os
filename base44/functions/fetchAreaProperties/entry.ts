@@ -273,7 +273,8 @@ Deno.serve(async (req) => {
             }, { status: 400 });
         }
 
-        const effectiveSoldMonths = sold_months || 12;
+        // v16 Fix 4A: Tightened default from 12→3 months (90 days)
+        const effectiveSoldMonths = sold_months || 3;
 
         if (dry_run === true) {
             const previewSubCircles = generateSubCircles(optimizedLat, optimizedLng, optimizedRadius, polygon);

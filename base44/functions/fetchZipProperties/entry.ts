@@ -152,7 +152,8 @@ Deno.serve(async (req) => {
     }
 
     const zip = String(zip_code).trim();
-    const saleDateRange = Math.min(sold_months * 30, 365);
+    // v16 Fix 4B: Removed Math.min cap — 90-day window enforced by sold_months: 3
+    const saleDateRange = sold_months * 30;
     console.log(`[FetchZip-v8] zip=${zip}, sold_months=${sold_months}, saleDateRange=${saleDateRange} days`);
 
     // Auto-add to territory
@@ -203,7 +204,7 @@ Deno.serve(async (req) => {
     const paramsB = new URLSearchParams({ zipCode: zip, status: 'Inactive', daysOld: String(mlsSearchDays) });
     const resultB = await fetchAllPages(`${RENTCAST_BASE}/listings/sale`, paramsB, 'MLS_Inactive', RENTCAST_API_KEY);
     totalApiCalls += resultB.apiCalls;
-    
+
     console.log(`[FetchZip-v8] Fetched ${resultB.items.length} raw MLS Inactive records (${resultB.apiCalls} API calls)`);
 
     console.log(`[FetchZip-v8] Total API calls used: ${totalApiCalls}`);
@@ -214,40 +215,40 @@ Deno.serve(async (req) => {
 
     // Filter Stream B locally by removedDate to ensure they actually came off market recently
     const recentOffMarket = resultB.items.filter(p => {
-        if (!p.removedDate) return false;
-        const removed = new Date(p.removedDate);
-        return !isNaN(removed.getTime()) && removed >= soldCutoff;
+      if (!p.removedDate) return false;
+      const removed = new Date(p.removedDate);
+      return !isNaN(removed.getTime()) && removed >= soldCutoff;
     });
 
     console.log(`[FetchZip-v8] After removedDate filter: ${recentOffMarket.length} recent off-market records remain`);
 
     // Clean up IDs for deduplication (MLS IDs often differ from Property IDs for the same house)
     // We will deduplicate using addressLine1 + zip
-    const normalizeAddr = (a, z) => `${(a || '').toUpperCase().trim()}|${(z || '').trim().substring(0,5)}`;
+    const normalizeAddr = (a, z) => `${(a || '').toUpperCase().trim()}|${(z || '').trim().substring(0, 5)}`;
 
     const streamAMembers = new Set();
     const mergedProperties = [];
 
     // Add Stream A first (Gold Standard)
     for (const p of resultA.items) {
-        const key = normalizeAddr(p.addressLine1, p.zipCode || zip);
-        streamAMembers.add(key);
-        // Tag to distinguish in mapping
-        p._stream = 'A';
-        mergedProperties.push(p);
+      const key = normalizeAddr(p.addressLine1, p.zipCode || zip);
+      streamAMembers.add(key);
+      // Tag to distinguish in mapping
+      p._stream = 'A';
+      mergedProperties.push(p);
     }
 
     // Add Stream B only if not in Stream A
     let dedupCount = 0;
     for (const p of recentOffMarket) {
-        const key = normalizeAddr(p.addressLine1, p.zipCode || zip);
-        if (streamAMembers.has(key)) {
-            dedupCount++;
-            continue; // Deed wins
-        }
-        // Tag to distinguish in mapping
-        p._stream = 'B';
-        mergedProperties.push(p);
+      const key = normalizeAddr(p.addressLine1, p.zipCode || zip);
+      if (streamAMembers.has(key)) {
+        dedupCount++;
+        continue; // Deed wins
+      }
+      // Tag to distinguish in mapping
+      p._stream = 'B';
+      mergedProperties.push(p);
     }
 
     console.log(`[FetchZip-v8] Merged: ${mergedProperties.length} total unique records (${dedupCount} MLS records deduplicated against deeds)`);
@@ -255,7 +256,7 @@ Deno.serve(async (req) => {
 
     // Track zip
     if (!generatedZips.includes(zip)) {
-      try { await base44.auth.updateMe({ generated_zip_codes: [...generatedZips, zip] }); } catch (e) {}
+      try { await base44.auth.updateMe({ generated_zip_codes: [...generatedZips, zip] }); } catch (e) { }
     }
 
     if (allProperties.length === 0) {
@@ -276,11 +277,11 @@ Deno.serve(async (req) => {
       .filter(p => {
         // Validation based on stream
         if (p._stream === 'A') {
-            if (!p.lastSaleDate) return false;
-            if (p.lastSalePrice === null || p.lastSalePrice === undefined || p.lastSalePrice <= 100) return false;
+          if (!p.lastSaleDate) return false;
+          if (p.lastSalePrice === null || p.lastSalePrice === undefined || p.lastSalePrice <= 100) return false;
         } else {
-            // Stream B validation (MLS Inactive)
-            if (!p.removedDate) return false;
+          // Stream B validation (MLS Inactive)
+          if (!p.removedDate) return false;
         }
         const badTypes = ['Commercial', 'Industrial', 'Vacant Land', 'Agricultural'];
         if (p.propertyType && badTypes.includes(p.propertyType)) return false;
@@ -298,70 +299,70 @@ Deno.serve(async (req) => {
         let sale_confidence = 'high';
 
         if (p._stream === 'A') {
-            original_status = 'SOLD';
-            sale_type = 'Deed';
-            sold_date = p.lastSaleDate || null;
-            price = p.lastSalePrice || 0;
-            if (sold_date) {
-                const saleDateObj = new Date(sold_date);
-                if (!isNaN(saleDateObj.getTime()) && saleDateObj <= soldCutoff) original_status = 'ELIGIBLE';
-            }
+          original_status = 'SOLD';
+          sale_type = 'Deed';
+          sold_date = p.lastSaleDate || null;
+          price = p.lastSalePrice || 0;
+          if (sold_date) {
+            const saleDateObj = new Date(sold_date);
+            if (!isNaN(saleDateObj.getTime()) && saleDateObj <= soldCutoff) original_status = 'ELIGIBLE';
+          }
         } else {
-            original_status = 'RECENT_OFF_MARKET';
-            sale_type = 'MLS';
-            sold_date = p.removedDate || p.listedDate || null;
-            price = p.price || 0;
-            
-            const removed = p.removedDate ? new Date(p.removedDate) : new Date();
-            const listed = p.listedDate ? new Date(p.listedDate) : null;
-            const lastSeen = p.lastSeenDate ? new Date(p.lastSeenDate) : null;
-            const daysSinceRemoved = Math.round((new Date().getTime() - removed.getTime()) / (1000 * 3600 * 24));
-            
-            if (daysSinceRemoved > 90) {
-                 original_status = 'REJECTED';
-                 sale_confidence = 'REJECTED';
-            } else {
-                const dom = p.daysOnMarket || daysSinceRemoved;
-                const listingDuration = (listed && !isNaN(removed.getTime()) && !isNaN(listed.getTime())) 
-                    ? Math.round((removed.getTime() - listed.getTime()) / (1000 * 3600 * 24)) 
-                    : dom;
+          original_status = 'RECENT_OFF_MARKET';
+          sale_type = 'MLS';
+          sold_date = p.removedDate || p.listedDate || null;
+          price = p.price || 0;
 
-                let hScore = 0;
-                if (Math.abs(dom - 90) <= 3) hScore -= 3;
-                if (Math.abs(dom - 180) <= 3) hScore -= 3;
-                if (Math.abs(dom - 365) <= 3) hScore -= 3;
-                if (Math.abs(listingDuration - 90) <= 3) hScore -= 2;
-                if (Math.abs(listingDuration - 180) <= 3) hScore -= 2;
-                if (Math.abs(listingDuration - 365) <= 3) hScore -= 2;
-                if (dom > 150) hScore -= 3;
-                else if (dom > 60) hScore -= 2;
-                if (listingDuration < 7) hScore -= 2;
-                if (lastSeen && Math.abs(lastSeen.getTime() - removed.getTime()) < 86400000) hScore -= 2;
-                if (p.history && typeof p.history === 'object') {
-                    const historyCount = Object.keys(p.history).length;
-                    if (historyCount >= 3) hScore -= 1;
-                }
-                if (dom >= 30 && dom <= 45) hScore += 3;
-                if (dom >= 14 && dom < 30) hScore += 2;
-                if (lastSeen && (removed.getTime() - lastSeen.getTime()) >= 7 * 86400000) hScore += 1;
-                if (p.history && typeof p.history === 'object' && Object.keys(p.history).length === 1) hScore += 1;
+          const removed = p.removedDate ? new Date(p.removedDate) : new Date();
+          const listed = p.listedDate ? new Date(p.listedDate) : null;
+          const lastSeen = p.lastSeenDate ? new Date(p.lastSeenDate) : null;
+          const daysSinceRemoved = Math.round((new Date().getTime() - removed.getTime()) / (1000 * 3600 * 24));
 
-                if (hScore <= -4) {
-                    original_status = 'REJECTED';
-                    sale_confidence = 'REJECTED';
-                } else if (hScore >= 3) {
-                    original_status = 'HEURISTIC_SOLD';
-                    sale_confidence = 'medium';
-                } else {
-                    sale_confidence = 'low';
-                }
+          if (daysSinceRemoved > 90) {
+            original_status = 'REJECTED';
+            sale_confidence = 'REJECTED';
+          } else {
+            const dom = p.daysOnMarket || daysSinceRemoved;
+            const listingDuration = (listed && !isNaN(removed.getTime()) && !isNaN(listed.getTime()))
+              ? Math.round((removed.getTime() - listed.getTime()) / (1000 * 3600 * 24))
+              : dom;
+
+            let hScore = 0;
+            if (Math.abs(dom - 90) <= 3) hScore -= 3;
+            if (Math.abs(dom - 180) <= 3) hScore -= 3;
+            if (Math.abs(dom - 365) <= 3) hScore -= 3;
+            if (Math.abs(listingDuration - 90) <= 3) hScore -= 2;
+            if (Math.abs(listingDuration - 180) <= 3) hScore -= 2;
+            if (Math.abs(listingDuration - 365) <= 3) hScore -= 2;
+            if (dom > 150) hScore -= 3;
+            else if (dom > 60) hScore -= 2;
+            if (listingDuration < 7) hScore -= 2;
+            if (lastSeen && Math.abs(lastSeen.getTime() - removed.getTime()) < 86400000) hScore -= 2;
+            if (p.history && typeof p.history === 'object') {
+              const historyCount = Object.keys(p.history).length;
+              if (historyCount >= 3) hScore -= 1;
             }
+            if (dom >= 30 && dom <= 45) hScore += 3;
+            if (dom >= 14 && dom < 30) hScore += 2;
+            if (lastSeen && (removed.getTime() - lastSeen.getTime()) >= 7 * 86400000) hScore += 1;
+            if (p.history && typeof p.history === 'object' && Object.keys(p.history).length === 1) hScore += 1;
+
+            if (hScore <= -4) {
+              original_status = 'REJECTED';
+              sale_confidence = 'REJECTED';
+            } else if (hScore >= 3) {
+              original_status = 'HEURISTIC_SOLD';
+              sale_confidence = 'medium';
+            } else {
+              sale_confidence = 'low';
+            }
+          }
         }
 
         let h3_index = null;
-        try { h3_index = latLngToCell(p.latitude, p.longitude, 9); } catch (e) {}
+        try { h3_index = latLngToCell(p.latitude, p.longitude, 9); } catch (e) { }
 
-        const normalizedHash = `${(p.addressLine1 || '').toUpperCase().trim()}|${(p.zipCode || zip || '').trim().substring(0,5)}`;
+        const normalizedHash = `${(p.addressLine1 || '').toUpperCase().trim()}|${(p.zipCode || zip || '').trim().substring(0, 5)}`;
 
         return {
           address_hash: normalizedHash,
@@ -382,55 +383,55 @@ Deno.serve(async (req) => {
     // --- STEP 3: BatchData API for Ambiguous properties ---
     const BATCH_DATA_API_KEY = Deno.env.get("BATCH_DATA_API_KEY");
     if (BATCH_DATA_API_KEY) {
-        const ambiguous = mapped.filter(m => m.sale_confidence === 'low');
-        const allowedMisses = ambiguous.slice(0, 100);
-        
-        if (allowedMisses.length > 0) {
-            console.log(`[FetchZip-v8] Launching sync BatchData check for ${allowedMisses.length} ambiguous records...`);
-            for (let b = 0; b < allowedMisses.length; b += 10) {
-                const batch = allowedMisses.slice(b, b + 10);
-                const promises = batch.map(async (cm) => {
-                    try {
-                        const url = 'https://api.batchdata.com/api/v1/property/search';
-                        const payload = { searchCriteria: { query: `${cm.house_number} ${cm.street_name}, ${cm.city}, ${cm.state} ${cm.zip_code}` } };
-                        const res = await fetch(url, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BATCH_DATA_API_KEY}` },
-                            body: JSON.stringify(payload)
-                        });
-                        if (!res.ok) return { hash: cm.address_hash, verifiedSold: false };
-                        const data = await res.json();
-                        const properties = data?.results?.properties || [];
-                        const topResult = properties[0] || {};
-                        const listing = topResult.listing || data?.results?.listing || {};
-                        const apiStatus = (listing.status || '').toLowerCase();
-                        const statusCat = (listing.statusCategory || '').toLowerCase();
-                        const soldPrice = listing.soldPrice || listing.price || 0;
-                        const isSold = apiStatus.includes('sold') || statusCat === 'sold' || (soldPrice > 0);
-                        return { hash: cm.address_hash, verifiedSold: isSold };
-                    } catch (e) {
-                        return { hash: cm.address_hash, verifiedSold: false };
-                    }
-                });
-                const batchResults = await Promise.all(promises);
-                const bdSold = new Set(batchResults.filter(r => r.verifiedSold).map(r => r.hash));
-                const bdRej = new Set(batchResults.filter(r => !r.verifiedSold).map(r => r.hash));
-                
-                for (const m of mapped) {
-                    if (bdSold.has(m.address_hash)) {
-                        m.sale_confidence = 'verified';
-                        m.original_status = 'BATCHDATA_CONFIRMED';
-                        m.data_source = 'batchdata_verified';
-                    } else if (bdRej.has(m.address_hash)) {
-                        m.sale_confidence = 'REJECTED';
-                        m.original_status = 'REJECTED';
-                    }
-                }
-                await new Promise(r => setTimeout(r, 250));
+      const ambiguous = mapped.filter(m => m.sale_confidence === 'low');
+      const allowedMisses = ambiguous.slice(0, 100);
+
+      if (allowedMisses.length > 0) {
+        console.log(`[FetchZip-v8] Launching sync BatchData check for ${allowedMisses.length} ambiguous records...`);
+        for (let b = 0; b < allowedMisses.length; b += 10) {
+          const batch = allowedMisses.slice(b, b + 10);
+          const promises = batch.map(async (cm) => {
+            try {
+              const url = 'https://api.batchdata.com/api/v1/property/search';
+              const payload = { searchCriteria: { query: `${cm.house_number} ${cm.street_name}, ${cm.city}, ${cm.state} ${cm.zip_code}` } };
+              const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BATCH_DATA_API_KEY}` },
+                body: JSON.stringify(payload)
+              });
+              if (!res.ok) return { hash: cm.address_hash, verifiedSold: false };
+              const data = await res.json();
+              const properties = data?.results?.properties || [];
+              const topResult = properties[0] || {};
+              const listing = topResult.listing || data?.results?.listing || {};
+              const apiStatus = (listing.status || '').toLowerCase();
+              const statusCat = (listing.statusCategory || '').toLowerCase();
+              const soldPrice = listing.soldPrice || listing.price || 0;
+              const isSold = apiStatus.includes('sold') || statusCat === 'sold' || (soldPrice > 0);
+              return { hash: cm.address_hash, verifiedSold: isSold };
+            } catch (e) {
+              return { hash: cm.address_hash, verifiedSold: false };
             }
+          });
+          const batchResults = await Promise.all(promises);
+          const bdSold = new Set(batchResults.filter(r => r.verifiedSold).map(r => r.hash));
+          const bdRej = new Set(batchResults.filter(r => !r.verifiedSold).map(r => r.hash));
+
+          for (const m of mapped) {
+            if (bdSold.has(m.address_hash)) {
+              m.sale_confidence = 'verified';
+              m.original_status = 'BATCHDATA_CONFIRMED';
+              m.data_source = 'batchdata_verified';
+            } else if (bdRej.has(m.address_hash)) {
+              m.sale_confidence = 'REJECTED';
+              m.original_status = 'REJECTED';
+            }
+          }
+          await new Promise(r => setTimeout(r, 250));
         }
+      }
     }
-    
+
     // Filter out outright rejected properties
     const finalMapped = mapped.filter(m => m.original_status !== 'REJECTED');
 
