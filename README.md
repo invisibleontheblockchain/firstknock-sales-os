@@ -676,4 +676,3 @@ STRIPE_WEBHOOK_SECRET   — Stripe webhook signing secret
 ## Contributors
 
 - **Nick** — Lead Developer
-- **Danny** ([@daannyyrod](https://github.com/daannyyrod)) — Contributor
