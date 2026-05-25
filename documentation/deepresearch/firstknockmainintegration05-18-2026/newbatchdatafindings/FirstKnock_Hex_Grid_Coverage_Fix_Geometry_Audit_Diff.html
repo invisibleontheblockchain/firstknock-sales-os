@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FirstKnock: Hex Grid Coverage Fix — Geometry Audit & Diff</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0f1117;
+  color: #e0e0e0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+.sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #13151d;
+  border-bottom: 1px solid #2a2d3a;
+  padding: 12px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sticky-header h1 {
+  color: #f5c518;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+.badge {
+  border: 1px solid #f5c518;
+  color: #f5c518;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 3px;
+  letter-spacing: 1px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.stats-bar {
+  display: flex;
+  gap: 16px;
+  padding: 16px 24px;
+  border-bottom: 1px solid #2a2d3a;
+  flex-wrap: wrap;
+}
+
+.stat-pill {
+  border: 1px solid #f5c518;
+  background: #1a1d27;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 13px;
+  color: #f5c518;
+  font-weight: 600;
+}
+
+.stat-pill span {
+  color: #888;
+  font-weight: 400;
+}
+
+.content {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+.section {
+  margin-bottom: 48px;
+}
+
+.section-header {
+  color: #f5c518;
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #f5c518;
+  display: inline-block;
+}
+
+.callout-box {
+  background: #1a1d27;
+  border: 1px solid #2a2d3a;
+  border-left: 4px solid #f5c518;
+  border-radius: 6px;
+  padding: 20px;
+  margin: 16px 0;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.bug-list {
+  list-style: none;
+  margin-top: 16px;
+}
+
+.bug-list li {
+  padding: 8px 0;
+  padding-left: 28px;
+  position: relative;
+  font-size: 14px;
+}
+
+.bug-list li::before {
+  content: '⚠';
+  position: absolute;
+  left: 0;
+  color: #ff6b6b;
+}
+
+/* Table styles */
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.comparison-table th {
+  background: #1a1d27;
+  color: #f5c518;
+  padding: 10px 14px;
+  text-align: left;
+  border-bottom: 2px solid #2a2d3a;
+  font-weight: 600;
+}
+
+.comparison-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #2a2d3a;
+}
+
+.comparison-table tr:nth-child(even) td {
+  background: rgba(26, 29, 39, 0.5);
+}
+
+.comparison-table .col-original {
+  color: #ff6b6b;
+}
+
+.comparison-table .col-fixed {
+  color: #6bff8a;
+}
+
+/* Code diff styles */
+.diff-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+@media (max-width: 900px) {
+  .diff-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+.diff-block {
+  background: #1a1d27;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #2a2d3a;
+}
+
+.diff-header-red {
+  background: rgba(255, 80, 80, 0.15);
+  color: #ff6b6b;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  border-bottom: 1px solid #2a2d3a;
+}
+
+.diff-header-green {
+  background: rgba(80, 255, 120, 0.15);
+  color: #6bff8a;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  border-bottom: 1px solid #2a2d3a;
+}
+
+.code-block {
+  padding: 12px 0;
+  overflow-x: auto;
+  font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  font-size: 11.5px;
+  line-height: 1.7;
+  counter-reset: line;
+}
+
+.code-line {
+  display: block;
+  padding: 0 14px 0 48px;
+  position: relative;
+  white-space: pre;
+}
+
+.code-line::before {
+  counter-increment: line;
+  content: counter(line);
+  position: absolute;
+  left: 14px;
+  color: #555;
+  font-size: 10px;
+  width: 24px;
+  text-align: right;
+}
+
+.code-line.line-red {
+  background: rgba(255, 80, 80, 0.15);
+  border-left: 3px solid #ff6b6b;
+}
+
+.code-line.line-green {
+  background: rgba(80, 255, 120, 0.15);
+  border-left: 3px solid #6bff8a;
+}
+
+.code-comment { color: #6a9955; }
+.code-keyword { color: #c586c0; }
+.code-string { color: #ce9178; }
+.code-number { color: #b5cea8; }
+.code-func { color: #dcdcaa; }
+.code-type { color: #4ec9b0; }
+
+/* SVG section */
+.svg-container {
+  background: #0f1117;
+  border: 1px solid #2a2d3a;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin-top: 16px;
+}
+
+/* Impact cards */
+.impact-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 16px 0;
+}
+
+@media (max-width: 700px) {
+  .impact-cards { grid-template-columns: 1fr; }
+}
+
+.impact-card {
+  background: #1a1d27;
+  border-radius: 6px;
+  padding: 20px;
+}
+
+.impact-card.card-red {
+  border: 1px solid #ff6b6b;
+}
+
+.impact-card.card-green {
+  border: 1px solid #6bff8a;
+}
+
+.impact-card h4 {
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.impact-card.card-red h4 { color: #ff6b6b; }
+.impact-card.card-green h4 { color: #6bff8a; }
+
+.impact-card ul {
+  list-style: none;
+  font-size: 13px;
+}
+
+.impact-card ul li {
+  padding: 4px 0;
+  padding-left: 16px;
+  position: relative;
+}
+
+.impact-card ul li::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: #888;
+}
+
+.metric-row {
+  background: #1a1d27;
+  border: 1px solid #2a2d3a;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 8px 0;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.metric-row .label { color: #888; }
+.metric-row .value { color: #f5c518; font-weight: 600; }
+
+/* Checklist */
+.checklist {
+  background: #1a1d27;
+  border: 1px solid #2a2d3a;
+  border-radius: 6px;
+  padding: 20px;
+}
+
+.checklist-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  border-bottom: 1px solid #1f222e;
+}
+
+.checklist-item:last-child { border-bottom: none; }
+
+.checklist-item input[type="checkbox"] {
+  accent-color: #f5c518;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.checklist-counter {
+  background: #f5c518;
+  color: #0f1117;
+  font-weight: 700;
+  font-size: 13px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  display: inline-block;
+  margin-top: 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+/* What's next callout */
+.next-callout {
+  background: #1a1d27;
+  border: 2px solid #f5c518;
+  border-radius: 6px;
+  padding: 20px;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+/* Collapsible */
+.collapsible-header {
+  background: #1a1d27;
+  border: 1px solid #2a2d3a;
+  border-radius: 6px;
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: #f5c518;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+
+.collapsible-header:hover { background: #1f222e; }
+
+.collapsible-content {
+  display: none;
+  border: 1px solid #2a2d3a;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  overflow-x: auto;
+}
+
+.collapsible-content.open { display: block; }
+
+.positions-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.positions-table th {
+  background: #1a1d27;
+  color: #f5c518;
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 2px solid #2a2d3a;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+
+.positions-table td {
+  padding: 7px 12px;
+  border-bottom: 1px solid #1f222e;
+}
+
+.row-core td { color: #6bff8a; }
+.row-boundary td { color: #f5c518; }
+.row-outside td { color: #ff6b6b; }
+
+.footer {
+  border-top: 1px solid #2a2d3a;
+  padding: 24px;
+  text-align: center;
+  color: #555;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.arrow { color: #f5c518; }
+</style>
+</head>
+<body>
+
+<div class="sticky-header">
+  <h1>FirstKnock: Hex Grid Coverage Fix — Geometry Audit & Diff</h1>
+  <span class="badge">GEOMETRY AUDIT</span>
+</div>
+
+<div class="stats-bar">
+  <div class="stat-pill">9 <span class="arrow">→</span> 16 circles</div>
+  <div class="stat-pill">55% <span class="arrow">→</span> 100% coverage</div>
+  <div class="stat-pill">~429 <span class="arrow">→</span> 800–1,400 properties</div>
+</div>
+
+<div class="content">
+
+<!-- SECTION 1 -->
+<div class="section">
+  <div class="section-header">§1 Root Cause Summary</div>
+  <div class="callout-box">
+    The original <code>generateSubCircles</code> function used equal 8.0-mile spacing in both lat and lng axes (not true hex geometry), computed only <code>stepsNeeded=2</code> from the territory radius, producing a 5×5=25 candidate grid. After the distance filter (<code>dist ≤ 14.77 mi</code>), only 9 circles survived. Nine 5-mile circles cover ~9 × 78.54 = ~707 sq mi theoretical, but with the asymmetric placement and large gaps, effective coverage of the 9.77-mile territory was ~55–60%. The result: <strong>~429 properties returned</strong> instead of the expected 800–1,400.
+    <br><br>
+    <strong>Three compounding bugs:</strong>
+    <ol class="bug-list">
+      <li>Equal axis spacing (8.0 mi both axes) instead of true hex geometry (8.66 mi horizontal, 7.5 mi vertical)</li>
+      <li>Offset applied to column index <code>j</code> (<code>j % 2 !== 0</code>) instead of row index — geometrically wrong</li>
+      <li>Distance filter cutting boundary circles that are intentionally outside the territory radius but whose 5-mile fetch radius covers boundary properties</li>
+    </ol>
+  </div>
+</div>
+
+<!-- SECTION 2 -->
+<div class="section">
+  <div class="section-header">§2 Geometry Comparison Table</div>
+  <table class="comparison-table">
+    <thead>
+      <tr>
+        <th>Parameter</th>
+        <th>Original (Broken)</th>
+        <th>Fixed (Correct)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>Sub-circle count (Anderson County)</td><td class="col-original">9</td><td class="col-fixed">16</td></tr>
+      <tr><td>Horizontal spacing</td><td class="col-original">8.00 miles (equal)</td><td class="col-fixed">8.66 miles (2r·cos30°)</td></tr>
+      <tr><td>Vertical spacing</td><td class="col-original">8.00 miles (equal)</td><td class="col-fixed">7.50 miles (1.5r)</td></tr>
+      <tr><td>Odd-row offset axis</td><td class="col-original">Column index j (wrong)</td><td class="col-fixed">Row index (correct)</td></tr>
+      <tr><td>Odd-row offset amount</td><td class="col-original">4.00 miles (step/2)</td><td class="col-fixed">4.33 miles (hSpacing/2)</td></tr>
+      <tr><td>Distance filter</td><td class="col-original">dist ≤ 14.77 mi (cuts boundary)</td><td class="col-fixed">Removed (pre-calc grid)</td></tr>
+      <tr><td>Theoretical coverage</td><td class="col-original">~707 sq mi (9 circles)</td><td class="col-fixed">~1,257 sq mi (16 circles)</td></tr>
+      <tr><td>Effective coverage</td><td class="col-original">~55% of territory</td><td class="col-fixed">~100% of territory</td></tr>
+      <tr><td>Expected property count</td><td class="col-original">~429</td><td class="col-fixed">~800–1,400</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- SECTION 3 -->
+<div class="section">
+  <div class="section-header">§3 Before/After Code Diff</div>
+  <div class="diff-container">
+    <div class="diff-block">
+      <div class="diff-header-red">BEFORE — generateSubCircles (broken)</div>
+      <div class="code-block"><span class="code-line"><span class="code-keyword">const</span> SUB_CIRCLE_RADIUS = <span class="code-number">5</span>; <span class="code-comment">// miles</span></span><span class="code-line"><span class="code-keyword">const</span> OVERLAP_FACTOR = <span class="code-number">0.80</span>;</span><span class="code-line"></span><span class="code-line"><span class="code-keyword">function</span> <span class="code-func">generateSubCircles</span>(</span><span class="code-line">  centerLat: <span class="code-type">number</span>,</span><span class="code-line">  centerLng: <span class="code-type">number</span>,</span><span class="code-line">  radiusMiles: <span class="code-type">number</span></span><span class="code-line">) {</span><span class="code-line">  <span class="code-keyword">if</span> (radiusMiles &lt;= SUB_CIRCLE_RADIUS) {</span><span class="code-line">    <span class="code-keyword">return</span> [{ lat: centerLat, lng: centerLng, radius: radiusMiles }];</span><span class="code-line">  }</span><span class="code-line"></span><span class="code-line">  <span class="code-keyword">const</span> milesPerDegLat = <span class="code-number">69.0</span>;</span><span class="code-line">  <span class="code-keyword">const</span> milesPerDegLng = <span class="code-number">69.0</span> * Math.cos(centerLat * Math.PI / <span class="code-number">180</span>);</span><span class="code-line"></span><span class="code-line line-red">  <span class="code-comment">// BUG 1: Equal spacing in both axes — not true hex geometry</span></span><span class="code-line line-red">  <span class="code-keyword">const</span> step = SUB_CIRCLE_RADIUS * <span class="code-number">2</span> * OVERLAP_FACTOR; <span class="code-comment">// 8.0 miles</span></span><span class="code-line"></span><span class="code-line line-red">  <span class="code-comment">// BUG 2: gridExtent too small — produces stepsNeeded=2 → only 25 candidates</span></span><span class="code-line line-red">  <span class="code-keyword">const</span> gridExtent = radiusMiles + SUB_CIRCLE_RADIUS * <span class="code-number">0.5</span>; <span class="code-comment">// 9.77 + 2.5 = 12.27</span></span><span class="code-line line-red">  <span class="code-keyword">const</span> stepsNeeded = Math.ceil(gridExtent / step); <span class="code-comment">// ceil(12.27/8.0) = 2</span></span><span class="code-line"></span><span class="code-line">  <span class="code-keyword">const</span> circles = [];</span><span class="code-line"></span><span class="code-line">  <span class="code-keyword">for</span> (<span class="code-keyword">let</span> i = -stepsNeeded; i &lt;= stepsNeeded; i++) {</span><span class="code-line">    <span class="code-keyword">for</span> (<span class="code-keyword">let</span> j = -stepsNeeded; j &lt;= stepsNeeded; j++) {</span><span class="code-line line-red">      <span class="code-comment">// BUG 3: Offset applied to column index j — should be row index</span></span><span class="code-line line-red">      <span class="code-keyword">const</span> lngOffset = (j % <span class="code-number">2</span> !== <span class="code-number">0</span>) ? step * <span class="code-number">0.5</span> : <span class="code-number">0</span>;</span><span class="code-line"></span><span class="code-line">      <span class="code-keyword">const</span> subLat = centerLat + (i * step) / milesPerDegLat;</span><span class="code-line">      <span class="code-keyword">const</span> subLng = centerLng + (j * step + lngOffset) / milesPerDegLng;</span><span class="code-line"></span><span class="code-line">      <span class="code-keyword">const</span> dist = Math.sqrt(</span><span class="code-line">        Math.pow((subLat - centerLat) * milesPerDegLat, <span class="code-number">2</span>) +</span><span class="code-line">        Math.pow((subLng - centerLng) * milesPerDegLng, <span class="code-number">2</span>)</span><span class="code-line">      );</span><span class="code-line"></span><span class="code-line line-red">      <span class="code-comment">// BUG 4: Distance filter cuts valid boundary circles</span></span><span class="code-line line-red">      <span class="code-keyword">if</span> (dist &lt;= radiusMiles + SUB_CIRCLE_RADIUS) {</span><span class="code-line">        circles.push({ lat: subLat, lng: subLng, radius: SUB_CIRCLE_RADIUS });</span><span class="code-line">      }</span><span class="code-line">    }</span><span class="code-line">  }</span><span class="code-line"></span><span class="code-line">  <span class="code-comment">// Result: 9 circles for Anderson County (r=9.77mi)</span></span><span class="code-line">  <span class="code-keyword">return</span> circles;</span><span class="code-line">}</span></div>
+    </div>
+    <div class="diff-block">
+      <div class="diff-header-green">AFTER — generateHex4x4Grid (fixed)</div>
+      <div class="code-block"><span class="code-line"><span class="code-keyword">const</span> SUB_CIRCLE_RADIUS = <span class="code-number">5</span>; <span class="code-comment">// miles — unchanged</span></span><span class="code-line"></span><span class="code-line"><span class="code-comment">/**</span></span><span class="code-line"><span class="code-comment"> * Generates a hex-offset 4×4 grid of 16 sub-circles centred on (centerLat, centerLng).</span></span><span class="code-line"><span class="code-comment"> * Horizontal spacing: 2r × cos(30°) ≈ 1.732r miles</span></span><span class="code-line"><span class="code-comment"> * Vertical spacing:   1.5r miles</span></span><span class="code-line"><span class="code-comment"> * Every other row is offset by half the horizontal spacing.</span></span><span class="code-line"><span class="code-comment"> */</span></span><span class="code-line"><span class="code-keyword">function</span> <span class="code-func">generateHex4x4Grid</span>(</span><span class="code-line">  centerLat: <span class="code-type">number</span>,</span><span class="code-line">  centerLng: <span class="code-type">number</span>,</span><span class="code-line">  subCircleRadius: <span class="code-type">number</span>,</span><span class="code-line">): <span class="code-type">SubCircle</span>[] {</span><span class="code-line">  <span class="code-keyword">const</span> circles: <span class="code-type">SubCircle</span>[] = [];</span><span class="code-line"></span><span class="code-line">  <span class="code-keyword">const</span> latRadians = (centerLat * Math.PI) / <span class="code-number">180</span>;</span><span class="code-line">  <span class="code-keyword">const</span> milesPerDegLat = <span class="code-number">69</span>;</span><span class="code-line">  <span class="code-keyword">const</span> milesPerDegLng = <span class="code-number">69</span> * Math.cos(latRadians);</span><span class="code-line"></span><span class="code-line line-green">  <span class="code-comment">// FIX 1: True hex geometry — different spacing per axis</span></span><span class="code-line line-green">  <span class="code-keyword">const</span> hSpacingMiles = <span class="code-number">2</span> * subCircleRadius * Math.cos(Math.PI / <span class="code-number">6</span>); <span class="code-comment">// 8.660 miles</span></span><span class="code-line line-green">  <span class="code-keyword">const</span> vSpacingMiles = <span class="code-number">1.5</span> * subCircleRadius;                        <span class="code-comment">// 7.500 miles</span></span><span class="code-line"></span><span class="code-line line-green">  <span class="code-keyword">const</span> rows = <span class="code-number">4</span>;</span><span class="code-line line-green">  <span class="code-keyword">const</span> cols = <span class="code-number">4</span>;</span><span class="code-line"></span><span class="code-line line-green">  <span class="code-comment">// FIX 2: Pre-calculated 4×4 grid — no dynamic stepsNeeded</span></span><span class="code-line line-green">  <span class="code-keyword">const</span> totalWidthMiles  = (cols - <span class="code-number">1</span>) * hSpacingMiles;  <span class="code-comment">// 25.981 miles</span></span><span class="code-line line-green">  <span class="code-keyword">const</span> totalHeightMiles = (rows - <span class="code-number">1</span>) * vSpacingMiles;  <span class="code-comment">// 22.500 miles</span></span><span class="code-line"></span><span class="code-line">  <span class="code-keyword">for</span> (<span class="code-keyword">let</span> row = <span class="code-number">0</span>; row &lt; rows; row++) {</span><span class="code-line line-green">    <span class="code-comment">// FIX 3: Offset applied to ROW index (correct hex geometry)</span></span><span class="code-line line-green">    <span class="code-keyword">const</span> rowOffsetMiles = row % <span class="code-number">2</span> === <span class="code-number">1</span> ? hSpacingMiles / <span class="code-number">2</span> : <span class="code-number">0</span>; <span class="code-comment">// 4.330 miles</span></span><span class="code-line"></span><span class="code-line">    <span class="code-keyword">for</span> (<span class="code-keyword">let</span> col = <span class="code-number">0</span>; col &lt; cols; col++) {</span><span class="code-line">      <span class="code-keyword">const</span> xMiles = col * hSpacingMiles + rowOffsetMiles - totalWidthMiles / <span class="code-number">2</span>;</span><span class="code-line">      <span class="code-keyword">const</span> yMiles = row * vSpacingMiles - totalHeightMiles / <span class="code-number">2</span>;</span><span class="code-line"></span><span class="code-line">      <span class="code-keyword">const</span> lat = centerLat + yMiles / milesPerDegLat;</span><span class="code-line">      <span class="code-keyword">const</span> lng = centerLng + xMiles / milesPerDegLng;</span><span class="code-line"></span><span class="code-line">      circles.push({</span><span class="code-line">        lat,</span><span class="code-line">        lng,</span><span class="code-line">        radius: subCircleRadius,</span><span class="code-line">        chunkId: <span class="code-string">`hex4x4_r${row}_c${col}`</span>,</span><span class="code-line">      });</span><span class="code-line">    }</span><span class="code-line">  }</span><span class="code-line"></span><span class="code-line line-green">  <span class="code-comment">// FIX 4: No distance filter — all 16 positions are intentional</span></span><span class="code-line line-green">  <span class="code-comment">// Boundary circles (dist up to 20.65 mi) cover edge properties with their 5-mi radius</span></span><span class="code-line"></span><span class="code-line">  <span class="code-comment">// Result: Always 16 circles regardless of territory radius</span></span><span class="code-line">  <span class="code-keyword">return</span> circles;</span><span class="code-line">}</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 4 -->
+<div class="section">
+  <div class="section-header">§4 SVG Coverage Map</div>
+  <div class="svg-container">
+    <svg width="900" height="450" viewBox="0 0 900 450" xmlns="http://www.w3.org/2000/svg">
+      <rect width="900" height="450" fill="#0f1117"/>
+      
+      <!-- Dividing line -->
+      <line x1="440" y1="30" x2="440" y2="430" stroke="#2a2d3a" stroke-width="1"/>
+      
+      <!-- LEFT MAP: Original 9 Circles -->
+      <text x="200" y="28" fill="#f5c518" font-size="13" font-family="monospace" text-anchor="middle" font-weight="bold">Original — 9 Circles</text>
+      
+      <!-- N arrow left -->
+      <text x="120" y="50" fill="#888" font-size="11" font-family="monospace">N↑</text>
+      
+      <!-- Territory circle left -->
+      <circle cx="200" cy="225" r="78" fill="rgba(255,50,50,0.08)" stroke="#f5c518" stroke-width="2"/>
+      
+      <!-- 9 sub-circles (original broken positions) -->
+      <!-- Row -1 (dy=-8mi, svgY=225+64=289) -->
+      <circle cx="168" cy="289" r="40" fill="rgba(255,100,100,0.15)" stroke="#ff6464" stroke-width="1.5"/>
+      <text x="168" y="293" fill="#ff6464" font-size="9" font-family="monospace" text-anchor="middle">8.94mi</text>
+      
+      <circle cx="200" cy="289" r="40" fill="rgba(255,100,100,0.15)" stroke="#ff6464" stroke-width="1.5"/>
+      <text x="200" y="293" fill="#ff6464" font-size="9" font-family="monospace" text-anchor="middle">8.00mi</text>
+      
+      <circle cx="296" cy="289" r="40" fill="rgba(255,100,100,0.15)" stroke="#ff6464" stroke-width="1.5"/>
+      <text x="296" y="293" fill="#ff6464" font-size="9" font-family="monospace" text-anchor="middle">14.42mi</text>
+      
+      <!-- Row 0 (dy=0, svgY=225) -->
+      <circle cx="168" cy="225" r="40" fill="rgba(255,100,100,0.15)" stroke="#ff6464" stroke-width="1.5"/>
+      <text x="168" y="229" fill="#ff6464" font-size="9" font-family="monospace" text-anchor="middle">4.00mi</text>
+      
+      <circle cx="200" cy="225" r="40" fill="rgba(255,100,100,0.15)" stroke="#ff6464" stroke-width="1.5"/>
+      <text x="200" y="229" fill="#ff6464" font-size="9" font-family="monospace" text-anchor="middle">0.00mi</text>
+      <!-- Gold center dot -->
+      <circle cx="200" cy="225" r="4" fill="#f5c518"/>
+      
+      <circle cx="296" cy="225" r="40" fill="rgba(255,100,100,0.15)" stroke="#ff6464" stroke-width="1.5"/>
+      <text x="296" y="229" fill="#ff6464" font-size="9" font-family="monospace" text-anchor="middle">12.00mi</text>
+      
+      <!-- Row +1 (dy=+8mi, svgY=225-64=161) -->
+      <circle cx="168" cy="161" r="40" fill="rgba(255,100,100,0.15)" stroke="#ff6464" stroke-width="1.5"/>
+      <text x="168" y="165" fill="#ff6464" font-size="9" font-family="monospace" text-anchor="middle">8.94mi</text>
+      
+      <circle cx="200" cy="161" r="40" fill="rgba(255,100,100,0.15)" stroke="#ff6464" stroke-width="1.5"/>
+      <text x="200" y="165" fill="#ff6464" font-size="9" font-family="monospace" text-anchor="middle">8.00mi</text>
+      
+      <circle cx="296" cy="161" r="40" fill="rgba(255,100,100,0.15)" stroke="#ff6464" stroke-width="1.5"/>
+      <text x="296" y="165" fill="#ff6464" font-size="9" font-family="monospace" text-anchor="middle">14.42mi</text>
+      
+      <!-- Scale bar left -->
+      <line x1="140" y1="415" x2="180" y2="415" stroke="#888" stroke-width="1.5"/>
+      <text x="160" y="430" fill="#888" font-size="9" font-family="monospace" text-anchor="middle">40px = 5mi</text>
+      
+      <!-- RIGHT MAP: Fixed 16 Circles -->
+      <text x="680" y="28" fill="#f5c518" font-size="13" font-family="monospace" text-anchor="middle" font-weight="bold">Fixed — 16 Circles (Hex Grid)</text>
+      
+      <!-- N arrow right -->
+      <text x="600" y="50" fill="#888" font-size="11" font-family="monospace">N↑</text>
+      
+      <!-- Territory circle right -->
+      <circle cx="680" cy="225" r="78" fill="none" stroke="#f5c518" stroke-width="2"/>
+      
+      <!-- Row 0 (dy=-11.25mi, svgY=225+90=315) -->
+      <circle cx="576" cy="315" r="40" fill="rgba(100,200,100,0.15)" stroke="#64c864" stroke-width="1.5"/>
+      <text x="576" y="319" fill="#64c864" font-size="9" font-family="monospace" text-anchor="middle">17.18mi</text>
+      
+      <circle cx="645" cy="315" r="40" fill="rgba(100,200,100,0.15)" stroke="#64c864" stroke-width="1.5"/>
+      <text x="645" y="319" fill="#64c864" font-size="9" font-family="monospace" text-anchor="middle">12.05mi</text>
+      
+      <circle cx="715" cy="315" r="40" fill="rgba(100,200,100,0.15)" stroke="#64c864" stroke-width="1.5"/>
+      <text x="715" y="319" fill="#64c864" font-size="9" font-family="monospace" text-anchor="middle">12.05mi</text>
+      
+      <circle cx="784" cy="315" r="40" fill="rgba(100,200,100,0.15)" stroke="#64c864" stroke-width="1.5"/>
+      <text x="784" y="319" fill="#64c864" font-size="9" font-family="monospace" text-anchor="middle">17.18mi</text>
+      
+      <!-- Row 1 (dy=-3.75mi, svgY=225+30=255) -->
+      <circle cx="611" cy="255" r="40" fill="rgba(100,200,100,0.15)" stroke="#64c864" stroke-width="1.5"/>
+      <text x="611" y="259" fill="#64c864" font-size="9" font-family="monospace" text-anchor="middle">9.44mi</text>
+      
+      <circle cx="680" cy="255" r="40" fill="rgba(100,200,100,0.15)" stroke="#64c864" stroke-width="1.5"/>
+      <text x="680" y="259" fill="#64c864" font-size="9" font-family="monospace" text-anchor="middle">3.75mi</text>
+      <!-- Gold center dot for nearest -->
+      <circle cx="680" cy="255" r="4" fill="#f5c518"/>
+      
+      <circle cx="749" cy="255" r="40" fill="rgba(100,200,100,0.15)" stroke="#64c864" stroke-width="1.5"/>
+      <text x="749" y="259" fill="#64c864" font-size="9" font-family="monospace" text-anchor="middle">9.44mi</text>
+      
+      <circle cx="819" cy="255" r="40" fill="rgba(100,200,100,0.15)" stroke="#64c864" stroke-width="1.5"/>
+      <text x="819" y="259" fill="#64c864" font-size="9" font-family="monospace" text-anchor="middle">17.72mi</text>
+      
+      <!-- Row 2 (dy=+3.75mi, svgY=225-30=195) -->
+      <circle cx="576" cy="195" r="40" fill="rgba(100,200,100,0.15)" stroke="#64c864" stroke-width="1.5"/>
+      <text x="576" y="199" fill="#64c864" font-size="9" font-family="monospace" text-anchor="middle">13.52mi</text>
+      
+      <circle cx="645" cy="195" r="40" fill="rgba(100,200,100,0.15)" stroke="#64c864" stroke-width="1.5"/>
+      <text x="645" y="199" fill="#64c864" font-size="9" font-family="monospace" text-anchor="middle">5.73mi</text>
+      
+      <circle cx="715" cy="195" r="40" fill="rgba(100,200,100,0.15)" stroke="#64c864" stroke-width="1.5"/>
+      <text x="715" y="199" fill="#64c864" font-size="9" font-family="monospace" text-anchor="middle">5.73mi</text>
+      
+      <circle cx="784" cy="195" r="40" fill="rgba(100,200,100,0.15)" stroke="#64c864" stroke-width="1.5"/>
+      <text x="784" y="199" fill="#64c864" font-size="9" font-family="monospace" text-anchor="middle">13.52mi</text>
+      
+      <!-- Row 3 (dy=+11.25mi, svgY=225-90=135) -->
+      <circle cx="611" cy="135" r="40" fill="rgba(100,200,100,0.15)" stroke="#64c864" stroke-width="1.5"/>
+      <text x="611" y="139" fill="#64c864" font-size="9" font-family="monospace" text-anchor="middle">14.20mi</text>
+      
+      <circle cx="680" cy="135" r="40" fill="rgba(100,200,100,0.15)" stroke="#64c864" stroke-width="1.5"/>
+      <text x="680" y="139" fill="#64c864" font-size="9" font-family="monospace" text-anchor="middle">11.25mi</text>
+      
+      <circle cx="749" cy="135" r="40" fill="rgba(100,200,100,0.15)" stroke="#64c864" stroke-width="1.5"/>
+      <text x="749" y="139" fill="#64c864" font-size="9" font-family="monospace" text-anchor="middle">14.20mi</text>
+      
+      <circle cx="819" cy="135" r="40" fill="rgba(100,200,100,0.15)" stroke="#64c864" stroke-width="1.5"/>
+      <text x="819" y="139" fill="#64c864" font-size="9" font-family="monospace" text-anchor="middle">20.65mi</text>
+      
+      <!-- Scale bar right -->
+      <line x1="620" y1="415" x2="660" y2="415" stroke="#888" stroke-width="1.5"/>
+      <text x="640" y="430" fill="#888" font-size="9" font-family="monospace" text-anchor="middle">40px = 5mi</text>
+    </svg>
+  </div>
+</div>
+
+<!-- SECTION 5 -->
+<div class="section">
+  <div class="section-header">§5 Expected Impact</div>
+  <div class="impact-cards">
+    <div class="impact-card card-red">
+      <h4>BEFORE</h4>
+      <ul>
+        <li>9 sub-circles</li>
+        <li>~429 properties</li>
+        <li>~55% coverage</li>
+        <li>Boundary gaps causing missed properties</li>
+      </ul>
+    </div>
+    <div class="impact-card card-green">
+      <h4>AFTER</h4>
+      <ul>
+        <li>16 sub-circles</li>
+        <li>~800–1,400 properties expected</li>
+        <li>~100% coverage</li>
+        <li>Full hex grid with intentional boundary overlap</li>
+      </ul>
+    </div>
+  </div>
+  
+  <div class="metric-row">
+    <span class="label">API call increase:</span> <span class="value">9 → 16 sub-circles = ~1.78× more RentCast calls per pull</span>
+  </div>
+  <div class="metric-row">
+    <span class="label">Rate limit impact:</span> <span class="value">16 sub-circles × pagination = more Base44 writes per job → PipelineLock fix (already implemented) handles this correctly</span>
+  </div>
+  <div class="metric-row">
+    <span class="label">With batched FetchJob updates (Fix 2, already implemented):</span> <span class="value">reduces from ~128 writes to ~16 writes for a full run</span>
+  </div>
+</div>
+
+<!-- SECTION 6 -->
+<div class="section">
+  <div class="section-header">§6 Verification Checklist</div>
+  <div class="checklist">
+    <div class="checklist-item">
+      <input type="checkbox" checked disabled id="chk1">
+      <label for="chk1">generateHex4x4Grid(34.5, -82.65, 5) returns exactly 16 circles ✓ VERIFIED</label>
+    </div>
+    <div class="checklist-item">
+      <input type="checkbox" checked disabled id="chk2">
+      <label for="chk2">All 16 circle centers are within reasonable bounds of Anderson County ✓ VERIFIED</label>
+    </div>
+    <div class="checklist-item">
+      <input type="checkbox" id="chk3" onchange="updateCounter()">
+      <label for="chk3">total_sub_circles in FetchJob creation = subCircles.length (dynamic, not hardcoded)</label>
+    </div>
+    <div class="checklist-item">
+      <input type="checkbox" checked disabled id="chk4">
+      <label for="chk4">No distance filter cutting boundary circles ✓ VERIFIED (removed in fix)</label>
+    </div>
+    <div class="checklist-item">
+      <input type="checkbox" id="chk5" onchange="updateCounter()">
+      <label for="chk5">Console log shows "16 sub-circles" on next pull</label>
+    </div>
+    <div class="checklist-item">
+      <input type="checkbox" id="chk6" onchange="updateCounter()">
+      <label for="chk6">Full Anderson County pull completes all 16 sub-circles without crashing</label>
+    </div>
+    <div class="checklist-item">
+      <input type="checkbox" id="chk7" onchange="updateCounter()">
+      <label for="chk7">Property count after full pull is 800+ (up from 429)</label>
+    </div>
+    <div class="checklist-counter" id="counter">3 / 7 verified</div>
+  </div>
+</div>
+
+<!-- SECTION 7 -->
+<div class="section">
+  <div class="section-header">§7 What's Next</div>
+  <div class="next-callout">
+    With 16 sub-circles, the <strong>PipelineLock</strong> (already implemented) is now more critical than ever — 16 chunks × multiple FetchJob writes = higher Base44 write pressure. The <strong>batched FetchJob updates</strong> (Fix 2, already implemented) reduce this from ~128 writes to ~16 writes for a full run. Monitor the first Anderson County pull carefully: expect <strong>800–1,400 unique properties</strong> after deduplication. If count is still below 700, check that <code>gridLayout: 'hex_4x4'</code> is being passed in the FetchJobConfig.
+  </div>
+</div>
+
+<!-- COLLAPSIBLE TABLE -->
+<div class="section">
+  <div class="collapsible-header" onclick="toggleCollapsible()">
+    <span id="collapse-arrow">▶</span> All 16 Circle Positions (Anderson County)
+  </div>
+  <div class="collapsible-content" id="positions-content">
+    <table class="positions-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Lat</th>
+          <th>Lng</th>
+          <th>Dist from Center</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="row-outside"><td>hex4x4_r0_c0</td><td>34.3370</td><td>-82.8784</td><td>17.18 mi</td><td>Outside territory (intentional)</td></tr>
+        <tr class="row-outside"><td>hex4x4_r0_c1</td><td>34.3370</td><td>-82.7261</td><td>12.05 mi</td><td>Outside territory (intentional)</td></tr>
+        <tr class="row-outside"><td>hex4x4_r0_c2</td><td>34.3370</td><td>-82.5739</td><td>12.05 mi</td><td>Outside territory (intentional)</td></tr>
+        <tr class="row-outside"><td>hex4x4_r0_c3</td><td>34.3370</td><td>-82.4216</td><td>17.18 mi</td><td>Outside territory (intentional)</td></tr>
+        <tr class="row-boundary"><td>hex4x4_r1_c0</td><td>34.4457</td><td>-82.8023</td><td>9.44 mi</td><td>Near boundary</td></tr>
+        <tr class="row-core"><td>hex4x4_r1_c1</td><td>34.4457</td><td>-82.6500</td><td>3.75 mi</td><td>Core ✓</td></tr>
+        <tr class="row-boundary"><td>hex4x4_r1_c2</td><td>34.4457</td><td>-82.4977</td><td>9.44 mi</td><td>Near boundary</td></tr>
+        <tr class="row-outside"><td>hex4x4_r1_c3</td><td>34.4457</td><td>-82.3454</td><td>17.72 mi</td><td>Outside territory (intentional)</td></tr>
+        <tr class="row-outside"><td>hex4x4_r2_c0</td><td>34.5543</td><td>-82.8784</td><td>13.52 mi</td><td>Outside territory (intentional)</td></tr>
+        <tr class="row-core"><td>hex4x4_r2_c1</td><td>34.5543</td><td>-82.7261</td><td>5.73 mi</td><td>Core ✓</td></tr>
+        <tr class="row-core"><td>hex4x4_r2_c2</td><td>34.5543</td><td>-82.5739</td><td>5.73 mi</td><td>Core ✓</td></tr>
+        <tr class="row-outside"><td>hex4x4_r2_c3</td><td>34.5543</td><td>-82.4216</td><td>13.52 mi</td><td>Outside territory (intentional)</td></tr>
+        <tr class="row-outside"><td>hex4x4_r3_c0</td><td>34.6630</td><td>-82.8023</td><td>14.20 mi</td><td>Outside territory (intentional)</td></tr>
+        <tr class="row-boundary"><td>hex4x4_r3_c1</td><td>34.6630</td><td>-82.6500</td><td>11.25 mi</td><td>Near boundary</td></tr>
+        <tr class="row-outside"><td>hex4x4_r3_c2</td><td>34.6630</td><td>-82.4977</td><td>14.20 mi</td><td>Outside territory (intentional)</td></tr>
+        <tr class="row-outside"><td>hex4x4_r3_c3</td><td>34.6630</td><td>-82.3454</td><td>20.65 mi</td><td>Outside territory (intentional)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</div>
+
+<div class="footer">
+  Generated: FirstKnock Engineering · Geometry Audit v1.0 · Anderson County SC · Territory r=9.77mi · Sub-circle r=5mi
+</div>
+
+<script>
+function updateCounter() {
+  const preChecked = 3; // items 1, 2, 4 are always checked
+  const dynamicChecks = ['chk3', 'chk5', 'chk6', 'chk7'];
+  let count = preChecked;
+  dynamicChecks.forEach(id => {
+    if (document.getElementById(id).checked) count++;
+  });
+  document.getElementById('counter').textContent = count + ' / 7 verified';
+}
+
+function toggleCollapsible() {
+  const content = document.getElementById('positions-content');
+  const arrow = document.getElementById('collapse-arrow');
+  if (content.classList.contains('open')) {
+    content.classList.remove('open');
+    arrow.textContent = '▶';
+  } else {
+    content.classList.add('open');
+    arrow.textContent = '▼';
+  }
+}
+</script>
+</body>
+</html>

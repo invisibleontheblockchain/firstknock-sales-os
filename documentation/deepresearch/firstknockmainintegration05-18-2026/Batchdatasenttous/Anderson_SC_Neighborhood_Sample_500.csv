@@ -1,0 +1,501 @@
+subdivisionName,street,city,state,zip,propertyTypeDetail,bedroomCount,bathroomCount,yearBuilt,totalBuildingAreaSquareFeet,lotSizeAcres,ownerFullName,ownerMailingStreet,ownerMailingCity,ownerMailingState,ownerMailingZip,lastSalePrice,lastSaleDate,totalMarketValue
+PINTAIL POINT,1027 Pintail Rd,Anderson,SC,29626,Single Family,4,5,2008,6738,1.02,James R Charlton,822 Morning Mist Way,Seneca,SC,29672,2045000,2023-07-19,2043960
+THE MEADOWS,222 Dandelion Trl,Anderson,SC,29621,Single Family,4,3,2002,3111,0.78,William T Croghan,222 Dandelion Trl,Anderson,SC,29621,337500,2017-03-22,409930
+COBBS GLEN,2305 Cobbs Way,Anderson,SC,29621,Single Family,4,4,2006,3309,0.52,Christopher Allen Davis; DAVIS SOMMER,2305 Cobbs Way,Anderson,SC,29621,339900,2018-08-31,424850
+HARBOR GATE,27 Harbor Gate,Anderson,SC,29625,Condominium Unit,2,2,1979,1350,,John M Cunningham; CUNNINGHAM CYNTHIA,27 Harbor Gate,Anderson,SC,29625,199900,2021-07-27,199900
+GREEN OAKS,643 Woodvale Rd,Anderson,SC,29624,Single Family,3,2,,1200,0.579,SFR3-030 LLC,2261 Market St # 22263,San Francisco,CA,94114,63000,2021-06-17,64070
+WESTWOOD PTE,108 Saint James Ct,Anderson,SC,29621,Single Family,4,3,2003,2176,0.46,Christopher Keith Davis,108 Saint James Ct,Anderson,SC,29621,168706,2018-01-16,215130
+PRESCOTT,134 Prescott Dr,Anderson,SC,29621,Single Family,3,2,2012,2286,0.18,MERCURI DORIS M,134 Prescott Dr,Anderson,SC,29621,194500,2012-06-07,267760
+CROSSROADS@COVERED,129 Jones Creek Cir,Anderson,SC,29621,Single Family,5,3,2016,4374,0.28,LAKESIDE G & C LLC,129 Jones Creek Cir,Anderson,SC,29621,447500,2025-11-24,363030
+HARPERS RIDGE,103 Five Knoll Ct,Anderson,SC,29621,Single Family,4,3,1990,2943,0.84,Cameron Ashley Mclees,103 Five Knoll Ct,Anderson,SC,29621,500000,2022-08-29,500290
+REGENCY PARK,106 Roxbury Ct,Anderson,SC,29625,Single Family,4,4,1993,3124,0.178,Andrew John Hvizdos,106 Roxbury Ct,Anderson,SC,29625,367000,2021-09-03,367190
+WALKERS POINTE,320 Summerall Dr,Anderson,SC,29621,Agricultural/Rural,3,3,2022,2762,0.57,Christopher Knight; KNIGHT JENNIFER,320 Summerall Dr,Anderson,SC,29621,449750,2023-09-06,446990
+SANDY SPRGS RIDGE,106 Hurst Ave,Anderson,SC,29625,Single Family,3,2,2006,1551,0.57,Gary J Collins; Linda J Cannon,106 Hurst Ave,Anderson,SC,29625,297000,2025-10-08,199000
+WALKERS POINTE,304 Summerall Dr,Anderson,SC,29621,Single Family Residential (Assumed),3,3,2022,2841,0.47,Danny H Dawkins,304 Summerall Dr,Anderson,SC,29621,438500,2022-06-03,436580
+BELVEDERE,101 Bellflower Ln,Anderson,SC,29625,Single Family Residential (Assumed),5,3,2022,2308,0.2,Marie Joy Perez Amurao,101 Bellflower Ln,Anderson,SC,29625,330000,2023-11-15,329850
+HONEY CREEK,151 Hannah Cir,Anderson,SC,29621,Single Family,2,3,1995,1948,0.87,Michael B Mccall,151 Hannah Cir,Anderson,SC,29621,5000,2005-04-26,293010
+TUSCANY,105 Siena Dr,Anderson,SC,29621,Single Family,3,3,2018,2955,0.53,Kenneth Todd Owens,105 Siena Dr,Anderson,SC,29621,540000,2023-09-08,541080
+HOLLY CREEK,1602 Bramble Ridge Rd,Anderson,SC,29621,Single Family,4,4,1990,3893,0.91,Barry D Nodine,1602 Bramble Ridge Rd,Anderson,SC,29621,290000,2020-04-17,335780
+TEAKWOOD PLANTATIO,804 Eagleview,Anderson,SC,29625,Single Family,3,4,2000,3454,0.73,Gary Shannon Whitener; Leigh Dustin Whitener,1478 E Stagecoach Trl,Lawndale,NC,28090,1255000,2025-07-22,771790
+BROADWAY LAKE,1225 Shirley Dr,Anderson,SC,29621,Single Family,3,3,1990,2199,0.54,Stephanie Denise Richardson,1225 Shirley Dr,Anderson,SC,29621,195000,2018-06-28,229800
+REGENCY PARK,420 Dover Ct,Anderson,SC,29625,Single Family,3,3,1988,2223,0.82,Camille Broom; BROOM MIKE,420 Dover Ct,Anderson,SC,29625,340000,2023-06-09,341060
+PALMETTO VALLEY,98 Palm Branch Way,Anderson,SC,29621,Single Family,3,2,2008,1500,0.25,Dorienne Leigh Williams,98 Palm Branch Way,Anderson,SC,29621,183000,2020-09-24,229450
+BELLVIEW ESTS,113 Postelle Dr,Anderson,SC,29621,Single Family,4,4,1960,2897,1,Patricia Herbert Mcdougald,113 Postelle Dr,Anderson,SC,29621,397000,2025-07-14,262100
+WATERMARKE,703 Watermarke Ln,Anderson,SC,29625,Condominium Unit,3,2,2008,1760,0.1,Francis M Marchant,703 Watermarke Ln,Anderson,SC,29625,380000,2021-07-26,380000
+BROOKSTONE MEADOWS,109 Tully Dr,Anderson,SC,29621,Single Family,4,3,2009,2732,0.41,William N Lark; Patricia D Lark,109 Tully Dr,Anderson,SC,29621,675000,2025-12-16,564330
+ABERDEEN,217 Aberdeen Dr,Anderson,SC,29621,Vacant Land,4,5,2025,3438,0.83,Jeremy P Nash; Sarah B Nash,217 Aberdeen Dr,Anderson,SC,29621,23250,2012-05-11,44500
+HIDDEN FALLS,23 Hidden Falls Dr,Anderson,SC,29621,Single Family Residential (Assumed),3,4,2022,3884,7.49,Lakesha Murray,23 Hidden Falls Dr,Anderson,SC,29621,838000,2025-02-14,777770
+WILD MEADOWS,111 Wild Meadows Dr,Anderson,SC,29621,Single Family,5,4,2019,4051,0.57,Christopher Morgan Crawford; Sherrell Brockingto Crawford,111 Wild Meadows Dr,Anderson,SC,29621,695000,2025-08-18,623900
+GRAYLYN,190 Graylyn Dr,Anderson,SC,29621,Vacant Land,4,4,2025,4041,5.11,ECHO FOXTROT LLC,724 Lowndes Hill Rd # A,Greenville,SC,29607,185000,2022-03-29,127770
+HIDDEN FALLS,13 Wilbrooke Way,Anderson,SC,29621,Single Family,5,4,2007,3724,3.35,LUSSIER FAMILY TRUST,13 Wilbrooke Way,Anderson,SC,29621,605000,2020-01-31,772520
+ROYAL OAKS SHORES,227 Royal Oaks Dr,Anderson,SC,29625,Single Family,4,3,1989,2218,0.847,Walfre Orlando Carrillo,227 Royal Oaks Dr,Anderson,SC,29625,625000,2023-02-28,624600
+BROOKSTONE MEADOWS,1011 Winmar Dr,Anderson,SC,29621,Single Family,5,4,2014,4029,0.35,Kenneth L Rosander,1011 Winmar Dr,Anderson,SC,29621,445000,2023-04-14,443490
+STERLING MEADOW,1001 Hillcrest Ct,Anderson,SC,29621,Single Family,3,3,2013,3146,0.61,Melissa Hoffman; Daniel Hoffman,17806 Sawgrass Cir,Omaha,NE,68136,580000,2025-06-12,425190
+KINGS GRANT,105 Caversham Ln,Anderson,SC,29621,Single Family,3,4,2001,3076,0.94,Nathaniel Todd Davison; Ivana Leigh Davison,105 Caversham Ln,Anderson,SC,29621,900000,2025-07-10,488720
+THE COURTYARD,109 Courtyard Dr,Anderson,SC,29621,Single Family,3,4,2000,2695,0.21,Alexander Scott Martin,109 Courtyard Dr,Anderson,SC,29621,399900,2023-08-10,397600
+MIDWAY RIDGE,206 Farlow Ct,Anderson,SC,29621,Single Family,4,3,2016,1912,0.27,Dipalkumar Patel; PATEL PRATIXABAHEN,206 Farlow Ct,Anderson,SC,29621,179590,2017-05-08,227640
+SMITHFIELD,308 Smithfield Dr,Anderson,SC,29621,Single Family,4,3,2000,3274,0.64,JUANITA H MCNEESE REVOC LIVING TRUST,308 Smithfield Dr,Anderson,SC,29621,305830,2019-06-10,413490
+BROOKSTONE MEADOWS,121 Parkside Dr,Anderson,SC,29621,Single Family,4,4,1998,3996,0.36,Miranda Renee Wood; Timothy Wayne Wood,121 Parkside Dr,Anderson,SC,29621,700000,2024-12-26,698970
+CLARENDON,100 Fox Creek Rd,Anderson,SC,29621,Single Family,5,5,2019,5973,1.47,Jay F Wright,100 Fox Creek Rd,Anderson,SC,29621,656609,2020-08-30,799420
+LAKEFRONT,144 Tarleton Rd,Anderson,SC,29626,Single Family,3,2,,2469,0.45,BXPQ HOLDINGS LLC,1122 Thornehill Dr,Anderson,SC,29621,580000,2023-07-28,579570
+WALKERS POINTE,314 Summerall Dr,Anderson,SC,29621,Agricultural/Rural,3,3,2022,2857,0.57,Joseph Trent Manning,314 Summerall Dr,Anderson,SC,29621,455000,2023-08-01,455460
+ASHWOOD,407 Ashwood Ln,Anderson,SC,29625,Single Family,3,2,2002,1616,0.304,Kevin Paul Baesman,407 Ashwood Ln,Anderson,SC,29625,182000,2020-08-03,223970
+BROOKSTONE,123 Turnberry Rd,Anderson,SC,29621,Vacant Land,3,4,2025,3650,0.65,Mackenzie Browning; Emma Browning,123 Turnberry Rd,Anderson,SC,29621,850000,2026-03-31,65000
+DRAKES FIELD,1001 Drakes Xing,Anderson,SC,29625,Single Family,4,3,2014,3187,0.55,JUDITH A BLAUVELT REVOCABLE TRUST; Blauvelt,1001 Drakes Xing,Anderson,SC,29625,255875,2019-05-09,309360
+BROOKSTONE,140 Turnberry Rd,Anderson,SC,29621,Single Family,4,4,2019,3502,0.145,Robert W Cochran,140 Turnberry Rd,Anderson,SC,29621,590000,2022-11-26,591130
+ALSTON OAKS,316 Avenue Of Oaks,Anderson,SC,29621,Single Family,4,4,2007,3683,0.45,Allen M Mceniry,316 Avenue Of Oaks,Anderson,SC,29621,565000,2007-08-24,574540
+WINDING STREAM,225 Streams Way,Anderson,SC,29625,Single Family,3,3,2009,2864,0.24,Anthony Blake Jackson,225 Streams Way,Anderson,SC,29625,316000,2023-10-31,315970
+ARDEN CHASE,205 Arden Chase,Anderson,SC,29621,Single Family,3,4,2009,3453,0.523,Arthur Lee Ivester,205 Arden Chase,Anderson,SC,29621,749900,2023-10-10,748130
+HARPERS RIDGE,1104 Harpers Way,Anderson,SC,29621,Single Family,5,4,1999,2699,0.81,Joseph A Hutson,1104 Harpers Way,Anderson,SC,29621,400000,2019-04-03,494150
+STONE CREEK COVE,117 Club Pt,Anderson,SC,29626,Single Family,4,3,2013,3518,0.45,Rick Luis Bejarano; Kristi Margaret Bejarano,161 Newington Cir,Anderson,SC,29621,1075000,2025-10-28,564210
+TEAKWOOD PLANTATIO,207 Starboard Side,Anderson,SC,29625,Single Family,4,7,2001,5874,0.66,Michael Shane Bays; Stephanie Renee Bays,207 Starboard Side,Anderson,SC,29625,700000,2020-01-02,894870
+GARDEN GATE,111 Garden Gate Dr,Anderson,SC,29621,Single Family,4,4,1997,2994,0.41,Darryl R Snyder; SNYDER PAMELA,111 Garden Gate Dr,Anderson,SC,29621,450000,2022-05-04,448700
+PRITCHARD CREEK,424 Graham Rd,Anderson,SC,29625,Single Family,3,4,1995,2176,0.66,John Eric Frampton,424 Graham Rd,Anderson,SC,29625,321000,2019-12-06,386070
+TUSCANY,1038 Tuscany Dr,Anderson,SC,29621,Vacant Land,,,,,,CROWN PROPERTIES LLC,4113 E North St,Greenville,SC,29615,27500,2021-09-17,27600
+MARTINS TRAIL,405 Saybrooke Ln,Anderson,SC,29621,Single Family Residential (Assumed),3,3,2021,2022,0.24,WALKER LIVING TRUST,405 Saybrooke Ln,Anderson,SC,29621,337000,2021-11-30,330170
+HUNTERS TRAIL,1414 Hunters Trl,Anderson,SC,29625,Single Family,3,4,1988,3677,0.61,Craig Chappelear; CHAPPELEAR ELVIRA,1414 Hunters Trl,Anderson,SC,29625,494700,2019-09-16,585430
+BROOKSTONE MEADOWS,128 Tully Dr,Anderson,SC,29621,Single Family,3,4,2005,1827,0.49,Michael D Scott; Stacey M Scott,140 S Alexander Creek Rd,Newnan,GA,30263,450000,2025-07-29,413950
+COBBS GLEN,2701 Cobbs Way,Anderson,SC,29621,Single Family,3,3,,2293,0.59,Clifton Sanders; Whitney Sanders,2701 Cobbs Way,Anderson,SC,29621,320000,2025-08-18,309780
+SPRING BROOK,129 Saddle Brk,Anderson,SC,29625,Single Family,3,4,2020,2638,0.69,Robert Henry Ayers; Patricia Weathers Chapman,129 Saddle Brk,Anderson,SC,29625,465000,2025-11-06,383540
+DEERFIELD,1031 Buck Tree Ln,Anderson,SC,29621,Single Family,3,3,1993,2698,1.04,Richard William Diffley,1031 Buck Tree Ln,Anderson,SC,29621,464500,2024-06-28,463920
+BROOKSTONE MEADOWS,132 Parkside Dr,Anderson,SC,29621,Single Family,3,4,1998,2926,0.305,Michael Richard Troso,132 Parkside Dr,Anderson,SC,29621,434000,2021-04-30,433460
+BRADLEY PARK,117 Bradley Park,Anderson,SC,29621,Single Family,4,4,1998,3225,0.098,Dale L Uhl; Janet L Uhl,4109 Paddling Pass,San Antonio,TX,78253,482900,2026-03-19,324890
+BROOKSTONE MEADOWS,126 Turnberry Rd,Anderson,SC,29621,Single Family,4,3,2003,2733,0.34,Heath Hill; Lisa Hill,126 Turnberry Rd,Anderson,SC,29621,560000,2025-11-20,486540
+BRIDGEWATER,617 Walnut Way,Anderson,SC,29626,Single Family,3,2,1994,1743,1.1,Glenn R Glassie; Carol L Glassie,617 Walnut Way,Anderson,SC,29626,470000,2025-10-22,233050
+COBBS GLEN,3004 Cobbs Way,Anderson,SC,29621,Single Family Residential (Assumed),4,4,2021,2711,0.356,Jody Hughes Fischer,3004 Cobbs Way,Anderson,SC,29621,405000,2022-11-04,403770
+BROOKSTONE MEADOWS,1005 Winmar Dr,Anderson,SC,29621,Single Family,5,4,2013,4412,0.41,Nisith G Patel,202 Tugaloo Ct,Piedmont,SC,29673,125865,2013-11-13,389720
+ROYAL OAKS SHORES,218 Royal Oaks Dr,Anderson,SC,29625,Single Family,3,5,2008,2522,0.7,William E Foster; Linda S Foster,218 Royal Oaks Dr,Anderson,SC,29625,997500,2025-08-25,596650
+KINGS GRANT,132 Newington Cir,Anderson,SC,29621,Single Family,4,4,1997,3034,0.6,Jerry H Wiles,132 Newington Cir,Anderson,SC,29621,425000,2021-12-03,424710
+BRONSON RIDGE,402 Greer Farm Ln,Anderson,SC,29621,Single Family,3,2,2019,2011,0.25,Paul Willis; Judy Willis,6406 Ebenezer Rd,Orrstown,PA,17244,345000,2025-11-21,287750
+SMITHFIELD,325 Smithfield Dr,Anderson,SC,29621,Single Family,3,2,1996,1811,0.66,Russell Charles Newhall; Margaret Bowers Newhall,325 Smithfield Dr,Anderson,SC,29621,375000,2024-10-21,373000
+BROADWAY LAKE,521 McFalls Cir,Anderson,SC,29621,Single Family,4,2,,3521,2.38,LUPER FAMILY REVOCABLE TRUST; Luper,PO Box 461,Anderson,SC,29622,300000,2019-07-19,363650
+TUSCANY,1006 Tuscany Dr,Anderson,SC,29621,Single Family,4,3,2016,2769,0.33,Stacie Glass Harding; Gary Harding,1006 Tuscany Dr,Anderson,SC,29621,542000,2025-07-09,458420
+TUSCANY,1019 Tuscany Dr,Anderson,SC,29621,Single Family,3,3,2017,3008,0.32,ALLEN AND LUCILLE HALL LIVING TRUST; Hall Lucille,1019 Tuscany Dr,Anderson,SC,29621,540000,2026-03-13,417030
+AUGUSTA NATIONAL,114 Augusta National,Anderson,SC,29621,Single Family,3,4,2004,5016,0.63,Lee Elizabeth Hancock,114 Augusta National,Anderson,SC,29621,469000,2013-06-24,578530
+OAKMONT,200 Oakmont Dr,Anderson,SC,29621,Single Family,3,4,2004,5271,0.66,Natalia Kravtsov; Alexander Kravtsov,200 Oakmont Dr,Anderson,SC,29621,619000,2025-06-13,560230
+ROYAL OAKS SHORES,300 Royal Oaks Dr,Anderson,SC,29625,Single Family,3,4,1989,4533,1.26,HODGES LIVING TRUST,300 Royal Oaks Dr,Anderson,SC,29625,610000,2019-04-12,726560
+WOODBRIDGE,10 Woodbridge Cir,Anderson,SC,29621,Single Family,3,2,1996,1405,0.14,Randall Green; GREEN CHRISTINE,10 Woodbridge Cir,Anderson,SC,29621,230000,2023-03-17,229240
+BELLVIEW ESTS,2704 Bellview Rd,Anderson,SC,29621,Single Family,4,3,1959,3109,0.9,William L Jones; JONES SHARON,2704 Bellview Rd,Anderson,SC,29621,237000,2018-05-23,274870
+BROADWAY LAKE,501 McFalls Cir,Anderson,SC,29621,Single Family,3,2,1974,1774,0.72,Beth Lynn Hacker,501 McFalls Cir,Anderson,SC,29621,200000,2017-06-06,220640
+WEXFORD CONDO,150 Wexford Dr Unit 300,Anderson,SC,29621,Condominium Unit,2,2,1999,1066,0.008,Kelly Neal,150 Wexford Dr Unit 300,Anderson,SC,29621,132000,2021-09-28,131670
+NORTHLAKE,1512 Northlake Dr,Anderson,SC,29625,Condominium Unit,3,3,1983,2200,0.014,Thomas Mccaslin,2435 E North St Ste 1108,Greenville,SC,29615,125000,2021-05-06,125000
+KINGS GRANT,103 Abington Ct,Anderson,SC,29621,Single Family,4,5,2003,4192,0.69,Robert D Wilson,103 Abington Ct,Anderson,SC,29621,475000,2020-09-25,592970
+BROOKSTONE MEADOWS,139 Turnberry Rd,Anderson,SC,29621,Single Family,4,4,2000,4067,0.3,Curtis Lackey; LACKEY JUDY,139 Turnberry Rd,Anderson,SC,29621,437500,2020-11-11,540310
+VARINA BROWN WOODS,2511 Edgewood Ave,Anderson,SC,29625,Single Family,2,2,,1719,1,Sean-thomas Faulkner; Ashley Anderson,2511 Edgewood Ave,Anderson,SC,29625,250000,2024-10-15,250370
+KENSINGTON PLANTAT,114 Baybrooke Ln,Anderson,SC,29621,Single Family,4,3,2011,2687,0.57,Christopher Farris; Nettie Farris,114 Baybrooke Ln,Anderson,SC,29621,517000,2025-10-14,275180
+NORTHGATE,2205 Pope Dr,Anderson,SC,29625,Single Family,2,1,1988,1034,0.424,David A Sargent,2205 Pope Dr,Anderson,SC,29625,161000,2021-08-18,157820
+TUSCANY,121 Siena Dr,Anderson,SC,29621,Single Family Residential (Assumed),4,4,2021,3827,0.28,Atkins P Rachel,121 Siena Dr,Anderson,SC,29621,540000,2024-01-17,537610
+SPRINGWATER,112 Harbour Springs Way,Anderson,SC,29626,Single Family,3,3,2006,2392,0.43,Larry White,1665 N Ocoee St,Cleveland,TN,37311,525000,2025-09-02,355550
+NORTHMEDE,205 Scenic Rd,Anderson,SC,29621,Single Family,3,3,2005,2543,0.191,Robert Michael Kelly; KELLY RITA,205 Scenic Rd,Anderson,SC,29621,295000,2022-02-24,294850
+INLET POINTE,124 Inlet Pointe Dr,Anderson,SC,29625,Single Family Residential (Assumed),3,3,2022,1812,0.58,David B Fischer; Arlette A Woods,124 Inlet Pointe Dr,Anderson,SC,29625,422000,2025-07-09,397570
+HOPEWELL CROSSING,406 Hopewell Rdg,Anderson,SC,29621,Single Family,4,3,2005,4124,0.76,Ralf D Haist; Cynthia L Haist,406 Hopewell Rdg,Anderson,SC,29621,18000,2005-05-06,476410
+CROSSROADS@COVERED,114 Jones Creek Cir,Anderson,SC,29621,Single Family,5,4,2018,5716,0.36,Luke Alexander Fletcher,114 Jones Creek Cir,Anderson,SC,29621,730000,2026-03-18,564740
+HARPERS RIDGE,1022 Harpers Way,Anderson,SC,29621,Single Family,4,4,1989,3359,0.9,Lyndon W Ellenburg,1022 Harpers Way,Anderson,SC,29621,283000,2019-08-12,356730
+BROOKSTONE,121 Turnberry Rd,Anderson,SC,29621,Single Family,4,5,2006,5288,0.47,Harold P Hyte; HYTE VERONIKA,121 Turnberry Rd,Anderson,SC,29621,11000,2013-09-06,454560
+HARPERS RIDGE,1000 Whisper Wood Ln,Anderson,SC,29621,Single Family,3,4,1998,3155,1.5,Robert Russell; Kecia Russell,1000 Whisper Wood Ln,Anderson,SC,29621,581000,2026-01-09,420760
+TEAKWOOD PLANTATIO,109 Andrea Pt,Anderson,SC,29625,Single Family,3,4,1998,4281,0.58,Steven Weinbaum; WEINBAUM CYNTHIA,109 Andrea Pt,Anderson,SC,29625,1350000,2022-07-22,1347650
+COUNTRY PLACE,2905 Rambling Path,Anderson,SC,29621,Single Family,5,3,2002,4273,1.58,Carl William Toop; Ginger Williams Toop,2905 Rambling Path,Anderson,SC,29621,750000,2025-09-29,684920
+REGENCY PARK,607 Centerville Rd,Anderson,SC,29625,Single Family,3,3,1994,1812,0.58,Barbara Ann White,607 Centerville Rd,Anderson,SC,29625,327260,2023-10-27,327260
+BRIDGEWATER,409 Edgewater Dr,Anderson,SC,29626,Single Family,3,3,1978,3476,0.5,Sterling T Price,715 Neely Ferry Rd,Simpsonville,SC,29680,500000,2020-08-11,591840
+LAKEWOOD,1006 Windwood Dr,Anderson,SC,29621,Single Family,3,3,,2186,0.318,Zarah S Price,1006 Windwood Dr,Anderson,SC,29621,299900,2022-09-16,300770
+BAILEY CREEK,214 Andalusian Trl,Anderson,SC,29621,Single Family,4,4,2007,3446,0.48,Andrew Bronson Obrien,214 Andalusian Trl,Anderson,SC,29621,439900,2020-12-15,524950
+DRAKES FIELD,203 Graceview W,Anderson,SC,29625,Single Family,3,3,2020,2556,0.37,James Allen Miley,203 Graceview W,Anderson,SC,29625,275490,2020-06-05,352520
+TEAKWOOD PLANTATIO,409 Nautical Way,Anderson,SC,29625,Single Family,3,4,1999,2940,0.738,Brian Edward Miller,409 Nautical Way,Anderson,SC,29625,650000,2020-12-02,640320
+LAKERIDGE,309 Merriman Trl,Anderson,SC,29621,Single Family,3,4,2019,3229,0.65,Chhotalal B Patel,309 Merriman Trl,Anderson,SC,29621,799900,2025-05-23,676890
+COBBS GLEN,207 Green Valley Rd,Anderson,SC,29621,Single Family,4,3,,2691,0.47,Elvira A Chappelear; CHAPPELEAR CRAIG,4105 Liberty Hwy,Anderson,SC,29621,235000,2021-08-20,234820
+HONEY CREEK,1005 Green Willow Trl,Anderson,SC,29621,Single Family,3,2,1992,1659,0.58,Austin D Webb,1005 Green Willow Trl,Anderson,SC,29621,190000,2020-05-01,231890
+BROOKSTONE MEADOWS,142 Parkside Dr,Anderson,SC,29621,Single Family,4,4,2003,2786,0.31,Joy Christina Alexander; Asher Lamar Alexander,142 Parkside Dr,Anderson,SC,29621,615000,2024-10-01,612830
+OAKMONT,219 Oakmont Dr,Anderson,SC,29621,Single Family,4,3,1992,2748,0.487,LINDA R SMOCK LIVING TRUST; Smock,219 Oakmont Dr,Anderson,SC,29621,345000,2024-12-01,358310
+DIAMOND POINT,121 Diamond Pt,Anderson,SC,29625,Single Family,3,4,2001,7834,0.91,JWRW DIAMOND POINT LLC,1521 Cheri Ct,Kissimmee,FL,34744,2175000,2026-01-12,889800
+SPANISH WELLS,135 Spanish Wls,Anderson,SC,29621,Single Family,4,3,2002,3083,0.89,Arminda Howard,135 Spanish Wls,Anderson,SC,29621,379000,2019-12-09,478110
+ALSTON OAKS,309 Avenue Of Oaks,Anderson,SC,29621,Single Family,5,6,2007,9488,0.9,Ronald Todd Price; Susan Estes Price,309 Avenue Of Oaks,Anderson,SC,29621,1245000,2026-01-16,994860
+HIDDEN FALLS,11 Wilbrooke Way,Anderson,SC,29621,Single Family,4,4,2001,4666,2.33,Whitney Williams; Rion Williams,11 Wilbrooke Way,Anderson,SC,29621,845000,2025-04-10,621330
+GREEN HILL PLANTAT,334 Green Hill Dr,Anderson,SC,29621,Single Family,5,3,1988,3516,0.57,WOODBURY FAMILY LIVING TRUST; Woodbury,334 Green Hill Dr,Anderson,SC,29621,1150000,2025-05-16,1093230
+CAHALY COVE,2310 Centerville Rd,Anderson,SC,29625,Single Family Residential (Assumed),3,3,2022,2223,1.01,Sandy Jordan; JORDAN JARRETT,2310 Centerville Rd,Anderson,SC,29625,675000,2023-07-20,615890
+TEAKWOOD PLANTATIO,213 Starboard Side,Anderson,SC,29625,Single Family,3,4,1997,4849,0.76,Bruce H Keel,213 Starboard Side,Anderson,SC,29625,650000,2019-12-19,806580
+SEA PALMS,124 Sea Palms Dr,Anderson,SC,29621,Single Family,4,3,2005,3666,0.36,William W Brown,124 Sea Palms Dr,Anderson,SC,29621,315000,2019-07-31,380340
+TUSCANY,113 Siena Dr,Anderson,SC,29621,Single Family,4,3,2020,3314,0.3,Gerald Currington; CURRINGTON LEE,113 Siena Dr,Anderson,SC,29621,539900,2024-08-15,537730
+E CALHOUN,912 E Calhoun St,Anderson,SC,29621,Single Family,4,4,1913,2599,0.38,Brian K Wilson,912 E Calhoun St,Anderson,SC,29621,329000,2020-05-15,422560
+LEEWARD LANDING,104 Captains Way,Anderson,SC,29625,Condominium Unit,2,2,1986,981,0.03,Grayson Davis,104 Captains Way,Anderson,SC,29625,172000,2024-12-31,172000
+REGENCY PARK,303 Regency Cir,Anderson,SC,29625,Vacant Land,5,5,2025,3593,10.7,Vaca Ramon Arredondo,322 Old Shirley Rd,Central,SC,29630,96000,2024-04-09,112350
+LEEWARD LANDING,114 Captains Way,Anderson,SC,29625,Condominium Unit,3,2,1988,1459,,Frederick D Barber,114 Captains Way,Anderson,SC,29625,165000,2023-02-17,165000
+KINGS GRANT,120 Wycombe Dr,Anderson,SC,29621,Single Family,3,5,2006,3888,0.74,Jason Motto; MOTTO MARIA,120 Wycombe Dr,Anderson,SC,29621,650000,2023-07-17,649840
+BAILEY CREEK,217 Andalusian Trl,Anderson,SC,29621,Single Family,7,7,2015,6698,4.52,RANDALL J BORGLIN AND CHRISTINE L BORGLIN REV; Borglin,217 Andalusian Trl,Anderson,SC,29621,1250000,2026-02-13,1060110
+RIVER POINTE,135 Winding River Dr,Anderson,SC,29625,Single Family,3,3,2004,1900,0.58,Donald Doty; DOTY KRISTI,135 Winding River Dr,Anderson,SC,29625,550000,2020-08-13,705700
+ARDEN CHASE,103 Arden Chase,Anderson,SC,29621,Single Family,4,4,2008,3466,0.39,JUDY S SHAFFER TRUST AGREEMENT,103 Arden Chase,Anderson,SC,29621,649000,2021-05-07,638980
+HARBOR GATE,48 Harbor Gate,Anderson,SC,29625,Condominium Unit,2,2,1977,1312,0.02,Annette M Henson,48 Harbor Gate,Anderson,SC,29625,275000,2025-03-10,210000
+STONE CREEK COVE,129 Sunset Pt,Anderson,SC,29626,Single Family,3,4,1987,3793,0.86,129 SUNSET POINT LLC,129 Sunset Pt,Anderson,SC,29626,640000,2024-06-25,638300
+LEEWARD LANDING,2112 Portside Way,Anderson,SC,29625,Condominium Unit,2,2,1987,1425,0.01,Sherri Maida,2112 Portside Way,Anderson,SC,29625,150000,2020-01-27,210000
+THE MEADOWS,115 Clover Patch Way,Anderson,SC,29621,Single Family,4,5,2005,5351,0.69,Jeffrey Springer,115 Clover Patch Way,Anderson,SC,29621,525000,2021-01-19,531800
+REGENCY PARK,104 Roxbury Ct,Anderson,SC,29625,Single Family,4,3,1993,2523,0.5,Kevin M Sauls; Kirsten D Sauls,104 Roxbury Ct,Anderson,SC,29625,398000,2025-11-13,264990
+BROOKSTONE,119 Turnberry Rd,Anderson,SC,29621,Single Family,4,3,2011,4226,0.38,Peter M Allan,119 Turnberry Rd,Anderson,SC,29621,609000,2022-04-28,608780
+PALMETTO VALLEY,123 Palm Branch Way,Anderson,SC,29621,Single Family,3,2,2007,1864,0.23,Christy A Norryce,123 Palm Branch Way,Anderson,SC,29621,161850,2008-01-18,201950
+WOODLAND HGTS,212 Forest Hill Dr,Anderson,SC,29621,Single Family,3,3,1953,3421,0.41,Tristan Hart Fentress,212 Forest Hill Dr,Anderson,SC,29621,265000,2025-03-07,201910
+KINGS GRANT,117 Caversham Ln,Anderson,SC,29621,Single Family,5,4,2002,3283,1.89,Timothy Johnson,117 Caversham Ln,Anderson,SC,29621,570000,2021-07-28,591400
+DRAKES FIELD,1035 Drakes Xing,Anderson,SC,29625,Single Family,3,2,2018,2089,0.37,David Wesley Wareham,1035 Drakes Xing,Anderson,SC,29625,230859,2018-11-27,286490
+NORTHLAKE,905 Northlake Dr,Anderson,SC,29625,Condominium Unit,3,2,1985,1298,0.01,Renee Griffin,905 Northlake Dr,Anderson,SC,29625,170000,2025-10-31,97500
+MCCLAIN PTE,129 Upper View Ter,Anderson,SC,29625,Single Family,4,4,2016,4200,0.57,LINDA INGLE REVOCABLE TRUST; Ingle,129 Upper View Ter,Anderson,SC,29625,1472500,2023-06-02,1473240
+THE MEADOWS,110 Buttercup Trl,Anderson,SC,29621,Single Family,4,3,1999,2953,0.78,Jacob L Saltzman,110 Buttercup Trl,Anderson,SC,29621,326000,2018-07-30,423110
+BELVEDERE,121 Bellflower Ln,Anderson,SC,29625,Single Family Residential (Assumed),4,3,2022,2814,,Sean Fogelson,121 Bellflower Ln,Anderson,SC,29625,347613,2022-06-28,345370
+SPRINGWATER,116 Harbour Springs Way,Anderson,SC,29626,Single Family,3,3,2008,2392,0.43,Gerald R Stone,578 Swann Rd,Rayle,GA,30660,500000,2024-07-31,498390
+FARMINGTON,129 Foxcroft Way,Anderson,SC,29621,Single Family,3,4,1992,2932,2.36,David A Parkey,129 Foxcroft Way,Anderson,SC,29621,324000,2018-07-16,389510
+SMITHBROOK ON CONC,128 Cayman Way,Anderson,SC,29621,Single Family,3,2,2001,2256,0.348,Kathryn D Barden,128 Cayman Way,Anderson,SC,29621,260000,2019-06-21,345930
+CHASEWTR/WELBRN PT,128 Chasewater Dr,Anderson,SC,29621,Single Family,4,6,2009,7792,0.59,HEIDI ELLEN HENSARLING REVOCABLE TRUST; Hensarling,128 Chasewater Dr,Anderson,SC,29621,203000,2004-12-16,1143600
+VILLAGE @ GLENWOOD,217 Celebration Ave,Anderson,SC,29625,Single Family Residential (Assumed),4,3,2021,1924,0.13,Limei Le; Zhikai Luo,217 Celebration Ave,Anderson,SC,29625,252000,2025-08-18,246070
+RIVENDELL PH 4,120 Buckland Dr,Anderson,SC,29621,Single Family,5,5,2016,4205,0.3,Ashalay Boatwright; Catherine Boatwright,120 Buckland Dr,Anderson,SC,29621,555000,2025-05-10,482880
+GREAT OAKS ESTS,4605 Great Oaks Dr,Anderson,SC,29625,Single Family,3,3,1994,3212,1.11,WODTKE FAMILY REVOCABLE TRUST; WODTKE,4605 Great Oaks Dr,Anderson,SC,29625,874900,2024-04-26,872440
+BRITTANY PARK,513 Brittany Park,Anderson,SC,29621,Single Family,4,4,1995,2714,0.49,George Dewey Brown,513 Brittany Park,Anderson,SC,29621,395000,2024-03-06,395590
+THE MEADOWS,116 Buttercup Trl,Anderson,SC,29621,Single Family,3,4,1999,2052,0.71,Marcella B Southerland,116 Buttercup Trl,Anderson,SC,29621,,,320180
+CAMBRIDGE PLACE,105 Hamilton Dr,Anderson,SC,29621,Single Family,4,3,1985,2479,0.801,TRUMAN G & BRENDA B COPELAND REV TRUSTS; Brenda B Copeland,105 Hamilton Dr,Anderson,SC,29621,,,290340
+CROSSROADS@COVERED,122 Jones Creek Cir,Anderson,SC,29621,Single Family,5,4,2018,4605,0.28,Lee Earl Meeker,122 Jones Creek Cir,Anderson,SC,29621,500000,2022-08-08,500610
+CHARPING FARMS,119 Charping Ln,Anderson,SC,29621,Single Family,5,3,2000,3616,0.61,Mauricio Antonio Solis,119 Charping Ln,Anderson,SC,29621,493400,2022-03-10,494600
+BELLVIEW ESTS,2827 Bellview Rd,Anderson,SC,29621,Single Family,3,2,,2575,0.51,Roy Banks,2827 Bellview Rd,Anderson,SC,29621,289000,2023-06-08,288240
+KINGS GRANT,201 Dursely Dr,Anderson,SC,29621,Single Family,4,4,2003,5327,0.79,Clyde Sterling Bight; Judy K Hight,201 Dursely Dr,Anderson,SC,29621,655000,2025-07-17,577100
+COUNTRY PLACE,104 Raspberry Ln,Anderson,SC,29621,Single Family,3,5,2002,4047,1.17,Norman Allen Lefmann,104 Raspberry Ln,Anderson,SC,29621,650000,2021-02-20,648510
+DEER RUN,225 Deer Run Rd,Anderson,SC,29626,Single Family,3,3,1989,3630,2.7,Mary West Marzolf,225 Deer Run Rd,Anderson,SC,29626,585000,2022-05-27,585350
+WEXFORD CONDO,150 Wexford Dr Unit 302,Anderson,SC,29621,Condominium Unit,2,2,1999,1066,,Andrea K Moore,150 Wexford Dr Unit 302,Anderson,SC,29621,98500,2019-03-21,119060
+WEXFORD CONDO,170 Wexford Dr Unit 204,Anderson,SC,29621,Condominium Unit,2,2,2001,1066,0.01,John M Baker,170 Wexford Dr Unit 204,Anderson,SC,29621,114000,2021-01-08,113950
+TUSCANY,6 Cetona Ct,Anderson,SC,29621,Single Family,3,2,2017,2450,0.43,Thomas L Dennie,6 Cetona Ct,Anderson,SC,29621,339900,2020-10-09,353600
+RIVENDELL,138 Buckland Dr,Anderson,SC,29621,Single Family,4,4,2015,3125,0.24,Mireles Sergio Mar Santana; SANTANA LIZETTE,138 Buckland Dr,Anderson,SC,29621,270000,2018-11-30,360530
+WOODLAND HGTS,136 Tanglewood Dr,Anderson,SC,29621,Single Family,4,2,,1624,0.34,DIVERSIFIED RESIDENTIAL HOMES 3 LLC,3495 Piedmont Rd Northeast B 11 St 300,Atlanta,GA,30305,186380,2022-03-18,186190
+AUGUSTA NATIONAL,113 Augusta National,Anderson,SC,29621,Single Family,4,4,2002,3314,0.53,Jacque Bird,113 Augusta National,Anderson,SC,29621,585000,2024-08-02,584310
+ABERDEEN,213 Aberdeen Dr,Anderson,SC,29621,Single Family Residential (Assumed),3,5,2021,3698,0.82,James Sexton; Jami Sexton,213 Aberdeen Dr,Anderson,SC,29621,925000,2025-05-23,497270
+BROOKSTONE MEADOWS,159 Tully Dr,Anderson,SC,29621,Single Family,4,4,2006,4148,0.66,Jonathan Dalton Blackburn; Rachael Blackburn,159 Tully Dr,Anderson,SC,29621,673503,2025-08-25,538510
+REED PLACE,108 Reed Pl,Anderson,SC,29621,Single Family,3,3,1995,1840,0.145,William Russell Roberts,108 Reed Pl,Anderson,SC,29621,175000,2001-06-15,245170
+SUMMERFIELD PLANTA,107 Summerfield Ln,Anderson,SC,29621,Single Family,4,3,2002,3610,1.43,Ansley Livingston Miller,107 Summerfield Ln,Anderson,SC,29621,435000,2021-01-26,433600
+SUMMERFIELD PLANTA,116 Summerfield Ln,Anderson,SC,29621,Single Family,3,3,1999,3218,1.75,Steven R Holland,116 Summerfield Ln,Anderson,SC,29621,635500,2023-08-28,635580
+VANDIVER COMMONS,1 Appledown Ct,Anderson,SC,29621,Single Family,4,3,2007,2007,0.21,Larry Hutchinson,1 Appledown Ct,Anderson,SC,29621,214500,2020-10-08,215260
+SILVERLEAF,702 Britton St,Anderson,SC,29621,Single Family,3,3,1999,2308,0.19,Larry Dennis,702 Britton St,Anderson,SC,29621,298000,2021-05-24,297680
+WATERMARKE,805 Watermarke Ln,Anderson,SC,29625,Condominium Unit,4,3,2008,2495,0.036,Joseph Anthony Smith; Lorri Nandel Smith,805 Watermarke Ln,Anderson,SC,29625,797000,2025-06-10,685000
+BRIDGEWATER,905 Mountainview Pl,Anderson,SC,29626,Single Family,3,3,1996,1979,1.01,Robert Harmon Rickman,905 Mountainview Pl,Anderson,SC,29626,256900,2019-07-12,305210
+DEVONSHIRE,214 Surrey Ln,Anderson,SC,29621,Single Family,3,3,1991,2616,0.68,Susan E Reed,214 Surrey Ln,Anderson,SC,29621,255000,2019-08-09,315780
+MEADOWBROOK HGTS,104 Lark Ln,Anderson,SC,29625,Single Family,3,2,,1580,0.206,Gibson Wall,104 Lark Ln,Anderson,SC,29625,278000,2026-04-06,134420
+SILVERLEAF,735 Britton St,Anderson,SC,29621,Single Family,3,2,2002,2024,0.23,Olin H Henderson,735 Britton St,Anderson,SC,29621,179900,2017-01-04,223120
+WATERFORD PLACE,1005 Ladys Ln,Anderson,SC,29621,Single Family,3,2,1988,1897,0.79,Nancy Bowers,1005 Ladys Ln,Anderson,SC,29621,344500,2023-08-07,343510
+SADLERS CREEK EST,523 Wilmac Dr,Anderson,SC,29626,Single Family,3,3,2010,2573,1.23,Torry L Pinter,1106 Soco Rd,Maggie Valley,NC,28751,970000,2023-06-22,970690
+SEA PALMS,130 Sea Palms Dr,Anderson,SC,29621,Single Family,4,4,2022,2900,0.395,David Horton; Lauren Horton,130 Sea Palms Dr,Anderson,SC,29621,600000,2025-11-13,539680
+HARPERS RIDGE,4204 Weatherstone Way,Anderson,SC,29621,Single Family,4,3,1989,3481,1.65,Mark C Johnson,4204 Weatherstone Way,Anderson,SC,29621,585000,2026-02-26,305290
+SPRINGWATER,117 Harbour Springs Way,Anderson,SC,29626,Single Family,3,3,2006,2580,0.43,George S Stumberg,117 Harbour Springs Way,Anderson,SC,29626,610000,2024-06-10,611020
+BAILEY CREEK,238 Andalusian Trl,Anderson,SC,29621,Single Family,4,5,2005,6280,4.3,William W Bruckmann,238 Andalusian Trl,Anderson,SC,29621,810000,2021-06-24,804070
+CHASEWTR/WELBRN PT,116 Willowbend Dr,Anderson,SC,29621,Single Family,4,7,2003,6473,0.89,Ted Ryan Campbell,116 Willowbend Dr,Anderson,SC,29621,735000,2019-02-05,911060
+WEXFORD CONDO,121 Wexford Dr Unit 200,Anderson,SC,29621,Condominium Unit,2,2,1998,1013,,Thomas Alexander Bain,121 Wexford Dr Unit 200,Anderson,SC,29621,102000,2020-06-25,126310
+HARPERS RIDGE,1015 Harpers Way,Anderson,SC,29621,Single Family,4,3,1988,2904,0.81,Lerin C Mccray,1015 Harpers Way,Anderson,SC,29621,760000,2025-09-16,699840
+OAK HILL,1030 Edenbrooke Cir,Anderson,SC,29621,Single Family,4,3,2017,2232,0.11,Anthony Sisler; SISLER ARIEL,1030 Edenbrooke Cir,Anderson,SC,29621,285000,2022-12-12,284760
+HUNTERS TRAIL,1310 Hunters Trl,Anderson,SC,29625,Single Family,3,4,1995,4496,0.57,Donald E Wright; Kathy W Wright,1310 Hunters Trl,Anderson,SC,29625,950000,2026-04-15,634870
+ALLEN WOODS,111 Stanbury Ct,Anderson,SC,29621,Single Family,4,5,1977,3938,1.06,Bryan Charles Manuel,111 Stanbury Ct,Anderson,SC,29621,302000,2019-06-21,356760
+HARRISON HARBOR,108 Harrison Harbor Way,Anderson,SC,29625,Single Family,5,4,2002,4250,0.57,Charles L Bryant,108 Harrison Harbor Way,Anderson,SC,29625,1025000,2022-07-01,1023890
+STONE CREEK COVE,1501 Providence Church Rd,Anderson,SC,29626,Single Family,3,5,,5209,1.91,Kenneth R Miller; Cynthia Ann Miller,1501 Providence Church Rd,Anderson,SC,29626,1100000,2025-07-09,543050
+SEA PALMS,137 Sea Palms Dr,Anderson,SC,29621,Single Family,4,3,2000,2617,0.49,Stephen Garrett Burton; Kristina Ann Burton,137 Sea Palms Dr,Anderson,SC,29621,540000,2024-09-27,540270
+BRIDGEWATER,909 Pine Top Cir,Anderson,SC,29626,Single Family,3,2,2000,1681,0.76,Justin R Elliot,909 Pine Top Cir,Anderson,SC,29626,184000,2019-04-29,229930
+HOLLY CREEK,300 Holly Ridge Dr,Anderson,SC,29621,Single Family,3,3,1990,3029,0.475,James G Culwell; Debra A Culwell,300 Holly Ridge Dr,Anderson,SC,29621,389650,2024-10-23,390200
+STONE CREEK COVE,201 Providence Villas,Anderson,SC,29626,Condominium Unit,3,3,1970,1797,,ANTHONY V FANDETTI REVOCABLE TRUST,101 Killarney Way,Easley,SC,29642,235000,2020-07-02,314750
+PINE LAKE,106 Linkside Dr,Anderson,SC,29621,Single Family,4,3,2007,2687,0.58,Felicia S Lasseter; Ronald E Lasseter,106 Linkside Dr,Anderson,SC,29621,399999,2026-01-30,221590
+CASA DEL RIO,218 Rio Way,Anderson,SC,29625,Single Family,3,2,2003,2105,0.145,Deborah Renee Blanton,218 Rio Way,Anderson,SC,29625,295000,2022-06-07,295010
+OAK HILL,1027 Edenbrooke Cir,Anderson,SC,29621,Single Family,3,3,2014,2380,0.11,Monica Pineda Guzman; Julio Guzman,1027 Edenbrooke Cir,Anderson,SC,29621,290000,2026-03-09,222060
+GREEN HILL PLANTAT,103 Amanda Dr,Anderson,SC,29621,Single Family,3,3,1991,3106,0.57,Billy J Raines; RAINES VICKI,103 Amanda Dr,Anderson,SC,29621,175000,2008-07-01,257200
+DENVER COVE,1105 Fisher Rd,Anderson,SC,29625,Single Family,3,2,1989,2149,1.15,2022 CHRISTOPHER P MILKS IRREV TRUST,1105 Fisher Rd,Anderson,SC,29625,482500,2021-04-30,482340
+CLARENDON,403 Williamsburg Rd,Anderson,SC,29621,Single Family,4,3,1994,2973,0.77,Curt Jibben,403 Williamsburg Rd,Anderson,SC,29621,312000,2020-09-29,402260
+SUNRISE HARBOUR,1309 Kings Rd,Anderson,SC,29621,Single Family,3,3,2001,2436,1.06,ANDERSON COUNTY,101 S Main St,Anderson,SC,29624,293000,2018-01-04,417160
+COBBS GLEN,3104 Myrtlewood,Anderson,SC,29621,Single Family,4,3,2001,3384,0.4,Jon Scott Dubro,3104 Myrtlewood,Anderson,SC,29621,427500,2020-12-03,549450
+HOLLY CREEK,508 Holly Creek Dr,Anderson,SC,29621,Single Family,3,3,1993,2825,0.56,Meyer K Abbruzzese; Danny Abbruzzese,508 Holly Creek Dr,Anderson,SC,29621,370000,2024-11-18,369630
+TUSCANY,104 Siena Dr,Anderson,SC,29621,Single Family,4,3,2018,3045,0.39,Leah K Pelfrey,104 Siena Dr,Anderson,SC,29621,550000,2026-04-15,397130
+COUNTRY PLACE,3005 Barefoot Trl,Anderson,SC,29621,Single Family,5,5,1975,3841,1.43,Richard Winford Smothers,3005 Barefoot Trl,Anderson,SC,29621,430000,2019-09-03,532270
+AMBERWOOD,153 Amberwood Dr,Anderson,SC,29621,Vacant Land,4,3,,2000,0.174,Paul E Tricomi,153 Amberwood Dr,Anderson,SC,29621,360000,2026-02-23,26500
+DEER RUN,155 Nob Hl,Anderson,SC,29626,Single Family,4,6,2001,4365,1.5,155 NOB HILL ASSOCIATES LLC,47 Pleasant St,Rehoboth,MA,02769,,,828040
+BELLVIEW ESTS,2012 Boulevard Hts,Anderson,SC,29621,Single Family,3,2,1960,1686,0.41,Neal Stevens; Kelsey Sherard Stevens,2012 Boulevard Hts,Anderson,SC,29621,335000,2025-09-19,197900
+DRAKES FIELD,218 Graceview W,Anderson,SC,29625,Single Family,3,3,2020,3001,0.93,Elaine M Stuart,218 Graceview W,Anderson,SC,29625,390000,2025-08-07,357290
+STONE CREEK COVE,105 Lands End,Anderson,SC,29626,Single Family,3,3,1989,2243,0.5,James B Mcmcahon,105 Lands End,Anderson,SC,29626,535000,2018-09-20,615730
+REGATTA @ LAKE HAR,132 Regatta Dr,Anderson,SC,29625,Single Family,3,4,2008,2907,0.09,Christopher E Nevill,132 Regatta Dr,Anderson,SC,29625,530000,2021-08-27,531590
+WILLOW HAVEN,125 Coosa Ln,Anderson,SC,29621,Single Family,3,3,2007,2026,0.039,Henry S Morrison,125 Coosa Ln,Anderson,SC,29621,219900,2020-01-15,293980
+BROOKSTONE MEADOWS,101 Casselberry Ct,Anderson,SC,29621,Single Family,3,3,2023,2970,0.38,Jesse Ray Ellis,101 Casselberry Ct,Anderson,SC,29621,43000,2022-05-23,533240
+CLARENDON,109 Cameron Way,Anderson,SC,29621,Single Family,4,3,,2695,0.587,Amy Bradshaw,109 Cameron Way,Anderson,SC,29621,474000,2025-10-14,313380
+WINDHAM RIDGE,100 Windham Dr,Anderson,SC,29621,Single Family,4,3,2004,2449,0.77,Travis J Kay,100 Windham Dr,Anderson,SC,29621,350000,2021-05-14,381310
+THE MEADOWS,108 Wild Vine Path,Anderson,SC,29621,Single Family,5,5,2004,4649,0.71,Sunil N Patel,108 Wild Vine Path,Anderson,SC,29621,281900,2012-07-13,525750
+SMITH MILL LANDING,1033 George Smith Mill Rd,Anderson,SC,29625,Water Area,3,3,2025,2125,0.08,Stephen E Cale,25 Round Pond Rd,Greenville,SC,29607,,,80000
+SHACKLEBURG FARMS,704 Fern Hollow Trl,Anderson,SC,29621,Single Family,4,3,2020,2372,0.22,CRAIG & LELIA LENABURG TRUST; Lenaburg Lelia,704 Fern Hollow Trl,Anderson,SC,29621,287516,2020-10-28,356700
+RIVENDELL,105 Bree Dr,Anderson,SC,29621,Agricultural/Rural,4,4,2023,3587,0.52,Dimitriy Konovalchuk,105 Bree Dr,Anderson,SC,29621,36000,2021-12-13,667630
+WATERMARKE,403 Watermarke Ln,Anderson,SC,29625,Condominium Unit,3,2,2008,1740,0.037,OIKONOMOS CHARITABLE TRUST,403 Watermarke Ln,Anderson,SC,29625,510000,2023-06-30,510000
+NORTHLAKE,207 Northlake Dr,Anderson,SC,29625,Condominium Unit,3,2,1989,,,Jonathan David Musick,207 Northlake Dr,Anderson,SC,29625,167500,2024-03-01,167500
+MCCLAIN PTE,123 Upper View Ter,Anderson,SC,29625,Single Family,5,6,2009,5895,0.57,David Budhoo,123 Upper View Ter,Anderson,SC,29625,975000,2020-10-19,1225040
+SILVERLEAF,214 Savannah Dr,Anderson,SC,29621,Single Family,3,2,2004,2153,0.246,Ronald Deal; Deirdre Deal,214 Savannah Dr,Anderson,SC,29621,339000,2025-10-08,231380
+SPRINGWATER,106 Harbour Springs Way,Anderson,SC,29626,Single Family,3,3,2007,2392,0.43,David Todd Arrington,106 Harbour Springs Way,Anderson,SC,29626,425000,2023-08-11,426510
+BROOKSTONE MEADOWS,130 Tully Dr,Anderson,SC,29621,Single Family,3,3,2006,3039,0.43,Thomas N Jones,130 Tully Dr,Anderson,SC,29621,545000,2023-03-17,547590
+WINDHAM RIDGE,126 Chad Ct,Anderson,SC,29621,Single Family,4,3,2008,3003,0.59,Taylor Lynn Bunton,126 Chad Ct,Anderson,SC,29621,393000,2021-10-01,392390
+WELLSLEY HILLS,115 Chapelwood Dr,Anderson,SC,29626,Single Family,3,3,1999,2754,1.76,Thomas A Guthke,115 Chapelwood Dr,Anderson,SC,29626,925000,2023-05-04,926260
+GREEN HILL PLANTAT,340 Green Hill Dr,Anderson,SC,29621,Single Family,4,4,2011,3660,0.57,Christopher J Hills; Lori D Hills,340 Green Hill Dr,Anderson,SC,29621,1192500,2025-11-20,658800
+HARPERS RIDGE,4018 Brackenberry Dr,Anderson,SC,29621,Single Family,5,4,1992,3752,1.1,Adrienne Estrada; ESTRADA DANIEL,4018 Brackenberry Dr,Anderson,SC,29621,420000,2019-05-24,510540
+GREEN HILL PLANTAT,322 Stephen King Dr,Anderson,SC,29621,Single Family,3,3,1990,2590,0.7,Keith Duane Harris,322 Stephen King Dr,Anderson,SC,29621,644400,2023-05-15,643820
+SUMMERFIELD PLANTA,134 Summerfield Ln,Anderson,SC,29621,Single Family,3,4,1999,3059,1.52,Joseph Rinaudo; RINAUDO SHARON,134 Summerfield Ln,Anderson,SC,29621,703000,2024-02-16,701850
+SUMMERFIELD PLANTA,122 Summerfield Ln,Anderson,SC,29621,Single Family,4,5,2001,4629,2.13,John Montague Howard,122 Summerfield Ln,Anderson,SC,29621,540000,2021-03-19,543000
+COBBLESTONE WEST,127 Abigail Ln,Anderson,SC,29621,Single Family,3,2,2007,1468,0.1,Tony Alan Latham,127 Abigail Ln,Anderson,SC,29621,289500,2024-10-30,292230
+KINGS GRANT,110 Hawnes Pl,Anderson,SC,29621,Single Family,3,3,1997,3084,1.16,David T Trotter,110 Hawnes Pl,Anderson,SC,29621,305000,2018-08-07,386580
+PRITCHARD CREEK,425 Graham Rd,Anderson,SC,29625,Single Family,5,4,,1806,1,Uliana Sabin; Roy Scheunemann,425 Graham Rd,Anderson,SC,29625,1150000,2025-12-29,638830
+HOPEWELL CROSSING,300 Hopewell Rdg,Anderson,SC,29621,Single Family,3,3,1994,3091,0.84,Sharon Short Ernst,300 Hopewell Rdg,Anderson,SC,29621,22800,2006-04-20,321960
+STRINGER RD ESTS,108 Sm Lyerly Rd,Anderson,SC,29621,Single Family,3,2,2019,1257,0.58,Nicole Marie Gregory; Christopher Gile Gregory,108 Sm Lyerly Rd,Anderson,SC,29621,287500,2024-10-21,287140
+REGENCY PARK,320 Regency Cir,Anderson,SC,29625,Single Family,4,4,2001,3583,0.47,Jacob B Herring; Jessica P Herring,320 Regency Cir,Anderson,SC,29625,429900,2026-03-31,398700
+HARPERS RIDGE,3010 Brackenberry Dr,Anderson,SC,29621,Single Family,4,5,2003,4440,1.37,Kevin Wofford; WOFFORD CORTNEY,3010 Brackenberry Dr,Anderson,SC,29621,50500,2017-03-09,557760
+GREEN HILL PLANTAT,107 Amanda Dr,Anderson,SC,29621,Single Family,4,6,1998,5756,0.57,Emma Caroline Mcniel; Robert L Mcniel,107 Amanda Dr,Anderson,SC,29621,857000,2025-08-15,612270
+WALKERS POINTE,326 Summerall Dr,Anderson,SC,29621,Agricultural/Rural,3,3,2023,2450,0.51,Joel R Smith; Jordan Dailey Smith,326 Summerall Dr,Anderson,SC,29621,449000,2025-10-09,426810
+ROYAL OAKS SHORES,107 Crepe Myrtle Ln,Anderson,SC,29625,Single Family,3,4,2005,2813,0.57,Gregory L Baird,107 Crepe Myrtle Ln,Anderson,SC,29625,40000,2023-07-17,737290
+GRAYLYN,229 Graylyn Dr,Anderson,SC,29621,Single Family,4,4,1991,3046,0.5,Robert Thomas Jenkins; Dorothy Jenkins,229 Graylyn Dr,Anderson,SC,29621,553237,2025-04-17,448770
+ROYAL PINES,100 Kilsprings Rd,Anderson,SC,29621,Single Family,4,4,1999,2796,0.55,Christopher S Flowers,100 Kilsprings Rd,Anderson,SC,29621,337000,2018-07-09,419590
+LAKERIDGE,104 Worsham Ln,Anderson,SC,29621,Single Family,3,6,2019,2744,0.57,Christopher R Debrew,104 Worsham Ln,Anderson,SC,29621,600000,2021-04-30,598490
+SMITHBROOK ON CONC,109 Palancar Ct,Anderson,SC,29621,Single Family,2,4,2000,2359,0.4,Donald D Newburn,109 Palancar Ct,Anderson,SC,29621,315000,2025-10-24,254460
+LEEWARD LANDING,1402 Leeward Rd,Anderson,SC,29625,Condominium Unit,3,4,1987,2605,0.05,Elizabeth Mcbride,1402 Leeward Rd # 8B,Anderson,SC,29625,370000,2026-01-13,295000
+NORTHLAKE,603 Northlake Dr,Anderson,SC,29625,Condominium Unit,2,2,1987,1016,0.014,REVOCABLE TRUST OF PETER PERANZO JR; Peranzo,603 Northlake Dr,Anderson,SC,29625,154000,2023-06-08,154000
+PRITCHARD CREEK,305 Lake Forest Cir,Anderson,SC,29625,Single Family,3,2,2006,1765,0.67,PERRY SETH MICHAEL SMP 401K P,7504 El Roble Ct,Bakersfield,CA,93309,295000,2023-12-15,300420
+GREEN HILL PLANTAT,110 Amanda Dr,Anderson,SC,29621,Single Family,3,2,1995,1324,0.57,Julie Lemons Pruitt,110 Amanda Dr,Anderson,SC,29621,360000,2023-09-29,360250
+BROOKSTONE MEADOWS,1015 Winmar Dr,Anderson,SC,29621,Single Family,3,4,2022,3054,0.39,Sergey Konovalchuk; Galina Konovalchuk,1015 Winmar Dr,Anderson,SC,29621,22000,2020-12-29,446270
+OAKWOOD ESTS,501 Oakwood Estates Dr,Anderson,SC,29621,Single Family,3,2,,2242,0.58,Maegan Webb; WEBB JAMES,501 Oakwood Estates Dr,Anderson,SC,29621,230000,2021-08-16,229290
+TEAKWOOD PLANTATIO,405 Nautical Way,Anderson,SC,29625,Single Family,4,5,2004,3323,0.73,Barney Joseph Mcentire,405 Nautical Way,Anderson,SC,29625,711000,2020-11-09,698330
+INLET POINTE PH 2,251 Inlet Pointe Dr,Anderson,SC,29625,Single Family Residential (Assumed),3,3,2021,2028,0.57,Nathan J Marling; Chelsie E Marling,251 Inlet Pointe Dr,Anderson,SC,29625,470000,2026-03-02,449560
+HARPERS RIDGE,4207 Weatherstone Way,Anderson,SC,29621,Single Family,4,4,2017,2937,1.547,Gary Charles Merck,4207 Weatherstone Way,Anderson,SC,29621,420000,2020-08-24,539960
+GREAT OAKS ESTS,4501 Great Oaks Dr,Anderson,SC,29625,Single Family,3,4,2000,2003,1.44,Richard D Fonda; Anne H Tye,4501 Great Oaks Dr,Anderson,SC,29625,652500,2026-02-13,462460
+HARBOR GATE,5 Harbor Gate,Anderson,SC,29625,Condominium Unit,2,2,1975,1728,,Emily Hunnicutt,5 Harbor Gate,Anderson,SC,29625,280000,2026-03-16,245000
+COBBS GLEN,506 Quail Hollow Rd,Anderson,SC,29621,Single Family,4,3,1993,2752,0.46,Randall C Christian; Felicia Christian,506 Quail Hollow Rd,Anderson,SC,29621,440000,2026-03-31,335830
+GREEN HILL PLANTAT,310 Green Hill Dr,Anderson,SC,29621,Single Family,3,2,1994,2359,0.57,Darin Glenn; Erin Glenn,310 Green Hill Dr,Anderson,SC,29621,725000,2025-12-22,371030
+BELVEDERE,118 Bellflower Ln,Anderson,SC,29625,Single Family Residential (Assumed),3,3,2022,1730,,Robert Sansbury Barr,118 Bellflower Ln,Anderson,SC,29625,291997,2022-06-07,291430
+GREEN HILL PLANTAT,124 Frances Cannon Dr,Anderson,SC,29621,Single Family,4,3,1985,1676,0.53,Jason Scott Mcclain,124 Frances Cannon Dr,Anderson,SC,29621,100000,2023-10-23,349710
+BELVEDERE,120 Bellflower Ln,Anderson,SC,29625,Single Family Residential (Assumed),3,2,2022,1640,,James E Sinclair,120 Bellflower Ln,Anderson,SC,29625,303835,2022-07-08,302740
+MCPHAIL FARMS,112 McPhail Farms Cir,Anderson,SC,29621,Single Family,3,3,2001,4006,2.96,Robert Maloney,112 McPhail Farms Cir,Anderson,SC,29621,530000,2021-11-10,518870
+RIVENDELL PH 4,102 Buckland Dr,Anderson,SC,29621,Single Family,5,4,2016,2914,0.247,KOOP REVOCABLE TRUST,102 Buckland Dr,Anderson,SC,29621,400000,2022-02-28,398910
+KENSINGTON PLANTAT,109 Baybrooke Ln,Anderson,SC,29621,Single Family,4,3,2012,2387,0.58,Paul A Brill; Sandra E Brill,109 Baybrooke Ln,Anderson,SC,29621,550000,2025-06-27,385360
+GARDENS AT BROOKST,113 Garden Park Dr,Anderson,SC,29621,Single Family,4,4,2005,2882,0.82,Michael Putz; PUTZ SHERYL,113 Garden Park Dr,Anderson,SC,29621,384000,2020-06-26,457720
+COBBS GLEN,2306 Cobbs Way,Anderson,SC,29621,Single Family,4,3,,2379,0.55,Brock M Bass,2306 Cobbs Way,Anderson,SC,29621,325000,2024-05-20,324280
+HARTWELL VILLAS,15C Hartwell Villas,Anderson,SC,29626,Condominium Unit,3,2,1978,1250,0.06,Daniel W Young,15C Hartwell Villas,Anderson,SC,29626,46538,2016-12-28,200000
+WINDING STREAM,203 Streams Way,Anderson,SC,29625,Single Family,3,3,2017,2143,0.32,Gerard L Weiss; WEISS LORETTA,203 Streams Way,Anderson,SC,29625,205000,2019-12-13,255390
+THE MEADOWS,112 Buttercup Trl,Anderson,SC,29621,Single Family,4,4,1999,3434,0.76,Shannon Magin; MAGIN KEVIN,112 Buttercup Trl,Anderson,SC,29621,400000,2020-09-23,452720
+BRIDGEWATER,325 Edgewater Dr,Anderson,SC,29626,Single Family,4,3,,3534,0.46,Robert Douglas Howson,325 Edgewater Dr,Anderson,SC,29626,844000,2022-12-13,844000
+RIVENDELL,105 Rivendell Dr,Anderson,SC,29621,Single Family,5,5,2005,4723,0.6,HAL F SINGLEY JR REVOCABLE TRUST,105 Rivendell Dr,Anderson,SC,29621,530000,2015-09-22,663770
+HARPERS RIDGE,1003 Harpers Way,Anderson,SC,29621,Single Family,4,3,1995,2697,1.16,Carol A Shroyer; Kenneth Shroyer,1003 Harpers Way,Anderson,SC,29621,535000,2025-05-19,326010
+COUNTRY PLACE,2814 Rambling Path,Anderson,SC,29621,Single Family,4,3,1989,2709,1.63,Joe Boykin; BOYKIN NANCY,2814 Rambling Path,Anderson,SC,29621,405000,2020-11-20,429920
+WALKERS POINTE,109 Apex Ct,Anderson,SC,29621,Single Family Residential (Assumed),3,3,2022,2890,0.46,Emory Wilson,109 Apex Ct,Anderson,SC,29621,462900,2022-08-09,463980
+DRAKES FIELD,202 Graceview W,Anderson,SC,29625,Single Family,4,4,2017,3463,0.58,Paul Laches; Mary Katherine Laches,202 Graceview W,Anderson,SC,29625,499900,2025-12-10,410100
+RIVENDELL,112 Limelight Dr,Anderson,SC,29621,Single Family,4,4,2005,3737,0.32,BNC INVESTMENTS LLC,238 Dandelion Trl,Anderson,SC,29621,503000,2023-08-18,757440
+WINDING STREAM,253 Streams Way,Anderson,SC,29625,Single Family,3,2,2016,1705,0.36,Matthew D Blair; Tammy Lynn Blair,253 Streams Way,Anderson,SC,29625,280000,2024-09-18,279870
+ROCKWELL PLANTATIO,43 Fawn Hill Dr,Anderson,SC,29621,Single Family,4,3,2009,3098,0.22,Charles Russell Roberts,43 Hall Rd # FAWN,Anderson,SC,29624,365000,2023-10-24,362350
+WEXFORD CONDO,151 Wexford Dr Unit 102,Anderson,SC,29621,Condominium Unit,2,2,1999,1066,,PATRICK CASEY AND MARY GATES-CASEY REVOCABLE; Casey,1213 Patterson Ln,Pacific Grove,CA,93950,179000,2025-12-19,131670
+HUNTERS GLEN,107 Mallard Ct,Anderson,SC,29625,Single Family,3,2,1996,1837,0.38,James W Harris,107 Mallard Ct,Anderson,SC,29625,270000,2023-05-30,270320
+CROSSROADS@COVERED,116 Jones Creek Cir,Anderson,SC,29621,Single Family,5,5,2018,4525,0.37,Jaramy Walter Castora,116 Jones Creek Cir,Anderson,SC,29621,515000,2022-07-21,517220
+INLET POINTE,214 Inlet Pointe Dr,Anderson,SC,29625,Single Family,3,3,2022,2311,0.74,Gregory S Arnold,214 Inlet Pointe Dr,Anderson,SC,29625,525000,2025-04-17,454830
+COBBS GLEN,428 Deerwood Rd,Anderson,SC,29621,Single Family Residential (Assumed),3,5,2022,2593,0.99,Matthew D Anderson,428 Deerwood Rd,Anderson,SC,29621,350000,2022-02-17,344280
+GREEN HILL PLANTAT,204 Frances Cannon Dr,Anderson,SC,29621,Single Family,3,2,2017,1972,0.58,Michael J Rusden; Dana A Rusden,204 Frances Cannon Dr,Anderson,SC,29621,401000,2024-11-20,399640
+HUNTINGTON HILLS,1317 Northampton Rd,Anderson,SC,29621,Single Family,4,3,,2855,0.611,Magan Hamilton,1317 Northampton Rd,Anderson,SC,29621,390000,2021-07-30,382010
+BELLVIEW ESTS,540 Drayton Cir,Anderson,SC,29621,Single Family,4,3,1981,2199,0.51,Calaway Lesesne Williamson,540 Drayton Cir,Anderson,SC,29621,226500,2020-11-30,276430
+TEAKWOOD PLANT,116 Egret Lndg,Anderson,SC,29625,Single Family,4,3,2002,2751,0.78,Ed Joseph Wells,116 Egret Lndg,Anderson,SC,29625,515000,2019-11-15,633260
+PRITCHARD CREEK,1007 Nashmore Dr,Anderson,SC,29625,Single Family,3,2,,1635,0.63,Juston Camenisch; Katherine Patterson,1007 Nashmore Dr,Anderson,SC,29625,260000,2024-10-04,258910
+STONE CREEK COVE,2044 Shelter Pt,Anderson,SC,29626,Condominium Unit,3,3,1986,1936,0.2,Alan Brent Bates,9 S Silver Beech Ln,Greer,SC,29651,318000,2024-04-26,318070
+DEER RUN,351 Peninsula Dr,Anderson,SC,29626,Single Family,3,2,1997,2082,3.24,William D Hopkins,351 Peninsula Dr,Anderson,SC,29626,173500,2004-05-06,304740
+MYSTIC VINEYARD,135 Mystic Vineyard Ln,Anderson,SC,29621,Single Family,5,4,2019,3210,0.2,Francklin D Largaespada,135 Mystic Vineyard Ln,Anderson,SC,29621,435000,2024-12-16,433050
+STERLING MEADOW,202 Meadows Edge Ct,Anderson,SC,29621,Single Family,4,4,2015,3789,0.58,William Rodes; Kelly Acker Rodes,202 Meadows Edge Ct,Anderson,SC,29621,539900,2025-11-07,398300
+DEERFIELD,1032 Buck Tree Ln,Anderson,SC,29621,Single Family,4,3,1992,2946,1.74,Roberto Carlos Reynaga,1032 Buck Tree Ln,Anderson,SC,29621,570000,2023-06-28,568690
+BRIDGEWATER,500 Edgewater Dr,Anderson,SC,29626,Single Family,3,2,1978,1984,0.76,Stephen D Blizzard,500 Edgewater Dr,Anderson,SC,29626,230000,2022-06-02,229360
+WOODBRIDGE,1000 Meadow Ln,Anderson,SC,29621,Single Family,3,3,1993,2460,0.624,Alejandro Rafael Agostini; Ariana Issa Agostini,1000 Meadow Ln,Anderson,SC,29621,395000,2026-01-05,273640
+HOLLY CREEK,110 Holly Ridge Dr,Anderson,SC,29621,Single Family,2,2,1991,2041,0.32,Donna L Robinson,110 Holly Ridge Dr,Anderson,SC,29621,225000,2022-01-25,224280
+BELLVIEW ESTS,111 Postelle Dr,Anderson,SC,29621,Single Family,4,3,1973,2531,0.9,Joshua S Rivenbark; RIVENBARK AUBREY,111 Postelle Dr,Anderson,SC,29621,320000,2021-03-16,315130
+LAKEWOOD,200 Lakewood Dr,Anderson,SC,29621,Single Family,3,2,1989,1506,0.69,Freddie J Bailey,200 Lakewood Dr,Anderson,SC,29621,285000,2023-09-15,287290
+COBBS GLEN,310 Burning Tree Rd,Anderson,SC,29621,Single Family,4,4,2020,3873,0.5,Tony C Cox,310 Burning Tree Rd,Anderson,SC,29621,33500,2014-09-29,509300
+RIVENDELL,175 Buckland Dr,Anderson,SC,29621,Single Family,4,4,2017,3231,0.21,Gregory Chatfield,175 Buckland Dr,Anderson,SC,29621,425000,2024-03-26,423700
+HERITAGE,1107 Cobbs Glen Dr,Anderson,SC,29621,Single Family,2,2,1986,1340,0.059,William C Starnes,1107 Cobbs Glen Dr,Anderson,SC,29621,194900,2024-06-12,194860
+GARDENS AT BROOKST,119 Garden Park Dr,Anderson,SC,29621,Single Family,3,5,2007,4092,0.408,ODONNELL NORMAN J & MARGARET M LIV TRUST; Margaret M Odonnell,119 Garden Park Dr,Anderson,SC,29621,720000,2023-08-24,757040
+OAKMONT,616 Pinehollow Dr,Anderson,SC,29621,Single Family,3,3,1996,2529,0.57,Heather Nicole Leonard,616 Pinehollow Dr,Anderson,SC,29621,370000,2021-08-12,370330
+NEVITT PINES,105 Leon Dr,Anderson,SC,29621,Single Family,4,2,2024,1575,0.4,CRAFT HOMES INC,1223 Hembree Rd,Williamston,SC,29697,14000,2022-02-10,219750
+HUNTERS TRAIL,1505 Natures Trl,Anderson,SC,29625,Single Family,3,3,2005,2869,0.58,Chris Joseph Deneroy; DENEROY DIANE,1505 Natures Trl,Anderson,SC,29625,368000,2023-01-23,365250
+BELLVIEW ESTS,2022 Sheldon Dr,Anderson,SC,29621,Single Family,3,2,1969,2724,0.66,Donald J Roller,2022 Sheldon Dr,Anderson,SC,29621,175000,2019-09-24,187520
+PENNINGTON FARMS,116 Rossmoor Ct,Anderson,SC,29621,Single Family,4,2,2019,1935,0.22,Jordan Long; Katie Long,116 Rossmoor Ct,Anderson,SC,29621,315000,2022-03-08,314640
+MCPHAIL FARMS,126 McPhail Farms Cir,Anderson,SC,29621,Single Family,3,3,2001,2438,0.58,Jesse W Bodie,126 McPhail Farms Cir,Anderson,SC,29621,339900,2020-12-14,424580
+INLET POINTE,114 Inlet Pointe Dr,Anderson,SC,29625,Single Family Residential (Assumed),3,,2022,2309,0.795,Joseph R Klasnic,114 Inlet Pointe Dr,Anderson,SC,29625,409900,2022-05-05,407520
+KENSINGTON PLANTAT,102 Stoneleigh Ct,Anderson,SC,29621,Single Family Residential (Assumed),3,4,2022,2716,0.85,William D Cooke; Tiffani T Cooke,102 Stoneleigh Ct,Anderson,SC,29621,525000,2025-12-12,458140
+COBBS GLEN,211 Green Valley Rd,Anderson,SC,29621,Single Family,3,4,1900,2696,0.52,Lance Jay Abernathy; ABERNATHY MELISSA,211 Green Valley Rd,Anderson,SC,29621,232500,2019-11-07,309660
+WESTWOOD PTE,108 Mediterranean Ave,Anderson,SC,29621,Single Family,3,2,2005,1642,0.47,Zachary Knox; KNOX LAUREN,108 Mediterranean Ave,Anderson,SC,29621,235000,2021-09-30,234520
+PENNINGTON FARMS,121 Rossmoor Ct,Anderson,SC,29621,Single Family,3,2,2018,1966,0.27,Vanessa Hunter Crosby,121 Rossmoor Ct,Anderson,SC,29621,369900,2026-03-27,306030
+BELLVIEW ESTS,604 Concord Ave,Anderson,SC,29621,Single Family,3,3,1970,2119,0.42,Alexander Hoffman; Katherine Hoffman,604 Concord Ave,Anderson,SC,29621,272000,2025-07-25,234460
+ASHTON PLACE,113 Dundee Ct,Anderson,SC,29621,Single Family,3,2,2018,1343,0.251,Theodore Boyd,113 Dundee Ct,Anderson,SC,29621,224000,2023-06-15,223760
+REGENCY PARK,115 Picadilly Ct,Anderson,SC,29625,Single Family,4,3,1989,2419,0.46,Paul B Elqadi,115 Picadilly Ct,Anderson,SC,29625,390000,2024-04-23,389690
+WOODLAND HGTS,111 Tanglewood Dr,Anderson,SC,29621,Single Family,3,2,,1658,0.38,Alexis Elvir; Lucrecia N Elvir,111 Tanglewood Dr,Anderson,SC,29621,247500,2026-01-08,100090
+WATERMARKE,700 Watermarke Ln,Anderson,SC,29625,Condominium Unit,4,3,2008,2577,0.037,Judson R Jahn,700 Watermarke Ln,Anderson,SC,29625,537000,2020-06-22,656000
+ALSTON OAKS,300 Avenue Of Oaks,Anderson,SC,29621,Single Family,4,3,2014,2974,0.41,Michael J Caso,300 Avenue Of Oaks,Anderson,SC,29621,410000,2021-05-28,407790
+NORTHLAKE,2112 Northlake Dr,Anderson,SC,29625,Condominium Unit,3,2,1986,1400,2.01,Daniel Scott Williams,2112 Northlake Dr # 21L,Anderson,SC,29625,94500,2018-08-30,132300
+WINDING CREEK,100 Stacy Ct,Anderson,SC,29625,Single Family,2,2,2005,1094,0.098,CHARLES M BURDEN REV TR & VIVIAN DIANE B,1815 Busby Rd,Anderson,SC,29626,165800,2022-09-20,165230
+REGENCY PARK,102 Roxbury Ct,Anderson,SC,29625,Single Family,4,5,1990,3278,0.793,Shelly Walters; WALTERS TED,102 Roxbury Ct,Anderson,SC,29625,385000,2021-09-17,384800
+BELLVIEW ESTS,2310 Bellview Rd,Anderson,SC,29621,Single Family,3,2,,1389,0.332,Terri S Garren,PO Box 3876,Anderson,SC,29622,177000,2021-09-29,178470
+OVERLOOK,232 Lookover Dr,Anderson,SC,29621,Condominium Unit,2,2,2006,1100,0.013,Alexandra Rose Soccio,232 Lookover Dr,Anderson,SC,29621,145000,2022-11-23,145000
+OAKMONT,212 Oakmont Dr,Anderson,SC,29621,Single Family,4,4,1996,3759,0.9,Raymond P Stratford,212 Oakmont Dr,Anderson,SC,29621,419000,2018-09-24,513790
+SILVERLEAF,507 Laurens Dr,Anderson,SC,29621,Single Family,3,2,1995,1600,0.32,Anna Melissa Tollison,507 Laurens Dr,Anderson,SC,29621,143000,2009-05-01,172520
+DENVER COVE,1061 Fisher Rd,Anderson,SC,29625,Single Family Residential (Assumed),3,4,2021,2927,1,John Hunley,1061 Fisher Rd,Anderson,SC,29625,530000,2024-11-14,527950
+TUSCANY,1027 Tuscany Dr,Anderson,SC,29621,Vacant Land,4,4,2026,,0.39,APEX DEVELOPMENT SC LLC,4113 E North St,Greenville,SC,29615,51000,2025-02-07,51000
+BRIARCLIFF,204 Tarrytown Ln,Anderson,SC,29621,Single Family,3,3,1972,2530,1.83,Jeffrey H Spearman,204 Tarrytown Ln,Anderson,SC,29621,226000,2019-10-21,251890
+INLET POINTE,112 Inlet Pointe Dr,Anderson,SC,29625,Single Family,4,3,2022,2178,0.59,Michael Jacob Bowie; Bryanna Bowie,112 Inlet Pointe Dr,Anderson,SC,29625,373000,2025-08-05,339140
+COBBS GLEN,2425 Warriors Path,Anderson,SC,29621,Single Family,3,5,1992,3445,0.96,JAMES CLIFTON EDWARDS JR LIVING TRUST,2425 Warriors Path,Anderson,SC,29621,575000,2023-06-15,576270
+GRAYLYN,173 Graylyn Dr,Anderson,SC,29621,Single Family,5,6,2001,4271,0.5,Brandon M Petty,173 Graylyn Dr,Anderson,SC,29621,450000,2020-04-01,583570
+BROOKSTONE MEADOWS,103 Peppermill Ct,Anderson,SC,29621,Single Family,4,4,2023,2731,0.36,Rene Rios Raeder,103 Peppermill Ct,Anderson,SC,29621,619000,2026-04-09,568600
+BROOKSTONE MEADOWS,1018 Winmar Dr,Anderson,SC,29621,Single Family Residential (Assumed),4,2,2022,2345,0.77,Victor Blocher; BLOCHER KATHERINE,6 Fawn Hill Dr,Anderson,SC,29621,41900,2019-04-10,390190
+OVERLOOK,303 Lookover Dr,Anderson,SC,29621,Condominium Unit,3,2,2006,1250,,SUSTAR PHYLLIS MARIE,303 Lookover Dr,Anderson,SC,29621,99500,2008-05-21,144060
+HARPERS RIDGE,4010 Weatherstone Way,Anderson,SC,29621,Single Family,4,4,,3114,1.15,David M Wiseman,4010 Weatherstone Way,Anderson,SC,29621,390000,2020-12-15,491980
+ROYAL PINES,103 Kilsprings Rd,Anderson,SC,29621,Single Family,3,2,1995,2213,0.52,Alisa Davis,103 Kilsprings Rd,Anderson,SC,29621,392500,2023-08-18,397420
+ROCKWELL PLANTATIO,46 Fawn Hill Dr,Anderson,SC,29621,Single Family,3,3,2010,2045,0.2,Jose Manuel Mac Padilla,47 Fawn Hill Dr,Anderson,SC,29621,225000,2019-02-19,278630
+GREEN HILL PLANTAT,207 Frances Cannon Dr,Anderson,SC,29621,Single Family,3,3,1980,1613,0.581,Jeffrey Michael Lively,207 Frances Cannon Dr,Anderson,SC,29621,281888,2021-11-19,280440
+ROCKWELL PLANTATIO,134 Herd Park Ct,Anderson,SC,29621,Single Family,3,2,2006,1808,0.29,Elaine Reimels,134 Herd Park Ct,Anderson,SC,29621,295000,2024-03-22,289470
+AUGUSTA NATIONAL,116 Augusta National,Anderson,SC,29621,Single Family,4,5,2005,5394,0.5,Gowdhami Mohan,116 Augusta National,Anderson,SC,29621,55810,2004-08-24,497830
+NORTHLAKE,1504 Northlake Dr,Anderson,SC,29625,Condominium Unit,2,2,,1200,,Michael W Dean,1504 Northlake Dr,Anderson,SC,29625,85000,2020-08-05,119000
+OAKWOOD ESTS,502 Oakwood Estates Dr,Anderson,SC,29621,Single Family,3,2,,2344,0.57,David Henry Wellwood,502 Oakwood Estates Dr,Anderson,SC,29621,215000,2019-02-22,396280
+WALKERS POINTE,324 Summerall Dr,Anderson,SC,29621,Agricultural/Rural,4,3,2023,2386,0.54,Morgan Wallace; Alicyn Wallace,324 Summerall Dr,Anderson,SC,29621,442000,2025-07-31,415220
+SHACKLEBURG FARMS,301 Maple Forge Way,Anderson,SC,29621,Single Family,4,3,2019,3133,0.22,William G Farkas,301 Maple Forge Way,Anderson,SC,29621,289900,2020-04-24,358740
+FAIRFIELD ACRES,2517 McKinley Dr,Anderson,SC,29621,Single Family,3,3,1975,2079,0.45,James M Robinson; Katina C Lomax,2517 McKinley Dr,Anderson,SC,29621,263000,2025-04-03,263730
+WATERMARKE,705 Watermarke Ln,Anderson,SC,29625,Condominium Unit,3,2,2008,1680,0.035,William T Rushton; Sheryl A Rushton,705 Watermarke Ln,Anderson,SC,29625,599000,2025-07-02,656400
+ROCKWELL PLANTATIO,143 Herd Park Ct,Anderson,SC,29621,Single Family,3,2,2006,2010,0.2,Quanjing Qiu,143 Herd Park Ct,Anderson,SC,29621,293000,2022-08-26,291160
+ROCKWELL PLANTATIO,31 Fawn Hill Dr,Anderson,SC,29621,Single Family,3,3,2010,1960,0.22,Vitaly Osipov,31 Fawn Hill Dr,Anderson,SC,29621,312000,2022-07-01,311930
+SHACKLEBURG FARMS,400 Willow Grove Way,Anderson,SC,29621,Single Family,4,4,2019,3097,0.22,Timothy Lyons,400 Willow Grove Way,Anderson,SC,29621,370000,2024-11-26,369830
+ARDEN CHASE,201 Arden Chase,Anderson,SC,29621,Single Family,5,4,2003,3365,0.49,Andrew H Pettus,201 Arden Chase,Anderson,SC,29621,380000,2018-06-13,452440
+ORCHARD PARK,103 Park Way,Anderson,SC,29625,Single Family,2,2,1999,1565,0.19,Elizabeth Evans Cope,103 Park Way,Anderson,SC,29625,275000,2024-02-29,275040
+REGATTA @ LAKE HAR,101 Regatta Dr,Anderson,SC,29625,Single Family,3,4,2008,2513,0.11,Gary H Osborne,4 Bailey Knoll Ct,Simpsonville,SC,29681,510000,2020-08-24,713020
+ABERDEEN,1009 McBane Ct,Anderson,SC,29621,Single Family,3,3,1997,2331,0.78,Henderson Joyce Hill; Steven W Henderson,1009 McBane Ct,Anderson,SC,29621,447000,2025-11-05,353670
+BELLVIEW ESTS,2025 Sheldon Dr,Anderson,SC,29621,Single Family,3,2,1954,1613,0.83,Swain N Thompson; Kimberly M Thompson,2025 Sheldon Dr,Anderson,SC,29621,312000,2026-01-30,147110
+STONE CREEK COVE,1431 Providence Church Rd,Anderson,SC,29626,Single Family,3,3,2011,4260,0.507,Avaz Emenov,1431 Providence Church Rd,Anderson,SC,29626,449626,2021-08-25,439450
+WEXFORD CONDO,111 Wexford Dr Unit 104,Anderson,SC,29621,Condominium Unit,2,2,1998,1061,0.008,Gregory David Skipper,111 Wexford Dr Unit 104,Anderson,SC,29621,162900,2023-05-19,162630
+SMITHFIELD,401 Chasen Ct,Anderson,SC,29621,Single Family,3,3,1997,3102,0.436,Enoch W Paul,401 Chasen Ct,Anderson,SC,29621,349000,2022-09-20,348280
+SMITH MILL LANDING,220 Nautique Ct,Anderson,SC,29625,Single Family Residential (Assumed),3,3,2021,1665,0.04,Garrison Smith,220 Nautique Ct,Anderson,SC,29625,460000,2024-05-13,460030
+PALMETTO VALLEY,109 Palm Branch Way,Anderson,SC,29621,Single Family,4,3,2007,2147,0.28,Andray P Kurochka,109 Palm Branch Way,Anderson,SC,29621,200000,2020-11-16,249030
+VARINA BROWN WOODS,609 Jackson Sq,Anderson,SC,29625,Single Family,3,3,,3382,0.32,William Stephen Cottingham,609 Jackson Sq,Anderson,SC,29625,350000,2021-08-16,358500
+ROYAL OAKS SHORES,113 Chestnut Ln,Anderson,SC,29625,Single Family,4,3,2001,4122,0.61,DALY PROPERTIES LLC,113 Chestnut Ln,Anderson,SC,29625,790000,2021-02-02,782600
+NORTH SHORE,1009 N Shore Dr,Anderson,SC,29625,Single Family,3,3,2002,2222,0.66,Howard S Waddell,1009 N Shore Dr,Anderson,SC,29625,400000,2021-04-30,396850
+VILLAGE@GLENWOOD,125 Traditions Blvd,Anderson,SC,29625,Single Family,5,4,2019,2420,0.13,Cameron Lashawn Gray; Tiffany Jones Burton,125 Traditions Blvd,Anderson,SC,29625,299999,2025-09-26,216130
+GREEN HILL PLANTAT,320 Stephen King Dr,Anderson,SC,29621,Single Family,4,5,1989,4194,0.64,Grant N Mead,320 Stephen King Dr,Anderson,SC,29621,525000,2021-07-12,523440
+HOLLY CREEK,124 Holly Ridge Dr,Anderson,SC,29621,Single Family,4,2,2017,2646,0.73,Vasiliy Kiforishin; KIFORISHIN SVETLANA,124 Holly Ridge Dr,Anderson,SC,29621,380000,2020-11-25,471370
+SHACKLEBURG WAY,306 Maple Forge Way,Anderson,SC,29621,Single Family,4,4,2019,2846,0.54,Eric Vaughn Craven,306 Maple Forge Way,Anderson,SC,29621,279900,2020-04-23,346510
+MCPHAIL FARMS,120 McPhail Farms Cir,Anderson,SC,29621,Single Family,3,2,2001,2150,0.59,Bennie C King,120 McPhail Farms Cir,Anderson,SC,29621,432500,2023-05-26,431440
+KENSINGTON PLANTAT,1005 Carlisle Pl,Anderson,SC,29621,Single Family,4,4,2012,3093,0.58,Gavin J Mclaughlin,1005 Carlisle Pl,Anderson,SC,29621,331000,2020-09-11,546090
+WEXFORD CONDO,111 Wexford Dr Unit 204,Anderson,SC,29621,Condominium Unit,2,2,1998,1061,0.008,Michael Scott Junkins,51 Civic Center Boulevard Ext,Anderson,SC,29625,120000,2021-05-18,119150
+RIVENDELL,171 Buckland Dr,Anderson,SC,29621,Single Family,4,3,2016,2762,0.18,Henry Howells,171 Buckland Dr,Anderson,SC,29621,299900,2020-07-09,392610
+PALMETTO VALLEY,1008 Sand Palm Way,Anderson,SC,29621,Single Family,4,3,2009,2098,0.37,Jordan Stephen Thayer,1008 Sand Palm Way,Anderson,SC,29621,325000,2024-07-15,324820
+THE MEADOWS,109 Buttercup Trl,Anderson,SC,29621,Single Family,4,4,1999,4624,0.69,Roy F Harmon,109 Buttercup Trl,Anderson,SC,29621,535000,2023-04-05,533810
+HARPERS RIDGE,4019 Brackenberry Dr,Anderson,SC,29621,Single Family,4,4,1991,3908,1.5,William Daryl Stevens; STEVENS KERI,4019 Brackenberry Dr,Anderson,SC,29621,349900,2018-09-05,437930
+BROOKSTONE MEADOWS,140 Parkside Dr,Anderson,SC,29621,Single Family,4,4,2001,3620,0.3,Lacy G Williams,140 Parkside Dr,Anderson,SC,29621,379900,2019-04-11,467940
+ARDEN CHASE,207 Arden Chase,Anderson,SC,29621,Single Family,3,5,2001,4377,0.54,Forrest S Pruitt,207 Arden Chase,Anderson,SC,29621,840000,2024-07-11,841930
+SPRING BROOK,108 Sweet Spgs,Anderson,SC,29625,Single Family,3,2,2004,2513,0.7,James Lewis Turner,108 Sweet Spgs,Anderson,SC,29625,251500,2017-04-19,326320
+BRITTANY PARK,209 Brittany Park,Anderson,SC,29621,Single Family,3,4,1996,3029,0.54,Ramsey Hill; HILL COURTNEY,209 Brittany Park,Anderson,SC,29621,355000,2021-01-05,352350
+CAMBRIDGE PLACE,112 Rustic Ln,Anderson,SC,29621,Single Family,3,4,1990,2879,0.84,Charles Daniel Tucker,112 Rustic Ln,Anderson,SC,29621,275000,2020-10-27,344670
+TEAKWOOD PLANTATIO,211 Starboard Side,Anderson,SC,29625,Single Family,4,5,2009,6187,0.64,Trey Kennedy,211 Starboard Side,Anderson,SC,29625,1075000,2020-09-24,1143300
+ROYAL OAKS SHORES,237 Royal Oaks Dr,Anderson,SC,29625,Single Family,3,3,1998,2135,0.65,Robert C Grieger,237 Royal Oaks Dr,Anderson,SC,29625,400000,2025-01-14,259580
+WILLOW HAVEN,106 Coosa Ln,Anderson,SC,29621,Single Family Residential (Assumed),3,3,2022,1702,0.04,Kathryn Shuler,106 Coosa Ln,Anderson,SC,29621,334900,2026-04-16,312290
+SADLERS CREEK EST,100 Gilmer Cir,Anderson,SC,29626,Single Family,3,4,2006,4539,0.46,Ann Marie Fletcher; Scott Thomas Fletcher,100 Gilmer Cir,Anderson,SC,29626,885000,2025-05-30,627290
+SPANISH WELLS,129 Spanish Wls,Anderson,SC,29621,Single Family,4,4,2002,3016,1.03,Anthony Meeks; MEEKS JENNIFER,129 Spanish Wls,Anderson,SC,29621,380000,2020-04-21,484200
+BRITTANY PARK,528 Brittany Park,Anderson,SC,29621,Single Family,4,3,1989,2512,0.42,Arthur Frank Jacobson; Mary Elizabeth Jacobson,528 Brittany Park,Anderson,SC,29621,415000,2025-11-21,256160
+ROCKWELL PLANTATIO,115 Easy Gap Rd,Anderson,SC,29621,Single Family,5,4,2009,3474,0.2,William Peter Mcshane; MCSHANE MAUREEN,115 Easy Gap Rd,Anderson,SC,29621,283000,2020-01-06,345420
+HARPERS RIDGE,600 Little Creek Rd,Anderson,SC,29621,Single Family,3,3,1994,2493,1.14,James Glover; Amy Lynn Bush,600 Little Creek Rd,Anderson,SC,29621,545000,2025-07-25,383270
+SHACKLEBURG FARMS,606 Fern Hollow Trl,Anderson,SC,29621,Single Family,3,2,2020,1982,0.21,SAMUEL EDWIN TAYLOR LIVING TRUST; Taylor,606 Fern Hollow Trl,Anderson,SC,29621,,,327850
+BLUMEFIELD,1015 Blumefield Rd,Anderson,SC,29625,Single Family,3,2,2002,1852,0.88,Salvatore Cerniglia; Jacqueline Diane Cerniglia,1015 Blumefield Rd,Anderson,SC,29625,295000,2024-12-18,295040
+DEER RUN,216 Deer Run Rd,Anderson,SC,29626,Single Family,3,3,1990,2277,2.76,Adam N Hastings,216 Deer Run Rd,Anderson,SC,29626,402500,2021-04-22,435070
+ANCHOR POINT HORIZONTAL PROPERTY REGIME,35 Anchor Pt,Anderson,SC,29625,Condominium Unit,3,3,,1276,,Ryan P Curran; CURRAN CYNTHIA,35 Anchor Pt,Anderson,SC,29625,250000,2022-03-24,250000
+BROOKSTONE MEADOWS,100 Parkside Dr,Anderson,SC,29621,Single Family,3,3,2004,2437,0.3,Glenn M Kruizenga; Jennifer Leigh Kruizenga,100 Parkside Dr,Anderson,SC,29621,505000,2025-08-06,412210
+STERLING MEADOW,1011 Hillcrest Ct,Anderson,SC,29621,Single Family,3,2,2014,2587,0.68,Donald R Creed; CREED CHARLENE,1011 Hillcrest Ct,Anderson,SC,29621,380175,2021-09-22,380570
+REGENCY PARK,505 Regency Cir,Anderson,SC,29625,Single Family,3,3,1988,2503,0.488,Edmund J Mulvey,505 Regency Cir,Anderson,SC,29625,265000,2021-09-10,262970
+CLARENDON,500 Williamsburg Rd,Anderson,SC,29621,Single Family,4,3,,2582,0.665,Michael Samuel Davis,500 Williamsburg Rd,Anderson,SC,29621,328000,2021-01-04,328130
+ROCKWELL PLANTATIO,148 Easy Gap Rd,Anderson,SC,29621,Single Family,3,3,2007,2575,0.22,Abigail H Orr; Michael Orr,148 Easy Gap Rd,Anderson,SC,29621,369900,2025-04-04,272320
+NORTHLAKE,1703 Northlake Dr,Anderson,SC,29625,Condominium Unit,2,2,,960,,Johnson Taylor Busbee,1703 Northlake Dr,Anderson,SC,29625,129900,2023-06-05,129900
+TEAKWOOD PLANTATIO,302 Compass Pt,Anderson,SC,29625,Single Family,3,3,1999,2313,0.576,Thomas L Beebe,302 Compass Pt,Anderson,SC,29625,522000,2020-01-22,676150
+LEISURE VILLAGE,1131 Cartee Rd,Anderson,SC,29625,Single Family,3,2,2008,1871,0.793,Robert J Small,1131 Cartee Rd,Anderson,SC,29625,329700,2022-09-30,346830
+SMITH MILL LANDING,205 Nautique Ct,Anderson,SC,29625,Single Family,3,3,2020,1638,0.04,CRISWELL JOINT TRUST; Criswell,8519 Ertman Rd,Lockport,NY,14094,379900,2025-10-15,263550
+COBBS GLEN,3108 Cobbs Way,Anderson,SC,29621,Single Family,3,4,1999,2988,0.43,Glenn Skawski; SKAWSKI SUSAN,3108 Cobbs Way,Anderson,SC,29621,625000,2003-02-19,290870
+WILLOW HAVEN,136 Shipyard Cir,Anderson,SC,29621,Single Family,3,3,2006,2194,0.038,Sharon Jane Boyer,136 Shipyard Cir,Anderson,SC,29621,334000,2025-06-17,246930
+RIVOLLI,111 Rivolli Dr,Anderson,SC,29625,Mobile/Manufactured Home,3,2,2018,1344,0.59,Greg Hammer; Elizabeth Hammer,111 Rivolli Dr,Anderson,SC,29625,237500,2025-02-11,112050
+RIVENDELL,106 Harlond Dr,Anderson,SC,29621,Single Family,3,4,2006,3800,0.63,Jessica Michelle Ericson,106 Harlond Dr,Anderson,SC,29621,750000,2026-02-20,541050
+LEXINGTON POINTE,107 Gallant Ln,Anderson,SC,29621,Single Family,3,2,2014,1601,0.23,William Vogenitz,107 Gallant Ln,Anderson,SC,29621,208400,2020-11-17,268870
+MYSTIC VINEYARD,105 Mystic Vineyard Ln,Anderson,SC,29621,Single Family,5,4,2013,3808,0.21,Matthew Ray Brittain,105 Mystic Vineyard Ln,Anderson,SC,29621,329500,2020-07-10,413700
+BELLVIEW ESTS,508 E Fredericks St,Anderson,SC,29621,Single Family,3,2,1989,1473,0.428,Jennifer Lynn Phillips,508 E Fredericks St,Anderson,SC,29621,228000,2022-09-29,228170
+CHASEWTR/WELBRN PT,106 Chasewater Dr,Anderson,SC,29621,Single Family,5,4,2003,3818,0.96,Jeremy Ryan Johnson,106 Chasewater Dr,Anderson,SC,29621,551000,2022-03-23,550970
+TUSCANY PH 1,136 Siena Dr,Anderson,SC,29621,Single Family,3,3,2020,2341,0.47,Cameo Marie Smith,136 Siena Dr,Anderson,SC,29621,509500,2025-04-17,378350
+WOODLAND HGTS,126 Tanglewood Dr,Anderson,SC,29621,Single Family,5,3,1977,3710,0.27,Jeff Yosha,126 Tanglewood Dr,Anderson,SC,29621,365000,2025-03-06,264240
+SADLERS CREEK EST,222 Gilmer Cir,Anderson,SC,29626,Single Family,3,3,,2438,0.86,Adam Leary Bell,222 Gilmer Cir,Anderson,SC,29626,600000,2021-06-30,602350
+WINDING STREAM,234 Streams Way,Anderson,SC,29625,Single Family,3,2,2017,2015,0.38,Kenneth A Hurt,234 Streams Way,Anderson,SC,29625,173900,2017-05-31,221200
+RIVENDELL PH 4,118 Buckland Dr,Anderson,SC,29621,Single Family,4,3,2016,3528,0.28,Jason Leland Stufflebeam; Jennifer Baxter Stufflebeam,118 Buckland Dr,Anderson,SC,29621,547000,2026-04-09,412000
+NORTHMEDE,313 Village Boundary,Anderson,SC,29621,Single Family Residential (Assumed),3,3,2021,1994,0.086,Carolyn Kimbrell,313 Village Boundary,Anderson,SC,29621,240000,2026-04-14,230120
+HARBOR GATE,21 Harbor Gate,Anderson,SC,29625,Condominium Unit,3,2,,1457,0.016,ANDERSON HG LLC,PO Box 9,Hiawassee,GA,30546,130000,2019-11-20,212800
+UNKNOWN,1309 Old Williamston Rd,Anderson,SC,29621,Single Family,3,2,1939,1531,1.52,Carl F White,1309 Old Williamston Rd,Anderson,SC,29621,,2023-12-20,213790
+RIVENDELL SUBDIVISION,103 Buckland Dr,Anderson,SC,29621,Single Family,4,3,2014,3923,0.22,Latishia Roshell Allen,103 Buckland Dr,Anderson,SC,29621,400000,2021-12-02,399480
+ALLEN WOODS,303 Brighton Rd,Anderson,SC,29621,Single Family,4,3,,2109,0.88,David Farkas; FARKAS LAURA,303 Brighton Rd,Anderson,SC,29621,290000,2021-08-17,288360
+SHACKLEBURG FARMS,403 Willow Grove Way,Anderson,SC,29621,Single Family,3,3,2020,2551,0.21,Kyle Joseph Juresich,403 Willow Grove Way,Anderson,SC,29621,375000,2023-01-18,374210
+CHARPING FARMS,130 Charping Ln,Anderson,SC,29621,Single Family,3,3,1997,2193,0.58,Tara N Jones,130 Charping Ln,Anderson,SC,29621,390000,2025-08-01,279710
+BROOKSTONE MEADOWS,122 Parkside Dr,Anderson,SC,29621,Single Family,4,4,2005,2828,0.36,Etrulia Farr Smith,122 Parkside Dr,Anderson,SC,29621,335000,2019-01-14,411210
+ROCKWELL PLANTATIO,48 Fawn Hill Dr,Anderson,SC,29621,Single Family,3,3,2007,3125,0.28,BAMM FOUR LLC,123 Diamond Pt,Anderson,SC,29625,370000,2023-06-29,375390
+WALKERS POINTE,213 Timothy Ct,Anderson,SC,29621,Agricultural/Rural,3,3,2024,2022,0.46,James E Magnuson; MAGNUSON JOANN,213 Timothy Ct,Anderson,SC,29621,389900,2024-03-12,386540
+WILLOW HAVEN,123 Coosa Ln,Anderson,SC,29621,Single Family,3,3,2007,2098,0.038,HAL F SINGLEY JR REVOCABLE TRUST; Singley,105 Rivendell Dr,Anderson,SC,29621,295000,2026-02-11,252730
+WOODLAND HGTS,303 Tanglewood Dr,Anderson,SC,29621,Single Family,2,3,1960,2645,0.9,Harry E Stanley,303 Tanglewood Dr,Anderson,SC,29621,135000,2015-08-31,153360
+WOODLAND HGTS,115 Tanglewood Dr,Anderson,SC,29621,Single Family,3,2,1975,2198,0.44,Michael Clark,115 Tanglewood Dr,Anderson,SC,29621,255000,2025-10-02,236600
+BRONSON RIDGE,126 Bronson Rdg,Anderson,SC,29621,Single Family,3,3,2018,2972,0.26,Christine N Kiley; Ryan S Kiley,126 Bronson Rdg,Anderson,SC,29621,439900,2024-12-27,437700
+WAKEFIELD,102 Tea Leaf Ct,Anderson,SC,29626,Single Family,3,2,2014,1397,0.58,Daniel Ezell,102 Tea Leaf Ct,Anderson,SC,29626,279500,2025-10-16,162420
+BAILEY CREEK,121 Ridgeway Trl,Anderson,SC,29621,Single Family,4,4,2007,3697,0.5,JAMES M & TOY S GLENNON LIVING TRUST; Toy S Glennon,121 Ridgeway Trl,Anderson,SC,29621,438000,2021-11-09,443000
+HOPEWELL CROSSING,402 Hopewell Rdg,Anderson,SC,29621,Single Family,4,3,1995,2505,0.86,Lauren T Grad; Adam Elliott Grad,402 Hopewell Rdg,Anderson,SC,29621,425000,2025-11-20,269210
+WEXFORD CONDO,150 Wexford Dr Unit 301,Anderson,SC,29621,Condominium Unit,2,2,1999,1066,0.008,GRACE HANNAH LOCKE LLC,102 Spanish Wls,Anderson,SC,29621,115000,2020-12-29,122270
+LEEWARD LANDING,1304 Leeward Rd,Anderson,SC,29625,Condominium Unit,3,4,,2250,,Christopher P Estock,1304 Leeward Rd,Anderson,SC,29625,225900,2018-11-30,316260
+THE GOVERNORS,109 James Lawrence Orr Dr,Anderson,SC,29621,Single Family,4,4,2005,3095,0.29,David O Elgin; Sierra D Elgin,109 James Lawrence Orr Dr,Anderson,SC,29621,404000,2026-01-16,348110
+LEXINGTON POINTE,1016 Whirlaway Cir,Anderson,SC,29621,Single Family,3,2,2015,1836,0.23,Cynthia B Smith,1016 Whirlaway Cir,Anderson,SC,29621,330000,2025-11-17,310210
+THE MEADOWS,114 Buttercup Trl,Anderson,SC,29621,Single Family,4,3,1999,2945,0.71,Clarissa Clinkscales; CLINKSCALES SHENICKEA,114 Buttercup Trl,Anderson,SC,29621,339000,2020-07-20,399200
+PALMETTO VALLEY,112 Antiguay Dr,Anderson,SC,29621,Single Family,3,2,2015,2425,0.23,Andrew Jerald Lewis,112 Antiguay Dr,Anderson,SC,29621,215000,2019-07-31,262950
+WILLOW HAVEN,118 Shipyard Cir,Anderson,SC,29621,Single Family,3,3,2006,2194,0.03,Melinda P Lackner,118 Shipyard Cir,Anderson,SC,29621,310000,2024-09-06,310180
+STERLING MEADOW,102 Rolling Meadow Ct,Anderson,SC,29621,Single Family,5,4,2015,4663,0.58,Rick Charles Swift,102 Rolling Meadow Ct,Anderson,SC,29621,515000,2024-07-08,515400
+HEMBREE STATION,110 Patagonia Rd,Anderson,SC,29625,Single Family,3,2,2019,1566,0.18,Timothy Roy Carter; Regina Ursulla,110 Patagonia Rd,Anderson,SC,29625,262000,2025-07-21,222500
+NORTHLAKE,1606 Northlake Dr,Anderson,SC,29625,Condominium Unit,2,2,1985,1006,,Angela Aguirre,1606 Northlake Dr,Anderson,SC,29625,160000,2025-02-17,91000
+BLUMEFIELD,103 Lissa Ln,Anderson,SC,29625,Single Family,3,3,2001,1524,0.87,Keith Scott; Dezraei Hall-scott,103 Lissa Ln,Anderson,SC,29625,330000,2025-10-15,228470
+THE MEADOWS,102 Grassy Knoll Way,Anderson,SC,29621,Single Family,5,5,2006,6743,0.64,James V Twarek,102 Grassy Knoll Way,Anderson,SC,29621,675000,2021-06-23,729270
+BELVEDERE,310 Alameda Ln,Anderson,SC,29625,Single Family,3,2,2022,1567,0.2,Ronald Lee Kenner,310 Alameda Ln,Anderson,SC,29625,286773,2023-03-08,286180
+DEVONSHIRE,300 Surrey Ln,Anderson,SC,29621,Single Family,3,4,2001,4532,1.18,Howard D Jones; JONES SHEILA,300 Surrey Ln,Anderson,SC,29621,295000,2019-03-29,377640
+OAK HILL,123 Elmhurst Ln,Anderson,SC,29621,Single Family,4,3,2018,2151,0.11,Charles Kwadzo Atsu,123 Elmhurst Ln,Anderson,SC,29621,155990,2018-07-16,190600
+VARINA BROWN WOODS,604 Boundary St,Anderson,SC,29625,Single Family,3,2,,1626,0.24,Christopher Glenn Bishop,604 Boundary St,Anderson,SC,29625,200000,2021-03-11,215750
+BRITTANY PARK,517 Brittany Park,Anderson,SC,29621,Single Family,4,4,2017,4400,0.463,Thomas W Farrar,517 Brittany Park,Anderson,SC,29621,450000,2019-05-16,565280
+NORTHLAKE,2109 Northlake Dr,Anderson,SC,29625,Condominium Unit,3,2,,1325,,Ethan Rice,2109 Northlake Dr,Anderson,SC,29625,155000,2024-12-18,137500
+HOLLY CREEK,1502 Bramble Ridge Rd,Anderson,SC,29621,Single Family,5,4,1998,3052,1.22,Evan Lynn Burgess; BURGESS SHELBY,1502 Bramble Ridge Rd,Anderson,SC,29621,476000,2022-09-28,439000
+WESTWOOD PTE,142 Mediterranean Ave,Anderson,SC,29621,Single Family,3,2,2014,1507,0.46,Andrew Gregory Tennyson,142 Mediterranean Ave,Anderson,SC,29621,253000,2022-05-02,252540
+HARPERS RIDGE,1019 Harpers Way,Anderson,SC,29621,Single Family,5,4,1992,3485,1,John E Pack,1019 Harpers Way,Anderson,SC,29621,520000,2025-06-03,458890
+HUNTERS GLEN,97 Hunters Ln,Anderson,SC,29625,Single Family,3,2,1999,1814,0.29,Melody Miles,97 Hunters Ln,Anderson,SC,29625,161000,2018-06-14,209270
+CROSSROADS@COVERED,103 Jones Creek Cir,Anderson,SC,29621,Single Family,4,4,2016,3306,0.31,Michael Tilley; TILLEY KIMBERLY,103 Jones Creek Cir,Anderson,SC,29621,425000,2022-03-11,424630
+STONE CREEK COVE,2012 Shelter Pt,Anderson,SC,29626,Condominium Unit,4,3,1975,1953,0.1,Travis M Israel; Donna B Israel,15828 Back Nine Rd,Fort Worth,TX,76177,313700,2024-11-25,311970
+BRADLEY PARK,126 Bradley Park,Anderson,SC,29621,Single Family,4,4,1997,2573,0.26,Larry J Goodwin,126 Bradley Park,Anderson,SC,29621,370000,2021-06-03,369550
+SPANISH WELLS,202 Sapphire Vly,Anderson,SC,29621,Single Family,4,3,2002,2519,0.48,Kristalyn Leslie Ray,202 Sapphire Vly,Anderson,SC,29621,280000,2020-06-17,361780
+BROOKSTONE MEADOWS,112 Stone Cottage Dr,Anderson,SC,29621,Single Family,3,2,2013,2059,0.2,ALLEN W SMITH LIVING TRUST,112 Stone Cottage Dr,Anderson,SC,29621,315000,2023-12-21,315770
+SULLIVAN HILLS,142 Norfolk Cir,Anderson,SC,29625,Single Family,4,3,2017,2676,0.17,Brandon L Debose,142 Norfolk Cir,Anderson,SC,29625,290000,2023-05-20,287980
+RIVENDELL PH 4,4 Rohan Dr,Anderson,SC,29621,Single Family,4,3,2016,3040,0.186,Mathew J Armstrong; Adrienne Michel Armstrong,4 Rohan Dr,Anderson,SC,29621,415000,2025-12-15,330690
+DEERFIELD,1010 Buck Tree Ln,Anderson,SC,29621,Single Family,4,2,1994,3035,1.48,Anne Kathleen Mccarthy,1010 Buck Tree Ln,Anderson,SC,29621,452250,2022-03-25,450930
+BRIARCLIFF,1610 Woodcreek Rd,Anderson,SC,29621,Single Family,3,2,1979,1952,1.3,John Tessier,1610 Woodcreek Rd,Anderson,SC,29621,11679,2026-03-06,312760
+MARTINS TRAIL,215 Rockpine Dr,Anderson,SC,29621,Single Family Residential (Assumed),3,2,2021,1872,0.2,ROBERT H AND CHRISTINE B OLSEN FAMILY TRUST; Olsen,215 Rockpine Dr,Anderson,SC,29621,365900,2025-09-30,313780
+SHERWOOD FOREST,604 Robin Hood Ln,Anderson,SC,29621,Single Family,3,3,2020,2373,0.62,Eve Bergantino,604 Robin Hood Ln,Anderson,SC,29621,500000,2025-07-22,414780
+CROSSROADS@COVERED,120 Jones Creek Cir,Anderson,SC,29621,Single Family,5,4,2017,5262,0.33,Gerardo G Dudamel,120 Jones Creek Cir,Anderson,SC,29621,380000,2017-11-21,480600
+TUSCANY,1031 Tuscany Dr,Anderson,SC,29621,Single Family,6,3,2019,3699,0.33,Kasonya A Guerra,1031 Tuscany Dr,Anderson,SC,29621,535000,2026-01-05,482510
+THE GOVERNORS,113 James Lawrence Orr Dr,Anderson,SC,29621,Single Family,3,3,2005,1915,0.29,Martin Rogers Anderson; Rebekah Anderson,113 James Lawrence Orr Dr,Anderson,SC,29621,400000,2025-06-02,278140
+WILLOW HAVEN@COBBS,96 Coosa Ln,Anderson,SC,29621,Single Family Residential (Assumed),3,3,2021,2044,0.033,Robert Ian Thomson,96 Coosa Ln,Anderson,SC,29621,325600,2023-02-16,326040
+STERLING MEADOW,204 Meadows Edge Ct,Anderson,SC,29621,Single Family,3,2,2014,2642,0.58,Timothy Wade Patterson,204 Meadows Edge Ct,Anderson,SC,29621,440000,2022-06-08,440820
+SHACKLEBURG FARMS,703 Fern Hollow Trl,Anderson,SC,29621,Single Family,4,3,2020,3275,0.24,Aleksandr Rozvodovskiy; ROZVODOVSKIY VITA,703 Fern Hollow Trl,Anderson,SC,29621,337649,2020-10-29,405960
+SUNSET HILLS,115 Tiger Ln,Anderson,SC,29626,Mobile/Manufactured Home,3,2,1985,1989,0.77,Christopher Miros,108 Doyle Dr,Greenville,SC,29615,440000,2024-07-10,441030
+KINGS GRANT,127 Newington Cir,Anderson,SC,29621,Single Family,4,3,2006,2849,1.39,DEBORAH & MICHAEL SHANK REV LIVING TRUST; Shank Michael,127 Newington Cir,Anderson,SC,29621,475000,2023-11-20,474400
+COBBS GLEN,2509 Cobbs Way,Anderson,SC,29621,Single Family,4,4,1970,3909,0.8,Matthew Madison,2509 Cobbs Way,Anderson,SC,29621,294900,2018-11-26,391500
+BRITTANY PARK,307 Brittany Park,Anderson,SC,29621,Single Family,3,3,2001,2944,0.65,Kendra M Pinkelman; Daniel J Pinkelman,307 Brittany Park,Anderson,SC,29621,446000,2025-07-15,342310
+MCPHAIL FARMS,200 McPhail Farms Cir,Anderson,SC,29621,Single Family,3,3,2007,2235,0.58,David Vasilenko; Yevheniia Zhabrovets,200 McPhail Farms Cir,Anderson,SC,29621,430000,2025-03-17,303920
+BELVEDERE,115 Bellflower Ln,Anderson,SC,29625,Single Family Residential (Assumed),3,2,2022,1559,,Michael Cuong Tran,115 Bellflower Ln,Anderson,SC,29625,,,276550
+SILVERLEAF,903 Meadowcreek,Anderson,SC,29621,Single Family,4,3,1998,2371,0.43,Jessica G Cord,903 Meadowcreek,Anderson,SC,29621,224500,2019-09-30,285840
+HOPEWELL CROSSING,103 Creekside Ct,Anderson,SC,29621,Single Family,4,3,1995,2499,1.21,John N Crain,103 Creekside Ct,Anderson,SC,29621,375000,2021-09-30,373500
+BAILEY CREEK,117 Ridgeway Trl,Anderson,SC,29621,Single Family,4,3,2003,2426,0.49,Anthony Richard Zovich,117 Ridgeway Trl,Anderson,SC,29621,375000,2020-12-31,470580
+WILLOW HAVEN,140 Shipyard Cir,Anderson,SC,29621,Single Family,3,3,2006,1978,0.039,Linda Seawright Martin,140 Shipyard Cir,Anderson,SC,29621,237000,2020-10-16,314270
+REGENCY PARK,224 Regency Cir,Anderson,SC,29625,Single Family,4,3,,2580,0.5,Samuel D Dominguez,224 Regency Cir,Anderson,SC,29625,190000,2017-11-07,241710
+OLDE TOWNE VILLAGE,117 Olde Towne Dr,Anderson,SC,29621,Single Family,3,2,2014,1950,0.05,LILLIAN JOAN LOUGHLIN LIVING TRUST; Loughlin,117 Olde Towne Dr,Anderson,SC,29621,188900,2014-08-15,245090
+KENSINGTON PLANTAT,130 Baybrooke Ln,Anderson,SC,29621,Single Family,4,3,2011,2392,0.483,Rebecca Lawson Carruth,130 Baybrooke Ln,Anderson,SC,29621,295000,2018-10-30,372670
+GREEN HILL PLANTAT,304 Stephen King Dr,Anderson,SC,29621,Single Family,3,3,1985,2651,0.59,KRISTI SHANNON BROWN REVOCABLE TRUST,304 Stephen King Dr,Anderson,SC,29621,435000,2019-01-11,592660
+CROSSROADS@COVERED,135 Jones Creek Cir,Anderson,SC,29621,Single Family,3,3,2016,3293,0.36,Kayla Hipp Price,135 Jones Creek Cir,Anderson,SC,29621,326000,2020-07-15,424010
+BELVEDERE,126 Bellflower Ln,Anderson,SC,29625,Single Family Residential (Assumed),3,3,2022,1758,,Sallie Memminger,126 Bellflower Ln,Anderson,SC,29625,287092,2022-05-31,286550
+HOLLY CREEK,1516 Bramble Ridge Rd,Anderson,SC,29621,Single Family,5,5,1987,3794,0.821,Charles Preston Poole,106 Geneva Cir,Anderson,SC,29621,550000,2024-05-08,548580
+BELLVIEW ESTS,117 Postelle Dr,Anderson,SC,29621,Single Family,4,5,1972,3456,1.03,Carolyn Plough Saunders,117 Postelle Dr,Anderson,SC,29621,545000,2026-02-27,275950
+REGENCY PARK,200 Tiffany Dr,Anderson,SC,29625,Single Family,4,3,1982,2200,0.56,Jeffrey Pangle; Kenneth Maxwell Pangle,200 Tiffany Dr,Anderson,SC,29625,265000,2025-12-29,219880
+TEAKWOOD PLANT,120 Egret Lndg,Anderson,SC,29625,Single Family,3,3,1995,3225,0.235,Jeffrey P Broomfield,120 Egret Lndg,Anderson,SC,29625,536000,2019-07-31,647260
+GRAYLYN,205 Graylyn Dr,Anderson,SC,29621,Single Family,4,4,2005,4017,0.542,January Elizabeth Menees; MENEES MARK,205 Graylyn Dr,Anderson,SC,29621,520000,2021-07-13,540110
+THORNEHILL,1002 Thornehill Dr,Anderson,SC,29621,Single Family,4,5,1990,4095,1.31,BRYANT LEE REVOCABLE LIVING TRUST,1002 Thornehill Dr,Anderson,SC,29621,695000,2024-02-15,695320
+PALMETTO VALLEY,101 Tropical Way,Anderson,SC,29621,Single Family,4,3,2009,2134,0.32,Tyler Goodman; GOODMAN SHELBY,101 Tropical Way,Anderson,SC,29621,260000,2021-10-01,262800
+WATERMARKE,608 Watermarke Ln,Anderson,SC,29625,Condominium Unit,2,2,2008,1521,0.036,GLENN VAN ROMER TRUST,607 Watermarke Ln,Anderson,SC,29625,285000,2019-07-02,420000
+ARDEN CHASE,106 Arden Chase,Anderson,SC,29621,Single Family,4,4,1996,3360,0.47,Keith Marlin Buchholtz; BUCHHOLTZ KERRI,106 Arden Chase,Anderson,SC,29621,440000,2019-11-29,535980
+HOLLY CREEK,207 Holly Creek Dr,Anderson,SC,29621,Single Family,3,2,,2012,0.48,Jordan Brice Smith,207 Holly Creek Dr,Anderson,SC,29621,321900,2021-11-10,320740
+RIVENDELL,156 Buckland Dr,Anderson,SC,29621,Single Family,4,3,2015,3561,0.33,Roy W Simmons,156 Buckland Dr,Anderson,SC,29621,321500,2020-03-19,413030
+BROOKSTONE MEADOWS,140 Stone Cottage Dr,Anderson,SC,29621,Single Family,3,2,2014,1779,0.21,WALTMAN MARY FRANCES K LIFE ESTATE,140 Stone Cottage Dr,Anderson,SC,29621,243000,2020-10-16,304710
+WALKERS POINTE,318 Summerall Dr,Anderson,SC,29621,Agricultural/Rural,3,3,2023,2943,0.63,Matthew Mesplay,318 Summerall Dr,Anderson,SC,29621,452175,2023-08-16,451820
+BELLVIEW ESTS,2005 Sheldon Dr,Anderson,SC,29621,Single Family,3,2,1990,2199,0.51,Ricky Scott,2005 Sheldon Dr,Anderson,SC,29621,264900,2022-10-21,267970
+OAKMONT,101 Oakmont Dr,Anderson,SC,29621,Single Family,3,3,1993,2806,0.54,Kara Kristin Co Gilmer,101 Oakmont Dr,Anderson,SC,29621,385000,2021-08-13,383040
+WEXFORD CONDO,160 Wexford Dr Unit 106,Anderson,SC,29621,Condominium Unit,3,2,2000,1249,,Natalie L Kirkpatrick,160 Wexford Dr Unit 106,Anderson,SC,29621,165000,2023-08-09,165080
+SHACKLEBURG FARMS,502 Rocky Meadows Trl,Anderson,SC,29621,Single Family,5,4,2020,2800,0.22,Timothy Clayton Huggins,502 Rocky Meadows Trl,Anderson,SC,29621,289500,2020-07-24,363200
+BELLVIEW ESTS,2001 Lindale Rd,Anderson,SC,29621,Single Family,3,3,,3805,0.62,Abri Roodt; ROODT HEATHER,2001 Lindale Rd,Anderson,SC,29621,384500,2022-09-28,385350

@@ -1,0 +1,289 @@
+
+BatchData API Integration: v15 Pipeline Upgrade Recommendation
+Technical Specification for Owner Name Enrichment & Dataset Scoping
+2025
+
+This document covers five areas: current pipeline state, cheapest add-on combination, updated request body, response field mapping, and cost impact. It is intended for the engineering team implementing the v16 BatchData integration.
+3
+basic + listing + owner
+Datasets Required (Option A)
+1
+owner dataset only
+New Add-On Needed
+0
+no quota impact
+Additional Records Billed
+14 days
+ground-truth filter
+Deed Lag Window (Option B)
+
+1. Current State
+The v15 pipeline sends a bare POST to property/search with no options.datasets parameter:
+body: JSON.stringify({ searchCriteria: { query } })
+When the datasets array is omitted entirely, BatchData returns ALL datasets permitted by the API token's plan. This creates two distinct problems: uncontrolled data consumption from unrequested add-ons, and a missing owner name field that is not surfaced by either the basic or listing datasets.
+If the plan includes the Listing Data add-on, listing.status, listing.soldPrice, and listing.soldDate ARE returned on the bare call
+listing.statusCategory is read by v15 but is not explicitly documented in the BatchData schema — it may exist as an undocumented field or may always be empty/undefined
+Owner name is NOT returned on a bare call unless the Property Owner Profile ("owner") add-on is included in the plan — the "basic" and "listing" datasets do not include owner name fields
+The current plan includes Listing Data, so listing.status, listing.soldPrice, and listing.soldDate are being returned today
+Fields the v15 Pipeline Reads — Current Status
+Table 1 — v15 Field Availability Against Current BatchData Plan
+Field
+Dataset Required
+Returned Today?
+Notes
+listing.status
+"listing"
+✅ Yes (plan includes Listing)
+Confirmed field
+listing.statusCategory
+"listing"
+⚠️ Uncertain
+Not in public schema
+listing.soldPrice
+"listing"
+✅ Yes
+Confirmed field
+listing.soldDate
+"listing"
+✅ Yes
+Confirmed field
+listing.price
+"listing"
+✅ Yes
+Used as fallback in v15
+Owner name (owner.fullName)
+"owner"
+❌ No
+Not in current plan
+
+Critical Gap: owner.fullName is missing entirely from the current pipeline. There is no owner name field in the "basic" or "listing" datasets. The "owner" add-on must be explicitly requested.
+
+2. Cheapest Add-On Combination
+Goal: Retrieve both (1) sold/deed status confirmation and (2) property owner name in a single property/search call, at the lowest possible incremental cost.
+Option A — MLS-Based (Recommended for v15)
+Preserves existing v15 field-reading logic. Requires only one new add-on.
+"options": {  "datasets": ["basic", "listing", "owner"]}
+"basic" — Base property data (address, building, lot). Cheapest base tier
+"listing" — Provides listing.status, listing.soldPrice, listing.soldDate. Already in the plan; no new cost
+"owner" — The only new add-on needed. Provides owner.fullName and owner.names[]
+Why this is cheapest: "listing" is already paid for — adding it explicitly to datasets doesn't add cost, it just scopes the response. "owner" is the single new add-on required to surface owner name. No other dataset is needed to satisfy both goals.
+Option B — Deed-Based (Recommended for v16)
+Swaps the listing add-on for deed, providing county-recorded sale data as ground-truth confirmation of ownership transfer.
+"options": {  "datasets": ["basic", "deed", "owner"]}
+Provides deedHistory[].recordingDate, sale.lastSale.saleDate, and sale.lastSale.price
+Advantage: Deed recording is ground-truth confirmation of ownership transfer — eliminates false positives from properties in escrow (30–60 day MLS-to-deed gap)
+Disadvantage: Requires updating v15 field-reading logic; listing.status, listing.soldPrice, and listing.soldDate would no longer be populated
+Cost: Replaces "listing" add-on with "deed" add-on — net cost depends on relative add-on pricing (contact BatchData sales)
+Option Comparison
+Table 2 — Option A vs. Option B Dataset Strategy Comparison
+Strategy
+datasets Array
+Data Provided
+Sold Signal
+Best For
+Option A (MLS-Based)
+["basic", "listing", "owner"]
+listing.status, listing.soldDate, owner.fullName
+MLS-reported (may lag deed by 30–60 days)
+v15 — minimal code change, one new add-on
+Option B (Deed-Based)
+["basic", "deed", "owner"]
+deedHistory[].recordingDate, owner.fullName
+County-recorded (ground truth)
+v16 — eliminates escrow false positives
+
+Recommendation: Implement Option A for v15 (minimal code change, one new add-on). Consider Option B for v16 if deed-confirmed sold status is a priority to eliminate the 30–60 day escrow false-positive window.
+
+3. Updated Request Body
+The following is the exact JSON request body and updated TypeScript implementation for the v15 pipeline using Option A.
+JSON Request Body (Option A)
+{  "searchCriteria": {    "query": "<address or search string>"  },  "options": {    "datasets": ["basic", "listing", "owner"]  }}
+Updated TypeScript — processFetchChunk
+const res = await fetch('https://api.batchdata.com/api/v1/property/search', {    method: 'POST',    headers: {        'Content-Type': 'application/json',        'Authorization': `Bearer ${BATCH_DATA_API_KEY}`    },    body: JSON.stringify({        searchCriteria: { query },        options: {            datasets: ['basic', 'listing', 'owner']        }    })});const data = await res.json();const properties = data?.results?.properties || [];const topResult = properties[0] || {};const listing = topResult.listing || data?.results?.listing || {};const owner = topResult.owner || {};
+Key Change: Added options.datasets with ['basic', 'listing', 'owner']. This scopes the response to only the needed datasets — avoiding unnecessary data from other plan add-ons — and explicitly requests the "owner" dataset to surface owner name fields.
+What Changed vs. v15 Bare Call
+Table 3 — v15 Bare Call vs. Updated Option A Request Diff
+Element
+v15 (Bare Call)
+v15 Updated (Option A)
+Impact
+options.datasets
+Omitted (returns all plan datasets)
+['basic', 'listing', 'owner']
+Scoped response; no extra data
+Owner data
+Not requested; not returned
+Explicitly requested via 'owner'
+owner.fullName now available
+Listing data
+Returned implicitly via plan
+Explicitly scoped
+No cost change; cleaner response
+Response parsing
+topResult.listing only
+topResult.listing + topResult.owner
+New owner extraction block needed
+
+
+4. Response Field Mapping
+After the updated call, the following documents exactly where to find each required field in the API response object.
+Owner Name Fields
+Table 4 — Owner Name Field Paths (via "owner" dataset)
+Use Case
+Field Path
+Type
+Example Value
+Full owner name (primary)
+topResult.owner.fullName
+string
+"Kyle Anderson; Rhonda K Anderson"
+First owner full name
+topResult.owner.names[0].full
+string
+"Kyle Anderson"
+First owner first name
+topResult.owner.names[0].first
+string
+"Kyle"
+First owner last name
+topResult.owner.names[0].last
+string
+"Anderson"
+Owner-occupied flag
+topResult.owner.ownerOccupied
+boolean
+true / false
+
+Sold / Listing Status Fields
+Table 5 — Listing Status & Sale Field Paths (via "listing" dataset)
+Use Case
+Field Path
+Type
+Example Value
+Reliability
+Listing status (primary)
+listing.status
+string
+"Sold", "Off Market", "Active"
+✅ Confirmed field
+Status category
+listing.statusCategory
+string
+Varies
+⚠️ Undocumented — use as optional
+MLS sold date
+listing.soldDate
+string
+"2024-11-15"
+✅ Confirmed field
+MLS sold price
+listing.soldPrice
+number
+485000
+✅ Confirmed field
+Current/list price
+listing.price
+number
+499000
+✅ Confirmed — use as fallback
+
+Updated Extraction Logic (TypeScript)
+const properties = data?.results?.properties || [];const topResult = properties[0] || {};const listing = topResult.listing || data?.results?.listing || {};const owner = topResult.owner || {};// Sold status (unchanged from v15)const apiStatus = (listing.status || '').toLowerCase();const statusCat = (listing.statusCategory || '').toLowerCase();const soldPrice = listing.soldPrice || listing.price || 0;const soldDate = listing.soldDate || null;// Owner name (NEW — requires "owner" dataset add-on)const ownerFullName = owner.fullName || owner.names?.[0]?.full || null;const ownerFirstName = owner.names?.[0]?.first || null;const ownerLastName = owner.names?.[0]?.last || null;
+Note on listing.statusCategory: This field is not in BatchData's public schema documentation. The v15 pipeline reads it but it may be undefined or empty. listing.status is the confirmed field — treat statusCategory as an optional enhancement and do not rely on it as the primary sold-status signal.
+
+5. Cost Impact
+BatchData charges per-record: each property returned equals one billable record against the monthly quota. Add-on datasets are monthly line items on top of the base plan. Critically, adding the "owner" dataset does not increase the number of billable records — it enriches each existing record with owner data.
+Base Plan Tiers
+Table 6 — BatchData Base Plan Pricing Tiers
+Plan
+Monthly Cost
+Records Included
+Per-Record Cost
+Suitable For
+Growth
+$1,000/mo
+100,000
+$0.0100
+Up to ~3,300 calls/day
+Professional
+$2,500/mo
+300,000
+$0.0083
+Up to ~10,000 calls/day
+Scale
+$5,000/mo
+750,000
+$0.0067
+High-volume production
+
+Add-On Pricing Reference
+Table 7 — Add-On Dataset Reference for v15/v16 Pipeline
+Dataset
+Add-On Name
+Key Fields
+In Current Plan?
+Public Price
+"listing"
+Listing Data Add-on
+listing.status, listing.soldPrice, listing.soldDate
+✅ Yes
+Not published
+"owner"
+Property Owner Profile Add-on
+owner.fullName, owner.names[], owner.ownerOccupied
+❌ No — new
+Not published
+"deed"
+History (Deed) Add-on
+deedHistory[].recordingDate, sale.lastSale.price
+❌ No — Option B only
+Not published
+
+Estimated Cost Impact by Call Volume
+Table 8 — Cost Impact Scenarios at 1,000 and 10,000 Calls/Month
+Scenario
+1,000 calls/mo
+10,000 calls/mo
+Notes
+Current (bare call, Listing included)
+Counted against record quota
+Counted against record quota
+No change to record consumption
++ Owner add-on (Option A)
+Same record count + Owner add-on monthly fee
+Same record count + Owner add-on monthly fee
+Only new cost is the "owner" add-on monthly fee
+Option B (swap Listing → Deed + Owner)
+Same record count + Deed + Owner add-on fees
+Same record count + Deed + Owner add-on fees
+May save Listing add-on cost if removed from plan
+
+Key Insight: At 1,000–10,000 calls/month, you are well within the Growth plan's 100,000 record quota. No plan upgrade is needed. The only cost delta is the monthly add-on fee for the "owner" dataset — record consumption is unchanged.
+Required Action
+Contact BatchData at sales@batchdata.com to obtain the monthly cost of the Property Owner Profile ("owner") add-on for your current plan tier. This is the only unknown cost variable blocking a complete cost-impact assessment for the v15 upgrade.
+Table 9 — Action Items & Ownership for v15 Pipeline Upgrade
+Action Item
+Owner
+Priority
+Blocking?
+Contact BatchData sales for "owner" add-on pricing
+Engineering / Procurement
+High
+Yes — required before budget approval
+Update processFetchChunk to include options.datasets
+Engineering
+High
+Yes — required for owner name to appear
+Add owner.fullName extraction to route output
+Engineering
+High
+Yes — core feature gap
+Validate listing.statusCategory behavior in staging
+Engineering
+Medium
+No — optional enhancement
+Evaluate Option B (deed-based) for v16 roadmap
+Product / Engineering
+Low
+No — future improvement
+
