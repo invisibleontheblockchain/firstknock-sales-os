@@ -1,11 +1,11 @@
 # Plan
 
 ## Current Plan — Hide Canvas UI in Precision + Mobile/Tablet Toggle Fit
-- [ ] Hide all Canvas-specific wording/actions while `routeMode === 'precision'`, including bottom Builder button copy and any Precision panel message that still branches to Canvas text.
-- [ ] Keep Canvas UI visible only when Canvas mode is active; do not change Precision route/data-pull behavior.
-- [ ] Refactor the Canvas/Precision top-bar toggle into a compact responsive layout that fits mobile/tablet without overlapping Routes/Builder or right-side controls.
-- [ ] Use icon-only or short labels on narrow widths and full labels on desktop/tablet widths where safe.
-- [ ] Verify Home runtime logs after the UI change and document the result.
+- [x] Hide Canvas map overlays while `routeMode === 'precision'`.
+- [x] Keep Canvas UI visible only when Canvas mode is active; do not change Precision route/data-pull behavior.
+- [x] Refactor the Canvas/Precision top-bar toggle into a compact responsive layout that fits mobile/tablet without overlapping Routes/Builder or right-side controls.
+- [x] Use icon-only or short labels on narrow widths and full labels on desktop/tablet widths where safe.
+- [x] Verify Home runtime logs after the UI change and document the result.
 
 ## Previous Plan — Move Canvas/Precision Toggle to Top Bar
 - [x] Move the existing Canvas/Precision mode buttons into the main top toolbar on mobile and desktop.
@@ -253,6 +253,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Precision mode now hides Canvas zone overlays, the Canvas/Precision switch is extracted into a compact responsive control for mobile/tablet/desktop, and runtime logs showed no new frontend errors after the change.
+
 Canvas/Precision mode buttons were moved into the existing top toolbar on mobile and desktop, the old second-row pill under Routes/Builder was removed, and runtime logs showed no new frontend errors after the change.
 
 Canvas Builder now uses a dedicated Canvas-only panel: draw/redraw territory, optional session name, rep count, auto-created numbered zones, per-zone rep assignment, one-tap auto-assign, Save Territory, and Deploy. Precision-only controls are no longer shown in Canvas Mode; Precision keeps the existing sold/data/filter/route builder. Runtime logs after the change showed no new frontend import/build errors. Saved territory loading is handled through persisted polygon state because Home has exceeded the safe edit limit and should be split before adding more listeners.

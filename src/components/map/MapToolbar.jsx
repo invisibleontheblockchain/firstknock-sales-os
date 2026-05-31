@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, Users, Target } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, Users } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
+import RouteModeToggle from './RouteModeToggle';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -226,22 +227,11 @@ export default function MapToolbar({
                     {/* DATA STATUS + FILTER BUTTON */}
                     <div className="pointer-events-auto shrink-0 flex items-center gap-1 sm:gap-2">
                         {!activeRoute && (
-                            <div className="bg-black/80 backdrop-blur-md rounded-lg sm:rounded-xl p-0.5 sm:p-1 border border-white/10 flex gap-0.5 shadow-xl">
-                                <button
-                                    onClick={() => updateRouteMode('canvas')}
-                                    className={`px-2 py-1.5 sm:px-3 sm:py-2 rounded-md sm:rounded-lg text-[9px] sm:text-[10px] font-bold flex items-center gap-1 transition-all whitespace-nowrap ${routeMode === 'canvas' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}
-                                >
-                                    <Users className="w-3 h-3" /> <span className="hidden sm:inline">CANVAS</span><span className="sm:hidden">CAN</span>
-                                </button>
-                                <button
-                                    onClick={() => updateRouteMode('precision')}
-                                    className={`px-2 py-1.5 sm:px-3 sm:py-2 rounded-md sm:rounded-lg text-[9px] sm:text-[10px] font-bold flex items-center gap-1 transition-all whitespace-nowrap ${routeMode === 'precision' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'}`}
-                                >
-                                    <Target className="w-3 h-3" /> <span className="hidden sm:inline">PRECISION</span><span className="sm:hidden">PRE</span>
-                                </button>
-                            </div>
+                            <RouteModeToggle routeMode={routeMode} onChange={updateRouteMode} />
                         )}
-                        <DataStatusIndicator user={user} />
+                        <div className="hidden xl:block">
+                            <DataStatusIndicator user={user} />
+                        </div>
                         <Button
                             onClick={() => {
                                 const newVal = !showRouteDetails;

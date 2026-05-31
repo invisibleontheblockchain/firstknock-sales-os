@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import CanvasZoneLayers from './CanvasZoneLayers';
 
 export default function CanvasZoneOverlay() {
+  const [routeMode, setRouteMode] = useState(() => {
+    try { return localStorage.getItem('fk_routeMode') || 'precision'; } catch { return 'precision'; }
+  });
   const [zones, setZones] = useState(() => {
     try {
       const saved = localStorage.getItem('fk_canvasZones');
@@ -12,6 +15,12 @@ export default function CanvasZoneOverlay() {
   });
 
   useEffect(() => {
+    const handleModeChange = (event) => setRouteMode(event.detail?.routeMode || 'precision');
+    window.addEventListener('fk-route-mode-changed', handleModeChange);
+    return () => window.removeEventListener('fk-route-mode-changed', handleModeChange);
+  }, []);
+
+  useEffect(() => {
     const handleUpdate = (event) => {
       const nextZones = event.detail?.zones;
       setZones(Array.isArray(nextZones) ? nextZones : []);
@@ -19,6 +28,8 @@ export default function CanvasZoneOverlay() {
     window.addEventListener('fk-canvas-zones-updated', handleUpdate);
     return () => window.removeEventListener('fk-canvas-zones-updated', handleUpdate);
   }, []);
+
+  if (routeMode !== 'canvas') return null;
 
   return <CanvasZoneLayers zones={zones} />;
 }
