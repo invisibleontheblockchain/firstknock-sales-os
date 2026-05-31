@@ -8,6 +8,7 @@ import {
     Shuffle, Compass, Pencil, Lock, ScanLine
 } from 'lucide-react';
 import { toast } from "sonner";
+import CanvasBuilderSettings from './CanvasBuilderSettings.jsx';
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -50,6 +51,7 @@ export default function RouteBuilderSettings({
     onReorder, hasFrozenData,
     // Data
     user,
+    drawnPolygon,
     hasDrawnArea,
     maxDataMonths,
     hasMlsData
@@ -78,6 +80,19 @@ export default function RouteBuilderSettings({
 
     const toggleSection = (id) => {
         setExpandedSection(expandedSection === id ? null : id);
+    };
+
+    if (routeMode === 'canvas') {
+        return (
+            <CanvasBuilderSettings
+                drawnPolygon={drawnPolygon}
+                hasDrawnArea={hasDrawnArea}
+                onDraw={onDraw}
+                onClearPolygon={onClearPolygon}
+                onClose={onClose}
+                user={user}
+            />
+        );
     };
 
     const resetFilters = () => {

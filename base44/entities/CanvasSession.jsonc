@@ -1,0 +1,53 @@
+{
+  "name": "CanvasSession",
+  "type": "object",
+  "properties": {
+    "session_name": {
+      "type": "string",
+      "description": "Optional name for this Canvas deployment session"
+    },
+    "polygon": {
+      "type": "array",
+      "description": "Freehand territory polygon points",
+      "items": {
+        "type": "object",
+        "properties": {
+          "lat": {
+            "type": "number"
+          },
+          "lng": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "rep_count": {
+      "type": "integer",
+      "default": 1
+    },
+    "zones": {
+      "type": "array",
+      "description": "Generated Canvas zones and assignments",
+      "items": {
+        "type": "object"
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "deployed"
+      ],
+      "default": "draft"
+    },
+    "manager_id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "polygon",
+    "rep_count",
+    "zones",
+    "status"
+  ]
+}

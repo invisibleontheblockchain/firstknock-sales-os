@@ -1897,6 +1897,7 @@ export default function Home() {
                         }
                     }}
                     user={user}
+                    drawnPolygon={drawnPolygon}
                     hasDrawnArea={drawnPolygon && drawnPolygon.length > 2}
                     maxDataMonths={maxDataMonths}
                     hasMlsData={hasMlsData}
