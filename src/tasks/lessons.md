@@ -54,3 +54,4 @@
 - Do not solve route sync by adding aggressive fixed-interval polling to route/property hydration; it can amplify Base44/Neon fallback calls and trigger 429s. Prefer entity subscriptions, query invalidation, focus refetch, and selected-route keys.
 - When adding a new JSX component imported from a page, create the actual `.jsx` file path that Vite imports; `read_file` may resolve extensionless/pseudo paths, but the build requires a real matching file on disk.
 - If Home exceeds the safe edit limit during a feature, stop adding Home listeners/imports and keep behavior inside already-mounted focused map components or persisted state until Home is split.
+- On mobile map toolbars, never place two independent control groups in the same horizontal row when one is absolutely centered; give secondary mode controls their own row or they can visually overlap despite compact labels.

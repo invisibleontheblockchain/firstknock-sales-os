@@ -227,7 +227,7 @@ export default function MapToolbar({
                     {/* DATA STATUS + FILTER BUTTON */}
                     <div className="pointer-events-auto shrink-0 flex items-center gap-1 sm:gap-2">
                         {!activeRoute && (
-                            <RouteModeToggle routeMode={routeMode} onChange={updateRouteMode} />
+                            <RouteModeToggle routeMode={routeMode} onChange={updateRouteMode} className="hidden sm:flex" />
                         )}
                         <div className="hidden xl:block">
                             <DataStatusIndicator user={user} />
@@ -262,6 +262,12 @@ export default function MapToolbar({
                             {mode === 'generate' ? <Settings className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-yellow-500" /> : <Filter className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-yellow-500" />}
                         </Button>
                     </div>
+
+                    {!activeRoute && (
+                        <div className="pointer-events-auto flex justify-center sm:hidden">
+                            <RouteModeToggle routeMode={routeMode} onChange={updateRouteMode} />
+                        </div>
+                    )}
                 </div>
 
 

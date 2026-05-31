@@ -1,14 +1,14 @@
 import React from 'react';
 import { Target, Users } from 'lucide-react';
 
-export default function RouteModeToggle({ routeMode, onChange }) {
+export default function RouteModeToggle({ routeMode, onChange, className = '' }) {
   const modes = [
     { key: 'canvas', label: 'CANVAS', shortLabel: 'CAN', icon: Users, activeClass: 'bg-purple-600 text-white' },
     { key: 'precision', label: 'PRECISION', shortLabel: 'PRE', icon: Target, activeClass: 'bg-yellow-500 text-black' },
   ];
 
   return (
-    <div className="bg-black/80 backdrop-blur-md rounded-lg sm:rounded-xl p-0.5 sm:p-1 border border-white/10 flex gap-0.5 shadow-xl shrink-0">
+    <div className={`bg-black/80 backdrop-blur-md rounded-lg sm:rounded-xl p-0.5 sm:p-1 border border-white/10 flex gap-0.5 shadow-xl shrink-0 ${className}`}>
       {modes.map(({ key, label, shortLabel, icon: Icon, activeClass }) => (
         <button
           key={key}
