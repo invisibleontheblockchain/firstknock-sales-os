@@ -170,12 +170,12 @@ export default function Home() {
             return saved ? JSON.parse(saved) : null;
         } catch { return null; }
     });
-    const setDrawnPolygon = (val) => {
+    const setDrawnPolygon = (val, persist = false) => {
         setDrawnPolygonRaw(val);
         try {
-            if (val && val.length > 2) {
+            if (persist && val && val.length > 2) {
                 localStorage.setItem('fk_drawnPolygon', JSON.stringify(val));
-            } else {
+            } else if (!val || val.length < 3) {
                 localStorage.removeItem('fk_drawnPolygon');
             }
         } catch { }
@@ -1534,8 +1534,8 @@ export default function Home() {
                     active={drawingMode}
                     onPointsUpdate={setDraftPolygon}
                     onConfirm={(polygon) => {
-                        // One active builder shape at a time: every map tap replaces the prior territory.
-                        savePolygonToHistory(polygon); setDrawnPolygon(polygon); setDraftPolygon([]); setDrawingMode(false);
+                        // One active builder shape at a time. Do not save to previous-area history until a preview/query succeeds.
+                        setDrawnPolygon(polygon); setDraftPolygon([]); setDrawingMode(false);
                         toast.success("Freehand area selected! Choose property count and run Sandbox Preview.");
                     }}
                     drawnPolygon={drawnPolygon}

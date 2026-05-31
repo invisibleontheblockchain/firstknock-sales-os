@@ -1,5 +1,12 @@
 # Plan
 
+## Current Plan — Queried Area History Cleanup
+- [x] Stop saving drawn polygons as previous areas until a sandbox preview/query succeeds.
+- [x] Keep unqueried draft/current shapes from appearing as ghost history on the map.
+- [x] Add a trash control on previous areas so users can delete one saved area without clearing all history.
+- [x] Re-plan around the Home file size limit by moving stale polygon cleanup into TerritoryPrompt.
+- [x] Verify the touched map flow and document the result.
+
 ## Current Plan — Freehand BatchData Preview + RentCast Removal
 - [x] Confirm scope before implementation: this phase should not spend paid BatchData credits; it should replace the old circle/square preset UI with freehand drawing plus a property-count/limit preview.
 - [x] Define the UX: user taps Draw, freehands a polygon, then chooses requested property count after the area is drawn.
@@ -197,6 +204,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Previous areas now only persist after a successful sandbox preview/query, old unqueried local history is filtered out, selecting prior queried areas still works, and each previous area now has its own red trash button for deletion. Verification caught and fixed one JSX typo; remaining runtime logs show unrelated Base44 rate-limit noise from route hydration, not this map-history change.
+
 Freehand BatchData sandbox preview is wired: Builder draw now uses freehand drawing, the area toolbar accepts requested property count, free accounts are capped at 50, paid/admin at 1000, oversized areas are rejected server-side, paid pulls remain disabled, and sandbox probe returned 3 records with no app data changes. Backend verification passed for free cap, paid cap, continental-US rejection, sandbox key probe, and Kevin/Reif protected route audit.
 
 BatchData migration continued safely: added a no-cost area/cost preview, migration audit, sandbox BatchData shape probe, BatchData Neon columns/indexes, and a guarded BatchData Precision processor branch. Verified `setupNeonPropertyTables`, `validateBatchDataShape`, `processFetchChunk` idle mode, and Kevin/Reif Environmental audit; Upper/Middle/Lower Mount P remain protected under `kevin@reifenvironmental.com`, and no destructive purge/cutover has run.

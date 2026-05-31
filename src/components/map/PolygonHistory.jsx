@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Polygon, Tooltip } from 'react-leaflet';
+import { Marker, Polygon, Tooltip } from 'react-leaflet';
+import L from 'leaflet';
 import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
 
 const STORAGE_KEY = 'fk_polygonHistory';
@@ -16,7 +17,7 @@ export function savePolygonToHistory(polygon) {
         const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
         const key = polygonKey(polygon);
         const deduped = history.filter(entry => polygonKey(entry.polygon) !== key);
-        deduped.unshift({ polygon, date: new Date().toISOString() });
+        deduped.unshift({ polygon, date: new Date().toISOString(), queried: true });
         if (deduped.length > MAX_HISTORY) deduped.length = MAX_HISTORY;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(deduped));
     } catch {}
@@ -26,16 +27,44 @@ export function clearPolygonHistory() {
     localStorage.removeItem(STORAGE_KEY);
 }
 
+function polygonCenter(polygon = []) {
+    if (!polygon.length) return null;
+    return {
+        lat: polygon.reduce((sum, p) => sum + p.lat, 0) / polygon.length,
+        lng: polygon.reduce((sum, p) => sum + p.lng, 0) / polygon.length
+    };
+}
+
+function trashIcon(onDelete) {
+    const container = document.createElement('button');
+    container.type = 'button';
+    container.className = 'w-8 h-8 rounded-full bg-red-500/90 border border-white/40 shadow-xl flex items-center justify-center text-white hover:bg-red-400';
+    container.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.on(container, 'click', (event) => {
+        L.DomEvent.stop(event);
+        onDelete();
+    });
+    return L.divIcon({ html: container, className: '', iconSize: [32, 32], iconAnchor: [16, 16] });
+}
+
 export default function PolygonHistory({ currentPolygon, mode }) {
     const [history, setHistory] = useState([]);
     const [selectedKey, setSelectedKey] = useState(null);
     const isBuilder = mode === 'generate';
 
     useEffect(() => {
-        try {
-            const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-            setHistory(saved);
-        } catch {}
+        const loadHistory = () => {
+            try {
+                const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+                const queriedOnly = saved.filter(entry => entry?.queried === true);
+                if (queriedOnly.length !== saved.length) localStorage.setItem(STORAGE_KEY, JSON.stringify(queriedOnly));
+                setHistory(queriedOnly);
+            } catch {}
+        };
+        loadHistory();
+        window.addEventListener('fk-polygon-history-updated', loadHistory);
+        return () => window.removeEventListener('fk-polygon-history-updated', loadHistory);
     }, [currentPolygon]);
 
     useEffect(() => {
@@ -45,6 +74,13 @@ export default function PolygonHistory({ currentPolygon, mode }) {
     const currentKey = currentPolygon?.length > 2 ? polygonKey(currentPolygon) : null;
     const visibleHistory = history.filter(entry => polygonKey(entry.polygon) !== currentKey);
 
+    const deleteHistoryEntry = (keyToDelete) => {
+        const nextHistory = history.filter(entry => polygonKey(entry.polygon) !== keyToDelete);
+        setHistory(nextHistory);
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(nextHistory)); } catch {}
+        if (selectedKey === keyToDelete) setSelectedKey(null);
+    };
+
     if (visibleHistory.length === 0) return null;
 
     return (
@@ -53,10 +89,12 @@ export default function PolygonHistory({ currentPolygon, mode }) {
                 const key = polygonKey(entry.polygon);
                 const selected = isBuilder && key === selectedKey;
                 const areaLabel = formatSqMiles(calculatePolygonAreaSqMiles(entry.polygon));
+                const center = polygonCenter(entry.polygon);
 
                 return (
+                    <React.Fragment key={key || i}>
                     <Polygon
-                        key={key || i}
+                        key={`${key || i}-shape`}
                         positions={entry.polygon}
                         pathOptions={{
                             fillColor: selected ? '#FFD93D' : '#64748b',
@@ -79,6 +117,15 @@ export default function PolygonHistory({ currentPolygon, mode }) {
                             {isBuilder && <div className="text-yellow-400 mt-0.5">Tap to select</div>}
                         </Tooltip>
                     </Polygon>
+                    {isBuilder && center && (
+                        <Marker
+                            position={center}
+                            icon={trashIcon(() => deleteHistoryEntry(key))}
+                            interactive={true}
+                            zIndexOffset={1000}
+                        />
+                    )}
+                    </React.Fragment>
                 );
             })}
         </>

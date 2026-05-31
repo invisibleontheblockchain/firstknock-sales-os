@@ -8,6 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
+import { savePolygonToHistory } from '@/components/map/PolygonHistory';
 
 
 export default function TerritoryPrompt({
@@ -146,6 +147,14 @@ export default function TerritoryPrompt({
         checkRunningJobs();
         return () => { cancelled = true; };
     }, [user?.email, drawnPolygon]);
+
+    // Clear unqueried restored areas so draft polygons do not come back as ghost map areas.
+    useEffect(() => {
+        if (drawnPolygon?.length > 2 && localStorage.getItem('fk_drawnPolygonQueried') !== 'true') {
+            localStorage.removeItem('fk_drawnPolygon');
+            setDrawnPolygon(null);
+        }
+    }, [drawnPolygon, setDrawnPolygon]);
 
     // Clear only in-progress drawing when switching away; keep the confirmed area
     // so users can return after a pull/reload and still generate routes for it.
@@ -415,6 +424,10 @@ export default function TerritoryPrompt({
                 return;
             }
 
+            savePolygonToHistory(drawnPolygon);
+            localStorage.setItem('fk_drawnPolygonQueried', 'true');
+            setDrawnPolygon(drawnPolygon, true);
+            window.dispatchEvent(new CustomEvent('fk-polygon-history-updated'));
             toast.success(`Sandbox preview ready: ${d.returned_property_count || safeRequestedPropertyCount} properties allowed. No paid BatchData credits used.`);
         } catch (e) {
             const msg = e.response?.data?.message || e.message;
