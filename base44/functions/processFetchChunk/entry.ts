@@ -16,6 +16,8 @@ import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
 const RENTCAST_API_KEY = Deno.env.get("RENTCAST_API_KEY");
 const RENTCAST_BASE = "https://api.rentcast.io/v1";
+const BATCHDATA_API_KEY = Deno.env.get("BATCH_DATA_API_KEY");
+const BATCHDATA_BASE = "https://api.batchdata.com/api/v1/property/search";
 const DATABASE_URL = Deno.env.get("DATABASE_URL");
 const PROPERTY_STORAGE_MODE = ((Deno.env.toObject().PROPERTY_STORAGE_MODE) || "neon").toLowerCase(); // base44 | dual | neon
 
@@ -159,6 +161,86 @@ function generateNormalizedHash(addressLine, zipCode) {
     const normAddr = normalizeAddress(addressLine);
     const normZip = (zipCode || '00000').trim().slice(0, 5);
     return `${normAddr}|${normZip}`;
+}
+
+function firstValue(...values) {
+    return values.find(value => value !== undefined && value !== null && value !== '');
+}
+
+function normalizeBatchDataAddress(record) {
+    const address = record.address || record.propertyAddress || record.situsAddress || {};
+    const street = firstValue(address.street, address.streetAddress, address.addressLine1, record.addressLine1, record.formattedAddress?.split?.(',')?.[0]);
+    return {
+        street: street || '',
+        city: firstValue(address.city, record.city) || '',
+        state: firstValue(address.state, record.state) || '',
+        zip: String(firstValue(address.zip, address.zipCode, record.zipCode, '') || '').slice(0, 5),
+        lat: Number(firstValue(address.latitude, address.lat, record.latitude)),
+        lng: Number(firstValue(address.longitude, address.lng, record.longitude))
+    };
+}
+
+function mapBatchDataProperty(record) {
+    const p = record.property || record;
+    const address = normalizeBatchDataAddress(p);
+    if (!address.street || !address.zip || !Number.isFinite(address.lat) || !Number.isFinite(address.lng)) return null;
+
+    const owner = p.owner || {};
+    const listing = p.listing || {};
+    const building = p.building || p.structure || {};
+    const sale = p.sale || p.lastSale || {};
+    const lastSale = sale.lastSale || sale.lastTransfer || sale;
+    const ids = p.ids || p.identifiers || {};
+    const quickLists = p.quickLists || {};
+    const listingStatus = firstValue(listing.status, listing.statusCategory);
+    const listingStatusLower = String(listingStatus || '').toLowerCase();
+    const ownerOccupied = owner.ownerOccupied;
+    const corporateOwned = quickLists.corporateOwned === true;
+    const investorOwned = quickLists.investorOwned === true;
+    const saleDate = firstValue(lastSale.recordingDate, lastSale.saleDate, lastSale.date, p.lastSaleDate);
+    const price = Number(firstValue(lastSale.price, lastSale.salePrice, p.lastSalePrice, listing.price));
+    const ownerName = firstValue(owner.fullName, owner.name, owner.names?.[0]?.full, owner.names?.[0]);
+
+    const isActiveListing = listingStatusLower === 'active' || listingStatusLower === 'for sale';
+    const isRejected = isActiveListing || ownerOccupied === false || corporateOwned || investorOwned;
+    const addressMatch = address.street.match(/^(\d+)\s+(.*)$/);
+    const houseNumber = addressMatch ? parseInt(addressMatch[1], 10) : 0;
+    const streetName = addressMatch ? addressMatch[2] : address.street;
+    const hash = generateNormalizedHash(address.street, address.zip);
+
+    return {
+        address_hash: hash,
+        legacy_hash: firstValue(ids.addressHash, ids.propertyId, p.id, p._id) || null,
+        house_number: houseNumber,
+        street_name: streetName,
+        full_address: [address.street, address.city, address.state, address.zip].filter(Boolean).join(', '),
+        city: address.city,
+        state: address.state,
+        zip_code: address.zip,
+        lat: address.lat,
+        lng: address.lng,
+        owner_full_name: ownerName || null,
+        beds: Number(firstValue(building.bedrooms, p.bedrooms)) || null,
+        baths: Number(firstValue(building.bathrooms, p.bathrooms)) || null,
+        sqft: Number(firstValue(building.livingArea, building.squareFeet, p.squareFootage)) || null,
+        lot_size: Number(firstValue(p.lot?.size, p.lotSize)) || null,
+        year_built: Number(firstValue(building.yearBuilt, p.yearBuilt)) || null,
+        price: Number.isFinite(price) ? price : null,
+        sold_date: saleDate || null,
+        sale_type: 'BatchData',
+        property_type: firstValue(p.propertyType, p.landUse, building.propertyType) || 'Single Family',
+        data_source: 'batchdata',
+        sale_confidence: isRejected ? 'REJECTED' : 'verified',
+        original_status: isRejected ? 'REJECTED' : 'DEED_CONFIRMED',
+        route_active: !isRejected,
+        fips_code: firstValue(address.countyFipsCode, ids.fipsCode, ids.countyFipsCode) || null,
+        batchdata_property_id: firstValue(ids.id, ids.propertyId, p.id, p._id) || null,
+        listing_status: listingStatus || null,
+        owner_occupied: ownerOccupied ?? null,
+        corporate_owned: corporateOwned,
+        investor_owned: investorOwned,
+        last_sale_recording_date: firstValue(lastSale.recordingDate, sale.recordingDate) || null
+    };
 }
 
 function toNullableDate(value) {
@@ -470,6 +552,104 @@ Deno.serve(async (req) => {
             if (errorLog.length > 50) errorLog.splice(0, errorLog.length - 50);
         };
 
+        let currentPhase = job.phase || 'deed_records';
+        if (job.provider === 'batchdata' || currentPhase === 'batchdata_precision') {
+            if (!BATCHDATA_API_KEY) {
+                logError('BATCH_DATA_API_KEY not configured');
+                await base44.asServiceRole.entities.FetchJob.update(jobId, { status: 'failed', error_message: 'BATCH_DATA_API_KEY not configured', error_log: errorLog });
+                await releasePipelineLock(base44, activeLockId);
+                activeLockId = null;
+                return Response.json({ error: 'No BatchData API key' });
+            }
+
+            const neonSql = DATABASE_URL && PROPERTY_STORAGE_MODE !== 'base44' ? neon(DATABASE_URL) : null;
+            if (!neonSql) throw new Error('BatchData Precision requires Neon storage and DATABASE_URL');
+            if (await stopIfCancelled()) return Response.json({ status: 'cancelled', job_id: jobId });
+            if (job.status === 'pending') {
+                await base44.asServiceRole.entities.FetchJob.update(jobId, { status: 'running', started_at: new Date().toISOString(), phase: 'batchdata_precision', provider: 'batchdata', mode_tag: 'PRECISION_TARGET' });
+            }
+
+            const dryRunRecords = job.dry_run_metadata?.synthetic_records || [];
+            const shouldUseSynthetic = Array.isArray(dryRunRecords) && dryRunRecords.length > 0;
+            let rawRecords = dryRunRecords;
+            let apiCalls = 0;
+
+            if (!shouldUseSynthetic) {
+                const criteria = job.fips_code
+                    ? { countyFipsCode: job.fips_code }
+                    : { query: `${job.latitude},${job.longitude}` };
+                const response = await fetch(BATCHDATA_BASE, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BATCHDATA_API_KEY}` },
+                    body: JSON.stringify({
+                        searchCriteria: criteria,
+                        options: { datasets: ['basic', 'listing', 'deed', 'owner'], limit: Math.min(job.estimated_record_count || 1000, 1000) }
+                    })
+                });
+                apiCalls++;
+                if (!response.ok) {
+                    const text = await response.text().catch(() => '');
+                    throw new Error(`BatchData Precision request failed (${response.status}): ${text.slice(0, 300)}`);
+                }
+                const payload = await response.json();
+                const results = payload?.results?.properties || payload?.properties || payload?.results || [];
+                rawRecords = Array.isArray(results) ? results : [results].filter(Boolean);
+            }
+
+            const seen = new Set();
+            const mapped = [];
+            let rejectedByShape = 0;
+            let rejectedByRules = 0;
+            for (const raw of rawRecords) {
+                const mappedProperty = mapBatchDataProperty(raw);
+                if (!mappedProperty) { rejectedByRules++; continue; }
+                if (!filterPoint(mappedProperty.lat, mappedProperty.lng)) { rejectedByShape++; continue; }
+                if (seen.has(mappedProperty.address_hash)) continue;
+                seen.add(mappedProperty.address_hash);
+                if (mappedProperty.zip_code && !zipCodesFound.includes(mappedProperty.zip_code)) zipCodesFound.push(mappedProperty.zip_code);
+                mapped.push(mappedProperty);
+            }
+
+            const activeMapped = mapped.filter(p => p.route_active !== false && p.original_status !== 'REJECTED' && p.sale_confidence !== 'REJECTED');
+            const rejectedMapped = mapped.filter(p => p.route_active === false || p.original_status === 'REJECTED' || p.sale_confidence === 'REJECTED');
+            const dbResult = await writeToDb([...activeMapped, ...rejectedMapped]);
+            const completedAt = new Date().toISOString();
+            const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
+            chunkTimings.push(chunkDuration);
+
+            await base44.asServiceRole.entities.FetchJob.update(jobId, {
+                status: 'completed',
+                phase: 'complete',
+                progress_pct: 100,
+                completed_at: completedAt,
+                total_fetched: rawRecords.length,
+                total_inserted: dbResult.chunkInserted,
+                total_existed: dbResult.chunkExisted,
+                total_updated: dbResult.chunkUpdated,
+                total_api_calls: (job.total_api_calls || 0) + apiCalls,
+                total_batchdata_calls: (job.total_batchdata_calls || 0) + apiCalls,
+                completed_sub_circles: 1,
+                zip_codes_found: zipCodesFound,
+                chunk_number: nextChunkNumber,
+                chunk_timings: chunkTimings,
+                error_log: [...errorLog, `[${completedAt}] BatchData Precision complete: raw=${rawRecords.length}, active=${activeMapped.length}, rejected=${rejectedMapped.length}, outside_polygon=${rejectedByShape}, rule_rejected=${rejectedByRules}`]
+            });
+
+            try {
+                const users = await base44.asServiceRole.entities.User.filter({ email: job.user_email }, null, 1);
+                const userArr = Array.isArray(users) ? users : (users?.items || []);
+                if (userArr.length > 0) {
+                    await base44.asServiceRole.entities.User.update(userArr[0].id, {
+                        has_pulled_data: true, last_data_pull: completedAt, territory_property_count: dbResult.chunkInserted + dbResult.chunkExisted
+                    });
+                }
+            } catch (_e) { /* non-fatal */ }
+
+            await releasePipelineLock(base44, activeLockId);
+            activeLockId = null;
+            return Response.json({ status: 'completed', job_id: jobId, phase: 'batchdata_precision', raw: rawRecords.length, active: activeMapped.length, rejected: rejectedMapped.length });
+        }
+
         if (!RENTCAST_API_KEY) {
             logError('RENTCAST_API_KEY not configured');
             await base44.asServiceRole.entities.FetchJob.update(jobId, { status: 'failed', error_message: 'RENTCAST_API_KEY not configured', error_log: errorLog });
@@ -477,8 +657,6 @@ Deno.serve(async (req) => {
             activeLockId = null;
             return Response.json({ error: 'No API key' });
         }
-
-        let currentPhase = job.phase || 'deed_records';
         const neonSql = DATABASE_URL && PROPERTY_STORAGE_MODE !== 'base44' ? neon(DATABASE_URL) : null;
         const useBase44Storage = PROPERTY_STORAGE_MODE === 'base44' || PROPERTY_STORAGE_MODE === 'dual';
         const useNeonStorage = PROPERTY_STORAGE_MODE === 'neon' || PROPERTY_STORAGE_MODE === 'dual';
@@ -1136,7 +1314,7 @@ Deno.serve(async (req) => {
                                             searchCriteria: { query },
                                             options: {
                                                 // v16 Fix 10: Tier 2 adds 'deed' dataset when DEED_FILTER_ENABLED=true
-                                                datasets: Deno.env.get('DEED_FILTER_ENABLED') === 'true'
+                                                datasets: Deno.env.toObject().DEED_FILTER_ENABLED === 'true'
                                                     ? ['basic', 'listing', 'deed', 'owner']
                                                     : ['basic', 'listing', 'owner']
                                             }
@@ -1188,7 +1366,7 @@ Deno.serve(async (req) => {
 
                                     if (apiStatus.includes('sold') || statusCat === 'sold') {
                                         // v16 Fix 7 & 8 (Tier 2): Deed recording date verification
-                                        if (Deno.env.get('DEED_FILTER_ENABLED') === 'true') {
+                                        if (Deno.env.toObject().DEED_FILTER_ENABLED === 'true') {
                                             const sale = topResult.sale || {};
                                             const deedHistory = topResult.deedHistory || [];
                                             const recordingDate = sale?.lastTransfer?.recordingDate || deedHistory?.[0]?.recordingDate;
@@ -1214,7 +1392,7 @@ Deno.serve(async (req) => {
                                     }
 
                                     // v16 Fix 9 (Tier 2): Absentee Owner Mailing Address Filter
-                                    if (Deno.env.get('DEED_FILTER_ENABLED') === 'true') {
+                                    if (Deno.env.toObject().DEED_FILTER_ENABLED === 'true') {
                                         const mailingStreet = owner?.mailingAddress?.street?.toLowerCase().trim();
                                         const propertyStreet = cm.street_name?.toLowerCase().trim();
                                         if (mailingStreet && propertyStreet && mailingStreet !== propertyStreet) {

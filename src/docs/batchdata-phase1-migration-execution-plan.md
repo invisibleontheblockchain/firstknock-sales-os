@@ -9,8 +9,12 @@ We started the migration safely without touching live ingestion or purging any d
 Completed foundation:
 - Added `previewBatchDataArea` dry-run backend function.
 - Added `batchDataMigrationAudit` safety audit backend function.
+- Added `validateBatchDataShape` sandbox response-shape probe.
 - Expanded `FetchJob` schema for BatchData/Precision metadata.
-- Verified both new backend functions deploy and return successfully.
+- Added BatchData-specific Neon columns/indexes for FIPS, BatchData ID, listing status, ownership flags, and recording date.
+- Added a guarded `provider='batchdata'` / `phase='batchdata_precision'` branch in `processFetchChunk`.
+- Verified all new backend functions deploy and return successfully.
+- Verified `processFetchChunk` returns idle successfully with no active job after fixing the optional `DEED_FILTER_ENABLED` flag lookup.
 
 Critical protection update:
 - The correct protected account is `kevin@reifenvironmental.com`.
@@ -29,6 +33,15 @@ Result:
 - Estimated record cap: `1,000`
 - Estimated max BatchData cost at current plan math: `$10`
 - Eligible for Phase 1 Precision pull.
+
+### BatchData sandbox shape probe
+Test query: `1295 Chrismill Ln, Mount Pleasant, SC 29466`.
+
+Result:
+- Sandbox returned `3` synthetic property records.
+- Confirmed response shape includes usable `address`, `ids`, `listing`, `owner`, `quickLists`, `sale`, `building`, and related datasets.
+- Mapped preview confirmed fields needed for Phase 1 normalization: FIPS, owner name, owner occupancy, corporate flag, listing status, sale date/price, address, coordinates, and raw keys.
+- No app data was changed.
 
 ### Migration audit
 Result:

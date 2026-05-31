@@ -9,13 +9,15 @@
 - [ ] Build a purge plan that removes false-positive legacy RentCast/MLS-derived records while protecting Kevin’s saved routes, knocked history, and any records still referenced by SavedRoute/InteractionLog.
 - [ ] Define Phase 1 vs Phase 2 semantics in-app: Phase 1 = BatchData deed-confirmed Precision data pull; Phase 2 = Canvas Mode GPS door logging with zero BatchData dependency.
 - [ ] Replace RentCast Phase 1 completely: BatchData county/FIPS-based property search, BatchData field normalization, `data_source='batchdata'`, listing/deed/owner mapping, active-listing suppression, owner-occupied filtering, corporate/investor filtering, SFR filtering, and sold-window filtering.
+  - In progress: added a guarded `provider='batchdata'` / `phase='batchdata_precision'` processor branch with BatchData normalization and route-active rejection rules; not yet wired as the default live pull path.
 - [ ] Remove old RentCast Phase 2 MLS gap-fill from the Precision pipeline; no MLS/listing-only route candidates should survive unless they come from BatchData fields and pass the same proof filters.
 - [ ] Update `FetchJob` model for BatchData: keep polygon input for now only as the selected area boundary, add/confirm `fips_code`, `area_sq_mi`, `polygon_hash`, `provider`, `mode_tag`, estimated record count, estimated cost, and dry-run metadata.
 - [ ] Replace radius/sub-circle mechanics with freehand-area mechanics: compute area, centroid, county/FIPS coverage, hash, and hard reject oversized areas instead of clipping or silently expanding.
 - [x] Add a no-cost dry-run path for custom/freehand draws: user can draw, see square miles, counties/FIPS, estimated BatchData request size/cost, and allowed limits without creating a paid FetchJob or consuming records.
 - [x] Solve “whole continental US” risk: server-side area caps, county-count caps, estimated-record caps, monthly credit caps, hard rejection before API calls, and clear user messaging.
 - [x] Build the cost model: BatchData base plan, per-record/overage assumptions, deed/listing/owner add-on costs, dry-run vs paid pull behavior, gross margin at $99 Precision, and separate Canvas $19/rep zero-BatchData model.
-- [ ] Validate BatchData API response shape safely using sandbox/test calls first: capture representative raw payloads, map every field to existing app fields, and document fields that no longer exist or need fallback.
+- [x] Validate BatchData API response shape safely using sandbox/test calls first: capture representative raw payloads, map every field to existing app fields, and document fields that no longer exist or need fallback.
+  - Verified: `setupNeonPropertyTables` added BatchData columns/indexes; `validateBatchDataShape` sandbox probe returned 3 records and mapped expected fields. Sandbox data is synthetic, but response shape is usable.
 - [ ] Add migration verification: compare BatchData candidates against known-good Kevin/current routes, check route counts before/after, confirm no saved route hydrates to fewer houses, and prove false-positive RentCast records are excluded.
 - [ ] Only after Phase 1 passes: begin Canvas design around mode switch, freehand draw, rep zones, GPS door logs, offline queue, and manager heatmap with no BatchData calls.
 - [ ] Final cutover gate: disable RentCast env/use paths, remove RentCast UI/docs language, run runtime logs, run backend tests, confirm active jobs are idle, and document review before purging legacy data.
@@ -183,7 +185,7 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
-BatchData migration started safely: added a no-cost area/cost preview, added a migration audit, expanded FetchJob metadata, tested both new backend functions successfully, and documented the execution plan. Kevin/Reif Environmental protection is now confirmed for Upper Mount P, Middle Mount P, and Lower Mount P under `kevin@reifenvironmental.com`; no destructive purge/cutover should bypass the audit must-keep list.
+BatchData migration continued safely: added a no-cost area/cost preview, migration audit, sandbox BatchData shape probe, BatchData Neon columns/indexes, and a guarded BatchData Precision processor branch. Verified `setupNeonPropertyTables`, `validateBatchDataShape`, `processFetchChunk` idle mode, and Kevin/Reif Environmental audit; Upper/Middle/Lower Mount P remain protected under `kevin@reifenvironmental.com`, and no destructive purge/cutover has run.
 
 Builder drawing now keeps only one active territory shape at a time, hides previous territory history while drawing, and squares now use true 40/300 square-mile side lengths instead of the broken sizing.
 
