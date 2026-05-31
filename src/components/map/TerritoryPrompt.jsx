@@ -46,6 +46,9 @@ export default function TerritoryPrompt({
     const [forceFullRefresh, setForceFullRefresh] = useState(false);
     const [selectedHistoryArea, setSelectedHistoryArea] = useState(null);
     const [recoverableJob, setRecoverableJob] = useState(null);
+    const [requestedPropertyCount, setRequestedPropertyCount] = useState(50);
+    const [previewResult, setPreviewResult] = useState(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
     // v15: MLS Phase 2 always runs with verification — no toggle needed
     const pollRef = useRef(null);
     const activeJobIdRef = useRef(null);
@@ -188,7 +191,9 @@ export default function TerritoryPrompt({
 
     const hasPulledData = !!user?.has_pulled_data;
     const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
-    const isPaid = user?.subscription_status === 'active' || user?.is_owner;
+    const isPaid = user?.subscription_status === 'active' || user?.is_owner || user?.role === 'admin';
+    const maxRequestedProperties = isPaid ? 1000 : 50;
+    const safeRequestedPropertyCount = Math.max(1, Math.min(Number(requestedPropertyCount) || maxRequestedProperties, maxRequestedProperties));
     const pullCount = user?.area_pulls_count || 0;
     const maxPulls = 9999; // unlimited for testing
     const canPullAgain = pullCount < maxPulls;
@@ -386,95 +391,36 @@ export default function TerritoryPrompt({
     };
 
     const handleFetchData = async () => {
-        // Don't allow double-trigger
-        if (pulling) return;
-
-        // Block large-area pulls for non-subscribers using the actual submitted polygon area.
-        if (actualAreaSqMiles > 50 && !isPaid) {
-            toast.error(`This ${formatSqMiles(actualAreaSqMiles)} pull requires an active FirstKnock subscription. Upgrade to unlock!`, { duration: 5000 });
+        if (previewLoading || pulling) return;
+        if (!drawnPolygon || drawnPolygon.length < 3) {
+            toast.error('Draw a freehand area first.');
             return;
         }
 
-        if (!canPullAgain) {
-            toast.error("You've used your 2 free data pulls. Upgrade to Pro for 3 additional pulls.", { duration: 5000 });
-            return;
-        }
-
-        const centerLat = drawnPolygon.reduce((s, p) => s + p.lat, 0) / drawnPolygon.length;
-        const centerLng = drawnPolygon.reduce((s, p) => s + p.lng, 0) / drawnPolygon.length;
-
-        const R = 3959;
-        const toRad = (v) => v * Math.PI / 180;
-        let maxDist = 0;
-        for (const p of drawnPolygon) {
-            const dLat = toRad(p.lat - centerLat);
-            const dLng = toRad(p.lng - centerLng);
-            const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(centerLat)) * Math.cos(toRad(p.lat)) * Math.sin(dLng / 2) ** 2;
-            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-            const d = R * c;
-            if (d > maxDist) maxDist = d;
-        }
-        const radius = Math.max(0.5, maxDist);
-
-        setPulling(true);
-        setPullProgress('Connecting to property database...');
-        setPullPct(2);
-        setDisplayPct(0);
-        targetPctRef.current = 2;
-        setEtaText('Initializing...');
-        setTotalExpected(0);
-        pctHistoryRef.current = [];
+        setPreviewLoading(true);
+        setPreviewResult(null);
 
         try {
-            const res = await base44.functions.invoke('fetchAreaProperties', {
-                latitude: centerLat,
-                longitude: centerLng,
-                radius: radius,
+            const res = await base44.functions.invoke('previewBatchDataArea', {
                 polygon: drawnPolygon,
-                sold_months: fetchMonths,
-                include_mls: isPaid,
-                force_full_refresh: forceFullRefresh
+                requested_properties: safeRequestedPropertyCount,
+                sandbox: true,
+                sandbox_probe: true
             });
             const d = res.data || {};
+            setPreviewResult(d);
 
-            if (d.error) {
-                if (d.error === 'pull_limit_reached') {
-                    toast.error(d.message || "Upgrade to pull fresh leads.", { duration: 5000 });
-                } else {
-                    toast.error(d.message || d.error);
-                }
-                setPulling(false);
+            if (d.error || d.hard_rejected) {
+                toast.error(d.message || d.rejection_reason || d.error || 'Area rejected. Please redraw smaller.');
                 return;
             }
 
-            if (d.status === 'already_running') {
-                toast.info(d.message);
-                targetPctRef.current = 10;
-                setPullProgress('Resuming existing fetch...');
-                startPolling(d.job_id);
-                return;
-            }
-
-            if ((d.status === 'started' || d.status === 'resumed') && d.job_id) {
-                if (d.is_delta_pull) {
-                    setIsDeltaPull(true);
-                    toast.success('Smart refresh — only pulling changes since last import!');
-                } else {
-                    setIsDeltaPull(false);
-                    toast.success(d.pull_mode === 'full_refresh' ? 'Fill Gaps refresh started!' : 'Pulling property data now!');
-                }
-                targetPctRef.current = 5;
-                setPullProgress(d.is_delta_pull ? 'Delta sync — fetching only new & changed records...' : (d.pull_mode === 'full_refresh' ? 'Fill Gaps — re-scanning every grid cell...' : 'Scanning property records...'));
-                startPolling(d.job_id);
-            } else {
-                // Fallback for any other response shape
-                setPulling(false);
-                toast.success(d.message || 'Done!');
-            }
+            toast.success(`Sandbox preview ready: ${d.returned_property_count || safeRequestedPropertyCount} properties allowed. No paid BatchData credits used.`);
         } catch (e) {
             const msg = e.response?.data?.message || e.message;
-            toast.error(`Failed to start fetch: ${msg}`);
-            setPulling(false);
+            toast.error(`Sandbox preview failed: ${msg}`);
+        } finally {
+            setPreviewLoading(false);
         }
     };
 
@@ -494,72 +440,15 @@ export default function TerritoryPrompt({
                             <span className="text-xs font-bold text-white whitespace-nowrap">Draw Territory</span>
                         </div>
 
-                        <select
-                            value={drawShape || 'circle'}
-                            onChange={(e) => setDrawShape(e.target.value)}
-                            className="bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors shrink-0"
-                        >
-                            <option value="circle">Circle</option>
-                            <option value="square">Square</option>
-                        </select>
-
-                        <select
-                            value={drawSizeMiles}
-                            onChange={(e) => {
-                                const newSize = Number(e.target.value);
-                                if (newSize === 300 && !isPaid) {
-                                    toast.error('300 sq mi requires a Pro subscription.', { duration: 3000 });
-                                    setTimeout(() => navigate('/Billing'), 1500);
-                                    return;
-                                }
-                                setDrawSizeMiles(newSize);
-                            }}
-                            className="bg-white/5 border border-white/10 text-white text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer hover:bg-white/10 transition-colors min-w-[118px] flex-1 sm:flex-none"
-                        >
-                            <option value={5}>Test · 5 sq mi</option>
-                            <option value={40}>40 sq mi</option>
-                            <option value={300}>300 sq mi {isPaid ? '' : '🔒 PRO'}</option>
-                        </select>
-
-                        <div className="flex items-center gap-1 shrink-0">
-                            <span className="text-[9px] text-gray-500 font-bold">DATA</span>
-                            {[6, 12].map(m => (
-                                <button
-                                    key={m}
-                                    onClick={() => setFetchMonths(m)}
-                                    className={`text-[10px] font-bold px-2 py-1 rounded-md transition-all ${
-                                        fetchMonths === m
-                                            ? 'bg-yellow-500 text-black shadow-[0_0_8px_rgba(255,215,0,0.4)]'
-                                            : 'bg-white/5 text-gray-400 hover:bg-white/10'
-                                    }`}
-                                >
-                                    {m}mo
-                                </button>
-                            ))}
+                        <div className="flex flex-col gap-0.5 min-w-[210px] flex-1">
+                            <span className="text-[10px] text-yellow-400 font-bold">Freehand draw mode</span>
+                            <span className="text-[10px] text-gray-400 leading-tight">Hold and drag on the map to outline the area. Release to finish.</span>
                         </div>
 
-                        {isPaid ? (
-                            <div className="hidden sm:flex items-center gap-2 px-2 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/30 shrink-0">
-                                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                                <span className="text-[10px] font-bold text-emerald-400">MLS Verified</span>
-                                <Zap className="w-3 h-3 text-emerald-400" />
-                            </div>
-                        ) : (
-                            <button
-                                onClick={() => navigate('/Billing')}
-                                className="hidden sm:flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 hover:bg-yellow-500/10 hover:border-yellow-500/30 transition-all cursor-pointer group shrink-0"
-                            >
-                                <Lock className="w-3 h-3 text-gray-500 group-hover:text-yellow-400 transition-colors" />
-                                <span className="text-[10px] font-bold text-gray-400 group-hover:text-yellow-400 transition-colors">Enable MLS</span>
-                                <ArrowRight className="w-3 h-3 text-gray-500 group-hover:text-yellow-400 transition-colors" />
-                            </button>
-                        )}
-
-                        <span className="text-[10px] text-yellow-400/70 shrink-0">Tap map to place</span>
-
-                        {isLargeArea && (
-                            <div className="basis-full text-[9px] text-cyan-400 font-semibold">Heads up — {actualAreaLabel} × {fetchMonths}mo is a big pull.</div>
-                        )}
+                        <div className="hidden sm:flex items-center gap-2 px-2 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 shrink-0">
+                            <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                            <span className="text-[10px] font-bold text-cyan-300">BatchData Sandbox</span>
+                        </div>
 
                         <button
                             onClick={() => { setDrawingMode(false); setDraftPolygon([]); }}
@@ -660,61 +549,43 @@ export default function TerritoryPrompt({
                 <div className="absolute top-11 sm:top-16 left-2 right-2 sm:left-4 sm:right-auto z-[1001] max-w-[calc(100vw-1rem)] sm:max-w-none bg-black/90 backdrop-blur-md border border-gray-800 rounded-2xl sm:rounded-full px-2 py-2 sm:px-4 sm:py-2 shadow-2xl flex flex-wrap sm:flex-nowrap items-center gap-1.5 sm:gap-3 animate-in fade-in slide-in-from-top-2 overflow-visible">
                     <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
                     <span className="text-[11px] sm:text-xs font-bold text-white whitespace-nowrap shrink-0">Custom Area Active</span>
-                    {canPullAgain ? (
-                        <div className="flex items-center gap-1.5 flex-1 sm:flex-none min-w-0 sm:ml-2">
-                            {actualAreaSqMiles > 50 && !isPaid ? (
-                                <button
-                                    onClick={() => navigate('/Billing')}
-                                    className="flex items-center gap-1.5 text-[10px] font-bold text-yellow-500 hover:text-yellow-400 transition-colors bg-yellow-500/10 border border-yellow-500/30 rounded-md px-2 py-1"
-                                >
-                                    <Lock className="w-3 h-3" />
-                                    <span>PRO — {actualAreaLabel}</span>
-                                </button>
-                            ) : (
-                                <>
-                                    <Button
-                                        disabled={pulling}
-                                        onClick={handleFetchData}
-                                        className="text-white text-[10px] h-8 sm:h-6 px-2 sm:px-3 py-0 rounded-md font-bold tracking-wide bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)] flex-1 sm:flex-none min-w-0"
-                                    >
-                                        <span className="sm:hidden">{`Pull ${actualAreaLabel}`}</span><span className="hidden sm:inline">{`Pull ${actualAreaLabel} (${fetchMonths} Mo)`}</span>
-                                    </Button>
-                                    {selectedHistoryArea && (
-                                        <Button
-                                            disabled={pulling}
-                                            onClick={() => { setForceFullRefresh(true); setTimeout(handleFetchData, 0); }}
-                                            className="text-black text-[10px] h-8 sm:h-6 px-2 sm:px-3 py-0 rounded-md font-bold tracking-wide bg-yellow-500 hover:bg-yellow-400 shrink-0"
-                                        >
-                                            Fill Gaps
-                                        </Button>
-                                    )}
-                                </>
-                            )}
-                        </div>
-                    ) : (
-                        <Link
-                            to={createPageUrl('Billing')}
-                            className="flex items-center gap-1.5 ml-auto text-[10px] font-bold text-yellow-500 hover:text-yellow-400 transition-colors bg-yellow-500/10 border border-yellow-500/30 rounded-md px-2 py-1"
+                    <div className="flex items-center gap-1.5 flex-1 sm:flex-none min-w-0 sm:ml-2">
+                        <label className="text-[9px] text-gray-400 font-bold whitespace-nowrap">PROPERTIES</label>
+                        <input
+                            type="number"
+                            min="1"
+                            max={maxRequestedProperties}
+                            value={safeRequestedPropertyCount}
+                            onChange={(e) => setRequestedPropertyCount(Math.max(1, Math.min(Number(e.target.value) || 1, maxRequestedProperties)))}
+                            className="w-16 h-8 sm:h-6 bg-white/5 border border-white/10 rounded-md px-2 text-[11px] text-white outline-none"
+                        />
+                        <Button
+                            disabled={previewLoading}
+                            onClick={handleFetchData}
+                            className="text-white text-[10px] h-8 sm:h-6 px-2 sm:px-3 py-0 rounded-md font-bold tracking-wide bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)] flex-1 sm:flex-none min-w-0"
                         >
-                            <Lock className="w-3 h-3" />
-                            <span>Upgrade</span>
-                            <ArrowRight className="w-3 h-3" />
-                        </Link>
-                    )}
+                            {previewLoading ? 'Checking...' : 'Sandbox Preview'}
+                        </Button>
+                    </div>
                     <button
                         onClick={() => { setDrawnPolygon(null); setDraftPolygon([]); setDrawingMode(false); }}
                         className="text-gray-400 hover:text-red-500 transition-colors p-2 sm:p-1 bg-white/5 rounded-full shrink-0 ml-auto sm:ml-0"
                     >
                         <Trash2 className="w-3 h-3" />
                     </button>
-                    {canPullAgain && (
-                        <div className="absolute top-full left-0 right-0 sm:right-auto mt-2 w-auto sm:w-56 bg-black/90 border border-gray-800 rounded-lg p-2 shadow-xl animate-in fade-in slide-in-from-top-1">
-                            <p className="text-[9px] text-gray-400 leading-tight">
-                                <span className="text-blue-400 font-bold">Area:</span> pulling the actual selected polygon, about <span className="text-white">{actualAreaLabel}</span>.
-                                <br />Public records have a <span className="text-white">1-3 month recording lag</span>.
-                            </p>
-                        </div>
-                    )}
+                    <div className="absolute top-full left-0 right-0 sm:right-auto mt-2 w-auto sm:w-72 bg-black/90 border border-gray-800 rounded-lg p-2 shadow-xl animate-in fade-in slide-in-from-top-1">
+                        <p className="text-[9px] text-gray-400 leading-tight">
+                            <span className="text-blue-400 font-bold">Area:</span> selected freehand polygon is about <span className="text-white">{actualAreaLabel}</span>.
+                            <br /><span className="text-cyan-300 font-bold">Sandbox:</span> max <span className="text-white">{maxRequestedProperties}</span> properties for this account; no paid BatchData credits used.
+                            {previewResult && (
+                                <span className="block mt-1 text-white">
+                                    {previewResult.hard_rejected
+                                        ? `Rejected: ${previewResult.rejection_reason || previewResult.message}`
+                                        : `Allowed: ${previewResult.returned_property_count || safeRequestedPropertyCount} properties · ${previewResult.area_sq_mi} sq mi`}
+                                </span>
+                            )}
+                        </p>
+                    </div>
                 </div>
             )}
         </>

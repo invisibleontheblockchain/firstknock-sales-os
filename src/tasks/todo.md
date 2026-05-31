@@ -1,16 +1,16 @@
 # Plan
 
 ## Current Plan — Freehand BatchData Preview + RentCast Removal
-- [ ] Confirm scope before implementation: this phase should not spend paid BatchData credits; it should replace the old circle/square preset UI with freehand drawing plus a property-count/limit preview.
-- [ ] Define the UX: user taps Draw, freehands a polygon, then chooses requested property count after the area is drawn.
-- [ ] Remove the visible Circle/Square and 5/40/300 sq mi controls from the Builder draw prompt.
-- [ ] Add requested-property controls capped by account type: free users max 50, paid/admin users max 1000.
-- [ ] Enforce the same caps server-side, never trusting the frontend.
-- [ ] Add hard oversized-area protection before any BatchData call: reject massive polygons by area/bounding size and show a clear redraw message.
-- [ ] Update preview behavior to return safe metadata: area, max allowed properties, requested properties, eligibility/rejection reason, and estimated/property cap without charging BatchData.
-- [ ] Keep actual paid BatchData pulling disabled for now; do not wire live paid BatchData record retrieval until explicitly approved.
-- [ ] Verify with backend tests for free cap, paid cap, oversized area rejection, and no active RentCast processor usage.
-- [ ] Document results in this Review section before marking complete.
+- [x] Confirm scope before implementation: this phase should not spend paid BatchData credits; it should replace the old circle/square preset UI with freehand drawing plus a property-count/limit preview.
+- [x] Define the UX: user taps Draw, freehands a polygon, then chooses requested property count after the area is drawn.
+- [x] Remove the visible Circle/Square and 5/40/300 sq mi controls from the Builder draw prompt.
+- [x] Add requested-property controls capped by account type: free users max 50, paid/admin users max 1000.
+- [x] Enforce the same caps server-side, never trusting the frontend.
+- [x] Add hard oversized-area protection before any BatchData call: reject massive polygons by area/bounding size and show a clear redraw message.
+- [x] Update preview behavior to return safe metadata: area, max allowed properties, requested properties, eligibility/rejection reason, and estimated/property cap without charging BatchData.
+- [x] Keep actual paid BatchData pulling disabled for now; do not wire live paid BatchData record retrieval until explicitly approved.
+- [x] Verify with backend tests for free cap, paid cap, oversized area rejection, and no active RentCast processor usage.
+- [x] Document results in this Review section before marking complete.
 
 ## Previous Plan — BatchData-Only Migration + Phase 1 Gate
 - [x] Confirm no implementation starts until this plan is approved: Phase 1 BatchData Precision must be correct before Canvas/Phase 2 work begins.
@@ -197,6 +197,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Freehand BatchData sandbox preview is wired: Builder draw now uses freehand drawing, the area toolbar accepts requested property count, free accounts are capped at 50, paid/admin at 1000, oversized areas are rejected server-side, paid pulls remain disabled, and sandbox probe returned 3 records with no app data changes. Backend verification passed for free cap, paid cap, continental-US rejection, sandbox key probe, and Kevin/Reif protected route audit.
+
 BatchData migration continued safely: added a no-cost area/cost preview, migration audit, sandbox BatchData shape probe, BatchData Neon columns/indexes, and a guarded BatchData Precision processor branch. Verified `setupNeonPropertyTables`, `validateBatchDataShape`, `processFetchChunk` idle mode, and Kevin/Reif Environmental audit; Upper/Middle/Lower Mount P remain protected under `kevin@reifenvironmental.com`, and no destructive purge/cutover has run.
 
 Builder drawing now keeps only one active territory shape at a time, hides previous territory history while drawing, and squares now use true 40/300 square-mile side lengths instead of the broken sizing.

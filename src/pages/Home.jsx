@@ -1536,7 +1536,7 @@ export default function Home() {
                     onConfirm={(polygon) => {
                         // One active builder shape at a time: every map tap replaces the prior territory.
                         savePolygonToHistory(polygon); setDrawnPolygon(polygon); setDraftPolygon([]); setDrawingMode(false);
-                        toast.success("Area selected! Now fetch data or generate routes.");
+                        toast.success("Freehand area selected! Choose property count and run Sandbox Preview.");
                     }}
                     drawnPolygon={drawnPolygon}
                     drawShape={drawShape}
