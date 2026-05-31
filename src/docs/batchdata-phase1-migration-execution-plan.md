@@ -12,9 +12,10 @@ Completed foundation:
 - Expanded `FetchJob` schema for BatchData/Precision metadata.
 - Verified both new backend functions deploy and return successfully.
 
-Critical blocker:
-- The Kevin/Reif Environmental protection audit returned **0 saved routes and 0 protected hashes** for `kevin@reifenvironmentals.com`.
-- Because the user explicitly said Kevin’s data must not be lost, **no purge should happen** until the correct Kevin identity/route ownership mapping is confirmed.
+Critical protection update:
+- The correct protected account is `kevin@reifenvironmental.com`.
+- Upper Mount P, Middle Mount P, and Lower Mount P are confirmed ACTIVE and assigned to Kevin Reif.
+- These routes are included in the audit `must_keep_routes` gate and must never be purged or cut over without verified replacements.
 
 ## Verified Results
 

@@ -4,8 +4,8 @@
 - [x] Confirm no implementation starts until this plan is approved: Phase 1 BatchData Precision must be correct before Canvas/Phase 2 work begins.
 - [x] Inventory every RentCast dependency: `processFetchChunk`, `fetchAreaProperties`, `routeFilterPipeline`, Neon schema, route generation, saved route hydration, analytics, diagnostics/test functions, docs, env vars, and UI labels.
 - [ ] Freeze/preserve Kevin data first: export Kevin/Reif Environmental user, team member, saved routes, route hashes, interaction logs, workspace property links, and raw property records before any purge or migration.
-  - Blocked: original safety audit used the plural typo `kevin@reifenvironmentals.com`; correct protected account is `kevin@reifenvironmental.com`.
-  - New required protection: keep Upper Mount P, Middle Mount P, and Lower Mount P tied to `kevin@reifenvironmental` / Reif Environmental before any purge or cutover.
+  - Resolved: original safety audit used the plural typo `kevin@reifenvironmentals.com`; correct protected account is `kevin@reifenvironmental.com`.
+  - Confirmed protected: Upper Mount P, Middle Mount P, and Lower Mount P are ACTIVE, assigned to Kevin Reif, and included in the migration audit must-keep list before any purge or cutover.
 - [ ] Build a purge plan that removes false-positive legacy RentCast/MLS-derived records while protecting Kevin’s saved routes, knocked history, and any records still referenced by SavedRoute/InteractionLog.
 - [ ] Define Phase 1 vs Phase 2 semantics in-app: Phase 1 = BatchData deed-confirmed Precision data pull; Phase 2 = Canvas Mode GPS door logging with zero BatchData dependency.
 - [ ] Replace RentCast Phase 1 completely: BatchData county/FIPS-based property search, BatchData field normalization, `data_source='batchdata'`, listing/deed/owner mapping, active-listing suppression, owner-occupied filtering, corporate/investor filtering, SFR filtering, and sold-window filtering.
@@ -183,7 +183,7 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
-BatchData migration started safely: added a no-cost area/cost preview, added a migration audit, expanded FetchJob metadata, tested both new backend functions successfully, and documented the execution plan. Destructive purge/cutover is blocked until Kevin/Reif Environmental data ownership is confirmed because the audit found 0 protected Kevin route hashes for `kevin@reifenvironmentals.com`.
+BatchData migration started safely: added a no-cost area/cost preview, added a migration audit, expanded FetchJob metadata, tested both new backend functions successfully, and documented the execution plan. Kevin/Reif Environmental protection is now confirmed for Upper Mount P, Middle Mount P, and Lower Mount P under `kevin@reifenvironmental.com`; no destructive purge/cutover should bypass the audit must-keep list.
 
 Builder drawing now keeps only one active territory shape at a time, hides previous territory history while drawing, and squares now use true 40/300 square-mile side lengths instead of the broken sizing.
 
