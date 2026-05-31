@@ -1,5 +1,16 @@
 # Plan
 
+## Current Plan — Canvas Mode + Precision Pricing Split
+- [ ] Confirm pricing copy before implementation: Canvas Mode should be positioned separately from Precision Mode.
+- [ ] Add a clear app-level mode indicator on Home so users always know whether they are in Canvas or Precision.
+- [ ] Add Canvas as a separate Builder mode while reusing the existing route-builder flow, route save flow, assignment flow, Route Command panel, Knock tab, and Checklist tab.
+- [ ] Keep Precision tied to paid BatchData property acquisition; keep Canvas optimized for high-volume door-knocking teams without requiring paid BatchData pulls.
+- [ ] Tag newly created Canvas routes distinctly so managers/reps can understand which mode produced them without breaking existing saved routes.
+- [ ] Make Knock and Checklist stay on the same route/order/status frequency by sharing the selected route ID, reacting to SavedRoute updates, and refreshing route/log data automatically when switching tabs.
+- [ ] Update Billing copy/cards to explain Canvas vs Precision, pricing intent, what each includes, and when a customer should choose each.
+- [ ] Verify with runtime logs: Canvas route creation, mode display, Billing rendering, Knock tab route switch, Checklist overlay sync, and SavedRoute update subscription behavior.
+- [ ] Document final results in Review before marking complete.
+
 ## Current Plan — Freehand Save + Paid BatchData Pull
 - [x] Diagnose why a fresh freehand drawing disappears instead of staying active.
 - [x] Fix only stale restored polygon cleanup so newly drawn shapes are not cleared.
