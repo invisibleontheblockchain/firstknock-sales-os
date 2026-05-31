@@ -1,6 +1,12 @@
 # Plan
 
-## Current Plan — Canvas Zone Visual Split Bug
+## Current Plan — Move Canvas/Precision Toggle to Top Bar
+- [ ] Move the existing Canvas/Precision mode buttons into the main top toolbar on mobile and desktop.
+- [ ] Remove the separate second-row Canvas/Precision pill under Routes/Builder.
+- [ ] Keep all existing mode-switch behavior, labels, icons, and active-state colors unchanged.
+- [ ] Verify the Home runtime does not show a new UI/build error after the move.
+
+## Previous Plan — Canvas Zone Visual Split Bug
 - [x] Diagnose why Canvas Deploy saves assignments but does not render split zones on the map.
 - [x] Fix the render loop warning by using stable empty query defaults in the Canvas panel.
 - [x] Generate simple zone polygon geometry client-side from the drawn territory and rep count.
