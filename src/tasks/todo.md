@@ -1,6 +1,20 @@
 # Plan
 
-## Current Plan — Builder Single Shape + Square Area Fix
+## Current Plan — Phase 2 Strategic Execution Roadmap
+- [ ] Confirm build order before implementation: stabilize Precision/BatchData first, then ship Canvas MVP, then add Phase 2.5 growth features.
+- [ ] Phase A — Data pipeline safety: audit active locks/jobs, keep Kevin/live routes undisturbed, preserve dual-read/dual-write transition, and verify no route disappears during migration.
+- [ ] Phase B — BatchData Precision migration: update `processFetchChunk`, `fetchAreaProperties`, `routeFilterPipeline`, and Neon schema around FIPS + polygon hash + BatchData field mapping.
+- [ ] Phase C — Precision validation: compare BatchData output against known-good routes, verify false-positive filters, validate area limits, and confirm 1,000-property cap behavior.
+- [ ] Phase D — Canvas MVP foundation: add territory/session/zone/door-log data model, reuse existing outcome logging, add mode switch inside Routes, and ensure Canvas has zero BatchData dependency.
+- [ ] Phase E — Canvas manager workflow: freehand territory draw, rep-count input, square-grid subdivision, zone assignment, territory save/reuse, and session summary.
+- [ ] Phase F — Canvas rep workflow: assigned zone map, tap-to-log door outcome, offline queue, DNK persistence, outside-zone warning, and session resume.
+- [ ] Phase G — Manager visibility: real-time/near-real-time heatmap, rep status indicators, coverage percentage, outcome color coding, and performance-safe polling/SSE fallback.
+- [ ] Phase H — Monetization + upgrade path: enforce Canvas $19/rep and Precision $99/user packaging, add gold-pin/deed-density upgrade prompts only after core Canvas is stable.
+- [ ] Phase I — Phase 2.5 backlog: Voronoi equal-door zones, route replay, outcome analytics, leaderboard, callback management, territory heat history, CSV export, and Zapier bridge.
+- [ ] Phase J — Enterprise readiness backlog: CRM sync, SSO/SAML, SOC 2 prep, API access, custom reporting, nested hierarchy, and digital contracts.
+- [ ] Verification gate for every phase: runtime logs, data-count diffs, live-route regression check, mobile map test, and documented review before marking complete.
+
+## Previous Plan — Builder Single Shape + Square Area Fix
 - [x] Trace how Builder places circle/square territory polygons from map taps.
 - [x] Ensure each new placement replaces the existing draft/confirmed territory instead of accumulating multiple circles.
 - [x] Correct square dimensions so 40 and 300 square-mile selections create true area-sized squares.
