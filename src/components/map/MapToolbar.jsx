@@ -225,6 +225,22 @@ export default function MapToolbar({
 
                     {/* DATA STATUS + FILTER BUTTON */}
                     <div className="pointer-events-auto shrink-0 flex items-center gap-1 sm:gap-2">
+                        {!activeRoute && (
+                            <div className="bg-black/80 backdrop-blur-md rounded-lg sm:rounded-xl p-0.5 sm:p-1 border border-white/10 flex gap-0.5 shadow-xl">
+                                <button
+                                    onClick={() => updateRouteMode('canvas')}
+                                    className={`px-2 py-1.5 sm:px-3 sm:py-2 rounded-md sm:rounded-lg text-[9px] sm:text-[10px] font-bold flex items-center gap-1 transition-all whitespace-nowrap ${routeMode === 'canvas' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                                >
+                                    <Users className="w-3 h-3" /> <span className="hidden sm:inline">CANVAS</span><span className="sm:hidden">CAN</span>
+                                </button>
+                                <button
+                                    onClick={() => updateRouteMode('precision')}
+                                    className={`px-2 py-1.5 sm:px-3 sm:py-2 rounded-md sm:rounded-lg text-[9px] sm:text-[10px] font-bold flex items-center gap-1 transition-all whitespace-nowrap ${routeMode === 'precision' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'}`}
+                                >
+                                    <Target className="w-3 h-3" /> <span className="hidden sm:inline">PRECISION</span><span className="sm:hidden">PRE</span>
+                                </button>
+                            </div>
+                        )}
                         <DataStatusIndicator user={user} />
                         <Button
                             onClick={() => {
@@ -258,22 +274,6 @@ export default function MapToolbar({
                     </div>
                 </div>
 
-                {!activeRoute && (
-                    <div className="pointer-events-auto mx-auto bg-black/85 backdrop-blur-md border border-white/10 rounded-full p-1 flex items-center gap-1 shadow-xl">
-                        <button
-                            onClick={() => updateRouteMode('canvas')}
-                            className={`px-3 py-1.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 transition-all ${routeMode === 'canvas' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}
-                        >
-                            <Users className="w-3 h-3" /> CANVAS
-                        </button>
-                        <button
-                            onClick={() => updateRouteMode('precision')}
-                            className={`px-3 py-1.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 transition-all ${routeMode === 'precision' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'}`}
-                        >
-                            <Target className="w-3 h-3" /> PRECISION
-                        </button>
-                    </div>
-                )}
 
                 {/* Active Route Banner */}
                 {activeRoute && (

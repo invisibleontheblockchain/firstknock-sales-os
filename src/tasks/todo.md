@@ -1,10 +1,10 @@
 # Plan
 
 ## Current Plan — Move Canvas/Precision Toggle to Top Bar
-- [ ] Move the existing Canvas/Precision mode buttons into the main top toolbar on mobile and desktop.
-- [ ] Remove the separate second-row Canvas/Precision pill under Routes/Builder.
-- [ ] Keep all existing mode-switch behavior, labels, icons, and active-state colors unchanged.
-- [ ] Verify the Home runtime does not show a new UI/build error after the move.
+- [x] Move the existing Canvas/Precision mode buttons into the main top toolbar on mobile and desktop.
+- [x] Remove the separate second-row Canvas/Precision pill under Routes/Builder.
+- [x] Keep existing mode-switch behavior, icons, and active-state colors unchanged; use compact CAN/PRE labels only on mobile to fit the top bar.
+- [x] Verify the Home runtime does not show a new UI/build error after the move.
 
 ## Previous Plan — Canvas Zone Visual Split Bug
 - [x] Diagnose why Canvas Deploy saves assignments but does not render split zones on the map.
@@ -246,6 +246,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Canvas/Precision mode buttons were moved into the existing top toolbar on mobile and desktop, the old second-row pill under Routes/Builder was removed, and runtime logs showed no new frontend errors after the change.
+
 Canvas Builder now uses a dedicated Canvas-only panel: draw/redraw territory, optional session name, rep count, auto-created numbered zones, per-zone rep assignment, one-tap auto-assign, Save Territory, and Deploy. Precision-only controls are no longer shown in Canvas Mode; Precision keeps the existing sold/data/filter/route builder. Runtime logs after the change showed no new frontend import/build errors. Saved territory loading is handled through persisted polygon state because Home has exceeded the safe edit limit and should be split before adding more listeners.
 
 Canvas/Precision split is now visible in the map toolbar, Canvas opens the existing route builder without requiring a paid data pull, Precision still routes users through area preview/paid pull, Canvas routes are visibly named as Canvas routes, Billing now explains Canvas per-rep pricing and Precision property-credit usage with a remaining-property counter, and Knock/Checklist sync keeps subscriptions/focus refresh without aggressive polling. Backend verification confirmed Canvas route naming in `generateRoutesBackend`; runtime review showed no new frontend compile errors, the detected 429 risk from polling was removed, and the actual `components/billing/PricingModeCard.jsx` file was created so Billing can resolve the component during build.
