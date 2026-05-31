@@ -1,6 +1,13 @@
 # Plan
 
-## Current Plan — Move Canvas/Precision Toggle to Top Bar
+## Current Plan — Hide Canvas UI in Precision + Mobile/Tablet Toggle Fit
+- [ ] Hide all Canvas-specific wording/actions while `routeMode === 'precision'`, including bottom Builder button copy and any Precision panel message that still branches to Canvas text.
+- [ ] Keep Canvas UI visible only when Canvas mode is active; do not change Precision route/data-pull behavior.
+- [ ] Refactor the Canvas/Precision top-bar toggle into a compact responsive layout that fits mobile/tablet without overlapping Routes/Builder or right-side controls.
+- [ ] Use icon-only or short labels on narrow widths and full labels on desktop/tablet widths where safe.
+- [ ] Verify Home runtime logs after the UI change and document the result.
+
+## Previous Plan — Move Canvas/Precision Toggle to Top Bar
 - [x] Move the existing Canvas/Precision mode buttons into the main top toolbar on mobile and desktop.
 - [x] Remove the separate second-row Canvas/Precision pill under Routes/Builder.
 - [x] Keep existing mode-switch behavior, icons, and active-state colors unchanged; use compact CAN/PRE labels only on mobile to fit the top bar.
