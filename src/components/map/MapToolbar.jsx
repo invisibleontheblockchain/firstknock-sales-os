@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, Users, Target } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
@@ -73,6 +73,16 @@ export default function MapToolbar({
 }) {
     const queryClient = useQueryClient();
     const hasDrawnArea = drawnPolygon && drawnPolygon.length > 2;
+    const [routeMode, setRouteMode] = useState(() => {
+        try { return localStorage.getItem('fk_routeMode') || 'precision'; } catch { return 'precision'; }
+    });
+
+    const updateRouteMode = (nextMode) => {
+        setRouteMode(nextMode);
+        try { localStorage.setItem('fk_routeMode', nextMode); } catch {}
+        window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: nextMode } }));
+        toast.success(`${nextMode === 'canvas' ? 'Canvas' : 'Precision'} mode active`);
+    };
 
     // Track whether data has been pulled for the current drawn territory
     const [territoryDataReady, setTerritoryDataReady] = useState(false);
@@ -234,8 +244,8 @@ export default function MapToolbar({
                         </Button>
                         <Button
                             onClick={() => {
-                                if (mode === 'generate' && (!hasDrawnArea || !territoryDataReady)) {
-                                    toast.info(hasDrawnArea ? "Pull property data before opening the builder." : "Draw a custom area first.");
+                                if (mode === 'generate' && routeMode === 'precision' && (!hasDrawnArea || !territoryDataReady)) {
+                                    toast.info(hasDrawnArea ? "Run Precision preview/pull before opening the builder." : "Draw a custom area first.");
                                     return;
                                 }
                                 setShowCompare(true);
@@ -247,6 +257,23 @@ export default function MapToolbar({
                         </Button>
                     </div>
                 </div>
+
+                {!activeRoute && (
+                    <div className="pointer-events-auto mx-auto bg-black/85 backdrop-blur-md border border-white/10 rounded-full p-1 flex items-center gap-1 shadow-xl">
+                        <button
+                            onClick={() => updateRouteMode('canvas')}
+                            className={`px-3 py-1.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 transition-all ${routeMode === 'canvas' ? 'bg-purple-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                        >
+                            <Users className="w-3 h-3" /> CANVAS
+                        </button>
+                        <button
+                            onClick={() => updateRouteMode('precision')}
+                            className={`px-3 py-1.5 rounded-full text-[10px] font-bold flex items-center gap-1.5 transition-all ${routeMode === 'precision' ? 'bg-yellow-500 text-black' : 'text-gray-400 hover:text-white'}`}
+                        >
+                            <Target className="w-3 h-3" /> PRECISION
+                        </button>
+                    </div>
+                )}
 
                 {/* Active Route Banner */}
                 {activeRoute && (
@@ -438,10 +465,14 @@ export default function MapToolbar({
                     {mode === 'generate' && !activeRoute && (
                         <Button
                             onClick={() => {
+                                if (routeMode === 'canvas') {
+                                    setShowCompare(true);
+                                    return;
+                                }
                                 if (hasDrawnArea) {
                                     if (!territoryDataReady) {
                                         setShowCompare(false);
-                                        toast.info("Use the Custom Area Active bar to pull data for this area.", { duration: 3500 });
+                                        toast.info("Use the Custom Area Active bar to preview or pull Precision data for this area.", { duration: 3500 });
                                         return;
                                     }
                                     setShowCompare(true);
@@ -456,6 +487,8 @@ export default function MapToolbar({
                         >
                             {routesGenerating ? (
                                 <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> BUILDING</>  
+                            ) : routeMode === 'canvas' ? (
+                                <><Users className="w-4 h-4 mr-1.5" /> CANVAS BUILDER</>
                             ) : hasDrawnArea ? (
                                 territoryDataReady ? (
                                     <><Zap className="w-4 h-4 mr-1.5" /> GENERATE</>  

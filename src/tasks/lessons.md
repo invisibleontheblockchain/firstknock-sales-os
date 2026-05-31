@@ -51,3 +51,5 @@
 - For protected-customer migration work, verify exact email spelling against live entity ownership before declaring data missing; singular/plural domain typos can falsely show zero protected routes.
 - Optional feature flags in backend functions should use `Deno.env.toObject().FLAG` (or another safe default) instead of `Deno.env.get('FLAG')` when the flag is not a required secret; otherwise deployment/testing can be blocked by a missing optional secret.
 - When cleaning stale localStorage-backed map state, only clear state that is proven to have been restored from localStorage; otherwise fresh in-memory user drawings can be mistaken for stale persisted data and disappear immediately.
+- Do not solve route sync by adding aggressive fixed-interval polling to route/property hydration; it can amplify Base44/Neon fallback calls and trigger 429s. Prefer entity subscriptions, query invalidation, focus refetch, and selected-route keys.
+- When adding a new JSX component imported from a page, use the exact resolvable file path/extension if the build cannot resolve extensionless imports; verify import paths after creating new component files.

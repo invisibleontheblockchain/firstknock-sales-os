@@ -117,6 +117,7 @@ export default function RepHome() {
   // 1. Fetch Assigned Routes - search across ALL possible team member IDs for this rep
   const { data: routes = [], isLoading: routesLoading } = useQuery({
     queryKey: ['myRoutes', user?.id, allTeamMemberIds.join(',')],
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       if (!user) return [];
       try {
@@ -238,6 +239,7 @@ export default function RepHome() {
   // 2. Fetch Route Properties - batch filter by address_hash
   const { data: properties = [], isLoading: propsLoading } = useQuery({
     queryKey: ['routeProperties', activeRoute?.id, activeRoute?.updated_date, activeRouteOrderKey],
+    refetchOnWindowFocus: true,
     queryFn: async () => {
       if (!activeRoute?.property_hashes?.length) return [];
       const hashes = activeRoute.property_hashes;

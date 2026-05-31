@@ -51,6 +51,8 @@ Deno.serve(async (req) => {
         const properties = Array.isArray(body.properties) ? body.properties : [];
         const housesPerRoute = Math.min(Math.max(Number(body.houses_per_route || 100), 1), 10000);
         const startLocation = body.start_location || null;
+        const routeMode = body.route_mode === 'canvas' ? 'canvas' : 'precision';
+        const routePrefix = routeMode === 'canvas' ? 'Canvas Route' : 'Precision Route';
 
         if (properties.length === 0) return Response.json({ success: true, routes: [] });
         if (properties.length > 10000) return Response.json({ error: 'Too many properties for one backend route generation request. Limit is 10,000.' }, { status: 400 });
@@ -61,7 +63,8 @@ Deno.serve(async (req) => {
             const chunk = ordered.slice(i, i + housesPerRoute);
             routes.push({
                 id: `backend-route-${Date.now()}-${routes.length + 1}`,
-                name: `Route ${routes.length + 1}`,
+                name: `${routePrefix} ${routes.length + 1}`,
+                route_mode: routeMode,
                 properties: chunk,
                 houseCount: chunk.length,
                 totalDistance: routeDistance(chunk, startLocation),

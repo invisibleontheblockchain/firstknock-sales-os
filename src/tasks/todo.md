@@ -1,15 +1,17 @@
 # Plan
 
 ## Current Plan — Canvas Mode + Precision Pricing Split
-- [ ] Confirm pricing copy before implementation: Canvas Mode should be positioned separately from Precision Mode.
-- [ ] Add a clear app-level mode indicator on Home so users always know whether they are in Canvas or Precision.
-- [ ] Add Canvas as a separate Builder mode while reusing the existing route-builder flow, route save flow, assignment flow, Route Command panel, Knock tab, and Checklist tab.
-- [ ] Keep Precision tied to paid BatchData property acquisition; keep Canvas optimized for high-volume door-knocking teams without requiring paid BatchData pulls.
-- [ ] Tag newly created Canvas routes distinctly so managers/reps can understand which mode produced them without breaking existing saved routes.
-- [ ] Make Knock and Checklist stay on the same route/order/status frequency by sharing the selected route ID, reacting to SavedRoute updates, and refreshing route/log data automatically when switching tabs.
-- [ ] Update Billing copy/cards to explain Canvas vs Precision, pricing intent, what each includes, and when a customer should choose each.
-- [ ] Verify with runtime logs: Canvas route creation, mode display, Billing rendering, Knock tab route switch, Checklist overlay sync, and SavedRoute update subscription behavior.
-- [ ] Document final results in Review before marking complete.
+- [x] Confirm pricing copy before implementation: Canvas Mode is priced per rep, while Precision Mode should show a remaining property-usage counter.
+- [x] Add a clear app-level mode indicator on Home so users always know whether they are in Canvas or Precision.
+  - Re-plan: direct Home edits are blocked by file size, so mode state/tagging was handled in smaller shared components/helpers via localStorage and route-generation helpers.
+- [x] Add Canvas as a separate Builder mode while reusing the existing route-builder flow, route save flow, assignment flow, Route Command panel, Knock tab, and Checklist tab.
+- [x] Keep Precision tied to paid BatchData property acquisition; keep Canvas optimized for high-volume door-knocking teams without requiring paid BatchData pulls.
+- [x] Tag newly created Canvas routes distinctly so managers/reps can understand which mode produced them without breaking existing saved routes.
+- [x] Make Knock and Checklist stay on the same route/order/status frequency by sharing the selected route ID, reacting to SavedRoute updates, and refreshing route/log data automatically when switching tabs.
+  - Re-plan: 5-second polling caused rate-limit risk; kept SavedRoute/InteractionLog subscriptions plus focus refetch instead of constant polling.
+- [x] Update Billing copy/cards to explain Canvas vs Precision, pricing intent, what each includes, and when a customer should choose each.
+- [x] Verify with runtime logs/backend tests: Canvas mode backend route naming works, no new frontend compile error appeared in runtime logs, and aggressive polling was removed after detecting 429 risk.
+- [x] Document final results in Review before marking complete.
 
 ## Current Plan — Freehand Save + Paid BatchData Pull
 - [x] Diagnose why a fresh freehand drawing disappears instead of staying active.
@@ -223,6 +225,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Canvas/Precision split is now visible in the map toolbar, Canvas opens the existing route builder without requiring a paid data pull, Precision still routes users through area preview/paid pull, Canvas routes are visibly named as Canvas routes, Billing now explains Canvas per-rep pricing and Precision property-credit usage with a remaining-property counter, and Knock/Checklist sync keeps subscriptions/focus refresh without aggressive polling. Backend verification confirmed Canvas route naming in `generateRoutesBackend`; runtime review showed no new frontend compile errors, the detected 429 risk from polling was removed, and the Billing import path was corrected to resolve the new PricingModeCard component during build.
+
 Freehand drawing now stays active after drawing because stale localStorage cleanup only clears actual restored stale polygons, not fresh in-memory drawings. Sandbox Preview is clarified as validation-only and does not populate properties; after approval, a new Start Paid Pull button creates a real BatchData FetchJob and starts polling. Backend verification passed for `previewBatchDataArea` and `startBatchDataPull` dry-run without spending paid credits.
 
 Previous areas now only persist after a successful sandbox preview/query, old unqueried local history is filtered out, selecting prior queried areas still works, and each previous area now has its own red trash button for deletion. Verification caught and fixed one JSX typo; remaining runtime logs show unrelated Base44 rate-limit noise from route hydration, not this map-history change.

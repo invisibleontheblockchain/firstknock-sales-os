@@ -51,6 +51,9 @@ export default function TerritoryPrompt({
     const [previewResult, setPreviewResult] = useState(null);
     const [previewLoading, setPreviewLoading] = useState(false);
     const [paidPullStarting, setPaidPullStarting] = useState(false);
+    const [routeMode, setRouteMode] = useState(() => {
+        try { return localStorage.getItem('fk_routeMode') || 'precision'; } catch { return 'precision'; }
+    });
     // v15: MLS Phase 2 always runs with verification — no toggle needed
     const pollRef = useRef(null);
     const activeJobIdRef = useRef(null);
@@ -169,6 +172,12 @@ export default function TerritoryPrompt({
             setSelectedHistoryArea(null);
         }
     }, [mode]);
+
+    useEffect(() => {
+        const handler = (event) => setRouteMode(event.detail?.routeMode || 'precision');
+        window.addEventListener('fk-route-mode-changed', handler);
+        return () => window.removeEventListener('fk-route-mode-changed', handler);
+    }, []);
 
     // Listen for toolbar draw button and previous-area selection events
     useEffect(() => {
@@ -599,7 +608,7 @@ export default function TerritoryPrompt({
             )}
 
             {/* Drawn Polygon Controls */}
-            {!drawingMode && !pulling && drawnPolygon && drawnPolygon.length > 2 && mode === 'generate' && (
+            {!drawingMode && !pulling && routeMode === 'precision' && drawnPolygon && drawnPolygon.length > 2 && mode === 'generate' && (
                 <div className="absolute top-11 sm:top-16 left-2 right-2 sm:left-4 sm:right-auto z-[1001] max-w-[calc(100vw-1rem)] sm:max-w-none bg-black/90 backdrop-blur-md border border-gray-800 rounded-2xl sm:rounded-full px-2 py-2 sm:px-4 sm:py-2 shadow-2xl flex flex-wrap sm:flex-nowrap items-center gap-1.5 sm:gap-3 animate-in fade-in slide-in-from-top-2 overflow-visible">
                     <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
                     <span className="text-[11px] sm:text-xs font-bold text-white whitespace-nowrap shrink-0">Custom Area Active</span>

@@ -774,9 +774,13 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         // Get unique streets in this route
         const routeStreets = [...new Set(orderedProps.map(p => p.street_name).filter(Boolean))];
 
+        let routeMode = 'precision';
+        try { if (typeof localStorage !== 'undefined') routeMode = localStorage.getItem('fk_routeMode') || 'precision'; } catch (e) {}
+        const routePrefix = routeMode === 'canvas' ? 'Canvas Route' : 'Precision Route';
         routes.push({
             id: `route_${i + 1}`,
-            name: `Route ${i + 1}`,
+            name: `${routePrefix} ${i + 1}`,
+            route_mode: routeMode,
             properties: orderedProps,
             houseCount: orderedProps.length,
             streetCount: routeStreets.length,
@@ -796,7 +800,8 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 
     // Rename routes sequentially based on rank
     routes.forEach((route, index) => {
-        route.name = `Route ${index + 1}`;
+        const routePrefix = route.route_mode === 'canvas' ? 'Canvas Route' : 'Precision Route';
+        route.name = `${routePrefix} ${index + 1}`;
     });
 
     // Attach cooldown info to result

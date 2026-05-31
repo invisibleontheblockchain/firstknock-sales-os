@@ -11,7 +11,7 @@ export default function RepHeader({ user, isOffline, activeRoute, stats, knockWi
   { dot: 'bg-[#FF6B6B]', text: 'text-[#FF6B6B]', label: 'OFFLINE (QUEUED)', icon: WifiOff } :
   isMutating > 0 ?
   { dot: 'bg-[#FFD93D]', text: 'text-[#FFD93D]', label: `SYNCING (${isMutating})...`, icon: RefreshCw } :
-  { dot: 'bg-[#00F5A0]', text: 'text-[#00F5A0]', label: 'SYNCED', icon: CheckCircle2 };
+  { dot: 'bg-[#00F5A0]', text: 'text-[#00F5A0]', label: 'AUTO-SYNCED', icon: CheckCircle2 };
 
   return (
     <div className="sticky top-0 z-30 backdrop-blur-md border-b border-white/5 px-4 pt-4 pb-4 space-y-3 bg-[#000000]">

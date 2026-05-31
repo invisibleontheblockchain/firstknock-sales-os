@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import BetaUsageMeter from '../components/beta/BetaUsageMeter';
+import PricingModeCard from '../components/billing/PricingModeCard.jsx';
 
 const PLANS = [
   {
@@ -17,7 +18,7 @@ const PLANS = [
     priceId: 'price_1THYMh2MvSNi6E8haDHYVGKW',
     isPopular: true,
     features: [
-      '300 sq mi Territory Coverage',
+      'Canvas Mode priced per rep',
       'AI-Optimized Walking Routes',
       'Live GPS Tracking & Proof of Visit',
       'Team Management & Dispatch',
@@ -93,6 +94,14 @@ export default function Billing() {
   }, []);
 
   const isSubscribed = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+  const precisionLimit = user?.precision_property_limit || user?.monthly_property_limit || 1000;
+  const precisionUsed = Math.min(user?.precision_properties_used || user?.territory_property_count || 0, precisionLimit);
+  const precisionUsage = {
+    limit: precisionLimit,
+    used: precisionUsed,
+    remaining: Math.max(precisionLimit - precisionUsed, 0),
+    percent: precisionLimit > 0 ? Math.min(100, Math.round((precisionUsed / precisionLimit) * 100)) : 0
+  };
 
   const handleManageSubscription = async () => {
     try {
@@ -115,15 +124,43 @@ export default function Billing() {
                 
                 {/* Header */}
                 <div className="text-center space-y-2 sm:space-y-3">
-                    <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">FirstKnock Pro</h1>
-                    <p className="text-sm sm:text-base text-gray-400 max-w-md mx-auto">
-                        Everything you need to dominate your territory.
+                    <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">FirstKnock Plans</h1>
+                    <p className="text-sm sm:text-base text-gray-400 max-w-2xl mx-auto">
+                        Canvas is priced per rep for high-volume teams. Precision uses property credits for paid data pulls.
                     </p>
                 </div>
 
                 {/* Current Usage — hidden on mobile to save space */}
                 <div className="hidden sm:block">
                     <BetaUsageMeter showUpgrade={false} />
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                    <PricingModeCard
+                        mode="canvas"
+                        title="Canvas Mode"
+                        price="$59 / rep / mo"
+                        subtitle="For massive door-knocking teams working assigned routes."
+                        features={[
+                            'Per-rep pricing scales with your field team',
+                            'Route builder, dispatch, Knock tab, and Checklist sync',
+                            'GPS proof, outcomes, team progress, and route switching',
+                            'No paid BatchData pull required for route execution'
+                        ]}
+                    />
+                    <PricingModeCard
+                        mode="precision"
+                        title="Precision Mode"
+                        price="Property credits"
+                        subtitle="For BatchData-backed property acquisition before routing."
+                        usage={precisionUsage}
+                        features={[
+                            'Freehand area preview before using paid credits',
+                            'Properties counter shows how many records remain',
+                            'Paid pulls import real property records into territory',
+                            'Best for targeted recently-sold/new-homeowner campaigns'
+                        ]}
+                    />
                 </div>
 
                 {isSubscribed &&
@@ -188,7 +225,7 @@ export default function Billing() {
                                         disabled={loadingPriceId !== null}
                                         className="w-full h-10 sm:h-10 font-bold tracking-wide rounded-xl transition-all bg-white/10 text-white hover:bg-white/20 border border-white/10 text-sm sm:text-sm"
                                     >
-                                        {loadingPriceId === plan.priceId + '_pay' ? 'PREPARING...' : 'PAY $59/MO — NO TRIAL'}
+                                        {loadingPriceId === plan.priceId + '_pay' ? 'PREPARING...' : 'PAY $59/REP/MO — NO TRIAL'}
                                     </Button>
                                 </div>
                             )}

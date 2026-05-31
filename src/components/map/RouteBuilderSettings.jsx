@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
@@ -55,16 +55,25 @@ export default function RouteBuilderSettings({
     hasMlsData
 }) {
     const [expandedSection, setExpandedSection] = useState(null);
+    const [routeMode, setRouteMode] = useState(() => {
+        try { return localStorage.getItem('fk_routeMode') || 'precision'; } catch { return 'precision'; }
+    });
 
     // Auto-apply good defaults on initial load
     React.useEffect(() => {
         try { localStorage.removeItem('fk_autobuild_next_open'); } catch (e) { /* ignore */ }
     }, []);
 
-    React.useEffect(() => {
+    useEffect(() => {
         if (soldDateFilter === null) {
             setSoldDateFilter(12);
         }
+    }, []);
+
+    useEffect(() => {
+        const handler = (event) => setRouteMode(event.detail?.routeMode || 'precision');
+        window.addEventListener('fk-route-mode-changed', handler);
+        return () => window.removeEventListener('fk-route-mode-changed', handler);
     }, []);
 
     const toggleSection = (id) => {
@@ -114,7 +123,7 @@ export default function RouteBuilderSettings({
                 <div className="p-4 border-b flex justify-between items-center" style={{ borderColor: BRAND.charcoal }}>
                     <h2 className="flex items-center gap-2 font-bold tracking-wide" style={{ color: BRAND.gold }}>
                         <Navigation className="w-5 h-5" />
-                        ROUTE BUILDER
+                        {routeMode === 'canvas' ? 'CANVAS BUILDER' : 'PRECISION BUILDER'}
                     </h2>
                     <div className="flex items-center gap-2">
                         <button
@@ -131,6 +140,14 @@ export default function RouteBuilderSettings({
 
                 <div className="overflow-y-auto h-[calc(100%-180px)] pb-24">
                     <div className="p-4 space-y-6">
+                        <div className={`rounded-xl border p-3 ${routeMode === 'canvas' ? 'bg-purple-500/10 border-purple-500/30' : 'bg-yellow-500/10 border-yellow-500/30'}`}>
+                            <p className={`text-xs font-bold ${routeMode === 'canvas' ? 'text-purple-300' : 'text-yellow-400'}`}>
+                                {routeMode === 'canvas' ? 'Canvas Mode: per-rep field execution for large door-knocking teams.' : 'Precision Mode: BatchData-backed property acquisition with usage limits.'}
+                            </p>
+                            <p className="text-[10px] text-gray-400 mt-1">
+                                {routeMode === 'canvas' ? 'Build and dispatch routes from existing territory doors without starting a paid property pull.' : 'Draw an area, preview allowed properties, then use Start Paid Pull when live credits are ready.'}
+                            </p>
+                        </div>
 
                         {/* ═══ 1. TARGET AREA ═══ */}
                         <div className="space-y-3">
@@ -149,7 +166,7 @@ export default function RouteBuilderSettings({
                                 </div>
                             ) : (
                                 <div className="w-full px-4 py-3 rounded-xl text-sm bg-[#1A1A1A] text-gray-400 border border-[#222] text-center">
-                                    Draw an area on the map to target
+                                    {routeMode === 'canvas' ? 'Canvas uses existing territory doors and team assignments' : 'Draw an area on the map to target'}
                                 </div>
                             )}
                         </div>
@@ -493,7 +510,7 @@ export default function RouteBuilderSettings({
                     <div className="flex gap-2">
                         <Button
                             onClick={() => {
-                                if (!hasDrawnArea) {
+                                if (routeMode !== 'canvas' && !hasDrawnArea) {
                                     onDraw();
                                     return;
                                 }
@@ -504,6 +521,8 @@ export default function RouteBuilderSettings({
                         >
                             {routesGenerating ? (
                                 <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> BUILDING...</>
+                            ) : routeMode === 'canvas' ? (
+                                <><Zap className="w-4 h-4 mr-2" /> GENERATE CANVAS ROUTES</>
                             ) : !hasDrawnArea ? (
                                 <><Pencil className="w-4 h-4 mr-2" /> DRAW ON MAP</>
                             ) : (
