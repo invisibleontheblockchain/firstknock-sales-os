@@ -13,6 +13,27 @@
       ],
       "default": "pending"
     },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "rentcast",
+        "batchdata",
+        "manual",
+        "canvas"
+      ],
+      "default": "batchdata",
+      "description": "External/provider source used for the job"
+    },
+    "mode_tag": {
+      "type": "string",
+      "enum": [
+        "PRECISION_TARGET",
+        "CANVAS_DOOR",
+        "LEGACY_RENTCAST"
+      ],
+      "default": "PRECISION_TARGET",
+      "description": "Pipeline mode: BatchData Precision or Canvas door logging"
+    },
     "latitude": {
       "type": "number"
     },
@@ -36,6 +57,32 @@
         }
       }
     },
+    "fips_code": {
+      "type": "string",
+      "description": "County FIPS resolved from the selected area for BatchData pulls"
+    },
+    "area_sq_mi": {
+      "type": "number",
+      "description": "Computed selected area in square miles"
+    },
+    "polygon_hash": {
+      "type": "string",
+      "description": "Stable hash of the selected area for dedupe and delta checks"
+    },
+    "estimated_record_count": {
+      "type": "integer",
+      "default": 0,
+      "description": "Estimated or capped records before paid BatchData pull"
+    },
+    "estimated_cost": {
+      "type": "number",
+      "default": 0,
+      "description": "Estimated BatchData cost for the job"
+    },
+    "dry_run_metadata": {
+      "type": "object",
+      "description": "No-cost preview details for drawn area and cost modeling"
+    },
     "sold_months": {
       "type": "integer",
       "default": 12,
@@ -44,7 +91,7 @@
     "include_mls": {
       "type": "boolean",
       "default": false,
-      "description": "Whether to include Phase 2 MLS early signal data (Inactive listings)"
+      "description": "Legacy field retained during BatchData migration; MLS/RentCast paths should be removed before cutover"
     },
     "pull_mode": {
       "type": "string",
@@ -64,16 +111,15 @@
     "is_delta_pull": {
       "type": "boolean",
       "default": false,
-      "description": "True if this is a CDC delta-pull (only fetching changes since last pull)"
+      "description": "True if this is a CDC delta-pull"
     },
     "delta_watermark": {
       "type": "string",
       "format": "date-time",
-      "description": "High-watermark timestamp \u2014 only fetch records updated after this date"
+      "description": "High-watermark timestamp"
     },
     "delta_savings": {
       "type": "object",
-      "description": "Tracks API calls saved by delta-pull vs full refresh",
       "properties": {
         "estimated_full_calls": {
           "type": "integer"
@@ -88,7 +134,7 @@
     },
     "sub_circles": {
       "type": "array",
-      "description": "Grid subdivision circles for large-area fetches",
+      "description": "Legacy RentCast grid subdivision circles retained until cutover completes",
       "items": {
         "type": "object",
         "properties": {
@@ -173,7 +219,7 @@
     },
     "phase1_union_records": {
       "type": "array",
-      "description": "Phase 1 deed records fetched and mapped during the current run, persisted for Phase 2 union/cross-reference",
+      "description": "Legacy field retained until RentCast gap-fill is removed",
       "items": {
         "type": "object"
       }
@@ -201,9 +247,11 @@
       "enum": [
         "deed_records",
         "listings_records",
+        "batchdata_precision",
+        "canvas_session",
         "complete"
       ],
-      "default": "deed_records"
+      "default": "batchdata_precision"
     },
     "description": {
       "type": "string",
@@ -212,9 +260,6 @@
     }
   },
   "required": [
-    "status",
-    "latitude",
-    "longitude",
-    "radius"
+    "status"
   ]
 }

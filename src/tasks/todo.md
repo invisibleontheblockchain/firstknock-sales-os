@@ -1,18 +1,19 @@
 # Plan
 
 ## Current Plan — BatchData-Only Migration + Phase 1 Gate
-- [ ] Confirm no implementation starts until this plan is approved: Phase 1 BatchData Precision must be correct before Canvas/Phase 2 work begins.
-- [ ] Inventory every RentCast dependency: `processFetchChunk`, `fetchAreaProperties`, `routeFilterPipeline`, Neon schema, route generation, saved route hydration, analytics, diagnostics/test functions, docs, env vars, and UI labels.
+- [x] Confirm no implementation starts until this plan is approved: Phase 1 BatchData Precision must be correct before Canvas/Phase 2 work begins.
+- [x] Inventory every RentCast dependency: `processFetchChunk`, `fetchAreaProperties`, `routeFilterPipeline`, Neon schema, route generation, saved route hydration, analytics, diagnostics/test functions, docs, env vars, and UI labels.
 - [ ] Freeze/preserve Kevin data first: export Kevin/Reif Environmental user, team member, saved routes, route hashes, interaction logs, workspace property links, and raw property records before any purge or migration.
+  - Blocked: safety audit found 0 protected Kevin routes/hashes for `kevin@reifenvironmentals.com`; verify exact user/route owner identity before destructive work.
 - [ ] Build a purge plan that removes false-positive legacy RentCast/MLS-derived records while protecting Kevin’s saved routes, knocked history, and any records still referenced by SavedRoute/InteractionLog.
 - [ ] Define Phase 1 vs Phase 2 semantics in-app: Phase 1 = BatchData deed-confirmed Precision data pull; Phase 2 = Canvas Mode GPS door logging with zero BatchData dependency.
 - [ ] Replace RentCast Phase 1 completely: BatchData county/FIPS-based property search, BatchData field normalization, `data_source='batchdata'`, listing/deed/owner mapping, active-listing suppression, owner-occupied filtering, corporate/investor filtering, SFR filtering, and sold-window filtering.
 - [ ] Remove old RentCast Phase 2 MLS gap-fill from the Precision pipeline; no MLS/listing-only route candidates should survive unless they come from BatchData fields and pass the same proof filters.
 - [ ] Update `FetchJob` model for BatchData: keep polygon input for now only as the selected area boundary, add/confirm `fips_code`, `area_sq_mi`, `polygon_hash`, `provider`, `mode_tag`, estimated record count, estimated cost, and dry-run metadata.
 - [ ] Replace radius/sub-circle mechanics with freehand-area mechanics: compute area, centroid, county/FIPS coverage, hash, and hard reject oversized areas instead of clipping or silently expanding.
-- [ ] Add a no-cost dry-run path for custom/freehand draws: user can draw, see square miles, counties/FIPS, estimated BatchData request size/cost, and allowed limits without creating a paid FetchJob or consuming records.
-- [ ] Solve “whole continental US” risk: server-side area caps, county-count caps, estimated-record caps, monthly credit caps, hard rejection before API calls, and clear user messaging.
-- [ ] Build the cost model: BatchData base plan, per-record/overage assumptions, deed/listing/owner add-on costs, dry-run vs paid pull behavior, gross margin at $99 Precision, and separate Canvas $19/rep zero-BatchData model.
+- [x] Add a no-cost dry-run path for custom/freehand draws: user can draw, see square miles, counties/FIPS, estimated BatchData request size/cost, and allowed limits without creating a paid FetchJob or consuming records.
+- [x] Solve “whole continental US” risk: server-side area caps, county-count caps, estimated-record caps, monthly credit caps, hard rejection before API calls, and clear user messaging.
+- [x] Build the cost model: BatchData base plan, per-record/overage assumptions, deed/listing/owner add-on costs, dry-run vs paid pull behavior, gross margin at $99 Precision, and separate Canvas $19/rep zero-BatchData model.
 - [ ] Validate BatchData API response shape safely using sandbox/test calls first: capture representative raw payloads, map every field to existing app fields, and document fields that no longer exist or need fallback.
 - [ ] Add migration verification: compare BatchData candidates against known-good Kevin/current routes, check route counts before/after, confirm no saved route hydrates to fewer houses, and prove false-positive RentCast records are excluded.
 - [ ] Only after Phase 1 passes: begin Canvas design around mode switch, freehand draw, rep zones, GPS door logs, offline queue, and manager heatmap with no BatchData calls.
@@ -181,6 +182,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+BatchData migration started safely: added a no-cost area/cost preview, added a migration audit, expanded FetchJob metadata, tested both new backend functions successfully, and documented the execution plan. Destructive purge/cutover is blocked until Kevin/Reif Environmental data ownership is confirmed because the audit found 0 protected Kevin route hashes for `kevin@reifenvironmentals.com`.
+
 Builder drawing now keeps only one active territory shape at a time, hides previous territory history while drawing, and squares now use true 40/300 square-mile side lengths instead of the broken sizing.
 
 Dismiss now remembers the specific incomplete import job, so that recovery popup will stay hidden after you dismiss it while Retry still works normally.
