@@ -5,7 +5,6 @@ import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff,
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
-import RouteModeToggle from './RouteModeToggle';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -84,6 +83,15 @@ export default function MapToolbar({
         window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: nextMode } }));
         toast.success(`${nextMode === 'canvas' ? 'Canvas' : 'Precision'} mode active`);
     };
+
+    useEffect(() => {
+        const handler = (event) => {
+            const nextMode = event.detail?.routeMode;
+            if (nextMode === 'canvas' || nextMode === 'precision') setRouteMode(nextMode);
+        };
+        window.addEventListener('fk-route-mode-changed', handler);
+        return () => window.removeEventListener('fk-route-mode-changed', handler);
+    }, []);
 
     // Track whether data has been pulled for the current drawn territory
     const [territoryDataReady, setTerritoryDataReady] = useState(false);
@@ -226,9 +234,7 @@ export default function MapToolbar({
 
                     {/* DATA STATUS + FILTER BUTTON */}
                     <div className="pointer-events-auto shrink-0 flex items-center gap-1 sm:gap-2">
-                        {!activeRoute && (
-                            <RouteModeToggle routeMode={routeMode} onChange={updateRouteMode} className="hidden sm:flex" />
-                        )}
+
                         <div className="hidden xl:block">
                             <DataStatusIndicator user={user} />
                         </div>
@@ -240,7 +246,7 @@ export default function MapToolbar({
                                 toast.success(newVal ? "Routes Visible" : "Routes Hidden");
                             }}
                             size="icon"
-                            className={`bg-black/80 hover:bg-black backdrop-blur-md border shadow-xl h-8 w-8 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl transition-all ${(!showRouteDetails && !showRouteLines) ? 'border-red-500/50' : 'border-gray-800'}`}
+                            className={`hidden sm:inline-flex bg-black/80 hover:bg-black backdrop-blur-md border shadow-xl h-8 w-8 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl transition-all ${(!showRouteDetails && !showRouteLines) ? 'border-red-500/50' : 'border-gray-800'}`}
                         >
                             {(!showRouteDetails && !showRouteLines) ? (
                                 <EyeOff className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-red-500" />
@@ -257,17 +263,13 @@ export default function MapToolbar({
                                 setShowCompare(true);
                             }}
                             size="icon"
-                            className="bg-black/80 hover:bg-black backdrop-blur-md rounded-lg sm:rounded-xl h-8 w-8 sm:h-11 sm:w-11 font-bold shadow-xl border border-yellow-500/40"
+                            className="hidden sm:inline-flex bg-black/80 hover:bg-black backdrop-blur-md rounded-lg sm:rounded-xl h-8 w-8 sm:h-11 sm:w-11 font-bold shadow-xl border border-yellow-500/40"
                         >
                             {mode === 'generate' ? <Settings className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-yellow-500" /> : <Filter className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-yellow-500" />}
                         </Button>
                     </div>
 
-                    {!activeRoute && (
-                        <div className="pointer-events-auto flex justify-center sm:hidden">
-                            <RouteModeToggle routeMode={routeMode} onChange={updateRouteMode} />
-                        </div>
-                    )}
+
                 </div>
 
 

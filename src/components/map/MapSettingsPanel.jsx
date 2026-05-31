@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Sun, Moon, Globe, Mountain, Eye, EyeOff, RotateCcw, Save, Navigation } from 'lucide-react';
+import { X, Sun, Moon, Globe, Mountain, Eye, EyeOff, RotateCcw, Save, Navigation, Target, Users } from 'lucide-react';
 
 /* ── constants ── */
 const REP_COLOR_OPTIONS = ['#FFD700','#ef4444','#22c55e','#3b82f6','#ec4899','#f97316','#8b5cf6','#06b6d4','#eab308','#14b8a6'];
@@ -62,6 +62,7 @@ export default function MapSettingsPanel({
   soldDateFilter, setSoldDateFilter,
   highlightRecentlySold, setHighlightRecentlySold,
   showZipOverlay = false, setShowZipOverlay,
+  routeMode = 'precision', setRouteMode,
 }) {
   // Local buffered state
   const [local, setLocal] = useState({
@@ -69,6 +70,7 @@ export default function MapSettingsPanel({
     pinSize, showRouteLines, showRouteDetails, showAllProperties,
     mapTheme, navigationApp, quickFilter,
     soldDateFilter, highlightRecentlySold, showZipOverlay,
+    routeMode: (() => { try { return localStorage.getItem('fk_routeMode') || routeMode; } catch { return routeMode; } })(),
   });
 
   const upd = (key, val) => setLocal(p => ({ ...p, [key]: val }));
@@ -85,6 +87,12 @@ export default function MapSettingsPanel({
   const setLiveShowAll = (v) => { upd('showAllProperties', v); setShowAllProperties?.(v); };
   const setLiveHighlight = (v) => { upd('highlightRecentlySold', v); setHighlightRecentlySold?.(v); };
   const setLiveZip = (v) => { upd('showZipOverlay', v); setShowZipOverlay?.(v); };
+  const setLiveRouteMode = (v) => {
+    upd('routeMode', v);
+    setRouteMode?.(v);
+    try { localStorage.setItem('fk_routeMode', v); } catch {}
+    window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: v } }));
+  };
 
   const handleSave = () => {
     setMapSettings?.(local.mapSettings);
@@ -96,6 +104,9 @@ export default function MapSettingsPanel({
     setNavigationApp?.(local.navigationApp);
     setHighlightRecentlySold?.(local.highlightRecentlySold);
     setShowZipOverlay?.(local.showZipOverlay);
+    setRouteMode?.(local.routeMode);
+    try { localStorage.setItem('fk_routeMode', local.routeMode); } catch {}
+    window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: local.routeMode } }));
     try { localStorage.setItem('fk_navigation_app', local.navigationApp); } catch {}
     window.dispatchEvent(new CustomEvent('fk-navigation-app-changed', { detail: { navigationApp: local.navigationApp } }));
     onClose();
@@ -106,7 +117,7 @@ export default function MapSettingsPanel({
       mapSettings: { pinShape:'circle', colorScheme:'confidence', lineStyle:'dashed', lineWidth:2, lineOpacity:0.5, pinOpacity:0.85, pinBorderWidth:1, pinBorderColor:'#000', showLabels:false, labelType:'number', glowEffect:false, fillStyle:'solid' },
       pinSize:4, showRouteLines:false, showRouteDetails:true, showAllProperties:false,
       mapTheme:'dark', navigationApp:'apple', quickFilter:'all',
-      soldDateFilter:null, highlightRecentlySold:false, showZipOverlay:false,
+      soldDateFilter:null, highlightRecentlySold:false, showZipOverlay:false, routeMode:'precision',
     });
   };
 
@@ -160,6 +171,28 @@ export default function MapSettingsPanel({
               <div>
                 <SectionLabel>Overlays</SectionLabel>
                 <div className="space-y-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                  <Row label="Builder Mode" sub="Choose Precision data pulls or Canvas territories">
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { id: 'precision', label: 'Precision', icon: Target, active: 'bg-yellow-500 text-black border-yellow-400' },
+                        { id: 'canvas', label: 'Canvas', icon: Users, active: 'bg-purple-600 text-white border-purple-500' },
+                      ].map(opt => {
+                        const Icon = opt.icon;
+                        const active = local.routeMode === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            onClick={() => setLiveRouteMode(opt.id)}
+                            className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-black transition-all ${active ? opt.active : 'border-white/[0.06] bg-black/20 text-gray-500 hover:text-white hover:border-white/15'}`}
+                          >
+                            <Icon className="w-3.5 h-3.5" />
+                            {opt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Row>
+                  <div className="border-t border-white/[0.04] my-2" />
                   {setShowZipOverlay && (
                     <Row label="Zip Boundaries">
                       <Switch checked={local.showZipOverlay} onCheckedChange={setLiveZip} />

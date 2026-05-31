@@ -1,6 +1,12 @@
 # Plan
 
-## Current Plan — Mobile Mode Toggle Overlap Fix
+## Current Plan — Move Mode Toggle Into Map Settings
+- [x] Remove Canvas/Precision, Eye, and filter/settings action buttons from the mobile top row so Routes/Builder stays clean.
+- [x] Add Canvas/Precision mode control inside Map Settings near Overlays.
+- [x] Keep desktop/tablet controls usable without changing map behavior.
+- [x] Verify mobile preview/runtime after the change and document the result.
+
+## Previous Plan — Mobile Mode Toggle Overlap Fix
 - [x] Move the Canvas/Precision toggle out of the top mobile row so it cannot overlap Routes/Builder.
 - [x] Keep tablet/desktop behavior clean with the toggle on the right side where there is enough room.
 - [x] Preserve existing mode-switch behavior and active colors.
@@ -259,6 +265,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+The mobile top bar is now clean: Canvas/Precision moved into Map Settings under Overlays, and the Eye/filter action buttons are hidden on mobile so they no longer sit over Routes/Builder; mobile preview was captured and runtime showed only existing rate-limit noise.
+
 Mobile overlap is fixed by moving the Canvas/Precision toggle to its own centered mobile row while keeping it in the right-side toolbar on larger screens; mobile preview was captured and runtime showed only the pre-existing Home render-loop warning.
 
 Precision mode now hides Canvas zone overlays, the Canvas/Precision switch is extracted into a compact responsive control for mobile/tablet/desktop, and runtime logs showed no new frontend errors after the change.
