@@ -1,6 +1,18 @@
 # Plan
 
-## Current Plan — BatchData-Only Migration + Phase 1 Gate
+## Current Plan — Freehand BatchData Preview + RentCast Removal
+- [ ] Confirm scope before implementation: this phase should not spend paid BatchData credits; it should replace the old circle/square preset UI with freehand drawing plus a property-count/limit preview.
+- [ ] Define the UX: user taps Draw, freehands a polygon, then chooses requested property count after the area is drawn.
+- [ ] Remove the visible Circle/Square and 5/40/300 sq mi controls from the Builder draw prompt.
+- [ ] Add requested-property controls capped by account type: free users max 50, paid/admin users max 1000.
+- [ ] Enforce the same caps server-side, never trusting the frontend.
+- [ ] Add hard oversized-area protection before any BatchData call: reject massive polygons by area/bounding size and show a clear redraw message.
+- [ ] Update preview behavior to return safe metadata: area, max allowed properties, requested properties, eligibility/rejection reason, and estimated/property cap without charging BatchData.
+- [ ] Keep actual paid BatchData pulling disabled for now; do not wire live paid BatchData record retrieval until explicitly approved.
+- [ ] Verify with backend tests for free cap, paid cap, oversized area rejection, and no active RentCast processor usage.
+- [ ] Document results in this Review section before marking complete.
+
+## Previous Plan — BatchData-Only Migration + Phase 1 Gate
 - [x] Confirm no implementation starts until this plan is approved: Phase 1 BatchData Precision must be correct before Canvas/Phase 2 work begins.
 - [x] Inventory every RentCast dependency: `processFetchChunk`, `fetchAreaProperties`, `routeFilterPipeline`, Neon schema, route generation, saved route hydration, analytics, diagnostics/test functions, docs, env vars, and UI labels.
 - [ ] Freeze/preserve Kevin data first: export Kevin/Reif Environmental user, team member, saved routes, route hashes, interaction logs, workspace property links, and raw property records before any purge or migration.
