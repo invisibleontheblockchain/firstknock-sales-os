@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useMapEvents, useMap, Polygon, CircleMarker, Tooltip } from 'react-leaflet';
 import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
+import CanvasZoneOverlay from './CanvasZoneOverlay';
 
 export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPolygon }) {
     const [points, setPoints] = useState([]);
@@ -90,6 +91,7 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
 
     return (
         <>
+            <CanvasZoneOverlay />
             {displayPoints.length > 2 && (
                 <Polygon
                     positions={displayPoints}

@@ -1,6 +1,14 @@
 # Plan
 
-## Current Plan — Canvas Builder MVP
+## Current Plan — Canvas Zone Visual Split Bug
+- [x] Diagnose why Canvas Deploy saves assignments but does not render split zones on the map.
+- [x] Fix the render loop warning by using stable empty query defaults in the Canvas panel.
+- [x] Generate simple zone polygon geometry client-side from the drawn territory and rep count.
+- [x] Render the split zones directly in the map interface during Canvas planning/deploy via the existing map draw tool, avoiding further Home growth.
+- [x] Persist zone geometry in CanvasSession so deployed territories can be reloaded visually.
+- [ ] Verify in runtime logs that the render loop is gone and no new map errors appear.
+
+## Previous Plan — Canvas Builder MVP
 - [x] Replace the Canvas builder panel with a Canvas-only workflow: draw/redraw territory, session name, rep count, auto zones, assignment, auto-assign, deploy, and save territory.
 - [x] Keep Precision builder controls exactly where they are and only show them in Precision Mode.
 - [x] Avoid sold filters, data-pull controls, route-size controls, routing behavior, and templates in Canvas Mode.

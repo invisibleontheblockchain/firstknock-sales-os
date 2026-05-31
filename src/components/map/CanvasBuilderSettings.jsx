@@ -5,10 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Map, Pencil, Rocket, Save, Users, Wand2, X } from 'lucide-react';
+import { Map, Pencil, Rocket, Save, Wand2, X } from 'lucide-react';
 import { toast } from 'sonner';
+import { generateCanvasZones } from '@/components/logic/canvasZones';
 
 const PALETTE = ['#FFD700', '#ef4444', '#22c55e', '#3b82f6', '#ec4899', '#f97316', '#8b5cf6', '#06b6d4', '#eab308', '#14b8a6'];
+const EMPTY_ARRAY = [];
 
 function buildZones(count, teamMembers, existing = []) {
   return Array.from({ length: count }, (_, index) => {
@@ -20,6 +22,7 @@ function buildZones(count, teamMembers, existing = []) {
       assigned_to: prior?.assigned_to || '',
       assigned_to_name: prior?.assigned_to_name || '',
       color: prior?.color || member?.color || PALETTE[index % PALETTE.length],
+      geometry: prior?.geometry || [],
     };
   });
 }
@@ -38,14 +41,14 @@ export default function CanvasBuilderSettings({
   const [zones, setZones] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  const { data: teamMembers = [] } = useQuery({
+  const { data: teamMembers = EMPTY_ARRAY } = useQuery({
     queryKey: ['canvasTeamMembers', user?.id],
     queryFn: () => user?.id ? base44.entities.TeamMember.filter({ manager_id: user.id }, '-created_date', 500) : [],
     enabled: !!user?.id,
     staleTime: 1000 * 60 * 5,
   });
 
-  const { data: savedSessionsRaw = [] } = useQuery({
+  const { data: savedSessionsRaw = EMPTY_ARRAY } = useQuery({
     queryKey: ['canvasSessions', user?.id],
     queryFn: () => user?.id ? base44.entities.CanvasSession.filter({ manager_id: user.id }, '-created_date', 20) : [],
     enabled: !!user?.id,
@@ -57,8 +60,11 @@ export default function CanvasBuilderSettings({
   const activeReps = useMemo(() => teamMembers.filter((rep) => rep.status !== 'inactive'), [teamMembers]);
 
   useEffect(() => {
-    setZones((current) => buildZones(repCount, activeReps, current));
-  }, [repCount, activeReps]);
+    setZones((current) => {
+      const merged = buildZones(repCount, activeReps, current);
+      return generateCanvasZones(drawnPolygon, repCount, merged);
+    });
+  }, [repCount, activeReps, drawnPolygon]);
 
   const updateZoneRep = (zoneNumber, repId) => {
     const rep = activeReps.find((member) => member.id === repId);
@@ -73,9 +79,10 @@ export default function CanvasBuilderSettings({
   const loadSavedSession = (session) => {
     if (!session?.polygon?.length) return;
     localStorage.setItem('fk_drawnPolygon', JSON.stringify(session.polygon));
+    localStorage.setItem('fk_canvasZones', JSON.stringify(generateCanvasZones(session.polygon, session.rep_count || 1, session.zones || [])));
     setSessionName(session.session_name || '');
     setRepCount(session.rep_count || 1);
-    setZones(buildZones(session.rep_count || 1, activeReps, session.zones || []));
+    setZones(generateCanvasZones(session.polygon, session.rep_count || 1, buildZones(session.rep_count || 1, activeReps, session.zones || [])));
     toast.success('Saved territory loaded. Refreshing map...');
     window.location.reload();
   };
@@ -103,17 +110,22 @@ export default function CanvasBuilderSettings({
       return;
     }
     setSaving(true);
+    const zonesWithGeometry = generateCanvasZones(drawnPolygon, repCount, zones);
+    setZones(zonesWithGeometry);
+    localStorage.setItem('fk_canvasZones', JSON.stringify(zonesWithGeometry));
+    window.dispatchEvent(new CustomEvent('fk-canvas-zones-updated', { detail: { zones: zonesWithGeometry } }));
+
     await base44.entities.CanvasSession.create({
       session_name: sessionName.trim() || `Canvas Session ${new Date().toLocaleDateString()}`,
       polygon: drawnPolygon,
       rep_count: repCount,
-      zones,
+      zones: zonesWithGeometry,
       status,
       manager_id: user?.id,
     });
     queryClient.invalidateQueries({ queryKey: ['canvasSessions'] });
     setSaving(false);
-    toast.success(status === 'deployed' ? 'Canvas zones deployed.' : 'Territory saved.');
+    toast.success(status === 'deployed' ? 'Canvas zones deployed to the map.' : 'Territory saved.');
     if (status === 'deployed') onClose?.();
   };
 
@@ -143,7 +155,7 @@ export default function CanvasBuilderSettings({
             </div>
             {hasDrawnArea ? (
               <div className="flex items-center justify-between rounded-xl bg-black/35 border border-purple-400/20 px-3 py-2">
-                <span className="text-sm font-bold text-white">Territory ready</span>
+                <span className="text-sm font-bold text-white">Territory ready — {zones.length} visual zones</span>
                 <button onClick={onClearPolygon} className="text-xs font-bold text-red-300 hover:text-red-200">Clear</button>
               </div>
             ) : (
