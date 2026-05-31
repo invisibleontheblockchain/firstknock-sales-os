@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
-const KEVIN_EMAIL = 'kevin@reifenvironmentals.com';
+const KEVIN_EMAIL = 'kevin@reifenvironmental.com';
 
 async function listAll(entity, filter = {}, sort = '-created_date', pageSize = 1000) {
     const records = [];
@@ -84,10 +84,24 @@ Deno.serve(async (req) => {
             };
         }
 
+        const mustKeepRoutes = protectedRoutes
+            .filter(route => /upper mount p|middle mount p|lower mount p/i.test(route.name || ''))
+            .map(route => ({
+                id: route.id,
+                name: route.name,
+                status: route.status,
+                assigned_to: route.assigned_to,
+                assigned_to_name: route.assigned_to_name,
+                house_count: route.property_hashes?.length || 0
+            }));
+
         return Response.json({
             success: true,
-            safe_to_migrate_now: activeJobs.length === 0,
-            blockers: activeJobs.length > 0 ? ['Active or pending FetchJob exists — do not migrate/purge until it completes or is cancelled.'] : [],
+            safe_to_migrate_now: activeJobs.length === 0 && mustKeepRoutes.length === 3,
+            blockers: [
+                ...(activeJobs.length > 0 ? ['Active or pending FetchJob exists — do not migrate/purge until it completes or is cancelled.'] : []),
+                ...(mustKeepRoutes.length !== 3 ? ['Upper/Middle/Lower Mount P protection is incomplete — do not migrate/purge.'] : [])
+            ],
             protected_email: protectedEmail,
             active_jobs: activeJobs.map(job => ({ id: job.id, status: job.status, phase: job.phase, user_email: job.user_email, progress_pct: job.progress_pct, updated_date: job.updated_date })),
             protected_snapshot: {
@@ -95,7 +109,8 @@ Deno.serve(async (req) => {
                 saved_routes: protectedRoutes.length,
                 protected_property_hashes: protectedHashes.length,
                 interaction_logs: interactionLogs.length,
-                route_ids: protectedRoutes.map(route => route.id)
+                route_ids: protectedRoutes.map(route => route.id),
+                must_keep_routes: mustKeepRoutes
             },
             neon: neonSummary,
             next_step: 'Use this snapshot before any purge. Protected hashes must be excluded from cleanup unless a route-safe replacement exists.'

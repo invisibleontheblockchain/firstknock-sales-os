@@ -4,7 +4,8 @@
 - [x] Confirm no implementation starts until this plan is approved: Phase 1 BatchData Precision must be correct before Canvas/Phase 2 work begins.
 - [x] Inventory every RentCast dependency: `processFetchChunk`, `fetchAreaProperties`, `routeFilterPipeline`, Neon schema, route generation, saved route hydration, analytics, diagnostics/test functions, docs, env vars, and UI labels.
 - [ ] Freeze/preserve Kevin data first: export Kevin/Reif Environmental user, team member, saved routes, route hashes, interaction logs, workspace property links, and raw property records before any purge or migration.
-  - Blocked: safety audit found 0 protected Kevin routes/hashes for `kevin@reifenvironmentals.com`; verify exact user/route owner identity before destructive work.
+  - Blocked: original safety audit used the plural typo `kevin@reifenvironmentals.com`; correct protected account is `kevin@reifenvironmental.com`.
+  - New required protection: keep Upper Mount P, Middle Mount P, and Lower Mount P tied to `kevin@reifenvironmental` / Reif Environmental before any purge or cutover.
 - [ ] Build a purge plan that removes false-positive legacy RentCast/MLS-derived records while protecting Kevin’s saved routes, knocked history, and any records still referenced by SavedRoute/InteractionLog.
 - [ ] Define Phase 1 vs Phase 2 semantics in-app: Phase 1 = BatchData deed-confirmed Precision data pull; Phase 2 = Canvas Mode GPS door logging with zero BatchData dependency.
 - [ ] Replace RentCast Phase 1 completely: BatchData county/FIPS-based property search, BatchData field normalization, `data_source='batchdata'`, listing/deed/owner mapping, active-listing suppression, owner-occupied filtering, corporate/investor filtering, SFR filtering, and sold-window filtering.
