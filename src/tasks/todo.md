@@ -1,6 +1,14 @@
 # Plan
 
-## Current Plan — Queried Area History Cleanup
+## Current Plan — Freehand Save + Paid BatchData Pull
+- [x] Diagnose why a fresh freehand drawing disappears instead of staying active.
+- [x] Fix only stale restored polygon cleanup so newly drawn shapes are not cleared.
+- [x] Confirm sandbox approval does not populate properties by design; it only validates/estimates.
+- [x] Inspect the existing BatchData processor branch before wiring a paid pull button.
+- [x] Add a clear paid-pull action after sandbox approval that creates a real FetchJob.
+- [x] Verify backend and runtime behavior, then document results.
+
+## Previous Plan — Queried Area History Cleanup
 - [x] Stop saving drawn polygons as previous areas until a sandbox preview/query succeeds.
 - [x] Keep unqueried draft/current shapes from appearing as ghost history on the map.
 - [x] Add a trash control on previous areas so users can delete one saved area without clearing all history.
@@ -204,6 +212,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Freehand drawing now stays active after drawing because stale localStorage cleanup only clears actual restored stale polygons, not fresh in-memory drawings. Sandbox Preview is clarified as validation-only and does not populate properties; after approval, a new Start Paid Pull button creates a real BatchData FetchJob and starts polling. Backend verification passed for `previewBatchDataArea` and `startBatchDataPull` dry-run without spending paid credits.
+
 Previous areas now only persist after a successful sandbox preview/query, old unqueried local history is filtered out, selecting prior queried areas still works, and each previous area now has its own red trash button for deletion. Verification caught and fixed one JSX typo; remaining runtime logs show unrelated Base44 rate-limit noise from route hydration, not this map-history change.
 
 Freehand BatchData sandbox preview is wired: Builder draw now uses freehand drawing, the area toolbar accepts requested property count, free accounts are capped at 50, paid/admin at 1000, oversized areas are rejected server-side, paid pulls remain disabled, and sandbox probe returned 3 records with no app data changes. Backend verification passed for free cap, paid cap, continental-US rejection, sandbox key probe, and Kevin/Reif protected route audit.

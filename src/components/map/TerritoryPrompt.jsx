@@ -50,6 +50,7 @@ export default function TerritoryPrompt({
     const [requestedPropertyCount, setRequestedPropertyCount] = useState(50);
     const [previewResult, setPreviewResult] = useState(null);
     const [previewLoading, setPreviewLoading] = useState(false);
+    const [paidPullStarting, setPaidPullStarting] = useState(false);
     // v15: MLS Phase 2 always runs with verification — no toggle needed
     const pollRef = useRef(null);
     const activeJobIdRef = useRef(null);
@@ -150,7 +151,8 @@ export default function TerritoryPrompt({
 
     // Clear unqueried restored areas so draft polygons do not come back as ghost map areas.
     useEffect(() => {
-        if (drawnPolygon?.length > 2 && localStorage.getItem('fk_drawnPolygonQueried') !== 'true') {
+        const restoredPolygon = localStorage.getItem('fk_drawnPolygon');
+        if (drawnPolygon?.length > 2 && restoredPolygon && localStorage.getItem('fk_drawnPolygonQueried') !== 'true') {
             localStorage.removeItem('fk_drawnPolygon');
             setDrawnPolygon(null);
         }
@@ -437,6 +439,45 @@ export default function TerritoryPrompt({
         }
     };
 
+    const handlePaidBatchDataPull = async () => {
+        if (paidPullStarting || pulling) return;
+        if (!drawnPolygon || drawnPolygon.length < 3) {
+            toast.error('Draw a freehand area first.');
+            return;
+        }
+
+        setPaidPullStarting(true);
+        try {
+            const res = await base44.functions.invoke('startBatchDataPull', {
+                polygon: drawnPolygon,
+                requested_properties: safeRequestedPropertyCount,
+                sold_months: fetchMonths
+            });
+            const data = res.data || {};
+            if (data.error) {
+                toast.error(data.message || data.error);
+                return;
+            }
+            savePolygonToHistory(drawnPolygon);
+            localStorage.setItem('fk_drawnPolygonQueried', 'true');
+            setDrawnPolygon(drawnPolygon, true);
+            window.dispatchEvent(new CustomEvent('fk-polygon-history-updated'));
+            setPulling(true);
+            setPullPct(0);
+            setDisplayPct(0);
+            targetPctRef.current = 0;
+            setPullProgress('Starting paid BatchData pull...');
+            setEtaText('Starting...');
+            startPolling(data.job_id);
+            toast.success(data.message || 'Paid BatchData pull started.');
+        } catch (e) {
+            const msg = e.response?.data?.message || e.response?.data?.error || e.message;
+            toast.error(`Paid BatchData pull failed: ${msg}`);
+        } finally {
+            setPaidPullStarting(false);
+        }
+    };
+
     return (
         <>
             {/* Simple prompt for returning users who already have data */}
@@ -579,6 +620,15 @@ export default function TerritoryPrompt({
                         >
                             {previewLoading ? 'Checking...' : 'Sandbox Preview'}
                         </Button>
+                        {previewResult && !previewResult.hard_rejected && !previewResult.error && (
+                            <Button
+                                disabled={paidPullStarting}
+                                onClick={handlePaidBatchDataPull}
+                                className="text-black text-[10px] h-8 sm:h-6 px-2 sm:px-3 py-0 rounded-md font-bold tracking-wide bg-yellow-500 hover:bg-yellow-400 flex-1 sm:flex-none min-w-0"
+                            >
+                                {paidPullStarting ? 'Starting...' : 'Start Paid Pull'}
+                            </Button>
+                        )}
                     </div>
                     <button
                         onClick={() => { setDrawnPolygon(null); setDraftPolygon([]); setDrawingMode(false); }}
@@ -589,7 +639,7 @@ export default function TerritoryPrompt({
                     <div className="absolute top-full left-0 right-0 sm:right-auto mt-2 w-auto sm:w-72 bg-black/90 border border-gray-800 rounded-lg p-2 shadow-xl animate-in fade-in slide-in-from-top-1">
                         <p className="text-[9px] text-gray-400 leading-tight">
                             <span className="text-blue-400 font-bold">Area:</span> selected freehand polygon is about <span className="text-white">{actualAreaLabel}</span>.
-                            <br /><span className="text-cyan-300 font-bold">Sandbox:</span> max <span className="text-white">{maxRequestedProperties}</span> properties for this account; no paid BatchData credits used.
+                            <br /><span className="text-cyan-300 font-bold">Sandbox:</span> max <span className="text-white">{maxRequestedProperties}</span> properties for this account; preview does not save properties.
                             {previewResult && (
                                 <span className="block mt-1 text-white">
                                     {previewResult.hard_rejected

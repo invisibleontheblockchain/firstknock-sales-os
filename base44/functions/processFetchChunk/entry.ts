@@ -569,6 +569,11 @@ Deno.serve(async (req) => {
                 await base44.asServiceRole.entities.FetchJob.update(jobId, { status: 'running', started_at: new Date().toISOString(), phase: 'batchdata_precision', provider: 'batchdata', mode_tag: 'PRECISION_TARGET' });
             }
 
+            const batchPolygon = job.polygon || [];
+            const filterBatchPoint = (lat, lng) => (!batchPolygon || batchPolygon.length < 3) ? true : isPointInPolygon({ lat, lng }, batchPolygon);
+            const batchZipCodesFound = job.zip_codes_found || [];
+            const batchNextChunkNumber = currentChunkNumber + 1;
+
             const dryRunRecords = job.dry_run_metadata?.synthetic_records || [];
             const shouldUseSynthetic = Array.isArray(dryRunRecords) && dryRunRecords.length > 0;
             let rawRecords = dryRunRecords;
@@ -603,16 +608,16 @@ Deno.serve(async (req) => {
             for (const raw of rawRecords) {
                 const mappedProperty = mapBatchDataProperty(raw);
                 if (!mappedProperty) { rejectedByRules++; continue; }
-                if (!filterPoint(mappedProperty.lat, mappedProperty.lng)) { rejectedByShape++; continue; }
+                if (!filterBatchPoint(mappedProperty.lat, mappedProperty.lng)) { rejectedByShape++; continue; }
                 if (seen.has(mappedProperty.address_hash)) continue;
                 seen.add(mappedProperty.address_hash);
-                if (mappedProperty.zip_code && !zipCodesFound.includes(mappedProperty.zip_code)) zipCodesFound.push(mappedProperty.zip_code);
+                if (mappedProperty.zip_code && !batchZipCodesFound.includes(mappedProperty.zip_code)) batchZipCodesFound.push(mappedProperty.zip_code);
                 mapped.push(mappedProperty);
             }
 
             const activeMapped = mapped.filter(p => p.route_active !== false && p.original_status !== 'REJECTED' && p.sale_confidence !== 'REJECTED');
             const rejectedMapped = mapped.filter(p => p.route_active === false || p.original_status === 'REJECTED' || p.sale_confidence === 'REJECTED');
-            const dbResult = await writeToDb([...activeMapped, ...rejectedMapped]);
+            const dbResult = await writePropertiesToNeon(neonSql, [...activeMapped, ...rejectedMapped], job);
             const completedAt = new Date().toISOString();
             const chunkDuration = Math.round((Date.now() - chunkStart) / 1000);
             chunkTimings.push(chunkDuration);
@@ -629,8 +634,8 @@ Deno.serve(async (req) => {
                 total_api_calls: (job.total_api_calls || 0) + apiCalls,
                 total_batchdata_calls: (job.total_batchdata_calls || 0) + apiCalls,
                 completed_sub_circles: 1,
-                zip_codes_found: zipCodesFound,
-                chunk_number: nextChunkNumber,
+                zip_codes_found: batchZipCodesFound,
+                chunk_number: batchNextChunkNumber,
                 chunk_timings: chunkTimings,
                 error_log: [...errorLog, `[${completedAt}] BatchData Precision complete: raw=${rawRecords.length}, active=${activeMapped.length}, rejected=${rejectedMapped.length}, outside_polygon=${rejectedByShape}, rule_rejected=${rejectedByRules}`]
             });
