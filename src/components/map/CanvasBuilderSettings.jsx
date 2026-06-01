@@ -30,7 +30,7 @@ const getAssignmentWarnings = (zones = [], roster = [], repCount = roster.length
   });
   return [...counts.entries()]
     .filter(([, count]) => count > maxZonesPerRep)
-    .map(([name, count]) => ({ name, count, maxZonesPerRep, message: `${name} assigned to ${count} zones — check workload` }));
+    .map(([name, count]) => ({ name, count, maxZonesPerRep, message: `${name}: Assigned to ${count} zones — check workload` }));
 };
 
 function buildInitialCampaign() {

@@ -1,5 +1,18 @@
 # Plan
 
+## Current Plan — Canvas Source Zone Engine Replacement
+- [x] Read the full request and current `components/logic/canvasZones` implementation before editing.
+- [x] Preserve saved CanvasSession data and only change future generation behavior.
+- [x] Replace road traversal with explicit half-edge clockwise-next planar face traversal.
+- [x] Add density-weighted face door counting and region-growing assembly.
+- [x] Add `runPostProcessing()` and call it on both road-aligned and fallback paths.
+- [x] Keep zone output schema-identical by stripping private metadata before return.
+- [x] Make only the existing CanvasBuilderSettings warning display support Pass C.
+- [x] Verify `/Home` loads without new frontend errors and document results.
+
+### Review — Canvas Source Zone Engine Replacement
+Replaced future Canvas generation at the source with road-graph parsing, half-edge planar face traversal, density-weighted face counting, contiguous region-growing, shared post-processing, and safe fallback to the existing hex/H3 path. Runtime verification loaded `/Home` and logs showed no new frontend generator crash; remaining visible backend 429 logs are unrelated route hydration noise.
+
 ## Current Plan — Canvas Builder Map Constructor Crash
 - [x] Verify runtime logs for the reported crash.
 - [x] Identify root cause in `CanvasBuilderSettings`: the lucide `Map` icon import shadows the built-in JavaScript `Map` constructor.

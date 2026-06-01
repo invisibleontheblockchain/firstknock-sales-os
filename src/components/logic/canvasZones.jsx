@@ -304,18 +304,13 @@ function pointOnPolygonBoundary(point, polygon = []) {
   });
 }
 
-function graphAngle(fromId, toId, nodes) {
-  const from = nodes.get(fromId);
-  const to = nodes.get(toId);
-  if (!from || !to) return 0;
+function bearingDegrees(from, to) {
   const scale = Math.cos(((from.lat + to.lat) / 2) * Math.PI / 180) || 1;
-  return Math.atan2(to.lat - from.lat, (to.lng - from.lng) * scale);
+  return (Math.atan2((to.lng - from.lng) * scale, to.lat - from.lat) * 180 / Math.PI + 360) % 360;
 }
 
-function clockwiseDelta(fromId, throughId, toId, nodes) {
-  const reverseArrival = graphAngle(throughId, fromId, nodes);
-  const outgoing = graphAngle(throughId, toId, nodes);
-  return (reverseArrival - outgoing + Math.PI * 2) % (Math.PI * 2);
+function clockwiseRelativeAngle(departureBearing, reverseArrivalBearing) {
+  return (departureBearing - reverseArrivalBearing + 360) % 360;
 }
 
 function canonicalFaceKey(faceIds = []) {
@@ -335,11 +330,13 @@ function buildRoadGraph(roadNetwork) {
   const allowed = new Set(['primary', 'secondary', 'tertiary', 'residential']);
   const rawNodes = new Map();
   const ways = [];
+
   (roadNetwork?.elements || []).forEach((element) => {
     if (element.type === 'node' && Number.isFinite(element.lat) && Number.isFinite(element.lon)) {
       rawNodes.set(element.id, { lat: Number(element.lat), lng: Number(element.lon), id: element.id });
     }
   });
+
   (roadNetwork?.elements || []).forEach((element) => {
     if (element.type !== 'way' || !allowed.has(element.tags?.highway) || !Array.isArray(element.nodes) || element.nodes.length < 2) return;
     if (element.nodes.some((id) => !rawNodes.has(id))) {
@@ -369,56 +366,82 @@ function buildRoadGraph(roadNetwork) {
   };
 }
 
+function buildClockwiseNextMap(nodes, adjacency) {
+  const halfEdges = [];
+  adjacency.forEach((neighbors, fromId) => {
+    neighbors.forEach((toId) => {
+      const from = nodes.get(fromId);
+      const to = nodes.get(toId);
+      if (!from || !to) return;
+      halfEdges.push({ fromId, toId, key: directedEdgeKey(fromId, toId), bearing: bearingDegrees(from, to) });
+    });
+  });
+
+  const nextMap = new Map();
+  halfEdges.forEach((edge) => {
+    const incomingBearing = edge.bearing;
+    const reverseArrivalBearing = (incomingBearing + 180) % 360;
+    const outgoing = (adjacency.get(edge.toId) || [])
+      .map((targetId) => {
+        const from = nodes.get(edge.toId);
+        const to = nodes.get(targetId);
+        return from && to ? {
+          fromId: edge.toId,
+          toId: targetId,
+          key: directedEdgeKey(edge.toId, targetId),
+          delta: clockwiseRelativeAngle(bearingDegrees(from, to), reverseArrivalBearing),
+        } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.delta - b.delta);
+    if (outgoing.length) nextMap.set(edge.key, outgoing[0]);
+  });
+
+  return { halfEdges, nextMap };
+}
+
 function findRoadFaces(nodes, adjacency, managerPolygon, targetZoneAreaSqMi) {
-  const completed = new Set();
+  const { halfEdges, nextMap } = buildClockwiseNextMap(nodes, adjacency);
+  const visited = new Set();
   const facesByKey = new Map();
-  const maxSteps = Math.max(50, adjacency.size * 6);
+  const maxSteps = Math.max(50, halfEdges.length + 5);
 
-  adjacency.forEach((neighbors, startA) => {
-    neighbors.forEach((startB) => {
-      const startKey = directedEdgeKey(startA, startB);
-      if (completed.has(startKey)) return;
-      const traversed = [];
-      const faceIds = [];
-      let previous = startA;
-      let current = startB;
+  halfEdges.forEach((startEdge) => {
+    if (visited.has(startEdge.key)) return;
+    const traversed = [];
+    const faceIds = [];
+    let current = startEdge;
 
-      for (let step = 0; step < maxSteps; step += 1) {
-        const currentKey = directedEdgeKey(previous, current);
-        traversed.push(currentKey);
-        faceIds.push(previous);
-        const outgoing = (adjacency.get(current) || []);
-        const candidates = outgoing.length > 1 ? outgoing.filter((id) => id !== previous) : [];
-        if (!candidates.length) break;
-        const next = candidates.reduce((best, candidate) => {
-          const candidateTurn = clockwiseDelta(previous, current, candidate, nodes);
-          const bestTurn = clockwiseDelta(previous, current, best, nodes);
-          return candidateTurn < bestTurn ? candidate : best;
-        }, candidates[0]);
-        previous = current;
-        current = next;
-        if (previous === startA && current === startB) break;
-      }
+    for (let step = 0; step < maxSteps; step += 1) {
+      if (!current || traversed.includes(current.key)) break;
+      traversed.push(current.key);
+      faceIds.push(current.fromId);
+      current = nextMap.get(current.key);
+      if (current?.key === startEdge.key) break;
+    }
 
-      if (previous !== startA || current !== startB || faceIds.length < 3) return;
-      traversed.forEach((key) => completed.add(key));
-      const key = canonicalFaceKey(faceIds);
-      if (facesByKey.has(key)) return;
-      const geometry = normalizePolygon(faceIds.map((id) => nodes.get(id)).filter(Boolean));
-      if (!isValidPolygon(geometry)) return;
-      const fullArea = calculatePolygonAreaSqMi(geometry);
-      if (fullArea <= 0.000001) return;
-      facesByKey.set(key, {
-        ids: faceIds,
-        fullGeometry: geometry,
-        fullArea,
-        edgeKeys: faceIds.map((id, index) => edgeKey(id, faceIds[(index + 1) % faceIds.length])),
-      });
+    if (current?.key !== startEdge.key || faceIds.length < 3) return;
+    traversed.forEach((key) => visited.add(key));
+
+    const key = canonicalFaceKey(faceIds);
+    if (facesByKey.has(key)) return;
+
+    const fullGeometry = normalizePolygon(faceIds.map((id) => nodes.get(id)).filter(Boolean));
+    if (!isValidPolygon(fullGeometry)) return;
+    const fullArea = calculatePolygonAreaSqMi(fullGeometry);
+    if (fullArea <= 0.000001) return;
+
+    facesByKey.set(key, {
+      ids: faceIds,
+      fullGeometry,
+      fullArea,
+      edgeKeys: faceIds.map((id, index) => edgeKey(id, faceIds[(index + 1) % faceIds.length])),
     });
   });
 
   let faces = [...facesByKey.values()].sort((a, b) => b.fullArea - a.fullArea);
-  if (faces.length > 1) faces = faces.slice(1); // largest planar face is the exterior
+  if (faces.length > 1) faces = faces.slice(1);
+
   const maxFaceArea = Math.max(0.0001, targetZoneAreaSqMi * 3);
   faces = faces
     .filter((face) => face.fullArea <= maxFaceArea && polygonIntersectsPolygon(face.fullGeometry, managerPolygon))
@@ -435,24 +458,26 @@ function findRoadFaces(nodes, adjacency, managerPolygon, targetZoneAreaSqMi) {
 
   const usage = new Map();
   faces.forEach((face) => face.edgeKeys.forEach((key) => usage.set(key, (usage.get(key) || 0) + 1)));
-  const badInteriorEdges = [];
+  let incompleteSegment = null;
   adjacency.forEach((neighbors, a) => {
+    if (incompleteSegment) return;
     neighbors.forEach((b) => {
-      if (String(a) > String(b)) return;
+      if (incompleteSegment || String(a) > String(b)) return;
       const first = nodes.get(a);
       const second = nodes.get(b);
       if (!first || !second) return;
       const midpoint = { lat: (first.lat + second.lat) / 2, lng: (first.lng + second.lng) / 2 };
       if (!pointInPolygon(midpoint, managerPolygon)) return;
-      const count = usage.get(edgeKey(a, b)) || 0;
-      if (count === 1) badInteriorEdges.push(edgeKey(a, b));
+      if ((usage.get(edgeKey(a, b)) || 0) === 1) incompleteSegment = [a, b];
     });
   });
-  if (badInteriorEdges.length || faces.length < 2) {
-    if (badInteriorEdges.length) console.warn('[FK] Road-aligned generation fell back: road face validation failed.', badInteriorEdges.slice(0, 5));
+
+  if (incompleteSegment) {
+    console.warn(`[FK] Face traversal incomplete — segment [${incompleteSegment[0]},${incompleteSegment[1]}] in only one face`);
     return [];
   }
-  return faces;
+
+  return faces.length >= 2 ? faces : [];
 }
 
 function getConfigDoorPoints(config = {}) {
@@ -466,10 +491,22 @@ function getConfigDoorPoints(config = {}) {
     .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
 }
 
+function densityKeyForFace(face, doors) {
+  const km2 = Math.max(0.000001, (face.area || face.fullArea || 0) * 2.58999);
+  const doorsPerKm2 = doors / km2;
+  if (doorsPerKm2 > 200) return 'urban';
+  if (doorsPerKm2 >= 80) return 'suburban';
+  return 'rural';
+}
+
 function assignDoorsToFaces(faces, doorPoints, fallbackDensity) {
   if (!doorPoints.length) {
-    return faces.map((face) => ({ ...face, estimatedDoors: Math.max(1, Math.round(face.area * fallbackDensity.doorsPerSqMi)) }));
+    return faces.map((face) => {
+      const estimatedDoors = Math.max(1, Math.round(face.area * fallbackDensity.doorsPerSqMi));
+      return { ...face, estimatedDoors, densityKey: densityKeyForFace(face, estimatedDoors) };
+    });
   }
+
   const counts = new Array(faces.length).fill(0);
   doorPoints.forEach((door) => {
     const matches = faces
@@ -483,13 +520,18 @@ function assignDoorsToFaces(faces, doorPoints, fallbackDensity) {
     }, matches[0]);
     counts[selected.index] += 1;
   });
-  return faces.map((face, index) => ({ ...face, estimatedDoors: counts[index] || Math.max(1, Math.round(face.area * fallbackDensity.doorsPerSqMi)) }));
+
+  return faces.map((face, index) => {
+    const estimatedDoors = counts[index] || Math.max(1, Math.round(face.area * fallbackDensity.doorsPerSqMi));
+    return { ...face, estimatedDoors, densityKey: densityKeyForFace(face, estimatedDoors) };
+  });
 }
 
 function subdivideOversizedFace(face, targetDoors, density, doorPoints = []) {
   if (face.estimatedDoors <= targetDoors * 2) return [face];
   let cells = [{ geometry: face.geometry, area: face.area, fullArea: face.fullArea || face.area, center: polygonCentroid(face.geometry) }];
   let guard = 0;
+
   while (cells.some((cell) => Math.round(cell.area * density.doorsPerSqMi) > targetDoors) && guard < 20) {
     const largestIndex = cells.reduce((best, cell, index) => cell.area > cells[best].area ? index : best, 0);
     const pieces = splitCell(cells[largestIndex]);
@@ -497,11 +539,14 @@ function subdivideOversizedFace(face, targetDoors, density, doorPoints = []) {
     cells.splice(largestIndex, 1, ...pieces.map((piece) => ({ ...piece, fullArea: piece.area, center: polygonCentroid(piece.geometry) })));
     guard += 1;
   }
+
   return cells.map((cell, index) => {
     const actualDoors = doorPoints.length ? doorPoints.filter((point) => pointInPolygon(point, cell.geometry) || pointOnPolygonBoundary(point, cell.geometry)).length : null;
+    const estimatedDoors = actualDoors ?? Math.max(1, Math.round(cell.area * density.doorsPerSqMi));
     return {
       ...cell,
-      estimatedDoors: actualDoors ?? Math.max(1, Math.round(cell.area * density.doorsPerSqMi)),
+      estimatedDoors,
+      densityKey: densityKeyForFace(cell, estimatedDoors),
       edgeKeys: [`${face.edgeKeys.join('|')}:split:${index}`],
     };
   });
@@ -513,7 +558,8 @@ function groupRoadFaces(faces, targetDoors) {
   faces.forEach((face, index) => face.edgeKeys.forEach((key) => edgeOwners.set(key, [...(edgeOwners.get(key) || []), index])));
   const groups = [];
 
-  const faceNeighbors = (index) => [...new Set(faces[index].edgeKeys.flatMap((key) => edgeOwners.get(key) || []).filter((neighbor) => neighbor !== index && remaining.has(neighbor)))]
+  const faceNeighbors = (group) => [...new Set(group.flatMap((index) => faces[index].edgeKeys.flatMap((key) => edgeOwners.get(key) || [])))]
+    .filter((neighbor) => !group.includes(neighbor) && remaining.has(neighbor))
     .sort((a, b) => faces[b].estimatedDoors - faces[a].estimatedDoors);
 
   while (remaining.size) {
@@ -521,22 +567,21 @@ function groupRoadFaces(faces, targetDoors) {
     const group = [seed];
     remaining.delete(seed);
     let doors = faces[seed].estimatedDoors;
-    let expanded = true;
+    const zoneTargetDoors = faces[seed].densityKey === 'rural' ? targetDoors * 1.5 : targetDoors;
 
-    while (doors < targetDoors && expanded) {
-      expanded = false;
-      const candidates = [...new Set(group.flatMap(faceNeighbors))]
-        .sort((a, b) => faces[b].estimatedDoors - faces[a].estimatedDoors);
-      const next = candidates.find((index) => doors + faces[index].estimatedDoors <= targetDoors * 1.25) || candidates[0];
-      if (next !== undefined) {
-        group.push(next);
-        remaining.delete(next);
-        doors += faces[next].estimatedDoors;
-        expanded = true;
-      }
+    while (doors < zoneTargetDoors) {
+      const candidates = faceNeighbors(group);
+      if (!candidates.length) break;
+      const next = candidates.find((index) => doors + faces[index].estimatedDoors <= zoneTargetDoors * 1.25) || candidates[0];
+      if (next === undefined) break;
+      group.push(next);
+      remaining.delete(next);
+      doors += faces[next].estimatedDoors;
     }
+
     groups.push(group.map((index) => faces[index]));
   }
+
   return groups;
 }
 
@@ -780,14 +825,15 @@ function mergeClippedBoundaryZones(zones = []) {
     if (!target) continue;
     const mergedParts = mergePartsToOuterParts([...(target.candidate.parts || []), ...(zone.parts || [])]);
     const mergedArea = (target.candidate.area_sq_mi || 0) + (zone.area_sq_mi || 0);
+    const mergedCenter = centroidOfParts(mergedParts) || target.candidate.center;
     working[target.candidateIndex] = {
       ...target.candidate,
       geometry: mergedParts[0] || target.candidate.geometry,
       parts: mergedParts,
       area_sq_mi: Number(mergedArea.toFixed(2)),
       estimated_doors: Math.max(1, Math.round((target.candidate.estimated_doors || 0) + (zone.estimated_doors || 0))),
-      center: centroidOfParts(mergedParts) || target.candidate.center,
-      drop_point: centroidOfParts(mergedParts) || target.candidate.drop_point,
+      center: mergedCenter,
+      drop_point: mergedCenter || target.candidate.drop_point,
       __clipRatio: Math.max(target.candidate.__clipRatio ?? 1, zone.__clipRatio ?? 1),
     };
     working.splice(index, 1);
@@ -821,17 +867,29 @@ function snapDropPointsToRoad(zones, roadNetwork) {
   const roadNodes = getRoadNodes(roadNetwork);
   if (!roadNodes.length) return zones.map(stripPrivateZoneFields);
   return zones.map((zone) => {
-    const origin = zone.center || zone.drop_point;
+    const origin = centroidOfParts(zone.parts || [zone.geometry]) || zone.center || zone.drop_point;
     const nearest = roadNodes.reduce((best, node) => haversineMiles(origin, node) < haversineMiles(origin, best) ? node : best, roadNodes[0]);
-    return stripPrivateZoneFields({ ...zone, drop_point: nearest || zone.drop_point });
+    return stripPrivateZoneFields({ ...zone, center: origin || zone.center, drop_point: nearest || zone.drop_point });
   });
 }
 
-function postProcessZones(zones, roadNetwork) {
-  return snapDropPointsToRoad(mergeClippedBoundaryZones(zones), roadNetwork);
+function warnDuplicateRepAssignments(zones = [], options = {}) {
+  const repCount = Math.max(1, Number(options.repCount) || 1);
+  const maxZonesPerRep = Math.ceil((zones.length || 1) / repCount);
+  const counts = new Map();
+  zones.forEach((zone) => (zone.assignments || []).filter(Boolean).forEach((name) => counts.set(name, (counts.get(name) || 0) + 1)));
+  counts.forEach((count, name) => {
+    if (count > maxZonesPerRep) console.warn(`[FK] ${name} assigned to ${count} zones — check workload`);
+  });
 }
 
-function generateDynamicCanvasZones(polygon, configOrCount, existingZones = [], roadNetwork = null) {
+function runPostProcessing(zones, roadNetwork, options = {}) {
+  const cleaned = mergeClippedBoundaryZones(zones);
+  warnDuplicateRepAssignments(cleaned, options);
+  return snapDropPointsToRoad(cleaned, roadNetwork);
+}
+
+function generateDynamicCanvasZones(polygon, configOrCount, existingZones = []) {
   const points = normalizePolygon(cleanPolygon(polygon));
   if (points.length < 3) return [];
   const config = typeof configOrCount === 'object' ? configOrCount : { repCount: configOrCount };
@@ -841,65 +899,12 @@ function generateDynamicCanvasZones(polygon, configOrCount, existingZones = [], 
   if (cells.length < 2) return [];
   const groups = groupDynamicCells(cells, targetDoors).filter((group) => group.length);
   if (!groups.length) return [];
-  return postProcessZones(zonesFromCellGroups(groups, summary, targetDoors, existingZones), roadNetwork);
+  return zonesFromCellGroups(groups, summary, targetDoors, existingZones);
 }
 
-function generateRoadAlignedZones(polygon, options, roadNetwork, existingZones = []) {
-  try {
-    const points = normalizePolygon(cleanPolygon(polygon));
-    if (points.length < 3) return [];
-    const config = typeof options === 'object' ? options : { repCount: options };
-    const summary = getCanvasCampaignSummary({ polygon: points, ...config });
-    const targetDoors = Math.max(1, Number(config.doorsPerZone || config.targetDoorsPerZone || summary.targetDoorsPerZone));
-    const { nodes, adjacency } = buildRoadGraph(roadNetwork);
-    if (nodes.size < 3 || adjacency.size < 3) return [];
-
-    const doorPoints = getConfigDoorPoints(config).filter((point) => pointInPolygon(point, points));
-    let faces = findRoadFaces(nodes, adjacency, points, summary.targetZoneAreaSqMi)
-      .map((face) => ({ ...face, center: polygonCentroid(face.geometry) }))
-      .filter((face) => face.center && pointInPolygon(face.center, points));
-
-    if (faces.length < 2) return [];
-    faces = assignDoorsToFaces(faces, doorPoints, summary.density);
-    faces = faces.flatMap((face) => subdivideOversizedFace(face, targetDoors, summary.density, doorPoints));
-    if (faces.length < 2) return [];
-
-    const groups = groupRoadFaces(faces, targetDoors).filter((group) => group.length);
-    if (!groups.length) return [];
-
-    const zones = groups.map((group, index) => buildZoneFromGroup(group, summary, targetDoors, index, existingZones[index] || {}));
-    return postProcessZones(zones, roadNetwork);
-  } catch (error) {
-    console.warn('[FK] Road-aligned generation failed, falling back to hex:', error);
-    return [];
-  }
-}
-
-function parseGenerationArgs(thirdArg, fourthArg, configOrCount) {
-  const config = typeof configOrCount === 'object' && configOrCount ? configOrCount : {};
-  const values = [thirdArg, fourthArg, config.roadNetwork, config.road_network];
-  const roadNetwork = values.find((value) => value?.elements?.length > 0) || null;
-  const existingZones = values.find((value) => Array.isArray(value)) || [];
-  return { roadNetwork, existingZones };
-}
-
-export function generateCanvasZones(polygon, configOrCount, roadNetwork = null, existingZonesArg = null) {
-  let points = cleanPolygon(polygon);
-  if (points.length > 2 && samePoint(points[0], points[points.length - 1])) points = points.slice(0, -1);
-  if (points.length < 3) return [];
-  points = normalizePolygon(points);
-
-  const { roadNetwork: activeRoadNetwork, existingZones } = parseGenerationArgs(roadNetwork, existingZonesArg, configOrCount);
-  if (activeRoadNetwork?.elements?.length > 0) {
-    try {
-      const roadZones = generateRoadAlignedZones(points, configOrCount, activeRoadNetwork, existingZones);
-      if (roadZones && roadZones.length >= 2) return roadZones;
-    } catch (error) {
-      console.warn('[FK] Road-aligned generation failed, falling back to hex:', error);
-    }
-  }
-
-  const dynamicZones = generateDynamicCanvasZones(points, configOrCount, existingZones, activeRoadNetwork);
+function generateHexZones(polygon, configOrCount, existingZones = []) {
+  const points = normalizePolygon(cleanPolygon(polygon));
+  const dynamicZones = generateDynamicCanvasZones(points, configOrCount, existingZones);
   if (dynamicZones && dynamicZones.length > 0) return dynamicZones;
 
   const config = typeof configOrCount === 'object' ? configOrCount : { repCount: configOrCount };
@@ -944,6 +949,64 @@ export function generateCanvasZones(polygon, configOrCount, roadNetwork = null, 
   }
 
   const groupedCells = groupCells(cells, summary.zoneCount, summary.targetZoneAreaSqMi);
-  const zones = groupedCells.map((group, index) => buildZoneFromGroup(group, summary, summary.targetDoorsPerZone, index, existingZones[index] || {}));
-  return postProcessZones(zones, activeRoadNetwork);
+  return groupedCells.map((group, index) => buildZoneFromGroup(group, summary, summary.targetDoorsPerZone, index, existingZones[index] || {}));
+}
+
+function generateRoadAlignedZones(polygon, options, roadNetwork, existingZones = []) {
+  const points = normalizePolygon(cleanPolygon(polygon));
+  if (points.length < 3) return [];
+  const config = typeof options === 'object' ? options : { repCount: options };
+  const summary = getCanvasCampaignSummary({ polygon: points, ...config });
+  const targetDoors = Math.max(1, Number(config.doorsPerZone || config.targetDoorsPerZone || summary.targetDoorsPerZone));
+  const { nodes, adjacency } = buildRoadGraph(roadNetwork);
+  if (nodes.size < 3 || adjacency.size < 3) return [];
+
+  const doorPoints = getConfigDoorPoints(config).filter((point) => pointInPolygon(point, points));
+  let faces = findRoadFaces(nodes, adjacency, points, summary.targetZoneAreaSqMi)
+    .map((face) => ({ ...face, center: polygonCentroid(face.geometry) }))
+    .filter((face) => face.center && pointInPolygon(face.center, points));
+
+  if (faces.length < 2) return [];
+  faces = assignDoorsToFaces(faces, doorPoints, summary.density);
+  faces = faces.flatMap((face) => subdivideOversizedFace(face, targetDoors, summary.density, doorPoints));
+  if (faces.length < 2) return [];
+
+  const groups = groupRoadFaces(faces, targetDoors).filter((group) => group.length);
+  if (!groups.length) return [];
+
+  return groups.map((group, index) => buildZoneFromGroup(group, summary, targetDoors, index, existingZones[index] || {}));
+}
+
+function parseGenerationArgs(thirdArg, fourthArg, configOrCount) {
+  const config = typeof configOrCount === 'object' && configOrCount ? configOrCount : {};
+  const values = [thirdArg, fourthArg, config.roadNetwork, config.road_network];
+  const roadNetwork = values.find((value) => value?.elements?.length > 0) || null;
+  const existingZones = values.find((value) => Array.isArray(value)) || [];
+  return { roadNetwork, existingZones };
+}
+
+export function generateCanvasZones(polygon, options, roadNetwork = null, existingZonesArg = null) {
+  let points = cleanPolygon(polygon);
+  if (points.length > 2 && samePoint(points[0], points[points.length - 1])) points = points.slice(0, -1);
+  if (points.length < 3) return [];
+  points = normalizePolygon(points);
+
+  const { roadNetwork: activeRoadNetwork, existingZones } = parseGenerationArgs(roadNetwork, existingZonesArg, options);
+  if (activeRoadNetwork?.elements?.length > 0) {
+    try {
+      const zones = generateRoadAlignedZones(points, options, activeRoadNetwork, existingZones);
+      if (zones && zones.length >= 2) return runPostProcessing(zones, activeRoadNetwork, options);
+    } catch (error) {
+      console.warn('[FK] Road-aligned generation failed, falling back to hex:', error);
+    }
+  } else {
+    console.warn('[FK] No road data — falling back to hex generation');
+  }
+
+  try {
+    return runPostProcessing(generateHexZones(points, options, existingZones), null, options);
+  } catch (error) {
+    console.warn('[FK] Hex generation failed:', error);
+    return [];
+  }
 }
