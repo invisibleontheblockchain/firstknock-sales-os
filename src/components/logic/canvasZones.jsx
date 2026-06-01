@@ -238,11 +238,277 @@ export function getCanvasCampaignSummary({ polygon, repCount = 8, shiftHours = 5
   return { areaSqMi, density, doorsPerRep, targetDoorsPerZone, zoneCount, targetZoneAreaSqMi, estimatedTotalDoors, minimumRepZones, capacityZones };
 }
 
-export function generateCanvasZones(polygon, configOrCount, existingZones = []) {
+function pointInPolygon(point, polygon = []) {
+  if (!point || polygon.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    const current = polygon[i];
+    const previous = polygon[j];
+    const intersects = ((current.lat > point.lat) !== (previous.lat > point.lat))
+      && (point.lng < ((previous.lng - current.lng) * (point.lat - current.lat)) / ((previous.lat - current.lat) || 0.0000000001) + current.lng);
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function polygonIntersectsPolygon(a = [], b = []) {
+  if (!isValidPolygon(a) || !isValidPolygon(b)) return false;
+  return a.some((point) => pointInPolygon(point, b))
+    || b.some((point) => pointInPolygon(point, a))
+    || pointInPolygon(polygonCentroid(a), b)
+    || pointInPolygon(polygonCentroid(b), a);
+}
+
+function edgeKey(a, b) {
+  return String(a) < String(b) ? `${a}:${b}` : `${b}:${a}`;
+}
+
+function directedEdgeKey(a, b) {
+  return `${a}->${b}`;
+}
+
+function graphAngle(fromId, toId, nodes) {
+  const from = nodes.get(fromId);
+  const to = nodes.get(toId);
+  if (!from || !to) return 0;
+  const scale = Math.cos(((from.lat + to.lat) / 2) * Math.PI / 180) || 1;
+  return Math.atan2(to.lat - from.lat, (to.lng - from.lng) * scale);
+}
+
+function clockwiseTurn(fromId, throughId, toId, nodes) {
+  const incoming = graphAngle(throughId, fromId, nodes);
+  const outgoing = graphAngle(throughId, toId, nodes);
+  return (incoming - outgoing + Math.PI * 2) % (Math.PI * 2);
+}
+
+function canonicalFaceKey(faceIds = []) {
+  if (!faceIds.length) return '';
+  const rotations = [];
+  const forward = faceIds.slice();
+  const backward = faceIds.slice().reverse();
+  [forward, backward].forEach((ids) => {
+    for (let index = 0; index < ids.length; index += 1) {
+      rotations.push([...ids.slice(index), ...ids.slice(0, index)].join(':'));
+    }
+  });
+  return rotations.sort()[0];
+}
+
+function buildRoadGraph(roadNetwork) {
+  const allowed = new Set(['primary', 'secondary', 'tertiary', 'residential']);
+  const rawNodes = new Map();
+  const ways = [];
+  (roadNetwork?.elements || []).forEach((element) => {
+    if (element.type === 'node' && Number.isFinite(element.lat) && Number.isFinite(element.lon)) {
+      rawNodes.set(element.id, { lat: Number(element.lat), lng: Number(element.lon) });
+    }
+  });
+  (roadNetwork?.elements || []).forEach((element) => {
+    if (element.type !== 'way' || !allowed.has(element.tags?.highway) || !Array.isArray(element.nodes) || element.nodes.length < 2) return;
+    const nodes = element.nodes.filter((id) => rawNodes.has(id));
+    if (nodes.length > 1) ways.push(nodes);
+  });
+
+  const adjacency = new Map();
+  const nodes = new Map();
+  ways.forEach((way) => {
+    way.forEach((id) => nodes.set(id, rawNodes.get(id)));
+    for (let index = 0; index < way.length - 1; index += 1) {
+      const a = way[index];
+      const b = way[index + 1];
+      if (a === b) continue;
+      adjacency.set(a, new Set([...(adjacency.get(a) || []), b]));
+      adjacency.set(b, new Set([...(adjacency.get(b) || []), a]));
+    }
+  });
+
+  return {
+    nodes,
+    adjacency: new Map([...adjacency.entries()].map(([id, neighbors]) => [id, [...neighbors]])),
+  };
+}
+
+function findRoadFaces(nodes, adjacency, managerPolygon, targetZoneAreaSqMi) {
+  const visited = new Set();
+  const facesByKey = new Map();
+  const maxFaceArea = Math.max(0.0001, targetZoneAreaSqMi * 3);
+  const maxSteps = Math.max(50, adjacency.size * 4);
+
+  adjacency.forEach((neighbors, startA) => {
+    neighbors.forEach((startB) => {
+      const startKey = directedEdgeKey(startA, startB);
+      if (visited.has(startKey)) return;
+      const faceIds = [];
+      let previous = startA;
+      let current = startB;
+
+      for (let step = 0; step < maxSteps; step += 1) {
+        visited.add(directedEdgeKey(previous, current));
+        faceIds.push(previous);
+        const candidates = (adjacency.get(current) || []).filter((id) => id !== previous);
+        const next = candidates.length
+          ? candidates.reduce((best, candidate) => clockwiseTurn(previous, current, candidate, nodes) < clockwiseTurn(previous, current, best, nodes) ? candidate : best, candidates[0])
+          : previous;
+        previous = current;
+        current = next;
+        if (previous === startA && current === startB) break;
+      }
+
+      if (previous !== startA || current !== startB || faceIds.length < 3) return;
+      const key = canonicalFaceKey(faceIds);
+      if (facesByKey.has(key)) return;
+      const geometry = normalizePolygon(faceIds.map((id) => nodes.get(id)).filter(Boolean));
+      if (!isValidPolygon(geometry)) return;
+      const area = calculatePolygonAreaSqMi(geometry);
+      if (area <= 0.000001 || area > maxFaceArea) return;
+      const clipped = clipPolygon(geometry, managerPolygon);
+      if (!isValidPolygon(clipped) || !polygonIntersectsPolygon(clipped, managerPolygon)) return;
+      facesByKey.set(key, {
+        ids: faceIds,
+        geometry: clipped,
+        area: calculatePolygonAreaSqMi(clipped),
+        edgeKeys: faceIds.map((id, index) => edgeKey(id, faceIds[(index + 1) % faceIds.length])),
+      });
+    });
+  });
+
+  const faces = [...facesByKey.values()].filter((face) => face.area > 0.000001);
+  const faceUsage = new Map();
+  faces.forEach((face) => face.edgeKeys.forEach((key) => faceUsage.set(key, (faceUsage.get(key) || 0) + 1)));
+  const missedInterior = [];
+  adjacency.forEach((neighbors, a) => {
+    neighbors.forEach((b) => {
+      if (String(a) > String(b)) return;
+      const first = nodes.get(a);
+      const second = nodes.get(b);
+      const midpoint = first && second ? { lat: (first.lat + second.lat) / 2, lng: (first.lng + second.lng) / 2 } : null;
+      if (midpoint && pointInPolygon(midpoint, managerPolygon) && (faceUsage.get(edgeKey(a, b)) || 0) === 1) missedInterior.push(edgeKey(a, b));
+    });
+  });
+  if (missedInterior.length) {
+    console.warn('Road-aligned Canvas fallback: planar traversal missed an interior face.', missedInterior.slice(0, 5));
+    return [];
+  }
+  return faces;
+}
+
+function subdivideOversizedFace(face, targetDoors, density) {
+  if (face.estimatedDoors <= targetDoors * 2) return [face];
+  let cells = [{ geometry: face.geometry, area: face.area, center: polygonCentroid(face.geometry) }];
+  let guard = 0;
+  while (cells.some((cell) => Math.round(cell.area * density.doorsPerSqMi) > targetDoors) && guard < 20) {
+    const largestIndex = cells.reduce((best, cell, index) => cell.area > cells[best].area ? index : best, 0);
+    const pieces = splitCell(cells[largestIndex]);
+    if (pieces.length < 2) break;
+    cells.splice(largestIndex, 1, ...pieces.map((piece) => ({ ...piece, center: polygonCentroid(piece.geometry) })));
+    guard += 1;
+  }
+  return cells.map((cell, index) => ({
+    ...cell,
+    estimatedDoors: Math.max(1, Math.round(cell.area * density.doorsPerSqMi)),
+    edgeKeys: [`${face.edgeKeys.join('|')}:split:${index}`],
+  }));
+}
+
+function groupRoadFaces(faces, targetDoors) {
+  const remaining = new Set(faces.map((_, index) => index));
+  const edgeOwners = new Map();
+  faces.forEach((face, index) => face.edgeKeys.forEach((key) => edgeOwners.set(key, [...(edgeOwners.get(key) || []), index])));
+  const groups = [];
+
+  const faceNeighbors = (index) => [...new Set(faces[index].edgeKeys.flatMap((key) => edgeOwners.get(key) || []).filter((neighbor) => neighbor !== index && remaining.has(neighbor)))]
+    .sort((a, b) => faces[b].estimatedDoors - faces[a].estimatedDoors);
+
+  while (remaining.size) {
+    const seed = [...remaining].sort((a, b) => faces[b].estimatedDoors - faces[a].estimatedDoors)[0];
+    const group = [seed];
+    remaining.delete(seed);
+    let doors = faces[seed].estimatedDoors;
+    let expanded = true;
+
+    while (doors < targetDoors && expanded) {
+      expanded = false;
+      const candidates = [...new Set(group.flatMap(faceNeighbors))]
+        .sort((a, b) => faces[b].estimatedDoors - faces[a].estimatedDoors);
+      const next = candidates.find((index) => doors + faces[index].estimatedDoors <= targetDoors * 1.25) || candidates[0];
+      if (next !== undefined) {
+        group.push(next);
+        remaining.delete(next);
+        doors += faces[next].estimatedDoors;
+        expanded = true;
+      }
+    }
+    groups.push(group.map((index) => faces[index]));
+  }
+  return groups;
+}
+
+function generateRoadAlignedZones(polygon, options, roadNetwork) {
+  try {
+    const points = normalizePolygon(cleanPolygon(polygon));
+    if (points.length < 3) return [];
+    const config = typeof options === 'object' ? options : { repCount: options };
+    const summary = getCanvasCampaignSummary({ polygon: points, ...config });
+    const targetDoors = Math.max(1, Number(config.doorsPerZone || config.targetDoorsPerZone || summary.targetDoorsPerZone));
+    const { nodes, adjacency } = buildRoadGraph(roadNetwork);
+    if (nodes.size < 3 || adjacency.size < 3) return [];
+
+    let faces = findRoadFaces(nodes, adjacency, points, summary.targetZoneAreaSqMi)
+      .map((face) => ({
+        ...face,
+        center: polygonCentroid(face.geometry),
+        estimatedDoors: Math.max(1, Math.round(face.area * summary.density.doorsPerSqMi)),
+      }))
+      .filter((face) => face.center && pointInPolygon(face.center, points));
+
+    if (faces.length < 2) return [];
+    if (faces.some((face) => face.estimatedDoors > targetDoors * 3)) return [];
+    faces = faces.flatMap((face) => subdivideOversizedFace(face, targetDoors, summary.density));
+    if (faces.length < 2) return [];
+
+    const groups = groupRoadFaces(faces, targetDoors).filter((group) => group.length);
+    if (!groups.length) return [];
+
+    return groups.map((group, index) => {
+      const parts = group.map((cell) => cell.geometry);
+      const area = group.reduce((sum, cell) => sum + cell.area, 0);
+      const center = centroidOfParts(parts) || group[0]?.center || null;
+      return {
+        zone_number: index + 1,
+        name: `Zone ${index + 1}`,
+        color: DEFAULT_COLORS[index % DEFAULT_COLORS.length],
+        geometry: parts[0] || [],
+        parts,
+        area_sq_mi: Number(area.toFixed(2)),
+        estimated_doors: Math.max(1, Math.round(area * summary.density.doorsPerSqMi)),
+        target_doors: targetDoors,
+        density_key: summary.density.key,
+        density_doors_per_sq_mi: summary.density.doorsPerSqMi,
+        drop_point: getDropPoint(parts.flat()),
+        center,
+        status: 'unworked',
+        notes: '',
+        assignments: [],
+      };
+    });
+  } catch (error) {
+    console.warn('Road-aligned Canvas fallback:', error);
+    return [];
+  }
+}
+
+export function generateCanvasZones(polygon, configOrCount, roadNetwork = null) {
   let points = cleanPolygon(polygon);
   if (points.length > 2 && samePoint(points[0], points[points.length - 1])) points = points.slice(0, -1);
   if (points.length < 3) return [];
   points = normalizePolygon(points);
+
+  const existingZones = Array.isArray(roadNetwork) ? roadNetwork : [];
+  const activeRoadNetwork = Array.isArray(roadNetwork) ? null : roadNetwork;
+  if (activeRoadNetwork?.elements?.length > 0) {
+    const roadZones = generateRoadAlignedZones(points, configOrCount, activeRoadNetwork);
+    if (roadZones && roadZones.length > 0) return roadZones;
+  }
 
   const config = typeof configOrCount === 'object' ? configOrCount : { repCount: configOrCount };
   const summary = getCanvasCampaignSummary({ polygon: points, ...config });
