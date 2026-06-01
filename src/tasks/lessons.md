@@ -59,3 +59,4 @@
 - For Leaflet freehand drawing on mobile/tablet, do not rely only on `useMapEvents` touch latlng; attach non-passive pointer/touch listeners to the map container, convert client coordinates with `containerPointToLatLng`, and disable map gestures only while drawing.
 - Mobile drawing flows need an explicit confirm/checkmark action after the outline is visible; relying on touch release alone can leave users stuck in drawing mode with no path to preview/pull data.
 - Billing price changes must update both visible copy and the checkout source of truth; never show a new price while sending users to a stale Stripe price ID.
+- User-facing map/billing copy should use FirstKnock branding unless the user explicitly wants provider names like BatchData shown.

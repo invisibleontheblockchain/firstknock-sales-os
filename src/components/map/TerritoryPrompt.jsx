@@ -671,7 +671,7 @@ export default function TerritoryPrompt({
                     <div className="static sm:absolute sm:top-full sm:left-0 sm:right-auto mt-1 sm:mt-2 w-full sm:w-72 bg-white/5 sm:bg-black/90 border border-gray-800 rounded-xl sm:rounded-lg p-2 shadow-xl animate-in fade-in slide-in-from-top-1">
                         <p className="text-[9px] text-gray-400 leading-tight">
                             <span className="text-blue-400 font-bold">Area:</span> selected freehand polygon is about <span className="text-white">{actualAreaLabel}</span>.
-                            <br /><span className="text-cyan-300 font-bold">BatchData:</span> pulls up to <span className="text-white">{maxRequestedProperties}</span> properties for this account.
+                            <br /><span className="text-cyan-300 font-bold">Firstknock:</span> pulls up to <span className="text-white">{maxRequestedProperties}</span> properties for this account.
                             {previewResult &&
             <span className="block mt-1 text-white">
                                     {previewResult.hard_rejected ?
