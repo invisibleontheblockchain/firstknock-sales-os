@@ -8,6 +8,8 @@ import { generateCanvasZones, getCanvasCampaignSummary } from '@/components/logi
 
 const STORAGE_KEY = 'fk_canvasCampaignSprint1';
 const ROSTER_KEY = 'fk_canvasRosterSprint1';
+const UNASSIGNED_ZONE_COLOR = '#A855F7';
+const ASSIGNED_ZONE_COLOR = '#64748B';
 const DEMO_ROSTER = ['Marcus T.', 'Jordan K.', 'Aaliyah R.', 'Devon S.', 'Chris M.'];
 const DEMO_POLYGON = [
   { lat: 34.5262, lng: -82.7107 },
@@ -45,6 +47,10 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
     try { return localStorage.getItem(ROSTER_KEY) || DEMO_ROSTER.join('\n'); } catch { return DEMO_ROSTER.join('\n'); }
   });
   const [selectedZoneNumber, setSelectedZoneNumber] = useState(null);
+  const [editZoneNumber, setEditZoneNumber] = useState(null);
+  const [focusMode, setFocusMode] = useState(() => {
+    try { return localStorage.getItem('fk_canvasFocusMode') === 'true'; } catch { return false; }
+  });
   const [saving, setSaving] = useState(false);
 
   const roster = useMemo(() => normalizeRoster(rosterText), [rosterText]);
@@ -57,7 +63,7 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
     }
     return generateCanvasZones(effectivePolygon, campaign, campaign.zones || []);
   }, [effectivePolygon, campaign, summary.zoneCount]);
-  const selectedZone = zones.find((zone) => zone.zone_number === selectedZoneNumber) || zones[0] || null;
+  const selectedZone = zones.find((zone) => zone.zone_number === selectedZoneNumber) || null;
   const assignedCount = zones.filter((zone) => zone.assignments?.filter(Boolean).length || zone.assigned_to_name).length;
   const canDeploy = assignedCount > 0;
 
@@ -69,6 +75,20 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
     localStorage.setItem('fk_canvasZones', JSON.stringify(zones));
     window.dispatchEvent(new CustomEvent('fk-canvas-zones-updated', { detail: { zones } }));
   }, [zones]);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('fk-canvas-zone-selected', { detail: { zoneNumber: selectedZoneNumber } }));
+  }, [selectedZoneNumber]);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('fk-canvas-zone-edit-changed', { detail: { zoneNumber: editZoneNumber } }));
+  }, [editZoneNumber]);
+
+  useEffect(() => {
+    const handleFocusMode = (event) => setFocusMode(Boolean(event.detail?.focusMode));
+    window.addEventListener('fk-canvas-focus-mode-changed', handleFocusMode);
+    return () => window.removeEventListener('fk-canvas-focus-mode-changed', handleFocusMode);
+  }, []);
 
   useEffect(() => {
     const handleManualAdjustment = (event) => {
@@ -146,19 +166,47 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
 
   return (
     <div className="fixed inset-0 z-[2000] pointer-events-none lg:flex">
-      <div className="hidden lg:block pointer-events-auto w-[390px] h-full bg-[#09090f]/95 border-r border-purple-500/20 shadow-2xl pt-[env(safe-area-inset-top)]">
-        <BuilderContent {...{ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, setSelectedZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea }} />
+      <div className={`hidden lg:block pointer-events-auto h-full bg-[#09090f]/95 border-r border-purple-500/20 shadow-2xl pt-[env(safe-area-inset-top)] transition-all ${focusMode ? 'w-16' : 'w-[390px]'}`}>
+        {focusMode ? <FocusRail zoneCount={zones.length} assignedCount={assignedCount} onClose={onClose} /> : <BuilderContent {...{ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea }} />}
       </div>
 
-      <div className="lg:hidden pointer-events-auto absolute left-0 right-0 bottom-0 max-h-[78vh] rounded-t-3xl bg-[#09090f]/98 border-t border-purple-500/25 shadow-2xl overflow-hidden pb-[env(safe-area-inset-bottom)]">
-        <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-white/20" />
-        <BuilderContent {...{ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, setSelectedZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea }} compact />
-      </div>
+      {!focusMode && (
+        <div className="lg:hidden pointer-events-auto absolute left-0 right-0 bottom-0 max-h-[78vh] rounded-t-3xl bg-[#09090f]/98 border-t border-purple-500/25 shadow-2xl overflow-hidden pb-[env(safe-area-inset-bottom)]">
+          <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-white/20" />
+          <BuilderContent {...{ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea }} compact />
+        </div>
+      )}
     </div>
   );
 }
 
-function BuilderContent({ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, setSelectedZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, compact = false }) {
+function FocusRail({ zoneCount, assignedCount, onClose }) {
+  return (
+    <div className="h-full flex flex-col items-center gap-4 py-4 text-white">
+      <Map className="w-6 h-6 text-purple-300" />
+      <div className="w-10 h-10 rounded-2xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-xs font-black" title={`${zoneCount} zones`}>{zoneCount}</div>
+      <div className="w-10 h-10 rounded-2xl bg-slate-500/15 border border-slate-400/30 flex items-center justify-center text-xs font-black" title={`${assignedCount} assigned`}>{assignedCount}</div>
+      <button onClick={onClose} className="mt-auto p-2 hover:bg-white/10 rounded-full transition-colors" title="Close Canvas Builder"><X className="w-5 h-5 text-gray-300" /></button>
+    </div>
+  );
+}
+
+function BuilderContent({ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, compact = false }) {
+  const [zoneFilter, setZoneFilter] = useState('');
+  const filteredZones = useMemo(() => {
+    const term = zoneFilter.trim().toLowerCase();
+    if (!term) return zones;
+    return zones.filter((zone) => {
+      const assigned = zone.assignments?.filter(Boolean).join(' + ') || zone.assigned_to_name || '';
+      return String(zone.zone_number).includes(term) || assigned.toLowerCase().includes(term);
+    });
+  }, [zoneFilter, zones]);
+
+  useEffect(() => {
+    const zoneNumbers = zoneFilter.trim() ? filteredZones.map((zone) => zone.zone_number) : [];
+    window.dispatchEvent(new CustomEvent('fk-canvas-zone-filtered', { detail: { zoneNumbers } }));
+  }, [zoneFilter, filteredZones]);
+
   return (
     <div className="h-full flex flex-col text-white">
       <div className="p-4 border-b border-white/10 flex items-center justify-between shrink-0">
@@ -236,12 +284,13 @@ function BuilderContent({ campaign, setCampaign, updateCampaign, rosterText, set
             <label className="text-xs font-bold text-gray-400 uppercase">Zones</label>
             <Badge className="bg-white/10 text-gray-200 border-none">{zones.length} total</Badge>
           </div>
+          <Input value={zoneFilter} onChange={(e) => setZoneFilter(e.target.value)} placeholder="Filter zone or rep" className="bg-[#151520] border-white/10 text-white h-10" />
           <div className={`grid gap-2 ${compact ? 'max-h-52' : 'max-h-64'} overflow-y-auto pr-1`}>
-            {zones.map((zone) => {
+            {filteredZones.map((zone) => {
               const assigned = zone.assignments?.filter(Boolean).join(' + ') || zone.assigned_to_name;
               return (
-                <button key={zone.zone_number} onClick={() => setSelectedZoneNumber(zone.zone_number)} className={`rounded-xl border p-3 text-left flex items-center gap-3 ${selectedZone?.zone_number === zone.zone_number ? 'border-purple-400 bg-purple-500/15' : 'border-white/10 bg-[#12121a]'}`}>
-                  <span className="w-9 h-9 rounded-xl flex items-center justify-center text-black text-xs font-extrabold shrink-0" style={{ background: zone.color }}>{zone.zone_number}</span>
+                <button key={zone.zone_number} onClick={() => setSelectedZoneNumber(zone.zone_number)} className={`rounded-xl border p-3 text-left flex items-center gap-3 ${selectedZoneNumber === zone.zone_number ? 'border-purple-400 bg-purple-500/15' : 'border-white/10 bg-[#12121a]'}`}>
+                  <span className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-xs font-extrabold shrink-0" style={{ background: assigned ? ASSIGNED_ZONE_COLOR : UNASSIGNED_ZONE_COLOR }}>{zone.zone_number}</span>
                   <span className="flex-1 min-w-0">
                     <span className="block text-sm font-bold text-white">Zone {zone.zone_number} · ~{zone.estimated_doors} doors</span>
                     <span className={`block text-[10px] truncate ${assigned ? 'text-gray-400' : 'text-red-300'}`}>{assigned || 'Unassigned'}</span>
@@ -252,7 +301,7 @@ function BuilderContent({ campaign, setCampaign, updateCampaign, rosterText, set
           </div>
         </section>
 
-        {selectedZone && <ZoneDetail zone={selectedZone} roster={roster} repsPerZone={campaign.repsPerZone} onChange={(patch) => updateZone(selectedZone.zone_number, patch)} />}
+        {selectedZone && <ZoneDetail zone={selectedZone} roster={roster} repsPerZone={campaign.repsPerZone} isEditingBoundary={editZoneNumber === selectedZone.zone_number} onEditBoundary={() => setEditZoneNumber(editZoneNumber === selectedZone.zone_number ? null : selectedZone.zone_number)} onChange={(patch) => updateZone(selectedZone.zone_number, patch)} />}
       </div>
 
       <div className="absolute bottom-0 left-0 right-0 p-4 bg-[#09090f] border-t border-white/10 pb-[calc(1rem+env(safe-area-inset-bottom))]">
@@ -274,7 +323,7 @@ function Metric({ icon: Icon, label, value }) {
   return <div className="rounded-xl bg-black/30 border border-white/10 p-3"><Icon className="w-4 h-4 text-purple-300 mb-1" /><p className="text-[10px] text-gray-500 uppercase font-bold">{label}</p><p className="text-sm font-black text-white">{value}</p></div>;
 }
 
-function ZoneDetail({ zone, roster, repsPerZone, onChange }) {
+function ZoneDetail({ zone, roster, repsPerZone, isEditingBoundary, onEditBoundary, onChange }) {
   const assignments = zone.assignments?.length ? zone.assignments : emptyAssignments(repsPerZone);
   const updateAssignment = (index, value) => {
     const next = [...assignments];
@@ -284,10 +333,13 @@ function ZoneDetail({ zone, roster, repsPerZone, onChange }) {
 
   return (
     <section className="rounded-2xl border border-white/10 bg-[#12121a] p-4 space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div><p className="text-sm font-black text-white">Zone {zone.zone_number}</p><p className="text-[11px] text-gray-500">~{zone.estimated_doors} doors · {zone.area_sq_mi} mi²</p></div>
-        <span className="w-9 h-9 rounded-xl" style={{ background: zone.color }} />
+        <span className="w-9 h-9 rounded-xl shrink-0" style={{ background: (zone.assignments?.filter(Boolean).length || zone.assigned_to_name) ? ASSIGNED_ZONE_COLOR : UNASSIGNED_ZONE_COLOR }} />
       </div>
+      <Button onClick={onEditBoundary} size="sm" className={`w-full border ${isEditingBoundary ? 'bg-white text-black border-white hover:bg-gray-100' : 'bg-white/10 text-white border-white/10 hover:bg-white/15'}`}>
+        <Pencil className="w-4 h-4" /> {isEditingBoundary ? 'Boundary edit active' : 'Edit boundary'}
+      </Button>
       <p className="text-[11px] text-gray-400">Drop point: {zone.drop_point ? `${zone.drop_point.lat.toFixed(5)}, ${zone.drop_point.lng.toFixed(5)}` : 'NW corner'}</p>
       {assignments.map((value, index) => (
         <select key={index} value={value} onChange={(e) => updateAssignment(index, e.target.value)} className="w-full h-10 rounded-xl bg-black/40 border border-white/10 text-sm text-white px-3">

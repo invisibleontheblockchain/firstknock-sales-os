@@ -149,9 +149,12 @@ function updateZoneForBoundary(zone, partIndex, edgeIndex, newA, newB, density) 
   };
 }
 
-export default function CanvasBoundaryHandles({ zones = [] }) {
+export default function CanvasBoundaryHandles({ zones = [], editZoneNumber = null }) {
   const map = useMap();
-  const boundaries = useMemo(() => findSharedBoundaries(zones), [zones]);
+  const boundaries = useMemo(() => {
+    if (!editZoneNumber) return [];
+    return findSharedBoundaries(zones).filter((boundary) => boundary.left.zone.zone_number === editZoneNumber || boundary.right.zone.zone_number === editZoneNumber);
+  }, [zones, editZoneNumber]);
 
   const handleDragEnd = async (boundary, event) => {
     const snappedMid = await snapPoint(event.target.getLatLng());

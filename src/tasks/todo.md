@@ -1,6 +1,14 @@
 # Plan
 
-## Current Plan — Canvas Capacity, Drop Points, and Manual Boundary Adjustment
+## Current Plan — Canvas Mode Usability Refactor Changes 1–4
+- [x] Confirm scope: deliver Changes 1–4 only; do not start Change 5 road-aligned generation without separate confirmation.
+- [x] Change 1: update `components/map/CanvasZoneLayers` so labels show only for selected, 300ms-hovered, or sidebar-filtered zones; default map shows fills only.
+- [x] Change 2: update `CanvasZoneLayers` + `CanvasBoundaryHandles` so adjustment handles render only for explicit edit-mode zone(s), separate from assignment selection.
+- [x] Change 3: reduce zone fill semantics to one accent color for unassigned and desaturated gray for assigned; move rep differentiation to a small initials avatar dot.
+- [x] Change 4: add a toolbar `Focus mode` toggle state/event and make Canvas overlays/sidebar respond with labels/handles hidden and sidebar collapsed to an icon rail.
+- [x] Verify 79+ zone performance path with Home preview/logs and document modified files, state additions, dependencies, and before/after behavior.
+
+## Previous Plan — Canvas Capacity, Drop Points, and Manual Boundary Adjustment
 - [x] Confirm scope: fix Canvas-only zone math/rendering and add manual boundary adjustment without changing Precision routing/data pulls.
 - [x] Recalibrate auto density so Anderson-sized suburban polygons do not default to Rural too early.
 - [x] Make generated zones target `shift_hours × doors_per_hour × reps_per_zone` doors by sizing/grouping cells by capacity, not broad equal-area leftovers.
@@ -364,6 +372,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Canvas Mode usability Changes 1–4 are complete without touching schema, Deploy Campaign, rep-facing views, or road-generation logic. Labels now render only for selected/hovered/filtered zones, boundary handles render only in explicit zone edit mode, zone colors are reduced to unassigned accent vs assigned gray with rep initials dots, and toolbar Focus mode hides labels/handles while collapsing the builder sidebar to an icon rail; Home preview loaded and runtime logs showed no new frontend errors, only unrelated existing backend rate-limit/job noise.
+
 Canvas capacity cleanup is complete: auto density now keeps Anderson-sized territories in Suburban instead of jumping to Rural, seed cells are smaller and grouped around the target shift capacity, every zone carries target/density metadata, every zone gets a visible NW drop pin, and shared-boundary midpoint handles can be dragged with OSM-road snapping or 50m grid fallback while adjacent zone door estimates update. Desktop and mobile Home previews loaded; runtime logs show only unrelated existing BatchData insufficient-balance processor noise.
 
 Canvas density refinement is complete: zone count now uses capacity math from estimated doors ÷ doors-per-zone with rep count as the floor, so Urban/Suburban/Rural changes redraw the grid with different zone counts/sizes and varied door estimates. Canvas mode bottom nav now shows Canvas Builder, Live View, and Deploy Campaign only; desktop and mobile previews loaded, and runtime logs show only unrelated existing BatchData insufficient-balance processor noise.

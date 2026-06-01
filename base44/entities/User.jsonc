@@ -1,0 +1,111 @@
+{
+  "name": "User",
+  "type": "object",
+  "properties": {
+    "app_role": {
+      "type": "string",
+      "enum": [
+        "rep",
+        "manager",
+        "admin"
+      ]
+    },
+    "is_owner": {
+      "type": "boolean",
+      "default": false,
+      "description": "Owner level tier with unlimited caps and elevated permissions"
+    },
+    "subscription_status": {
+      "type": "string"
+    },
+    "subscription_tier": {
+      "type": "string"
+    },
+    "total_seats": {
+      "type": "integer"
+    },
+    "stripe_customer_id": {
+      "type": "string"
+    },
+    "has_seen_onboarding": {
+      "type": "boolean"
+    },
+    "has_pulled_data": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether user has completed their one-time data pull"
+    },
+    "has_defined_market": {
+      "type": "boolean",
+      "default": false
+    },
+    "territory_zip_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "territory_property_count": {
+      "type": "integer",
+      "default": 0
+    },
+    "last_data_pull": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "area_pulls_count": {
+      "type": "integer",
+      "default": 0,
+      "description": "Number of area pulls used (free tier = 1)"
+    },
+    "homes_marked_count": {
+      "type": "integer",
+      "default": 0,
+      "description": "Number of unique homes marked/interacted with (free limit = 100)"
+    },
+    "working_area": {
+      "type": "string",
+      "description": "Zip code or City, State for default map center"
+    },
+    "generated_zip_codes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "navigation_app": {
+      "type": "string"
+    },
+    "referral_code": {
+      "type": "string",
+      "description": "Unique referral code for this user"
+    },
+    "referral_balance": {
+      "type": "number",
+      "default": 0,
+      "description": "Unpaid referral commission balance in dollars"
+    },
+    "referral_total_earned": {
+      "type": "number",
+      "default": 0,
+      "description": "Total referral commissions earned all time"
+    },
+    "referred_by_code": {
+      "type": "string",
+      "description": "Referral code used when this user signed up"
+    },
+    "pull_months_back": {
+      "type": "integer",
+      "default": 3,
+      "description": "How many months back of sold data to include"
+    },
+    "stale_zips": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "ZIP codes flagged by reconciliation as having drifted from upstream \u2014 forces full pull on next fetch"
+    }
+  },
+  "required": []
+}

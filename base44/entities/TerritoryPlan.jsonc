@@ -1,0 +1,69 @@
+{
+  "name": "TerritoryPlan",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the campaign/plan"
+    },
+    "goal_houses": {
+      "type": "integer",
+      "description": "Total target houses to knock"
+    },
+    "start_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "PLANNING",
+        "ACTIVE",
+        "PAUSED",
+        "COMPLETED"
+      ],
+      "default": "PLANNING"
+    },
+    "strategy_config": {
+      "type": "object",
+      "description": "JSON configuration for filters and routing strategy",
+      "properties": {
+        "min_price": {
+          "type": "number"
+        },
+        "max_price": {
+          "type": "number"
+        },
+        "sold_years_min": {
+          "type": "number"
+        },
+        "sold_years_max": {
+          "type": "number"
+        },
+        "included_statuses": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "houses_per_route": {
+          "type": "integer"
+        },
+        "street_cooldown_days": {
+          "type": "integer"
+        }
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "status"
+  ]
+}

@@ -1,0 +1,127 @@
+{
+  "name": "Appointment",
+  "type": "object",
+  "properties": {
+    "address_hash": {
+      "type": "string",
+      "description": "Link to MasterProperty"
+    },
+    "full_address": {
+      "type": "string",
+      "description": "Display address"
+    },
+    "homeowner_name": {
+      "type": "string",
+      "description": "Name of homeowner if known"
+    },
+    "phone": {
+      "type": "string",
+      "description": "Contact phone"
+    },
+    "email": {
+      "type": "string",
+      "description": "Contact email"
+    },
+    "scheduled_date": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the appointment is scheduled"
+    },
+    "industry": {
+      "type": "string",
+      "enum": [
+        "solar",
+        "roofing",
+        "hvac",
+        "windows",
+        "pest_control",
+        "landscaping",
+        "security",
+        "insurance",
+        "telecom",
+        "other"
+      ],
+      "default": "solar",
+      "description": "Industry/service type"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "confirmed",
+        "completed",
+        "cancelled",
+        "no_show",
+        "rescheduled"
+      ],
+      "default": "scheduled"
+    },
+    "eligibility_score": {
+      "type": "number",
+      "description": "Computed score 0-100 based on property factors"
+    },
+    "scoring_factors": {
+      "type": "object",
+      "description": "Breakdown of scoring factors",
+      "properties": {
+        "property_age": {
+          "type": "number"
+        },
+        "property_value": {
+          "type": "number"
+        },
+        "lot_size": {
+          "type": "number"
+        },
+        "interaction_history": {
+          "type": "number"
+        },
+        "recency": {
+          "type": "number"
+        }
+      }
+    },
+    "assigned_rep": {
+      "type": "string",
+      "description": "TeamMember ID assigned to this appointment"
+    },
+    "assigned_rep_name": {
+      "type": "string",
+      "description": "Cached rep name"
+    },
+    "route_id": {
+      "type": "string",
+      "description": "SavedRoute ID if linked to a route"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Notes about the appointment"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": [
+        "sold",
+        "follow_up",
+        "not_interested",
+        "not_home",
+        "pending"
+      ],
+      "default": "pending"
+    },
+    "zip_code": {
+      "type": "string"
+    },
+    "lat": {
+      "type": "number"
+    },
+    "lng": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "address_hash",
+    "scheduled_date",
+    "industry",
+    "status"
+  ]
+}

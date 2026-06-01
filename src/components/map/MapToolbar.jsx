@@ -76,6 +76,9 @@ export default function MapToolbar({
     const [routeMode, setRouteMode] = useState(() => {
         try { return localStorage.getItem('fk_routeMode') || 'precision'; } catch { return 'precision'; }
     });
+    const [canvasFocusMode, setCanvasFocusMode] = useState(() => {
+        try { return localStorage.getItem('fk_canvasFocusMode') === 'true'; } catch { return false; }
+    });
 
     const updateRouteMode = (nextMode) => {
         setRouteMode(nextMode);
@@ -92,6 +95,14 @@ export default function MapToolbar({
         window.addEventListener('fk-route-mode-changed', handler);
         return () => window.removeEventListener('fk-route-mode-changed', handler);
     }, []);
+
+    const toggleCanvasFocusMode = () => {
+        const next = !canvasFocusMode;
+        setCanvasFocusMode(next);
+        try { localStorage.setItem('fk_canvasFocusMode', String(next)); } catch {}
+        window.dispatchEvent(new CustomEvent('fk-canvas-focus-mode-changed', { detail: { focusMode: next } }));
+        toast.success(next ? 'Focus mode on' : 'Focus mode off');
+    };
 
     // Track whether data has been pulled for the current drawn territory
     const [territoryDataReady, setTerritoryDataReady] = useState(false);
@@ -467,6 +478,12 @@ export default function MapToolbar({
                                 className="rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(168,85,247,0.25)] transition-all active:scale-95 whitespace-nowrap bg-purple-600 hover:bg-purple-500 text-white"
                             >
                                 <Users className="w-4 h-4 mr-1" /> CANVAS BUILDER
+                            </Button>
+                            <Button
+                                onClick={toggleCanvasFocusMode}
+                                className={`rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap ${canvasFocusMode ? 'bg-white text-black border border-white' : 'bg-black/90 text-purple-200 border border-purple-500/40'}`}
+                            >
+                                <EyeOff className="w-4 h-4 mr-1" /> FOCUS MODE
                             </Button>
                             <Button
                                 onClick={() => { setShowCompare(false); setShowRoutePanel(false); }}

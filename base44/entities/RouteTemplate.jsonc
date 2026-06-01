@@ -1,0 +1,57 @@
+{
+  "name": "RouteTemplate",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Name of the template"
+    },
+    "description": {
+      "type": "string"
+    },
+    "config": {
+      "type": "object",
+      "properties": {
+        "houses_per_route": {
+          "type": "integer"
+        },
+        "max_distance": {
+          "type": "number"
+        },
+        "min_score": {
+          "type": "number"
+        },
+        "street_cooldown_days": {
+          "type": "integer"
+        },
+        "zip_code_filter": {
+          "type": "string"
+        },
+        "minimize_turns": {
+          "type": "boolean"
+        },
+        "start_location": {
+          "type": "object",
+          "properties": {
+            "lat": {
+              "type": "number"
+            },
+            "lng": {
+              "type": "number"
+            },
+            "address": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "created_by": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "config"
+  ]
+}

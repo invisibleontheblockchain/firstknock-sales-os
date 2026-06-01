@@ -8,6 +8,15 @@
     "description": {
       "type": "string"
     },
+    "route_mode": {
+      "type": "string",
+      "enum": [
+        "precision",
+        "canvas"
+      ],
+      "default": "precision",
+      "description": "Route creation mode: Precision uses paid property acquisition; Canvas is for high-volume door knocking teams."
+    },
     "status": {
       "type": "string",
       "enum": [
@@ -31,14 +40,6 @@
       "type": "integer",
       "default": 0,
       "description": "Queue order - lower number = higher priority"
-    },
-    "display_color": {
-      "type": "string",
-      "description": "Default map color assigned to this route"
-    },
-    "route_number": {
-      "type": "integer",
-      "description": "Default generated route number used for display color and labels"
     },
     "property_hashes": {
       "type": "array",
