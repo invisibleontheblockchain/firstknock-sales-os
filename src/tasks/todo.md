@@ -1,5 +1,19 @@
 # Plan
 
+## Current Plan — Canvas Permanent Operational Fixes
+- [x] Enter plan mode and review `tasks/lessons.md` before coding.
+- [x] Inspect `components/logic/canvasZones`, `components/map/CanvasBuilderSettings`, and current runtime logs.
+- [x] Fix 1: add stricter road-aligned planar face generation with malformed OSM way skipping, face validation, door counting, contiguous region growth, and schema-identical output.
+- [x] Fix 2: add local 8×8 density classification to dynamic H3 fallback while preserving the target doors-per-zone.
+- [x] Fix 3: add post-generation clipped boundary zone merge/reindex behavior for zones under the 60% clip ratio.
+- [x] Fix 4: snap drop points to nearest allowed OSM road node when road data exists, with geometric fallback when it does not.
+- [x] Fix 5: prevent duplicate/overloaded rep auto-assignment and show inline amber roster warnings if validation detects overload.
+- [x] Preserve CanvasSession schema, Deploy Campaign flow, rep-facing views, and existing fallback paths.
+- [x] Verify `/Home` preview loads to the auth gate and runtime logs show no new frontend build/runtime error; only unrelated existing route-hydration 429 logs remain.
+
+### Review — Canvas Permanent Operational Fixes
+Implemented all five Canvas fixes in order across `canvasZones` and `CanvasBuilderSettings`: road-first generation with safe hex fallback, density-aware door estimates, clipped-zone cleanup, road-snapped drop points, and capped roster assignment with warnings. Full logged-in visual validation is still limited by the preview auth gate, but module load/runtime verification showed no new frontend errors.
+
 ## Current Plan — Canvas Mode Usability Refactor Changes 1–4
 - [x] Confirm scope: deliver Changes 1–4 only; do not start Change 5 road-aligned generation without separate confirmation.
 - [x] Change 1: update `components/map/CanvasZoneLayers` so labels show only for selected, 300ms-hovered, or sidebar-filtered zones; default map shows fills only.

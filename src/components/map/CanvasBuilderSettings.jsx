@@ -22,6 +22,17 @@ const normalizeRoster = (value) => value.split('\n').map((name) => name.trim()).
 
 const emptyAssignments = (repsPerZone) => Array.from({ length: Math.max(1, repsPerZone) }, () => '');
 
+const getAssignmentWarnings = (zones = [], roster = [], repCount = roster.length) => {
+  const maxZonesPerRep = Math.max(1, Math.ceil((zones.length || 1) / Math.max(1, Number(repCount) || roster.length || 1)));
+  const counts = new Map(roster.map((name) => [name, 0]));
+  zones.forEach((zone) => {
+    (zone.assignments || []).filter(Boolean).forEach((name) => counts.set(name, (counts.get(name) || 0) + 1));
+  });
+  return [...counts.entries()]
+    .filter(([, count]) => count > maxZonesPerRep)
+    .map(([name, count]) => ({ name, count, maxZonesPerRep, message: `${name} assigned to ${count} zones — check workload` }));
+};
+
 function buildInitialCampaign() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -55,12 +66,15 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
   const [sessionPropertyPoints, setSessionPropertyPoints] = useState(() => {
     try { return Array.isArray(window.__fkCanvasPropertyPoints) ? window.__fkCanvasPropertyPoints : []; } catch { return []; }
   });
+  const [sessionRoadNetwork, setSessionRoadNetwork] = useState(() => {
+    try { return window.__fkCanvasRoadNetwork || window.__fkRoadNetwork || null; } catch { return null; }
+  });
 
   const roster = useMemo(() => normalizeRoster(rosterText), [rosterText]);
   const effectivePolygon = hasDrawnArea && drawnPolygon?.length > 2 ? drawnPolygon : DEMO_POLYGON;
   const summary = useMemo(() => getCanvasCampaignSummary({ polygon: effectivePolygon, ...campaign }), [effectivePolygon, campaign]);
   const effectivePropertyPoints = propertyPoints.length ? propertyPoints : sessionPropertyPoints;
-  const canvasConfig = useMemo(() => ({ ...campaign, propertyPoints: effectivePropertyPoints }), [campaign, effectivePropertyPoints]);
+  const canvasConfig = useMemo(() => ({ ...campaign, propertyPoints: effectivePropertyPoints, roadNetwork: sessionRoadNetwork }), [campaign, effectivePropertyPoints, sessionRoadNetwork]);
 
   const zones = useMemo(() => {
     if ((campaign.zones || []).some((zone) => zone.manual_adjusted) && campaign.zones.length === summary.zoneCount) {
@@ -70,6 +84,7 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
   }, [effectivePolygon, canvasConfig, campaign, summary.zoneCount]);
   const selectedZone = zones.find((zone) => zone.zone_number === selectedZoneNumber) || null;
   const assignedCount = zones.filter((zone) => zone.assignments?.filter(Boolean).length || zone.assigned_to_name).length;
+  const assignmentWarnings = useMemo(() => getAssignmentWarnings(zones, roster, campaign.repCount), [zones, roster, campaign.repCount]);
   const canDeploy = assignedCount > 0;
 
   useEffect(() => {
@@ -103,6 +118,13 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
   }, []);
 
   useEffect(() => {
+    const handleRoadNetwork = () => setSessionRoadNetwork(window.__fkCanvasRoadNetwork || window.__fkRoadNetwork || null);
+    window.addEventListener('fk-canvas-road-network-updated', handleRoadNetwork);
+    handleRoadNetwork();
+    return () => window.removeEventListener('fk-canvas-road-network-updated', handleRoadNetwork);
+  }, []);
+
+  useEffect(() => {
     const handleManualAdjustment = (event) => {
       const nextZones = event.detail?.zones;
       if (!Array.isArray(nextZones)) return;
@@ -128,12 +150,25 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
 
   const autoAssign = () => {
     if (!roster.length) return toast.error('Add rep names before auto-assigning.');
+    const maxZonesPerRep = Math.max(1, Math.ceil((zones.length || 1) / Math.max(1, Number(campaign.repCount) || roster.length || 1)));
+    const assignedCounts = new Map(roster.map((name) => [name, 0]));
+    let cursor = 0;
+    const nextRep = () => {
+      for (let attempts = 0; attempts < roster.length; attempts += 1) {
+        const name = roster[cursor % roster.length];
+        cursor += 1;
+        if ((assignedCounts.get(name) || 0) < maxZonesPerRep) {
+          assignedCounts.set(name, (assignedCounts.get(name) || 0) + 1);
+          return name;
+        }
+      }
+      return '';
+    };
     updateCampaign({
-      zones: zones.map((zone, index) => ({
-        ...zone,
-        assignments: emptyAssignments(campaign.repsPerZone).map((_, slot) => roster[(index * campaign.repsPerZone + slot) % roster.length]),
-        assigned_to_name: emptyAssignments(campaign.repsPerZone).map((_, slot) => roster[(index * campaign.repsPerZone + slot) % roster.length]).join(' + '),
-      }))
+      zones: zones.map((zone) => {
+        const assignments = emptyAssignments(campaign.repsPerZone).map(() => nextRep()).filter(Boolean);
+        return { ...zone, assignments, assigned_to_name: assignments.join(' + ') };
+      })
     });
     toast.success('Roster distributed across zones.');
   };
@@ -179,13 +214,13 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
   return (
     <div className="fixed inset-0 z-[2000] pointer-events-none lg:flex">
       <div className={`hidden lg:block pointer-events-auto h-full bg-[#09090f]/95 border-r border-purple-500/20 shadow-2xl pt-[env(safe-area-inset-top)] transition-all ${focusMode ? 'w-16' : 'w-[390px]'}`}>
-        {focusMode ? <FocusRail zoneCount={zones.length} assignedCount={assignedCount} onClose={onClose} /> : <BuilderContent {...{ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea }} />}
+        {focusMode ? <FocusRail zoneCount={zones.length} assignedCount={assignedCount} onClose={onClose} /> : <BuilderContent {...{ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, assignmentWarnings }} />}
       </div>
 
       {!focusMode && (
         <div className="lg:hidden pointer-events-auto absolute left-0 right-0 bottom-0 max-h-[78vh] rounded-t-3xl bg-[#09090f]/98 border-t border-purple-500/25 shadow-2xl overflow-hidden pb-[env(safe-area-inset-bottom)]">
           <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-white/20" />
-          <BuilderContent {...{ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea }} compact />
+          <BuilderContent {...{ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, assignmentWarnings }} compact />
         </div>
       )}
     </div>
@@ -203,7 +238,7 @@ function FocusRail({ zoneCount, assignedCount, onClose }) {
   );
 }
 
-function BuilderContent({ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, compact = false }) {
+function BuilderContent({ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, assignmentWarnings = [], compact = false }) {
   const [zoneFilter, setZoneFilter] = useState('');
   const filteredZones = useMemo(() => {
     const term = zoneFilter.trim().toLowerCase();
@@ -289,6 +324,11 @@ function BuilderContent({ campaign, setCampaign, updateCampaign, rosterText, set
             <Button onClick={autoAssign} size="sm" className="bg-purple-600 hover:bg-purple-500 text-white"><Wand2 className="w-4 h-4" /> Auto-assign</Button>
           </div>
           <textarea value={rosterText} onChange={(e) => setRosterText(e.target.value)} className="w-full min-h-[92px] rounded-xl bg-[#151520] border border-white/10 text-sm text-white p-3 outline-none focus:border-purple-400" placeholder="One rep per line" />
+          {assignmentWarnings.length > 0 && (
+            <div className="space-y-1 rounded-xl border border-amber-400/20 bg-amber-400/10 p-2">
+              {assignmentWarnings.map((warning) => <p key={warning.name} className="text-[11px] font-bold text-amber-300">{warning.message}</p>)}
+            </div>
+          )}
         </section>
 
         <section className="space-y-3">

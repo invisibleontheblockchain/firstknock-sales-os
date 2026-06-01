@@ -269,6 +269,41 @@ function directedEdgeKey(a, b) {
   return `${a}->${b}`;
 }
 
+function haversineMiles(a, b) {
+  if (!a || !b) return Infinity;
+  const radius = 3958.8;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLng = (b.lng - a.lng) * Math.PI / 180;
+  const lat1 = a.lat * Math.PI / 180;
+  const lat2 = b.lat * Math.PI / 180;
+  const x = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return radius * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+}
+
+function distancePointToSegment(point, a, b) {
+  const avgLat = (point.lat + a.lat + b.lat) / 3;
+  const { latScale, lngScale } = getScales(avgLat);
+  const px = point.lng * lngScale;
+  const py = point.lat * latScale;
+  const ax = a.lng * lngScale;
+  const ay = a.lat * latScale;
+  const bx = b.lng * lngScale;
+  const by = b.lat * latScale;
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lengthSq = dx * dx + dy * dy;
+  const t = lengthSq ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSq)) : 0;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+function pointOnPolygonBoundary(point, polygon = []) {
+  if (!point || polygon.length < 3) return false;
+  return polygon.some((current, index) => {
+    const next = polygon[(index + 1) % polygon.length];
+    return distancePointToSegment(point, current, next) < 0.00003;
+  });
+}
+
 function graphAngle(fromId, toId, nodes) {
   const from = nodes.get(fromId);
   const to = nodes.get(toId);
@@ -277,10 +312,10 @@ function graphAngle(fromId, toId, nodes) {
   return Math.atan2(to.lat - from.lat, (to.lng - from.lng) * scale);
 }
 
-function clockwiseTurn(fromId, throughId, toId, nodes) {
-  const incoming = graphAngle(throughId, fromId, nodes);
+function clockwiseDelta(fromId, throughId, toId, nodes) {
+  const reverseArrival = graphAngle(throughId, fromId, nodes);
   const outgoing = graphAngle(throughId, toId, nodes);
-  return (incoming - outgoing + Math.PI * 2) % (Math.PI * 2);
+  return (reverseArrival - outgoing + Math.PI * 2) % (Math.PI * 2);
 }
 
 function canonicalFaceKey(faceIds = []) {
@@ -302,13 +337,16 @@ function buildRoadGraph(roadNetwork) {
   const ways = [];
   (roadNetwork?.elements || []).forEach((element) => {
     if (element.type === 'node' && Number.isFinite(element.lat) && Number.isFinite(element.lon)) {
-      rawNodes.set(element.id, { lat: Number(element.lat), lng: Number(element.lon) });
+      rawNodes.set(element.id, { lat: Number(element.lat), lng: Number(element.lon), id: element.id });
     }
   });
   (roadNetwork?.elements || []).forEach((element) => {
     if (element.type !== 'way' || !allowed.has(element.tags?.highway) || !Array.isArray(element.nodes) || element.nodes.length < 2) return;
-    const nodes = element.nodes.filter((id) => rawNodes.has(id));
-    if (nodes.length > 1) ways.push(nodes);
+    if (element.nodes.some((id) => !rawNodes.has(id))) {
+      console.warn('[FK] Skipping malformed OSM way with missing node refs:', element.id);
+      return;
+    }
+    ways.push(element.nodes);
   });
 
   const adjacency = new Map();
@@ -326,90 +364,147 @@ function buildRoadGraph(roadNetwork) {
 
   return {
     nodes,
+    ways,
     adjacency: new Map([...adjacency.entries()].map(([id, neighbors]) => [id, [...neighbors]])),
   };
 }
 
 function findRoadFaces(nodes, adjacency, managerPolygon, targetZoneAreaSqMi) {
-  const visited = new Set();
+  const completed = new Set();
   const facesByKey = new Map();
-  const maxFaceArea = Math.max(0.0001, targetZoneAreaSqMi * 3);
-  const maxSteps = Math.max(50, adjacency.size * 4);
+  const maxSteps = Math.max(50, adjacency.size * 6);
 
   adjacency.forEach((neighbors, startA) => {
     neighbors.forEach((startB) => {
       const startKey = directedEdgeKey(startA, startB);
-      if (visited.has(startKey)) return;
+      if (completed.has(startKey)) return;
+      const traversed = [];
       const faceIds = [];
       let previous = startA;
       let current = startB;
 
       for (let step = 0; step < maxSteps; step += 1) {
-        visited.add(directedEdgeKey(previous, current));
+        const currentKey = directedEdgeKey(previous, current);
+        traversed.push(currentKey);
         faceIds.push(previous);
-        const candidates = (adjacency.get(current) || []).filter((id) => id !== previous);
-        const next = candidates.length
-          ? candidates.reduce((best, candidate) => clockwiseTurn(previous, current, candidate, nodes) < clockwiseTurn(previous, current, best, nodes) ? candidate : best, candidates[0])
-          : previous;
+        const outgoing = (adjacency.get(current) || []);
+        const candidates = outgoing.length > 1 ? outgoing.filter((id) => id !== previous) : [];
+        if (!candidates.length) break;
+        const next = candidates.reduce((best, candidate) => {
+          const candidateTurn = clockwiseDelta(previous, current, candidate, nodes);
+          const bestTurn = clockwiseDelta(previous, current, best, nodes);
+          return candidateTurn < bestTurn ? candidate : best;
+        }, candidates[0]);
         previous = current;
         current = next;
         if (previous === startA && current === startB) break;
       }
 
       if (previous !== startA || current !== startB || faceIds.length < 3) return;
+      traversed.forEach((key) => completed.add(key));
       const key = canonicalFaceKey(faceIds);
       if (facesByKey.has(key)) return;
       const geometry = normalizePolygon(faceIds.map((id) => nodes.get(id)).filter(Boolean));
       if (!isValidPolygon(geometry)) return;
-      const area = calculatePolygonAreaSqMi(geometry);
-      if (area <= 0.000001 || area > maxFaceArea) return;
-      const clipped = clipPolygon(geometry, managerPolygon);
-      if (!isValidPolygon(clipped) || !polygonIntersectsPolygon(clipped, managerPolygon)) return;
+      const fullArea = calculatePolygonAreaSqMi(geometry);
+      if (fullArea <= 0.000001) return;
       facesByKey.set(key, {
         ids: faceIds,
-        geometry: clipped,
-        area: calculatePolygonAreaSqMi(clipped),
+        fullGeometry: geometry,
+        fullArea,
         edgeKeys: faceIds.map((id, index) => edgeKey(id, faceIds[(index + 1) % faceIds.length])),
       });
     });
   });
 
-  const faces = [...facesByKey.values()].filter((face) => face.area > 0.000001);
-  const faceUsage = new Map();
-  faces.forEach((face) => face.edgeKeys.forEach((key) => faceUsage.set(key, (faceUsage.get(key) || 0) + 1)));
-  const missedInterior = [];
+  let faces = [...facesByKey.values()].sort((a, b) => b.fullArea - a.fullArea);
+  if (faces.length > 1) faces = faces.slice(1); // largest planar face is the exterior
+  const maxFaceArea = Math.max(0.0001, targetZoneAreaSqMi * 3);
+  faces = faces
+    .filter((face) => face.fullArea <= maxFaceArea && polygonIntersectsPolygon(face.fullGeometry, managerPolygon))
+    .map((face) => {
+      const clipped = clipPolygon(face.fullGeometry, managerPolygon);
+      if (!isValidPolygon(clipped)) return null;
+      return {
+        ...face,
+        geometry: clipped,
+        area: calculatePolygonAreaSqMi(clipped),
+      };
+    })
+    .filter((face) => face?.area > 0.000001);
+
+  const usage = new Map();
+  faces.forEach((face) => face.edgeKeys.forEach((key) => usage.set(key, (usage.get(key) || 0) + 1)));
+  const badInteriorEdges = [];
   adjacency.forEach((neighbors, a) => {
     neighbors.forEach((b) => {
       if (String(a) > String(b)) return;
       const first = nodes.get(a);
       const second = nodes.get(b);
-      const midpoint = first && second ? { lat: (first.lat + second.lat) / 2, lng: (first.lng + second.lng) / 2 } : null;
-      if (midpoint && pointInPolygon(midpoint, managerPolygon) && (faceUsage.get(edgeKey(a, b)) || 0) === 1) missedInterior.push(edgeKey(a, b));
+      if (!first || !second) return;
+      const midpoint = { lat: (first.lat + second.lat) / 2, lng: (first.lng + second.lng) / 2 };
+      if (!pointInPolygon(midpoint, managerPolygon)) return;
+      const count = usage.get(edgeKey(a, b)) || 0;
+      if (count === 1) badInteriorEdges.push(edgeKey(a, b));
     });
   });
-  if (missedInterior.length) {
-    console.warn('Road-aligned Canvas fallback: planar traversal missed an interior face.', missedInterior.slice(0, 5));
+  if (badInteriorEdges.length || faces.length < 2) {
+    if (badInteriorEdges.length) console.warn('[FK] Road-aligned generation fell back: road face validation failed.', badInteriorEdges.slice(0, 5));
     return [];
   }
   return faces;
 }
 
-function subdivideOversizedFace(face, targetDoors, density) {
+function getConfigDoorPoints(config = {}) {
+  const raw = config.doorPoints || config.propertyPoints || config.properties || config.addressPoints || [];
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((point) => ({
+      lat: Number(point?.lat ?? point?.latitude),
+      lng: Number(point?.lng ?? point?.lon ?? point?.longitude),
+    }))
+    .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+}
+
+function assignDoorsToFaces(faces, doorPoints, fallbackDensity) {
+  if (!doorPoints.length) {
+    return faces.map((face) => ({ ...face, estimatedDoors: Math.max(1, Math.round(face.area * fallbackDensity.doorsPerSqMi)) }));
+  }
+  const counts = new Array(faces.length).fill(0);
+  doorPoints.forEach((door) => {
+    const matches = faces
+      .map((face, index) => ({ face, index }))
+      .filter(({ face }) => pointInPolygon(door, face.geometry) || pointOnPolygonBoundary(door, face.geometry));
+    if (!matches.length) return;
+    const selected = matches.length === 1 ? matches[0] : matches.reduce((best, candidate) => {
+      const bestDistance = haversineMiles(door, best.face.center);
+      const candidateDistance = haversineMiles(door, candidate.face.center);
+      return candidateDistance < bestDistance ? candidate : best;
+    }, matches[0]);
+    counts[selected.index] += 1;
+  });
+  return faces.map((face, index) => ({ ...face, estimatedDoors: counts[index] || Math.max(1, Math.round(face.area * fallbackDensity.doorsPerSqMi)) }));
+}
+
+function subdivideOversizedFace(face, targetDoors, density, doorPoints = []) {
   if (face.estimatedDoors <= targetDoors * 2) return [face];
-  let cells = [{ geometry: face.geometry, area: face.area, center: polygonCentroid(face.geometry) }];
+  let cells = [{ geometry: face.geometry, area: face.area, fullArea: face.fullArea || face.area, center: polygonCentroid(face.geometry) }];
   let guard = 0;
   while (cells.some((cell) => Math.round(cell.area * density.doorsPerSqMi) > targetDoors) && guard < 20) {
     const largestIndex = cells.reduce((best, cell, index) => cell.area > cells[best].area ? index : best, 0);
     const pieces = splitCell(cells[largestIndex]);
     if (pieces.length < 2) break;
-    cells.splice(largestIndex, 1, ...pieces.map((piece) => ({ ...piece, center: polygonCentroid(piece.geometry) })));
+    cells.splice(largestIndex, 1, ...pieces.map((piece) => ({ ...piece, fullArea: piece.area, center: polygonCentroid(piece.geometry) })));
     guard += 1;
   }
-  return cells.map((cell, index) => ({
-    ...cell,
-    estimatedDoors: Math.max(1, Math.round(cell.area * density.doorsPerSqMi)),
-    edgeKeys: [`${face.edgeKeys.join('|')}:split:${index}`],
-  }));
+  return cells.map((cell, index) => {
+    const actualDoors = doorPoints.length ? doorPoints.filter((point) => pointInPolygon(point, cell.geometry) || pointOnPolygonBoundary(point, cell.geometry)).length : null;
+    return {
+      ...cell,
+      estimatedDoors: actualDoors ?? Math.max(1, Math.round(cell.area * density.doorsPerSqMi)),
+      edgeKeys: [`${face.edgeKeys.join('|')}:split:${index}`],
+    };
+  });
 }
 
 function groupRoadFaces(faces, targetDoors) {
@@ -443,17 +538,6 @@ function groupRoadFaces(faces, targetDoors) {
     groups.push(group.map((index) => faces[index]));
   }
   return groups;
-}
-
-function getConfigDoorPoints(config = {}) {
-  const raw = config.doorPoints || config.propertyPoints || config.properties || config.addressPoints || [];
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((point) => ({
-      lat: Number(point?.lat ?? point?.latitude),
-      lng: Number(point?.lng ?? point?.lon ?? point?.longitude),
-    }))
-    .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
 }
 
 function getDynamicH3Resolution(summary) {
@@ -517,10 +601,48 @@ function mergePartsToOuterParts(parts = []) {
   return loops.length ? loops.sort((a, b) => calculatePolygonAreaSqMi(b) - calculatePolygonAreaSqMi(a)) : parts;
 }
 
+function buildDensityGrid(points, doorPoints, summary) {
+  const bounds = getBounds(points);
+  const latStep = (bounds.maxLat - bounds.minLat) / 8 || 0.001;
+  const lngStep = (bounds.maxLng - bounds.minLng) / 8 || 0.001;
+  const grid = [];
+  for (let row = 0; row < 8; row += 1) {
+    for (let col = 0; col < 8; col += 1) {
+      const cell = normalizePolygon([
+        { lat: bounds.maxLat - row * latStep, lng: bounds.minLng + col * lngStep },
+        { lat: bounds.maxLat - row * latStep, lng: bounds.minLng + (col + 1) * lngStep },
+        { lat: bounds.maxLat - (row + 1) * latStep, lng: bounds.minLng + (col + 1) * lngStep },
+        { lat: bounds.maxLat - (row + 1) * latStep, lng: bounds.minLng + col * lngStep },
+      ]);
+      const clipped = clipPolygon(points, cell);
+      if (!isValidPolygon(clipped)) continue;
+      const areaSqMi = calculatePolygonAreaSqMi(clipped);
+      const doors = doorPoints.length ? doorPoints.filter((point) => pointInPolygon(point, clipped)).length : Math.round(areaSqMi * summary.density.doorsPerSqMi);
+      const km2 = areaSqMi * 2.58999;
+      const doorsPerKm2 = km2 > 0 ? doors / km2 : summary.density.doorsPerSqMi / 2.58999;
+      const densityKey = doorsPerKm2 > 200 ? 'urban' : doorsPerKm2 >= 80 ? 'suburban' : 'rural';
+      grid.push({ geometry: clipped, center: polygonCentroid(clipped), densityKey });
+    }
+  }
+  return grid;
+}
+
+function getLocalDensityKey(point, grid, fallbackKey) {
+  return grid.find((cell) => pointInPolygon(point, cell.geometry))?.densityKey || fallbackKey;
+}
+
+function doorsPerSqMiForDensity(key, fallback) {
+  if (key === 'urban') return DENSITY_TIERS.urban.doorsPerSqMi;
+  if (key === 'suburban') return DENSITY_TIERS.suburban.doorsPerSqMi;
+  if (key === 'rural') return DENSITY_TIERS.rural.doorsPerSqMi;
+  return fallback;
+}
+
 function buildDynamicH3Cells(points, config, summary) {
   try {
     const doorPoints = getConfigDoorPoints(config).filter((point) => pointInPolygon(point, points));
     const hasDoorPoints = doorPoints.length > 0;
+    const densityGrid = buildDensityGrid(points, doorPoints, summary);
     const baseResolution = getDynamicH3Resolution(summary);
     const ring = points.map((point) => [point.lng, point.lat]);
     if (ring.length && (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1])) ring.push(ring[0]);
@@ -536,17 +658,23 @@ function buildDynamicH3Cells(points, config, summary) {
       const clipped = clipPolygon(points, hex);
       if (!isValidPolygon(clipped)) return null;
       const area = calculatePolygonAreaSqMi(clipped);
-      const containedDoors = hasDoorPoints ? doorPoints.filter((point) => pointInPolygon(point, clipped)).length : null;
-      const estimatedDoors = hasDoorPoints ? containedDoors : Math.max(1, Math.round(area * summary.density.doorsPerSqMi));
+      const center = polygonCentroid(clipped);
+      if (!center) return null;
+      const densityKey = getLocalDensityKey(center, densityGrid, summary.density.key);
+      const localDoorsPerSqMi = doorsPerSqMiForDensity(densityKey, summary.density.doorsPerSqMi);
+      const containedDoors = hasDoorPoints ? doorPoints.filter((point) => pointInPolygon(point, clipped) || pointOnPolygonBoundary(point, clipped)).length : null;
+      const estimatedDoors = hasDoorPoints ? containedDoors : Math.max(1, Math.round(area * localDoorsPerSqMi));
       if (estimatedDoors <= 0) return null;
       return {
         h3Id: cellId,
         geometry: clipped,
+        fullArea: calculatePolygonAreaSqMi(hex),
         area,
-        center: polygonCentroid(clipped),
+        center,
         estimatedDoors,
+        densityKey,
       };
-    }).filter((cell) => cell?.center);
+    }).filter(Boolean);
   } catch (error) {
     console.warn('Dynamic Canvas H3 fallback unavailable:', error);
     return [];
@@ -560,10 +688,7 @@ function groupDynamicCells(cells, targetDoors) {
 
   const distanceToGroup = (candidateIndex, group) => {
     const candidate = cells[candidateIndex].center;
-    return Math.min(...group.map((index) => {
-      const center = cells[index].center;
-      return Math.hypot(candidate.lat - center.lat, candidate.lng - center.lng);
-    }));
+    return Math.min(...group.map((index) => haversineMiles(candidate, cells[index].center)));
   };
 
   const getCandidates = (group) => {
@@ -595,36 +720,118 @@ function groupDynamicCells(cells, targetDoors) {
   return groups;
 }
 
+function buildZoneFromGroup(group, summary, targetDoors, index, existing = {}) {
+  const rawParts = group.map((cell) => cell.geometry);
+  const parts = mergePartsToOuterParts(rawParts);
+  const area = group.reduce((sum, cell) => sum + cell.area, 0);
+  const fullArea = group.reduce((sum, cell) => sum + (cell.fullArea || cell.area), 0);
+  const estimatedDoors = group.reduce((sum, cell) => sum + cell.estimatedDoors, 0);
+  const center = centroidOfParts(parts) || group[0]?.center || null;
+  return {
+    ...existing,
+    zone_number: index + 1,
+    name: existing.name || `Zone ${index + 1}`,
+    color: existing.color || DEFAULT_COLORS[index % DEFAULT_COLORS.length],
+    geometry: parts[0] || [],
+    parts,
+    area_sq_mi: Number(area.toFixed(2)),
+    estimated_doors: Math.max(1, Math.round(estimatedDoors)),
+    target_doors: targetDoors,
+    density_key: summary.density.key,
+    density_doors_per_sq_mi: summary.density.doorsPerSqMi,
+    drop_point: center || getDropPoint(parts.flat()),
+    center,
+    status: existing.status || 'unworked',
+    notes: existing.notes || '',
+    assignments: existing.assignments || [],
+    __clipRatio: fullArea > 0 ? area / fullArea : 1,
+  };
+}
+
 function zonesFromCellGroups(groups, summary, targetDoors, existingZones = []) {
-  return groups.map((group, index) => {
-    const existing = existingZones[index] || {};
-    const rawParts = group.map((cell) => cell.geometry);
-    const parts = mergePartsToOuterParts(rawParts);
-    const area = group.reduce((sum, cell) => sum + cell.area, 0);
-    const estimatedDoors = group.reduce((sum, cell) => sum + cell.estimatedDoors, 0);
-    const center = centroidOfParts(parts) || group[0]?.center || null;
-    return {
-      ...existing,
-      zone_number: index + 1,
-      name: existing.name || `Zone ${index + 1}`,
-      color: existing.color || DEFAULT_COLORS[index % DEFAULT_COLORS.length],
-      geometry: parts[0] || [],
-      parts,
-      area_sq_mi: Number(area.toFixed(2)),
-      estimated_doors: Math.max(1, Math.round(estimatedDoors)),
-      target_doors: targetDoors,
-      density_key: summary.density.key,
-      density_doors_per_sq_mi: summary.density.doorsPerSqMi,
-      drop_point: getDropPoint(parts.flat()),
-      center,
-      status: existing.status || 'unworked',
-      notes: existing.notes || '',
-      assignments: existing.assignments || [],
+  return groups.map((group, index) => buildZoneFromGroup(group, summary, targetDoors, index, existingZones[index] || {}));
+}
+
+function stripPrivateZoneFields(zone) {
+  const { __clipRatio, ...clean } = zone;
+  return clean;
+}
+
+function zonesShareBoundary(a, b) {
+  const aEdges = new Set((a.parts || [a.geometry]).flatMap((part) => normalizePolygon(part).map((point, index, arr) => edgeSignature(point, arr[(index + 1) % arr.length]))));
+  return (b.parts || [b.geometry]).some((part) => normalizePolygon(part).some((point, index, arr) => aEdges.has(edgeSignature(point, arr[(index + 1) % arr.length]))));
+}
+
+function mergeClippedBoundaryZones(zones = []) {
+  const working = zones.map((zone) => ({ ...zone, parts: zone.parts || [zone.geometry].filter(Boolean) }));
+  for (let index = working.length - 1; index >= 0; index -= 1) {
+    const zone = working[index];
+    if ((zone.__clipRatio ?? 1) >= 0.6 || working.length < 2) continue;
+    const candidates = working
+      .map((candidate, candidateIndex) => ({ candidate, candidateIndex }))
+      .filter(({ candidateIndex }) => candidateIndex !== index);
+    const adjacent = candidates.filter(({ candidate }) => zonesShareBoundary(zone, candidate));
+    const pool = adjacent.length ? adjacent : candidates;
+    const target = pool.sort((a, b) => {
+      const doorDiff = (a.candidate.estimated_doors || 0) - (b.candidate.estimated_doors || 0);
+      if (doorDiff !== 0) return doorDiff;
+      return haversineMiles(zone.center, a.candidate.center) - haversineMiles(zone.center, b.candidate.center);
+    })[0];
+    if (!target) continue;
+    const mergedParts = mergePartsToOuterParts([...(target.candidate.parts || []), ...(zone.parts || [])]);
+    const mergedArea = (target.candidate.area_sq_mi || 0) + (zone.area_sq_mi || 0);
+    working[target.candidateIndex] = {
+      ...target.candidate,
+      geometry: mergedParts[0] || target.candidate.geometry,
+      parts: mergedParts,
+      area_sq_mi: Number(mergedArea.toFixed(2)),
+      estimated_doors: Math.max(1, Math.round((target.candidate.estimated_doors || 0) + (zone.estimated_doors || 0))),
+      center: centroidOfParts(mergedParts) || target.candidate.center,
+      drop_point: centroidOfParts(mergedParts) || target.candidate.drop_point,
+      __clipRatio: Math.max(target.candidate.__clipRatio ?? 1, zone.__clipRatio ?? 1),
     };
+    working.splice(index, 1);
+  }
+  return working.map((zone, index) => ({
+    ...zone,
+    zone_number: index + 1,
+    name: `Zone ${index + 1}`,
+    color: zone.color || DEFAULT_COLORS[index % DEFAULT_COLORS.length],
+  }));
+}
+
+function getRoadNodes(roadNetwork) {
+  const allowed = new Set(['primary', 'secondary', 'tertiary', 'residential']);
+  const nodeMap = new Map();
+  (roadNetwork?.elements || []).forEach((element) => {
+    if (element.type === 'node' && Number.isFinite(element.lat) && Number.isFinite(element.lon)) {
+      nodeMap.set(element.id, { lat: Number(element.lat), lng: Number(element.lon) });
+    }
+  });
+  const allowedIds = new Set();
+  (roadNetwork?.elements || []).forEach((element) => {
+    if (element.type === 'way' && allowed.has(element.tags?.highway) && Array.isArray(element.nodes) && element.nodes.every((id) => nodeMap.has(id))) {
+      element.nodes.forEach((id) => allowedIds.add(id));
+    }
+  });
+  return [...allowedIds].map((id) => nodeMap.get(id)).filter(Boolean);
+}
+
+function snapDropPointsToRoad(zones, roadNetwork) {
+  const roadNodes = getRoadNodes(roadNetwork);
+  if (!roadNodes.length) return zones.map(stripPrivateZoneFields);
+  return zones.map((zone) => {
+    const origin = zone.center || zone.drop_point;
+    const nearest = roadNodes.reduce((best, node) => haversineMiles(origin, node) < haversineMiles(origin, best) ? node : best, roadNodes[0]);
+    return stripPrivateZoneFields({ ...zone, drop_point: nearest || zone.drop_point });
   });
 }
 
-function generateDynamicCanvasZones(polygon, configOrCount, existingZones = []) {
+function postProcessZones(zones, roadNetwork) {
+  return snapDropPointsToRoad(mergeClippedBoundaryZones(zones), roadNetwork);
+}
+
+function generateDynamicCanvasZones(polygon, configOrCount, existingZones = [], roadNetwork = null) {
   const points = normalizePolygon(cleanPolygon(polygon));
   if (points.length < 3) return [];
   const config = typeof configOrCount === 'object' ? configOrCount : { repCount: configOrCount };
@@ -634,10 +841,10 @@ function generateDynamicCanvasZones(polygon, configOrCount, existingZones = []) 
   if (cells.length < 2) return [];
   const groups = groupDynamicCells(cells, targetDoors).filter((group) => group.length);
   if (!groups.length) return [];
-  return zonesFromCellGroups(groups, summary, targetDoors, existingZones);
+  return postProcessZones(zonesFromCellGroups(groups, summary, targetDoors, existingZones), roadNetwork);
 }
 
-function generateRoadAlignedZones(polygon, options, roadNetwork) {
+function generateRoadAlignedZones(polygon, options, roadNetwork, existingZones = []) {
   try {
     const points = normalizePolygon(cleanPolygon(polygon));
     if (points.length < 3) return [];
@@ -647,64 +854,52 @@ function generateRoadAlignedZones(polygon, options, roadNetwork) {
     const { nodes, adjacency } = buildRoadGraph(roadNetwork);
     if (nodes.size < 3 || adjacency.size < 3) return [];
 
+    const doorPoints = getConfigDoorPoints(config).filter((point) => pointInPolygon(point, points));
     let faces = findRoadFaces(nodes, adjacency, points, summary.targetZoneAreaSqMi)
-      .map((face) => ({
-        ...face,
-        center: polygonCentroid(face.geometry),
-        estimatedDoors: Math.max(1, Math.round(face.area * summary.density.doorsPerSqMi)),
-      }))
+      .map((face) => ({ ...face, center: polygonCentroid(face.geometry) }))
       .filter((face) => face.center && pointInPolygon(face.center, points));
 
     if (faces.length < 2) return [];
-    if (faces.some((face) => face.estimatedDoors > targetDoors * 3)) return [];
-    faces = faces.flatMap((face) => subdivideOversizedFace(face, targetDoors, summary.density));
+    faces = assignDoorsToFaces(faces, doorPoints, summary.density);
+    faces = faces.flatMap((face) => subdivideOversizedFace(face, targetDoors, summary.density, doorPoints));
     if (faces.length < 2) return [];
 
     const groups = groupRoadFaces(faces, targetDoors).filter((group) => group.length);
     if (!groups.length) return [];
 
-    return groups.map((group, index) => {
-      const parts = group.map((cell) => cell.geometry);
-      const area = group.reduce((sum, cell) => sum + cell.area, 0);
-      const center = centroidOfParts(parts) || group[0]?.center || null;
-      return {
-        zone_number: index + 1,
-        name: `Zone ${index + 1}`,
-        color: DEFAULT_COLORS[index % DEFAULT_COLORS.length],
-        geometry: parts[0] || [],
-        parts,
-        area_sq_mi: Number(area.toFixed(2)),
-        estimated_doors: Math.max(1, Math.round(area * summary.density.doorsPerSqMi)),
-        target_doors: targetDoors,
-        density_key: summary.density.key,
-        density_doors_per_sq_mi: summary.density.doorsPerSqMi,
-        drop_point: getDropPoint(parts.flat()),
-        center,
-        status: 'unworked',
-        notes: '',
-        assignments: [],
-      };
-    });
+    const zones = groups.map((group, index) => buildZoneFromGroup(group, summary, targetDoors, index, existingZones[index] || {}));
+    return postProcessZones(zones, roadNetwork);
   } catch (error) {
-    console.warn('Road-aligned Canvas fallback:', error);
+    console.warn('[FK] Road-aligned generation failed, falling back to hex:', error);
     return [];
   }
 }
 
-export function generateCanvasZones(polygon, configOrCount, roadNetwork = null) {
+function parseGenerationArgs(thirdArg, fourthArg, configOrCount) {
+  const config = typeof configOrCount === 'object' && configOrCount ? configOrCount : {};
+  const values = [thirdArg, fourthArg, config.roadNetwork, config.road_network];
+  const roadNetwork = values.find((value) => value?.elements?.length > 0) || null;
+  const existingZones = values.find((value) => Array.isArray(value)) || [];
+  return { roadNetwork, existingZones };
+}
+
+export function generateCanvasZones(polygon, configOrCount, roadNetwork = null, existingZonesArg = null) {
   let points = cleanPolygon(polygon);
   if (points.length > 2 && samePoint(points[0], points[points.length - 1])) points = points.slice(0, -1);
   if (points.length < 3) return [];
   points = normalizePolygon(points);
 
-  const existingZones = Array.isArray(roadNetwork) ? roadNetwork : [];
-  const activeRoadNetwork = Array.isArray(roadNetwork) ? null : roadNetwork;
+  const { roadNetwork: activeRoadNetwork, existingZones } = parseGenerationArgs(roadNetwork, existingZonesArg, configOrCount);
   if (activeRoadNetwork?.elements?.length > 0) {
-    const roadZones = generateRoadAlignedZones(points, configOrCount, activeRoadNetwork);
-    if (roadZones && roadZones.length > 0) return roadZones;
+    try {
+      const roadZones = generateRoadAlignedZones(points, configOrCount, activeRoadNetwork, existingZones);
+      if (roadZones && roadZones.length >= 2) return roadZones;
+    } catch (error) {
+      console.warn('[FK] Road-aligned generation failed, falling back to hex:', error);
+    }
   }
 
-  const dynamicZones = generateDynamicCanvasZones(points, configOrCount, existingZones);
+  const dynamicZones = generateDynamicCanvasZones(points, configOrCount, existingZones, activeRoadNetwork);
   if (dynamicZones && dynamicZones.length > 0) return dynamicZones;
 
   const config = typeof configOrCount === 'object' ? configOrCount : { repCount: configOrCount };
@@ -737,7 +932,7 @@ export function generateCanvasZones(polygon, configOrCount, roadNetwork = null) 
       const clipped = clipPolygon(points, rectangle);
       if (!isValidPolygon(clipped)) continue;
       const area = calculatePolygonAreaSqMi(clipped);
-      cells.push({ geometry: clipped, area, center: polygonCentroid(clipped) });
+      cells.push({ geometry: clipped, fullArea: calculatePolygonAreaSqMi(rectangle), area, center: polygonCentroid(clipped), estimatedDoors: Math.max(1, Math.round(area * summary.density.doorsPerSqMi)) });
     }
   }
 
@@ -745,32 +940,10 @@ export function generateCanvasZones(polygon, configOrCount, roadNetwork = null) 
     const largestIndex = cells.reduce((bestIndex, cell, index) => cell.area > cells[bestIndex].area ? index : bestIndex, 0);
     const pieces = splitCell(cells[largestIndex]);
     if (pieces.length < 2) break;
-    cells.splice(largestIndex, 1, ...pieces.map((piece) => ({ ...piece, center: polygonCentroid(piece.geometry) })));
+    cells.splice(largestIndex, 1, ...pieces.map((piece) => ({ ...piece, fullArea: piece.area, center: polygonCentroid(piece.geometry), estimatedDoors: Math.max(1, Math.round(piece.area * summary.density.doorsPerSqMi)) })));
   }
 
   const groupedCells = groupCells(cells, summary.zoneCount, summary.targetZoneAreaSqMi);
-  return groupedCells.map((group, index) => {
-    const existing = existingZones[index] || {};
-    const parts = group.map((cell) => cell.geometry);
-    const area = group.reduce((sum, cell) => sum + cell.area, 0);
-    const center = centroidOfParts(parts) || group[0]?.center || null;
-    return {
-      ...existing,
-      zone_number: index + 1,
-      name: existing.name || `Zone ${index + 1}`,
-      color: existing.color || DEFAULT_COLORS[index % DEFAULT_COLORS.length],
-      geometry: parts[0] || [],
-      parts,
-      area_sq_mi: Number(area.toFixed(2)),
-      estimated_doors: Math.max(1, Math.round(area * summary.density.doorsPerSqMi)),
-      target_doors: summary.targetDoorsPerZone,
-      density_key: summary.density.key,
-      density_doors_per_sq_mi: summary.density.doorsPerSqMi,
-      drop_point: getDropPoint(parts.flat()),
-      center,
-      status: existing.status || 'unworked',
-      notes: existing.notes || '',
-      assignments: existing.assignments || [],
-    };
-  });
+  const zones = groupedCells.map((group, index) => buildZoneFromGroup(group, summary, summary.targetDoorsPerZone, index, existingZones[index] || {}));
+  return postProcessZones(zones, activeRoadNetwork);
 }
