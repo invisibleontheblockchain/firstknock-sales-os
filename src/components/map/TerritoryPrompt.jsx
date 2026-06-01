@@ -647,21 +647,12 @@ export default function TerritoryPrompt({
             className="w-full sm:w-16 h-9 sm:h-6 bg-white/5 border border-white/10 rounded-md px-2 text-[12px] sm:text-[11px] text-white outline-none" />
           
                         <Button
-            disabled={previewLoading}
-            onClick={handleFetchData}
-            className="text-white text-[10px] h-9 sm:h-6 px-2 sm:px-3 py-0 rounded-md font-bold tracking-wide bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)] flex-1 sm:flex-none min-w-0">
-            
-                            {previewLoading ? 'Checking...' : 'Sandbox Preview'}
-                        </Button>
-                        {previewResult && !previewResult.hard_rejected && !previewResult.error &&
-          <Button
-            disabled={paidPullStarting}
+            disabled={paidPullStarting || pulling}
             onClick={handlePaidBatchDataPull}
-            className="text-black text-[10px] h-9 sm:h-6 px-2 sm:px-3 py-0 rounded-md font-bold tracking-wide bg-yellow-500 hover:bg-yellow-400 flex-1 sm:flex-none min-w-0">
+            className="text-black text-[10px] h-9 sm:h-6 px-2 sm:px-3 py-0 rounded-md font-bold tracking-wide bg-yellow-500 hover:bg-yellow-400 shadow-[0_0_15px_rgba(234,179,8,0.35)] flex-1 sm:flex-none min-w-0">
             
-                                {paidPullStarting ? 'Starting...' : 'Start Paid Pull'}
-                            </Button>
-          }
+                            {paidPullStarting ? 'Starting...' : 'Pull Data'}
+                        </Button>
                     </div>
                     <button
           onClick={() => {setDrawnPolygon(null);setDraftPolygon([]);setDrawingMode(false);}}
@@ -672,7 +663,7 @@ export default function TerritoryPrompt({
                     <div className="static sm:absolute sm:top-full sm:left-0 sm:right-auto mt-1 sm:mt-2 w-full sm:w-72 bg-white/5 sm:bg-black/90 border border-gray-800 rounded-xl sm:rounded-lg p-2 shadow-xl animate-in fade-in slide-in-from-top-1">
                         <p className="text-[9px] text-gray-400 leading-tight">
                             <span className="text-blue-400 font-bold">Area:</span> selected freehand polygon is about <span className="text-white">{actualAreaLabel}</span>.
-                            <br /><span className="text-cyan-300 font-bold">Sandbox:</span> max <span className="text-white">{maxRequestedProperties}</span> properties for this account; preview does not save properties.
+                            <br /><span className="text-cyan-300 font-bold">BatchData:</span> pulls up to <span className="text-white">{maxRequestedProperties}</span> properties for this account.
                             {previewResult &&
             <span className="block mt-1 text-white">
                                     {previewResult.hard_rejected ?

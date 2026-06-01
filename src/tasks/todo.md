@@ -1,6 +1,11 @@
 # Plan
 
-## Current Plan — Mobile Selected Area Controls Polish
+## Current Plan — BatchData Pull Button
+- [x] Change the selected-area action from Sandbox Preview to Pull Data.
+- [x] Wire Pull Data directly to the BatchData pull flow.
+- [x] Remove the duplicate Start Paid Pull button from this control.
+
+## Previous Plan — Mobile Selected Area Controls Polish
 - [x] Convert the selected-area control from a cramped mobile pill into a readable mobile card.
 - [x] Keep desktop selected-area controls unchanged.
 - [x] Verify the mobile preview layout.
