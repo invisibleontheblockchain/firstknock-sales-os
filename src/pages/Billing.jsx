@@ -50,6 +50,17 @@ export default function Billing() {
     queryFn: () => base44.auth.me()
   });
 
+  const { data: teamMembers = [] } = useQuery({
+    queryKey: ['teamMembersForBilling'],
+    queryFn: () => base44.entities.TeamMember.list(),
+    initialData: []
+  });
+
+  const activeRepCount = Math.max(
+    1,
+    teamMembers.filter((member) => member.role === 'rep' && member.status !== 'inactive').length
+  );
+
   const handleSubscribe = async (planId, trialDays = 0) => {
     // Check if running in iframe (preview mode)
     if (window.self !== window.top) {
@@ -64,7 +75,7 @@ export default function Billing() {
       
       const res = await base44.functions.invoke('createCheckoutSession', {
         planId,
-        quantity: 1,
+        quantity: planId === 'canvas' ? activeRepCount : 1,
         successUrl: window.location.origin + '/Billing?success=true',
         cancelUrl: window.location.origin + '/Billing?canceled=true',
         trialDays: trialDays
@@ -212,6 +223,12 @@ export default function Billing() {
                                     <span className="text-gray-400 text-sm sm:text-sm">{plan.unit}</span>
                                 </div>
                             </div>
+
+                            {plan.id === 'canvas' && (
+                                <p className="text-center text-xs text-purple-300 mb-4">
+                                    Billing for {activeRepCount} active rep{activeRepCount === 1 ? '' : 's'} today.
+                                </p>
+                            )}
 
                             <ul className="space-y-2.5 sm:space-y-3 mb-5 sm:mb-8 flex-1">
                                 {plan.features.map((feature, i) => (

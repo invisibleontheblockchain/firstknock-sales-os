@@ -5,7 +5,7 @@
 - [x] Update Billing to show Precision at $99/user/month.
 - [x] Make checkout use trusted backend pricing for Canvas and Precision instead of stale display-only prices.
 - [x] Fix Custom Area Active property input so users can clear the field and type a new number.
-- [ ] Verify the touched screens/logs and document results.
+- [x] Verify the touched screens/logs and document results.
 
 ## Previous Plan — BatchData Pull Button
 - [x] Change the selected-area action from Sandbox Preview to Pull Data.
@@ -294,6 +294,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Billing now displays Canvas at $19/rep/month and Precision at $99/user/month, checkout creates trusted Stripe monthly prices for those plans, and the Custom Area property input can be cleared before typing a new number. Backend checkout tests passed for Canvas and Precision; runtime logs only showed unrelated existing import/rate-limit noise.
+
 The selected-area controls now render as a readable stacked mobile card with larger touch targets and inline helper text, while preserving the compact desktop pill layout; mobile preview loaded and existing runtime logs only show unrelated BatchData balance/rate-limit noise.
 
 Mobile drawing now shows a green checkmark once the outline has enough points; tapping it confirms the area, exits draw mode, and reveals the Sandbox Preview / Start Paid Pull controls. Desktop still auto-confirms on mouse release, and mobile preview loaded without new frontend drawing errors; existing logs still show unrelated BatchData balance/rate-limit noise.
