@@ -1,6 +1,12 @@
 # Plan
 
-## Current Plan — Mobile/Tablet Freehand Drawing Fix
+## Current Plan — Mobile Draw Confirm/Pull Fix
+- [x] Diagnose why mobile stays in Freehand draw mode after the area is visible.
+- [x] Add a clear mobile-friendly checkmark/confirm action once enough points are drawn.
+- [x] Make confirmed areas exit drawing mode and return to the data pull/preview controls.
+- [x] Verify mobile preview/runtime and document the result.
+
+## Previous Plan — Mobile/Tablet Freehand Drawing Fix
 - [x] Confirm root cause without changing desktop drawing behavior.
 - [x] Add a mobile/tablet-safe touch/pointer drawing path that converts finger position into map coordinates.
 - [x] Disable map pan/zoom gestures only while drawing mode is active, then restore them cleanly.
@@ -271,6 +277,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Mobile drawing now shows a green checkmark once the outline has enough points; tapping it confirms the area, exits draw mode, and reveals the Sandbox Preview / Start Paid Pull controls. Desktop still auto-confirms on mouse release, and mobile preview loaded without new frontend drawing errors; existing logs still show unrelated BatchData balance/rate-limit noise.
+
 Mobile/tablet freehand drawing now uses direct pointer/touch listeners on the map container, converts finger position to Leaflet coordinates, and temporarily disables map pan/zoom gestures only while drawing; mobile and tablet previews loaded with no new frontend drawing errors, while logs still show unrelated BatchData balance/rate-limit noise.
 
 The mobile top bar is now clean: Canvas/Precision moved into Map Settings under Overlays, and the Eye/filter action buttons are hidden on mobile so they no longer sit over Routes/Builder; mobile preview was captured and runtime showed only existing rate-limit noise.

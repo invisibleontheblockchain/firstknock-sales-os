@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { base44 } from '@/api/base44Client';
-import { Map as MapIcon, Pencil, X, Trash2, Loader2, List, Zap, Lock, ArrowRight } from 'lucide-react';
+import { Map as MapIcon, Pencil, X, Trash2, Loader2, List, Zap, Lock, ArrowRight, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -205,7 +205,19 @@ export default function TerritoryPrompt({
         };
     }, [setMode, setDrawnPolygon, setDraftPolygon, setDrawingMode]);
 
-    const actualAreaSqMiles = useMemo(() => calculatePolygonAreaSqMiles(drawnPolygon), [drawnPolygon]);
+    const confirmDraftPolygon = () => {
+        if (!draftPolygon || draftPolygon.length < 3) {
+            toast.error('Draw a complete area first.');
+            return;
+        }
+        setDrawnPolygon(draftPolygon);
+        setDraftPolygon([]);
+        setDrawingMode(false);
+        toast.success('Area selected. Run Sandbox Preview to check available data.');
+    };
+
+    const activeAreaPolygon = drawingMode && draftPolygon?.length > 2 ? draftPolygon : drawnPolygon;
+    const actualAreaSqMiles = useMemo(() => calculatePolygonAreaSqMiles(activeAreaPolygon), [activeAreaPolygon]);
     const actualAreaLabel = actualAreaSqMiles > 0 ? formatSqMiles(actualAreaSqMiles) : `${drawSizeMiles}mi²`;
     const isLargeArea = actualAreaSqMiles >= 250 || drawSizeMiles === 300;
 
@@ -505,8 +517,18 @@ export default function TerritoryPrompt({
 
                         <div className="flex flex-col gap-0.5 min-w-[210px] flex-1">
                             <span className="text-[10px] text-yellow-400 font-bold">Freehand draw mode</span>
-                            <span className="text-[10px] text-gray-400 leading-tight">Hold and drag on the map to outline the area. Release to finish.</span>
+                            <span className="text-[10px] text-gray-400 leading-tight">Hold and drag on the map to outline the area, then tap the checkmark.</span>
                         </div>
+
+                        {draftPolygon?.length > 2 && (
+                            <button
+                                onClick={confirmDraftPolygon}
+                                className="w-10 h-10 rounded-full bg-green-500 hover:bg-green-400 text-black flex items-center justify-center transition-all shrink-0 shadow-[0_0_18px_rgba(34,197,94,0.45)]"
+                                aria-label="Confirm drawn area"
+                            >
+                                <Check className="w-5 h-5" />
+                            </button>
+                        )}
 
                         <div className="hidden sm:flex items-center gap-2 px-2 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 shrink-0">
                             <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />

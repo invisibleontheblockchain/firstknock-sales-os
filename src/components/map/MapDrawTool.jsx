@@ -59,15 +59,18 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
         setFreehandPoints([...current, nextPoint]);
     };
 
-    const finishDrawing = () => {
-        if (!isDrawing) return;
+    const finishDrawing = (confirmImmediately = false) => {
+        if (!drawingRef.current) return;
         const finalPoints = pointsRef.current;
         drawingRef.current = false;
         touchPointerIdRef.current = null;
         setIsDrawing(false);
-        try { map.dragging.enable(); } catch { }
-        if (finalPoints.length > 2 && onConfirm) {
-            onConfirm(finalPoints);
+        if (!active) {
+            try { map.dragging.enable(); } catch { }
+        }
+        if (finalPoints.length > 2) {
+            onPointsUpdate?.(finalPoints);
+            if (confirmImmediately) onConfirm?.(finalPoints);
         }
     };
 
@@ -132,7 +135,7 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
             if (!active || event.pointerType === 'mouse' || touchPointerIdRef.current !== event.pointerId) return;
             stopTouchMapGesture(event);
             container.releasePointerCapture?.(event.pointerId);
-            finishDrawing();
+            finishDrawing(false);
         };
 
         const onTouchStart = (event) => {
@@ -150,7 +153,7 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
         const onTouchEnd = (event) => {
             if (!active || window.PointerEvent) return;
             stopTouchMapGesture(event);
-            finishDrawing();
+            finishDrawing(false);
         };
 
         container.addEventListener('pointerdown', onPointerDown, { passive: false });
@@ -177,7 +180,7 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
     useMapEvents({
         mousedown(e) { startDrawing(e.latlng); },
         mousemove(e) { addPoint(e.latlng); },
-        mouseup() { finishDrawing(); }
+        mouseup() { finishDrawing(true); }
     });
 
     const displayPoints = active ? points : (builderMode ? (drawnPolygon || []) : []);

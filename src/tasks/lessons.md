@@ -57,3 +57,4 @@
 - On mobile map toolbars, never place two independent control groups in the same horizontal row when one is absolutely centered; give secondary mode controls their own row or move them into a settings panel, because compact labels alone do not prevent overlap.
 - When a user says a top toolbar still overlaps, remove non-primary controls from the constrained mobile row rather than making them smaller again.
 - For Leaflet freehand drawing on mobile/tablet, do not rely only on `useMapEvents` touch latlng; attach non-passive pointer/touch listeners to the map container, convert client coordinates with `containerPointToLatLng`, and disable map gestures only while drawing.
+- Mobile drawing flows need an explicit confirm/checkmark action after the outline is visible; relying on touch release alone can leave users stuck in drawing mode with no path to preview/pull data.
