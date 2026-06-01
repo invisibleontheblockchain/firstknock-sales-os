@@ -8,7 +8,6 @@ import { toast } from "sonner";
 import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import BetaUsageMeter from '../components/beta/BetaUsageMeter';
-import PricingModeCard from '../components/billing/PricingModeCard.jsx';
 
 const PLANS = [
   {
@@ -17,6 +16,13 @@ const PLANS = [
     price: 19,
     unit: '/rep/mo',
     isPopular: false,
+    subtitle: 'For massive door-knocking teams working assigned routes.',
+    includedFeatures: [
+      'Per-rep pricing scales with your field team',
+      'Route builder, dispatch, Knock tab, and Checklist sync',
+      'GPS proof, outcomes, team progress, and route switching',
+      'No paid BatchData pull required for route execution'
+    ],
     features: [
       'Canvas Mode at $19 per rep per month',
       'AI-Optimized Walking Routes',
@@ -31,6 +37,13 @@ const PLANS = [
     price: 99,
     unit: '/user/mo',
     isPopular: true,
+    subtitle: 'For BatchData-backed property acquisition before routing.',
+    includedFeatures: [
+      'Freehand area preview before using paid credits',
+      'Properties counter shows how many records remain',
+      'Paid pulls import real property records into territory',
+      'Best for targeted recently-sold/new-homeowner campaigns'
+    ],
     features: [
       'Precision Mode at $99 per user per month',
       'BatchData-backed property acquisition',
@@ -159,33 +172,6 @@ export default function Billing() {
                     <BetaUsageMeter showUpgrade={false} />
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-                    <PricingModeCard
-                        mode="canvas"
-                        title="Canvas Mode"
-                        price="$19 / rep / mo"
-                        subtitle="For massive door-knocking teams working assigned routes."
-                        features={[
-                            'Per-rep pricing scales with your field team',
-                            'Route builder, dispatch, Knock tab, and Checklist sync',
-                            'GPS proof, outcomes, team progress, and route switching',
-                            'No paid BatchData pull required for route execution'
-                        ]}
-                    />
-                    <PricingModeCard
-                        mode="precision"
-                        title="Precision Mode"
-                        price="$99 / user / mo"
-                        subtitle="For BatchData-backed property acquisition before routing."
-                        usage={precisionUsage}
-                        features={[
-                            'Freehand area preview before using paid credits',
-                            'Properties counter shows how many records remain',
-                            'Paid pulls import real property records into territory',
-                            'Best for targeted recently-sold/new-homeowner campaigns'
-                        ]}
-                    />
-                </div>
 
                 {isSubscribed &&
         <div className="flex flex-col items-center gap-4">
@@ -206,8 +192,8 @@ export default function Billing() {
                     </div>
         }
 
-                {/* Main Pricing Card */}
-                <div className="grid grid-cols-1 max-w-md mx-auto gap-4 sm:gap-6">
+                {/* Combined Pricing Cards */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 max-w-5xl mx-auto gap-4 sm:gap-6">
                     {PLANS.map((plan) => (
                         <div key={plan.id} className={`relative rounded-2xl p-5 sm:p-6 border ${plan.isPopular ? 'border-yellow-500 bg-gray-900/80 shadow-[0_0_30px_rgba(255,215,0,0.1)]' : 'border-gray-800 bg-[#111]'} backdrop-blur-sm flex flex-col`}>
                             {plan.isPopular && (
@@ -217,18 +203,44 @@ export default function Billing() {
                                 </div>
                             )}
 
-                            <div className="text-center mb-3 sm:mb-6 mt-2 sm:mt-2">
+                            <div className="mb-5 mt-2">
+                                <h2 className="text-2xl font-extrabold text-white">{plan.name}</h2>
+                                <p className="text-sm text-gray-400 mt-2 leading-relaxed">{plan.subtitle}</p>
+                            </div>
+
+                            <ul className="space-y-2.5 mb-5 pb-5 border-b border-white/10">
+                                {plan.includedFeatures.map((feature, i) => (
+                                    <li key={i} className="flex items-start gap-3 text-sm text-gray-300">
+                                        <div className={`rounded-full p-1 shrink-0 mt-0.5 ${plan.isPopular ? 'bg-yellow-500/20 text-yellow-500' : 'bg-purple-500/20 text-purple-300'}`}>
+                                            <Check className="w-3 h-3" />
+                                        </div>
+                                        <span className="leading-snug">{feature}</span>
+                                    </li>
+                                ))}
+                            </ul>
+
+                            <div className="text-center mb-4">
                                 <div className="flex items-baseline justify-center gap-1">
                                     <span className="text-4xl sm:text-4xl font-extrabold text-white">${plan.price}</span>
                                     <span className="text-gray-400 text-sm sm:text-sm">{plan.unit}</span>
                                 </div>
+                                {plan.id === 'canvas' && (
+                                    <p className="text-xs text-purple-300 mt-3">
+                                        Billing for {activeRepCount} active rep{activeRepCount === 1 ? '' : 's'} today.
+                                    </p>
+                                )}
+                                {plan.id === 'precision' && (
+                                    <div className="mt-3 rounded-xl bg-black/30 border border-white/10 p-3 text-left">
+                                        <div className="flex justify-between text-xs text-gray-300 mb-2">
+                                            <span>Precision properties used</span>
+                                            <span>{precisionUsage.used.toLocaleString()} / {precisionUsage.limit.toLocaleString()}</span>
+                                        </div>
+                                        <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+                                            <div className="h-full bg-yellow-500 rounded-full" style={{ width: `${precisionUsage.percent}%` }} />
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-
-                            {plan.id === 'canvas' && (
-                                <p className="text-center text-xs text-purple-300 mb-4">
-                                    Billing for {activeRepCount} active rep{activeRepCount === 1 ? '' : 's'} today.
-                                </p>
-                            )}
 
                             <ul className="space-y-2.5 sm:space-y-3 mb-5 sm:mb-8 flex-1">
                                 {plan.features.map((feature, i) => (

@@ -1,6 +1,12 @@
 # Plan
 
-## Current Plan — Pricing + Property Input Fix
+## Current Plan — Combine Billing Mode Blocks
+- [x] Combine the Canvas explanation card with the Canvas checkout card.
+- [x] Combine the Precision explanation card with the Precision checkout card.
+- [x] Keep pricing and checkout behavior unchanged.
+- [x] Verify /Billing renders without new errors and document results.
+
+## Previous Plan — Pricing + Property Input Fix
 - [x] Update Billing to show Canvas at $19/rep/month.
 - [x] Update Billing to show Precision at $99/user/month.
 - [x] Make checkout use trusted backend pricing for Canvas and Precision instead of stale display-only prices.
@@ -294,6 +300,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Billing now shows only two plan cards: one combined Canvas Mode card and one combined Precision Mode card, preserving the existing prices, trial/pay buttons, active-rep billing count, and precision usage meter. Desktop preview loaded successfully; runtime logs only showed unrelated existing Home route-hydration rate-limit noise.
+
 Billing now displays Canvas at $19/rep/month and Precision at $99/user/month, checkout creates trusted Stripe monthly prices for those plans, and the Custom Area property input can be cleared before typing a new number. Backend checkout tests passed for Canvas and Precision; runtime logs only showed unrelated existing import/rate-limit noise.
 
 The selected-area controls now render as a readable stacked mobile card with larger touch targets and inline helper text, while preserving the compact desktop pill layout; mobile preview loaded and existing runtime logs only show unrelated BatchData balance/rate-limit noise.
