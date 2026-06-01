@@ -1,6 +1,12 @@
 # Plan
 
-## Current Plan — Contact Mobile Scroll Fix
+## Current Plan — Mobile Draw Checkmark Zoom Fix
+- [x] Confirm the issue path from runtime logs.
+- [x] Inspect the draw confirm/checkmark and map fit suppression code.
+- [x] Patch confirm so it stops touch/click propagation and suppresses all map fit/zoom behavior during confirmation.
+- [x] Verify mobile /Home preview/runtime and document results.
+
+## Previous Plan — Contact Mobile Scroll Fix
 - [x] Identify why Contact cannot scroll inside the mobile app shell.
 - [x] Change only the Contact page container so it owns vertical scrolling.
 - [x] Verify /Contact on mobile and document results.
@@ -305,6 +311,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Mobile/tablet draw confirmation now blocks map touch propagation, suppresses map fitting during confirmation, and confirms on pointer release so tapping the green checkmark cannot trigger Leaflet zoom/fit behavior. Mobile Home preview loaded; runtime logs only showed existing unrelated rate-limit/BatchData balance noise.
+
 Contact now uses a fixed-height touch scroll container with extra bottom padding, so the mobile /Contact page can scroll inside the app shell without the bottom navigation blocking content. Mobile preview loaded successfully; runtime logs showed only unrelated existing Home activity.
 
 Billing now shows only two plan cards: one combined Canvas Mode card and one combined Precision Mode card, preserving the existing prices, trial/pay buttons, active-rep billing count, and precision usage meter. Desktop preview loaded successfully; runtime logs only showed unrelated existing Home route-hydration rate-limit noise.

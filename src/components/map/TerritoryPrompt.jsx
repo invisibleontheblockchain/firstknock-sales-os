@@ -205,7 +205,15 @@ export default function TerritoryPrompt({
     };
   }, [setMode, setDrawnPolygon, setDraftPolygon, setDrawingMode]);
 
-  const confirmDraftPolygon = () => {
+  const stopMapTouch = (event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    event?.nativeEvent?.stopImmediatePropagation?.();
+  };
+
+  const confirmDraftPolygon = (event) => {
+    stopMapTouch(event);
+    window.__fkSuppressMapFitUntil = Date.now() + 2500;
     if (!draftPolygon || draftPolygon.length < 3) {
       toast.error('Draw a complete area first.');
       return;
@@ -506,7 +514,12 @@ export default function TerritoryPrompt({
 
             {/* Active Drawing Controls */}
             {drawingMode &&
-      <div className="absolute top-3 left-3 right-3 sm:top-16 sm:left-4 sm:right-auto z-[2000] animate-in slide-in-from-top-4">
+      <div
+        className="absolute top-3 left-3 right-3 sm:top-16 sm:left-4 sm:right-auto z-[2000] animate-in slide-in-from-top-4"
+        onPointerDown={stopMapTouch}
+        onTouchStart={stopMapTouch}
+        onMouseDown={stopMapTouch}
+      >
                     <div className="bg-black/85 backdrop-blur-md border border-yellow-500/30 rounded-2xl px-3 py-2 shadow-2xl flex flex-wrap items-center gap-2 max-w-[calc(100vw-1.5rem)] sm:max-w-[640px]">
                         <div className="flex items-center gap-2 shrink-0">
                             <div className="w-6 h-6 rounded-full bg-yellow-500/20 flex items-center justify-center">
@@ -522,8 +535,16 @@ export default function TerritoryPrompt({
 
                         {draftPolygon?.length > 2 &&
           <button
-            onClick={confirmDraftPolygon}
-            className="w-10 h-10 rounded-full bg-green-500 hover:bg-green-400 text-black flex items-center justify-center transition-all shrink-0 shadow-[0_0_18px_rgba(34,197,94,0.45)]"
+            type="button"
+            onPointerDown={stopMapTouch}
+            onPointerUp={confirmDraftPolygon}
+            onTouchStart={stopMapTouch}
+            onTouchEnd={(event) => {
+              if (!window.PointerEvent) confirmDraftPolygon(event);
+            }}
+            onMouseDown={stopMapTouch}
+            onClick={stopMapTouch}
+            className="w-10 h-10 rounded-full bg-green-500 hover:bg-green-400 text-black flex items-center justify-center transition-all shrink-0 shadow-[0_0_18px_rgba(34,197,94,0.45)] touch-manipulation"
             aria-label="Confirm drawn area">
             
                                 <Check className="w-5 h-5" />
