@@ -213,7 +213,7 @@ export default function TerritoryPrompt({
 
   const confirmDraftPolygon = (event) => {
     stopMapTouch(event);
-    window.__fkSuppressMapFitUntil = Date.now() + 2500;
+    window.__fkSuppressMapFitUntil = Date.now() + 8000;
     if (!draftPolygon || draftPolygon.length < 3) {
       toast.error('Draw a complete area first.');
       return;

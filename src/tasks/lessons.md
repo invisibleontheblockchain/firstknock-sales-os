@@ -1,5 +1,7 @@
 # Lessons
 
+- When mobile map confirmation still changes zoom after event propagation fixes, look for state-driven camera effects (`fitBounds`, `setView`) that run after render. Preserve or suppress camera changes around the state update, not just the tapped button event.
+
 - Start non-trivial work in plan mode with a written checklist before implementation.
 - Verify scalability claims against actual code paths, not just completed infrastructure work.
 - Treat storage migration and query-path migration as separate milestones.

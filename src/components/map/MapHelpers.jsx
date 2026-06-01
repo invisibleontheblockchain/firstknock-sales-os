@@ -2,15 +2,22 @@ import React, { useState, useEffect, useRef } from 'react';
 import { CircleMarker, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 
-if (typeof window !== 'undefined' && !window.__fkLeafletFitBoundsGuardInstalled) {
-    window.__fkLeafletFitBoundsGuardInstalled = true;
-    const originalFitBounds = L.Map.prototype.fitBounds;
-    L.Map.prototype.fitBounds = function (...args) {
-        if (window.__fkSuppressMapFitUntil && Date.now() < window.__fkSuppressMapFitUntil) {
-            return this;
-        }
-        return originalFitBounds.apply(this, args);
+if (typeof window !== 'undefined' && !window.__fkLeafletCameraGuardInstalled) {
+    window.__fkLeafletCameraGuardInstalled = true;
+
+    const shouldSuppressCameraChange = () =>
+        window.__fkSuppressMapFitUntil && Date.now() < window.__fkSuppressMapFitUntil;
+
+    const guardCameraMethod = (methodName) => {
+        const original = L.Map.prototype[methodName];
+        if (!original) return;
+        L.Map.prototype[methodName] = function (...args) {
+            if (shouldSuppressCameraChange()) return this;
+            return original.apply(this, args);
+        };
     };
+
+    ['fitBounds', 'flyToBounds', 'setView', 'flyTo', 'panTo', 'panInsideBounds'].forEach(guardCameraMethod);
 }
 
 export function LocationMarker({ autoCenter, userLocation }) {

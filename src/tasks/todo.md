@@ -1,6 +1,12 @@
 # Plan
 
-## Current Plan — Mobile Draw Checkmark Zoom Fix
+## Current Plan — Mobile Draw Checkmark Zoom Root Fix
+- [x] Confirm from runtime logs that tapping the checkmark changes area state and re-renders map data.
+- [x] Find all map camera fit/setView paths that can run after area confirmation.
+- [x] Patch the shared Leaflet camera guard so draw confirmation suppresses fitBounds/setView/fly/pan camera changes.
+- [x] Verify Home loads without new runtime errors and document results.
+
+## Previous Plan — Mobile Draw Checkmark Zoom Fix
 - [x] Confirm the issue path from runtime logs.
 - [x] Inspect the draw confirm/checkmark and map fit suppression code.
 - [x] Patch confirm so it stops touch/click propagation and suppresses all map fit/zoom behavior during confirmation.
@@ -311,7 +317,9 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
-Mobile/tablet draw confirmation now blocks map touch propagation, suppresses map fitting during confirmation, and confirms on pointer release so tapping the green checkmark cannot trigger Leaflet zoom/fit behavior. Mobile Home preview loaded; runtime logs only showed existing unrelated rate-limit/BatchData balance noise.
+Root fix: mobile/tablet draw confirmation now suppresses all Leaflet camera methods (`fitBounds`, `setView`, fly/pan variants) for 8 seconds after draw/confirm, preventing state-driven re-renders from massively zooming the map out. Mobile Home preview loaded; runtime logs showed no new frontend errors, only unrelated existing rate-limit/BatchData balance messages.
+
+Previous fix: mobile/tablet draw confirmation blocks map touch propagation and confirms on pointer release so tapping the green checkmark does not pass the tap through to the map.
 
 Contact now uses a fixed-height touch scroll container with extra bottom padding, so the mobile /Contact page can scroll inside the app shell without the bottom navigation blocking content. Mobile preview loaded successfully; runtime logs showed only unrelated existing Home activity.
 

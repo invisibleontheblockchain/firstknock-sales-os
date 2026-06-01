@@ -42,7 +42,7 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
 
     const startDrawing = (latlng) => {
         if (!active || !latlng) return;
-        window.__fkSuppressMapFitUntil = Date.now() + 1800;
+        window.__fkSuppressMapFitUntil = Date.now() + 8000;
         const firstPoint = { lat: latlng.lat, lng: latlng.lng };
         drawingRef.current = true;
         setIsDrawing(true);
