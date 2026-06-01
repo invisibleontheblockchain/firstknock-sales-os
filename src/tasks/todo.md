@@ -344,7 +344,7 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
-Canvas subdivision now generates coverage-first clipped cells from padded polygon bounds, validates only true degenerate polygons, groups/splits cells to exactly match the requested zone count, recalculates centroids from clipped geometry, and renders every zone part with stable Leaflet layers, labels, colors, and door estimates. Home preview loaded; current logs still include older unrelated BatchData/rate-limit messages from prior sessions.
+Canvas zone subdivision now uses padded full-boundary clipping, keeps all valid edge overlaps, removes the old 20% discard threshold, groups clipped cells into exactly the requested zone count, and renders every zone part with a color plus centroid label/door estimate. Home preview loaded; remaining logs are unrelated existing BatchData/rate-limit noise.
 
 Canvas Sprint 1 is now client-side and demo-ready: responsive manager builder, capacity/density-based grid zones, roster assignment, local save/deploy locking, map zone/drop-point overlays, and a local rep field view with tap-to-pin logging. Home preview loaded and runtime logs showed no new frontend errors.
 
