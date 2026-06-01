@@ -375,6 +375,10 @@
 - [x] Identify the current Canvas zone-generation owner and builder callsite.
 - [x] Check whether an Overpass-specific dependency/API wrapper already exists in the app dependency tree.
 - [x] Estimate generation-time latency impact for a ~200mi² polygon before implementation.
+- [x] Confirm revised architecture: silent Overpass prefetch after polygon confirmation, session-only in-memory cache, optional `roadNetwork` input to `generateCanvasZones()`, 3s max defer before grid fallback, no schema persistence.
+- [x] Locate current polygon completion handlers before implementation.
+- [x] Confirm current `generateCanvasZones()` purity before adding optional road input.
+- [x] Re-estimate Overpass latency against the background prefetch window instead of generation-time blocking.
 - [ ] Wait for confirmation before writing any Change 5 code.
 
 ## Review
