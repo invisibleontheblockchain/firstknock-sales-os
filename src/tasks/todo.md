@@ -1,5 +1,15 @@
 # Plan
 
+## Current Plan — Canvas Builder Map Constructor Crash
+- [x] Verify runtime logs for the reported crash.
+- [x] Identify root cause in `CanvasBuilderSettings`: the lucide `Map` icon import shadows the built-in JavaScript `Map` constructor.
+- [x] Patch the icon import to `MapIcon` so assignment counting can safely use the built-in `new Map()` constructor.
+- [x] Verify `/Home` loads after the patch; full Builder click verification is limited by the auth gate in preview, but the constructor shadow is removed at source.
+- [x] Add a lesson to prevent icon/global name collisions.
+
+### Review — Canvas Builder Map Constructor Crash
+Fixed the crash by aliasing the lucide `Map` icon to `MapIcon`, which stops it from shadowing JavaScript’s built-in `Map` constructor in assignment warning and auto-assign logic.
+
 ## Current Plan — Canvas Permanent Operational Fixes
 - [x] Enter plan mode and review `tasks/lessons.md` before coding.
 - [x] Inspect `components/logic/canvasZones`, `components/map/CanvasBuilderSettings`, and current runtime logs.

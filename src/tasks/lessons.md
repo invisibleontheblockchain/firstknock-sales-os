@@ -1,5 +1,6 @@
 # Lessons
 
+- When importing icons named after JavaScript globals such as `Map`, `Set`, or `Date`, either alias the icon import or call the global via `globalThis.*` so helper code like `new Map()` does not accidentally call the icon component constructor.
 - When mobile map confirmation still changes zoom after event propagation fixes, look for state-driven camera effects (`fitBounds`, `setView`) that run after render. Preserve or suppress camera changes around the state update, not just the tapped button event.
 
 - Start non-trivial work in plan mode with a written checklist before implementation.

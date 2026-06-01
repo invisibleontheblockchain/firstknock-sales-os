@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Map, Pencil, Rocket, Save, Wand2, X, Lock, Unlock, Users, Clock, Home, MapPin } from 'lucide-react';
+import { Map as MapIcon, Pencil, Rocket, Save, Wand2, X, Lock, Unlock, Users, Clock, Home, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { generateCanvasZones, getCanvasCampaignSummary } from '@/components/logic/canvasZones';
 
@@ -230,7 +230,7 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
 function FocusRail({ zoneCount, assignedCount, onClose }) {
   return (
     <div className="h-full flex flex-col items-center gap-4 py-4 text-white">
-      <Map className="w-6 h-6 text-purple-300" />
+      <MapIcon className="w-6 h-6 text-purple-300" />
       <div className="w-10 h-10 rounded-2xl bg-purple-500/15 border border-purple-500/30 flex items-center justify-center text-xs font-black" title={`${zoneCount} zones`}>{zoneCount}</div>
       <div className="w-10 h-10 rounded-2xl bg-slate-500/15 border border-slate-400/30 flex items-center justify-center text-xs font-black" title={`${assignedCount} assigned`}>{assignedCount}</div>
       <button onClick={onClose} className="mt-auto p-2 hover:bg-white/10 rounded-full transition-colors" title="Close Canvas Builder"><X className="w-5 h-5 text-gray-300" /></button>
@@ -258,7 +258,7 @@ function BuilderContent({ campaign, setCampaign, updateCampaign, rosterText, set
     <div className="h-full flex flex-col text-white">
       <div className="p-4 border-b border-white/10 flex items-center justify-between shrink-0">
         <h2 className="flex items-center gap-2 font-extrabold tracking-wide text-purple-300">
-          <Map className="w-5 h-5" /> CANVAS MODE
+          <MapIcon className="w-5 h-5" /> CANVAS MODE
         </h2>
         <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-full transition-colors"><X className="w-5 h-5 text-gray-300" /></button>
       </div>
