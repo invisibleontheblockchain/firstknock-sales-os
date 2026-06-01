@@ -1,6 +1,17 @@
 # Plan
 
-## Current Plan — Billing Card Order
+## Current Plan — Canvas Sprint 1 Builder + Rep View Foundation
+- [x] Confirm scope: responsive Canvas manager builder with capacity-based zones, assignment, local deploy/save, and rep-view foundation only.
+- [x] Inspect existing Canvas builder, zone renderer, zone algorithm, Home integration, and RepHome route flow.
+- [x] Replace pie-slice Canvas subdivision with density-aware rectangular grid zones clipped to the drawn polygon.
+- [x] Update Canvas builder UI with campaign name, rep count, shift hours, doors/hour, reps/zone, density override, roster, assignment, save/load, deploy lock, and responsive layout.
+- [x] Update Canvas map overlays to show zone labels, estimated doors, assigned reps/unassigned status, and drop-point pins.
+- [x] Add localStorage-backed deployed Canvas campaign compatibility for the rep-side foundation without backend scope creep.
+- [x] Re-plan around the oversized Home file by mounting Canvas zones through the smaller ManagerMapLayers component.
+- [x] Add local rep-side Canvas field view: assigned zone boundary, tap-to-pin logging, and 7 outcomes saved locally.
+- [x] Verify Home/Canvas runtime and document results.
+
+## Previous Plan — Billing Card Order
 - [x] Confirm the request: show Precision mode above Canvas mode on Billing.
 - [x] Inspect the Billing card order.
 - [x] Reorder only the visual card order; keep pricing and checkout behavior unchanged.
@@ -323,6 +334,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Canvas Sprint 1 is now client-side and demo-ready: responsive manager builder, capacity/density-based grid zones, roster assignment, local save/deploy locking, map zone/drop-point overlays, and a local rep field view with tap-to-pin logging. Home preview loaded and runtime logs showed no new frontend errors.
+
 Billing now renders Precision Mode before Canvas Mode while keeping all pricing and checkout behavior unchanged. Mobile Billing preview was captured; runtime logs showed only unrelated existing Home/import messages.
 
 Root fix: mobile/tablet draw confirmation now suppresses all Leaflet camera methods (`fitBounds`, `setView`, fly/pan variants) for 8 seconds after draw/confirm, preventing state-driven re-renders from massively zooming the map out. Mobile Home preview loaded; runtime logs showed no new frontend errors, only unrelated existing rate-limit/BatchData balance messages.

@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { getKnockWindowLabel } from '@/components/logic/knockTimeOptimizer';
 import { determineEffectiveStatus } from '@/components/logic/territoryLogic';
 import RepMapView from '@/components/rep/RepMapView';
+import CanvasFieldView from '@/components/rep/CanvasFieldView';
 import RepHeader from '@/components/rep/RepHeader';
 import PropertyCard from '@/components/rep/PropertyCard';
 import PropertyDetailSheet from '@/components/rep/PropertyDetailSheet';
@@ -212,6 +213,18 @@ export default function RepHome() {
     // Prioritize 'IN_PROGRESS' then 'ACTIVE'
     return routes.find((r) => r.status === 'IN_PROGRESS') || routes.find((r) => r.status === 'ACTIVE') || routes[0];
   }, [routes, manualRouteId]);
+
+  const localCanvasAssignment = useMemo(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('fk_canvasCampaignSprint1') || 'null');
+      if (!saved?.locked || !Array.isArray(saved.zones)) return null;
+      const myName = (user?.full_name || '').toLowerCase();
+      const assignedZone = saved.zones.find((zone) => (zone.assignments || []).some((name) => name?.toLowerCase() === myName)) || saved.zones.find((zone) => (zone.assignments || []).length > 0) || saved.zones[0];
+      return assignedZone ? { campaign: saved, zone: assignedZone } : null;
+    } catch {
+      return null;
+    }
+  }, [user?.full_name]);
 
   React.useEffect(() => {
     if (!activeRoute?.id) return;
@@ -483,6 +496,10 @@ export default function RepHome() {
                 </div>
             </div>);
 
+  }
+
+  if (!activeRoute && localCanvasAssignment) {
+    return <CanvasFieldView campaign={localCanvasAssignment.campaign} zone={localCanvasAssignment.zone} user={user} onClose={() => localStorage.removeItem('fk_canvasCampaignSprint1')} />;
   }
 
   if (!activeRoute) {

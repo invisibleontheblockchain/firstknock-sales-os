@@ -3,6 +3,7 @@ import { CircleMarker, Polyline, Circle, LayerGroup, Tooltip, Marker, useMap } f
 import L from 'leaflet';
 import { DarkRoomClient } from '@/components/logic/neonClient';
 import { CONFIDENCE_COLORS } from '@/components/map/ConfidenceLegend';
+import CanvasZoneOverlay from './CanvasZoneOverlay';
 
 /**
  * ActiveRouteLayer — High-performance active route renderer.
@@ -524,6 +525,8 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
 }) {
     return (
         <>
+            <CanvasZoneOverlay />
+
             {/* --- Existing Routes (Imperative for performance) --- */}
             <SavedRoutesLayer
                 mode={mode}
