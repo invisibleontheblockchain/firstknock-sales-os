@@ -41,7 +41,7 @@ function buildInitialCampaign() {
   };
 }
 
-export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDraw, onClearPolygon, onClose }) {
+export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDraw, onClearPolygon, onClose, propertyPoints = [] }) {
   const [campaign, setCampaign] = useState(buildInitialCampaign);
   const [rosterText, setRosterText] = useState(() => {
     try { return localStorage.getItem(ROSTER_KEY) || DEMO_ROSTER.join('\n'); } catch { return DEMO_ROSTER.join('\n'); }
@@ -52,17 +52,22 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
     try { return localStorage.getItem('fk_canvasFocusMode') === 'true'; } catch { return false; }
   });
   const [saving, setSaving] = useState(false);
+  const [sessionPropertyPoints, setSessionPropertyPoints] = useState(() => {
+    try { return Array.isArray(window.__fkCanvasPropertyPoints) ? window.__fkCanvasPropertyPoints : []; } catch { return []; }
+  });
 
   const roster = useMemo(() => normalizeRoster(rosterText), [rosterText]);
   const effectivePolygon = hasDrawnArea && drawnPolygon?.length > 2 ? drawnPolygon : DEMO_POLYGON;
   const summary = useMemo(() => getCanvasCampaignSummary({ polygon: effectivePolygon, ...campaign }), [effectivePolygon, campaign]);
+  const effectivePropertyPoints = propertyPoints.length ? propertyPoints : sessionPropertyPoints;
+  const canvasConfig = useMemo(() => ({ ...campaign, propertyPoints: effectivePropertyPoints }), [campaign, effectivePropertyPoints]);
 
   const zones = useMemo(() => {
     if ((campaign.zones || []).some((zone) => zone.manual_adjusted) && campaign.zones.length === summary.zoneCount) {
       return campaign.zones;
     }
-    return generateCanvasZones(effectivePolygon, campaign, campaign.zones || []);
-  }, [effectivePolygon, campaign, summary.zoneCount]);
+    return generateCanvasZones(effectivePolygon, canvasConfig, campaign.zones || []);
+  }, [effectivePolygon, canvasConfig, campaign, summary.zoneCount]);
   const selectedZone = zones.find((zone) => zone.zone_number === selectedZoneNumber) || null;
   const assignedCount = zones.filter((zone) => zone.assignments?.filter(Boolean).length || zone.assigned_to_name).length;
   const canDeploy = assignedCount > 0;
@@ -88,6 +93,13 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
     const handleFocusMode = (event) => setFocusMode(Boolean(event.detail?.focusMode));
     window.addEventListener('fk-canvas-focus-mode-changed', handleFocusMode);
     return () => window.removeEventListener('fk-canvas-focus-mode-changed', handleFocusMode);
+  }, []);
+
+  useEffect(() => {
+    const handlePropertyPoints = () => setSessionPropertyPoints(Array.isArray(window.__fkCanvasPropertyPoints) ? window.__fkCanvasPropertyPoints : []);
+    window.addEventListener('fk-canvas-property-points-updated', handlePropertyPoints);
+    handlePropertyPoints();
+    return () => window.removeEventListener('fk-canvas-property-points-updated', handlePropertyPoints);
   }, []);
 
   useEffect(() => {
@@ -268,7 +280,7 @@ function BuilderContent({ campaign, setCampaign, updateCampaign, rosterText, set
             {densityOptions.map((option) => <button key={option} onClick={() => updateCampaign({ densityMode: option })} className={`py-2 rounded-lg text-[10px] font-black capitalize border ${campaign.densityMode === option ? 'bg-purple-500 text-white border-purple-300' : 'bg-[#151520] text-gray-400 border-white/10'}`}>{option}</button>)}
           </div>
           {campaign.densityMode === 'custom' && <NumberField label="Custom doors / sq mi" value={campaign.customDoorsPerSqMi} min={1} max={2000} onChange={(v) => updateCampaign({ customDoorsPerSqMi: v })} />}
-          <p className="text-[11px] text-gray-500">Density redraws the grid live: Urban creates more, smaller zones; Rural creates fewer, larger zones when capacity allows.</p>
+          <p className="text-[11px] text-gray-500">Density redraws dynamic zones live: Urban creates more, smaller zones; Rural creates fewer, larger zones when capacity allows.</p>
         </section>
 
         <section className="space-y-3">

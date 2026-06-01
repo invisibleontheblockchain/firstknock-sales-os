@@ -383,17 +383,18 @@
 ## Current Plan — Dynamic Door-Aware Canvas Subdivision
 - [x] Confirm problem: static square subdivisions are still visible and create undesirable/empty walking regions.
 - [x] Analyze the attached technical decision matrix at a high level and extract the useful direction: door-aware dynamic regions, avoid empty cells, H3/density hybrid as the practical fallback, and road/block alignment as an enhancement rather than the only path.
-- [ ] Verify the current Canvas generation call path so we know whether road-aligned generation is failing, not receiving `roadNetwork`, or falling back to grid by design.
-- [ ] Inspect the current available property/door data source for Canvas mode: local drawn points, `MasterProperty`, Neon-backed route candidates, or currently only density estimates.
-- [ ] Design the smallest safe algorithm change in `components/logic/canvasZones`: replace the static square fallback with dynamic populated-region generation that clips to the drawn polygon and drops empty/no-door regions.
-- [ ] Prefer H3 hex cells when usable because `h3-js` is already installed; otherwise use the existing polygon clipping helpers without adding packages.
-- [ ] Group only populated cells/regions into zones by target door count and proximity so reps receive contiguous, walkable assignments instead of equal-area squares.
-- [ ] Preserve the current zone object schema exactly and keep CanvasSession / Deploy Campaign untouched.
-- [ ] Keep fallback behavior safe: if no property/door data exists, generate dynamic clipped regions from density estimates but do not show phantom regions outside the drawn polygon.
-- [ ] Verify in runtime logs and preview that static square regions are gone, empty/no-house regions are skipped where data exists, and existing Canvas assignment/deploy behavior still works.
+- [x] Verify the current Canvas generation call path so we know whether road-aligned generation is failing, not receiving `roadNetwork`, or falling back to grid by design.
+- [x] Inspect the current available property/door data source for Canvas mode: Home already has `effectiveProperties`, but direct Home edits are blocked by file size.
+- [x] Re-plan around the oversized Home file by exposing current property points from `ManagerMapLayers` through a session-only window bridge consumed by `CanvasBuilderSettings`.
+- [x] Design the smallest safe algorithm change in `components/logic/canvasZones`: replace the static square fallback with dynamic populated-region generation that clips to the drawn polygon and drops empty/no-door regions.
+- [x] Prefer H3 hex cells when usable because `h3-js` is already installed; otherwise use the existing polygon clipping helpers without adding packages.
+- [x] Group only populated cells/regions into zones by target door count and proximity so reps receive contiguous, walkable assignments instead of equal-area squares.
+- [x] Preserve the current zone object schema exactly and keep CanvasSession / Deploy Campaign untouched.
+- [x] Keep fallback behavior safe: if no property/door data exists, generate dynamic clipped regions from density estimates but do not show phantom regions outside the drawn polygon.
+- [x] Verify runtime logs for new import/build errors; no new Canvas/H3 import error appeared. Visual preview was auth-gated at the sign-in screen, so full logged-in map verification still needs an authenticated preview pass.
 
 ### Review — Dynamic Door-Aware Canvas Subdivision
-Pending implementation and verification.
+Implemented a dynamic H3-based Canvas fallback that replaces the old static rectangular subdivision before the legacy grid safety fallback. It clips generated cells to the drawn polygon, uses existing property points when available to drop empty/no-door cells, groups nearby populated cells toward the target door count, preserves the existing zone object schema, keeps CanvasSession and Deploy Campaign untouched, and routes property points through a session-only bridge from `ManagerMapLayers` because `pages/Home` is over the safe edit limit. Runtime logs showed no new Canvas/H3 import error; the available screenshot was auth-gated at sign-in, so visual logged-in verification remains the next check.
 
 ## Review
 Canvas Mode usability Changes 1–4 are complete without touching schema, Deploy Campaign, rep-facing views, or road-generation logic. Labels now render only for selected/hovered/filtered zones, boundary handles render only in explicit zone edit mode, zone colors are reduced to unassigned accent vs assigned gray with rep initials dots, and toolbar Focus mode hides labels/handles while collapsing the builder sidebar to an icon rail; Home preview loaded and runtime logs showed no new frontend errors, only unrelated existing backend rate-limit/job noise.

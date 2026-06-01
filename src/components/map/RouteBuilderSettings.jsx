@@ -51,6 +51,7 @@ export default function RouteBuilderSettings({
     onReorder, hasFrozenData,
     // Data
     user,
+    propertyPoints = [],
     drawnPolygon,
     hasDrawnArea,
     maxDataMonths,
@@ -91,6 +92,7 @@ export default function RouteBuilderSettings({
                 onClearPolygon={onClearPolygon}
                 onClose={onClose}
                 user={user}
+                propertyPoints={propertyPoints}
             />
         );
     };

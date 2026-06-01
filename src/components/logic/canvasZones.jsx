@@ -1,3 +1,5 @@
+import { polygonToCells, cellToBoundary, gridDisk } from 'h3-js';
+
 const DEFAULT_COLORS = [
   '#FFD166', '#EF476F', '#06D6A0', '#118AB2', '#A78BFA', '#F97316',
   '#22C55E', '#38BDF8', '#FACC15', '#FB7185', '#34D399', '#C084FC'
@@ -443,6 +445,198 @@ function groupRoadFaces(faces, targetDoors) {
   return groups;
 }
 
+function getConfigDoorPoints(config = {}) {
+  const raw = config.doorPoints || config.propertyPoints || config.properties || config.addressPoints || [];
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((point) => ({
+      lat: Number(point?.lat ?? point?.latitude),
+      lng: Number(point?.lng ?? point?.lon ?? point?.longitude),
+    }))
+    .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+}
+
+function getDynamicH3Resolution(summary) {
+  if (summary.targetZoneAreaSqMi <= 0.25) return 9;
+  if (summary.targetZoneAreaSqMi <= 1.5) return 8;
+  return 7;
+}
+
+function h3CellPolygon(cellId) {
+  return normalizePolygon(cellToBoundary(cellId, true).map(([lng, lat]) => ({ lat, lng })));
+}
+
+function coordinateKey(point) {
+  return `${point.lat.toFixed(7)},${point.lng.toFixed(7)}`;
+}
+
+function edgeSignature(a, b) {
+  const first = coordinateKey(a);
+  const second = coordinateKey(b);
+  return first < second ? `${first}|${second}` : `${second}|${first}`;
+}
+
+function mergePartsToOuterParts(parts = []) {
+  const edges = new Map();
+  parts.filter(isValidPolygon).forEach((part) => {
+    const normalized = normalizePolygon(part);
+    for (let index = 0; index < normalized.length; index += 1) {
+      const start = normalized[index];
+      const end = normalized[(index + 1) % normalized.length];
+      const signature = edgeSignature(start, end);
+      if (edges.has(signature)) edges.delete(signature);
+      else edges.set(signature, { start, end, startKey: coordinateKey(start), endKey: coordinateKey(end) });
+    }
+  });
+
+  const unused = new Map(edges);
+  const loops = [];
+  while (unused.size) {
+    const [firstSignature, firstEdge] = unused.entries().next().value;
+    unused.delete(firstSignature);
+    const loop = [firstEdge.start, firstEdge.end];
+    let currentKey = firstEdge.endKey;
+    let guard = 0;
+
+    while (currentKey !== coordinateKey(loop[0]) && guard < edges.size + 5) {
+      const nextEntry = [...unused.entries()].find(([, edge]) => edge.startKey === currentKey || edge.endKey === currentKey);
+      if (!nextEntry) break;
+      const [signature, edge] = nextEntry;
+      unused.delete(signature);
+      const nextPoint = edge.startKey === currentKey ? edge.end : edge.start;
+      loop.push(nextPoint);
+      currentKey = coordinateKey(nextPoint);
+      guard += 1;
+    }
+
+    if (loop.length > 2 && coordinateKey(loop[0]) === coordinateKey(loop[loop.length - 1])) loop.pop();
+    const normalized = normalizePolygon(loop);
+    if (isValidPolygon(normalized)) loops.push(normalized);
+  }
+
+  return loops.length ? loops.sort((a, b) => calculatePolygonAreaSqMi(b) - calculatePolygonAreaSqMi(a)) : parts;
+}
+
+function buildDynamicH3Cells(points, config, summary) {
+  try {
+    const doorPoints = getConfigDoorPoints(config).filter((point) => pointInPolygon(point, points));
+    const hasDoorPoints = doorPoints.length > 0;
+    const baseResolution = getDynamicH3Resolution(summary);
+    const ring = points.map((point) => [point.lng, point.lat]);
+    if (ring.length && (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1])) ring.push(ring[0]);
+
+    let cellIds = [];
+    for (let resolution = baseResolution; resolution <= Math.min(10, baseResolution + 1); resolution += 1) {
+      cellIds = polygonToCells([ring], resolution, true);
+      if (cellIds.length >= Math.min(summary.zoneCount * 2, 24)) break;
+    }
+
+    return cellIds.map((cellId) => {
+      const hex = h3CellPolygon(cellId);
+      const clipped = clipPolygon(points, hex);
+      if (!isValidPolygon(clipped)) return null;
+      const area = calculatePolygonAreaSqMi(clipped);
+      const containedDoors = hasDoorPoints ? doorPoints.filter((point) => pointInPolygon(point, clipped)).length : null;
+      const estimatedDoors = hasDoorPoints ? containedDoors : Math.max(1, Math.round(area * summary.density.doorsPerSqMi));
+      if (estimatedDoors <= 0) return null;
+      return {
+        h3Id: cellId,
+        geometry: clipped,
+        area,
+        center: polygonCentroid(clipped),
+        estimatedDoors,
+      };
+    }).filter((cell) => cell?.center);
+  } catch (error) {
+    console.warn('Dynamic Canvas H3 fallback unavailable:', error);
+    return [];
+  }
+}
+
+function groupDynamicCells(cells, targetDoors) {
+  const byId = new Map(cells.map((cell, index) => [cell.h3Id, index]));
+  const remaining = new Set(cells.map((_, index) => index));
+  const groups = [];
+
+  const distanceToGroup = (candidateIndex, group) => {
+    const candidate = cells[candidateIndex].center;
+    return Math.min(...group.map((index) => {
+      const center = cells[index].center;
+      return Math.hypot(candidate.lat - center.lat, candidate.lng - center.lng);
+    }));
+  };
+
+  const getCandidates = (group) => {
+    const neighborIndexes = [...new Set(group.flatMap((index) => {
+      try { return gridDisk(cells[index].h3Id, 1).map((id) => byId.get(id)).filter((value) => value !== undefined && remaining.has(value)); }
+      catch { return []; }
+    }))];
+    const candidates = neighborIndexes.length ? neighborIndexes : [...remaining];
+    return candidates.sort((a, b) => distanceToGroup(a, group) - distanceToGroup(b, group));
+  };
+
+  while (remaining.size) {
+    const seed = [...remaining].sort((a, b) => cells[b].estimatedDoors - cells[a].estimatedDoors)[0];
+    const group = [seed];
+    remaining.delete(seed);
+    let doors = cells[seed].estimatedDoors;
+
+    while (remaining.size && doors < targetDoors) {
+      const candidates = getCandidates(group);
+      const next = candidates.find((index) => doors + cells[index].estimatedDoors <= targetDoors * 1.25) || candidates[0];
+      if (next === undefined) break;
+      group.push(next);
+      remaining.delete(next);
+      doors += cells[next].estimatedDoors;
+    }
+    groups.push(group.map((index) => cells[index]));
+  }
+
+  return groups;
+}
+
+function zonesFromCellGroups(groups, summary, targetDoors, existingZones = []) {
+  return groups.map((group, index) => {
+    const existing = existingZones[index] || {};
+    const rawParts = group.map((cell) => cell.geometry);
+    const parts = mergePartsToOuterParts(rawParts);
+    const area = group.reduce((sum, cell) => sum + cell.area, 0);
+    const estimatedDoors = group.reduce((sum, cell) => sum + cell.estimatedDoors, 0);
+    const center = centroidOfParts(parts) || group[0]?.center || null;
+    return {
+      ...existing,
+      zone_number: index + 1,
+      name: existing.name || `Zone ${index + 1}`,
+      color: existing.color || DEFAULT_COLORS[index % DEFAULT_COLORS.length],
+      geometry: parts[0] || [],
+      parts,
+      area_sq_mi: Number(area.toFixed(2)),
+      estimated_doors: Math.max(1, Math.round(estimatedDoors)),
+      target_doors: targetDoors,
+      density_key: summary.density.key,
+      density_doors_per_sq_mi: summary.density.doorsPerSqMi,
+      drop_point: getDropPoint(parts.flat()),
+      center,
+      status: existing.status || 'unworked',
+      notes: existing.notes || '',
+      assignments: existing.assignments || [],
+    };
+  });
+}
+
+function generateDynamicCanvasZones(polygon, configOrCount, existingZones = []) {
+  const points = normalizePolygon(cleanPolygon(polygon));
+  if (points.length < 3) return [];
+  const config = typeof configOrCount === 'object' ? configOrCount : { repCount: configOrCount };
+  const summary = getCanvasCampaignSummary({ polygon: points, ...config });
+  const targetDoors = Math.max(1, Number(config.doorsPerZone || config.targetDoorsPerZone || summary.targetDoorsPerZone));
+  const cells = buildDynamicH3Cells(points, config, summary);
+  if (cells.length < 2) return [];
+  const groups = groupDynamicCells(cells, targetDoors).filter((group) => group.length);
+  if (!groups.length) return [];
+  return zonesFromCellGroups(groups, summary, targetDoors, existingZones);
+}
+
 function generateRoadAlignedZones(polygon, options, roadNetwork) {
   try {
     const points = normalizePolygon(cleanPolygon(polygon));
@@ -509,6 +703,9 @@ export function generateCanvasZones(polygon, configOrCount, roadNetwork = null) 
     const roadZones = generateRoadAlignedZones(points, configOrCount, activeRoadNetwork);
     if (roadZones && roadZones.length > 0) return roadZones;
   }
+
+  const dynamicZones = generateDynamicCanvasZones(points, configOrCount, existingZones);
+  if (dynamicZones && dynamicZones.length > 0) return dynamicZones;
 
   const config = typeof configOrCount === 'object' ? configOrCount : { repCount: configOrCount };
   const summary = getCanvasCampaignSummary({ polygon: points, ...config });
