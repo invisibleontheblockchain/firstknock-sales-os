@@ -3,8 +3,8 @@ import { Mail, MessageCircle, ArrowRight } from 'lucide-react';
 
 export default function Contact() {
     return (
-        <div className="min-h-full overflow-y-auto bg-[#0A0A0F] text-white px-5 py-10">
-            <div className="max-w-3xl mx-auto">
+        <div className="h-full min-h-0 overflow-y-auto overscroll-contain bg-[#0A0A0F] text-white px-5 pt-8 pb-28 [-webkit-overflow-scrolling:touch]">
+            <div className="max-w-3xl mx-auto pb-6">
                 <section className="glass-card rounded-3xl p-8 md:p-12">
                     <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-[#A29BFE] mb-6">
                         <MessageCircle className="w-4 h-4" /> We would love to hear from you

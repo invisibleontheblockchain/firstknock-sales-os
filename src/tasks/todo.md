@@ -1,6 +1,11 @@
 # Plan
 
-## Current Plan — Combine Billing Mode Blocks
+## Current Plan — Contact Mobile Scroll Fix
+- [x] Identify why Contact cannot scroll inside the mobile app shell.
+- [x] Change only the Contact page container so it owns vertical scrolling.
+- [x] Verify /Contact on mobile and document results.
+
+## Previous Plan — Combine Billing Mode Blocks
 - [x] Combine the Canvas explanation card with the Canvas checkout card.
 - [x] Combine the Precision explanation card with the Precision checkout card.
 - [x] Keep pricing and checkout behavior unchanged.
@@ -300,6 +305,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Contact now uses a fixed-height touch scroll container with extra bottom padding, so the mobile /Contact page can scroll inside the app shell without the bottom navigation blocking content. Mobile preview loaded successfully; runtime logs showed only unrelated existing Home activity.
+
 Billing now shows only two plan cards: one combined Canvas Mode card and one combined Precision Mode card, preserving the existing prices, trial/pay buttons, active-rep billing count, and precision usage meter. Desktop preview loaded successfully; runtime logs only showed unrelated existing Home route-hydration rate-limit noise.
 
 Billing now displays Canvas at $19/rep/month and Precision at $99/user/month, checkout creates trusted Stripe monthly prices for those plans, and the Custom Area property input can be cleared before typing a new number. Backend checkout tests passed for Canvas and Precision; runtime logs only showed unrelated existing import/rate-limit noise.
