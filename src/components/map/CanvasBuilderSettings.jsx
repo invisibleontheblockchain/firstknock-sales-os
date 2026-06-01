@@ -51,7 +51,12 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
   const effectivePolygon = hasDrawnArea && drawnPolygon?.length > 2 ? drawnPolygon : DEMO_POLYGON;
   const summary = useMemo(() => getCanvasCampaignSummary({ polygon: effectivePolygon, ...campaign }), [effectivePolygon, campaign]);
 
-  const zones = useMemo(() => generateCanvasZones(effectivePolygon, campaign, campaign.zones || []), [effectivePolygon, campaign]);
+  const zones = useMemo(() => {
+    if ((campaign.zones || []).some((zone) => zone.manual_adjusted) && campaign.zones.length === summary.zoneCount) {
+      return campaign.zones;
+    }
+    return generateCanvasZones(effectivePolygon, campaign, campaign.zones || []);
+  }, [effectivePolygon, campaign, summary.zoneCount]);
   const selectedZone = zones.find((zone) => zone.zone_number === selectedZoneNumber) || zones[0] || null;
   const assignedCount = zones.filter((zone) => zone.assignments?.filter(Boolean).length || zone.assigned_to_name).length;
   const canDeploy = assignedCount > 0;
@@ -65,9 +70,20 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
     window.dispatchEvent(new CustomEvent('fk-canvas-zones-updated', { detail: { zones } }));
   }, [zones]);
 
+  useEffect(() => {
+    const handleManualAdjustment = (event) => {
+      const nextZones = event.detail?.zones;
+      if (!Array.isArray(nextZones)) return;
+      setCampaign((current) => ({ ...current, zones: nextZones }));
+    };
+    window.addEventListener('fk-canvas-zones-manually-adjusted', handleManualAdjustment);
+    return () => window.removeEventListener('fk-canvas-zones-manually-adjusted', handleManualAdjustment);
+  }, []);
+
   const updateCampaign = (patch) => {
     if (campaign.locked) return toast.info('Campaign is locked. Tap Edit Campaign to make changes.');
-    setCampaign((current) => ({ ...current, ...patch }));
+    const geometryChanging = ['repCount', 'shiftHours', 'doorsPerHour', 'repsPerZone', 'densityMode', 'customDoorsPerSqMi'].some((key) => Object.prototype.hasOwnProperty.call(patch, key));
+    setCampaign((current) => ({ ...current, ...patch, zones: geometryChanging ? [] : current.zones }));
   };
 
   const updateZone = (zoneNumber, patch) => {

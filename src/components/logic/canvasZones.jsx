@@ -46,8 +46,8 @@ export function calculatePolygonAreaSqMi(polygon = []) {
 export function detectCanvasDensity(areaSqMi, override = 'auto', customDoorsPerSqMi = 150) {
   if (override === 'custom') return { key: 'custom', label: 'Custom', doorsPerSqMi: Math.max(1, Number(customDoorsPerSqMi) || 150) };
   if (DENSITY_TIERS[override]) return { key: override, ...DENSITY_TIERS[override] };
-  if (areaSqMi < 2) return { key: 'urban', ...DENSITY_TIERS.urban };
-  if (areaSqMi <= 10) return { key: 'suburban', ...DENSITY_TIERS.suburban };
+  if (areaSqMi < 1.5) return { key: 'urban', ...DENSITY_TIERS.urban };
+  if (areaSqMi <= 60) return { key: 'suburban', ...DENSITY_TIERS.suburban };
   return { key: 'rural', ...DENSITY_TIERS.rural };
 }
 
@@ -191,17 +191,18 @@ function serpentineSort(cells) {
     .flatMap(([, row], rowIndex) => row.sort((a, b) => rowIndex % 2 === 0 ? a.center.lng - b.center.lng : b.center.lng - a.center.lng));
 }
 
-function groupCells(cells, zoneCount) {
+function groupCells(cells, zoneCount, targetZoneAreaSqMi) {
   const ordered = serpentineSort(cells);
-  const totalArea = ordered.reduce((sum, cell) => sum + cell.area, 0);
-  const targetArea = totalArea / zoneCount;
+  const targetArea = Math.max(0.0001, targetZoneAreaSqMi || (ordered.reduce((sum, cell) => sum + cell.area, 0) / zoneCount));
   const groups = [];
   let current = [];
   let currentArea = 0;
-  ordered.forEach((cell) => {
-    const remainingCells = ordered.length - ordered.indexOf(cell);
+  ordered.forEach((cell, index) => {
+    const remainingCells = ordered.length - index;
     const remainingGroups = zoneCount - groups.length;
-    const shouldClose = current.length > 0 && currentArea >= targetArea && remainingCells > remainingGroups;
+    const wouldExceed = current.length > 0 && currentArea + cell.area > targetArea * 1.12;
+    const currentIsUseful = currentArea >= targetArea * 0.65;
+    const shouldClose = wouldExceed && currentIsUseful && remainingCells >= remainingGroups;
     if (shouldClose) {
       groups.push(current);
       current = [];
@@ -213,8 +214,12 @@ function groupCells(cells, zoneCount) {
   if (current.length) groups.push(current);
   while (groups.length > zoneCount) groups[groups.length - 2].push(...groups.pop());
   while (groups.length < zoneCount && groups.some((group) => group.length > 1)) {
-    const index = groups.findIndex((group) => group.length > 1);
-    groups.splice(index + 1, 0, groups[index].splice(Math.ceil(groups[index].length / 2)));
+    const largestIndex = groups.reduce((best, group, index) => {
+      const area = group.reduce((sum, cell) => sum + cell.area, 0);
+      const bestArea = groups[best].reduce((sum, cell) => sum + cell.area, 0);
+      return area > bestArea && group.length > 1 ? index : best;
+    }, 0);
+    groups.splice(largestIndex + 1, 0, groups[largestIndex].splice(Math.ceil(groups[largestIndex].length / 2)));
   }
   return groups.slice(0, zoneCount);
 }
@@ -244,7 +249,7 @@ export function generateCanvasZones(polygon, configOrCount, existingZones = []) 
   const bounds = getBounds(points);
   const avgLat = points.reduce((sum, point) => sum + point.lat, 0) / points.length;
   const { latScale, lngScale } = getScales(avgLat);
-  const areaPerSeedCell = Math.max(0.003, Math.min(summary.targetZoneAreaSqMi / 3, summary.areaSqMi / Math.max(summary.zoneCount * 3, summary.zoneCount)));
+  const areaPerSeedCell = Math.max(0.0008, Math.min(summary.targetZoneAreaSqMi / 8, summary.areaSqMi / Math.max(summary.zoneCount * 8, summary.zoneCount)));
   const aspectRatio = 1.25;
   const cellHeightMiles = Math.sqrt(areaPerSeedCell / aspectRatio);
   const cellWidthMiles = cellHeightMiles * aspectRatio;
@@ -273,14 +278,14 @@ export function generateCanvasZones(polygon, configOrCount, existingZones = []) 
     }
   }
 
-  while (cells.length < summary.zoneCount) {
+  while (cells.some((cell) => cell.area > summary.targetZoneAreaSqMi * 0.75) || cells.length < summary.zoneCount) {
     const largestIndex = cells.reduce((bestIndex, cell, index) => cell.area > cells[bestIndex].area ? index : bestIndex, 0);
     const pieces = splitCell(cells[largestIndex]);
     if (pieces.length < 2) break;
     cells.splice(largestIndex, 1, ...pieces.map((piece) => ({ ...piece, center: polygonCentroid(piece.geometry) })));
   }
 
-  const groupedCells = groupCells(cells, summary.zoneCount);
+  const groupedCells = groupCells(cells, summary.zoneCount, summary.targetZoneAreaSqMi);
   return groupedCells.map((group, index) => {
     const existing = existingZones[index] || {};
     const parts = group.map((cell) => cell.geometry);
@@ -295,6 +300,9 @@ export function generateCanvasZones(polygon, configOrCount, existingZones = []) 
       parts,
       area_sq_mi: Number(area.toFixed(2)),
       estimated_doors: Math.max(1, Math.round(area * summary.density.doorsPerSqMi)),
+      target_doors: summary.targetDoorsPerZone,
+      density_key: summary.density.key,
+      density_doors_per_sq_mi: summary.density.doorsPerSqMi,
       drop_point: getDropPoint(parts.flat()),
       center,
       status: existing.status || 'unworked',

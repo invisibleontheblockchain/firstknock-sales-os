@@ -1,6 +1,17 @@
 # Plan
 
-## Current Plan — Canvas Density Responsiveness + Canvas Nav Cleanup
+## Current Plan — Canvas Capacity, Drop Points, and Manual Boundary Adjustment
+- [x] Confirm scope: fix Canvas-only zone math/rendering and add manual boundary adjustment without changing Precision routing/data pulls.
+- [x] Recalibrate auto density so Anderson-sized suburban polygons do not default to Rural too early.
+- [x] Make generated zones target `shift_hours × doors_per_hour × reps_per_zone` doors by sizing/grouping cells by capacity, not broad equal-area leftovers.
+- [x] Keep displayed door counts near the target capacity per zone and expose any remainder only where geometry forces it.
+- [x] Render one visible drop point pin per zone at that zone’s NW corner.
+- [x] Add draggable white midpoint handles on shared zone boundaries.
+- [x] On drag, snap the boundary to the nearest OSM road centerline within 100m, otherwise snap to the nearest 50m grid increment.
+- [x] Move the shared boundary for the two adjacent zones together and update both door estimates live.
+- [x] Verify Home desktop/mobile runtime, screenshots/logs, and document results.
+
+## Previous Plan — Canvas Density Responsiveness + Canvas Nav Cleanup
 - [x] Confirm scope: fix Canvas density behavior, Canvas-only bottom nav, door-count variation, and mobile builder layout without touching Precision data/routing flows.
 - [x] Inspect current Canvas builder, zone algorithm, bottom map toolbar, runtime logs, and task history.
 - [x] Change Canvas zone count from rep-count-only to capacity-based: estimated total doors ÷ target doors per zone, with rep count as the minimum.
@@ -353,6 +364,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Canvas capacity cleanup is complete: auto density now keeps Anderson-sized territories in Suburban instead of jumping to Rural, seed cells are smaller and grouped around the target shift capacity, every zone carries target/density metadata, every zone gets a visible NW drop pin, and shared-boundary midpoint handles can be dragged with OSM-road snapping or 50m grid fallback while adjacent zone door estimates update. Desktop and mobile Home previews loaded; runtime logs show only unrelated existing BatchData insufficient-balance processor noise.
+
 Canvas density refinement is complete: zone count now uses capacity math from estimated doors ÷ doors-per-zone with rep count as the floor, so Urban/Suburban/Rural changes redraw the grid with different zone counts/sizes and varied door estimates. Canvas mode bottom nav now shows Canvas Builder, Live View, and Deploy Campaign only; desktop and mobile previews loaded, and runtime logs show only unrelated existing BatchData insufficient-balance processor noise.
 
 Canvas zone subdivision now uses padded full-boundary clipping, keeps all valid edge overlaps, removes the old 20% discard threshold, groups clipped cells into exactly the requested zone count, and renders every zone part with a color plus centroid label/door estimate. Home preview loaded; remaining logs are unrelated existing BatchData/rate-limit noise.

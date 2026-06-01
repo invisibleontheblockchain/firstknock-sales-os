@@ -1,13 +1,14 @@
 import React from 'react';
 import L from 'leaflet';
 import { LayerGroup, Marker, Polygon, Tooltip } from 'react-leaflet';
+import CanvasBoundaryHandles from './CanvasBoundaryHandles';
 
 function dropIcon(color) {
   return L.divIcon({
     className: 'canvas-drop-icon',
-    html: `<div style="width:16px;height:16px;border-radius:999px;background:${color};border:3px solid #050505;box-shadow:0 0 0 2px rgba(255,255,255,.8)"></div>`,
-    iconSize: [16, 16],
-    iconAnchor: [8, 8],
+    html: `<div style="width:20px;height:20px;border-radius:999px;background:${color};border:4px solid #ffffff;box-shadow:0 0 0 2px #050505,0 8px 18px rgba(0,0,0,.45)"></div>`,
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
   });
 }
 
@@ -54,6 +55,7 @@ export default function CanvasZoneLayers({ zones = [] }) {
           </LayerGroup>
         );
       })}
+      <CanvasBoundaryHandles zones={zones} />
     </LayerGroup>
   );
 }
