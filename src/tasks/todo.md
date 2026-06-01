@@ -371,15 +371,14 @@
 - [x] Verify both sides preserve the same route order source of truth.
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
-## Current Plan — Change 5 Road-Aligned Generation Scoping
-- [x] Identify the current Canvas zone-generation owner and builder callsite.
-- [x] Check whether an Overpass-specific dependency/API wrapper already exists in the app dependency tree.
-- [x] Estimate generation-time latency impact for a ~200mi² polygon before implementation.
-- [x] Confirm revised architecture: silent Overpass prefetch after polygon confirmation, session-only in-memory cache, optional `roadNetwork` input to `generateCanvasZones()`, 3s max defer before grid fallback, no schema persistence.
-- [x] Locate current polygon completion handlers before implementation.
-- [x] Confirm current `generateCanvasZones()` purity before adding optional road input.
-- [x] Re-estimate Overpass latency against the background prefetch window instead of generation-time blocking.
-- [ ] Wait for confirmation before writing any Change 5 code.
+## Current Plan — Change 5 Road-Aligned Generation Implementation
+- [x] Confirm implementation scope: prefetch Overpass in Home, defer/fallback in CanvasBuilderSettings, pure road-aligned branch in canvasZones; no schema changes.
+- [ ] File 1 — `pages/Home`: blocked by file-size edit limit; re-plan required before implementation.
+  - Re-plan: avoid touching oversized `pages/Home` by using the already-mounted smaller draw/Canvas components plus a session-only shared road-network cache module.
+- [ ] File 2 — `components/map/CanvasBuilderSettings`: accept `roadNetworkRef`, add 3s road-ready defer with inline “Aligning to roads…” status, then fall back to grid.
+- [ ] File 3 — `components/logic/canvasZones`: add optional `roadNetwork` parameter, road-loop zone attempt, and untouched grid fallback.
+- [ ] Verify Home runtime/preview and document results.
+- [ ] Keep CanvasSession schema and Deploy Campaign flow untouched.
 
 ## Review
 Canvas Mode usability Changes 1–4 are complete without touching schema, Deploy Campaign, rep-facing views, or road-generation logic. Labels now render only for selected/hovered/filtered zones, boundary handles render only in explicit zone edit mode, zone colors are reduced to unassigned accent vs assigned gray with rep initials dots, and toolbar Focus mode hides labels/handles while collapsing the builder sidebar to an icon rail; Home preview loaded and runtime logs showed no new frontend errors, only unrelated existing backend rate-limit/job noise.
