@@ -225,7 +225,7 @@ export default function TerritoryPrompt({
   const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
   const isPaid = user?.subscription_status === 'active' || user?.is_owner || user?.role === 'admin';
   const maxRequestedProperties = isPaid ? 1000 : 50;
-  const safeRequestedPropertyCount = Math.max(1, Math.min(Number(requestedPropertyCount) || maxRequestedProperties, maxRequestedProperties));
+  const safeRequestedPropertyCount = Math.max(1, Math.min(Number(requestedPropertyCount) || 1, maxRequestedProperties));
   const pullCount = user?.area_pulls_count || 0;
   const maxPulls = 9999; // unlimited for testing
   const canPullAgain = pullCount < maxPulls;
@@ -642,8 +642,16 @@ export default function TerritoryPrompt({
             type="number"
             min="1"
             max={maxRequestedProperties}
-            value={safeRequestedPropertyCount}
-            onChange={(e) => setRequestedPropertyCount(Math.max(1, Math.min(Number(e.target.value) || 1, maxRequestedProperties)))}
+            value={requestedPropertyCount}
+            onChange={(e) => {
+              const value = e.target.value;
+              if (value === '') {
+                setRequestedPropertyCount('');
+                return;
+              }
+              setRequestedPropertyCount(Math.min(Number(value) || 1, maxRequestedProperties));
+            }}
+            onBlur={() => setRequestedPropertyCount(safeRequestedPropertyCount)}
             className="w-full sm:w-16 h-9 sm:h-6 bg-white/5 border border-white/10 rounded-md px-2 text-[12px] sm:text-[11px] text-white outline-none" />
           
                         <Button

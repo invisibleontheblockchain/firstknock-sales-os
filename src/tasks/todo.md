@@ -1,6 +1,13 @@
 # Plan
 
-## Current Plan — BatchData Pull Button
+## Current Plan — Pricing + Property Input Fix
+- [x] Update Billing to show Canvas at $19/rep/month.
+- [x] Update Billing to show Precision at $99/user/month.
+- [x] Make checkout use trusted backend pricing for Canvas and Precision instead of stale display-only prices.
+- [x] Fix Custom Area Active property input so users can clear the field and type a new number.
+- [ ] Verify the touched screens/logs and document results.
+
+## Previous Plan — BatchData Pull Button
 - [x] Change the selected-area action from Sandbox Preview to Pull Data.
 - [x] Wire Pull Data directly to the BatchData pull flow.
 - [x] Remove the duplicate Start Paid Pull button from this control.

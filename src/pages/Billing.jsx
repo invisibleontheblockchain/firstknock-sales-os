@@ -12,16 +12,29 @@ import PricingModeCard from '../components/billing/PricingModeCard.jsx';
 
 const PLANS = [
   {
-    id: 'pro',
-    name: 'FirstKnock Pro',
-    price: 59,
-    priceId: 'price_1THYMh2MvSNi6E8haDHYVGKW',
-    isPopular: true,
+    id: 'canvas',
+    name: 'Canvas Mode',
+    price: 19,
+    unit: '/rep/mo',
+    isPopular: false,
     features: [
-      'Canvas Mode priced per rep',
+      'Canvas Mode at $19 per rep per month',
       'AI-Optimized Walking Routes',
       'Live GPS Tracking & Proof of Visit',
       'Team Management & Dispatch',
+      'No paid BatchData pull required'
+    ]
+  },
+  {
+    id: 'precision',
+    name: 'Precision Mode',
+    price: 99,
+    unit: '/user/mo',
+    isPopular: true,
+    features: [
+      'Precision Mode at $99 per user per month',
+      'BatchData-backed property acquisition',
+      'Freehand area pulls and property imports',
       'Advanced Filters & Property Intel',
       'Priority Support'
     ]
@@ -37,7 +50,7 @@ export default function Billing() {
     queryFn: () => base44.auth.me()
   });
 
-  const handleSubscribe = async (priceId, trialDays = 0) => {
+  const handleSubscribe = async (planId, trialDays = 0) => {
     // Check if running in iframe (preview mode)
     if (window.self !== window.top) {
       toast.error("Stripe Checkout cannot run in this preview window. Please open your app in a new tab (click the 'Open App' button in the top right) to test payments.", { duration: 5000 });
@@ -46,11 +59,11 @@ export default function Billing() {
 
     const suffix = trialDays > 0 ? '_trial' : '_pay';
     try {
-      setLoadingPriceId(priceId + suffix);
-      console.log('[Billing] Starting checkout', { priceId, trialDays, suffix });
+      setLoadingPriceId(planId + suffix);
+      console.log('[Billing] Starting checkout', { planId, trialDays, suffix });
       
       const res = await base44.functions.invoke('createCheckoutSession', {
-        priceId: priceId,
+        planId,
         quantity: 1,
         successUrl: window.location.origin + '/Billing?success=true',
         cancelUrl: window.location.origin + '/Billing?canceled=true',
@@ -126,7 +139,7 @@ export default function Billing() {
                 <div className="text-center space-y-2 sm:space-y-3">
                     <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">FirstKnock Plans</h1>
                     <p className="text-sm sm:text-base text-gray-400 max-w-2xl mx-auto">
-                        Canvas is priced per rep for high-volume teams. Precision uses property credits for paid data pulls.
+                        Canvas is $19 per rep/month for high-volume teams. Precision is $99 per user/month for paid BatchData-backed targeting.
                     </p>
                 </div>
 
@@ -139,7 +152,7 @@ export default function Billing() {
                     <PricingModeCard
                         mode="canvas"
                         title="Canvas Mode"
-                        price="$59 / rep / mo"
+                        price="$19 / rep / mo"
                         subtitle="For massive door-knocking teams working assigned routes."
                         features={[
                             'Per-rep pricing scales with your field team',
@@ -151,7 +164,7 @@ export default function Billing() {
                     <PricingModeCard
                         mode="precision"
                         title="Precision Mode"
-                        price="Property credits"
+                        price="$99 / user / mo"
                         subtitle="For BatchData-backed property acquisition before routing."
                         usage={precisionUsage}
                         features={[
@@ -196,7 +209,7 @@ export default function Billing() {
                             <div className="text-center mb-3 sm:mb-6 mt-2 sm:mt-2">
                                 <div className="flex items-baseline justify-center gap-1">
                                     <span className="text-4xl sm:text-4xl font-extrabold text-white">${plan.price}</span>
-                                    <span className="text-gray-400 text-sm sm:text-sm">/mo</span>
+                                    <span className="text-gray-400 text-sm sm:text-sm">{plan.unit}</span>
                                 </div>
                             </div>
 
@@ -214,18 +227,18 @@ export default function Billing() {
                             {!isSubscribed && (
                                 <div className="flex flex-col gap-3 sm:gap-3">
                                     <Button
-                                        onClick={() => handleSubscribe(plan.priceId, 7)}
+                                        onClick={() => handleSubscribe(plan.id, 7)}
                                         disabled={loadingPriceId !== null}
                                         className="w-full h-12 sm:h-12 font-bold tracking-wide rounded-xl transition-all bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg hover:shadow-yellow-500/20 text-base sm:text-base"
                                     >
-                                        {loadingPriceId === plan.priceId + '_trial' ? 'PREPARING...' : 'START 7-DAY FREE TRIAL'}
+                                        {loadingPriceId === plan.id + '_trial' ? 'PREPARING...' : 'START 7-DAY FREE TRIAL'}
                                     </Button>
                                     <Button
-                                        onClick={() => handleSubscribe(plan.priceId, 0)}
+                                        onClick={() => handleSubscribe(plan.id, 0)}
                                         disabled={loadingPriceId !== null}
                                         className="w-full h-10 sm:h-10 font-bold tracking-wide rounded-xl transition-all bg-white/10 text-white hover:bg-white/20 border border-white/10 text-sm sm:text-sm"
                                     >
-                                        {loadingPriceId === plan.priceId + '_pay' ? 'PREPARING...' : 'PAY $59/REP/MO — NO TRIAL'}
+                                        {loadingPriceId === plan.id + '_pay' ? 'PREPARING...' : `PAY $${plan.price}${plan.unit.toUpperCase()} — NO TRIAL`}
                                     </Button>
                                 </div>
                             )}

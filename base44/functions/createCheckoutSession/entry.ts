@@ -16,15 +16,19 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { priceId, quantity = 1, successUrl, cancelUrl, trialDays = 0 } = await req.json();
+        const { priceId, planId, productName, amountCents, quantity = 1, successUrl, cancelUrl, trialDays = 0 } = await req.json();
 
-        if (!priceId) {
-            return Response.json({ error: 'Price ID is required' }, { status: 400 });
+        const allowedPrices = {
+            canvas: 1900,
+            precision: 9900
+        };
+        const checkedAmountCents = allowedPrices[planId] || amountCents;
+
+        if (!priceId && !checkedAmountCents) {
+            return Response.json({ error: 'Price or amount is required' }, { status: 400 });
         }
 
-        // Flat pricing: $49/mo
-        const seats = 1; // Always 1 seat for flat plan
-        console.log(`Flat pricing: $49/mo. Trial days: ${trialDays}`);
+        console.log(`Checkout pricing: ${planId || priceId} at ${checkedAmountCents || 'priceId'} cents. Trial days: ${trialDays}`);
 
         let customerId = user.stripe_customer_id;
 
@@ -46,10 +50,24 @@ Deno.serve(async (req) => {
             mode: 'subscription',
             payment_method_types: ['card'],
             line_items: [
-                {
-                    price: priceId,
-                    quantity: quantity,
-                },
+                priceId ?
+                    {
+                        price: priceId,
+                        quantity: quantity,
+                    } :
+                    {
+                        price_data: {
+                            currency: 'usd',
+                            product_data: {
+                                name: productName || 'FirstKnock Subscription'
+                            },
+                            recurring: {
+                                interval: 'month'
+                            },
+                            unit_amount: checkedAmountCents
+                        },
+                        quantity: quantity,
+                    },
             ],
             subscription_data: {
                 metadata: {
