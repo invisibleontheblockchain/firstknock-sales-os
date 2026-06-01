@@ -371,6 +371,12 @@
 - [x] Verify both sides preserve the same route order source of truth.
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
+## Current Plan — Change 5 Road-Aligned Generation Scoping
+- [x] Identify the current Canvas zone-generation owner and builder callsite.
+- [x] Check whether an Overpass-specific dependency/API wrapper already exists in the app dependency tree.
+- [x] Estimate generation-time latency impact for a ~200mi² polygon before implementation.
+- [ ] Wait for confirmation before writing any Change 5 code.
+
 ## Review
 Canvas Mode usability Changes 1–4 are complete without touching schema, Deploy Campaign, rep-facing views, or road-generation logic. Labels now render only for selected/hovered/filtered zones, boundary handles render only in explicit zone edit mode, zone colors are reduced to unassigned accent vs assigned gray with rep initials dots, and toolbar Focus mode hides labels/handles while collapsing the builder sidebar to an icon rail; Home preview loaded and runtime logs showed no new frontend errors, only unrelated existing backend rate-limit/job noise.
 
