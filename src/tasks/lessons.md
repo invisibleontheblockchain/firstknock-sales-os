@@ -56,3 +56,4 @@
 - If Home exceeds the safe edit limit during a feature, stop adding Home listeners/imports and keep behavior inside already-mounted focused map components or persisted state until Home is split.
 - On mobile map toolbars, never place two independent control groups in the same horizontal row when one is absolutely centered; give secondary mode controls their own row or move them into a settings panel, because compact labels alone do not prevent overlap.
 - When a user says a top toolbar still overlaps, remove non-primary controls from the constrained mobile row rather than making them smaller again.
+- For Leaflet freehand drawing on mobile/tablet, do not rely only on `useMapEvents` touch latlng; attach non-passive pointer/touch listeners to the map container, convert client coordinates with `containerPointToLatLng`, and disable map gestures only while drawing.

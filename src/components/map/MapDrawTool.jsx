@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useMapEvents, useMap, Polygon, CircleMarker, Tooltip } from 'react-leaflet';
+import L from 'leaflet';
 import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
 import CanvasZoneOverlay from './CanvasZoneOverlay';
 
@@ -9,6 +10,24 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
     const [builderMode, setBuilderMode] = useState(false);
     const map = useMap();
     const pointsRef = useRef([]);
+    const drawingRef = useRef(false);
+    const touchPointerIdRef = useRef(null);
+
+    const eventToLatLng = (event) => {
+        const source = event?.originalEvent || event;
+        const touch = source?.touches?.[0] || source?.changedTouches?.[0] || source;
+        if (!touch || touch.clientX == null || touch.clientY == null) return event?.latlng || null;
+        const container = map.getContainer();
+        const rect = container.getBoundingClientRect();
+        const point = L.point(touch.clientX - rect.left, touch.clientY - rect.top);
+        return map.containerPointToLatLng(point);
+    };
+
+    const stopTouchMapGesture = (event) => {
+        const source = event?.originalEvent || event;
+        source?.preventDefault?.();
+        source?.stopPropagation?.();
+    };
 
     const setFreehandPoints = (nextPoints) => {
         pointsRef.current = nextPoints;
@@ -25,13 +44,14 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
         if (!active || !latlng) return;
         window.__fkSuppressMapFitUntil = Date.now() + 1800;
         const firstPoint = { lat: latlng.lat, lng: latlng.lng };
+        drawingRef.current = true;
         setIsDrawing(true);
         setFreehandPoints([firstPoint]);
         try { map.dragging.disable(); } catch { }
     };
 
     const addPoint = (latlng) => {
-        if (!active || !isDrawing || !latlng) return;
+        if (!active || !drawingRef.current || !latlng) return;
         const nextPoint = { lat: latlng.lat, lng: latlng.lng };
         const current = pointsRef.current;
         const last = current[current.length - 1];
@@ -42,6 +62,8 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
     const finishDrawing = () => {
         if (!isDrawing) return;
         const finalPoints = pointsRef.current;
+        drawingRef.current = false;
+        touchPointerIdRef.current = null;
         setIsDrawing(false);
         try { map.dragging.enable(); } catch { }
         if (finalPoints.length > 2 && onConfirm) {
@@ -59,28 +81,103 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
         const container = map.getContainer();
         if (active) {
             container.style.cursor = 'crosshair';
+            container.style.touchAction = 'none';
             map.doubleClickZoom.disable();
+            try { map.dragging.disable(); } catch { }
+            try { map.touchZoom.disable(); } catch { }
+            try { map.boxZoom.disable(); } catch { }
+            try { map.scrollWheelZoom.disable(); } catch { }
         } else {
             container.style.cursor = '';
+            container.style.touchAction = '';
             map.doubleClickZoom.enable();
             try { map.dragging.enable(); } catch { }
+            try { map.touchZoom.enable(); } catch { }
+            try { map.boxZoom.enable(); } catch { }
+            try { map.scrollWheelZoom.enable(); } catch { }
+            drawingRef.current = false;
+            touchPointerIdRef.current = null;
             setIsDrawing(false);
             setFreehandPoints([]);
         }
         return () => {
             container.style.cursor = '';
+            container.style.touchAction = '';
             map.doubleClickZoom.enable();
             try { map.dragging.enable(); } catch { }
+            try { map.touchZoom.enable(); } catch { }
+            try { map.boxZoom.enable(); } catch { }
+            try { map.scrollWheelZoom.enable(); } catch { }
+        };
+    }, [active, map]);
+
+    useEffect(() => {
+        const container = map.getContainer();
+
+        const onPointerDown = (event) => {
+            if (!active || event.pointerType === 'mouse') return;
+            stopTouchMapGesture(event);
+            touchPointerIdRef.current = event.pointerId;
+            container.setPointerCapture?.(event.pointerId);
+            startDrawing(eventToLatLng(event));
+        };
+
+        const onPointerMove = (event) => {
+            if (!active || event.pointerType === 'mouse' || touchPointerIdRef.current !== event.pointerId) return;
+            stopTouchMapGesture(event);
+            addPoint(eventToLatLng(event));
+        };
+
+        const onPointerUp = (event) => {
+            if (!active || event.pointerType === 'mouse' || touchPointerIdRef.current !== event.pointerId) return;
+            stopTouchMapGesture(event);
+            container.releasePointerCapture?.(event.pointerId);
+            finishDrawing();
+        };
+
+        const onTouchStart = (event) => {
+            if (!active || window.PointerEvent) return;
+            stopTouchMapGesture(event);
+            startDrawing(eventToLatLng(event));
+        };
+
+        const onTouchMove = (event) => {
+            if (!active || window.PointerEvent) return;
+            stopTouchMapGesture(event);
+            addPoint(eventToLatLng(event));
+        };
+
+        const onTouchEnd = (event) => {
+            if (!active || window.PointerEvent) return;
+            stopTouchMapGesture(event);
+            finishDrawing();
+        };
+
+        container.addEventListener('pointerdown', onPointerDown, { passive: false });
+        container.addEventListener('pointermove', onPointerMove, { passive: false });
+        container.addEventListener('pointerup', onPointerUp, { passive: false });
+        container.addEventListener('pointercancel', onPointerUp, { passive: false });
+        container.addEventListener('touchstart', onTouchStart, { passive: false });
+        container.addEventListener('touchmove', onTouchMove, { passive: false });
+        container.addEventListener('touchend', onTouchEnd, { passive: false });
+        container.addEventListener('touchcancel', onTouchEnd, { passive: false });
+
+        return () => {
+            container.removeEventListener('pointerdown', onPointerDown);
+            container.removeEventListener('pointermove', onPointerMove);
+            container.removeEventListener('pointerup', onPointerUp);
+            container.removeEventListener('pointercancel', onPointerUp);
+            container.removeEventListener('touchstart', onTouchStart);
+            container.removeEventListener('touchmove', onTouchMove);
+            container.removeEventListener('touchend', onTouchEnd);
+            container.removeEventListener('touchcancel', onTouchEnd);
         };
     }, [active, map]);
 
     useMapEvents({
         mousedown(e) { startDrawing(e.latlng); },
         mousemove(e) { addPoint(e.latlng); },
-        mouseup() { finishDrawing(); },
-        touchstart(e) { startDrawing(e.latlng); },
-        touchmove(e) { addPoint(e.latlng); },
-        touchend() { finishDrawing(); }
+        mouseup() { finishDrawing(); }
     });
 
     const displayPoints = active ? points : (builderMode ? (drawnPolygon || []) : []);

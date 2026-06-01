@@ -1,6 +1,12 @@
 # Plan
 
-## Current Plan — Move Mode Toggle Into Map Settings
+## Current Plan — Mobile/Tablet Freehand Drawing Fix
+- [x] Confirm root cause without changing desktop drawing behavior.
+- [x] Add a mobile/tablet-safe touch/pointer drawing path that converts finger position into map coordinates.
+- [x] Disable map pan/zoom gestures only while drawing mode is active, then restore them cleanly.
+- [x] Verify mobile preview/runtime and document the result.
+
+## Previous Plan — Move Mode Toggle Into Map Settings
 - [x] Remove Canvas/Precision, Eye, and filter/settings action buttons from the mobile top row so Routes/Builder stays clean.
 - [x] Add Canvas/Precision mode control inside Map Settings near Overlays.
 - [x] Keep desktop/tablet controls usable without changing map behavior.
@@ -265,6 +271,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Mobile/tablet freehand drawing now uses direct pointer/touch listeners on the map container, converts finger position to Leaflet coordinates, and temporarily disables map pan/zoom gestures only while drawing; mobile and tablet previews loaded with no new frontend drawing errors, while logs still show unrelated BatchData balance/rate-limit noise.
+
 The mobile top bar is now clean: Canvas/Precision moved into Map Settings under Overlays, and the Eye/filter action buttons are hidden on mobile so they no longer sit over Routes/Builder; mobile preview was captured and runtime showed only existing rate-limit noise.
 
 Mobile overlap is fixed by moving the Canvas/Precision toggle to its own centered mobile row while keeping it in the right-side toolbar on larger screens; mobile preview was captured and runtime showed only the pre-existing Home render-loop warning.
