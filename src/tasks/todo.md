@@ -1,6 +1,11 @@
 # Plan
 
-## Current Plan — Mobile Draw Confirm/Pull Fix
+## Current Plan — Mobile Selected Area Controls Polish
+- [x] Convert the selected-area control from a cramped mobile pill into a readable mobile card.
+- [x] Keep desktop selected-area controls unchanged.
+- [x] Verify the mobile preview layout.
+
+## Previous Plan — Mobile Draw Confirm/Pull Fix
 - [x] Diagnose why mobile stays in Freehand draw mode after the area is visible.
 - [x] Add a clear mobile-friendly checkmark/confirm action once enough points are drawn.
 - [x] Make confirmed areas exit drawing mode and return to the data pull/preview controls.
@@ -277,6 +282,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+The selected-area controls now render as a readable stacked mobile card with larger touch targets and inline helper text, while preserving the compact desktop pill layout; mobile preview loaded and existing runtime logs only show unrelated BatchData balance/rate-limit noise.
+
 Mobile drawing now shows a green checkmark once the outline has enough points; tapping it confirms the area, exits draw mode, and reveals the Sandbox Preview / Start Paid Pull controls. Desktop still auto-confirms on mouse release, and mobile preview loaded without new frontend drawing errors; existing logs still show unrelated BatchData balance/rate-limit noise.
 
 Mobile/tablet freehand drawing now uses direct pointer/touch listeners on the map container, converts finger position to Leaflet coordinates, and temporarily disables map pan/zoom gestures only while drawing; mobile and tablet previews loaded with no new frontend drawing errors, while logs still show unrelated BatchData balance/rate-limit noise.

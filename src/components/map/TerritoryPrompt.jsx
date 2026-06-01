@@ -631,10 +631,12 @@ export default function TerritoryPrompt({
 
             {/* Drawn Polygon Controls */}
             {!drawingMode && !pulling && routeMode === 'precision' && drawnPolygon && drawnPolygon.length > 2 && mode === 'generate' && (
-                <div className="absolute top-11 sm:top-16 left-2 right-2 sm:left-4 sm:right-auto z-[1001] max-w-[calc(100vw-1rem)] sm:max-w-none bg-black/90 backdrop-blur-md border border-gray-800 rounded-2xl sm:rounded-full px-2 py-2 sm:px-4 sm:py-2 shadow-2xl flex flex-wrap sm:flex-nowrap items-center gap-1.5 sm:gap-3 animate-in fade-in slide-in-from-top-2 overflow-visible">
-                    <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
-                    <span className="text-[11px] sm:text-xs font-bold text-white whitespace-nowrap shrink-0">Custom Area Active</span>
-                    <div className="flex items-center gap-1.5 flex-1 sm:flex-none min-w-0 sm:ml-2">
+                <div className="absolute top-3 sm:top-16 left-3 right-3 sm:left-4 sm:right-auto z-[1001] max-w-[calc(100vw-1.5rem)] sm:max-w-none bg-black/92 backdrop-blur-md border border-gray-800 rounded-2xl sm:rounded-full p-3 sm:px-4 sm:py-2 shadow-2xl flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 animate-in fade-in slide-in-from-top-2 overflow-visible">
+                    <div className="flex items-center gap-2 shrink-0">
+                        <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
+                        <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
+                    </div>
+                    <div className="grid grid-cols-[auto_minmax(0,72px)_1fr] sm:flex sm:items-center gap-2 flex-1 sm:flex-none min-w-0 sm:ml-2">
                         <label className="text-[9px] text-gray-400 font-bold whitespace-nowrap">PROPERTIES</label>
                         <input
                             type="number"
@@ -642,12 +644,12 @@ export default function TerritoryPrompt({
                             max={maxRequestedProperties}
                             value={safeRequestedPropertyCount}
                             onChange={(e) => setRequestedPropertyCount(Math.max(1, Math.min(Number(e.target.value) || 1, maxRequestedProperties)))}
-                            className="w-16 h-8 sm:h-6 bg-white/5 border border-white/10 rounded-md px-2 text-[11px] text-white outline-none"
+                            className="w-full sm:w-16 h-9 sm:h-6 bg-white/5 border border-white/10 rounded-md px-2 text-[12px] sm:text-[11px] text-white outline-none"
                         />
                         <Button
                             disabled={previewLoading}
                             onClick={handleFetchData}
-                            className="text-white text-[10px] h-8 sm:h-6 px-2 sm:px-3 py-0 rounded-md font-bold tracking-wide bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)] flex-1 sm:flex-none min-w-0"
+                            className="text-white text-[10px] h-9 sm:h-6 px-2 sm:px-3 py-0 rounded-md font-bold tracking-wide bg-blue-600 hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)] flex-1 sm:flex-none min-w-0"
                         >
                             {previewLoading ? 'Checking...' : 'Sandbox Preview'}
                         </Button>
@@ -655,7 +657,7 @@ export default function TerritoryPrompt({
                             <Button
                                 disabled={paidPullStarting}
                                 onClick={handlePaidBatchDataPull}
-                                className="text-black text-[10px] h-8 sm:h-6 px-2 sm:px-3 py-0 rounded-md font-bold tracking-wide bg-yellow-500 hover:bg-yellow-400 flex-1 sm:flex-none min-w-0"
+                                className="text-black text-[10px] h-9 sm:h-6 px-2 sm:px-3 py-0 rounded-md font-bold tracking-wide bg-yellow-500 hover:bg-yellow-400 flex-1 sm:flex-none min-w-0"
                             >
                                 {paidPullStarting ? 'Starting...' : 'Start Paid Pull'}
                             </Button>
@@ -663,11 +665,11 @@ export default function TerritoryPrompt({
                     </div>
                     <button
                         onClick={() => { setDrawnPolygon(null); setDraftPolygon([]); setDrawingMode(false); }}
-                        className="text-gray-400 hover:text-red-500 transition-colors p-2 sm:p-1 bg-white/5 rounded-full shrink-0 ml-auto sm:ml-0"
+                        className="absolute top-2 right-2 sm:static text-gray-400 hover:text-red-500 transition-colors p-2 sm:p-1 bg-white/5 rounded-full shrink-0 ml-auto sm:ml-0"
                     >
                         <Trash2 className="w-3 h-3" />
                     </button>
-                    <div className="absolute top-full left-0 right-0 sm:right-auto mt-2 w-auto sm:w-72 bg-black/90 border border-gray-800 rounded-lg p-2 shadow-xl animate-in fade-in slide-in-from-top-1">
+                    <div className="static sm:absolute sm:top-full sm:left-0 sm:right-auto mt-1 sm:mt-2 w-full sm:w-72 bg-white/5 sm:bg-black/90 border border-gray-800 rounded-xl sm:rounded-lg p-2 shadow-xl animate-in fade-in slide-in-from-top-1">
                         <p className="text-[9px] text-gray-400 leading-tight">
                             <span className="text-blue-400 font-bold">Area:</span> selected freehand polygon is about <span className="text-white">{actualAreaLabel}</span>.
                             <br /><span className="text-cyan-300 font-bold">Sandbox:</span> max <span className="text-white">{maxRequestedProperties}</span> properties for this account; preview does not save properties.
