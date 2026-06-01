@@ -1,6 +1,12 @@
 # Plan
 
-## Current Plan — Mobile Draw Checkmark Zoom Root Fix
+## Current Plan — Billing Card Order
+- [x] Confirm the request: show Precision mode above Canvas mode on Billing.
+- [x] Inspect the Billing card order.
+- [x] Reorder only the visual card order; keep pricing and checkout behavior unchanged.
+- [x] Verify the Billing page loads and document results.
+
+## Previous Plan — Mobile Draw Checkmark Zoom Root Fix
 - [x] Confirm from runtime logs that tapping the checkmark changes area state and re-renders map data.
 - [x] Find all map camera fit/setView paths that can run after area confirmation.
 - [x] Patch the shared Leaflet camera guard so draw confirmation suppresses fitBounds/setView/fly/pan camera changes.
@@ -317,6 +323,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Billing now renders Precision Mode before Canvas Mode while keeping all pricing and checkout behavior unchanged. Mobile Billing preview was captured; runtime logs showed only unrelated existing Home/import messages.
+
 Root fix: mobile/tablet draw confirmation now suppresses all Leaflet camera methods (`fitBounds`, `setView`, fly/pan variants) for 8 seconds after draw/confirm, preventing state-driven re-renders from massively zooming the map out. Mobile Home preview loaded; runtime logs showed no new frontend errors, only unrelated existing rate-limit/BatchData balance messages.
 
 Previous fix: mobile/tablet draw confirmation blocks map touch propagation and confirms on pointer release so tapping the green checkmark does not pass the tap through to the map.

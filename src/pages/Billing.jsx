@@ -11,27 +11,6 @@ import BetaUsageMeter from '../components/beta/BetaUsageMeter';
 
 const PLANS = [
   {
-    id: 'canvas',
-    name: 'Canvas Mode',
-    price: 19,
-    unit: '/rep/mo',
-    isPopular: false,
-    subtitle: 'For massive door-knocking teams working assigned routes.',
-    includedFeatures: [
-      'Per-rep pricing scales with your field team',
-      'Route builder, dispatch, Knock tab, and Checklist sync',
-      'GPS proof, outcomes, team progress, and route switching',
-      'No paid BatchData pull required for route execution'
-    ],
-    features: [
-      'Canvas Mode at $19 per rep per month',
-      'AI-Optimized Walking Routes',
-      'Live GPS Tracking & Proof of Visit',
-      'Team Management & Dispatch',
-      'No paid BatchData pull required'
-    ]
-  },
-  {
     id: 'precision',
     name: 'Precision Mode',
     price: 99,
@@ -50,6 +29,27 @@ const PLANS = [
       'Freehand area pulls and property imports',
       'Advanced Filters & Property Intel',
       'Priority Support'
+    ]
+  },
+  {
+    id: 'canvas',
+    name: 'Canvas Mode',
+    price: 19,
+    unit: '/rep/mo',
+    isPopular: false,
+    subtitle: 'For massive door-knocking teams working assigned routes.',
+    includedFeatures: [
+      'Per-rep pricing scales with your field team',
+      'Route builder, dispatch, Knock tab, and Checklist sync',
+      'GPS proof, outcomes, team progress, and route switching',
+      'No paid BatchData pull required for route execution'
+    ],
+    features: [
+      'Canvas Mode at $19 per rep per month',
+      'AI-Optimized Walking Routes',
+      'Live GPS Tracking & Proof of Visit',
+      'Team Management & Dispatch',
+      'No paid BatchData pull required'
     ]
   }
 ];
