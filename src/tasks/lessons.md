@@ -63,3 +63,5 @@
 - Billing price changes must update both visible copy and the checkout source of truth; never show a new price while sending users to a stale Stripe price ID.
 - User-facing map/billing copy should use FirstKnock branding unless the user explicitly wants provider names like BatchData shown.
 - Canvas territory subdivision should clip the drawn polygon by padded grid cells, not discard small edge overlaps; exact requested zone count should be achieved by grouping/splitting valid clipped cells while rendering all zone parts.
+- Canvas density controls must affect actual capacity math, not just labels: estimated doors and zone count should respond to density, while rep count acts as a minimum floor rather than the only zone-count driver.
+- Canvas mode bottom navigation must not expose Precision route concepts like saved route counts; keep it focused on Canvas Builder, Live View, and Deploy Campaign.

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, Users } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, Users, Rocket } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
@@ -459,64 +459,83 @@ export default function MapToolbar({
 
             {/* Bottom Action Bar */}
             <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 z-[1000] pointer-events-none flex justify-center px-2">
-                <div className="pointer-events-auto flex items-center justify-center gap-2 bg-black/80 backdrop-blur-lg p-1.5 rounded-full border border-white/10 shadow-2xl">
-                    {mode === 'generate' && !activeRoute && (
-                        <Button
-                            onClick={() => {
-                                if (routeMode === 'canvas') {
-                                    setShowCompare(true);
-                                    return;
-                                }
-                                if (hasDrawnArea) {
-                                    if (!territoryDataReady) {
-                                        setShowCompare(false);
-                                        toast.info("Use the Custom Area Active bar to preview or pull Precision data for this area.", { duration: 3500 });
-                                        return;
-                                    }
-                                    setShowCompare(true);
-                                } else {
-                                    setShowCompare(false);
-                                    window.dispatchEvent(new CustomEvent('fk-start-drawing'));
-                                }
-                            }}
-                            disabled={routesGenerating}
-                            className="rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] transition-all active:scale-95 whitespace-nowrap"
-                            style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
-                        >
-                            {routesGenerating ? (
-                                <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> BUILDING</>  
-                            ) : routeMode === 'canvas' ? (
-                                <><Users className="w-4 h-4 mr-1.5" /> CANVAS BUILDER</>
-                            ) : hasDrawnArea ? (
-                                territoryDataReady ? (
-                                    <><Zap className="w-4 h-4 mr-1.5" /> GENERATE</>  
-                                ) : (
-                                    <><Zap className="w-4 h-4 mr-1.5" /> PULL DATA</>  
-                                )
-                            ) : (
-                                <><Navigation className="w-4 h-4 mr-1.5" /> DRAW</>  
+                <div className={`pointer-events-auto flex items-center justify-center gap-2 bg-black/80 backdrop-blur-lg p-1.5 border border-white/10 shadow-2xl ${routeMode === 'canvas' && mode === 'generate' && !activeRoute ? 'rounded-2xl sm:rounded-full max-w-[calc(100vw-1rem)] overflow-x-auto' : 'rounded-full'}`}>
+                    {routeMode === 'canvas' && mode === 'generate' && !activeRoute ? (
+                        <>
+                            <Button
+                                onClick={() => setShowCompare(true)}
+                                className="rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(168,85,247,0.25)] transition-all active:scale-95 whitespace-nowrap bg-purple-600 hover:bg-purple-500 text-white"
+                            >
+                                <Users className="w-4 h-4 mr-1" /> CANVAS BUILDER
+                            </Button>
+                            <Button
+                                onClick={() => { setShowCompare(false); setShowRoutePanel(false); }}
+                                className="rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap bg-black/90 text-purple-200 border border-purple-500/40"
+                            >
+                                <Locate className="w-4 h-4 mr-1" /> LIVE VIEW
+                            </Button>
+                            <Button
+                                onClick={() => { setShowCompare(true); toast.info('Review assignments, then tap Deploy Campaign.'); }}
+                                className="rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap"
+                                style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
+                            >
+                                <Rocket className="w-4 h-4 mr-1" /> DEPLOY CAMPAIGN
+                            </Button>
+                        </>
+                    ) : (
+                        <>
+                            {mode === 'generate' && !activeRoute && (
+                                <Button
+                                    onClick={() => {
+                                        if (hasDrawnArea) {
+                                            if (!territoryDataReady) {
+                                                setShowCompare(false);
+                                                toast.info("Use the Custom Area Active bar to preview or pull Precision data for this area.", { duration: 3500 });
+                                                return;
+                                            }
+                                            setShowCompare(true);
+                                        } else {
+                                            setShowCompare(false);
+                                            window.dispatchEvent(new CustomEvent('fk-start-drawing'));
+                                        }
+                                    }}
+                                    disabled={routesGenerating}
+                                    className="rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] transition-all active:scale-95 whitespace-nowrap"
+                                    style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
+                                >
+                                    {routesGenerating ? (
+                                        <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> BUILDING</>
+                                    ) : hasDrawnArea ? (
+                                        territoryDataReady ? (
+                                            <><Zap className="w-4 h-4 mr-1.5" /> GENERATE</>
+                                        ) : (
+                                            <><Zap className="w-4 h-4 mr-1.5" /> PULL DATA</>
+                                        )
+                                    ) : (
+                                        <><Navigation className="w-4 h-4 mr-1.5" /> DRAW</>
+                                    )}
+                                </Button>
                             )}
-                        </Button>
+                            <Button
+                                onClick={() => !activeRoute && setShowRoutePanel(true)}
+                                disabled={!!activeRoute}
+                                className={`rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap ${activeRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                style={{
+                                    background: activeRoute ? 'rgba(31, 31, 31, 0.9)' : (mode === 'generate' && !activeRoute ? 'rgba(31, 31, 31, 0.9)' : 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)'),
+                                    color: activeRoute ? BRAND.gold : (mode === 'generate' && !activeRoute ? BRAND.gold : BRAND.voidBlack),
+                                    border: activeRoute ? `1px solid ${BRAND.gold}` : (mode === 'generate' && !activeRoute ? `1px solid ${BRAND.gold}` : 'none')
+                                }}
+                            >
+                                <List className="w-4 h-4 mr-1.5" />
+                                ROUTES
+                                {!routesGenerating && (hydratedSavedRoutes.length > 0 || routes.length > 0) && (
+                                    <Badge className="ml-1.5 h-5 min-w-[20px] px-1.5 text-[10px]" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
+                                        {hydratedSavedRoutes.length > 0 ? hydratedSavedRoutes.length : routes.length}
+                                    </Badge>
+                                )}
+                            </Button>
+                        </>
                     )}
-
-                    <Button
-                        onClick={() => !activeRoute && setShowRoutePanel(true)}
-                        disabled={!!activeRoute}
-                        className={`rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap ${activeRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        style={{
-                            background: activeRoute ? 'rgba(31, 31, 31, 0.9)' : (mode === 'generate' && !activeRoute ? 'rgba(31, 31, 31, 0.9)' : 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)'),
-                            color: activeRoute ? BRAND.gold : (mode === 'generate' && !activeRoute ? BRAND.gold : BRAND.voidBlack),
-                            border: activeRoute ? `1px solid ${BRAND.gold}` : (mode === 'generate' && !activeRoute ? `1px solid ${BRAND.gold}` : 'none')
-                        }}
-                    >
-                        <List className="w-4 h-4 mr-1.5" />
-                        ROUTES
-                        {!routesGenerating && (hydratedSavedRoutes.length > 0 || routes.length > 0) && (
-                            <Badge className="ml-1.5 h-5 min-w-[20px] px-1.5 text-[10px]" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
-                                {hydratedSavedRoutes.length > 0 ? hydratedSavedRoutes.length : routes.length}
-                            </Badge>
-                        )}
-                    </Button>
 
                     {activeRoute && (
                         <Button

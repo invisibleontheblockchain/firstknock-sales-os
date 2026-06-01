@@ -225,10 +225,12 @@ export function getCanvasCampaignSummary({ polygon, repCount = 8, shiftHours = 5
   const doorsPerRep = Math.max(1, Math.round((Number(shiftHours) || 5) * (Number(doorsPerHour) || 20)));
   const safeRepsPerZone = Math.max(1, Math.min(2, Number(repsPerZone) || 1));
   const targetDoorsPerZone = doorsPerRep * safeRepsPerZone;
-  const zoneCount = Math.max(1, Math.ceil((Number(repCount) || 1) / safeRepsPerZone));
-  const targetZoneAreaSqMi = targetDoorsPerZone / density.doorsPerSqMi;
+  const minimumRepZones = Math.max(1, Math.ceil((Number(repCount) || 1) / safeRepsPerZone));
   const estimatedTotalDoors = Math.round(areaSqMi * density.doorsPerSqMi);
-  return { areaSqMi, density, doorsPerRep, targetDoorsPerZone, zoneCount, targetZoneAreaSqMi, estimatedTotalDoors };
+  const capacityZones = Math.max(1, Math.ceil(estimatedTotalDoors / targetDoorsPerZone));
+  const zoneCount = Math.max(minimumRepZones, capacityZones);
+  const targetZoneAreaSqMi = targetDoorsPerZone / density.doorsPerSqMi;
+  return { areaSqMi, density, doorsPerRep, targetDoorsPerZone, zoneCount, targetZoneAreaSqMi, estimatedTotalDoors, minimumRepZones, capacityZones };
 }
 
 export function generateCanvasZones(polygon, configOrCount, existingZones = []) {
@@ -242,7 +244,7 @@ export function generateCanvasZones(polygon, configOrCount, existingZones = []) 
   const bounds = getBounds(points);
   const avgLat = points.reduce((sum, point) => sum + point.lat, 0) / points.length;
   const { latScale, lngScale } = getScales(avgLat);
-  const areaPerSeedCell = Math.max(0.01, summary.areaSqMi / Math.max(summary.zoneCount * 3, summary.zoneCount));
+  const areaPerSeedCell = Math.max(0.003, Math.min(summary.targetZoneAreaSqMi / 3, summary.areaSqMi / Math.max(summary.zoneCount * 3, summary.zoneCount)));
   const aspectRatio = 1.25;
   const cellHeightMiles = Math.sqrt(areaPerSeedCell / aspectRatio);
   const cellWidthMiles = cellHeightMiles * aspectRatio;

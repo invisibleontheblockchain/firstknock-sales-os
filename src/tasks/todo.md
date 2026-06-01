@@ -1,6 +1,15 @@
 # Plan
 
-## Current Plan — Canvas Zone Coverage + Exact Count Fix
+## Current Plan — Canvas Density Responsiveness + Canvas Nav Cleanup
+- [x] Confirm scope: fix Canvas density behavior, Canvas-only bottom nav, door-count variation, and mobile builder layout without touching Precision data/routing flows.
+- [x] Inspect current Canvas builder, zone algorithm, bottom map toolbar, runtime logs, and task history.
+- [x] Change Canvas zone count from rep-count-only to capacity-based: estimated total doors ÷ target doors per zone, with rep count as the minimum.
+- [x] Make density selector redraw zones immediately with visibly different zone counts/sizes and varied per-zone door estimates.
+- [x] Replace Precision-style `Routes (count)` bottom action in Canvas mode with exactly `Canvas Builder | Live View | Deploy Campaign`.
+- [x] Verify mobile Canvas builder behaves as a bottom sheet and does not crush the map at phone width.
+- [x] Retry desktop preview capture, verify runtime logs, and document results.
+
+## Previous Plan — Canvas Zone Coverage + Exact Count Fix
 - [x] Confirm scope: fix Canvas subdivision coverage/count/labels without changing Precision or paid data flows.
 - [x] Inspect current Canvas zone math, overlay rendering, task history, and runtime logs.
 - [x] Replace aggressive edge-cell filtering with valid-clipped-polygon checks only.
@@ -344,6 +353,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Canvas density refinement is complete: zone count now uses capacity math from estimated doors ÷ doors-per-zone with rep count as the floor, so Urban/Suburban/Rural changes redraw the grid with different zone counts/sizes and varied door estimates. Canvas mode bottom nav now shows Canvas Builder, Live View, and Deploy Campaign only; desktop and mobile previews loaded, and runtime logs show only unrelated existing BatchData insufficient-balance processor noise.
+
 Canvas zone subdivision now uses padded full-boundary clipping, keeps all valid edge overlaps, removes the old 20% discard threshold, groups clipped cells into exactly the requested zone count, and renders every zone part with a color plus centroid label/door estimate. Home preview loaded; remaining logs are unrelated existing BatchData/rate-limit noise.
 
 Canvas Sprint 1 is now client-side and demo-ready: responsive manager builder, capacity/density-based grid zones, roster assignment, local save/deploy locking, map zone/drop-point overlays, and a local rep field view with tap-to-pin logging. Home preview loaded and runtime logs showed no new frontend errors.

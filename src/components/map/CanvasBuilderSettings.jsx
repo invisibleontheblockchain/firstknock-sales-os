@@ -204,7 +204,7 @@ function BuilderContent({ campaign, setCampaign, updateCampaign, rosterText, set
             {densityOptions.map((option) => <button key={option} onClick={() => updateCampaign({ densityMode: option })} className={`py-2 rounded-lg text-[10px] font-black capitalize border ${campaign.densityMode === option ? 'bg-purple-500 text-white border-purple-300' : 'bg-[#151520] text-gray-400 border-white/10'}`}>{option}</button>)}
           </div>
           {campaign.densityMode === 'custom' && <NumberField label="Custom doors / sq mi" value={campaign.customDoorsPerSqMi} min={1} max={2000} onChange={(v) => updateCampaign({ customDoorsPerSqMi: v })} />}
-          <p className="text-[11px] text-gray-500">Each zone targets ~{summary.targetDoorsPerZone} doors. Dense areas create smaller cells; sparse areas create larger cells.</p>
+          <p className="text-[11px] text-gray-500">Density redraws the grid live: Urban creates more, smaller zones; Rural creates fewer, larger zones when capacity allows.</p>
         </section>
 
         <section className="space-y-3">
