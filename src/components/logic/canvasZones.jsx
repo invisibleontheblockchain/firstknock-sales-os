@@ -51,6 +51,16 @@ export function detectCanvasDensity(areaSqMi, override = 'auto', customDoorsPerS
   return { key: 'rural', ...DENSITY_TIERS.rural };
 }
 
+function signedArea(points) {
+  let sum = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    const current = points[index];
+    const next = points[(index + 1) % points.length];
+    sum += current.lng * next.lat - next.lng * current.lat;
+  }
+  return sum / 2;
+}
+
 function isInside(point, edgeStart, edgeEnd) {
   return (edgeEnd.lng - edgeStart.lng) * (point.lat - edgeStart.lat) - (edgeEnd.lat - edgeStart.lat) * (point.lng - edgeStart.lng) >= -0.000000001;
 }
@@ -67,21 +77,18 @@ function intersection(lineStart, lineEnd, edgeStart, edgeEnd) {
   return { lat: py, lng: px };
 }
 
-function signedArea(points) {
-  let sum = 0;
-  for (let index = 0; index < points.length; index += 1) {
-    const current = points[index];
-    const next = points[(index + 1) % points.length];
-    sum += current.lng * next.lat - next.lng * current.lat;
-  }
-  return sum / 2;
+function normalizePolygon(points = []) {
+  const deduped = points.filter((point, index, arr) => !samePoint(point, arr[index - 1]));
+  if (deduped.length > 2 && samePoint(deduped[0], deduped[deduped.length - 1])) deduped.pop();
+  return signedArea(deduped) < 0 ? deduped.reverse() : deduped;
 }
 
 function clipPolygon(subjectPolygon, clipPolygonPoints) {
-  let output = subjectPolygon;
-  for (let index = 0; index < clipPolygonPoints.length; index += 1) {
-    const edgeStart = clipPolygonPoints[index];
-    const edgeEnd = clipPolygonPoints[(index + 1) % clipPolygonPoints.length];
+  let output = normalizePolygon(subjectPolygon);
+  const clipPoints = normalizePolygon(clipPolygonPoints);
+  for (let index = 0; index < clipPoints.length; index += 1) {
+    const edgeStart = clipPoints[index];
+    const edgeEnd = clipPoints[(index + 1) % clipPoints.length];
     const input = output;
     output = [];
     if (!input.length) break;
@@ -98,7 +105,51 @@ function clipPolygon(subjectPolygon, clipPolygonPoints) {
       previous = current;
     });
   }
-  return output.filter((point, index, arr) => !samePoint(point, arr[index - 1]));
+  return normalizePolygon(output);
+}
+
+function isValidPolygon(points) {
+  if (!points || points.length < 3) return false;
+  if (calculatePolygonAreaSqMi(points) <= 0.000001) return false;
+  const first = points[0];
+  return points.some((point, index) => {
+    const next = points[(index + 1) % points.length];
+    return Math.abs((point.lng - first.lng) * (next.lat - first.lat) - (point.lat - first.lat) * (next.lng - first.lng)) > 0.0000000001;
+  });
+}
+
+function polygonCentroid(points) {
+  const clean = normalizePolygon(points);
+  if (!isValidPolygon(clean)) return null;
+  let areaTerm = 0;
+  let cx = 0;
+  let cy = 0;
+  for (let index = 0; index < clean.length; index += 1) {
+    const current = clean[index];
+    const next = clean[(index + 1) % clean.length];
+    const cross = current.lng * next.lat - next.lng * current.lat;
+    areaTerm += cross;
+    cx += (current.lng + next.lng) * cross;
+    cy += (current.lat + next.lat) * cross;
+  }
+  const area = areaTerm / 2;
+  if (Math.abs(area) < 0.0000000001) return null;
+  return { lat: cy / (6 * area), lng: cx / (6 * area) };
+}
+
+function centroidOfParts(parts) {
+  let totalArea = 0;
+  let lat = 0;
+  let lng = 0;
+  parts.forEach((part) => {
+    const area = calculatePolygonAreaSqMi(part);
+    const centroid = polygonCentroid(part);
+    if (!centroid || area <= 0) return;
+    totalArea += area;
+    lat += centroid.lat * area;
+    lng += centroid.lng * area;
+  });
+  return totalArea > 0 ? { lat: lat / totalArea, lng: lng / totalArea } : null;
 }
 
 function getDropPoint(points) {
@@ -110,9 +161,62 @@ function getDropPoint(points) {
   }, null);
 }
 
-function centerOf(points) {
-  if (!points.length) return null;
-  return points.reduce((sum, point) => ({ lat: sum.lat + point.lat / points.length, lng: sum.lng + point.lng / points.length }), { lat: 0, lng: 0 });
+function splitCell(cell) {
+  const bounds = getBounds(cell.geometry);
+  const splitLat = (bounds.minLat + bounds.maxLat) / 2;
+  const splitLng = (bounds.minLng + bounds.maxLng) / 2;
+  const splitAlongLng = (bounds.maxLng - bounds.minLng) >= (bounds.maxLat - bounds.minLat);
+  const rectangles = splitAlongLng ? [
+    [{ lat: bounds.maxLat, lng: bounds.minLng }, { lat: bounds.maxLat, lng: splitLng }, { lat: bounds.minLat, lng: splitLng }, { lat: bounds.minLat, lng: bounds.minLng }],
+    [{ lat: bounds.maxLat, lng: splitLng }, { lat: bounds.maxLat, lng: bounds.maxLng }, { lat: bounds.minLat, lng: bounds.maxLng }, { lat: bounds.minLat, lng: splitLng }],
+  ] : [
+    [{ lat: bounds.maxLat, lng: bounds.minLng }, { lat: bounds.maxLat, lng: bounds.maxLng }, { lat: splitLat, lng: bounds.maxLng }, { lat: splitLat, lng: bounds.minLng }],
+    [{ lat: splitLat, lng: bounds.minLng }, { lat: splitLat, lng: bounds.maxLng }, { lat: bounds.minLat, lng: bounds.maxLng }, { lat: bounds.minLat, lng: bounds.minLng }],
+  ];
+  const pieces = rectangles
+    .map((rectangle) => clipPolygon(cell.geometry, rectangle))
+    .filter(isValidPolygon)
+    .map((geometry) => ({ geometry, area: calculatePolygonAreaSqMi(geometry) }));
+  return pieces.length === 2 ? pieces : [cell];
+}
+
+function serpentineSort(cells) {
+  const rows = new Map();
+  cells.forEach((cell) => {
+    const key = Math.round(cell.center.lat * 1000);
+    rows.set(key, [...(rows.get(key) || []), cell]);
+  });
+  return [...rows.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .flatMap(([, row], rowIndex) => row.sort((a, b) => rowIndex % 2 === 0 ? a.center.lng - b.center.lng : b.center.lng - a.center.lng));
+}
+
+function groupCells(cells, zoneCount) {
+  const ordered = serpentineSort(cells);
+  const totalArea = ordered.reduce((sum, cell) => sum + cell.area, 0);
+  const targetArea = totalArea / zoneCount;
+  const groups = [];
+  let current = [];
+  let currentArea = 0;
+  ordered.forEach((cell) => {
+    const remainingCells = ordered.length - ordered.indexOf(cell);
+    const remainingGroups = zoneCount - groups.length;
+    const shouldClose = current.length > 0 && currentArea >= targetArea && remainingCells > remainingGroups;
+    if (shouldClose) {
+      groups.push(current);
+      current = [];
+      currentArea = 0;
+    }
+    current.push(cell);
+    currentArea += cell.area;
+  });
+  if (current.length) groups.push(current);
+  while (groups.length > zoneCount) groups[groups.length - 2].push(...groups.pop());
+  while (groups.length < zoneCount && groups.some((group) => group.length > 1)) {
+    const index = groups.findIndex((group) => group.length > 1);
+    groups.splice(index + 1, 0, groups[index].splice(Math.ceil(groups[index].length / 2)));
+  }
+  return groups.slice(0, zoneCount);
 }
 
 export function getCanvasCampaignSummary({ polygon, repCount = 8, shiftHours = 5, doorsPerHour = 20, repsPerZone = 1, densityMode = 'auto', customDoorsPerSqMi = 150 }) {
@@ -131,51 +235,69 @@ export function generateCanvasZones(polygon, configOrCount, existingZones = []) 
   let points = cleanPolygon(polygon);
   if (points.length > 2 && samePoint(points[0], points[points.length - 1])) points = points.slice(0, -1);
   if (points.length < 3) return [];
-  if (signedArea(points) < 0) points = [...points].reverse();
+  points = normalizePolygon(points);
 
   const config = typeof configOrCount === 'object' ? configOrCount : { repCount: configOrCount };
   const summary = getCanvasCampaignSummary({ polygon: points, ...config });
   const bounds = getBounds(points);
   const avgLat = points.reduce((sum, point) => sum + point.lat, 0) / points.length;
   const { latScale, lngScale } = getScales(avgLat);
-  const targetArea = Math.max(0.02, summary.targetZoneAreaSqMi);
+  const areaPerSeedCell = Math.max(0.01, summary.areaSqMi / Math.max(summary.zoneCount * 3, summary.zoneCount));
   const aspectRatio = 1.25;
-  const cellHeightMiles = Math.sqrt(targetArea / aspectRatio);
+  const cellHeightMiles = Math.sqrt(areaPerSeedCell / aspectRatio);
   const cellWidthMiles = cellHeightMiles * aspectRatio;
-  const latStep = Math.max(0.001, cellHeightMiles / latScale);
-  const lngStep = Math.max(0.001, cellWidthMiles / lngScale);
-  const fullCellArea = cellHeightMiles * cellWidthMiles;
-  const zones = [];
+  const latStep = Math.max(0.0005, cellHeightMiles / latScale);
+  const lngStep = Math.max(0.0005, cellWidthMiles / lngScale);
+  const paddedBounds = {
+    minLat: bounds.minLat - latStep,
+    maxLat: bounds.maxLat + latStep,
+    minLng: bounds.minLng - lngStep,
+    maxLng: bounds.maxLng + lngStep,
+  };
+  let cells = [];
 
-  for (let lat = bounds.maxLat; lat > bounds.minLat && zones.length < summary.zoneCount; lat -= latStep) {
-    for (let lng = bounds.minLng; lng < bounds.maxLng && zones.length < summary.zoneCount; lng += lngStep) {
-      const rectangle = [
+  for (let lat = paddedBounds.maxLat; lat > paddedBounds.minLat; lat -= latStep) {
+    for (let lng = paddedBounds.minLng; lng < paddedBounds.maxLng; lng += lngStep) {
+      const rectangle = normalizePolygon([
         { lat, lng },
-        { lat, lng: Math.min(lng + lngStep, bounds.maxLng) },
-        { lat: Math.max(lat - latStep, bounds.minLat), lng: Math.min(lng + lngStep, bounds.maxLng) },
-        { lat: Math.max(lat - latStep, bounds.minLat), lng },
-      ];
-      const clipped = clipPolygon(rectangle, points);
-      const clippedArea = calculatePolygonAreaSqMi(clipped);
-      if (clipped.length < 3 || clippedArea < fullCellArea * 0.2) continue;
-      const index = zones.length;
-      const existing = existingZones[index] || {};
-      zones.push({
-        ...existing,
-        zone_number: index + 1,
-        name: existing.name || `Zone ${index + 1}`,
-        color: existing.color || DEFAULT_COLORS[index % DEFAULT_COLORS.length],
-        geometry: clipped,
-        area_sq_mi: Number(clippedArea.toFixed(2)),
-        estimated_doors: Math.max(1, Math.round(clippedArea * summary.density.doorsPerSqMi)),
-        drop_point: getDropPoint(clipped),
-        center: centerOf(clipped),
-        status: existing.status || 'unworked',
-        notes: existing.notes || '',
-        assignments: existing.assignments || [],
-      });
+        { lat, lng: lng + lngStep },
+        { lat: lat - latStep, lng: lng + lngStep },
+        { lat: lat - latStep, lng },
+      ]);
+      const clipped = clipPolygon(points, rectangle);
+      if (!isValidPolygon(clipped)) continue;
+      const area = calculatePolygonAreaSqMi(clipped);
+      cells.push({ geometry: clipped, area, center: polygonCentroid(clipped) });
     }
   }
 
-  return zones;
+  while (cells.length < summary.zoneCount) {
+    const largestIndex = cells.reduce((bestIndex, cell, index) => cell.area > cells[bestIndex].area ? index : bestIndex, 0);
+    const pieces = splitCell(cells[largestIndex]);
+    if (pieces.length < 2) break;
+    cells.splice(largestIndex, 1, ...pieces.map((piece) => ({ ...piece, center: polygonCentroid(piece.geometry) })));
+  }
+
+  const groupedCells = groupCells(cells, summary.zoneCount);
+  return groupedCells.map((group, index) => {
+    const existing = existingZones[index] || {};
+    const parts = group.map((cell) => cell.geometry);
+    const area = group.reduce((sum, cell) => sum + cell.area, 0);
+    const center = centroidOfParts(parts) || group[0]?.center || null;
+    return {
+      ...existing,
+      zone_number: index + 1,
+      name: existing.name || `Zone ${index + 1}`,
+      color: existing.color || DEFAULT_COLORS[index % DEFAULT_COLORS.length],
+      geometry: parts[0] || [],
+      parts,
+      area_sq_mi: Number(area.toFixed(2)),
+      estimated_doors: Math.max(1, Math.round(area * summary.density.doorsPerSqMi)),
+      drop_point: getDropPoint(parts.flat()),
+      center,
+      status: existing.status || 'unworked',
+      notes: existing.notes || '',
+      assignments: existing.assignments || [],
+    };
+  });
 }

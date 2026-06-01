@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — Canvas Sprint 1 Builder + Rep View Foundation
+## Current Plan — Canvas Zone Coverage + Exact Count Fix
+- [x] Confirm scope: fix Canvas subdivision coverage/count/labels without changing Precision or paid data flows.
+- [x] Inspect current Canvas zone math, overlay rendering, task history, and runtime logs.
+- [x] Replace aggressive edge-cell filtering with valid-clipped-polygon checks only.
+- [x] Pad subdivision clip bounds by one full cell in every direction.
+- [x] Recalculate every zone centroid from actual clipped vertices using the polygon centroid formula.
+- [x] Guarantee exactly `ceil(repCount / repsPerZone)` zones by subdividing/merging generated clipped regions.
+- [x] Fix Canvas zone rendering warnings and ensure labels/fills render for every clipped edge zone.
+- [x] Verify runtime logs/preview and document results.
+
+## Previous Plan — Canvas Sprint 1 Builder + Rep View Foundation
 - [x] Confirm scope: responsive Canvas manager builder with capacity-based zones, assignment, local deploy/save, and rep-view foundation only.
 - [x] Inspect existing Canvas builder, zone renderer, zone algorithm, Home integration, and RepHome route flow.
 - [x] Replace pie-slice Canvas subdivision with density-aware rectangular grid zones clipped to the drawn polygon.
@@ -334,6 +344,8 @@
 - [ ] Separately refactor the oversized Home page before patching the unrelated Home render-loop warning.
 
 ## Review
+Canvas subdivision now generates coverage-first clipped cells from padded polygon bounds, validates only true degenerate polygons, groups/splits cells to exactly match the requested zone count, recalculates centroids from clipped geometry, and renders every zone part with stable Leaflet layers, labels, colors, and door estimates. Home preview loaded; current logs still include older unrelated BatchData/rate-limit messages from prior sessions.
+
 Canvas Sprint 1 is now client-side and demo-ready: responsive manager builder, capacity/density-based grid zones, roster assignment, local save/deploy locking, map zone/drop-point overlays, and a local rep field view with tap-to-pin logging. Home preview loaded and runtime logs showed no new frontend errors.
 
 Billing now renders Precision Mode before Canvas Mode while keeping all pricing and checkout behavior unchanged. Mobile Billing preview was captured; runtime logs showed only unrelated existing Home/import messages.
