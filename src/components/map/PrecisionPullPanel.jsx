@@ -2,7 +2,15 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { X, Zap } from 'lucide-react';
 
-const SOLD_OPTIONS = [1, 3, 6, 9, 12];
+const SOLD_OPTIONS = [
+  { value: 0.25, label: '1 wk' },
+  { value: 0.5, label: '2 wk' },
+  { value: 1, label: '1 mo' },
+  { value: 3, label: '3 mo' },
+  { value: 6, label: '6 mo' },
+  { value: 9, label: '9 mo' },
+  { value: 12, label: '12 mo' }
+];
 
 function formatMoney(value) {
   if (!value) return '';
@@ -96,14 +104,14 @@ export default function PrecisionPullPanel({
 
           <div className="space-y-2">
             <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Homes sold in the last</label>
-            <div className="grid grid-cols-5 gap-1.5">
-              {SOLD_OPTIONS.map(months => (
+            <div className="grid grid-cols-4 gap-1.5">
+              {SOLD_OPTIONS.map(option => (
                 <button
-                  key={months}
-                  onClick={() => setSoldMonths(months)}
-                  className={`h-11 rounded-xl text-xs font-extrabold transition-all ${Number(soldMonths || 12) === months ? 'bg-yellow-500 text-black shadow-lg' : 'bg-white/5 text-gray-400 border border-white/10 hover:text-white'}`}
+                  key={option.value}
+                  onClick={() => setSoldMonths(option.value)}
+                  className={`h-11 rounded-xl text-xs font-extrabold transition-all ${Number(soldMonths || 12) === option.value ? 'bg-yellow-500 text-black shadow-lg' : 'bg-white/5 text-gray-400 border border-white/10 hover:text-white'}`}
                 >
-                  {months}mo
+                  {option.label}
                 </button>
               ))}
             </div>
