@@ -1,5 +1,22 @@
 # Plan
 
+## Current Plan — BatchData-Only Precision Cutover + Builder Draw Integration
+- [ ] Confirm cutover scope before implementation: Precision mode becomes BatchData-only; Canvas remains zero-BatchData door logging; RentCast is fully removed from active ingestion paths.
+- [ ] Freeze protected data first: run `batchDataMigrationAudit`, verify no active/pending FetchJobs, confirm Kevin/Reif protected routes and hashes, and create a backup/export function if the audit snapshot is not enough.
+- [ ] Replace `processFetchChunk` live behavior with a BatchData-only processor: no `RENTCAST_API_KEY`, no RentCast base URL, no `deed_records` or `listings_records` RentCast phases, no MLS gap-fill branch.
+- [ ] Keep the existing BatchData normalization and Neon write path, but make it the only path for `provider='batchdata'`, `phase='batchdata_precision'`, and any new Precision job.
+- [ ] Update `fetchAreaProperties` so any legacy Precision entry point creates a BatchData FetchJob from the drawn polygon instead of RentCast grid/sub-circles.
+- [ ] Keep `startBatchDataPull` as the primary new Builder draw flow; ensure it uses the freehand polygon, requested property cap, FIPS/county resolution, area caps, and immediately invokes the BatchData-only processor.
+- [ ] Update frontend Precision Builder copy/status only if needed so the user sees “Pull Data” with dynamic population from the drawn freehand area.
+- [ ] Verify with backend tests: sandbox preview, live BatchData job creation dry path, processor idle path, processor synthetic/dry-run completion, and audit safety gate.
+- [ ] Verify runtime logs after loading `/Home`; confirm no new frontend errors and no RentCast calls in the new Precision draw flow.
+- [ ] Document final cutover results, remaining provider-account action items, and rollback notes in this plan review.
+
+### Implementation notes
+- Do not purge legacy RentCast rows yet during the switch; first cut active code paths, verify BatchData jobs populate Neon, then schedule cleanup separately with protected-route exclusions.
+- Existing secrets already include `BATCH_DATA_API_KEY`, `BATCH_DATA_SANDBOX_KEY`, and `DATABASE_URL`, so no new secret is required unless BatchData issues new production credentials after contract signing.
+- Biggest current code risk: `processFetchChunk` is still a large hybrid RentCast/BatchData function; the elegant cutover is to replace active behavior with a small BatchData-only path instead of trying to keep conditional legacy phases alive.
+
 ## Current Plan — Canvas Road-Aligned Generation Reimplementation
 - [x] Start with runtime logs before code inspection because the feature is not working as expected.
 - [x] Review lessons, current Canvas generator, builder flow, territory draw flow, and Home mounting path.
