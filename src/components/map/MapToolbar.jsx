@@ -257,7 +257,7 @@ export default function MapToolbar({
                                 toast.success(newVal ? "Routes Visible" : "Routes Hidden");
                             }}
                             size="icon"
-                            className={`hidden sm:inline-flex bg-black/80 hover:bg-black backdrop-blur-md border shadow-xl h-8 w-8 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl transition-all ${(!showRouteDetails && !showRouteLines) ? 'border-red-500/50' : 'border-gray-800'}`}
+                            className={`inline-flex bg-black/80 hover:bg-black backdrop-blur-md border shadow-xl h-8 w-8 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl transition-all ${(!showRouteDetails && !showRouteLines) ? 'border-red-500/50' : 'border-gray-800'}`}
                         >
                             {(!showRouteDetails && !showRouteLines) ? (
                                 <EyeOff className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-red-500" />
