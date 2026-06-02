@@ -566,3 +566,14 @@ Map/builder mobile fixes are in place: tapping the bottom Map tab now forces pla
 Route Command mobile optimization is complete: the panel shell uses full viewport containment, the tab bar no longer has fixed mobile widths, Delete All/merge actions stack into a mobile grid, and Queued route cards now wrap status/count/action content within the viewport. Runtime review showed no new Route Command-specific errors in the interaction path.
 
 Merge mode polish is complete: the section arrow is now forced visible on mobile, merge checkboxes are larger/high-contrast, and route cards are slightly shorter across Route Command views. Runtime review showed no new Route Command-specific errors after the polish.
+
+## Plan — Freehand Draw BatchData 1000/Month Readiness Verification
+- [x] Confirm the frontend captures arbitrary freehand points, preserves the confirmed polygon, and sends that exact polygon to preview/pull functions.
+- [x] Confirm paid BatchData pull creation enforces the 1000-property paid cap, 300 sq mi area cap, FIPS resolution, and BatchData job metadata.
+- [x] Confirm the processor is BatchData-only and does not call RentCast.
+- [x] Verify whether the live BatchData API request is truly polygon/dynamic scoped, not just county-level with post-filtering.
+- [x] Run no-charge backend dry-run/self-test checks for representative freehand polygons.
+- [x] Document go/no-go and any required fix before using the BatchData 1000/month plan.
+
+### Review — Freehand Draw BatchData Readiness
+Frontend verification: `MapDrawTool` captures arbitrary freehand coordinates and `TerritoryPrompt` sends the confirmed `drawnPolygon` directly to both `previewBatchDataArea` and `startBatchDataPull`. Backend verification: paid/admin cap is 1000 properties, area cap is 300 sq mi, FIPS resolves correctly, jobs are created as `provider=batchdata`, `phase=batchdata_precision`, and `include_mls=false`. Processor verification passed with `active_provider=batchdata`, `rentcast_active=false`, BatchData key present, and database URL present. I found and fixed the main readiness risk: the live processor was using a broad county/FIPS query plus unsupported `limit`; it now uses the drawn area centroid as the BatchData location query, documented `take` pagination up to 1000 records, and still applies the freehand polygon as the final precision filter before writing to Neon. No-charge tests passed for preview sandbox probe, paid dry run, and processor self-test.

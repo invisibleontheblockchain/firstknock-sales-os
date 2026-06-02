@@ -239,20 +239,36 @@ async function writePropertiesToNeon(sql, properties, job) {
 
 async function fetchBatchDataRecords(job) {
     const requested = Math.min(Math.max(Number(job.estimated_record_count || job.total_expected || 1000), 1), 1000);
-    const criteria = job.fips_code ? { countyFipsCode: job.fips_code } : { query: `${job.latitude},${job.longitude}` };
-    const response = await fetch(BATCHDATA_BASE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BATCHDATA_API_KEY}` },
-        body: JSON.stringify({
-            searchCriteria: criteria,
-            options: { datasets: ['basic', 'listing', 'deed', 'owner'], limit: requested }
-        })
-    });
-    const text = await response.text();
-    if (!response.ok) throw new Error(`BatchData request failed (${response.status}): ${text.slice(0, 300)}`);
-    const payload = text ? JSON.parse(text) : {};
-    const records = payload?.results?.properties || payload?.properties || payload?.results || [];
-    return Array.isArray(records) ? records : [records].filter(Boolean);
+    const criteria = { query: `${job.latitude},${job.longitude}` };
+    const records = [];
+    let pageCursor = null;
+
+    while (records.length < requested) {
+        const take = Math.min(500, requested - records.length);
+        const response = await fetch(BATCHDATA_BASE, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BATCHDATA_API_KEY}` },
+            body: JSON.stringify({
+                searchCriteria: criteria,
+                options: {
+                    datasets: ['basic', 'listing', 'deed', 'owner'],
+                    take,
+                    useCursorPagination: true,
+                    ...(pageCursor ? { pageCursor } : {})
+                }
+            })
+        });
+        const text = await response.text();
+        if (!response.ok) throw new Error(`BatchData request failed (${response.status}): ${text.slice(0, 300)}`);
+        const payload = text ? JSON.parse(text) : {};
+        const batch = payload?.results?.properties || payload?.properties || payload?.results || [];
+        const list = Array.isArray(batch) ? batch : [batch].filter(Boolean);
+        records.push(...list);
+        pageCursor = payload?.nextPageCursor || payload?.results?.nextPageCursor || payload?.meta?.nextPageCursor || null;
+        if (!pageCursor || list.length === 0) break;
+    }
+
+    return records.slice(0, requested);
 }
 
 Deno.serve(async (req) => {
