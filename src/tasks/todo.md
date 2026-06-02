@@ -1,5 +1,14 @@
 # Plan
 
+## Current Plan — Precision Pull Flow Simplification
+- [ ] Confirm scope: Precision Mode default pull flow should be simplified only; Canvas, route execution, BatchData caps, and backend ingestion logic stay unchanged.
+- [ ] Inspect current Precision area/pull controls and route builder filters to identify where home value range and sold-window controls already exist.
+- [ ] Design the default post-draw panel as: selected area summary, home value range, sold lookback, requested property count if still needed, and one primary Generate button.
+- [ ] Move less-common Precision options into an Advanced Settings section/drawer so the default flow feels simple for mail-style routes.
+- [ ] Wire Generate to the existing BatchData pull path using the selected area, sold lookback, and value filters without changing the 50/free and 1000/paid caps.
+- [ ] Verify the simplified UI renders without new errors and document the final behavior.
+
+
 ## Current Plan — BatchData-Only Precision Cutover + Builder Draw Integration
 - [x] Confirm cutover scope before implementation: Precision mode becomes BatchData-only; Canvas remains zero-BatchData door logging; RentCast is fully removed from active ingestion paths.
 - [x] Freeze protected data first: run `batchDataMigrationAudit`, verify no active/pending FetchJobs, confirm Kevin/Reif protected routes and hashes, and create a backup/export function if the audit snapshot is not enough.
