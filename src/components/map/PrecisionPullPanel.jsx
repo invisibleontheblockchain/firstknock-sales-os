@@ -48,6 +48,28 @@ export default function PrecisionPullPanel({
 
         <div className="p-5 space-y-5">
           <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Max properties</label>
+                <p className="text-[10px] text-gray-600">Your account cap is {maxProperties}.</p>
+              </div>
+              <input
+                type="number"
+                min="1"
+                max={maxProperties}
+                value={requestedPropertyCount}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value === '') return setRequestedPropertyCount('');
+                  setRequestedPropertyCount(Math.min(Number(value) || 1, maxProperties));
+                }}
+                onBlur={() => setRequestedPropertyCount(Math.max(1, Math.min(Number(requestedPropertyCount) || 1, maxProperties)))}
+                className="w-24 h-10 rounded-lg bg-black/40 border border-white/10 px-3 text-white text-sm outline-none focus:border-yellow-500"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
             <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Home value range</label>
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
               <div className="relative">
@@ -102,25 +124,6 @@ export default function PrecisionPullPanel({
 
           {showAdvanced && (
             <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Max properties</label>
-                  <p className="text-[10px] text-gray-600">Your account cap is {maxProperties}.</p>
-                </div>
-                <input
-                  type="number"
-                  min="1"
-                  max={maxProperties}
-                  value={requestedPropertyCount}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value === '') return setRequestedPropertyCount('');
-                    setRequestedPropertyCount(Math.min(Number(value) || 1, maxProperties));
-                  }}
-                  onBlur={() => setRequestedPropertyCount(Math.max(1, Math.min(Number(requestedPropertyCount) || 1, maxProperties)))}
-                  className="w-24 h-10 rounded-lg bg-black/40 border border-white/10 px-3 text-white text-sm outline-none focus:border-yellow-500"
-                />
-              </div>
               <button onClick={onClearArea} className="text-[11px] font-bold text-red-300 hover:text-red-200">Clear drawn area</button>
             </div>
           )}

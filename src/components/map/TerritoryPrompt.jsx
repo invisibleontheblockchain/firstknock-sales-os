@@ -49,8 +49,8 @@ export default function TerritoryPrompt({
   const [selectedHistoryArea, setSelectedHistoryArea] = useState(null);
   const [recoverableJob, setRecoverableJob] = useState(null);
   const [requestedPropertyCount, setRequestedPropertyCount] = useState(50);
-  const [minHomeValue, setMinHomeValue] = useState('');
-  const [maxHomeValue, setMaxHomeValue] = useState('');
+  const [minHomeValue, setMinHomeValue] = useState(200000);
+  const [maxHomeValue, setMaxHomeValue] = useState(300000);
   const [showPrecisionPullPanel, setShowPrecisionPullPanel] = useState(false);
   const [previewResult, setPreviewResult] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
