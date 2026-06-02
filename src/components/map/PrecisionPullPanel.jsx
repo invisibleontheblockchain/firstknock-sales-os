@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Button } from '@/components/ui/button';
-import { X, Zap, SlidersHorizontal } from 'lucide-react';
+import { X, Zap } from 'lucide-react';
 
 const SOLD_OPTIONS = [1, 3, 6, 9, 12];
 
@@ -30,15 +30,13 @@ export default function PrecisionPullPanel({
   generating,
   onClearArea
 }) {
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
   return (
     <div className="fixed inset-0 z-[2400] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-6">
       <div className="w-full max-w-md rounded-3xl border border-yellow-500/25 bg-[#070707] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95">
         <div className="flex items-start justify-between gap-3 p-5 border-b border-white/10">
           <div>
             <p className="text-[10px] font-bold tracking-[0.25em] text-yellow-400 uppercase">Precision Generate</p>
-            <h2 className="text-xl font-extrabold text-white mt-1">Build your mail route</h2>
+            <h2 className="text-xl font-extrabold text-white mt-1">Build your route</h2>
             <p className="text-xs text-gray-400 mt-1">Area selected: <span className="text-white font-bold">{areaLabel}</span></p>
           </div>
           <button onClick={onClose} className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white flex items-center justify-center">
@@ -50,8 +48,8 @@ export default function PrecisionPullPanel({
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Max properties</label>
-                <p className="text-[10px] text-gray-600">Your account cap is {maxProperties}.</p>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Property count</label>
+                <p className="text-[10px] text-gray-600">Over 50 requires an upgraded account.</p>
               </div>
               <input
                 type="number"
@@ -111,22 +109,7 @@ export default function PrecisionPullPanel({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            className="w-full flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left"
-          >
-            <span className="flex items-center gap-2 text-xs font-bold text-gray-300 uppercase tracking-wider">
-              <SlidersHorizontal className="w-4 h-4 text-yellow-400" /> Advanced settings
-            </span>
-            <span className="text-[10px] text-gray-500">{showAdvanced ? 'Hide' : 'Optional'}</span>
-          </button>
-
-          {showAdvanced && (
-            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-3">
-              <button onClick={onClearArea} className="text-[11px] font-bold text-red-300 hover:text-red-200">Clear drawn area</button>
-            </div>
-          )}
+          <button onClick={onClearArea} className="text-[11px] font-bold text-red-300 hover:text-red-200">Clear drawn area</button>
         </div>
 
         <div className="p-5 border-t border-white/10 bg-black">

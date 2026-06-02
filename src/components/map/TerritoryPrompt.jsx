@@ -10,6 +10,7 @@ import { createPageUrl } from '@/utils';
 import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
 import { savePolygonToHistory } from '@/components/map/PolygonHistory';
 import PrecisionPullPanel from '@/components/map/PrecisionPullPanel';
+import UpgradeGate from '@/components/upgrade/UpgradeGate';
 
 
 export default function TerritoryPrompt({
@@ -49,9 +50,10 @@ export default function TerritoryPrompt({
   const [selectedHistoryArea, setSelectedHistoryArea] = useState(null);
   const [recoverableJob, setRecoverableJob] = useState(null);
   const [requestedPropertyCount, setRequestedPropertyCount] = useState(50);
-  const [minHomeValue, setMinHomeValue] = useState(200000);
-  const [maxHomeValue, setMaxHomeValue] = useState(300000);
+  const [minHomeValue, setMinHomeValue] = useState(100000);
+  const [maxHomeValue, setMaxHomeValue] = useState('');
   const [showPrecisionPullPanel, setShowPrecisionPullPanel] = useState(false);
+  const [showUpgradeGate, setShowUpgradeGate] = useState(false);
   const [previewResult, setPreviewResult] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [paidPullStarting, setPaidPullStarting] = useState(false);
@@ -235,8 +237,9 @@ export default function TerritoryPrompt({
 
   const hasPulledData = !!user?.has_pulled_data;
   const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
-  const isPaid = user?.subscription_status === 'active' || user?.is_owner || user?.role === 'admin';
-  const maxRequestedProperties = isPaid ? 1000 : 50;
+  const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing' || user?.is_owner || user?.role === 'admin';
+  const maxRequestedProperties = 1000;
+  const freePropertyLimit = 50;
   const safeRequestedPropertyCount = Math.max(1, Math.min(Number(requestedPropertyCount) || 1, maxRequestedProperties));
   const pullCount = user?.area_pulls_count || 0;
   const maxPulls = 9999; // unlimited for testing
@@ -479,6 +482,15 @@ export default function TerritoryPrompt({
       return;
     }
 
+    if (safeRequestedPropertyCount > freePropertyLimit) {
+      const latestUser = await base44.auth.me();
+      const upgraded = latestUser?.subscription_status === 'active' || latestUser?.subscription_status === 'trialing' || latestUser?.is_owner || latestUser?.role === 'admin';
+      if (!upgraded) {
+        setShowUpgradeGate(true);
+        return;
+      }
+    }
+
     setPaidPullStarting(true);
     try {
       const res = await base44.functions.invoke('startBatchDataPull', {
@@ -516,6 +528,7 @@ export default function TerritoryPrompt({
 
   return (
     <>
+            {showUpgradeGate && <UpgradeGate onClose={() => setShowUpgradeGate(false)} />}
             {/* Simple prompt for returning users who already have data */}
             {/* Returning user prompt — skip straight to map, no modal blocking */}
 

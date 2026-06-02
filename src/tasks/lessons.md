@@ -70,3 +70,4 @@
 - Manual Canvas boundary edits must persist back into the builder campaign state; otherwise the next builder render can overwrite map-only adjusted geometry.
 - For road-aware Canvas generation, verify the data-fetch path separately from the geometry algorithm; a correct DCEL/face generator still fails in production if OSM road data is never fetched into the live builder flow.
 - When the user explicitly authorizes a provider cutover and says to stop questioning the decision, execute the approved plan and verify safety gates instead of asking for another confirmation.
+- For targeting filter panels, do not auto-fill both min and max range values unless explicitly requested; optional range ends should stay blank so users can pull open-ended categories.

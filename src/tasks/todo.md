@@ -589,3 +589,15 @@ Merge mode polish is complete: the section arrow is now forced visible on mobile
 
 ### Review — Freehand Draw BatchData Readiness
 Frontend verification: `MapDrawTool` captures arbitrary freehand coordinates and `TerritoryPrompt` sends the confirmed `drawnPolygon` directly to both `previewBatchDataArea` and `startBatchDataPull`. Backend verification: paid/admin cap is 1000 properties, area cap is 300 sq mi, FIPS resolves correctly, jobs are created as `provider=batchdata`, `phase=batchdata_precision`, and `include_mls=false`. Processor verification passed with `active_provider=batchdata`, `rentcast_active=false`, BatchData key present, and database URL present. I found and fixed the main readiness risk: the live processor was using a broad county/FIPS query plus unsupported `limit`; it now uses the drawn area centroid as the BatchData location query, documented `take` pagination up to 1000 records, and still applies the freehand polygon as the final precision filter before writing to Neon. No-charge tests passed for preview sandbox probe, paid dry run, and processor self-test.
+
+## Plan — Precision Generate Panel Paywall + Range Cleanup
+- [x] Remove default max home value so users can leave either value category blank.
+- [x] Set minimum home value default to $100,000 and keep max blank.
+- [x] Remove Advanced Settings UI completely and keep Clear Area as a simple secondary action.
+- [x] Update the title to “Build your route”.
+- [x] Add a Generate guard: if requested properties exceed 50, verify subscription status before allowing pull.
+- [x] If not upgraded, show the existing paywall instead of starting generation.
+- [x] Verify no-charge backend dry-run still accepts blank max price and document results.
+
+### Review — Precision Generate Panel Paywall + Range Cleanup
+The Precision Generate panel now says “Build your route,” shows property count first, removes Advanced Settings, defaults min home value to $100,000 with max blank, and still allows either value input to be cleared. Generate now checks the latest account status when the requested count is over 50; non-upgraded users see the existing paywall instead of starting the pull. No-charge backend dry-run passed with `min_price=100000` and `max_price=null`; runtime logs showed no new frontend error, only unrelated existing route hydration rate-limit noise.
