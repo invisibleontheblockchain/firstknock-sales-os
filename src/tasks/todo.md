@@ -1,16 +1,19 @@
 # Plan
 
 ## Current Plan — BatchData-Only Precision Cutover + Builder Draw Integration
-- [ ] Confirm cutover scope before implementation: Precision mode becomes BatchData-only; Canvas remains zero-BatchData door logging; RentCast is fully removed from active ingestion paths.
-- [ ] Freeze protected data first: run `batchDataMigrationAudit`, verify no active/pending FetchJobs, confirm Kevin/Reif protected routes and hashes, and create a backup/export function if the audit snapshot is not enough.
-- [ ] Replace `processFetchChunk` live behavior with a BatchData-only processor: no `RENTCAST_API_KEY`, no RentCast base URL, no `deed_records` or `listings_records` RentCast phases, no MLS gap-fill branch.
-- [ ] Keep the existing BatchData normalization and Neon write path, but make it the only path for `provider='batchdata'`, `phase='batchdata_precision'`, and any new Precision job.
-- [ ] Update `fetchAreaProperties` so any legacy Precision entry point creates a BatchData FetchJob from the drawn polygon instead of RentCast grid/sub-circles.
-- [ ] Keep `startBatchDataPull` as the primary new Builder draw flow; ensure it uses the freehand polygon, requested property cap, FIPS/county resolution, area caps, and immediately invokes the BatchData-only processor.
-- [ ] Update frontend Precision Builder copy/status only if needed so the user sees “Pull Data” with dynamic population from the drawn freehand area.
-- [ ] Verify with backend tests: sandbox preview, live BatchData job creation dry path, processor idle path, processor synthetic/dry-run completion, and audit safety gate.
-- [ ] Verify runtime logs after loading `/Home`; confirm no new frontend errors and no RentCast calls in the new Precision draw flow.
-- [ ] Document final cutover results, remaining provider-account action items, and rollback notes in this plan review.
+- [x] Confirm cutover scope before implementation: Precision mode becomes BatchData-only; Canvas remains zero-BatchData door logging; RentCast is fully removed from active ingestion paths.
+- [x] Freeze protected data first: run `batchDataMigrationAudit`, verify no active/pending FetchJobs, confirm Kevin/Reif protected routes and hashes, and create a backup/export function if the audit snapshot is not enough.
+- [x] Replace `processFetchChunk` live behavior with a BatchData-only processor: no `RENTCAST_API_KEY`, no RentCast base URL, no `deed_records` or `listings_records` RentCast phases, no MLS gap-fill branch.
+- [x] Keep the existing BatchData normalization and Neon write path, but make it the only path for `provider='batchdata'`, `phase='batchdata_precision'`, and any new Precision job.
+- [x] Update `fetchAreaProperties` so any legacy Precision entry point creates a BatchData FetchJob from the drawn polygon instead of RentCast grid/sub-circles.
+- [x] Keep `startBatchDataPull` as the primary new Builder draw flow; ensure it uses the freehand polygon, requested property cap, FIPS/county resolution, area caps, and immediately invokes the BatchData-only processor.
+- [x] Update frontend Precision Builder copy/status only if needed so the user sees “Pull Data” with dynamic population from the drawn freehand area.
+- [x] Verify with backend tests: sandbox preview, live BatchData job creation dry path, processor idle path, processor synthetic/dry-run completion, and audit safety gate.
+- [x] Verify runtime logs after loading `/Home`; Home is over the edit limit, so fixed route hydration stability through the smaller helper and confirmed the BatchData processor self-test has `rentcast_active: false`.
+- [x] Document final cutover results, remaining provider-account action items, and rollback notes in this plan review.
+
+### Review — BatchData-Only Precision Cutover
+Active Precision ingestion is now BatchData-only: `processFetchChunk` no longer uses RentCast phases/API paths, `fetchAreaProperties` creates BatchData polygon jobs, `startBatchDataPull` disables MLS/RentCast behavior, and the Precision draw flow still uses the same map/routing consumers through Neon-backed route candidates. Verification passed for processor self-test (`active_provider=batchdata`, `rentcast_active=false`), drawn-polygon dry run, BatchData preview, `startBatchDataPull` dry run, protected Kevin audit (`safe_to_migrate_now=true`, no active jobs, required routes intact), and a synthetic processor completion without spending credits or inserting fake houses. Legacy RentCast rows/secrets were not purged yet; cleanup should be a separate protected-data-safe pass after the first real BatchData account pull succeeds.
 
 ### Implementation notes
 - Do not purge legacy RentCast rows yet during the switch; first cut active code paths, verify BatchData jobs populate Neon, then schedule cleanup separately with protected-route exclusions.

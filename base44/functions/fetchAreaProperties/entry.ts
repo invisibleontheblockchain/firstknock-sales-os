@@ -1,211 +1,66 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
-import { neon } from 'npm:@neondatabase/serverless@0.9.0';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-// v9 — Grid Subdivision: breaks large areas into overlapping sub-circles (≤5mi)
-// per RentCast support guidance. Large-radius queries silently drop records.
-// Uses ONLY /v1/properties?saleDateRange (county deed records)
-// MLS /listings/sale is permanently retired — Inactive status includes expired/withdrawn/cancelled
-const DATABASE_URL = Deno.env.get('DATABASE_URL');
+const FREE_AREA_LIMIT_SQ_MI = 40;
+const PAID_AREA_LIMIT_SQ_MI = 300;
+const FREE_PROPERTY_CAP = 50;
+const PAID_PROPERTY_CAP = 1000;
 
-function computeBoundingCircle(polygon) {
-    if (!polygon || polygon.length < 3) return null;
-    let sumLat = 0, sumLng = 0;
-    for (const p of polygon) { sumLat += p.lat; sumLng += p.lng; }
-    const centerLat = sumLat / polygon.length;
-    const centerLng = sumLng / polygon.length;
-    let maxDistMiles = 0;
-    for (const p of polygon) {
-        const dist = distanceMiles(centerLat, centerLng, p.lat, p.lng, centerLat);
-        if (dist > maxDistMiles) maxDistMiles = dist;
-    }
-    return { lat: centerLat, lng: centerLng, radius: Math.ceil((maxDistMiles * 1.05) * 10) / 10 };
+function normalizePolygon(input) {
+    if (!Array.isArray(input)) return [];
+    return input.map(point => ({ lat: Number(point.lat), lng: Number(point.lng) })).filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lng));
 }
 
-function distanceMiles(lat1, lng1, lat2, lng2, referenceLat = lat1) {
-    const dLat = (lat2 - lat1) * 69.0;
-    const dLng = (lng2 - lng1) * 69.0 * Math.cos(referenceLat * Math.PI / 180);
-    return Math.sqrt(dLat * dLat + dLng * dLng);
+function polygonAreaSqMi(points) {
+    if (points.length < 3) return 0;
+    const avgLat = points.reduce((sum, p) => sum + p.lat, 0) / points.length;
+    const milesPerLat = 69.0;
+    const milesPerLng = 69.0 * Math.cos(avgLat * Math.PI / 180);
+    const projected = points.map(p => ({ x: p.lng * milesPerLng, y: p.lat * milesPerLat }));
+    let sum = 0;
+    for (let i = 0; i < projected.length; i++) {
+        const a = projected[i];
+        const b = projected[(i + 1) % projected.length];
+        sum += (a.x * b.y) - (b.x * a.y);
+    }
+    return Math.abs(sum) / 2;
 }
 
-function isPointInPolygon(lat, lng, polygon) {
-    let inside = false;
-    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-        const xi = polygon[i].lng, yi = polygon[i].lat;
-        const xj = polygon[j].lng, yj = polygon[j].lat;
-        const intersects = ((yi > lat) !== (yj > lat)) &&
-            (lng < (xj - xi) * (lat - yi) / ((yj - yi) || 1e-12) + xi);
-        if (intersects) inside = !inside;
-    }
-    return inside;
-}
-
-function distancePointToSegmentMiles(point, a, b, referenceLat) {
-    const px = (point.lng) * 69.0 * Math.cos(referenceLat * Math.PI / 180);
-    const py = point.lat * 69.0;
-    const ax = a.lng * 69.0 * Math.cos(referenceLat * Math.PI / 180);
-    const ay = a.lat * 69.0;
-    const bx = b.lng * 69.0 * Math.cos(referenceLat * Math.PI / 180);
-    const by = b.lat * 69.0;
-    const dx = bx - ax;
-    const dy = by - ay;
-    const lenSq = dx * dx + dy * dy;
-    const t = lenSq === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
-    const closestX = ax + t * dx;
-    const closestY = ay + t * dy;
-    return Math.sqrt((px - closestX) ** 2 + (py - closestY) ** 2);
-}
-
-function circleOverlapsPolygon(circle, polygon) {
-    if (!polygon || polygon.length < 3) return true;
-    if (isPointInPolygon(circle.lat, circle.lng, polygon)) return true;
-    const center = { lat: circle.lat, lng: circle.lng };
-    for (let i = 0; i < polygon.length; i++) {
-        const a = polygon[i];
-        const b = polygon[(i + 1) % polygon.length];
-        if (distancePointToSegmentMiles(center, a, b, circle.lat) <= circle.radius) return true;
-    }
-    return false;
-}
-
-/**
- * Break a large circular area into smaller overlapping sub-circles.
- * RentCast recommends radius ≤ 5mi for reliable results.
- * Generates a hex-style grid of circles that fully cover the original area.
- */
-const SUB_CIRCLE_RADIUS = 5; // miles — sweet spot per RentCast support
-const HEX_HORIZONTAL_SPACING = 2 * SUB_CIRCLE_RADIUS * Math.cos(Math.PI / 6); // 8.66mi
-const HEX_VERTICAL_SPACING = 1.5 * SUB_CIRCLE_RADIUS; // 7.5mi
-
-function generateSubCircles(centerLat, centerLng, radiusMiles, polygon = null) {
-    if (radiusMiles <= SUB_CIRCLE_RADIUS) {
-        // No subdivision needed — single circle covers it
-        const singleCircle = [{ lat: centerLat, lng: centerLng, radius: radiusMiles }];
-        singleCircle.diagnostics = {
-            original_count: 1,
-            pruned_count: 1,
-            removed_count: 0,
-            estimated_original_fetch_area_sqmi: Number((Math.PI * radiusMiles * radiusMiles).toFixed(1)),
-            estimated_pruned_fetch_area_sqmi: Number((Math.PI * radiusMiles * radiusMiles).toFixed(1)),
-            estimated_api_savings_pct: 0
-        };
-        return singleCircle;
-    }
-
-    const latMilesToDegrees = 1 / 69.0;
-    const lngMilesToDegrees = 1 / (69.0 * Math.cos(centerLat * Math.PI / 180));
-    const rows = Math.max(2, Math.ceil((radiusMiles * 2) / HEX_VERTICAL_SPACING) + 1);
-    const cols = Math.max(2, Math.ceil((radiusMiles * 2) / HEX_HORIZONTAL_SPACING) + 1);
-    const rowStart = -(rows - 1) / 2;
-    const colStart = -(cols - 1) / 2;
-    const circles = [];
-
-    for (let row = 0; row < rows; row++) {
-        const rowMiles = (rowStart + row) * HEX_VERTICAL_SPACING;
-        const rowOffsetMiles = row % 2 === 1 ? HEX_HORIZONTAL_SPACING / 2 : 0;
-
-        for (let col = 0; col < cols; col++) {
-            const colMiles = (colStart + col) * HEX_HORIZONTAL_SPACING + rowOffsetMiles;
-            circles.push({
-                lat: Math.round((centerLat + rowMiles * latMilesToDegrees) * 1e6) / 1e6,
-                lng: Math.round((centerLng + colMiles * lngMilesToDegrees) * 1e6) / 1e6,
-                radius: SUB_CIRCLE_RADIUS
-            });
-        }
-    }
-
-    const boundaryFiltered = circles.filter(circle =>
-        distanceMiles(centerLat, centerLng, circle.lat, circle.lng, centerLat) <= radiusMiles + SUB_CIRCLE_RADIUS
-    );
-    const prunedCircles = boundaryFiltered.filter(circle => circleOverlapsPolygon(circle, polygon));
-    const originalFetchArea = Math.PI * SUB_CIRCLE_RADIUS * SUB_CIRCLE_RADIUS * circles.length;
-    const prunedFetchArea = Math.PI * SUB_CIRCLE_RADIUS * SUB_CIRCLE_RADIUS * prunedCircles.length;
-    const coverageStats = {
-        requested_radius: radiusMiles,
-        sub_circle_radius: SUB_CIRCLE_RADIUS,
-        original_count: circles.length,
-        boundary_filtered_count: boundaryFiltered.length,
-        pruned_count: prunedCircles.length,
-        removed_count: circles.length - prunedCircles.length,
-        horizontal_spacing: Number(HEX_HORIZONTAL_SPACING.toFixed(2)),
-        vertical_spacing: Number(HEX_VERTICAL_SPACING.toFixed(2)),
-        estimated_original_fetch_area_sqmi: Number(originalFetchArea.toFixed(1)),
-        estimated_pruned_fetch_area_sqmi: Number(prunedFetchArea.toFixed(1)),
-        requested_area_sqmi: Number((Math.PI * radiusMiles * radiusMiles).toFixed(1)),
-        original_overlap_ratio: Number((originalFetchArea / (Math.PI * radiusMiles * radiusMiles)).toFixed(2)),
-        pruned_overlap_ratio: Number((prunedFetchArea / (Math.PI * radiusMiles * radiusMiles)).toFixed(2)),
-        estimated_api_savings_pct: Number((circles.length ? ((circles.length - prunedCircles.length) / circles.length) * 100 : 0).toFixed(1))
+function centroid(points) {
+    return {
+        lat: points.reduce((sum, p) => sum + p.lat, 0) / points.length,
+        lng: points.reduce((sum, p) => sum + p.lng, 0) / points.length
     };
-    prunedCircles.diagnostics = coverageStats;
-    console.log(`[fetchArea-v11] GRID_COVERAGE ${JSON.stringify(coverageStats)}`);
-    console.log(`[fetchArea-v11] Hex subdivision: ${radiusMiles}mi area → ${prunedCircles.length}/${circles.length} sub-circles after polygon-aware pruning (r=${SUB_CIRCLE_RADIUS}mi, h=${HEX_HORIZONTAL_SPACING.toFixed(2)}mi, v=${HEX_VERTICAL_SPACING.toFixed(2)}mi)`);
-    return prunedCircles;
 }
 
-/**
- * Check for a previous completed pull that covers this same area.
- * Returns the most recent completed job's timestamp if found, else null.
- */
-async function findDeltaWatermark(base44, lat, lng, radius) {
-    try {
-        // Look for completed jobs near this center (within ~0.05 degrees ≈ 3.5 miles)
-        const recentJobs = await base44.asServiceRole.entities.FetchJob.filter(
-            { status: 'completed' }, '-completed_at', 50
-        );
-        const jobs = Array.isArray(recentJobs) ? recentJobs : (recentJobs?.items || []);
-        
-        for (const job of jobs) {
-            if (!job.completed_at || !job.latitude || !job.longitude) continue;
-            
-            const dLat = Math.abs(job.latitude - lat);
-            const dLng = Math.abs(job.longitude - lng);
-            const overlapDegrees = 0.1;
-            
-            if (dLat < overlapDegrees && dLng < overlapDegrees && job.radius >= radius * 0.8) {
-                const ageMs = Date.now() - new Date(job.completed_at).getTime();
-                const ageDays = ageMs / (1000 * 60 * 60 * 24);
-                
-                if (ageDays < 90) {
-                    const totalSubCircles = job.total_sub_circles || 1;
-                    const completedSubCircles = job.completed_sub_circles ?? (job.phase === 'complete' ? totalSubCircles : 0);
-                    const loadedRecords = (job.total_inserted || 0) + (job.total_existed || 0) + (job.total_updated || 0);
-                    const hasCompleteCoverage = completedSubCircles >= totalSubCircles && loadedRecords >= 50;
-                    console.log(`[fetchArea-v9] Found prior job ${job.id}: completeCoverage=${hasCompleteCoverage} (${completedSubCircles}/${totalSubCircles} cells, loaded=${loadedRecords})`);
-                    return {
-                        watermark: job.completed_at,
-                        previousJobId: job.id,
-                        ageDays: Math.round(ageDays),
-                        previousApiCalls: job.total_api_calls || 0,
-                        previousInserted: job.total_inserted || 0,
-                        hasCompleteCoverage,
-                        completedSubCircles,
-                        totalSubCircles,
-                        loadedRecords
-                    };
-                }
-            }
-        }
-    } catch (e) {
-        console.warn(`[fetchArea-v9] Delta watermark check failed (non-fatal): ${e.message}`);
-    }
-    return null;
+function boundsMiles(points) {
+    const lats = points.map(p => p.lat);
+    const lngs = points.map(p => p.lng);
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats), minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+    const midLat = (minLat + maxLat) / 2;
+    return {
+        width_miles: Math.abs(maxLng - minLng) * 69.0 * Math.cos(midLat * Math.PI / 180),
+        height_miles: Math.abs(maxLat - minLat) * 69.0
+    };
 }
 
-async function getNeonCachedZipCodes(lat, lng, radius, userEmail) {
-    if (!DATABASE_URL) return [];
-    const sql = neon(DATABASE_URL);
-    const latRange = radius / 69.0;
-    const lngRange = radius / (69.0 * Math.cos(lat * Math.PI / 180));
-    const rows = await sql`
-        SELECT DISTINCT p.zip_code
-        FROM workspace_properties wp
-        JOIN properties p ON p.id = wp.property_id
-        WHERE wp.user_email = ${userEmail}
-          AND p.zip_code IS NOT NULL
-          AND p.lat BETWEEN ${lat - latRange} AND ${lat + latRange}
-          AND p.lng BETWEEN ${lng - lngRange} AND ${lng + lngRange}
-        LIMIT 100
-    `;
-    return rows.map(row => row.zip_code).filter(Boolean);
+async function resolveFips(center) {
+    const url = `https://geo.fcc.gov/api/census/block/find?latitude=${encodeURIComponent(center.lat)}&longitude=${encodeURIComponent(center.lng)}&format=json`;
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    const data = await response.json();
+    return {
+        fips_code: data?.County?.FIPS || null,
+        county_name: data?.County?.name || null,
+        state_code: data?.State?.code || null,
+        state_name: data?.State?.name || null
+    };
+}
+
+async function polygonHash(points) {
+    const normalized = points.map(p => [Number(p.lat.toFixed(6)), Number(p.lng.toFixed(6))]);
+    const bytes = new TextEncoder().encode(JSON.stringify(normalized));
+    const hashBuffer = await crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
 }
 
 Deno.serve(async (req) => {
@@ -214,262 +69,94 @@ Deno.serve(async (req) => {
         const user = await base44.auth.me();
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const body = await req.json();
-        let { latitude, longitude, radius, polygon, sold_months, include_mls, force_full_refresh, dry_run } = body;
-
-        if (!latitude || !longitude || !radius) {
-            return Response.json({ error: 'Latitude, longitude, and radius are required' }, { status: 400 });
+        const body = await req.json().catch(() => ({}));
+        const polygon = normalizePolygon(body.polygon);
+        if (polygon.length < 3) {
+            return Response.json({ error: 'Precision pulls now require a freehand drawn polygon.' }, { status: 400 });
         }
 
-        // Enforce pull limit (admins bypass)
-        const pullCount = user.area_pulls_count || 0;
-        const maxPulls = 9999; // unlimited for testing
-        if (pullCount >= maxPulls) {
-            return Response.json({
-                error: 'pull_limit_reached',
-                message: "Limit reached."
-            });
-        }
+        const areaSqMi = polygonAreaSqMi(polygon);
+        const center = centroid(polygon);
+        const isPaid = user.subscription_status === 'active' || user.is_owner || user.role === 'admin';
+        const maxArea = isPaid ? PAID_AREA_LIMIT_SQ_MI : FREE_AREA_LIMIT_SQ_MI;
+        const maxProperties = isPaid ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
+        const requestedRaw = Number(body.requested_properties || body.record_cap || maxProperties);
+        const requestedProperties = Math.max(1, Math.min(Number.isFinite(requestedRaw) ? requestedRaw : maxProperties, maxProperties));
+        const box = boundsMiles(polygon);
+        const maxSpanMiles = isPaid ? 35 : 15;
 
-        // Check for active jobs
-        const runningJobs = await base44.entities.FetchJob.filter({ user_email: user.email, status: 'running' }, null, 5);
-        const runningList = Array.isArray(runningJobs) ? runningJobs : (runningJobs?.items || []);
-        if (runningList.length > 0) {
-            return Response.json({
-                status: 'already_running', job_id: runningList[0].id,
-                message: `A fetch job is already running (${runningList[0].progress_pct || 0}% complete). Please wait for it to finish.`
-            });
-        }
-        const pendingJobs = await base44.entities.FetchJob.filter({ user_email: user.email, status: 'pending' }, null, 5);
-        const pendingList = Array.isArray(pendingJobs) ? pendingJobs : (pendingJobs?.items || []);
-        if (pendingList.length > 0) {
-            return Response.json({
-                status: 'already_running', job_id: pendingList[0].id,
-                message: 'A fetch job is starting up. Please wait for it to finish.'
-            });
-        }
-
-        // === MINIMUM BOUNDING CIRCLE ===
-        let optimizedRadius = radius;
-        let optimizedLat = latitude;
-        let optimizedLng = longitude;
-        
-        if (polygon && polygon.length >= 3) {
-            const bounding = computeBoundingCircle(polygon);
-            if (bounding && bounding.radius < radius) {
-                optimizedLat = bounding.lat;
-                optimizedLng = bounding.lng;
-                optimizedRadius = bounding.radius;
-                console.log(`[fetchArea-v8] Tighter bounding circle: ${optimizedRadius}mi (saved ${(radius - optimizedRadius).toFixed(1)}mi)`);
-            }
-        }
-
-        // RentCast Limit Enforcement (Max 100 miles)
-        if (optimizedRadius > 100) {
-            console.warn(`[fetchArea-v9] ⚠️ Radius ${optimizedRadius}mi exceeds RentCast 100mi limit. Capping.`);
-            return Response.json({ 
-                error: 'radius_too_large', 
-                message: 'Your search area results in a radius larger than 100 miles. Please redraw a smaller area to continue.' 
-            }, { status: 400 });
-        }
-
-        // v16 Fix 4A: Tightened default from 12→3 months (90 days)
-        const effectiveSoldMonths = sold_months || 3;
-
-        if (dry_run === true) {
-            const previewSubCircles = generateSubCircles(optimizedLat, optimizedLng, optimizedRadius, polygon);
-            return Response.json({
-                status: 'dry_run',
-                optimized_radius: optimizedRadius,
-                original_radius: radius,
-                sold_months: effectiveSoldMonths,
-                sub_circles: previewSubCircles.length,
-                coverage_diagnostics: previewSubCircles.diagnostics || null,
-                message: `Dry run only — polygon-aware pruning would use ${previewSubCircles.length} grid cells and create no FetchJob.`
-            });
-        }
-
-        // Fix #4: Server-side area enforcement (40 sq mi for free, 300 sq mi for paid)
-        const areaSqMiles = Math.PI * optimizedRadius * optimizedRadius;
-        const isPaid = user.subscription_status === 'active' || user.is_owner;
-        const maxAreaSqMi = isPaid ? 350 : 50; // Generous padding over UI limits
-        if (areaSqMiles > maxAreaSqMi) {
-            console.warn(`[fetchArea-v9] ⚠️ Area ${Math.round(areaSqMiles)}sq mi exceeds ${maxAreaSqMi}sq mi limit for ${isPaid ? 'paid' : 'free'} user.`);
+        if (areaSqMi > maxArea || box.width_miles > maxSpanMiles || box.height_miles > maxSpanMiles) {
             return Response.json({
                 error: 'area_too_large',
-                message: isPaid 
-                    ? `Your drawn area (~${Math.round(areaSqMiles)} sq mi) exceeds the 300 sq mi limit. Please draw a smaller area.`
-                    : `Your drawn area (~${Math.round(areaSqMiles)} sq mi) exceeds the 40 sq mi free limit. Upgrade to pull larger territories.`
+                message: `Area is too large for this account. Limit is ${maxArea} sq mi and ${maxSpanMiles} miles across.`
             }, { status: 400 });
         }
 
-        // ================================================================
-        // CDC DELTA-PULL CHECK
-        // If we've pulled this area before, only fetch records updated since last pull
-        // This is the single biggest API cost saver (~85% reduction on re-pulls)
-        // ================================================================
-        const deltaInfo = await findDeltaWatermark(base44, optimizedLat, optimizedLng, optimizedRadius);
-        let isDeltaPull = !!deltaInfo && deltaInfo.hasCompleteCoverage && !force_full_refresh;
-        let pullMode = isDeltaPull ? 'delta_refresh' : (deltaInfo ? 'full_refresh' : 'new_area');
-        if (deltaInfo && !deltaInfo.hasCompleteCoverage) {
-            console.log(`[fetchArea-v9] Prior pull coverage is not trustworthy — using FULL REFRESH to fill gaps.`);
-        }
-        if (force_full_refresh) {
-            console.log(`[fetchArea-v9] User requested FULL REFRESH — bypassing delta mode.`);
-        }
-        
-        // Check if reconciliation flagged stale ZIPs — force full pull if so
-        const staleZips = user.stale_zips || [];
-        if (isDeltaPull && staleZips.length > 0) {
-            console.log(`[fetchArea-v8] ⚠️ Stale ZIPs detected (${staleZips.length}) from reconciliation — forcing FULL pull to catch silent deletes`);
-            isDeltaPull = false;
-            pullMode = 'full_refresh';
-            // Clear the stale flag since we're doing a full refresh
-            try {
-                await base44.auth.updateMe({ stale_zips: [] });
-            } catch (e) { console.warn('Failed to clear stale_zips:', e.message); }
-        }
-        
-        if (isDeltaPull) {
-            console.log(`[fetchArea-v8] ✅ DELTA PULL — watermark=${deltaInfo.watermark} (${deltaInfo.ageDays}d ago). Previous pull used ${deltaInfo.previousApiCalls} API calls.`);
-        } else if (staleZips.length > 0) {
-            console.log(`[fetchArea-v8] Full pull (forced by reconciliation drift on ${staleZips.length} ZIPs)`);
-        } else {
-            console.log(`[fetchArea-v8] Full pull — no previous data found for this area`);
+        const fips = await resolveFips(center);
+        if (!fips?.fips_code) {
+            return Response.json({ error: 'Could not resolve county/FIPS for this area. Please redraw inside a supported US county.' }, { status: 400 });
         }
 
-        // === SHARED PROPERTY CACHE — link existing Neon zips to user ===
-        try {
-            const cachedZipCodes = await getNeonCachedZipCodes(optimizedLat, optimizedLng, optimizedRadius, user.email);
-            if (cachedZipCodes.length > 0) {
-                const existingUserZips = user.territory_zip_codes || [];
-                const mergedZips = [...new Set([...existingUserZips, ...cachedZipCodes])];
-                if (mergedZips.length > existingUserZips.length) {
-                    await base44.auth.updateMe({ territory_zip_codes: mergedZips });
-                }
-                console.log(`[fetchArea-v9] Neon cache: ${cachedZipCodes.length} existing zips linked to user`);
-            }
-        } catch (cacheErr) {
-            console.warn(`[fetchArea-v9] Neon cache check failed (non-fatal): ${cacheErr.message}`);
+        if (body.dry_run === true) {
+            return Response.json({
+                status: 'dry_run',
+                provider: 'batchdata',
+                phase: 'batchdata_precision',
+                fips_code: fips.fips_code,
+                area_sq_mi: Number(areaSqMi.toFixed(2)),
+                requested_properties: requestedProperties,
+                message: 'Dry run only — BatchData-only Precision path validated without creating a FetchJob.'
+            });
         }
 
-        // === GRID SUBDIVISION ===
-        // RentCast support: large-radius queries silently drop records.
-        // Break into ≤5mi sub-circles and combine results, pruning cells that do not overlap the drawn polygon.
-        const subCircles = generateSubCircles(optimizedLat, optimizedLng, optimizedRadius, polygon);
-        const subCircleDiagnostics = subCircles.diagnostics || null;
+        const runningJobs = await base44.entities.FetchJob.filter({ user_email: user.email, status: 'running' }, null, 5);
+        const pendingJobs = await base44.entities.FetchJob.filter({ user_email: user.email, status: 'pending' }, null, 5);
+        const activeJob = (Array.isArray(runningJobs) ? runningJobs : runningJobs?.items || [])[0] || (Array.isArray(pendingJobs) ? pendingJobs : pendingJobs?.items || [])[0];
+        if (activeJob) return Response.json({ status: 'already_running', job_id: activeJob.id, message: 'A data pull is already running.' });
 
-        // Resume recent failed job for the same area instead of starting over.
-        const recentFailedJobs = await base44.asServiceRole.entities.FetchJob.filter(
-            { user_email: user.email, status: 'failed' },
-            '-updated_date',
-            20
-        );
-        const failedList = Array.isArray(recentFailedJobs) ? recentFailedJobs : (recentFailedJobs?.items || []);
-        const sixHoursAgo = Date.now() - (6 * 60 * 60 * 1000);
-        const resumableJob = failedList.find(job => {
-            const updatedAt = job.updated_date ? new Date(job.updated_date).getTime() : 0;
-            if (updatedAt < sixHoursAgo) return false;
-            const dLat = Math.abs((job.latitude || 0) - optimizedLat);
-            const dLng = Math.abs((job.longitude || 0) - optimizedLng);
-            const radiusClose = Math.abs((job.radius || 0) - optimizedRadius) <= Math.max(0.5, optimizedRadius * 0.1);
-            return dLat < 0.02 && dLng < 0.02 && radiusClose;
+        const hash = await polygonHash(polygon);
+        const job = await base44.entities.FetchJob.create({
+            status: 'pending',
+            provider: 'batchdata',
+            mode_tag: 'PRECISION_TARGET',
+            phase: 'batchdata_precision',
+            latitude: center.lat,
+            longitude: center.lng,
+            radius: Math.sqrt(areaSqMi / Math.PI),
+            polygon,
+            fips_code: fips.fips_code,
+            area_sq_mi: Number(areaSqMi.toFixed(2)),
+            polygon_hash: hash,
+            estimated_record_count: requestedProperties,
+            estimated_cost: Number((requestedProperties * 0.01).toFixed(2)),
+            dry_run_metadata: { county_resolution: fips, requested_properties: requestedProperties, batchdata_only_started_at: new Date().toISOString() },
+            sold_months: Number(body.sold_months || 12),
+            include_mls: false,
+            pull_mode: 'new_area',
+            user_email: user.email,
+            progress_pct: 0,
+            current_offset: 0,
+            total_expected: requestedProperties,
+            total_sub_circles: 1,
+            completed_sub_circles: 0,
+            total_batchdata_calls: 0,
+            error_log: [],
+            chunk_timings: []
         });
 
-        let job;
-        let resumedExistingJob = false;
-        if (resumableJob) {
-            const resumedLog = [
-                ...(resumableJob.error_log || []),
-                `[${new Date().toISOString()}] Resuming failed job from sub-circle ${(resumableJob.current_sub_circle || 0) + 1}, offset ${resumableJob.current_offset || 0}`
-            ];
-            job = await base44.asServiceRole.entities.FetchJob.update(resumableJob.id, {
-                status: 'pending',
-                error_message: null,
-                error_log: resumedLog
-            });
-            resumedExistingJob = true;
-        } else {
-            // Create FetchJob with delta state + sub-circles
-            job = await base44.entities.FetchJob.create({
-                status: 'pending',
-                latitude: optimizedLat,
-                longitude: optimizedLng,
-                radius: optimizedRadius,
-                polygon: polygon || [],
-                sold_months: effectiveSoldMonths,
-                include_mls: include_mls !== false,
-                pull_mode: pullMode,
-                force_full_refresh: !!force_full_refresh,
-                is_delta_pull: isDeltaPull,
-                delta_watermark: isDeltaPull ? deltaInfo.watermark : null,
-                delta_savings: isDeltaPull ? { estimated_full_calls: deltaInfo.previousApiCalls, actual_calls: 0, savings_pct: 0 } : null,
-                current_offset: 0,
-                total_expected: 0,
-                total_fetched: 0,
-                total_inserted: 0,
-                total_existed: 0,
-                total_updated: 0,
-                total_api_calls: 0,
-                user_email: user.email,
-                progress_pct: 0,
-                zip_codes_found: [],
-                error_log: [],
-                chunk_timings: [],
-                phase: 'deed_records',
-                sub_circles: subCircles,
-                current_sub_circle: 0,
-                total_sub_circles: subCircles.length
-            });
-        }
-
-        const now = new Date();
-        const deedCutoff = new Date(now);
-        deedCutoff.setMonth(deedCutoff.getMonth() - effectiveSoldMonths);
-        const computedSaleDateRange = Math.ceil((now.getTime() - deedCutoff.getTime()) / (1000 * 3600 * 24)) + 1;
-        const gridMsg = subCircles.length > 1 ? ` | GRID: ${subCircles.length} sub-circles (r=${SUB_CIRCLE_RADIUS}mi)` : ' | single circle';
-        console.log(`[fetchArea-v9] Created FetchJob ${job.id} | delta=${isDeltaPull} | lat=${optimizedLat} lng=${optimizedLng} r=${optimizedRadius}mi | deedWindowDays=${computedSaleDateRange} | mlsWindowDays=30${gridMsg}`);
-
-        if (!resumedExistingJob) {
-            try {
-                await base44.auth.updateMe({ area_pulls_count: pullCount + 1 });
-            } catch (e) { console.warn('Failed to update pull count:', e.message); }
-        }
-
-        const resumeExpectedChunk = job.chunk_number || 0;
-        setTimeout(() => {
-            base44.functions.invoke('processFetchChunk', { expected_chunk: resumeExpectedChunk }).catch(e => {
-                console.warn('[fetchArea-v9] Background chunk invoke failed:', e.message);
-            });
-        }, 500);
+        base44.asServiceRole.functions.invoke('processFetchChunk', { expected_chunk: 0 }).catch(error => {
+            console.warn(`[fetchAreaProperties] BatchData processor invoke failed: ${error.message}`);
+        });
 
         return Response.json({
-            status: resumedExistingJob ? 'resumed' : 'started',
+            status: 'started',
             job_id: job.id,
-            optimized_radius: optimizedRadius,
-            original_radius: radius,
-            sold_months: effectiveSoldMonths,
-            is_delta_pull: isDeltaPull,
-            pull_mode: pullMode,
-            delta_info: isDeltaPull ? {
-                watermark: deltaInfo.watermark,
-                age_days: deltaInfo.ageDays,
-                estimated_savings: '~85% fewer API calls'
-            } : null,
-            sub_circles: subCircles.length,
-            coverage_diagnostics: subCircleDiagnostics || {
-                requested_radius: optimizedRadius,
-                requested_area_sqmi: Math.round(Math.PI * optimizedRadius * optimizedRadius),
-                sub_circle_radius: SUB_CIRCLE_RADIUS,
-                sub_circle_count: subCircles.length
-            },
-            message: isDeltaPull 
-                ? `Delta pull started — only fetching changes since ${deltaInfo.ageDays}d ago. Estimated ~85% fewer API calls.`
-                : `${pullMode === 'full_refresh' ? 'Full refresh / fill gaps' : 'Full property fetch'} started (radius: ${optimizedRadius}mi, ${subCircles.length} grid cells). Running in background.`
+            provider: 'batchdata',
+            phase: 'batchdata_precision',
+            requested_properties: requestedProperties,
+            message: `BatchData Precision pull started for up to ${requestedProperties} properties.`
         });
-
     } catch (error) {
-        console.error('[fetchArea-v8] Fatal:', error);
         return Response.json({ error: error.message }, { status: 500 });
     }
 });

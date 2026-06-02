@@ -132,7 +132,7 @@ Deno.serve(async (req) => {
             mode: 'sandbox_preview_no_paid_batchdata_charge',
             provider: 'batchdata',
             sandbox: true,
-            paid_pull_enabled: false,
+            paid_pull_enabled: true,
             phase: 'phase_1_precision_preview',
             polygon_hash: await polygonHash(polygon),
             centroid: center,
@@ -162,7 +162,7 @@ Deno.serve(async (req) => {
             },
             message: hardRejected
                 ? 'Sandbox preview only. Redraw a smaller area before any live BatchData pull.'
-                : `Sandbox preview only. This area is eligible to return up to ${requestedProperties} properties when paid pulls are enabled.`
+                : `This area is eligible to pull up to ${requestedProperties} BatchData properties from your drawn Precision territory.`
         });
     } catch (error) {
         return Response.json({ error: error.message }, { status: 500 });

@@ -459,7 +459,7 @@ export default function TerritoryPrompt({
       localStorage.setItem('fk_drawnPolygonQueried', 'true');
       setDrawnPolygon(drawnPolygon, true);
       window.dispatchEvent(new CustomEvent('fk-polygon-history-updated'));
-      toast.success(`Sandbox preview ready: ${d.returned_property_count || safeRequestedPropertyCount} properties allowed. No paid BatchData credits used.`);
+      toast.success(`Preview ready: ${d.returned_property_count || safeRequestedPropertyCount} properties allowed. Pull Data will use BatchData.`);
     } catch (e) {
       const msg = e.response?.data?.message || e.message;
       toast.error(`Sandbox preview failed: ${msg}`);

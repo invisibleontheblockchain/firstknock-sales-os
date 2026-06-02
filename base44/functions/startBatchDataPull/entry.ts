@@ -143,7 +143,7 @@ Deno.serve(async (req) => {
                 paid_pull_started_at: new Date().toISOString()
             },
             sold_months: Number(body.sold_months || 12),
-            include_mls: true,
+            include_mls: false,
             user_email: user.email,
             progress_pct: 0,
             current_offset: 0,

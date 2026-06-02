@@ -2,6 +2,7 @@ import { base44 } from '@/api/base44Client';
 
 const routeHydrationCache = new Map();
 const routeHydrationInflight = new Map();
+const routeCollectionHydrationCache = new Map();
 
 function hasMapPoints(route) {
     return Array.isArray(route?.properties) && route.properties.some(p => p?.lat && p?.lng);
@@ -78,6 +79,11 @@ export async function hydrateRouteForMap(route, userEmail = null) {
 export async function hydrateRoutesForMap(routes = [], userEmail = null, existingProperties = []) {
     if (!Array.isArray(routes) || routes.length === 0) return [];
 
+    const routeSig = routes.map(route => `${route.id || ''}:${route.updated_date || ''}:${(route.property_hashes || []).join('|')}`).join('~');
+    const propSig = existingProperties.map(p => `${p.address_hash || p.id || ''}:${p.updated_date || p.effective_status || ''}`).join('~');
+    const collectionKey = `${userEmail || ''}::${routeSig}::${propSig}`;
+    if (routeCollectionHydrationCache.has(collectionKey)) return routeCollectionHydrationCache.get(collectionKey);
+
     const existingByHash = indexProperties(existingProperties);
     const hydrated = await Promise.all(routes.map(async route => {
         if (hasMapPoints(route)) return orderRouteProperties(route);
@@ -94,5 +100,10 @@ export async function hydrateRoutesForMap(routes = [], userEmail = null, existin
         return hydrateRouteForMap(route, userEmail);
     }));
 
+    routeCollectionHydrationCache.set(collectionKey, hydrated);
+    if (routeCollectionHydrationCache.size > 25) {
+        const oldestKey = routeCollectionHydrationCache.keys().next().value;
+        routeCollectionHydrationCache.delete(oldestKey);
+    }
     return hydrated;
 }

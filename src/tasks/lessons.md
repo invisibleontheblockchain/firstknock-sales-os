@@ -69,3 +69,4 @@
 - Canvas auto-density thresholds should be calibrated for field-sales territory sizes, not generic area labels; suburban residential polygons can be tens of square miles and still need suburban door-density math.
 - Manual Canvas boundary edits must persist back into the builder campaign state; otherwise the next builder render can overwrite map-only adjusted geometry.
 - For road-aware Canvas generation, verify the data-fetch path separately from the geometry algorithm; a correct DCEL/face generator still fails in production if OSM road data is never fetched into the live builder flow.
+- When the user explicitly authorizes a provider cutover and says to stop questioning the decision, execute the approved plan and verify safety gates instead of asking for another confirmation.
