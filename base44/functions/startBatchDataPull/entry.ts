@@ -87,6 +87,10 @@ Deno.serve(async (req) => {
         const maxProperties = isPaid ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
         const requestedRaw = Number(body.requested_properties || maxProperties);
         const requestedProperties = Math.max(1, Math.min(Number.isFinite(requestedRaw) ? requestedRaw : maxProperties, maxProperties));
+        const minPriceRaw = Number(body.min_price);
+        const maxPriceRaw = Number(body.max_price);
+        const minPrice = Number.isFinite(minPriceRaw) && minPriceRaw > 0 ? minPriceRaw : null;
+        const maxPrice = Number.isFinite(maxPriceRaw) && maxPriceRaw > 0 ? maxPriceRaw : null;
         const box = boundsMiles(polygon);
         const maxSpanMiles = isPaid ? 35 : 15;
 
@@ -140,6 +144,10 @@ Deno.serve(async (req) => {
             dry_run_metadata: {
                 county_resolution: fips,
                 requested_properties: requestedProperties,
+                filters: {
+                    min_price: minPrice,
+                    max_price: maxPrice
+                },
                 paid_pull_started_at: new Date().toISOString()
             },
             sold_months: Number(body.sold_months || 12),

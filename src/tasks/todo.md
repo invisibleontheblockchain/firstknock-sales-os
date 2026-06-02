@@ -1,12 +1,15 @@
 # Plan
 
 ## Current Plan — Precision Pull Flow Simplification
-- [ ] Confirm scope: Precision Mode default pull flow should be simplified only; Canvas, route execution, BatchData caps, and backend ingestion logic stay unchanged.
-- [ ] Inspect current Precision area/pull controls and route builder filters to identify where home value range and sold-window controls already exist.
-- [ ] Design the default post-draw panel as: selected area summary, home value range, sold lookback, requested property count if still needed, and one primary Generate button.
-- [ ] Move less-common Precision options into an Advanced Settings section/drawer so the default flow feels simple for mail-style routes.
-- [ ] Wire Generate to the existing BatchData pull path using the selected area, sold lookback, and value filters without changing the 50/free and 1000/paid caps.
-- [ ] Verify the simplified UI renders without new errors and document the final behavior.
+- [x] Confirm scope: Precision Mode default pull flow should be simplified only; Canvas, route execution, BatchData caps, and backend ingestion logic stay unchanged.
+- [x] Inspect current Precision area/pull controls and route builder filters to identify where home value range and sold-window controls already exist.
+- [x] Design the default post-draw panel as: selected area summary, home value range, sold lookback, requested property count if still needed, and one primary Generate button.
+- [x] Move less-common Precision options into an Advanced Settings section/drawer so the default flow feels simple for mail-style routes.
+- [x] Wire Generate to the existing BatchData pull path using the selected area, sold lookback, and value filters without changing the 50/free and 1000/paid caps.
+- [x] Verify the simplified UI renders without new errors and document the final behavior.
+
+### Review — Precision Pull Flow Simplification
+After drawing a Precision area, Pull Data now opens a simple Generate panel with only home value range and sold lookback as the default choices. Advanced settings are tucked away for max property count and clearing the area. Generate starts the existing BatchData pull with the same 50/free and 1000/paid caps, and the processor now rejects properties outside the selected value range before routing. Backend self-test and dry-run passed without spending BatchData credits; runtime logs showed no new frontend import/build error, only unrelated existing route-hydration rate-limit and PolygonHistory warnings.
 
 
 ## Current Plan — BatchData-Only Precision Cutover + Builder Draw Integration

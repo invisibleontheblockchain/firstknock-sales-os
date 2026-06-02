@@ -114,10 +114,16 @@ function mapBatchDataProperty(record, job) {
     const cutoffMs = Date.now() - soldMonths * 30 * 24 * 60 * 60 * 1000;
     const ownerName = firstValue(owner.fullName, owner.name, owner.names?.[0]?.full, owner.names?.[0]);
     const price = Number(firstValue(lastSale.price, lastSale.salePrice, p.lastSalePrice, listing.price));
+    const filters = job.dry_run_metadata?.filters || {};
+    const minPrice = Number(filters.min_price);
+    const maxPrice = Number(filters.max_price);
+    const hasMinPrice = Number.isFinite(minPrice) && minPrice > 0;
+    const hasMaxPrice = Number.isFinite(maxPrice) && maxPrice > 0;
+    const priceRejected = (hasMinPrice && (!Number.isFinite(price) || price < minPrice)) || (hasMaxPrice && (!Number.isFinite(price) || price > maxPrice));
     const propertyType = firstValue(p.propertyType, p.landUse, building.propertyType) || 'Single Family';
     const badType = /commercial|industrial|vacant|agricultural|land/i.test(String(propertyType));
     const rejected =
-        !saleDateMs || saleDateMs < cutoffMs ||
+        !saleDateMs || saleDateMs < cutoffMs || priceRejected ||
         listingStatusLower === 'active' || listingStatusLower === 'for sale' ||
         owner.ownerOccupied === false || quickLists.corporateOwned === true || quickLists.investorOwned === true || badType;
 

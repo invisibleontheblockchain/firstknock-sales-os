@@ -9,6 +9,7 @@ import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
 import { savePolygonToHistory } from '@/components/map/PolygonHistory';
+import PrecisionPullPanel from '@/components/map/PrecisionPullPanel';
 
 
 export default function TerritoryPrompt({
@@ -48,6 +49,9 @@ export default function TerritoryPrompt({
   const [selectedHistoryArea, setSelectedHistoryArea] = useState(null);
   const [recoverableJob, setRecoverableJob] = useState(null);
   const [requestedPropertyCount, setRequestedPropertyCount] = useState(50);
+  const [minHomeValue, setMinHomeValue] = useState('');
+  const [maxHomeValue, setMaxHomeValue] = useState('');
+  const [showPrecisionPullPanel, setShowPrecisionPullPanel] = useState(false);
   const [previewResult, setPreviewResult] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [paidPullStarting, setPaidPullStarting] = useState(false);
@@ -480,7 +484,9 @@ export default function TerritoryPrompt({
       const res = await base44.functions.invoke('startBatchDataPull', {
         polygon: drawnPolygon,
         requested_properties: safeRequestedPropertyCount,
-        sold_months: fetchMonths
+        sold_months: fetchMonths,
+        min_price: minHomeValue ? Number(minHomeValue) : null,
+        max_price: maxHomeValue ? Number(maxHomeValue) : null
       });
       const data = res.data || {};
       if (data.error) {
@@ -498,6 +504,7 @@ export default function TerritoryPrompt({
       setPullProgress('Starting paid BatchData pull...');
       setEtaText('Starting...');
       startPolling(data.job_id);
+      setShowPrecisionPullPanel(false);
       toast.success(data.message || 'Paid BatchData pull started.');
     } catch (e) {
       const msg = e.response?.data?.message || e.response?.data?.error || e.message;
@@ -657,34 +664,17 @@ export default function TerritoryPrompt({
                         <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
                         <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
                     </div>
-                    <div className="grid grid-cols-[auto_minmax(0,72px)_1fr] sm:flex sm:items-center gap-2 flex-1 sm:flex-none min-w-0 sm:ml-2">
-                        <label className="text-[9px] text-gray-400 font-bold whitespace-nowrap">PROPERTIES</label>
-                        <input
-            type="number"
-            min="1"
-            max={maxRequestedProperties}
-            value={requestedPropertyCount}
-            onChange={(e) => {
-              const value = e.target.value;
-              if (value === '') {
-                setRequestedPropertyCount('');
-                return;
-              }
-              setRequestedPropertyCount(Math.min(Number(value) || 1, maxRequestedProperties));
-            }}
-            onBlur={() => setRequestedPropertyCount(safeRequestedPropertyCount)}
-            className="w-full sm:w-16 h-9 sm:h-6 bg-white/5 border border-white/10 rounded-md px-2 text-[12px] sm:text-[11px] text-white outline-none" />
-          
+                    <div className="flex items-center gap-2 flex-1 sm:flex-none min-w-0 sm:ml-2">
                         <Button
             disabled={paidPullStarting || pulling}
-            onClick={handlePaidBatchDataPull}
-            className="text-black text-[10px] h-9 sm:h-6 px-2 sm:px-3 py-0 rounded-md font-bold tracking-wide bg-yellow-500 hover:bg-yellow-400 shadow-[0_0_15px_rgba(234,179,8,0.35)] flex-1 sm:flex-none min-w-0">
+            onClick={() => setShowPrecisionPullPanel(true)}
+            className="text-black text-[10px] h-9 sm:h-6 px-3 py-0 rounded-md font-bold tracking-wide bg-yellow-500 hover:bg-yellow-400 shadow-[0_0_15px_rgba(234,179,8,0.35)] flex-1 sm:flex-none min-w-0">
             
-                            {paidPullStarting ? 'Starting...' : 'Pull Data'}
+                            Pull Data
                         </Button>
                     </div>
                     <button
-          onClick={() => {setDrawnPolygon(null);setDraftPolygon([]);setDrawingMode(false);}}
+          onClick={() => {setDrawnPolygon(null);setDraftPolygon([]);setDrawingMode(false);setShowPrecisionPullPanel(false);}}
           className="absolute top-2 right-2 sm:static text-gray-400 hover:text-red-500 transition-colors p-2 sm:p-1 bg-white/5 rounded-full shrink-0 ml-auto sm:ml-0">
           
                         <Trash2 className="w-3 h-3" />
@@ -692,17 +682,29 @@ export default function TerritoryPrompt({
                     <div className="static sm:absolute sm:top-full sm:left-0 sm:right-auto mt-1 sm:mt-2 w-full sm:w-72 bg-white/5 sm:bg-black/90 border border-gray-800 rounded-xl sm:rounded-lg p-2 shadow-xl animate-in fade-in slide-in-from-top-1">
                         <p className="text-[9px] text-gray-400 leading-tight">
                             <span className="text-blue-400 font-bold">Area:</span> selected freehand polygon is about <span className="text-white">{actualAreaLabel}</span>.
-                            <br /><span className="text-cyan-300 font-bold">Firstknock:</span> pulls up to <span className="text-white">{maxRequestedProperties}</span> properties for this account.
-                            {previewResult &&
-            <span className="block mt-1 text-white">
-                                    {previewResult.hard_rejected ?
-              `Rejected: ${previewResult.rejection_reason || previewResult.message}` :
-              `Allowed: ${previewResult.returned_property_count || safeRequestedPropertyCount} properties · ${previewResult.area_sq_mi} sq mi`}
-                                </span>
-            }
+                            <br /><span className="text-cyan-300 font-bold">FirstKnock:</span> pulls up to <span className="text-white">{maxRequestedProperties}</span> properties for this account.
                         </p>
                     </div>
                 </div>
+      }
+
+            {showPrecisionPullPanel && !drawingMode && !pulling && routeMode === 'precision' && drawnPolygon && drawnPolygon.length > 2 &&
+      <PrecisionPullPanel
+        areaLabel={actualAreaLabel}
+        maxProperties={maxRequestedProperties}
+        requestedPropertyCount={requestedPropertyCount}
+        setRequestedPropertyCount={setRequestedPropertyCount}
+        minHomeValue={minHomeValue}
+        setMinHomeValue={setMinHomeValue}
+        maxHomeValue={maxHomeValue}
+        setMaxHomeValue={setMaxHomeValue}
+        soldMonths={fetchMonths}
+        setSoldMonths={setFetchMonths}
+        onClose={() => setShowPrecisionPullPanel(false)}
+        onGenerate={handlePaidBatchDataPull}
+        generating={paidPullStarting}
+        onClearArea={() => {setDrawnPolygon(null);setDraftPolygon([]);setDrawingMode(false);setShowPrecisionPullPanel(false);}}
+      />
       }
         </>);
 
