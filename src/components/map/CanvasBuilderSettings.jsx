@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Map as MapIcon, Pencil, Rocket, Save, Wand2, X, Lock, Unlock, Users, Clock, Home, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { generateCanvasZones, getCanvasCampaignSummary } from '@/components/logic/canvasZones';
+import { fetchOverpassRoadNetwork } from '@/components/logic/overpassRoadNetwork';
 
 const STORAGE_KEY = 'fk_canvasCampaignSprint1';
 const ROSTER_KEY = 'fk_canvasRosterSprint1';
@@ -46,6 +47,7 @@ function buildInitialCampaign() {
     repsPerZone: 1,
     densityMode: 'auto',
     customDoorsPerSqMi: 150,
+    highwayFilter: 'primary|secondary|tertiary|residential',
     zones: [],
     locked: false,
     deployedAt: null,
@@ -69,12 +71,14 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
   const [sessionRoadNetwork, setSessionRoadNetwork] = useState(() => {
     try { return window.__fkCanvasRoadNetwork || window.__fkRoadNetwork || null; } catch { return null; }
   });
+  const [roadFetchStatus, setRoadFetchStatus] = useState('idle');
 
   const roster = useMemo(() => normalizeRoster(rosterText), [rosterText]);
   const effectivePolygon = hasDrawnArea && drawnPolygon?.length > 2 ? drawnPolygon : DEMO_POLYGON;
   const summary = useMemo(() => getCanvasCampaignSummary({ polygon: effectivePolygon, ...campaign }), [effectivePolygon, campaign]);
   const effectivePropertyPoints = propertyPoints.length ? propertyPoints : sessionPropertyPoints;
   const canvasConfig = useMemo(() => ({ ...campaign, propertyPoints: effectivePropertyPoints, roadNetwork: sessionRoadNetwork }), [campaign, effectivePropertyPoints, sessionRoadNetwork]);
+  const roadPolygonKey = useMemo(() => effectivePolygon.map((point) => `${Number(point.lat).toFixed(6)},${Number(point.lng).toFixed(6)}`).join('|'), [effectivePolygon]);
 
   const zones = useMemo(() => {
     if ((campaign.zones || []).some((zone) => zone.manual_adjusted) && campaign.zones.length === summary.zoneCount) {
@@ -125,6 +129,30 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
   }, []);
 
   useEffect(() => {
+    if (!effectivePolygon || effectivePolygon.length < 3) return;
+    let cancelled = false;
+    setRoadFetchStatus('loading');
+    fetchOverpassRoadNetwork(effectivePolygon, { highwayFilter: campaign.highwayFilter || 'primary|secondary|tertiary|residential' })
+      .then((roadNetwork) => {
+        if (cancelled) return;
+        window.__fkCanvasRoadNetwork = roadNetwork;
+        window.__fkRoadNetwork = roadNetwork;
+        setSessionRoadNetwork(roadNetwork);
+        setRoadFetchStatus(roadNetwork?.elements?.length ? 'ready' : 'fallback');
+        window.dispatchEvent(new CustomEvent('fk-canvas-road-network-updated'));
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        console.warn('[FK] Canvas road alignment unavailable; using density zones.', error?.message || error);
+        window.__fkCanvasRoadNetwork = null;
+        setSessionRoadNetwork(null);
+        setRoadFetchStatus('fallback');
+        window.dispatchEvent(new CustomEvent('fk-canvas-road-network-updated'));
+      });
+    return () => { cancelled = true; };
+  }, [roadPolygonKey, campaign.highwayFilter]);
+
+  useEffect(() => {
     const handleManualAdjustment = (event) => {
       const nextZones = event.detail?.zones;
       if (!Array.isArray(nextZones)) return;
@@ -136,7 +164,7 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
 
   const updateCampaign = (patch) => {
     if (campaign.locked) return toast.info('Campaign is locked. Tap Edit Campaign to make changes.');
-    const geometryChanging = ['repCount', 'shiftHours', 'doorsPerHour', 'repsPerZone', 'densityMode', 'customDoorsPerSqMi'].some((key) => Object.prototype.hasOwnProperty.call(patch, key));
+    const geometryChanging = ['repCount', 'shiftHours', 'doorsPerHour', 'repsPerZone', 'densityMode', 'customDoorsPerSqMi', 'highwayFilter'].some((key) => Object.prototype.hasOwnProperty.call(patch, key));
     setCampaign((current) => ({ ...current, ...patch, zones: geometryChanging ? [] : current.zones }));
   };
 
@@ -214,13 +242,13 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
   return (
     <div className="fixed inset-0 z-[2000] pointer-events-none lg:flex">
       <div className={`hidden lg:block pointer-events-auto h-full bg-[#09090f]/95 border-r border-purple-500/20 shadow-2xl pt-[env(safe-area-inset-top)] transition-all ${focusMode ? 'w-16' : 'w-[390px]'}`}>
-        {focusMode ? <FocusRail zoneCount={zones.length} assignedCount={assignedCount} onClose={onClose} /> : <BuilderContent {...{ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, assignmentWarnings }} />}
+        {focusMode ? <FocusRail zoneCount={zones.length} assignedCount={assignedCount} onClose={onClose} /> : <BuilderContent {...{ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, assignmentWarnings, roadFetchStatus }} />}
       </div>
 
       {!focusMode && (
         <div className="lg:hidden pointer-events-auto absolute left-0 right-0 bottom-0 max-h-[78vh] rounded-t-3xl bg-[#09090f]/98 border-t border-purple-500/25 shadow-2xl overflow-hidden pb-[env(safe-area-inset-bottom)]">
           <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-white/20" />
-          <BuilderContent {...{ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, assignmentWarnings }} compact />
+          <BuilderContent {...{ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, assignmentWarnings, roadFetchStatus }} compact />
         </div>
       )}
     </div>
@@ -238,7 +266,7 @@ function FocusRail({ zoneCount, assignedCount, onClose }) {
   );
 }
 
-function BuilderContent({ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, assignmentWarnings = [], compact = false }) {
+function BuilderContent({ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, assignmentWarnings = [], roadFetchStatus = 'idle', compact = false }) {
   const [zoneFilter, setZoneFilter] = useState('');
   const filteredZones = useMemo(() => {
     const term = zoneFilter.trim().toLowerCase();
@@ -283,6 +311,12 @@ function BuilderContent({ campaign, setCampaign, updateCampaign, rosterText, set
           <div className="rounded-xl bg-black/35 border border-white/10 p-3 flex items-center justify-between gap-2">
             <span className="text-xs text-gray-300">{hasDrawnArea ? 'Drawn territory active' : 'Using pre-loaded Anderson demo territory'}</span>
             {hasDrawnArea && <button onClick={onClearPolygon} className="text-xs font-bold text-red-300">Clear</button>}
+          </div>
+          <div className="rounded-xl bg-black/30 border border-white/10 p-2 text-[11px] text-gray-400">
+            {roadFetchStatus === 'loading' && 'Aligning zones to real roads...'}
+            {roadFetchStatus === 'ready' && 'Road-aligned zoning active'}
+            {roadFetchStatus === 'fallback' && 'Road network unavailable — using density-based zones'}
+            {roadFetchStatus === 'idle' && 'Road alignment ready when territory is drawn'}
           </div>
         </section>
 

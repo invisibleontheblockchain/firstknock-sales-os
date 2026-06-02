@@ -442,7 +442,7 @@ function findRoadFaces(nodes, adjacency, managerPolygon, targetZoneAreaSqMi) {
   let faces = [...facesByKey.values()].sort((a, b) => b.fullArea - a.fullArea);
   if (faces.length > 1) faces = faces.slice(1);
 
-  const maxFaceArea = Math.max(0.0001, targetZoneAreaSqMi * 3);
+  const maxFaceArea = Math.max(0.0001, targetZoneAreaSqMi * 10);
   faces = faces
     .filter((face) => face.fullArea <= maxFaceArea && polygonIntersectsPolygon(face.fullGeometry, managerPolygon))
     .map((face) => {
@@ -473,8 +473,7 @@ function findRoadFaces(nodes, adjacency, managerPolygon, targetZoneAreaSqMi) {
   });
 
   if (incompleteSegment) {
-    console.warn(`[FK] Face traversal incomplete — segment [${incompleteSegment[0]},${incompleteSegment[1]}] in only one face`);
-    return [];
+    console.warn(`[FK] Face traversal has open/boundary segments; continuing with ${faces.length} valid enclosed faces. Example segment: [${incompleteSegment[0]},${incompleteSegment[1]}]`);
   }
 
   return faces.length >= 2 ? faces : [];

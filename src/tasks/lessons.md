@@ -68,3 +68,4 @@
 - Canvas mode bottom navigation must not expose Precision route concepts like saved route counts; keep it focused on Canvas Builder, Live View, and Deploy Campaign.
 - Canvas auto-density thresholds should be calibrated for field-sales territory sizes, not generic area labels; suburban residential polygons can be tens of square miles and still need suburban door-density math.
 - Manual Canvas boundary edits must persist back into the builder campaign state; otherwise the next builder render can overwrite map-only adjusted geometry.
+- For road-aware Canvas generation, verify the data-fetch path separately from the geometry algorithm; a correct DCEL/face generator still fails in production if OSM road data is never fetched into the live builder flow.

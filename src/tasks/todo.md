@@ -1,5 +1,20 @@
 # Plan
 
+## Current Plan — Canvas Road-Aligned Generation Reimplementation
+- [x] Start with runtime logs before code inspection because the feature is not working as expected.
+- [x] Review lessons, current Canvas generator, builder flow, territory draw flow, and Home mounting path.
+- [x] Identify root cause: road-aware generation is mostly local algorithm code, but the live Canvas flow has no reliable Overpass/OSM road fetch feeding `window.__fkCanvasRoadNetwork`, so it usually falls back to H3/grid.
+- [x] Add a focused Overpass road-network helper module instead of expanding oversized `pages/Home`.
+- [x] Fetch road geometry on confirmed drawn polygon / Canvas builder load, with timeout and safe fallback.
+- [x] Pass road data into `generateCanvasZones()` through the existing session bridge without changing CanvasSession schema.
+- [x] Repair the road face pipeline so it can produce usable zones from real OSM way/node JSON and fallback only when truly insufficient.
+- [x] Add clear console/debug status for road-aligned vs fallback generation.
+- [x] Verify Home loads and runtime logs show no new frontend errors.
+- [x] Document the result in this plan review.
+
+### Review — Canvas Road-Aligned Generation Reimplementation
+Root cause was that Canvas had road-aware algorithm code, but the live builder flow was not reliably fetching Overpass/OSM road data into the existing session bridge before generating zones, so it kept falling back to density/H3 zones. Added a focused Overpass helper, wired Canvas Builder to fetch/cache road geometry for the active polygon, pass it into `generateCanvasZones()` without changing CanvasSession schema, exposed road-alignment status in the builder, and relaxed over-strict face validation that rejected usable real OSM graphs. `/Home` loads to the auth gate with no new frontend errors; remaining runtime logs are unrelated route hydration 429s.
+
 ## Current Plan — Canvas Source Zone Engine Replacement
 - [x] Read the full request and current `components/logic/canvasZones` implementation before editing.
 - [x] Preserve saved CanvasSession data and only change future generation behavior.
