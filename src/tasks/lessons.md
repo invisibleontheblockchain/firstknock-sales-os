@@ -1,5 +1,8 @@
 # Lessons
 
+- For Canvas Opportunity Discovery POCs, make building footprints the primary source of truth and use addresses only as optional confidence enrichment; do not block the trust workflow on national address normalization.
+- Manager-facing trust UI should show simple counts and visual proof first: opportunities found, excluded areas, green dots, and red overlays. Keep coverage percentages and detailed diagnostics out of the primary manager workflow.
+
 - When importing icons named after JavaScript globals such as `Map`, `Set`, or `Date`, either alias the icon import or call the global via `globalThis.*` so helper code like `new Map()` does not accidentally call the icon component constructor.
 - When mobile map confirmation still changes zoom after event propagation fixes, look for state-driven camera effects (`fitBounds`, `setView`) that run after render. Preserve or suppress camera changes around the state update, not just the tapped button event.
 
