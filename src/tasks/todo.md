@@ -1,5 +1,35 @@
 # Plan
 
+## Current Plan — Canvas Opportunity Discovery Engine POC
+- [ ] Confirm Canvas-only scope: do not modify Precision mode, paid BatchData pull flow, Precision route generation, Billing, or existing field logging behavior.
+- [ ] Add Neon schema support for Canvas intelligence only: `building_footprints`, `land_use`, `addresses`, `canvas_analysis`, and `opportunities`, with PostGIS-safe geometry columns/indexes where available.
+- [ ] Create a Canvas-only setup/migration function that initializes those tables without changing existing property/territory tables.
+- [ ] Create `canvasAnalyzeTerritory` backend function for `POST /canvas/analyze` equivalent via Base44 SDK invocation: accept drawn polygon, query discovered buildings, addresses, and excluded land-use polygons, classify opportunities, compute confidence, save analysis, and return map-ready GeoJSON-style data.
+- [ ] Create `canvasGetAnalysis` backend function for saved analysis retrieval by ID.
+- [ ] Create `canvasFeedback` backend function to store `looks_correct` / `looks_incorrect` feedback and update trust metrics.
+- [ ] Add a focused frontend Review Opportunities UI component that shows Opportunity count, included breakdown, excluded breakdown, confidence score, coverage metrics, and feedback buttons.
+- [ ] Add a focused Canvas trust map layer that renders green opportunity points/building centroids and red excluded-area overlays, independent of Precision pins/routes.
+- [ ] Wire Canvas Builder workflow only: Draw Territory → Analyze Territory → Review Opportunities → existing Generate Zones → Assign Reps.
+- [ ] Feed discovered opportunity points into existing Canvas zone generation through the current `propertyPoints`/session bridge so zone counts use real discovered opportunities when analysis exists.
+- [ ] Preserve existing zone generation algorithms and only replace their input door/opportunity points for Canvas analyzed sessions; fallback estimates remain only when no analysis is available.
+- [ ] Verify backend functions with empty-data and sample-polygon tests, proving no Precision functions or tables are touched.
+- [ ] Verify frontend loads `/Home` without new build/runtime errors and Canvas-only UI appears only in Canvas mode.
+- [ ] Document review results and any known POC limitations before marking complete.
+
+### Implementation boundaries
+- Canvas-only: all new function names and UI components will use `canvas*` naming.
+- No paid data providers, no Redis/cache infra, no microservices, no route sequencing, no Precision changes.
+- Because `pages/Home` is oversized, avoid adding large logic there; integrate through existing focused Canvas components (`CanvasBuilderSettings`, `ManagerMapLayers`, `CanvasZoneLayers`) and new small components.
+- Initial POC can support empty tables gracefully: it should return zero opportunities with a clear “dataset not loaded”/coverage warning instead of failing.
+
+### Proposed build order
+1. Database foundation and setup function.
+2. Analysis/feedback backend functions.
+3. Review Opportunities UI and trust layers.
+4. Canvas Builder workflow gate.
+5. Opportunity-point integration into existing Canvas zone generation.
+6. Verification and review.
+
 ## Current Plan — Clean Builder Map While Preserving Saved Routes
 - [x] Confirm scope: hide old saved route overlays only while Builder/draw mode is active; do not delete or modify SavedRoute records.
 - [x] Keep route selection behavior intact: selecting an older route from the Routes panel still opens that route on the map.
