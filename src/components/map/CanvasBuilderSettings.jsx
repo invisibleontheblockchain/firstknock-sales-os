@@ -4,8 +4,12 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Map as MapIcon, Pencil, Rocket, Save, Wand2, X, Lock, Unlock, Users, Clock, Home, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
+import { base44 } from '@/api/base44Client';
 import { generateCanvasZones, getCanvasCampaignSummary } from '@/components/logic/canvasZones';
 import { fetchOverpassRoadNetwork } from '@/components/logic/overpassRoadNetwork';
+import CanvasOpportunityReview from '@/components/canvas/CanvasOpportunityReview';
+import { loadCanvasAnalysis, saveCanvasAnalysis } from '@/components/canvas/canvasAnalysisStore';
+import { opportunitiesToDoorPoints } from '@/components/canvas/canvasOpportunityUtils';
 
 const STORAGE_KEY = 'fk_canvasCampaignSprint1';
 const ROSTER_KEY = 'fk_canvasRosterSprint1';
@@ -72,12 +76,16 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
     try { return window.__fkCanvasRoadNetwork || window.__fkRoadNetwork || null; } catch { return null; }
   });
   const [roadFetchStatus, setRoadFetchStatus] = useState('idle');
+  const [opportunityAnalysis, setOpportunityAnalysis] = useState(loadCanvasAnalysis);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
 
   const roster = useMemo(() => normalizeRoster(rosterText), [rosterText]);
   const effectivePolygon = hasDrawnArea && drawnPolygon?.length > 2 ? drawnPolygon : DEMO_POLYGON;
   const summary = useMemo(() => getCanvasCampaignSummary({ polygon: effectivePolygon, ...campaign }), [effectivePolygon, campaign]);
   const effectivePropertyPoints = propertyPoints.length ? propertyPoints : sessionPropertyPoints;
-  const canvasConfig = useMemo(() => ({ ...campaign, propertyPoints: effectivePropertyPoints, roadNetwork: sessionRoadNetwork }), [campaign, effectivePropertyPoints, sessionRoadNetwork]);
+  const discoveredOpportunityPoints = useMemo(() => opportunitiesToDoorPoints(opportunityAnalysis), [opportunityAnalysis]);
+  const canvasDoorPoints = opportunityAnalysis ? discoveredOpportunityPoints : effectivePropertyPoints;
+  const canvasConfig = useMemo(() => ({ ...campaign, propertyPoints: canvasDoorPoints, roadNetwork: sessionRoadNetwork, useActualOpportunityCounts: Boolean(opportunityAnalysis) }), [campaign, canvasDoorPoints, sessionRoadNetwork, opportunityAnalysis]);
   const roadPolygonKey = useMemo(() => effectivePolygon.map((point) => `${Number(point.lat).toFixed(6)},${Number(point.lng).toFixed(6)}`).join('|'), [effectivePolygon]);
 
   const zones = useMemo(() => {
@@ -107,6 +115,10 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
   useEffect(() => {
     window.dispatchEvent(new CustomEvent('fk-canvas-zone-edit-changed', { detail: { zoneNumber: editZoneNumber } }));
   }, [editZoneNumber]);
+
+  useEffect(() => {
+    saveCanvasAnalysis(opportunityAnalysis);
+  }, [opportunityAnalysis]);
 
   useEffect(() => {
     const handleFocusMode = (event) => setFocusMode(Boolean(event.detail?.focusMode));
@@ -176,6 +188,37 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
     });
   };
 
+  const analyzeTerritory = async () => {
+    if (!hasDrawnArea || !drawnPolygon?.length) return toast.error('Draw a Canvas territory first.');
+    setAnalysisLoading(true);
+    const toastId = toast.loading('Analyzing buildings and excluded land...');
+    try {
+      const response = await base44.functions.invoke('canvasAnalyzeTerritory', { polygon: drawnPolygon });
+      const analysis = response.data;
+      if (analysis?.error) {
+        toast.error(analysis.error, { id: toastId });
+        return;
+      }
+      setOpportunityAnalysis(analysis);
+      setCampaign((current) => ({ ...current, zones: [] }));
+      toast.success(`${Number(analysis.totalOpportunities || 0).toLocaleString()} opportunities found`, { id: toastId });
+    } catch (error) {
+      toast.error(error?.response?.data?.error || error?.message || 'Canvas analysis failed', { id: toastId });
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
+  const submitAnalysisFeedback = async (feedback) => {
+    if (!opportunityAnalysis?.analysisId) return;
+    try {
+      await base44.functions.invoke('canvasFeedback', { analysisId: opportunityAnalysis.analysisId, feedback });
+      toast.success(feedback === 'looks_correct' ? 'Thanks — analysis marked correct.' : 'Thanks — analysis marked for review.');
+    } catch (error) {
+      toast.error(error?.response?.data?.error || 'Could not save feedback.');
+    }
+  };
+
   const autoAssign = () => {
     if (!roster.length) return toast.error('Add rep names before auto-assigning.');
     const maxZonesPerRep = Math.max(1, Math.ceil((zones.length || 1) / Math.max(1, Number(campaign.repCount) || roster.length || 1)));
@@ -242,13 +285,13 @@ export default function CanvasBuilderSettings({ drawnPolygon, hasDrawnArea, onDr
   return (
     <div className="fixed inset-0 z-[2000] pointer-events-none lg:flex">
       <div className={`hidden lg:block pointer-events-auto h-full bg-[#09090f]/95 border-r border-purple-500/20 shadow-2xl pt-[env(safe-area-inset-top)] transition-all ${focusMode ? 'w-16' : 'w-[390px]'}`}>
-        {focusMode ? <FocusRail zoneCount={zones.length} assignedCount={assignedCount} onClose={onClose} /> : <BuilderContent {...{ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, assignmentWarnings, roadFetchStatus }} />}
+        {focusMode ? <FocusRail zoneCount={zones.length} assignedCount={assignedCount} onClose={onClose} /> : <BuilderContent {...{ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, assignmentWarnings, roadFetchStatus, opportunityAnalysis, analysisLoading, analyzeTerritory, submitAnalysisFeedback }} />}
       </div>
 
       {!focusMode && (
         <div className="lg:hidden pointer-events-auto absolute left-0 right-0 bottom-0 max-h-[78vh] rounded-t-3xl bg-[#09090f]/98 border-t border-purple-500/25 shadow-2xl overflow-hidden pb-[env(safe-area-inset-bottom)]">
           <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-white/20" />
-          <BuilderContent {...{ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, assignmentWarnings, roadFetchStatus }} compact />
+          <BuilderContent {...{ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, assignmentWarnings, roadFetchStatus, opportunityAnalysis, analysisLoading, analyzeTerritory, submitAnalysisFeedback }} compact />
         </div>
       )}
     </div>
@@ -266,7 +309,7 @@ function FocusRail({ zoneCount, assignedCount, onClose }) {
   );
 }
 
-function BuilderContent({ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, assignmentWarnings = [], roadFetchStatus = 'idle', compact = false }) {
+function BuilderContent({ campaign, setCampaign, updateCampaign, rosterText, setRosterText, roster, zones, selectedZone, selectedZoneNumber, setSelectedZoneNumber, editZoneNumber, setEditZoneNumber, updateZone, autoAssign, saveCampaign, loadCampaign, onDraw, onClearPolygon, onClose, summary, densityOptions, saving, canDeploy, hasDrawnArea, assignmentWarnings = [], roadFetchStatus = 'idle', opportunityAnalysis = null, analysisLoading = false, analyzeTerritory, submitAnalysisFeedback, compact = false }) {
   const [zoneFilter, setZoneFilter] = useState('');
   const filteredZones = useMemo(() => {
     const term = zoneFilter.trim().toLowerCase();
@@ -319,6 +362,14 @@ function BuilderContent({ campaign, setCampaign, updateCampaign, rosterText, set
             {roadFetchStatus === 'idle' && 'Road alignment ready when territory is drawn'}
           </div>
         </section>
+
+        <CanvasOpportunityReview
+          analysis={opportunityAnalysis}
+          loading={analysisLoading}
+          onAnalyze={analyzeTerritory}
+          onFeedback={submitAnalysisFeedback}
+          hasDrawnArea={hasDrawnArea}
+        />
 
         <section className="rounded-2xl border border-purple-500/25 bg-purple-500/10 p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">

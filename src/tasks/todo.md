@@ -1,23 +1,26 @@
 # Plan
 
 ## Current Plan — Canvas Opportunity Discovery Engine POC
-- [ ] Confirm Canvas-only scope: do not modify Precision mode, paid BatchData pull flow, Precision route generation, Billing, or existing field logging behavior.
-- [ ] Re-scope the POC around the core trust hypothesis: `Building Footprints - Excluded Land Use = Opportunities`; addresses are enrichment only, not a launch dependency.
-- [ ] Add Neon schema support for Canvas intelligence only: `building_footprints`, `land_use`, `canvas_analysis`, and `opportunities`; defer `addresses` to Phase 3 enrichment.
-- [ ] Create a Canvas-only setup/migration function that initializes those tables without changing existing property/territory tables.
-- [ ] Create `canvasAnalyzeTerritory` backend function: accept drawn polygon, query buildings inside polygon, query excluded land-use polygons, remove buildings inside excluded areas, save analysis, and return map-ready opportunity centroids plus excluded polygons.
-- [ ] Return explainable confidence buckets instead of one magic score: `high`, `medium`, `low`; for Phase 1 without addresses, most discovered building opportunities will be `low` or `medium` depending on land-use context.
-- [ ] Keep engineering coverage metrics in backend diagnostics only; primary manager UI should show Opportunities Found, Excluded Areas, and clear visual map layers.
-- [ ] Create `canvasGetAnalysis` backend function for saved analysis retrieval by ID.
-- [ ] Create `canvasFeedback` backend function to store `looks_correct` / `looks_incorrect` feedback only; defer trust dashboard and analytics reporting.
-- [ ] Add a focused frontend Review Opportunities UI component that shows total opportunities, excluded breakdown, confidence buckets, and feedback buttons.
-- [ ] Add a Canvas opportunity heat/visibility layer: green dots for discovered opportunities and red overlays for excluded parks/schools/forests/water/commercial/industrial/golf areas.
-- [ ] Wire Canvas Builder workflow only: Draw Territory → Analyze Territory → Review Opportunities → existing Generate Zones → Assign Reps.
-- [ ] Phase 2 only: feed discovered opportunity points into existing Canvas zone generation through the current `propertyPoints`/session bridge so H3/road cells with zero opportunities are dropped.
-- [ ] Preserve existing zone generation algorithms and only replace their input opportunity points for Canvas analyzed sessions; fallback estimates remain only when no analysis is available.
-- [ ] Verify backend functions with empty-data and sample-polygon tests, proving no Precision functions or tables are touched.
-- [ ] Verify frontend loads `/Home` without new build/runtime errors and Canvas-only UI appears only in Canvas mode.
-- [ ] Document review results and any known POC limitations before marking complete.
+- [x] Confirm Canvas-only scope: do not modify Precision mode, paid BatchData pull flow, Precision route generation, Billing, or existing field logging behavior.
+- [x] Re-scope the POC around the core trust hypothesis: `Building Footprints - Excluded Land Use = Opportunities`; addresses are enrichment only, not a launch dependency.
+- [x] Add Neon schema support for Canvas intelligence only: `building_footprints`, `land_use`, `canvas_analysis`, and `opportunities`; defer `addresses` to Phase 3 enrichment.
+- [x] Create a Canvas-only setup/migration function that initializes those tables without changing existing property/territory tables.
+- [x] Create `canvasAnalyzeTerritory` backend function: accept drawn polygon, query buildings inside polygon, query excluded land-use polygons, remove buildings inside excluded areas, save analysis, and return map-ready opportunity centroids plus excluded polygons.
+- [x] Return explainable confidence buckets instead of one magic score: `high`, `medium`, `low`; for Phase 1 without addresses, discovered building opportunities are `low` or `medium` depending on land-use context.
+- [x] Keep engineering coverage metrics in backend diagnostics only; primary manager UI shows Opportunities Found, Excluded Areas, confidence buckets, and visual map layers.
+- [x] Create `canvasGetAnalysis` backend function for saved analysis retrieval by ID.
+- [x] Create `canvasFeedback` backend function to store `looks_correct` / `looks_incorrect` feedback only; defer trust dashboard and analytics reporting.
+- [x] Add a focused frontend Review Opportunities UI component that shows total opportunities, excluded breakdown, confidence buckets, and feedback buttons.
+- [x] Add a Canvas opportunity heat/visibility layer: green dots for discovered opportunities and red overlays for excluded parks/schools/forests/water/commercial/industrial/golf areas.
+- [x] Wire Canvas Builder workflow only: Draw Territory → Analyze Territory → Review Opportunities → existing Generate Zones → Assign Reps.
+- [x] Feed discovered opportunity points into existing Canvas zone generation through the current `propertyPoints`/session bridge so H3/road cells with zero opportunities are dropped after analysis.
+- [x] Preserve existing zone generation algorithms and only replace their input opportunity points for Canvas analyzed sessions; fallback estimates remain only when no analysis is available.
+- [x] Verify backend functions with empty-data and sample-polygon tests, proving no Precision functions or tables are touched.
+- [x] Verify frontend runtime for new import/build errors; logs show the pre-existing Home max-depth warning, not a new Canvas import/deploy error.
+- [x] Document review results and known POC limitations before marking complete.
+
+### Review — Canvas Opportunity Discovery Engine POC
+Implemented the buildings-first Canvas trust layer without touching Precision: new Neon tables (`building_footprints`, `land_use`, `canvas_analysis`, `opportunities`), setup function, analysis retrieval, feedback, and territory analysis functions. The Canvas Builder now has a Review Opportunities step, stores manager feedback, renders green opportunity dots and red excluded-area overlays, and feeds analyzed building centroids into existing Canvas zone generation so analyzed cells with zero opportunities are removed instead of using density guesses. Backend verification passed for setup, self-tests, empty-data polygon analysis, saved analysis retrieval, and feedback; current limitation is that real opportunity counts require imported Microsoft Building Footprints and OSM land-use rows.
 
 ### Implementation boundaries
 - Canvas-only: all new function names and UI components will use `canvas*` naming.

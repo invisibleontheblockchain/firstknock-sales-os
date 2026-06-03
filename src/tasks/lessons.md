@@ -1,5 +1,7 @@
 # Lessons
 
+- When rendering nested JSX `.map()` calls, prefer `flatMap()` or extract a small helper component so the closing parentheses are obvious; malformed nested maps can break the whole Vite build.
+
 - For Canvas Opportunity Discovery POCs, make building footprints the primary source of truth and use addresses only as optional confidence enrichment; do not block the trust workflow on national address normalization.
 - Manager-facing trust UI should show simple counts and visual proof first: opportunities found, excluded areas, green dots, and red overlays. Keep coverage percentages and detailed diagnostics out of the primary manager workflow.
 

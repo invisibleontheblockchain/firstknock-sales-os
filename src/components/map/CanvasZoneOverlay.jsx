@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import CanvasZoneLayers from './CanvasZoneLayers';
+import CanvasOpportunityLayers from './CanvasOpportunityLayers';
 
 function loadZones() {
   try {
@@ -33,5 +34,10 @@ export default function CanvasZoneOverlay() {
 
   if (routeMode !== 'canvas') return null;
 
-  return <CanvasZoneLayers zones={zones} />;
+  return (
+    <>
+      <CanvasOpportunityLayers />
+      <CanvasZoneLayers zones={zones} />
+    </>
+  );
 }

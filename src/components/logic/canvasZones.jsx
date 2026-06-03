@@ -498,8 +498,11 @@ function densityKeyForFace(face, doors) {
   return 'rural';
 }
 
-function assignDoorsToFaces(faces, doorPoints, fallbackDensity) {
+function assignDoorsToFaces(faces, doorPoints, fallbackDensity, useActualOpportunityCounts = false) {
   if (!doorPoints.length) {
+    if (useActualOpportunityCounts) {
+      return faces.map((face) => ({ ...face, estimatedDoors: 0, densityKey: densityKeyForFace(face, 0) }));
+    }
     return faces.map((face) => {
       const estimatedDoors = Math.max(1, Math.round(face.area * fallbackDensity.doorsPerSqMi));
       return { ...face, estimatedDoors, densityKey: densityKeyForFace(face, estimatedDoors) };
@@ -521,7 +524,7 @@ function assignDoorsToFaces(faces, doorPoints, fallbackDensity) {
   });
 
   return faces.map((face, index) => {
-    const estimatedDoors = counts[index] || Math.max(1, Math.round(face.area * fallbackDensity.doorsPerSqMi));
+    const estimatedDoors = useActualOpportunityCounts ? counts[index] : (counts[index] || Math.max(1, Math.round(face.area * fallbackDensity.doorsPerSqMi)));
     return { ...face, estimatedDoors, densityKey: densityKeyForFace(face, estimatedDoors) };
   });
 }
@@ -907,6 +910,7 @@ function generateHexZones(polygon, configOrCount, existingZones = []) {
   if (dynamicZones && dynamicZones.length > 0) return dynamicZones;
 
   const config = typeof configOrCount === 'object' ? configOrCount : { repCount: configOrCount };
+  if (config.useActualOpportunityCounts) return [];
   const summary = getCanvasCampaignSummary({ polygon: points, ...config });
   const bounds = getBounds(points);
   const avgLat = points.reduce((sum, point) => sum + point.lat, 0) / points.length;
@@ -966,8 +970,8 @@ function generateRoadAlignedZones(polygon, options, roadNetwork, existingZones =
     .filter((face) => face.center && pointInPolygon(face.center, points));
 
   if (faces.length < 2) return [];
-  faces = assignDoorsToFaces(faces, doorPoints, summary.density);
-  faces = faces.flatMap((face) => subdivideOversizedFace(face, targetDoors, summary.density, doorPoints));
+  faces = assignDoorsToFaces(faces, doorPoints, summary.density, Boolean(config.useActualOpportunityCounts));
+  faces = faces.flatMap((face) => subdivideOversizedFace(face, targetDoors, summary.density, doorPoints)).filter((face) => !config.useActualOpportunityCounts || face.estimatedDoors > 0);
   if (faces.length < 2) return [];
 
   const groups = groupRoadFaces(faces, targetDoors).filter((group) => group.length);
