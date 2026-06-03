@@ -345,8 +345,9 @@ function SavedRoutesLayer({
             layerRef.current = null;
         }
 
-        // Only show when no active route, correct mode, and sufficient zoom
-        if (activeRoute || !(mode === 'analyze' || mode === 'generate') || zoomLevel < 8) return;
+        // Only show saved route overlays in Routes mode. Builder/draw mode stays visually clean,
+        // while selecting an individual route still shows it through ActiveRouteLayer.
+        if (activeRoute || mode !== 'analyze' || zoomLevel < 8) return;
 
         const group = L.layerGroup();
 
@@ -552,59 +553,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                 setActiveRoute={setActiveRoute}
             />
 
-            {/* --- GENERATE MODE: New Routes --- */}
-            <LayerGroup>
-                {mode === 'generate' && !activeRoute && filteredRoutes.length > 0 && filteredRoutes.map((route, rIdx) => {
-                    const routeNumber = route.route_number || rIdx + 1;
-                    const routeColor = getRouteColor(route, routeNumber);
-                    const centerProp = route.properties[Math.floor(route.properties.length / 2)];
-
-                    return (
-                        <React.Fragment key={`route-group-${route.id}`}>
-                            {centerProp && centerProp.lat && centerProp.lng && (
-                                <CircleMarker
-                                    center={[centerProp.lat, centerProp.lng]}
-                                    radius={16}
-                                    pathOptions={{ fillColor: 'black', fillOpacity: 0.8, color: routeColor, weight: 3 }}
-                                    eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: routeNumber, display_color: routeColor }); } }}
-                                >
-                                    <Tooltip permanent direction="center" className="route-number-tooltip">
-                                        <span style={{ color: routeColor, fontWeight: '900', fontSize: '14px' }}>#{routeNumber}</span>
-                                    </Tooltip>
-                                </CircleMarker>
-                            )}
-
-                            {showRouteDetails && route.properties.filter(p => p && p.lat && p.lng).map((p, idx) => (
-                                <React.Fragment key={`generated-${route.id}-${idx}`}>
-                                    <CircleMarker
-                                        center={[p.lat, p.lng]}
-                                        radius={28}
-                                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: routeNumber, display_color: routeColor }); } }}
-                                        pathOptions={{ fillColor: 'transparent', color: 'transparent', interactive: true, stroke: false }}
-                                    />
-                                    <CircleMarker
-                                        center={[p.lat, p.lng]}
-                                        radius={pinSize + 1}
-                                        eventHandlers={{ click: (e) => { L.DomEvent.stopPropagation(e); setActiveRoute({ ...route, route_number: routeNumber, display_color: routeColor }); } }}
-                                        pathOptions={{
-                                            fillColor: routeColor,
-                                            fillOpacity: 0.6 * mapSettings.pinOpacity,
-                                            color: mapSettings.fillStyle === 'outline' ? routeColor : (mapSettings.pinBorderColor || '#000'),
-                                            weight: mapSettings.pinBorderWidth
-                                        }}
-                                    />
-                                </React.Fragment>
-                            ))}
-                            {showRouteLines && route.properties.length > 1 && (
-                                <Polyline
-                                    positions={route.properties.map(p => [p.lat, p.lng])}
-                                    pathOptions={{ color: routeColor, weight: mapSettings.lineWidth, opacity: mapSettings.lineOpacity, dashArray: lineDashArray }}
-                                />
-                            )}
-                        </React.Fragment>
-                    );
-                })}
-            </LayerGroup>
+            {/* Builder mode stays clean: generated route overviews are hidden until a specific route is selected. */}
 
             {/* HEATMAP LAYER (Only at Zoom >= 10) */}
             {viewMode === 'heatmap' && zoomLevel >= 10 && heatmapData.map(cell => (

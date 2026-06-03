@@ -1,5 +1,14 @@
 # Plan
 
+## Current Plan — Clean Builder Map While Preserving Saved Routes
+- [x] Confirm scope: hide old saved route overlays only while Builder/draw mode is active; do not delete or modify SavedRoute records.
+- [x] Keep route selection behavior intact: selecting an older route from the Routes panel still opens that route on the map.
+- [x] Hide generated-route and previous-area overlays while Builder is active so the map feels blank for the new area.
+- [x] Verify the overlay condition is limited to map rendering and document the result.
+
+### Review — Clean Builder Map While Preserving Saved Routes
+Builder mode now hides old saved-route overlays, generated route overview overlays, and previous drawn-area history overlays so drawing a new area starts from a visually clean map. SavedRoute records are not modified or deleted, and selecting an older route still displays that one route through the active route layer. Runtime review showed no new frontend build/import error; only unrelated websocket connection noise was present.
+
 ## Current Plan — Precision Pull Flow Simplification
 - [x] Confirm scope: Precision Mode default pull flow should be simplified only; Canvas, route execution, BatchData caps, and backend ingestion logic stay unchanged.
 - [x] Inspect current Precision area/pull controls and route builder filters to identify where home value range and sold-window controls already exist.

@@ -81,7 +81,7 @@ export default function PolygonHistory({ currentPolygon, mode }) {
         if (selectedKey === keyToDelete) setSelectedKey(null);
     };
 
-    if (visibleHistory.length === 0) return null;
+    if (isBuilder || visibleHistory.length === 0) return null;
 
     return (
         <>
