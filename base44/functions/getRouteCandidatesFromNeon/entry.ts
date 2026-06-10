@@ -91,13 +91,32 @@ Deno.serve(async (req) => {
             LIMIT ${limit}
         `;
 
-        const properties = rows.map(row => ({
+        let properties = rows.map(row => ({
             ...row,
             id: String(row.id),
             address_hash: row.address_hash || String(row.id),
             created_date: row.created_at,
             updated_date: row.updated_at
         }));
+
+        // Payload reduction: fields='map' returns only what the map pipeline needs
+        // (pins, status colors, sold/price/phase filters, dedupe, detail sheet basics).
+        // Cuts response size roughly in half vs. the full record.
+        if (body.fields === 'map') {
+            const MAP_FIELDS = [
+                'id', 'address_hash', 'legacy_hash', 'full_address', 'house_number', 'street_name',
+                'zip_code', 'lat', 'lng', 'beds', 'baths', 'sqft', 'year_built', 'price',
+                'sold_date', 'property_type', 'mls_id', 'sale_confidence', 'original_status',
+                'route_active', 'status'
+            ];
+            properties = properties.map(p => {
+                const slim = {};
+                for (const f of MAP_FIELDS) {
+                    if (p[f] !== undefined && p[f] !== null) slim[f] = p[f];
+                }
+                return slim;
+            });
+        }
 
         return Response.json({
             success: true,

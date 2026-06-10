@@ -1,6 +1,17 @@
 # Plan
 
-## Current Plan — Phase 3: Real-Time Subscription Strategy
+## Current Plan — Phase 4: Viewport-Based Property Fetching + Payload Reduction
+- [x] Inspect the manager map data path: Home loaded up to 100K full-field Neon records per session (territory-wide, 15-min cache).
+- [x] Backend: add `fields='map'` slim projection to getRouteCandidatesFromNeon (drops city/state/owner/url/h3/sale_type/data_source/timestamps — roughly halves response size); bounds support already existed.
+- [x] New focused hook `components/map/useViewportMapProperties.js`: stage 1 slim territory fetch capped at 20K; stage 2 viewport-bounded slim fetches (10K cap, quantized+padded boxes, fetch-once-per-box, in-flight guard, ≤2° span gate) ONLY when stage 1 hit its cap.
+- [x] Home: swap the 100K query for the hook (kept the legacy 'masterProperties' query key so post-pull/force-sync invalidations still work), merge viewportProperties into the dedupe pipeline, wire MapController's debounced moveend.
+- [x] Route generation path untouched — still fetches full records on-demand for the filter pipeline.
+- [x] Verify backend: slim projection returns only map fields; bounds query returns viewport-scoped rows.
+
+### Review — Phase 4: Viewport-Based Property Fetching + Payload Reduction
+The manager map no longer pulls up to 100K full property records on load. It now loads a slim 20K-capped territory overview (≈50% smaller per record), and only territories that exceed the cap stream additional viewport-scoped slim batches as the manager pans (deduped per quantized box, guarded against zoomed-out/region-level fetches). Small territories behave exactly as before with one cheaper request. Verified via backend tests: fields='map' strips heavy columns; bounds queries return viewport rows. Remaining Phase 5: code-splitting via import.meta.glob.
+
+## Previous Plan — Phase 3: Real-Time Subscription Strategy
 - [x] Research whether Base44 subscriptions support server-side filtering/RLS scoping (docs do not confirm it — treat subscription events as potentially global broadcasts).
 - [x] Decide strategy: keep entity subscriptions only where real-time matters (chat delivery, double-knock prevention, route updates), with strict client-side tenant guards in every handler; no aggressive fixed-interval polling.
 - [x] Inventory live patterns: RepHome SavedRoute + InteractionLog subscriptions, TeamChat TeamMessage subscription + 5s poll, query-client defaults.

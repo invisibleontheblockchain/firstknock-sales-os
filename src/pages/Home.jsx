@@ -73,6 +73,7 @@ import PolygonHistory, { savePolygonToHistory } from '../components/map/PolygonH
 import { BRAND, DEFAULT_STATUS_COLORS, COLOR_SCHEME_MAP, LINE_DASH_MAP, ROUTE_COLORS } from '../components/map/homeMapConstants';
 
 import { LocationMarker, MapRefHandler, MapController } from '../components/map/MapHelpers';
+import useViewportMapProperties from '../components/map/useViewportMapProperties';
 
 
 
@@ -373,37 +374,17 @@ export default function Home() {
 
     const DarkRoomManager = () => null;
 
-    // Fetch Properties - support both user-specific and fallback for mobile auth
-    // NOTE: The queryKey intentionally does NOT include the drawn polygon. The polygon is
-    // a LOCAL FILTER applied client-side in `effectiveProperties` below. Adding it to the
-    // queryKey would force a full refetch every time the user taps-to-confirm a new shape,
-    // which is exactly the "loading territory data again" bug we just fixed.
-    const { data: userProperties = [], isLoading: propsLoading } = useQuery({
-        queryKey: ['masterProperties', user?.email, user?.territory_zip_codes, user?.generated_zip_codes],
-        staleTime: 1000 * 60 * 15, // 15 min — aggressive caching to avoid slow refetch
-        gcTime: 1000 * 60 * 30,
-        refetchOnWindowFocus: false,
-        refetchOnMount: false,
-        queryFn: async () => {
-            if (!user) return [];
-
-            try {
-                const t0 = performance.now();
-                const allZips = Array.from(new Set([...(user.territory_zip_codes || []), ...(user.generated_zip_codes || [])]));
-                const items = await fetchRouteCandidatesFromNeon({
-                    zipCodes: allZips,
-                    soldMonths: 'all',
-                    limit: 100000
-                });
-                console.log(`[RoutePipeline] after_ingestion_query count=${items.length} zips=${allZips.join(',') || 'none'} elapsed_ms=${Math.round(performance.now() - t0)}`);
-                return items;
-            } catch (e) {
-                console.log('[Home] Error fetching Neon properties:', e);
-                return [];
-            }
-        },
-        enabled: !!user
-    });
+    // Fetch Properties — Phase 4: viewport-based fetching with slim 'map' payloads.
+    // Stage 1 loads a capped slim territory set; stage 2 fills detail per viewport on pan
+    // only when the territory exceeds the cap. Route generation still fetches full
+    // records on-demand via fetchRouteCandidatesFromNeon (unchanged).
+    // NOTE: drawn polygon stays a LOCAL FILTER (effectiveProperties) — not a fetch key.
+    const {
+        baseProperties: userProperties,
+        viewportProperties,
+        isLoading: propsLoading,
+        onMapMoveEnd
+    } = useViewportMapProperties(user);
 
 
 
@@ -421,7 +402,7 @@ export default function Home() {
     const properties = useMemo(() => {
         // Merge Dark Room properties with User/Local properties
         // Dark Room properties are mapped to have similar structure
-        const combined = userProperties.concat(localProperties, darkRoomProperties, fetchedProperties);
+        const combined = userProperties.concat(viewportProperties, localProperties, darkRoomProperties, fetchedProperties);
         const seen = new Set();
         return combined.filter(p => {
             // Use id as fallback for address_hash if missing (Dark Room props might rely on ID)
@@ -430,7 +411,7 @@ export default function Home() {
             seen.add(id);
             return true;
         });
-    }, [userProperties, localProperties, darkRoomProperties, fetchedProperties]);
+    }, [userProperties, viewportProperties, localProperties, darkRoomProperties, fetchedProperties]);
 
     const { data: savedRoutesRaw = [] } = useQuery({
         queryKey: ['savedRoutes', user?.id],
@@ -1476,7 +1457,7 @@ export default function Home() {
                 <MapController
                     fitBounds={fitBounds}
                     onZoomChange={setZoomLevel}
-                    onMoveEnd={() => { }}
+                    onMoveEnd={onMapMoveEnd}
                 />
 
                 <MapDrawTool
