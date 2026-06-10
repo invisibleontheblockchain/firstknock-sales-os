@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — Phase 4: Viewport-Based Property Fetching + Payload Reduction
+## Current Plan — Phase 5: Code-Splitting via import.meta.glob
+- [x] Inspect pages.config.js: eagerly imported all 22 pages into the main bundle (stale auto-generated file).
+- [x] Rewrite App.jsx routing: `import.meta.glob('./pages/*.{jsx,js}')` + React.lazy → every page is its own on-demand chunk; new page files auto-register as routes without touching pages.config.js.
+- [x] Layout imported directly from './Layout.jsx'; mainPage stays 'RoleSelect'; existing Suspense fallback covers chunk loading.
+- [x] Removed redundant explicit FetchTest/About/Contact lazy routes (now covered by the glob loop).
+- [x] Verify the app boots on "/" after the rewrite.
+
+### Review — Phase 5: Code-Splitting
+The main bundle no longer ships all 22 pages up front — each page in ./pages is a separate lazy chunk fetched on first visit, and the stale pages.config.js is fully bypassed (left in place, just unused). Routing behavior, layout wrapping, and the RoleSelect main page are unchanged. This completes the scale-readiness phases (1: RLS, 2: backfills, 3: subscriptions/polling, 4: viewport fetching, 5: code-splitting).
+
+## Previous Plan — Phase 4: Viewport-Based Property Fetching + Payload Reduction
 - [x] Inspect the manager map data path: Home loaded up to 100K full-field Neon records per session (territory-wide, 15-min cache).
 - [x] Backend: add `fields='map'` slim projection to getRouteCandidatesFromNeon (drops city/state/owner/url/h3/sale_type/data_source/timestamps — roughly halves response size); bounds support already existed.
 - [x] New focused hook `components/map/useViewportMapProperties.js`: stage 1 slim territory fetch capped at 20K; stage 2 viewport-bounded slim fetches (10K cap, quantized+padded boxes, fetch-once-per-box, in-flight guard, ≤2° span gate) ONLY when stage 1 hit its cap.

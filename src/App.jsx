@@ -3,19 +3,25 @@ import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
 import NavigationTracker from '@/lib/NavigationTracker'
-import { pagesConfig } from './pages.config'
 import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 import PageNotFound from './lib/PageNotFound';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
+import Layout from './Layout.jsx';
 
-const FetchTest = React.lazy(() => import('./pages/FetchTest'));
-const About = React.lazy(() => import('./pages/About'));
-const Contact = React.lazy(() => import('./pages/Contact'));
+// Phase 5 — code-splitting: every page in ./pages is its own lazy-loaded chunk.
+// import.meta.glob bypasses the stale auto-generated pages.config.js — any new
+// page file is auto-registered as a route and only downloaded when visited.
+const pageModules = import.meta.glob('./pages/*.{jsx,js}');
+const Pages = Object.fromEntries(
+  Object.entries(pageModules).map(([path, loader]) => [
+    path.replace(/^\.\/pages\//, '').replace(/\.(jsx|js)$/, ''),
+    React.lazy(loader),
+  ])
+);
 
-const { Pages, Layout, mainPage } = pagesConfig;
-const mainPageKey = mainPage ?? Object.keys(Pages)[0];
-const MainPage = mainPageKey ? Pages[mainPageKey] : <></>;
+const mainPageKey = 'RoleSelect';
+const MainPage = Pages[mainPageKey];
 
 const LayoutWrapper = ({ children, currentPageName }) => Layout ?
   <Layout currentPageName={currentPageName}>{children}</Layout>
@@ -63,9 +69,6 @@ const AuthenticatedApp = () => {
           }
         />
       ))}
-      <Route path="/FetchTest" element={<LayoutWrapper currentPageName="FetchTest"><FetchTest /></LayoutWrapper>} />
-      <Route path="/About" element={<LayoutWrapper currentPageName="About"><About /></LayoutWrapper>} />
-      <Route path="/Contact" element={<LayoutWrapper currentPageName="Contact"><Contact /></LayoutWrapper>} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );
