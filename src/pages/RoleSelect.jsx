@@ -42,9 +42,9 @@ export default function RoleSelect() {
         queryKey: ['existingTeamMember', user?.email],
         queryFn: async () => {
             if (!user?.email) return null;
-            const res = await base44.entities.TeamMember.list('-created_date', 500);
+            const res = await base44.entities.TeamMember.filter({ email: user.email.trim().toLowerCase() }, '-created_date', 5);
             const members = Array.isArray(res) ? res : (res?.items || []);
-            return members.find(m => m.email?.trim().toLowerCase() === user.email.trim().toLowerCase()) || null;
+            return members[0] || null;
         },
         enabled: !!user?.email
     });
@@ -88,54 +88,15 @@ export default function RoleSelect() {
         if (!inviteCode) return;
         setIsLoading(true);
         try {
-            const codes = await base44.entities.InviteCode.filter({ code: inviteCode.toUpperCase(), is_active: true }, '-created_date', 1);
-            const validCode = codes?.items?.[0] || (Array.isArray(codes) ? codes[0] : null);
+            // Atomic server-side redemption: validates the code, updates the user role,
+            // upserts the TeamMember (linked by user_id), and increments usage in one trusted call.
+            const res = await base44.functions.invoke('redeemInviteCode', { code: inviteCode });
 
-            if (validCode) {
-                // 1. Update User Role AND store the manager link on the user
-                await updateUserMutation.mutateAsync({
-                    app_role: validCode.role,
-                    team_manager_id: validCode.linked_user_id || null,
-                    team_invite_code: validCode.code
-                });
+            if (res.data?.success) {
+                queryClient.invalidateQueries({ queryKey: ['user'] });
+                toast.success(`Welcome to the team! You are now a ${res.data.role}.`);
 
-                // 2. Create Team Member record if not exists
-                const allMembers = await base44.entities.TeamMember.list('-created_date', 500);
-                const membersList = Array.isArray(allMembers) ? allMembers : (allMembers?.items || []);
-                const memberExists = membersList.some(m =>
-                    m.email?.trim().toLowerCase() === user.email.trim().toLowerCase()
-                );
-
-                if (!memberExists) {
-                    await base44.entities.TeamMember.create({
-                        name: user.full_name || user.email.split('@')[0],
-                        email: user.email.trim().toLowerCase(),
-                        role: validCode.role,
-                        status: 'active',
-                        color: '#' + Math.floor(Math.random() * 16777215).toString(16),
-                        manager_id: validCode.linked_user_id || null,
-                        invite_code: validCode.code
-                    });
-                } else {
-                    const existingMember = membersList.find(m =>
-                        m.email?.trim().toLowerCase() === user.email.trim().toLowerCase()
-                    );
-                    if (existingMember && validCode.linked_user_id && existingMember.manager_id !== validCode.linked_user_id) {
-                        await base44.entities.TeamMember.update(existingMember.id, {
-                            manager_id: validCode.linked_user_id,
-                            invite_code: validCode.code
-                        });
-                    }
-                }
-
-                // 3. Increment usage count
-                await base44.entities.InviteCode.update(validCode.id, {
-                    used_count: (validCode.used_count || 0) + 1
-                });
-
-                toast.success(`Welcome to the team! You are now a ${validCode.role}.`);
-
-                if (validCode.role === 'manager') {
+                if (res.data.role === 'manager') {
                     navigate(createPageUrl('Home'));
                 } else {
                     navigate(createPageUrl('RepHome'));
@@ -145,7 +106,8 @@ export default function RoleSelect() {
             }
         } catch (error) {
             console.error(error);
-            toast.error("Failed to verify code");
+            const msg = error?.response?.data?.error;
+            toast.error(msg === 'Invalid or expired code' ? msg : "Failed to verify code");
         } finally {
             setIsLoading(false);
         }

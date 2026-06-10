@@ -8,7 +8,11 @@
     },
     "email": {
       "type": "string",
-      "description": "Email address (for login matching)"
+      "description": "Email address (for login matching, normalized lowercase on write)"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Auth user ID linked at invite redemption \u2014 O(1) lookup, replaces fuzzy email/name matching"
     },
     "phone": {
       "type": "string",
@@ -66,5 +70,62 @@
     "name",
     "email",
     "role"
-  ]
+  ],
+  "rls": {
+    "create": true,
+    "read": {
+      "$or": [
+        {
+          "manager_id": "{{user.id}}"
+        },
+        {
+          "email": "{{user.email}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "manager_id": "{{user.data.team_manager_id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "manager_id": "{{user.id}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "manager_id": "{{user.id}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }

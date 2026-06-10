@@ -76,3 +76,5 @@
 - For road-aware Canvas generation, verify the data-fetch path separately from the geometry algorithm; a correct DCEL/face generator still fails in production if OSM road data is never fetched into the live builder flow.
 - When the user explicitly authorizes a provider cutover and says to stop questioning the decision, execute the approved plan and verify safety gates instead of asking for another confirmation.
 - For targeting filter panels, do not auto-fill both min and max range values unless explicitly requested; optional range ends should stay blank so users can pull open-ended categories.
+- An aborted/stopped generation can roll back ALL file changes from the session, not just the in-flight call; on "continue", verify actual file/entity/function state with reads before assuming prior edits survived.
+- Bulk admin backfills against Base44 entities hit API rate limits fast; always throttle writes (~300ms apart), wrap calls in retry-with-backoff on 429, cap writes per invocation, and return a has_more flag so the job is resumable.

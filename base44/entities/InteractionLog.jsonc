@@ -6,6 +6,10 @@
       "type": "string",
       "description": "Link to MasterProperty"
     },
+    "manager_id": {
+      "type": "string",
+      "description": "Manager user ID of the creator's team (tenant key for RLS)"
+    },
     "raw_input_text": {
       "type": "string",
       "description": "The exact text the user typed/spoke"
@@ -26,6 +30,10 @@
     "sale_amount": {
       "type": "number",
       "description": "Dollar amount of the sale if status is SOLD"
+    },
+    "route_id": {
+      "type": "string",
+      "description": "SavedRoute this interaction was logged on"
     },
     "gps_proof_lat": {
       "type": "number",
@@ -58,5 +66,56 @@
     "address_hash",
     "parsed_status",
     "raw_input_text"
-  ]
+  ],
+  "rls": {
+    "create": true,
+    "read": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "manager_id": "{{user.id}}"
+        },
+        {
+          "manager_id": "{{user.data.team_manager_id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "manager_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "manager_id": "{{user.id}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }

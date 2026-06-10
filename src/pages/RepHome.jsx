@@ -66,42 +66,25 @@ export default function RepHome() {
   }, []);
 
   // 0. Fetch Team Member Profile (to link Auth User -> Team Member ID)
-  // Also find ALL matching records (by email or name) to handle duplicates from different invite codes
+  // Server-side scoped lookup by email (no full-table scan); duplicates across managers still handled.
   const { data: teamMemberData } = useQuery({
     queryKey: ['myTeamMember', user?.email],
     queryFn: async () => {
       if (!user?.email) return null;
       try {
-        const res = await base44.entities.TeamMember.list('-created_date', 500);
-        const members = Array.isArray(res) ? res : res?.items || [];
         const emailLower = user.email.trim().toLowerCase();
-        const nameLower = (user.full_name || '').trim().toLowerCase();
-
-        // Primary: exact email match (could be multiple from different managers)
-        const emailMatches = members.filter((m) => m.email?.trim().toLowerCase() === emailLower);
-
-        // Secondary: also find records where the name matches but email differs
-        // (e.g. manager manually created "Charles Henson" with work email, but rep logs in with personal email)
-        const nameMatches = nameLower ? members.filter((m) => {
-          if (emailMatches.some((em) => em.id === m.id)) return false; // skip already matched
-          const mName = (m.name || '').trim().toLowerCase();
-          // Match if names are similar (contains or equal)
-          return mName && (mName === nameLower || nameLower.includes(mName) || mName.includes(nameLower));
-        }) : [];
-
-        const allMatches = [...emailMatches, ...nameMatches];
+        const res = await base44.entities.TeamMember.filter({ email: emailLower }, '-created_date', 50);
+        const allMatches = Array.isArray(res) ? res : res?.items || [];
 
         // The "primary" record is the one whose manager_id matches user.team_manager_id (from invite code),
         // or the most recently created one
         const primary = allMatches.find((m) => user.team_manager_id && m.manager_id === user.team_manager_id) ||
-        emailMatches[0] ||
         allMatches[0] ||
         null;
 
-        // Collect all unique IDs this rep could be known as
         const allIds = [...new Set(allMatches.map((m) => m.id))];
 
-        console.log(`[RepHome] TeamMember lookup: primary=${primary?.id}, allIds=${allIds.join(',')}, emailMatches=${emailMatches.length}, nameMatches=${nameMatches.length}`);
+        console.log(`[RepHome] TeamMember lookup: primary=${primary?.id}, allIds=${allIds.join(',')}, matches=${allMatches.length}`);
 
         return { primary, allIds, allMatches };
       } catch (e) {
@@ -122,64 +105,35 @@ export default function RepHome() {
     queryFn: async () => {
       if (!user) return [];
       try {
-        // Fetch ALL routes (we need to match against multiple possible IDs)
-        const res = await base44.entities.SavedRoute.list('-created_date', 500);
-        const allRoutes = Array.isArray(res) ? res : res?.items || [];
-
-        // Build a set of all IDs this rep could be assigned under
-        const myIds = new Set([
-        user.id, // Auth user ID (manager may have assigned to this)
-        ...(allTeamMemberIds || []) // All TeamMember record IDs (from different invite codes)
-        ]);
-
-        // Also match by assigned_to_name as a fallback (case-insensitive)
-        const myName = (user.full_name || '').trim().toLowerCase();
-        const myEmail = (user.email || '').trim().toLowerCase();
+        // Server-side scoped queries: assigned-to-me + (managers) owned-by-me.
+        // Name-based fallback removed — backfillRouteAssignments resolves legacy name-only assignments to IDs.
+        const myIds = [...new Set([user.id, ...(allTeamMemberIds || [])])];
         const isManager = user.app_role === 'manager';
+
+        const toArr = (r) => Array.isArray(r) ? r : r?.items || [];
+        const [assignedRes, ownedRes, createdRes] = await Promise.all([
+        myIds.length > 0 ? base44.entities.SavedRoute.filter({ assigned_to: myIds }, '-created_date', 200) : [],
+        isManager ? base44.entities.SavedRoute.filter({ manager_id: user.id }, '-created_date', 200) : [],
+        isManager ? base44.entities.SavedRoute.filter({ created_by: user.email }, '-created_date', 200) : []]
+        );
+
+        const seen = new Set();
+        const myRoutes = [...toArr(assignedRes), ...toArr(ownedRes), ...toArr(createdRes)].filter((r) => {
+          if (seen.has(r.id)) return false;
+          seen.add(r.id);
+          return true;
+        });
 
         const selectedRouteId = (() => {
           try {return localStorage.getItem('fk_selectedKnockRouteId');} catch {return null;}
         })();
-
-        const myRoutes = allRoutes.filter((r) => {
-          const isAssignedToMe = !!(r.assigned_to && myIds.has(r.assigned_to));
-          const isOwnedByMe = !!(isManager && (r.manager_id === user.id || r.created_by === user.email));
-
-          // Route Command handoff: only accept the selected route if it belongs to this account.
-          if (selectedRouteId && r.id === selectedRouteId && (isAssignedToMe || isOwnedByMe)) return true;
-
-          // Match by any known assignee ID
-          if (isAssignedToMe) return true;
-
-          // Manager in Rep Mode: also show routes they own or created, including older routes without manager_id.
-          if (isOwnedByMe) return true;
-
-          // Fallback: match by assigned_to_name (handles cases where assignment was by old/different ID)
-          if (r.assigned_to_name && myName) {
-            const routeName = r.assigned_to_name.trim().toLowerCase();
-            if (routeName === myName) return true;
-            // Also check partial name match for "Charles Henson" vs "Charlie Henson" etc.
-            const routeNameParts = routeName.split(' ');
-            const myNameParts = myName.split(' ');
-            if (routeNameParts.length > 1 && myNameParts.length > 1) {
-              // Match last name + first 3 chars of first name
-              const lastMatch = routeNameParts[routeNameParts.length - 1] === myNameParts[myNameParts.length - 1];
-              const firstPartial = routeNameParts[0].slice(0, 3) === myNameParts[0].slice(0, 3) ||
-              myNameParts[0].startsWith(routeNameParts[0]) ||
-              routeNameParts[0].startsWith(myNameParts[0]);
-              if (lastMatch && firstPartial) return true;
-            }
-          }
-
-          return false;
-        });
 
         // Filter to only non-completed, non-archived routes
         const activeRoutes = myRoutes.filter((r) =>
         r.status !== 'COMPLETED' && r.status !== 'ARCHIVED'
         );
 
-        console.log(`[RepHome] Found ${activeRoutes.length} active routes (${myRoutes.length} matched, ${allRoutes.length} visible) for IDs: [${[...myIds].join(', ')}], selected=${selectedRouteId || 'none'}, name: "${myName}"`);
+        console.log(`[RepHome] Found ${activeRoutes.length} active routes (${myRoutes.length} matched) for IDs: [${myIds.join(', ')}], selected=${selectedRouteId || 'none'}`);
 
         // Cache routes for offline
         if (activeRoutes.length > 0) {
@@ -346,11 +300,15 @@ export default function RepHome() {
     enabled: !!selectedProperty?.address_hash
   });
 
+  // Tenant key stamped on every log so RLS can scope team reads
+  const repManagerId = teamMember?.manager_id || user?.team_manager_id || (user?.app_role === 'manager' ? user?.id : null);
+
   // Log Result Mutation
   const createLogMutation = useMutation({
     mutationFn: (logData) => base44.entities.InteractionLog.create({
       ...logData,
-      route_id: activeRoute?.id || null
+      route_id: activeRoute?.id || null,
+      manager_id: repManagerId
     }),
     onMutate: async (newLog) => {
       await queryClient.cancelQueries({ queryKey: ['routeLogs', activeRoute?.id] });
@@ -384,6 +342,7 @@ export default function RepHome() {
       raw_input_text: 'Decision cleared — moved back to Todo',
       parsed_status: 'ELIGIBLE',
       route_id: activeRoute?.id || null,
+      manager_id: repManagerId,
       gps_proof_lat: selectedProperty?.lat,
       gps_proof_lng: selectedProperty?.lng,
       gps_accuracy: 0

@@ -98,14 +98,6 @@ export const AuthProvider = ({ children }) => {
       // Now check if the user is authenticated
       setIsLoadingAuth(true);
       const currentUser = await base44.auth.me();
-      
-      // Hardcode admin access for whitelisted emails
-      const ownerEmails = ['christian@nativapest.com', 'justinhoskins44@gmail.com'];
-      if (currentUser?.email && ownerEmails.includes(currentUser.email.toLowerCase())) {
-          currentUser.is_owner = true;
-          currentUser.role = 'owner';
-      }
-
       setUser(currentUser);
       setIsAuthenticated(true);
       setIsLoadingAuth(false);
