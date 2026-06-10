@@ -1,6 +1,19 @@
 # Plan
 
-## Current Plan — Phase 2: Full Entity RLS Rollout
+## Current Plan — Phase 3: Real-Time Subscription Strategy
+- [x] Research whether Base44 subscriptions support server-side filtering/RLS scoping (docs do not confirm it — treat subscription events as potentially global broadcasts).
+- [x] Decide strategy: keep entity subscriptions only where real-time matters (chat delivery, double-knock prevention, route updates), with strict client-side tenant guards in every handler; no aggressive fixed-interval polling.
+- [x] Inventory live patterns: RepHome SavedRoute + InteractionLog subscriptions, TeamChat TeamMessage subscription + 5s poll, query-client defaults.
+- [x] RepHome: tenant-guard the SavedRoute 'create' handler so only this user/team's route creations trigger refetch (was: every tenant's route creation refetched every connected rep).
+- [x] RepHome: InteractionLog handler already scoped to the active route's hashes — kept as-is (core double-knock feature).
+- [x] TeamChat: reduce the redundant 5s message poll to a 30s safety net; the subscription handles real-time delivery.
+- [x] query-client: add a 30s default staleTime to eliminate remount refetch churn app-wide; mutations keep explicit invalidation.
+- [x] Verify no behavior regressions in the touched flows.
+
+### Review — Phase 3: Real-Time Subscription Strategy
+Final strategy: client-guarded subscriptions over polling. Subscriptions stay only for genuinely real-time flows — TeamMessage (chat), InteractionLog (double-knock prevention, already hash-scoped), and SavedRoute (route updates, now tenant-guarded so unrelated tenants' create events no longer trigger refetches). TeamChat's 5s poll was cut to a 30s fallback, and a global 30s staleTime now prevents remount refetch storms. At 15k users this removes the two biggest fan-out amplifiers (global create-invalidation and chat polling) without losing any real-time UX.
+
+## Previous Plan — Phase 2: Full Entity RLS Rollout
 - [x] Inventory remaining entities without RLS and classify by tenancy model.
 - [x] Tenant-scoped RLS (manager_id/created_by/team/admin): CanvasSession, ChatGroup (incl. member_emails read), Appointment, DailyResult.
 - [x] Creator-scoped RLS: FetchJob (created_by/user_email), RouteTemplate, TerritoryPlan, Referral (referrer/referred read, admin-only writes).

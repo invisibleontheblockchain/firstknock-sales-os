@@ -185,18 +185,32 @@ export default function RepHome() {
     try {localStorage.setItem('fk_selectedKnockRouteId', activeRoute.id);} catch {}
   }, [activeRoute?.id]);
 
+  const teamMemberIdsKey = allTeamMemberIds.join(',');
   React.useEffect(() => {
     if (!user) return;
+    const myIds = new Set([user.id, ...allTeamMemberIds]);
     const unsubscribe = base44.entities.SavedRoute.subscribe((event) => {
       if (!event?.id) return;
       const isSelectedRoute = event.id === activeRoute?.id || event.id === manualRouteId;
-      if (isSelectedRoute || event.type === 'create') {
+      // Tenant guard: only react to create events that belong to this user/team.
+      // Unscoped 'create' invalidation caused thundering-herd refetches at scale.
+      const d = event.data;
+      const isMine = !!d && (
+        d.created_by === user.email ||
+        d.manager_id === user.id ||
+        (user.team_manager_id && d.manager_id === user.team_manager_id) ||
+        myIds.has(d.assigned_to)
+      );
+      if (isSelectedRoute) {
         queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
         queryClient.invalidateQueries({ queryKey: ['routeProperties'] });
+      } else if (event.type === 'create' && isMine) {
+        queryClient.invalidateQueries({ queryKey: ['myRoutes'] });
       }
     });
     return unsubscribe;
-  }, [user, activeRoute?.id, manualRouteId, queryClient]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, activeRoute?.id, manualRouteId, queryClient, teamMemberIdsKey]);
 
   const activeRouteOrderKey = React.useMemo(
     () => (activeRoute?.property_hashes || []).join('|'),

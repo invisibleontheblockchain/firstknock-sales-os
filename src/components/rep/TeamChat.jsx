@@ -99,7 +99,7 @@ export default function TeamChat({ user, teamMember, onClose }) {
             );
             return Array.isArray(res) ? res : (res?.items || []);
         },
-        refetchInterval: 5000,
+        refetchInterval: 30000, // safety-net only — real-time delivery comes from the TeamMessage subscription below
         enabled: !!activeChannel,
     });
 
