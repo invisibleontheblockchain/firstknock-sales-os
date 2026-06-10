@@ -122,6 +122,9 @@ export default function Appointments() {
 
     const handleRefresh = () => queryClient.invalidateQueries({ queryKey: ['appointments'] });
 
+    // Tenant key: managers own their team's appointments; reps roll up to their manager
+    const tenantManagerId = user?.app_role === 'rep' ? (user?.team_manager_id || null) : (user?.id || null);
+
     const formatDateLabel = (dateKey) => {
         if (dateKey === 'unscheduled') return 'Unscheduled';
         const date = parseISO(dateKey);
@@ -189,6 +192,7 @@ export default function Appointments() {
                 <div className="max-w-7xl mx-auto p-3 sm:p-4 md:p-8 lg:p-10 space-y-2 sm:space-y-3 md:space-y-5">
                     {showNewForm && (
                         <NewAppointmentForm
+                            managerId={tenantManagerId}
                             onSave={() => { handleRefresh(); setShowNewForm(false); }}
                             onCancel={() => setShowNewForm(false)}
                         />
@@ -196,6 +200,7 @@ export default function Appointments() {
 
                     {showAutoSchedule && (
                         <AutoSchedulePanel
+                            managerId={tenantManagerId}
                             properties={properties}
                             logs={Array.isArray(logs) ? logs : []}
                             teamMembers={teamMembers}
@@ -257,7 +262,7 @@ function StatPill({ icon: Icon, label, value, color }) {
     );
 }
 
-function NewAppointmentForm({ onSave, onCancel }) {
+function NewAppointmentForm({ onSave, onCancel, managerId }) {
     const [saving, setSaving] = useState(false);
     const [form, setForm] = useState({
         full_address: '',
@@ -278,6 +283,7 @@ function NewAppointmentForm({ onSave, onCancel }) {
                 scheduled_date: form.scheduled_date ? new Date(form.scheduled_date).toISOString() : new Date().toISOString(),
                 notes: form.notes.trim() || null,
                 status: 'scheduled',
+                manager_id: managerId || null,
             });
             onSave?.();
         } catch (e) {

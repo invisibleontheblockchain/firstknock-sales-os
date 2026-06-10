@@ -1,6 +1,20 @@
 # Plan
 
-## Current Plan — Canvas Opportunity Discovery Engine POC
+## Current Plan — Phase 2: Full Entity RLS Rollout
+- [x] Inventory remaining entities without RLS and classify by tenancy model.
+- [x] Tenant-scoped RLS (manager_id/created_by/team/admin): CanvasSession, ChatGroup (incl. member_emails read), Appointment, DailyResult.
+- [x] Creator-scoped RLS: FetchJob (created_by/user_email), RouteTemplate, TerritoryPlan, Referral (referrer/referred read, admin-only writes).
+- [x] Backend-only RLS (admin-only; service role bypasses): PipelineLock, LeadScoringWeights (read stays open for client-side scoring).
+- [x] TeamMessage: lock update/delete to sender/admin; read stays open pending a participant_emails redesign for group/DM channels.
+- [x] Add manager_id tenant key to Appointment + DailyResult schemas.
+- [x] Stamp manager_id on new appointments (manual form + Auto-Schedule).
+- [x] Extend backfillRouteAssignments with an Appointment.manager_id pass and run it to completion.
+- [x] Verify backfill via dry-run report and document deferred items.
+
+### Review — Phase 2: Full Entity RLS Rollout
+Eleven entities now enforce server-side RLS. Tenant entities (CanvasSession, ChatGroup, Appointment, DailyResult) use the same manager_id/created_by/team_manager_id/admin pattern as Phase 1; creator entities (FetchJob, RouteTemplate, TerritoryPlan, Referral) are scoped to their owner; backend-only entities (PipelineLock, LeadScoringWeights) are admin-locked since backend functions use the service role. New appointments are stamped with the team tenant key, and the throttled backfill stamped historical appointments. Deferred: MasterProperty RLS (shared dataset, migrating to Neon), TeamMessage read-scoping for group/DM channels (needs a participant_emails field + backfill), and the 15 legacy routes with unresolvable assignee names.
+
+## Previous Plan — Canvas Opportunity Discovery Engine POC
 - [x] Confirm Canvas-only scope: do not modify Precision mode, paid BatchData pull flow, Precision route generation, Billing, or existing field logging behavior.
 - [x] Re-scope the POC around the core trust hypothesis: `Building Footprints - Excluded Land Use = Opportunities`; addresses are enrichment only, not a launch dependency.
 - [x] Add Neon schema support for Canvas intelligence only: `building_footprints`, `land_use`, `canvas_analysis`, and `opportunities`; defer `addresses` to Phase 3 enrichment.

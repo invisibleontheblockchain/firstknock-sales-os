@@ -50,7 +50,8 @@ Deno.serve(async (req) => {
             routes_resolved: 0,
             routes_unresolved: [],
             route_manager_ids_set: 0,
-            log_manager_ids_set: 0
+            log_manager_ids_set: 0,
+            appointment_manager_ids_set: 0
         };
 
         const members = toArr(await withRetry(() => svc.entities.TeamMember.list('-created_date', 2000)));
@@ -140,6 +141,25 @@ Deno.serve(async (req) => {
             }
             if (dry_run) break; // dry-run can't progress past the first batch (nothing is written)
             if (!progressed) break; // no progress possible
+        }
+
+        // --- 5. Backfill Appointment.manager_id in batches ---
+        for (let batch = 0; batch < MAX_BATCHES && !capReached; batch++) {
+            const appts = toArr(await withRetry(() => svc.entities.Appointment.filter({ manager_id: null }, '-created_date', 200)));
+            const missingAppts = appts.filter((a) => !a.manager_id);
+            if (missingAppts.length === 0) break;
+            let progressed = false;
+            for (const appt of missingAppts) {
+                if (capReached) break;
+                const managerId = resolveManagerId(appt.created_by);
+                if (managerId) {
+                    report.appointment_manager_ids_set++;
+                    const ok = await write(() => svc.entities.Appointment.update(appt.id, { manager_id: managerId }));
+                    if (ok) progressed = true;
+                }
+            }
+            if (dry_run) break;
+            if (!progressed) break;
         }
 
         report.writes = writes;

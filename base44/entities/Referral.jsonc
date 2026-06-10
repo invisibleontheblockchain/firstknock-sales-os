@@ -54,5 +54,36 @@
     "referred_email",
     "referral_code",
     "status"
-  ]
+  ],
+  "rls": {
+    "create": true,
+    "read": {
+      "$or": [
+        {
+          "referrer_email": "{{user.email}}"
+        },
+        {
+          "referred_email": "{{user.email}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }

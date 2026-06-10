@@ -8,7 +8,7 @@ import { useTheme, contrastText } from '@/components/theme/ThemeProvider';
 import { scoreProperty, INDUSTRIES, getIndustryLabel } from './EligibilityScorer';
 import { addDays, setHours, setMinutes, format } from 'date-fns';
 
-export default function AutoSchedulePanel({ properties, logs, teamMembers, onComplete }) {
+export default function AutoSchedulePanel({ properties, logs, teamMembers, onComplete, managerId }) {
     const { accent } = useTheme();
     const accentText = contrastText(accent);
     const [industry, setIndustry] = useState('solar');
@@ -90,6 +90,7 @@ export default function AutoSchedulePanel({ properties, logs, teamMembers, onCom
                 assigned_rep: rep?.id || '',
                 assigned_rep_name: rep?.name || '',
                 outcome: 'pending',
+                manager_id: managerId || null,
             };
         });
 
