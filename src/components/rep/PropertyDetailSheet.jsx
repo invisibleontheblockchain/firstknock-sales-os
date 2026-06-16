@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Navigation, Camera, Loader2, Phone, Clock, ChevronUp, Mic, Check, Home, Ban, MapPin, UserX } from 'lucide-react';
+import { Navigation, Camera, Loader2, Phone, Clock, ChevronUp, ChevronLeft, Check, Home, Ban, MapPin, UserX } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { format } from 'date-fns';
 import PropertyHistory from './PropertyHistory';
@@ -64,32 +64,26 @@ export default function PropertyDetailSheet({ property, logs, onLog, onClearDeci
                 className="bg-[#050505]/95 backdrop-blur-2xl rounded-t-[2rem] border-t border-white/10 max-h-[86vh] flex flex-col animate-in slide-in-from-bottom duration-300 shadow-[0_-24px_80px_rgba(0,0,0,0.75)]"
                 onClick={e => e.stopPropagation()}
             >
-                {/* Drag handle */}
-                <div className="flex justify-center pt-3 pb-1">
-                    <div className="w-10 h-1 rounded-full bg-white/15" />
-                </div>
-
-                {/* Close */}
-                <button onClick={onClose} className="absolute top-4 right-4 z-50 w-10 h-10 rounded-full bg-[#2EEB57] flex items-center justify-center active:scale-90 transition-all shadow-[0_4px_16px_rgba(46,235,87,0.3)] hover:bg-[#39FF4A]">
-                    <X className="w-5 h-5 text-black font-bold" />
-                </button>
-
-                {/* Address */}
-                <div className="px-5 pb-3 pt-1">
-                    {routePosition > 0 && (
-                        <div className="flex items-center gap-1.5 mb-1">
-                            <span className="text-[10px] font-black bg-[#2EEB57]/10 text-[#39FF4A] px-2 py-0.5 rounded-full border border-[#2EEB57]/30 tracking-wide">
-                                Stop #{routePosition}{totalStops ? ` of ${totalStops}` : ''}
-                            </span>
+                <header className="sticky top-0 z-50 border-b border-white/10 bg-[#050505]/95 px-3 py-3 backdrop-blur-2xl">
+                    <div className="flex items-center gap-3">
+                        <button onClick={onClose} className="flex h-10 shrink-0 items-center gap-1 rounded-full bg-white/[0.06] px-3 text-xs font-bold text-white/85 active:scale-95 transition-all hover:bg-white/[0.10]">
+                            <ChevronLeft className="w-4 h-4" /> Back
+                        </button>
+                        <div className="min-w-0 flex-1 selectable-text">
+                            {routePosition > 0 && (
+                                <p className="mb-0.5 text-[9px] font-black uppercase tracking-[0.16em] text-[#39FF4A]">
+                                    Stop #{routePosition}{totalStops ? ` of ${totalStops}` : ''}
+                                </p>
+                            )}
+                            <h2 className="truncate text-base font-black leading-tight text-white">
+                                {property.house_number} {property.street_name}
+                            </h2>
+                            <p className="truncate text-[11px] text-white/40">
+                                {property.city}{property.state ? `, ${property.state}` : ''} {property.zip_code}
+                            </p>
                         </div>
-                    )}
-                    <h2 className="text-2xl font-black text-white leading-tight tracking-tight">
-                        {property.house_number} {property.street_name}
-                    </h2>
-                    <p className="text-[12px] text-white/35 mt-1">
-                        {property.city}{property.state ? `, ${property.state}` : ''} {property.zip_code}
-                    </p>
-                </div>
+                    </div>
+                </header>
 
                 {/* Quick Outcome - 4 column grid matching checklist style */}
                 <div className="px-5 pb-3">
@@ -176,7 +170,7 @@ export default function PropertyDetailSheet({ property, logs, onLog, onClearDeci
                                 value={logNote}
                                 onChange={(e) => setLogNote(e.target.value)}
                                 placeholder="Quick note..."
-                                className="w-full bg-black/70 border border-white/10 rounded-xl p-3 text-sm text-white resize-none h-16 focus:border-[#2EEB57] focus:outline-none"
+                                className="selectable-text w-full bg-black/70 border border-white/10 rounded-xl p-3 text-sm text-white resize-none h-16 focus:border-[#2EEB57] focus:outline-none"
                             />
                             <div className="flex gap-2">
                                 <div className="flex-1">

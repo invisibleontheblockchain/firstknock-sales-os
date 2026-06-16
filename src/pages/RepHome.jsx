@@ -14,6 +14,7 @@ import CanvasFieldView from '@/components/rep/CanvasFieldView';
 import RepHeader from '@/components/rep/RepHeader';
 import PropertyCard from '@/components/rep/PropertyCard';
 import PropertyDetailSheet from '@/components/rep/PropertyDetailSheet';
+import PullToRefresh from '@/components/mobile/PullToRefresh';
 import RepAnalytics from '@/components/rep/RepAnalytics';
 import TeamChat from '@/components/rep/TeamChat';
 import UpgradeGate, { shouldShowUpgradeGate } from '@/components/upgrade/UpgradeGate';
@@ -559,6 +560,12 @@ export default function RepHome() {
     }
   };
 
+  const handleRouteRefresh = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['myRoutes'] }),
+    queryClient.invalidateQueries({ queryKey: ['routeProperties'] }),
+    queryClient.invalidateQueries({ queryKey: ['routeLogs'] })
+  ]);
+
   return (
     <div className="h-full flex flex-col bg-black text-[#F0F0F5] relative overflow-hidden">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_-10%,rgba(46,235,87,0.14),transparent_34%),linear-gradient(180deg,#000000_0%,#030303_45%,#000000_100%)]" />
@@ -657,7 +664,7 @@ export default function RepHome() {
             </div>
 
             {/* Property List */}
-            <div className="flex-1 overflow-y-auto px-2.5 py-2 pb-20 bg-transparent">
+            <PullToRefresh onRefresh={handleRouteRefresh} className="flex-1 overflow-y-auto px-2.5 py-2 pb-20 bg-transparent">
                 {filteredProperties.length === 0 ?
         <div className="text-center py-16">
                         <div className="w-14 h-14 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -680,7 +687,7 @@ export default function RepHome() {
           )}
                     </div>
         }
-            </div>
+            </PullToRefresh>
 
             {/* Floating action buttons */}
             <div className="fixed bottom-20 left-4 right-4 z-30 flex items-center gap-2">

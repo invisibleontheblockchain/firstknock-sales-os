@@ -1,6 +1,17 @@
 # Plan
 
-## Current Plan — Tone Down Routes Button
+## Current Plan — Mobile Compatibility Enhancements
+- [x] Add rubber-band prevention to root/body containers in index.css.
+- [x] Add non-selectable touch behavior to interactive UI while preserving selectable text content.
+- [x] Replace native selects in RouteCommandPanel and CanvasBuilderSettings with styled Select components.
+- [x] Add pull-to-refresh to the My Route list and Appointments list.
+- [x] Standardize deep detail overlays with a clear left-aligned back header.
+- [x] Verify behavior and document results.
+
+### Review — Mobile Compatibility Enhancements
+Added mobile overscroll protection, safer touch selection behavior, styled Canvas selects, pull-to-refresh on My Route and Appointments lists, and iOS-style back headers on detail overlays. Verified there are no remaining native selects in RouteCommandPanel or CanvasBuilderSettings and the production build passes.
+
+## Previous Plan — Tone Down Routes Button
 - [x] Make the selected Routes button black.
 - [x] Reduce the visual intensity of its border, text, shadow, and count badge.
 - [x] Verify the button behavior remains unchanged.

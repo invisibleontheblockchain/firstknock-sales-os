@@ -3,6 +3,7 @@ import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Calendar, Loader2, Plus, Zap, Filter, ChevronDown, Clock, CheckCircle2, XCircle, AlertTriangle, CalendarDays, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import PullToRefresh from '@/components/mobile/PullToRefresh';
 import { format, isToday, isTomorrow, isThisWeek, parseISO, isPast } from 'date-fns';
 
 import AppointmentCard from '@/components/appointments/AppointmentCard';
@@ -188,7 +189,7 @@ export default function Appointments() {
             </div>
 
             {/* Content */}
-            <div className="flex-1 overflow-auto">
+            <PullToRefresh onRefresh={handleRefresh} className="flex-1 overflow-auto">
                 <div className="max-w-7xl mx-auto p-3 sm:p-4 md:p-8 lg:p-10 space-y-2 sm:space-y-3 md:space-y-5">
                     {showNewForm && (
                         <NewAppointmentForm
@@ -236,7 +237,7 @@ export default function Appointments() {
                         ))
                     )}
                 </div>
-            </div>
+            </PullToRefresh>
 
             {/* Detail modal */}
             {selectedAppointment && (

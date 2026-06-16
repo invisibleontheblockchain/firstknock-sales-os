@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
-import { Calendar, User, Phone, Mail, FileText, X, Check, Ban, Clock, RotateCcw, Star, MapPin, Pencil } from 'lucide-react';
+import { Calendar, User, Phone, Mail, FileText, ChevronLeft, Check, Ban, Clock, RotateCcw, Star, MapPin, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
@@ -69,17 +69,17 @@ export default function AppointmentDetail({ appointment, onClose, onUpdate }) {
             <div className="bg-[#0c0c0e] border border-white/[0.06] rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
                 
                 {/* Header */}
-                <div className="sticky top-0 bg-[#0c0c0e] px-5 py-4 border-b border-white/[0.06] flex items-start justify-between z-10">
-                    <div className="flex-1 min-w-0 pr-3">
+                <div className="sticky top-0 bg-[#0c0c0e] px-3 py-3 border-b border-white/[0.06] flex items-center gap-3 z-10">
+                    <button onClick={onClose} className="flex h-10 shrink-0 items-center gap-1 rounded-full bg-white/[0.06] px-3 text-xs font-bold text-white/85 hover:bg-white/[0.1] active:scale-95 transition-colors">
+                        <ChevronLeft className="w-4 h-4" /> Back
+                    </button>
+                    <div className="flex-1 min-w-0 selectable-text">
                         <p className="text-sm font-bold text-white truncate">{appointment.full_address || 'Unknown Address'}</p>
                         <div className="flex items-center gap-2 mt-1">
                             <span className="text-[10px] text-gray-500">{getIndustryLabel(appointment.industry)}</span>
                             {appointment.zip_code && <span className="text-[10px] text-gray-600">• {appointment.zip_code}</span>}
                         </div>
                     </div>
-                    <button onClick={onClose} className="w-8 h-8 rounded-xl bg-white/[0.06] flex items-center justify-center hover:bg-white/[0.1] transition-colors shrink-0">
-                        <X className="w-4 h-4 text-gray-400" />
-                    </button>
                 </div>
 
                 <div className="p-5 space-y-5">
@@ -137,7 +137,7 @@ export default function AppointmentDetail({ appointment, onClose, onUpdate }) {
                         <DetailRow icon={FileText} label={
                             editing
                                 ? <Input placeholder="Notes" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })} className="h-8 bg-black/30 border-white/[0.08] text-xs text-white" />
-                                : <span className="text-gray-400">{appointment.notes || 'No notes'}</span>
+                                : <span className="selectable-text text-gray-400">{appointment.notes || 'No notes'}</span>
                         } />
                         {appointment.assigned_rep_name && !editing && (
                             <DetailRow icon={User} label={<span>Rep: <span className="text-white font-medium">{appointment.assigned_rep_name}</span></span>} />

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Map as MapIcon, Pencil, Rocket, Save, Wand2, X, Lock, Unlock, Users, Clock, Home, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { base44 } from '@/api/base44Client';
@@ -479,16 +480,26 @@ function ZoneDetail({ zone, roster, repsPerZone, isEditingBoundary, onEditBounda
       </Button>
       <p className="text-[11px] text-gray-400">Drop point: {zone.drop_point ? `${zone.drop_point.lat.toFixed(5)}, ${zone.drop_point.lng.toFixed(5)}` : 'NW corner'}</p>
       {assignments.map((value, index) => (
-        <select key={index} value={value} onChange={(e) => updateAssignment(index, e.target.value)} className="w-full h-10 rounded-xl bg-black/40 border border-white/10 text-sm text-white px-3">
-          <option value="">Assign rep {index + 1}</option>
-          {roster.map((name) => <option key={name} value={name}>{name}</option>)}
-        </select>
+        <Select key={index} value={value || '__unassigned__'} onValueChange={(next) => updateAssignment(index, next === '__unassigned__' ? '' : next)}>
+          <SelectTrigger className="w-full h-10 rounded-xl bg-black/40 border border-white/10 text-sm text-white px-3">
+            <SelectValue placeholder={`Assign rep ${index + 1}`} />
+          </SelectTrigger>
+          <SelectContent className="z-[4000] bg-black border-white/10 text-white">
+            <SelectItem value="__unassigned__">Assign rep {index + 1}</SelectItem>
+            {roster.map((name) => <SelectItem key={name} value={name}>{name}</SelectItem>)}
+          </SelectContent>
+        </Select>
       ))}
-      <select value={zone.status || 'unworked'} onChange={(e) => onChange({ status: e.target.value })} className="w-full h-10 rounded-xl bg-black/40 border border-white/10 text-sm text-white px-3">
-        <option value="unworked">Unworked</option>
-        <option value="in_progress">In Progress</option>
-        <option value="complete">Complete</option>
-      </select>
+      <Select value={zone.status || 'unworked'} onValueChange={(value) => onChange({ status: value })}>
+        <SelectTrigger className="w-full h-10 rounded-xl bg-black/40 border border-white/10 text-sm text-white px-3">
+          <SelectValue placeholder="Zone status" />
+        </SelectTrigger>
+        <SelectContent className="z-[4000] bg-black border-white/10 text-white">
+          <SelectItem value="unworked">Unworked</SelectItem>
+          <SelectItem value="in_progress">In Progress</SelectItem>
+          <SelectItem value="complete">Complete</SelectItem>
+        </SelectContent>
+      </Select>
       <textarea value={zone.notes || ''} onChange={(e) => onChange({ notes: e.target.value })} className="w-full min-h-[70px] rounded-xl bg-black/40 border border-white/10 text-sm text-white p-3" placeholder="Notes: gated, apartment, skip area..." />
     </section>
   );

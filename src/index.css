@@ -2,6 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
+html,
+body,
+#root {
+  overscroll-behavior: none;
+}
+
+button,
+a,
+[role="button"],
+[role="tab"],
+[role="menuitem"],
+[role="option"],
+svg,
+.interactive-ui {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input,
+textarea,
+[contenteditable="true"],
+.selectable-text,
+.selectable-text * {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
 @layer base {
   :root {
     --background: 0 0% 0%;
