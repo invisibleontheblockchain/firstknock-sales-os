@@ -1,6 +1,23 @@
 # Plan
 
-## Current Plan — BatchData Polygon Search Precision Fix
+## Current Plan — Unified Precision Fetch + Auto-Generate Flow
+- [ ] Confirm scope: Precision `Build your route` parameters become the single Precision Builder; remove the old separate route-builder step from the normal post-pull flow.
+- [ ] Keep the existing drawn-area BatchData pull, caps, paywall, and BatchData-only processor unchanged.
+- [ ] After a BatchData job completes, fetch the pulled polygon’s fresh Neon candidates immediately and merge them into map state so pins populate without requiring a manual builder open.
+- [ ] Trigger the existing `generateRoutes()` automatically after the completed pull, using the same drawn polygon, selected sold window/value filters, route size, and current routing settings.
+- [ ] Prevent the old `RouteBuilderSettings` panel from opening after a successful Precision pull; show generated routes/map results instead.
+- [ ] Keep `RouteBuilderSettings` available only for manual reconfigure/reorder workflows if the user opens Builder later, not as the required next step.
+- [ ] Verify with no-credit backend tests for job/status paths and a synthetic completed pull path; verify frontend state flow by confirming the post-complete handler calls route generation instead of opening the builder.
+- [ ] Document review results before marking complete.
+
+### Implementation spec
+- Source of truth remains `TerritoryPrompt`: its `PrecisionPullPanel` collects count/value/sold-window and starts `startBatchDataPull`.
+- On `fetchJobStatus.status === "completed"`, `TerritoryPrompt` should call a new `onPullComplete` contract that requests auto-generation, not `setShowCompare(true)`.
+- `Home` should handle that completion by invalidating map/user data, fetching fresh polygon candidates through `getRouteCandidatesFromNeon`, merging them into `fetchedProperties`, setting the sold filter to the pulled window, and then calling `generateRoutesRef.current()` after state has the fresh properties.
+- Avoid adding broad new logic to oversized `Home`; use a small completion helper if needed and only patch the existing `onPullComplete` bridge.
+- Success UX: “Data loaded — generating routes…” then existing generation overlay/routes panel/map population.
+
+## Previous Plan — BatchData Polygon Search Precision Fix
 - [x] Confirm scope: Precision Generate after freehand polygon must use BatchData Property Search only; no RentCast, no county-radius fallback, no bounding-box-only query.
 - [x] Patch `processFetchChunk` as the source of truth for live pulls: POST `/api/v1/property/search` with `searchCriteria.address.geoLocationPolygon.geoPoints`, closed polygon, `general.standardizedLandUseCode.equals = "R2"`, `valuation.estimatedValue.min = 100000` by default, optional max value, `sale.lastSaleDate.minDate`, `options.skip/take`, and datasets exactly `["basic", "listing", "owner"]`.
 - [x] Replace cursor/query pagination with documented skip/take pagination, max take 500, stop on partial page or totalRecordCount.
