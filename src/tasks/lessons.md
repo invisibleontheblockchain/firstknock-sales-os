@@ -85,3 +85,4 @@
 - When adding fields to property detail UI, verify the exact clicked-object payload, not just the full backend response; slim map projections (`fields='map'`) can silently omit data that exists in the database.
 - When hiding map overlays for a tab/panel, cover both UI states: the panel being open and the selected item/view that remains after the panel closes; otherwise ghost overlays can reappear after selection.
 - For mobile full-screen overlays inside the app shell, close buttons should be fixed below the app's own top header plus safe-area spacing, with high z-index and high-contrast styling; placing them at the raw viewport top can hide them behind the app/header/status bar.
+- When the user asks to hide a selected UI label completely, remove the label and any adjacent divider that only existed for that label so the remaining row does not leave orphan separators.

@@ -35,8 +35,6 @@ export default function RepHeader({ user, isOffline, activeRoute, stats, knockWi
                     <div className="flex items-center gap-1.5 mt-0.5">
                         <span className="text-[9px] font-semibold text-white/45 tracking-wide">{stats.total} STOPS</span>
                         <div className="w-1 h-1 rounded-full bg-white/15" />
-                        <span className="text-[9px] font-semibold text-white/45 truncate">{knockWindow.emoji} {knockWindow.label}</span>
-                        <div className="w-1 h-1 rounded-full bg-white/15" />
                         <span className={`flex items-center gap-1 text-[8px] font-black tracking-[0.16em] ${syncState.text}`}>
                             <span className={`w-1.5 h-1.5 rounded-full ${syncState.dot} ${isMutating > 0 ? 'animate-pulse' : 'shadow-[0_0_10px_rgba(46,235,87,0.9)]'}`} />
                             {syncState.label}
