@@ -1,6 +1,14 @@
 # Plan
 
-## Current Plan — Route Outcome Dot Colors
+## Current Plan — Active Route Toolbar Cleanup
+- [x] Make the active route name standard white in view and edit states.
+- [x] Add a reset control that clears active route date and price filters.
+- [x] Verify the toolbar still preserves route assignment, save filtered route, optimize, and close behavior.
+
+### Review — Active Route Toolbar Cleanup
+The active route name is now standard white, the edit input matches that style, and a Reset button clears date and price filters while preserving existing save, assign, optimize, and close actions.
+
+## Previous Plan — Route Outcome Dot Colors
 - [x] Identify where route-line property dots are rendered.
 - [x] Add one shared outcome color helper for property dots.
 - [x] Apply green/red outcome colors to route map dots and nearby HUD dots.

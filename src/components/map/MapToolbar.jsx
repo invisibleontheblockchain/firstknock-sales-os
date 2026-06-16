@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, Users, Rocket } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, Users, Rocket, RotateCcw } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
@@ -162,6 +162,13 @@ export default function MapToolbar({
     }
   };
 
+  const resetActiveRouteFilters = (e) => {
+    e.stopPropagation();
+    setActiveRouteSoldFilter?.('all');
+    setActiveRoutePriceFilter?.('all');
+    toast.success('Filters reset');
+  };
+
   const handleSaveVisibleFilteredRoute = async () => {
     if (!activeRoute?.properties?.length || !user?.id) return;
     const filterLabels = [];
@@ -296,13 +303,13 @@ export default function MapToolbar({
 
                             {editingName ?
             <div className="flex items-center gap-1 flex-1 min-w-0" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
-                                    <input value={draftName} onChange={(e) => setDraftName(e.target.value)} onKeyDown={(e) => {if (e.key === 'Enter') handleSaveRename();if (e.key === 'Escape') setEditingName(false);}} className="bg-black/60 border border-[#2EEB57]/50 text-[#2EEB57] text-[11px] font-bold rounded px-1.5 py-0.5 flex-1 outline-none min-w-0" autoFocus />
+                                    <input value={draftName} onChange={(e) => setDraftName(e.target.value)} onKeyDown={(e) => {if (e.key === 'Enter') handleSaveRename();if (e.key === 'Escape') setEditingName(false);}} className="bg-black/60 border border-white/20 text-white text-[11px] font-bold rounded px-1.5 py-0.5 flex-1 outline-none min-w-0" autoFocus />
                                     <button onClick={handleSaveRename} className="p-0.5 text-green-500"><Check className="w-3 h-3" /></button>
                                     <button onClick={() => setEditingName(false)} className="p-0.5 text-gray-500"><X className="w-3 h-3" /></button>
                                 </div> :
 
             <button onClick={handleStartRename} className="group/name flex items-center gap-1 min-w-0 shrink" title="Rename">
-                                    <span className="text-[11px] md:text-xs font-bold truncate max-w-[90px] md:max-w-[160px]" style={{ color: BRAND.gold }}>{activeRoute.route_number && (!activeRoute.name || /^Route\s+\d+$/i.test(activeRoute.name)) ? `Route ${activeRoute.route_number}` : activeRoute.name}</span>
+                                    <span className="text-[11px] md:text-xs font-bold text-white truncate max-w-[90px] md:max-w-[160px]">{activeRoute.route_number && (!activeRoute.name || /^Route\s+\d+$/i.test(activeRoute.name)) ? `Route ${activeRoute.route_number}` : activeRoute.name}</span>
                                     <Pencil className="w-2.5 h-2.5 text-gray-600 opacity-0 group-hover/name:opacity-100 shrink-0" />
                                 </button>
             }
@@ -357,6 +364,12 @@ export default function MapToolbar({
                                     <option value="750000">&gt;$750K</option>
                                     <option value="1000000">&gt;$1M</option>
                                 </select>
+            }
+
+                            {(activeRouteSoldFilter !== 'all' || activeRoutePriceFilter !== 'all') &&
+            <button onClick={resetActiveRouteFilters} className="h-5 md:h-6 px-1.5 md:px-2 text-[9px] md:text-[10px] font-bold bg-white/10 hover:bg-white/15 text-white border border-white/15 rounded-md flex items-center gap-0.5 shrink-0">
+                                    <RotateCcw className="w-2.5 h-2.5" /> RESET
+                                </button>
             }
 
                             {(activeRouteSoldFilter !== 'all' || activeRoutePriceFilter !== 'all') && onSaveFilteredRoute &&
