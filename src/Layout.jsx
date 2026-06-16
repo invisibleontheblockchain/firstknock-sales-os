@@ -191,7 +191,7 @@ function LayoutInner({ children }) {
       <header className={`px-4 pt-[env(safe-area-inset-top)] pb-3 z-20 shadow-md bg-black ${window.location.pathname.includes('RepHome') ? 'border-b border-transparent' : 'border-b border-slate-800'}`}>
                 <div className="flex items-center w-full pt-3">
                     <div className="flex items-center gap-3 mr-auto">
-                        <h1 className="text-lg font-bold tracking-tight text-white">FirstKnock</h1>
+                        <h1 className="text-lg font-bold tracking-tight text-white hidden">FirstKnock</h1>
                     </div>
 
                     {/* Desktop */}
