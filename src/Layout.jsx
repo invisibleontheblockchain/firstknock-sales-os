@@ -133,7 +133,9 @@ function LayoutInner({ children }) {
 
   }
 
-  const isRoleSelectPage = window.location.pathname.includes('RoleSelect');
+  const currentPath = window.location.pathname;
+  const isPageActive = (pageName) => currentPath === createPageUrl(pageName) || currentPath === `/${pageName}`;
+  const isRoleSelectPage = currentPath.includes('RoleSelect');
   if (!user.app_role && !isRoleSelectPage) {window.location.href = createPageUrl('RoleSelect');return null;}
 
   return (
@@ -188,7 +190,7 @@ function LayoutInner({ children }) {
 
             {/* Header */}
             {!isRoleSelectPage &&
-      <header className={`px-4 pt-[env(safe-area-inset-top)] pb-3 z-20 shadow-md bg-black ${window.location.pathname.includes('RepHome') ? 'border-b border-transparent' : 'border-b border-slate-800'}`}>
+      <header className={`px-4 pt-[env(safe-area-inset-top)] pb-3 z-20 shadow-md bg-black ${isPageActive('RepHome') ? 'border-b border-transparent' : 'border-b border-slate-800'}`}>
                 <div className="flex items-center w-full pt-3">
                     <div className="flex items-center gap-3 mr-auto">
                         
@@ -201,7 +203,7 @@ function LayoutInner({ children }) {
                         <Link to="/About" className="rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-white/60 transition-colors hover:text-white">ABOUT</Link>
                         <Link to="/Contact" className="rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-white/60 transition-colors hover:text-white">CONTACT</Link>
                         <Link to={createPageUrl('Setup')} className="rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-white/60 transition-colors hover:text-white">SETUP</Link>
-                        <Link to={createPageUrl('Billing')} className="rounded-full bg-white text-black px-4 py-1.5 text-[10px] font-extrabold tracking-[0.18em] transition-all hover:bg-[#39FF4A]">PLANS</Link>
+                        <Link to={createPageUrl('Billing')} className={`rounded-full px-4 py-1.5 text-[10px] font-extrabold tracking-[0.18em] transition-all ${isPageActive('Billing') ? 'bg-white text-black hover:bg-[#39FF4A]' : 'text-white/60 hover:text-white hover:bg-white/10'}`}>PLANS</Link>
                         <div className="h-5 w-px bg-white/10" />
                         <Link to={createPageUrl('MobileApp')} className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition-all hover:bg-white/10 hover:text-[#39FF4A]"><Smartphone className="w-4 h-4" /></Link>
                         <button onClick={async () => {try {await base44.auth.logout(window.location.origin);} catch {window.location.reload();}queryClient.clear();}} className="flex h-8 w-8 items-center justify-center rounded-full text-white/45 transition-all hover:bg-white/10 hover:text-white" title="Logout"><LogOut className="w-4 h-4" /></button>
@@ -256,16 +258,16 @@ function LayoutInner({ children }) {
       <nav className="bg-black border-t border-slate-800 z-20 safe-area-bottom shrink-0">
                 {user.app_role === 'rep' ?
         <div className="flex justify-around items-center h-16 max-w-full mx-auto">
-                        <NavItem icon={Map} label="My Route" to={createPageUrl('RepHome')} active={window.location.pathname.includes('RepHome') || window.location.pathname === '/'} accent={accent} />
-                        <NavItem icon={HelpCircle} label="Help" to={createPageUrl('Tutorial')} active={window.location.pathname.endsWith('Tutorial')} accent={accent} />
+                        <NavItem icon={Map} label="My Route" to={createPageUrl('RepHome')} active={isPageActive('RepHome')} accent={accent} />
+                        <NavItem icon={HelpCircle} label="Help" to={createPageUrl('Tutorial')} active={isPageActive('Tutorial')} accent={accent} />
                     </div> :
 
         <div className="flex justify-around items-center h-16 max-w-full mx-auto">
-                        <NavItem icon={Map} label="Map" to={createPageUrl('Home')} active={window.location.pathname.endsWith('Home') || window.location.pathname === '/'} accent={accent} />
-                        <NavItem icon={Navigation} label="Knock" to={(() => {try {const id = localStorage.getItem('fk_selectedKnockRouteId');return createPageUrl('RepHome') + (id ? `?route=${encodeURIComponent(id)}` : '');} catch {return createPageUrl('RepHome');}})()} active={window.location.pathname.includes('RepHome')} accent={accent} />
-                        <NavItem icon={TrendingUp} label="Analytics" to={createPageUrl('List')} active={window.location.pathname.endsWith('List')} accent={accent} />
-                        <NavItem icon={Calendar} label="Appts" to={createPageUrl('Appointments')} active={window.location.pathname.endsWith('Appointments')} accent={accent} />
-                        <NavItem icon={Users} label="Team" to={createPageUrl('AdminTeam')} active={window.location.pathname.endsWith('AdminTeam')} accent={accent} />
+                        <NavItem icon={Map} label="Map" to={createPageUrl('Home')} active={isPageActive('Home')} accent={accent} />
+                        <NavItem icon={Navigation} label="Knock" to={(() => {try {const id = localStorage.getItem('fk_selectedKnockRouteId');return createPageUrl('RepHome') + (id ? `?route=${encodeURIComponent(id)}` : '');} catch {return createPageUrl('RepHome');}})()} active={isPageActive('RepHome')} accent={accent} />
+                        <NavItem icon={TrendingUp} label="Analytics" to={createPageUrl('List')} active={isPageActive('List')} accent={accent} />
+                        <NavItem icon={Calendar} label="Appts" to={createPageUrl('Appointments')} active={isPageActive('Appointments')} accent={accent} />
+                        <NavItem icon={Users} label="Team" to={createPageUrl('AdminTeam')} active={isPageActive('AdminTeam')} accent={accent} />
                     </div>
         }
             </nav>

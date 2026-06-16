@@ -837,3 +837,12 @@ The Precision Generate panel now says “Build your route,” shows property cou
 
 ### Review — Remove Confidence Filter
 Removed the old active-route Confidence/phase filter state, filtering logic, toolbar props, and reset wiring. Also removed the visible Confidence color option/default from Map Settings so users no longer see a Confidence control. Verification checked Home, MapToolbar, and MapSettingsPanel for `activeRoutePhaseFilter`, `setActiveRoutePhaseFilter`, `sale_confidence`, visible Confidence labels, and `colorScheme: 'confidence'`; no matches remain.
+
+## Plan — Fix Navigation Active States
+- [x] Make the desktop Plans button only use its highlighted style on the Billing page.
+- [x] Make bottom navigation active checks match exact pages so Map is not active on RepHome.
+- [x] Verify the Layout active-state expressions no longer overlap.
+- [x] Document the result.
+
+### Review — Fix Navigation Active States
+Updated Layout to use one exact-page active helper. The desktop Plans button now only gets the highlighted white pill style on Billing, and bottom nav items now use exact page checks so RepHome no longer also activates Map. Verification confirmed there are no broad `endsWith('Home')` or `includes('RepHome')` active checks left.
