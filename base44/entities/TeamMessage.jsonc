@@ -19,9 +19,20 @@
       ],
       "description": "Role of sender"
     },
+    "manager_id": {
+      "type": "string",
+      "description": "Manager/account ID that owns this message thread"
+    },
+    "participant_emails": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Lowercase email addresses allowed to see this message"
+    },
     "channel": {
       "type": "string",
-      "description": "Channel ID - 'general' for all, manager_id for team, 'group_<id>' for custom groups, 'dm_<hash>' for DMs"
+      "description": "Account-scoped channel ID - manager_id for team, general_<manager_id> for account general, group_<id> for custom groups, dm_<hash> for DMs"
     },
     "channel_name": {
       "type": "string",
@@ -50,13 +61,40 @@
   "required": [
     "sender_name",
     "message",
-    "channel"
+    "channel",
+    "manager_id"
   ],
   "rls": {
     "create": true,
-    "read": true,
+    "read": {
+      "$or": [
+        {
+          "manager_id": "{{user.id}}"
+        },
+        {
+          "manager_id": "{{user.data.team_manager_id}}"
+        },
+        {
+          "participant_emails": "{{user.email}}"
+        },
+        {
+          "sender_email": "{{user.email}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
     "update": {
       "$or": [
+        {
+          "manager_id": "{{user.id}}"
+        },
         {
           "created_by": "{{user.email}}"
         },
@@ -72,6 +110,9 @@
     },
     "delete": {
       "$or": [
+        {
+          "manager_id": "{{user.id}}"
+        },
         {
           "created_by": "{{user.email}}"
         },
