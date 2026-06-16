@@ -37,7 +37,9 @@ export default function OnboardingWizard({ user, onComplete }) {
         if (ua.includes('android')) setPlatform('android');
     }, []);
 
-    if (!user || user.has_seen_onboarding || !user.app_role || !isOpen) return null;
+    const isNewManagerWithoutTerritory = user?.app_role === 'manager' && !user.has_defined_market && !user.has_pulled_data && !user.territory_zip_codes?.length && !user.area_pulls_count;
+
+    if (!user || user.has_seen_onboarding || !user.app_role || !isOpen || isNewManagerWithoutTerritory) return null;
 
     const handleNext = () => {
         setStep(2);

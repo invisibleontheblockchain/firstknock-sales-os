@@ -821,11 +821,13 @@ export default function Home() {
         return Array.from(zips).sort();
     }, [effectiveProperties]);
 
-    // Handle startDraw from MarketOnboarding
+    // Handle startDraw from onboarding/deep links
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
         if (params.get('startDraw') === 'true') {
             const shapeParam = params.get('drawShape');
+            setDrawnPolygon(null);
+            setDraftPolygon([]);
             if (shapeParam && ['circle', 'square', 'triangle'].includes(shapeParam)) {
                 setDrawShape(shapeParam);
             }
