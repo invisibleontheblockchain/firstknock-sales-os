@@ -343,7 +343,7 @@ export default function TerritoryPrompt({
           const savingsMsg = deltaSavings?.savings_pct > 0 ?
           ` Saved ${deltaSavings.savings_pct}% on DB writes (${deltaSavings.records_skipped?.toLocaleString() || 0} unchanged records skipped)!` :
           '';
-          toast.success(`${totalLoaded.toLocaleString()} properties loaded!${savingsMsg} Tap "Generate Routes" to build your first route.`, { duration: 6000 });
+          toast.success(`${totalLoaded.toLocaleString()} properties loaded!${savingsMsg} Generating routes now...`, { duration: 6000 });
 
           // Update user status
           try {
@@ -360,15 +360,14 @@ export default function TerritoryPrompt({
           if (onPullComplete) {
             setMode('generate');
             setShowRoutePanel(false);
+            setShowCompare(false);
             await onPullComplete(fetchMonths, isPaid);
-            setMode('generate');
-            setShowCompare(true);
           } else {
             queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
             queryClient.invalidateQueries({ queryKey: ['user'] });
             setMode('generate');
             setShowRoutePanel(false);
-            setShowCompare(true);
+            setShowCompare(false);
           }
         } else if (d.status === 'cancelled') {
           clearInterval(pollRef.current);

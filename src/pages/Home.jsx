@@ -1376,10 +1376,15 @@ export default function Home() {
 
     // handleAreaPullComplete removed — MarketSetupPrompt handles flow directly
 
-    // Run auto generation when data is fresh
+    // Run auto generation when data is fresh after Precision's unified pull+generate flow.
     useEffect(() => {
-        // Auto-generation disabled here to prioritize opening the Builder panel after fetch
-    }, [pendingAutoGenerate]);
+        if (!pendingAutoGenerate || routesGenerating) return;
+        const timer = setTimeout(() => {
+            setPendingAutoGenerate(false);
+            generateRoutesRef.current?.();
+        }, 100);
+        return () => clearTimeout(timer);
+    }, [pendingAutoGenerate, routesGenerating, effectiveProperties.length]);
 
     // Dynamic status colors based on selected color scheme
     const STATUS_COLORS = useMemo(() => {
@@ -1592,16 +1597,38 @@ export default function Home() {
                 user={user}
                 setZipCodeFilter={setZipCodeFilter}
                 onPullComplete={async (pullFetchMonths, pulledWithMls) => {
-                    setFrozenWorkingSet(null); setRoutes([]); await queryClient.refetchQueries({ queryKey: ['masterProperties'] }); await queryClient.refetchQueries({ queryKey: ['user'] });
-                    setMode('generate'); setShowCompare(true); const pm = pullFetchMonths || 12; setMaxDataMonths(pm); try { localStorage.setItem('fk_maxDataMonths', String(pm)); } catch { }
-                    setHasMlsData(!!pulledWithMls); try { localStorage.setItem('fk_hasMlsData', pulledWithMls ? 'true' : 'false'); } catch { }
-                    setMode('analyze'); setShowCompare(false); setShowRoutePanel(false);
-                    // Unified: 40mi² and 300mi² pulls are handled identically downstream.
-                    // soldDateFilter mirrors what was actually pulled; lastPullMode is retained as '40mi'
-                    // (the "standard" confidence-filtered path) for both sizes so the route pipeline
-                    // behaves the same regardless of area size.
+                    setFrozenWorkingSet(null);
+                    setRoutes([]);
+                    setShowCompare(false);
+                    setShowRoutePanel(false);
+                    await queryClient.refetchQueries({ queryKey: ['masterProperties'] });
+                    await queryClient.refetchQueries({ queryKey: ['user'] });
+
+                    const pm = pullFetchMonths || 1;
+                    setMaxDataMonths(pm);
+                    try { localStorage.setItem('fk_maxDataMonths', String(pm)); } catch { }
+                    setHasMlsData(!!pulledWithMls);
+                    try { localStorage.setItem('fk_hasMlsData', pulledWithMls ? 'true' : 'false'); } catch { }
+
+                    if (drawnPolygon && drawnPolygon.length > 2) {
+                        const pulledProperties = await fetchRouteCandidatesFromNeon({
+                            polygon: drawnPolygon,
+                            soldMonths: pm,
+                            limit: 50000
+                        });
+                        if (pulledProperties.length > 0) {
+                            setFetchedProperties(prev => {
+                                const existingIds = new Set(prev.map(p => p.address_hash || p.id));
+                                const fresh = pulledProperties.filter(p => !existingIds.has(p.address_hash || p.id));
+                                return prev.concat(fresh);
+                            });
+                        }
+                    }
+
+                    setMode('generate');
                     setLastPullMode('40mi');
                     setSoldDateFilterRaw(pm);
+                    setPendingAutoGenerate(true);
                 }}
             />
 

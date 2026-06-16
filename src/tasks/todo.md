@@ -1,14 +1,14 @@
 # Plan
 
 ## Current Plan — Unified Precision Fetch + Auto-Generate Flow
-- [ ] Confirm scope: Precision `Build your route` parameters become the single Precision Builder; remove the old separate route-builder step from the normal post-pull flow.
-- [ ] Keep the existing drawn-area BatchData pull, caps, paywall, and BatchData-only processor unchanged.
-- [ ] After a BatchData job completes, fetch the pulled polygon’s fresh Neon candidates immediately and merge them into map state so pins populate without requiring a manual builder open.
-- [ ] Trigger the existing `generateRoutes()` automatically after the completed pull, using the same drawn polygon, selected sold window/value filters, route size, and current routing settings.
-- [ ] Prevent the old `RouteBuilderSettings` panel from opening after a successful Precision pull; show generated routes/map results instead.
-- [ ] Keep `RouteBuilderSettings` available only for manual reconfigure/reorder workflows if the user opens Builder later, not as the required next step.
-- [ ] Verify with no-credit backend tests for job/status paths and a synthetic completed pull path; verify frontend state flow by confirming the post-complete handler calls route generation instead of opening the builder.
-- [ ] Document review results before marking complete.
+- [x] Confirm scope: Precision `Build your route` parameters become the single Precision Builder; remove the old separate route-builder step from the normal post-pull flow.
+- [x] Keep the existing drawn-area BatchData pull, caps, paywall, and BatchData-only processor unchanged.
+- [x] After a BatchData job completes, fetch the pulled polygon’s fresh Neon candidates immediately and merge them into map state so pins populate without requiring a manual builder open.
+- [x] Trigger the existing `generateRoutes()` automatically after the completed pull, using the same drawn polygon, selected sold window/value filters, route size, and current routing settings.
+- [x] Prevent the old `RouteBuilderSettings` panel from opening after a successful Precision pull; show generated routes/map results instead.
+- [x] Keep `RouteBuilderSettings` available only for manual reconfigure/reorder workflows if the user opens Builder later, not as the required next step.
+- [x] Verify with no-credit backend tests for job/status paths and a synthetic completed pull path; verify frontend state flow by confirming the post-complete handler calls route generation instead of opening the builder.
+- [x] Document review results before marking complete.
 
 ### Implementation spec
 - Source of truth remains `TerritoryPrompt`: its `PrecisionPullPanel` collects count/value/sold-window and starts `startBatchDataPull`.
@@ -16,6 +16,9 @@
 - `Home` should handle that completion by invalidating map/user data, fetching fresh polygon candidates through `getRouteCandidatesFromNeon`, merging them into `fetchedProperties`, setting the sold filter to the pulled window, and then calling `generateRoutesRef.current()` after state has the fresh properties.
 - Avoid adding broad new logic to oversized `Home`; use a small completion helper if needed and only patch the existing `onPullComplete` bridge.
 - Success UX: “Data loaded — generating routes…” then existing generation overlay/routes panel/map population.
+
+### Review — Unified Precision Fetch + Auto-Generate Flow
+Precision now uses the `Build your route` pull panel as the active builder: when the BatchData job completes, the app no longer opens the old route-builder panel. It hides the builder, refreshes user/map data, fetches the freshly pulled polygon candidates from Neon, merges them into the map property state, applies the pulled sold-window filter, and triggers the existing route generator automatically. The old `RouteBuilderSettings` remains available only if the user manually opens Builder later. Verification: `processFetchChunk` self-test returned BatchData-only polygon mode with datasets `["basic", "listing", "owner"]`; `startBatchDataPull` dry-run validated the sample polygon without spending credits; frontend code review confirms the completed-pull path now calls `setPendingAutoGenerate(true)` instead of `setShowCompare(true)`. Logs included unrelated existing Base44 429/background noise, but the verified responses for the touched paths were successful.
 
 ## Previous Plan — BatchData Polygon Search Precision Fix
 - [x] Confirm scope: Precision Generate after freehand polygon must use BatchData Property Search only; no RentCast, no county-radius fallback, no bounding-box-only query.
