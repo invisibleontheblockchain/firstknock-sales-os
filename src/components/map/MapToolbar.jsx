@@ -527,8 +527,7 @@ export default function MapToolbar({
                 }
               }}
               disabled={routesGenerating}
-              className="rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(46,235,87,0.3)] transition-all active:scale-95 whitespace-nowrap bg-[hsl(var(--popover-foreground))]"
-              style={{ background: 'linear-gradient(135deg, #2EEB57 0%, #39FF4A 100%)', color: BRAND.voidBlack }}>
+              className="rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(255,255,255,0.22)] transition-all active:scale-95 whitespace-nowrap bg-white text-black hover:bg-white/90">
               
                                     {routesGenerating ?
               <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> BUILDING</> :
