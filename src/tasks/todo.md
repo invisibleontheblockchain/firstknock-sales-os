@@ -1,6 +1,14 @@
 # Plan
 
-## Current Plan — Filter Reset + Home Screen Dimensions
+## Current Plan — MapToolbar Reset Filters
+- [x] Add a visible reset filters button directly in the selected MapToolbar active-route filter area.
+- [x] Verify it clears active route date and price filters.
+- [x] Document the result.
+
+### Review — MapToolbar Reset Filters
+The active route toolbar now always shows a green RESET FILTERS button next to the date and price filters, and it calls the existing reset handler to clear both filters.
+
+## Previous Plan — Filter Reset + Home Screen Dimensions
 - [x] Locate the actual filter tab/panel UI and add a visible reset button there.
 - [x] Verify the active route toolbar reset remains intact.
 - [x] Inspect app install/home-screen metadata and icon sizing.

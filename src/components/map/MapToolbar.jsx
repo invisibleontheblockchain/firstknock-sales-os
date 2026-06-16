@@ -366,11 +366,13 @@ export default function MapToolbar({
                                 </select>
             }
 
-                            {(activeRouteSoldFilter !== 'all' || activeRoutePriceFilter !== 'all') &&
-            <button onClick={resetActiveRouteFilters} className="h-5 md:h-6 px-1.5 md:px-2 text-[9px] md:text-[10px] font-bold bg-white/10 hover:bg-white/15 text-white border border-white/15 rounded-md flex items-center gap-0.5 shrink-0">
-                                    <RotateCcw className="w-2.5 h-2.5" /> RESET
-                                </button>
-            }
+                            <button
+                                onClick={(e) => { e.stopPropagation(); resetActiveRouteFilters(); }}
+                                className="h-6 md:h-7 px-2 md:px-2.5 text-[9px] md:text-[10px] font-black bg-[#2EEB57] hover:bg-[#39FF4A] text-black border border-[#2EEB57]/60 rounded-md flex items-center gap-1 shrink-0 shadow-[0_0_12px_rgba(46,235,87,0.25)]"
+                                title="Reset route filters"
+                            >
+                                <RotateCcw className="w-2.5 h-2.5" /> RESET FILTERS
+                            </button>
 
                             {(activeRouteSoldFilter !== 'all' || activeRoutePriceFilter !== 'all') && onSaveFilteredRoute &&
             <button onClick={(e) => {e.stopPropagation();handleSaveVisibleFilteredRoute();}} className="h-5 md:h-6 px-1.5 md:px-2 text-[9px] md:text-[10px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-md flex items-center gap-0.5 shrink-0">
