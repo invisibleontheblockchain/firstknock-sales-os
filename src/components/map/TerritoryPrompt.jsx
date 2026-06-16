@@ -581,11 +581,6 @@ export default function TerritoryPrompt({
                             </button>
           }
 
-                        <div className="hidden sm:flex items-center gap-2 px-2 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 shrink-0">
-                            <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-                            <span className="text-[10px] font-bold text-cyan-300">BatchData Sandbox</span>
-                        </div>
-
                         <button
             onClick={() => {setDrawingMode(false);setDraftPolygon([]);}}
             className="ml-auto w-7 h-7 rounded-full bg-white/5 hover:bg-red-500/20 text-gray-500 hover:text-red-400 flex items-center justify-center transition-all shrink-0">
