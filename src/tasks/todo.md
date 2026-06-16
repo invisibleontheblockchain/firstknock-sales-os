@@ -865,3 +865,14 @@ Updated the Knock page dropdown options to render with dark backgrounds and whit
 
 ### Review — Premium Property Card Layout
 Updated PropertyCard to a premium dark card layout with refined gradient surfaces, a green accent rail, stronger spacing hierarchy, improved badge placement, and a cleaner navigation button. Verification confirmed selection, keyboard activation, map navigation, status labels, and default export remain intact.
+
+## Plan — Zoom Out Knock Screen Density
+- [x] Compact the route header/card so route info and KPI progress take less vertical space.
+- [x] Reduce filter/search bar padding and control height while keeping touch targets readable.
+- [x] Compact PropertyCard padding, icon sizes, badge spacing, and list gaps so multiple prospects fit onscreen.
+- [x] Preserve all existing route selection, filtering, search, card selection, and navigation behavior.
+- [x] Verify the edited classes and behavior-preserving handlers remain present.
+- [x] Document the result.
+
+### Review — Zoom Out Knock Screen Density
+Reduced the Knock screen's visual scale by compacting the sticky route header, progress/KPI area, filter/search controls, property list padding, card spacing, property card padding, icons, badges, and navigation button sizing. Verification confirmed filtering, search, card selection, keyboard selection, and map navigation handlers remain intact.
