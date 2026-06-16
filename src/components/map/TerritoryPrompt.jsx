@@ -237,7 +237,7 @@ export default function TerritoryPrompt({
     setDrawnPolygon(draftPolygon);
     setDraftPolygon([]);
     setDrawingMode(false);
-    toast.success('Area selected. Run Sandbox Preview to check available data.');
+    toast.success('Area selected. Run Preview to check available data.');
   };
 
   const activeAreaPolygon = drawingMode && draftPolygon?.length > 2 ? draftPolygon : drawnPolygon;
@@ -550,16 +550,16 @@ export default function TerritoryPrompt({
         onTouchStart={stopMapTouch}
         onMouseDown={stopMapTouch}
       >
-                    <div className="bg-black/85 backdrop-blur-md border border-yellow-500/30 rounded-2xl px-3 py-2 shadow-2xl flex flex-wrap items-center gap-2 max-w-[calc(100vw-1.5rem)] sm:max-w-[640px]">
+                    <div className="bg-black/85 backdrop-blur-md border border-[#2EEB57]/30 rounded-2xl px-3 py-2 shadow-2xl flex flex-wrap items-center gap-2 max-w-[calc(100vw-1.5rem)] sm:max-w-[640px]">
                         <div className="flex items-center gap-2 shrink-0">
-                            <div className="w-6 h-6 rounded-full bg-yellow-500/20 flex items-center justify-center">
-                                <Pencil className="w-3 h-3 text-yellow-400" />
+                            <div className="w-6 h-6 rounded-full bg-[#2EEB57]/20 flex items-center justify-center">
+                                <Pencil className="w-3 h-3 text-[#39FF4A]" />
                             </div>
                             <span className="text-xs font-bold text-white whitespace-nowrap">Draw Territory</span>
                         </div>
 
                         <div className="flex flex-col gap-0.5 min-w-[210px] flex-1">
-                            <span className="text-[10px] text-yellow-400 font-bold">Freehand draw mode</span>
+                            <span className="text-[10px] text-[#39FF4A] font-bold">Freehand draw mode</span>
                             <span className="text-[10px] text-gray-400 leading-tight">Hold and drag on the map to outline the area, then tap the checkmark.</span>
                         </div>
 
@@ -594,11 +594,11 @@ export default function TerritoryPrompt({
             {/* Recover incomplete fetch job */}
             {!pulling && recoverableJob && mode === 'generate' &&
       <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[2000] w-11/12 max-w-sm animate-in fade-in">
-                    <div className="bg-black/90 backdrop-blur-md border border-yellow-500/50 rounded-xl p-4 shadow-2xl">
+                    <div className="bg-black/90 backdrop-blur-md border border-[#2EEB57]/50 rounded-xl p-4 shadow-2xl">
                         <p className="text-xs font-bold text-white mb-1">Incomplete data pull found</p>
                         <p className="text-[10px] text-gray-400 mb-3">Your last import stopped at {Math.round(recoverableJob.progress_pct || 0)}%. Retry resumes from the saved job instead of starting a new full pull.</p>
                         <div className="flex gap-2">
-                            <Button onClick={retryRecoverableJob} className="h-8 flex-1 text-xs bg-yellow-500 text-black hover:bg-yellow-400">Retry Import</Button>
+                            <Button onClick={retryRecoverableJob} className="h-8 flex-1 text-xs bg-[#2EEB57] text-black hover:bg-[#39FF4A]">Retry Import</Button>
                             <Button
               onClick={() => {
                 if (recoverableJob?.id) {
@@ -619,25 +619,25 @@ export default function TerritoryPrompt({
             {/* Pull Progress Bar */}
             {pulling &&
       <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[2000] w-11/12 max-w-sm animate-in fade-in">
-                    <div className="bg-black/90 backdrop-blur-md border border-blue-500/50 rounded-xl p-4 shadow-2xl">
+                    <div className="bg-black/90 backdrop-blur-md border border-[#2EEB57]/50 rounded-xl p-4 shadow-2xl">
                         <div className="flex items-center gap-3 mb-2">
-                            <Loader2 className="w-5 h-5 text-blue-400 animate-spin shrink-0" />
+                            <Loader2 className="w-5 h-5 text-[#2EEB57] animate-spin shrink-0" />
                             <div className="flex-1">
                                 <p className="text-xs font-bold text-white">
                                     {isDeltaPull ? '⚡ Smart Refresh (Delta Sync)' : 'Importing Property Data'}
                                 </p>
                                 <p className="text-[10px] text-gray-400">{pullProgress}</p>
                             </div>
-                            <span className="text-sm font-mono font-bold text-blue-400">{Math.round(displayPct)}%</span>
+                            <span className="text-sm font-mono font-bold text-[#2EEB57]">{Math.round(displayPct)}%</span>
                         </div>
                         <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
                             <div
-              className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-300 ease-out"
+              className="h-full bg-gradient-to-r from-[#2EEB57] to-[#39FF4A] rounded-full transition-all duration-300 ease-out"
               style={{ width: `${Math.max(displayPct, 2)}%` }} />
             
                         </div>
                         {etaText &&
-          <p className="text-[11px] text-cyan-400 font-semibold mt-2 text-center">
+          <p className="text-[11px] text-[#39FF4A] font-semibold mt-2 text-center">
                                 ⏱ {etaText}
                             </p>
           }
@@ -679,14 +679,14 @@ export default function TerritoryPrompt({
             {!drawingMode && !pulling && routeMode === 'precision' && drawnPolygon && drawnPolygon.length > 2 && mode === 'generate' &&
       <div className="absolute top-3 sm:top-16 left-3 right-3 sm:left-4 sm:right-auto z-[1001] max-w-[calc(100vw-1.5rem)] sm:max-w-none backdrop-blur-md border border-gray-800 rounded-2xl sm:rounded-full p-3 sm:px-4 sm:py-2 shadow-2xl flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 animate-in fade-in slide-in-from-top-2 overflow-visible bg-[#000000]">
                     <div className="flex items-center gap-2 shrink-0">
-                        <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse shrink-0" />
+                        <div className="w-2 h-2 rounded-full bg-[#2EEB57] animate-pulse shrink-0" />
                         <span className="text-xs font-bold text-white whitespace-nowrap">Custom Area Active</span>
                     </div>
                     <div className="flex items-center gap-2 flex-1 sm:flex-none min-w-0 sm:ml-2">
                         <Button
             disabled={paidPullStarting || pulling}
             onClick={() => setShowPrecisionPullPanel(true)}
-            className="text-black text-[10px] h-9 sm:h-6 px-3 py-0 rounded-md font-bold tracking-wide bg-yellow-500 hover:bg-yellow-400 shadow-[0_0_15px_rgba(234,179,8,0.35)] flex-1 sm:flex-none min-w-0">
+            className="text-black text-[10px] h-9 sm:h-6 px-3 py-0 rounded-md font-bold tracking-wide bg-[#2EEB57] hover:bg-[#39FF4A] shadow-[0_0_15px_rgba(46,235,87,0.35)] flex-1 sm:flex-none min-w-0">
             
                             Pull Data
                         </Button>
@@ -699,8 +699,8 @@ export default function TerritoryPrompt({
                     </button>
                     <div className="static sm:absolute sm:top-full sm:left-0 sm:right-auto mt-1 sm:mt-2 w-full sm:w-72 bg-white/5 sm:bg-black/90 border border-gray-800 rounded-xl sm:rounded-lg p-2 shadow-xl animate-in fade-in slide-in-from-top-1">
                         <p className="text-[9px] text-gray-400 leading-tight">
-                            <span className="text-blue-400 font-bold">Area:</span> selected freehand polygon is about <span className="text-white">{actualAreaLabel}</span>.
-                            <br /><span className="text-cyan-300 font-bold">FirstKnock:</span> pulls up to <span className="text-white">{maxRequestedProperties}</span> properties for this account.
+                            <span className="text-[#2EEB57] font-bold">Area:</span> selected freehand polygon is about <span className="text-white">{actualAreaLabel}</span>.
+                            <br /><span className="text-[#39FF4A] font-bold">FirstKnock:</span> pulls up to <span className="text-white">{maxRequestedProperties}</span> properties for this account.
                         </p>
                     </div>
                 </div>

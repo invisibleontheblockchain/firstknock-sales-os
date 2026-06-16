@@ -1,5 +1,15 @@
 # Plan
 
+## Current Plan — FirstKnock Black/White/Green Theme
+- [x] Centralize the new palette: primary `#2EEB57`, hover/active `#39FF4A`, background `#000000`, text `#FFFFFF`.
+- [x] Replace core app/theme token gold-purple styling with FirstKnock green/black/white.
+- [x] Update shared buttons/navigation/map brand constants so common UI moves away from gold.
+- [x] Keep all business logic, routing, data pulls, and map behavior unchanged.
+- [x] Verify key changed files use the new palette and document the result.
+
+### Review — FirstKnock Black/White/Green Theme
+App-wide theme foundations now use the new FirstKnock palette: black background, white text, primary green `#2EEB57`, and hover/active green `#39FF4A`. Updated global CSS tokens, shared button variants, map brand/status constants, app-shell styling, active navigation color, default saved accent migration, favicon/app icon, and header/sign-in logo image. No routing, data pull, map behavior, or business logic was changed.
+
 ## Current Plan — Hide Previous Areas On Routes Tab
 - [x] Confirm previous-area ghost trails render through `PolygonHistory` on `pages/Home`.
 - [x] Hide `PolygonHistory` while the Routes panel/tab is open.

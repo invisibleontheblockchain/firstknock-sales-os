@@ -56,8 +56,8 @@ function LayoutInner({ children }) {
     // Update App Metadata (Title & Icons) for consistency
     document.title = "FirstKnock Sales OS";
 
-    // Golden Door Icon for Home Screen
-    const LOGO_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/1a36819e1_IMG_0921.jpeg";
+    // FirstKnock green app icon for Home Screen
+    const LOGO_URL = "https://media.base44.com/images/public/695eb764b077190880be21de/1ce2ab937_ChatGPTImageJun16202604_23_59PM.png";
 
     const updateLink = (rel, href) => {
       // Remove any existing links of this type to ensure ours takes precedence
@@ -97,7 +97,7 @@ function LayoutInner({ children }) {
 
   if (!user) {
     return (
-      <div className="flex h-screen flex-col items-center justify-center relative overflow-hidden bg-[#0A0A0F] text-white p-6 text-center">
+      <div className="flex h-screen flex-col items-center justify-center relative overflow-hidden bg-[#000000] text-white p-6 text-center">
                 {/* Animated Grid Background */}
                 <div className="absolute inset-0 pointer-events-none" style={{
           backgroundImage: 'linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px)',
@@ -105,14 +105,14 @@ function LayoutInner({ children }) {
           maskImage: 'linear-gradient(to bottom, transparent, black, transparent)',
           WebkitMaskImage: 'linear-gradient(to bottom, transparent, black, transparent)'
         }}></div>
-                {/* Purple Glow */}
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-[#6C5CE7]/20 blur-[120px] rounded-full pointer-events-none"></div>
+                {/* Green Glow */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-[#2EEB57]/20 blur-[120px] rounded-full pointer-events-none"></div>
                 
                 <div className="relative z-10 flex flex-col items-center space-y-8 max-w-sm w-full">
-                    <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/4207f4197_ChatGPTImageFeb2202612_56_42AM.png" alt="FirstKnock Logo" className="w-20 h-20 rounded-2xl object-cover shadow-[0_0_40px_rgba(108,92,231,0.5)] border border-white/10" />
+                    <img src="https://media.base44.com/images/public/695eb764b077190880be21de/1ce2ab937_ChatGPTImageJun16202604_23_59PM.png" alt="FirstKnock Logo" className="w-20 h-20 rounded-2xl object-cover shadow-[0_0_40px_rgba(46,235,87,0.5)] border border-white/10" />
                     
                     <div className="space-y-3">
-                        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-[#A29BFE]" style={{ textShadow: '0 0 40px rgba(108,92,231,0.3)' }}>FirstKnock</h1>
+                        <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-[#39FF4A]" style={{ textShadow: '0 0 40px rgba(46,235,87,0.3)' }}>FirstKnock</h1>
                         <p className="text-[#8888A0] text-lg font-medium tracking-wide">The Door-to-Door Sales OS.</p>
                     </div>
 
@@ -120,12 +120,12 @@ function LayoutInner({ children }) {
             onClick={() => base44.auth.redirectToLogin()}
             className="w-full h-14 rounded-xl flex items-center justify-center gap-3 font-bold text-lg transition-all duration-300 transform hover:-translate-y-1 glass-card"
             style={{
-              background: 'linear-gradient(135deg, rgba(108,92,231,0.2), rgba(0,210,255,0.1))',
-              boxShadow: '0 8px 32px rgba(108,92,231,0.2)',
+              background: 'linear-gradient(135deg, rgba(46,235,87,0.2), rgba(57,255,74,0.1))',
+              boxShadow: '0 8px 32px rgba(46,235,87,0.2)',
               border: '1px solid rgba(255,255,255,0.1)'
             }}>
             
-                        <LogIn className="w-5 h-5 text-[#A29BFE]" /> 
+                        <LogIn className="w-5 h-5 text-[#39FF4A]" /> 
                         <span className="text-white">Sign In / Sign Up</span>
                     </button>
                 </div>
@@ -137,21 +137,21 @@ function LayoutInner({ children }) {
   if (!user.app_role && !isRoleSelectPage) {window.location.href = createPageUrl('RoleSelect');return null;}
 
   return (
-    <div className="flex flex-col h-[100dvh] font-sans overflow-hidden bg-[#0A0A0F] text-[#F0F0F5]">
+    <div className="flex flex-col h-[100dvh] font-sans overflow-hidden bg-[#000000] text-[#FFFFFF]">
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
                 
                 :root {
-                    --bg-primary: #0A0A0F;
-                    --bg-surface: #12121A;
-                    --bg-surface-hover: #1A1A2E;
-                    --primary: #6C5CE7;
-                    --primary-light: #A29BFE;
-                    --secondary: #00D2FF;
-                    --success: #00F5A0;
-                    --warning: #FFD93D;
+                    --bg-primary: #000000;
+                    --bg-surface: #050505;
+                    --bg-surface-hover: #101010;
+                    --primary: #2EEB57;
+                    --primary-light: #39FF4A;
+                    --secondary: #2EEB57;
+                    --success: #2EEB57;
+                    --warning: #39FF4A;
                     --danger: #FF6B6B;
-                    --text-primary: #F0F0F5;
+                    --text-primary: #FFFFFF;
                     --text-secondary: #8888A0;
                 }
 
@@ -179,7 +179,7 @@ function LayoutInner({ children }) {
                 ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
                 ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
 
-                .leaflet-container { background: #0A0A0F !important; }
+                .leaflet-container { background: #000000 !important; }
                 .route-number-tooltip { background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important; }
                 .route-number-tooltip::before { display: none !important; }
                 .zip-label-tooltip { background: rgba(0,0,0,0.75) !important; border: 1px solid rgba(255,255,255,0.15) !important; box-shadow: 0 2px 12px rgba(0,0,0,0.5) !important; padding: 4px 8px !important; border-radius: 6px !important; text-align: center !important; }
@@ -191,7 +191,7 @@ function LayoutInner({ children }) {
       <header className={`px-4 pt-[env(safe-area-inset-top)] pb-3 z-20 shadow-md bg-black ${window.location.pathname.includes('RepHome') ? 'border-b border-transparent' : 'border-b border-slate-800'}`}>
                 <div className="flex items-center w-full pt-3">
                     <div className="flex items-center gap-3 mr-auto">
-                        <img src="https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/695eb764b077190880be21de/4207f4197_ChatGPTImageFeb2202612_56_42AM.png" alt="FK" className="w-8 h-8 rounded-lg object-cover" />
+                        <img src="https://media.base44.com/images/public/695eb764b077190880be21de/1ce2ab937_ChatGPTImageJun16202604_23_59PM.png" alt="FK" className="w-8 h-8 rounded-lg object-cover" />
                         <h1 className="text-lg font-bold tracking-tight text-white">FirstKnock</h1>
                     </div>
 
@@ -282,7 +282,7 @@ function NavItem({ icon: Icon, label, to, active }) {
         if (label === 'Map') window.dispatchEvent(new CustomEvent('fk-map-tab-open'));
       }}
       className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-all duration-300 ${
-      active ? 'text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.8)]' : 'text-[#9CA3AF] hover:text-gray-300'}`
+      active ? 'text-[#2EEB57] drop-shadow-[0_0_10px_rgba(46,235,87,0.85)]' : 'text-[#9CA3AF] hover:text-white'}`
       }>
       
             <Icon className="w-5 h-5" />

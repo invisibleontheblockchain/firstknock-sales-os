@@ -206,7 +206,7 @@ export default function MapToolbar({
                             onClick={() => setShowDashboard(true)}
                             className="bg-black/80 hover:bg-black backdrop-blur-md border border-gray-800 shadow-xl h-8 sm:h-11 rounded-lg sm:rounded-xl px-2 sm:px-3 flex items-center gap-1.5 sm:gap-2"
                         >
-                            <LayoutDashboard className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-yellow-500" />
+                            <LayoutDashboard className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-[#2EEB57]" />
                             <span className="text-[10px] sm:text-xs font-bold text-white hidden sm:inline">COMMAND CENTER</span>
                         </Button>
                         <Button
@@ -240,7 +240,7 @@ export default function MapToolbar({
                                 setShowRoutePanel(false);
                                 setShowCompare(false);
                             }}
-                            className={`px-2.5 py-2 sm:px-4 sm:py-2.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'generate' ? 'bg-yellow-500 text-black shadow-lg' : activeRoute ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
+                            className={`px-2.5 py-2 sm:px-4 sm:py-2.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'generate' ? 'bg-[#2EEB57] text-black shadow-lg' : activeRoute ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white'}`}
                         >
                             BUILDER
                         </button>
@@ -281,9 +281,9 @@ export default function MapToolbar({
                                 setShowCompare(true);
                             }}
                             size="icon"
-                            className="hidden sm:inline-flex bg-black/80 hover:bg-black backdrop-blur-md rounded-lg sm:rounded-xl h-8 w-8 sm:h-11 sm:w-11 font-bold shadow-xl border border-yellow-500/40"
+                            className="hidden sm:inline-flex bg-black/80 hover:bg-black backdrop-blur-md rounded-lg sm:rounded-xl h-8 w-8 sm:h-11 sm:w-11 font-bold shadow-xl border border-[#2EEB57]/40"
                         >
-                            {mode === 'generate' ? <Settings className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-yellow-500" /> : <Filter className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-yellow-500" />}
+                            {mode === 'generate' ? <Settings className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-[#2EEB57]" /> : <Filter className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-[#2EEB57]" />}
                         </Button>
                     </div>
 
@@ -293,7 +293,7 @@ export default function MapToolbar({
 
                 {/* Active Route Banner */}
                 {activeRoute && (
-                    <div className="pointer-events-auto rounded-xl px-2 py-1.5 md:px-3 md:py-2 shadow-2xl border border-yellow-600/30 animate-in slide-in-from-top-2 backdrop-blur-md" style={{ background: 'rgba(10,10,10,0.95)' }}>
+                    <div className="pointer-events-auto rounded-xl px-2 py-1.5 md:px-3 md:py-2 shadow-2xl border border-[#2EEB57]/30 animate-in slide-in-from-top-2 backdrop-blur-md" style={{ background: 'rgba(10,10,10,0.95)' }}>
                         {/* Row 1: Name + Actions — always horizontal */}
                         <div className="flex items-center gap-1.5 min-w-0">
                             <div className="w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center shrink-0" style={{ background: BRAND.gold }}>
@@ -302,7 +302,7 @@ export default function MapToolbar({
 
                             {editingName ? (
                                 <div className="flex items-center gap-1 flex-1 min-w-0" onClick={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
-                                    <input value={draftName} onChange={e => setDraftName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleSaveRename(); if (e.key === 'Escape') setEditingName(false); }} className="bg-black/60 border border-yellow-500/50 text-yellow-500 text-[11px] font-bold rounded px-1.5 py-0.5 flex-1 outline-none min-w-0" autoFocus />
+                                    <input value={draftName} onChange={e => setDraftName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleSaveRename(); if (e.key === 'Escape') setEditingName(false); }} className="bg-black/60 border border-[#2EEB57]/50 text-[#2EEB57] text-[11px] font-bold rounded px-1.5 py-0.5 flex-1 outline-none min-w-0" autoFocus />
                                     <button onClick={handleSaveRename} className="p-0.5 text-green-500"><Check className="w-3 h-3" /></button>
                                     <button onClick={() => setEditingName(false)} className="p-0.5 text-gray-500"><X className="w-3 h-3" /></button>
                                 </div>
@@ -321,7 +321,7 @@ export default function MapToolbar({
                                     onPointerDown={(e) => { window.__fkSuppressMapFitUntil = Date.now() + 1500; e.preventDefault(); e.stopPropagation(); e.nativeEvent?.stopImmediatePropagation?.(); }}
                                     onTouchStart={(e) => { window.__fkSuppressMapFitUntil = Date.now() + 1500; e.stopPropagation(); e.nativeEvent?.stopImmediatePropagation?.(); }}
                                     onClick={(e) => { window.__fkSuppressMapFitUntil = Date.now() + 1500; e.preventDefault(); e.stopPropagation(); e.nativeEvent?.stopImmediatePropagation?.(); if (onReoptimizeRoute) onReoptimizeRoute(activeRoute); }}
-                                    className="h-8 md:h-7 px-2.5 md:px-2 text-[10px] md:text-[10px] font-bold bg-yellow-500 hover:bg-yellow-400 text-black rounded-md flex items-center gap-1 touch-manipulation select-none active:scale-95"
+                                    className="h-8 md:h-7 px-2.5 md:px-2 text-[10px] md:text-[10px] font-bold bg-[#2EEB57] hover:bg-[#39FF4A] text-black rounded-md flex items-center gap-1 touch-manipulation select-none active:scale-95"
                                     title="Optimize"
                                 >
                                     <Zap className="w-2.5 h-2.5" /><span>OPTIMIZE</span>
@@ -474,26 +474,26 @@ export default function MapToolbar({
                         <>
                             <Button
                                 onClick={() => setShowCompare(true)}
-                                className="rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(168,85,247,0.25)] transition-all active:scale-95 whitespace-nowrap bg-purple-600 hover:bg-purple-500 text-white"
+                                className="rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(46,235,87,0.25)] transition-all active:scale-95 whitespace-nowrap bg-[#2EEB57] hover:bg-[#39FF4A] text-black"
                             >
                                 <Users className="w-4 h-4 mr-1" /> CANVAS BUILDER
                             </Button>
                             <Button
                                 onClick={toggleCanvasFocusMode}
-                                className={`rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap ${canvasFocusMode ? 'bg-white text-black border border-white' : 'bg-black/90 text-purple-200 border border-purple-500/40'}`}
+                                className={`rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap ${canvasFocusMode ? 'bg-white text-black border border-white' : 'bg-black/90 text-[#2EEB57] border border-[#2EEB57]/40'}`}
                             >
                                 <EyeOff className="w-4 h-4 mr-1" /> FOCUS MODE
                             </Button>
                             <Button
                                 onClick={() => { setShowCompare(false); setShowRoutePanel(false); }}
-                                className="rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap bg-black/90 text-purple-200 border border-purple-500/40"
+                                className="rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap bg-black/90 text-[#2EEB57] border border-[#2EEB57]/40"
                             >
                                 <Locate className="w-4 h-4 mr-1" /> LIVE VIEW
                             </Button>
                             <Button
                                 onClick={() => { setShowCompare(true); toast.info('Review assignments, then tap Deploy Campaign.'); }}
                                 className="rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap"
-                                style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
+                                style={{ background: 'linear-gradient(135deg, #2EEB57 0%, #39FF4A 100%)', color: BRAND.voidBlack }}
                             >
                                 <Rocket className="w-4 h-4 mr-1" /> DEPLOY CAMPAIGN
                             </Button>
@@ -516,8 +516,8 @@ export default function MapToolbar({
                                         }
                                     }}
                                     disabled={routesGenerating}
-                                    className="rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(255,215,0,0.3)] transition-all active:scale-95 whitespace-nowrap"
-                                    style={{ background: 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)', color: BRAND.voidBlack }}
+                                    className="rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(46,235,87,0.3)] transition-all active:scale-95 whitespace-nowrap"
+                                    style={{ background: 'linear-gradient(135deg, #2EEB57 0%, #39FF4A 100%)', color: BRAND.voidBlack }}
                                 >
                                     {routesGenerating ? (
                                         <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> BUILDING</>
@@ -537,7 +537,7 @@ export default function MapToolbar({
                                 disabled={!!activeRoute}
                                 className={`rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap ${activeRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
                                 style={{
-                                    background: activeRoute ? 'rgba(31, 31, 31, 0.9)' : (mode === 'generate' && !activeRoute ? 'rgba(31, 31, 31, 0.9)' : 'linear-gradient(135deg, #FFD700 0%, #F59E0B 100%)'),
+                                    background: activeRoute ? 'rgba(31, 31, 31, 0.9)' : (mode === 'generate' && !activeRoute ? 'rgba(31, 31, 31, 0.9)' : 'linear-gradient(135deg, #2EEB57 0%, #39FF4A 100%)'),
                                     color: activeRoute ? BRAND.gold : (mode === 'generate' && !activeRoute ? BRAND.gold : BRAND.voidBlack),
                                     border: activeRoute ? `1px solid ${BRAND.gold}` : (mode === 'generate' && !activeRoute ? `1px solid ${BRAND.gold}` : 'none')
                                 }}
