@@ -217,7 +217,7 @@ function LayoutInner({ children }) {
                         {!isOnline && <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse mr-1" />}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="text-white hover:bg-slate-800 h-8 w-8"><MoreVertical className="w-5 h-5" /></Button>
+                                <Button variant="ghost" size="icon" className="text-white hover:bg-slate-800 h-11 w-11 -mr-2 rounded-full"><MoreVertical className="w-6 h-6" /></Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-56 bg-[#0A0A0A] border-slate-800 text-white shadow-xl">
                                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
