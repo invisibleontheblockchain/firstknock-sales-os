@@ -40,10 +40,20 @@ const STATUS_COLORS = {
     SOLD: '#00F5A0',
     HARD_NO: '#FF6B6B',
     CALLBACK: '#39FF4A',
-    NO_ANSWER: '#8888A0',
+    NO_ANSWER: '#FF6B6B',
     QUALIFIED: '#2EEB57',
     RECENT_OFF_MARKET: '#39FF4A',
+    NOT_MOVED_IN: '#FF6B6B',
+    DM_NOT_HOME: '#FF6B6B',
+    DO_NOT_KNOCK: '#FF6B6B',
 };
+
+function getOutcomeDotColor(property) {
+    const status = property?.effective_status || property?.parsed_status || property?.original_status || 'ELIGIBLE';
+    if (['SOLD', 'CALLBACK', 'QUALIFIED', 'RECENT_OFF_MARKET'].includes(status)) return '#2EEB57';
+    if (['HARD_NO', 'NO_ANSWER', 'NOT_MOVED_IN', 'DM_NOT_HOME', 'DO_NOT_KNOCK'].includes(status)) return '#FF6B6B';
+    return '#8888A0';
+}
 
 function haversine(lat1, lng1, lat2, lng2) {
     const R = 3959;
@@ -111,10 +121,7 @@ const GpsLayer = React.memo(function GpsLayer({ position, accuracy }) {
 function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
     return properties?.map((p, idx) => {
         const isNearby = nearbyHashes.has(p.address_hash);
-        const effColorStatus = p.effective_status === 'ELIGIBLE' && p.original_status && ['SOLD', 'RECENT_OFF_MARKET', 'PENDING'].includes(p.original_status)
-            ? p.original_status
-            : p.effective_status;
-        const color = STATUS_COLORS[effColorStatus] || '#6b7280';
+        const color = getOutcomeDotColor(p);
         return (
             <LayerGroup key={p.address_hash}>
                 <Marker
@@ -131,7 +138,7 @@ function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
                     eventHandlers={{ click: () => onSelectProperty(p) }}
                     bubblingMouseEvents={false}
                     pathOptions={{
-                        fillColor: idx === 0 ? '#2EEB57' : color,
+                        fillColor: color,
                         fillOpacity: 1,
                         color: '#fff',
                         weight: isNearby ? 2 : 1
@@ -378,7 +385,7 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                                         className="w-full touch-manipulation select-none flex items-center gap-3 px-4 py-3.5 hover:bg-gray-800/50 active:bg-gray-800/70 transition-colors border-b border-gray-800/50 last:border-0"
                                     >
                                         <div className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
-                                            style={{ background: STATUS_COLORS[p.effective_status] || '#333', color: '#fff' }}>
+                                            style={{ background: getOutcomeDotColor(p), color: '#fff' }}>
                                             {i + 1}
                                         </div>
                                         <div className="flex-1 text-left min-w-0">

@@ -1,6 +1,15 @@
 # Plan
 
-## Current Plan — Private Account Messaging + Mobile Input Fix
+## Current Plan — Route Outcome Dot Colors
+- [x] Identify where route-line property dots are rendered.
+- [x] Add one shared outcome color helper for property dots.
+- [x] Apply green/red outcome colors to route map dots and nearby HUD dots.
+- [x] Verify the map uses green for positive/follow-up outcomes, red for negative outcomes, and neutral for unworked doors.
+
+### Review — Route Outcome Dot Colors
+Route dots now use one outcome color rule: green for sold/callback/qualified-style outcomes, red for hard-no/no-answer/not-moved-in/not-home/do-not-knock outcomes, and neutral gray for untouched doors.
+
+## Previous Plan — Private Account Messaging + Mobile Input Fix
 - [x] Identify the current message read/write path and mobile chat layout.
 - [x] Add account/team ownership fields to TeamMessage and replace global read access with account-scoped RLS.
 - [x] Stamp all newly sent messages with manager/team ownership and explicit participant emails.
