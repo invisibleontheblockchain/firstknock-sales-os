@@ -226,7 +226,7 @@ export default function MapToolbar({
                 setShowCompare(false);
                 setShowRoutePanel(false);
               }}
-              className={`px-2.5 py-2 sm:px-4 sm:py-2.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'analyze' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white'}`}>
+              className={`px-2.5 py-2 sm:px-4 sm:py-2.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap ${mode === 'analyze' ? 'bg-white text-black shadow-lg' : 'text-gray-400 hover:text-white'}`}>
               
                             ROUTES
                         </button>
