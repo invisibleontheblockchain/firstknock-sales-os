@@ -1,4 +1,5 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.20';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
 Deno.serve(async (req) => {
     try {
@@ -30,7 +31,29 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Not your job' }, { status: 403 });
         }
 
+        let active_count = 0;
+        try {
+            const databaseUrl = Deno.env.get('DATABASE_URL');
+            if (databaseUrl) {
+                const sql = neon(databaseUrl);
+                const rows = await sql`
+                    SELECT COUNT(*)::int AS active_count
+                    FROM workspace_properties wp
+                    JOIN properties p ON p.id = wp.property_id
+                    WHERE wp.fetch_job_id = ${job.id}
+                      AND wp.user_email = ${job.user_email}
+                      AND wp.route_active = TRUE
+                      AND COALESCE(p.original_status, '') <> 'REJECTED'
+                      AND COALESCE(p.sale_confidence, '') <> 'REJECTED'
+                `;
+                active_count = Number(rows?.[0]?.active_count || 0);
+            }
+        } catch (e) {
+            console.warn('[fetchJobStatus] active count diagnostic failed:', e.message);
+        }
+
         return Response.json({
+            job_id: job.id,
             status: job.status,
             progress_pct: job.progress_pct || 0,
             total_expected: job.total_expected || 0,
@@ -38,6 +61,8 @@ Deno.serve(async (req) => {
             total_inserted: job.total_inserted || 0,
             total_existed: job.total_existed || 0,
             total_updated: job.total_updated || 0,
+            total_batchdata_calls: job.total_batchdata_calls || 0,
+            active_count,
             zip_codes_found: job.zip_codes_found || [],
             error_message: job.error_message || null,
             pull_mode: job.pull_mode || (job.is_delta_pull ? 'delta_refresh' : 'full_refresh'),

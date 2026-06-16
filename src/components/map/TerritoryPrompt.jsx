@@ -361,7 +361,7 @@ export default function TerritoryPrompt({
             setMode('generate');
             setShowRoutePanel(false);
             setShowCompare(false);
-            await onPullComplete(fetchMonths, isPaid);
+            await onPullComplete(fetchMonths, isPaid, d);
           } else {
             queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
             queryClient.invalidateQueries({ queryKey: ['user'] });

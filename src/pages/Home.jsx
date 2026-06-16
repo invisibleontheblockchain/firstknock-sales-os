@@ -115,6 +115,7 @@ export default function Home() {
     const [lastPullMode, setLastPullMode] = useState(null);
     const [maxDataMonths, setMaxDataMonths] = useState(() => { try { return parseInt(localStorage.getItem('fk_maxDataMonths')) || null; } catch { return null; } });
     const [hasMlsData, setHasMlsData] = useState(() => { try { return localStorage.getItem('fk_hasMlsData') === 'true'; } catch { return false; } });
+    const [currentBatchDataJobId, setCurrentBatchDataJobId] = useState(null);
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
@@ -223,13 +224,14 @@ export default function Home() {
     const mapRef = useRef(null);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
 
-    const fetchRouteCandidatesFromNeon = useCallback(async ({ zipCodes = [], zipCodeFilterValue = '', soldMonths = null, polygon = null, limit = 100000 } = {}) => {
+    const fetchRouteCandidatesFromNeon = useCallback(async ({ zipCodes = [], zipCodeFilterValue = '', soldMonths = null, polygon = null, limit = 100000, fetchJobId = null } = {}) => {
         const res = await base44.functions.invoke('getRouteCandidatesFromNeon', {
             zip_codes: zipCodes,
             zip_code_filter: zipCodeFilterValue,
             sold_months: soldMonths,
             polygon,
-            limit
+            limit,
+            fetch_job_id: fetchJobId
         });
         return Array.isArray(res.data?.properties) ? res.data.properties : [];
     }, []);
@@ -926,13 +928,20 @@ export default function Home() {
                         ? storedPolygon
                         : null;
             console.log(`[generateRoutes] Polygon source: state=${Array.isArray(drawnPolygon) ? drawnPolygon.length : 0}, draft=${Array.isArray(draftPolygon) ? draftPolygon.length : 0}, stored=${Array.isArray(storedPolygon) ? storedPolygon.length : 0}`);
+            const isCurrentBatchDataRun = !!currentBatchDataJobId && !!activeGenerationPolygon;
             if (activeGenerationPolygon) {
                 const polygonProps = await fetchRouteCandidatesFromNeon({
                     polygon: activeGenerationPolygon,
-                    soldMonths: 'all',
-                    limit: 50000
+                    soldMonths: isCurrentBatchDataRun ? soldDateFilter : 'all',
+                    limit: 50000,
+                    fetchJobId: isCurrentBatchDataRun ? currentBatchDataJobId : null
                 });
-                console.log(`[Generate] Drawn area candidate fetch returned ${polygonProps.length} properties`);
+                console.log(`[Generate] Drawn area candidate fetch returned ${polygonProps.length} properties${isCurrentBatchDataRun ? ` for job ${currentBatchDataJobId}` : ''}`);
+                if (isCurrentBatchDataRun && polygonProps.length === 0) {
+                    toast.dismiss('build-routes');
+                    setGenerationError('This BatchData pull returned no active routeable properties, so route generation was stopped to avoid using stale old data. Try broadening the area or relaxing the parameters.');
+                    return;
+                }
 
                 if (polygonProps.length > 0) {
                     console.log(`[Generate] Fetched ${polygonProps.length} properties from backend for drawn area`);
@@ -1061,9 +1070,10 @@ export default function Home() {
                 !(Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001)
             );
 
-            // Merge with existing availableProperties, deduping by address_hash
+            // Merge with existing availableProperties, deduping by address_hash.
+            // After a paid Precision pull, route generation is job-scoped so stale prior data cannot be reused.
             const combinedMap = new Map();
-            const baseProps = effectiveProperties;
+            const baseProps = isCurrentBatchDataRun ? [] : effectiveProperties;
             baseProps.forEach(p => combinedMap.set(p.address_hash, p));
             processedDynamic.forEach(p => combinedMap.set(p.address_hash, p));
 
@@ -1158,7 +1168,7 @@ export default function Home() {
             // (we re-check generationError via a functional setState)
             setRoutesGenerating(false);
         }
-    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, draftPolygon, frozenWorkingSet, effectiveProperties, fetchRouteCandidatesFromNeon, user?.territory_zip_codes, user?.generated_zip_codes, user?.email]);
+    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, draftPolygon, frozenWorkingSet, effectiveProperties, fetchRouteCandidatesFromNeon, currentBatchDataJobId, user?.territory_zip_codes, user?.generated_zip_codes, user?.email]);
 
     // Reorder: re-run filtering + routing on frozen data without re-fetching
     const handleReorder = useCallback(async () => {
@@ -1596,8 +1606,10 @@ export default function Home() {
                 setDrawSizeMiles={setDrawSizeMiles}
                 user={user}
                 setZipCodeFilter={setZipCodeFilter}
-                onPullComplete={async (pullFetchMonths, pulledWithMls) => {
+                onPullComplete={async (pullFetchMonths, pulledWithMls, jobStatus = {}) => {
                     setFrozenWorkingSet(null);
+                    setFetchedProperties([]);
+                    setCurrentBatchDataJobId(jobStatus?.job_id || null);
                     setRoutes([]);
                     setShowCompare(false);
                     setShowRoutePanel(false);
@@ -1610,25 +1622,25 @@ export default function Home() {
                     setHasMlsData(!!pulledWithMls);
                     try { localStorage.setItem('fk_hasMlsData', pulledWithMls ? 'true' : 'false'); } catch { }
 
-                    if (drawnPolygon && drawnPolygon.length > 2) {
-                        const pulledProperties = await fetchRouteCandidatesFromNeon({
+                    let pulledProperties = [];
+                    if (drawnPolygon && drawnPolygon.length > 2 && jobStatus?.job_id) {
+                        pulledProperties = await fetchRouteCandidatesFromNeon({
                             polygon: drawnPolygon,
                             soldMonths: pm,
-                            limit: 50000
+                            limit: 50000,
+                            fetchJobId: jobStatus.job_id
                         });
-                        if (pulledProperties.length > 0) {
-                            setFetchedProperties(prev => {
-                                const existingIds = new Set(prev.map(p => p.address_hash || p.id));
-                                const fresh = pulledProperties.filter(p => !existingIds.has(p.address_hash || p.id));
-                                return prev.concat(fresh);
-                            });
-                        }
+                        setFetchedProperties(pulledProperties);
                     }
 
                     setMode('generate');
-                    setLastPullMode('40mi');
+                    setLastPullMode('batchdata_job');
                     setSoldDateFilterRaw(pm);
-                    setPendingAutoGenerate(true);
+                    if ((jobStatus?.active_count || pulledProperties.length) > 0) {
+                        setPendingAutoGenerate(true);
+                    } else {
+                        setGenerationError('BatchData was called, but this pull produced no active routeable properties. Route generation was stopped so stale old data is not reused. Try a larger area or looser parameters.');
+                    }
                 }}
             />
 

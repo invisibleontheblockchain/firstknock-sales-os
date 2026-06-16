@@ -391,7 +391,7 @@ Deno.serve(async (req) => {
         const body = await req.json().catch(() => ({}));
 
         if (body.self_test === true) {
-            return Response.json({ success: true, active_provider: 'batchdata', rentcast_active: false, batchdata_polygon_search: true, datasets: ['basic', 'listing', 'owner'], has_batchdata_key: !!BATCHDATA_API_KEY, has_database_url: !!DATABASE_URL });
+            return Response.json({ success: true, active_provider: 'batchdata', rentcast_active: false, batchdata_polygon_search: true, datasets: ['basic', 'listing', 'deed', 'owner'], has_batchdata_key: !!BATCHDATA_API_KEY, has_database_url: !!DATABASE_URL });
         }
 
         if (body.request_preview === true) {
@@ -495,8 +495,8 @@ Deno.serve(async (req) => {
             total_inserted: result.inserted,
             total_existed: result.existed,
             total_updated: result.updated,
-            total_api_calls: (job.total_api_calls || 0) + (Array.isArray(body.synthetic_records) ? 0 : 1),
-            total_batchdata_calls: (job.total_batchdata_calls || 0) + (Array.isArray(body.synthetic_records) ? 0 : 1),
+            total_api_calls: (job.total_api_calls || 0) + (Array.isArray(body.synthetic_records) ? 0 : batchFetch.attempts.length),
+            total_batchdata_calls: (job.total_batchdata_calls || 0) + (Array.isArray(body.synthetic_records) ? 0 : batchFetch.attempts.length),
             completed_sub_circles: 1,
             total_sub_circles: 1,
             zip_codes_found: zipCodes,

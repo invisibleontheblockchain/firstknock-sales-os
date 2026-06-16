@@ -1,16 +1,15 @@
 # Plan
 
-## Current Plan — Precision Generate Map Population Fix
-- [x] Confirm root cause from live FetchJob history: Generate starts and completes, but `processFetchChunk` logs `raw=0, mapped=0`, so the map has no new records to render.
-- [x] Keep the unified pull+auto-generate UX unchanged.
-- [x] Patch BatchData fetching to be resilient: try the strict polygon request first, then automatically retry with a broader BatchData query if strict filters return zero.
-- [x] Preserve final precision trust by still applying the drawn polygon and local eligibility filters before writing to Neon.
-- [x] Broaden local BatchData normalization to support both documented nested paths and observed sandbox/legacy paths so raw records do not get dropped as invalid.
-- [x] Update job diagnostics so future failures clearly show which request mode returned zero.
-- [x] Verify with synthetic records and request-preview tests without spending credits, then document results.
+## Current Plan — Diagnose Precision Generate BatchData Usage + Stale Data
+- [x] Inspect recent FetchJobs to determine whether Precision Generate is creating new jobs, invoking `processFetchChunk`, and recording BatchData attempt logs.
+- [x] Verify the BatchData request construction and endpoint call path so we can tell whether failures are app-side payload/flow issues or BatchData-side zero-result responses.
+- [x] Trace where map properties are loaded after Generate and identify any path that can display stale pre-existing local/Neon data as if it came from the new pull.
+- [x] Add a minimal guard so new Precision Generate results only hydrate the map from the current BatchData job/run, not old cached/stale records.
+- [x] Run no-credit tests plus live-safe diagnostics to prove the call path, payload shape, and stale-data prevention work.
+- [x] Document findings and the final fix in this file.
 
-### Review — Precision Generate Map Population Fix
-Root cause was not the click handler: recent live FetchJobs for `baysecurity@gmail.com` completed successfully but logged `raw=0, mapped=0`, so there were no new Neon records for the map to show. The processor now tries three request modes in order — strict polygon, broad polygon, then centroid fallback — and still applies final in-polygon and residential/sold eligibility checks before writing. It also includes the deed dataset again so sold-date fields can be returned, broadens normalization to support both nested BatchData paths and observed sandbox/legacy paths, and records request-mode attempts in `error_log`. I also restored the default sold window to 12 months so default Generate is not overly narrow. Verification passed without spending credits: request preview shows all fallback request bodies, map-preview synthetic record mapped to one active property, and `startBatchDataPull` dry-run accepted the same Anderson-style polygon.
+### Review — Precision Generate BatchData/Stale Data Diagnosis
+Latest job `6a31a2e54eb34ed2796411db` proves the app is reaching BatchData: `total_batchdata_calls=1`, `total_fetched=10`, and strict polygon mode returned 10 raw records. The route failure was downstream: all 10 records were rejected locally (`active_count=0`; diagnostic breakdown: missing/unmapped sold date for most rows plus local eligibility rejection), so there were no active job-scoped route candidates. The stale-data bug was in `Home`: after a pull completed it fetched any polygon-matching Neon records and merged them with `effectiveProperties`/cached `fetchedProperties`, so old records could be routed when the new BatchData job had zero active candidates. Fix: `fetchJobStatus` now returns `job_id`, `total_batchdata_calls`, and `active_count`; `getRouteCandidatesFromNeon` supports `fetch_job_id` and debug breakdowns; Home clears previous fetched properties, stores the current BatchData job id, fetches only that job’s records after pull, and stops route generation if the job has no active routeable properties. Verification passed: job status reports 1 BatchData call and active_count 0, job-scoped candidate fetch returns 0, debug_job shows rejection breakdown, and process self-test confirms BatchData key/database config and deed dataset.
 
 ## Previous Plan — Unified Precision Fetch + Auto-Generate Flow
 - [x] Confirm scope: Precision `Build your route` parameters become the single Precision Builder; remove the old separate route-builder step from the normal post-pull flow.

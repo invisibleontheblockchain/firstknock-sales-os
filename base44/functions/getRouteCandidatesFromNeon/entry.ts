@@ -38,6 +38,59 @@ Deno.serve(async (req) => {
         const limit = Math.min(Math.max(Number(body.limit || 50000), 1), 100000);
         const soldMonths = body.sold_months === 'all' || body.sold_months === null ? null : Number(body.sold_months || 12);
         const soldAfter = soldMonths ? new Date(Date.now() - soldMonths * 30 * 24 * 60 * 60 * 1000).toISOString() : null;
+        const fetchJobId = body.fetch_job_id ? String(body.fetch_job_id) : null;
+
+        if (body.debug_job === true && fetchJobId) {
+            const debugRows = await sql`
+                SELECT
+                    p.full_address,
+                    p.sold_date,
+                    p.sale_confidence,
+                    p.original_status,
+                    p.property_type,
+                    p.data_source,
+                    p.raw_payload,
+                    wp.route_active,
+                    wp.status,
+                    wp.fetch_job_id
+                FROM workspace_properties wp
+                JOIN properties p ON p.id = wp.property_id
+                WHERE wp.user_email = ${targetEmail}
+                  AND wp.fetch_job_id = ${fetchJobId}
+                ORDER BY p.updated_at DESC
+                LIMIT ${limit}
+            `;
+            const properties = debugRows.map(row => {
+                let raw = {};
+                try { raw = row.raw_payload ? JSON.parse(row.raw_payload) : {}; } catch { raw = {}; }
+                const listingStatus = String(raw?.listing?.status || raw?.listing?.statusCategory || '').toLowerCase();
+                const landUseCode = raw?.general?.standardizedLandUseCode || raw?.standardizedLandUseCode || null;
+                const reason = row.route_active === true && row.original_status !== 'REJECTED' && row.sale_confidence !== 'REJECTED'
+                    ? 'active'
+                    : !row.sold_date
+                        ? 'missing_or_unmapped_sold_date'
+                        : (landUseCode && landUseCode !== 'R2')
+                            ? `land_use_${landUseCode}`
+                            : (listingStatus === 'active' || listingStatus === 'for sale')
+                                ? `listing_${listingStatus}`
+                                : 'rejected_by_local_eligibility';
+                const rawShape = {
+                    top_level: Object.keys(raw || {}).slice(0, 30),
+                    sale_keys: Object.keys(raw?.sale || {}).slice(0, 30),
+                    last_sale_keys: Object.keys(raw?.lastSale || {}).slice(0, 30),
+                    deed_keys: Object.keys(raw?.deed || {}).slice(0, 30),
+                    listing_keys: Object.keys(raw?.listing || {}).slice(0, 30)
+                };
+                const { raw_payload, ...safeRow } = row;
+                return { ...safeRow, rejection_reason: reason, batchdata_land_use_code: landUseCode, batchdata_listing_status: listingStatus || null, raw_shape: rawShape };
+            });
+            const breakdown = properties.reduce((acc, row) => {
+                const key = row.rejection_reason || 'unknown';
+                acc[key] = (acc[key] || 0) + 1;
+                return acc;
+            }, {});
+            return Response.json({ success: true, user_email: targetEmail, fetch_job_id: fetchJobId, count: properties.length, breakdown, properties });
+        }
 
         const rows = await sql`
             SELECT
@@ -70,6 +123,7 @@ Deno.serve(async (req) => {
                 p.original_status,
                 wp.route_active,
                 wp.status,
+                wp.fetch_job_id,
                 wp.assigned_route_id,
                 p.created_at,
                 p.updated_at
@@ -77,6 +131,7 @@ Deno.serve(async (req) => {
             JOIN properties p ON p.id = wp.property_id
             WHERE wp.user_email = ${targetEmail}
               AND wp.route_active = TRUE
+              AND (${fetchJobId === null} OR wp.fetch_job_id = ${fetchJobId})
               AND p.lat IS NOT NULL
               AND p.lng IS NOT NULL
               AND COALESCE(p.original_status, '') <> 'REJECTED'
