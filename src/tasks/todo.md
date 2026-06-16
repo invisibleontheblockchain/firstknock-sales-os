@@ -846,3 +846,12 @@ Removed the old active-route Confidence/phase filter state, filtering logic, too
 
 ### Review — Fix Navigation Active States
 Updated Layout to use one exact-page active helper. The desktop Plans button now only gets the highlighted white pill style on Billing, and bottom nav items now use exact page checks so RepHome no longer also activates Map. Verification confirmed there are no broad `endsWith('Home')` or `includes('RepHome')` active checks left.
+
+## Plan — Fix Knock Filter Dropdown Readability
+- [x] Update the Knock filter dropdown options to use a dark background and white text.
+- [x] Keep the existing filter choices and filtering behavior unchanged.
+- [x] Verify every option in the Knock page has readable dropdown styling.
+- [x] Document the result.
+
+### Review — Fix Knock Filter Dropdown Readability
+Updated the Knock page dropdown options to render with dark backgrounds and white text while preserving the existing Sale and Decision filter values and behavior. Verification confirmed all 15 dropdown options in RepHome now include readable styling.

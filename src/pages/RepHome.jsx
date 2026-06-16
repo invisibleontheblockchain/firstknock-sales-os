@@ -606,14 +606,14 @@ export default function RepHome() {
               onChange={(e) => setSoldDateFilter(e.target.value)}
               className="appearance-none w-full h-9 pl-3 pr-8 text-[11px] font-bold bg-white/[0.04] border border-white/10 text-white rounded-xl outline-none focus:border-[#2EEB57]/60 cursor-pointer [color-scheme:dark] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               
-                            <option value="all">Sale: All Time</option>
-                            <option value="1w">Sale: 1 Week</option>
-                            <option value="2w">Sale: 2 Weeks</option>
-                            <option value="1m">Sale: 1 Month</option>
-                            <option value="3m">Sale: 3 Months</option>
-                            <option value="6m">Sale: 6 Months</option>
-                            <option value="9m">Sale: 9 Months</option>
-                            <option value="1y">Sale: 1 Year</option>
+                            <option className="bg-black text-white" value="all">Sale: All Time</option>
+                            <option className="bg-black text-white" value="1w">Sale: 1 Week</option>
+                            <option className="bg-black text-white" value="2w">Sale: 2 Weeks</option>
+                            <option className="bg-black text-white" value="1m">Sale: 1 Month</option>
+                            <option className="bg-black text-white" value="3m">Sale: 3 Months</option>
+                            <option className="bg-black text-white" value="6m">Sale: 6 Months</option>
+                            <option className="bg-black text-white" value="9m">Sale: 9 Months</option>
+                            <option className="bg-black text-white" value="1y">Sale: 1 Year</option>
                         </select>
                         <CalendarDays className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#8888A0] pointer-events-none" />
                     </div>
@@ -625,13 +625,13 @@ export default function RepHome() {
               onChange={(e) => setDecisionFilter(e.target.value)}
               className="appearance-none w-full h-9 pl-3 pr-6 text-[11px] font-bold bg-white/[0.04] border border-white/10 text-white rounded-xl outline-none focus:border-[#2EEB57]/60 cursor-pointer [color-scheme:dark] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               
-                                <option value="all">Decision: All</option>
-                                <option value="SOLD">Sold</option>
-                                <option value="NO_ANSWER">No Answer</option>
-                                <option value="CALLBACK">Callback</option>
-                                <option value="HARD_NO">Not Interested</option>
-                                <option value="NOT_MOVED_IN">Not Moved In</option>
-                                <option value="DM_NOT_HOME">DM Not Home</option>
+                                <option className="bg-black text-white" value="all">Decision: All</option>
+                                <option className="bg-black text-white" value="SOLD">Sold</option>
+                                <option className="bg-black text-white" value="NO_ANSWER">No Answer</option>
+                                <option className="bg-black text-white" value="CALLBACK">Callback</option>
+                                <option className="bg-black text-white" value="HARD_NO">Not Interested</option>
+                                <option className="bg-black text-white" value="NOT_MOVED_IN">Not Moved In</option>
+                                <option className="bg-black text-white" value="DM_NOT_HOME">DM Not Home</option>
                             </select>
                         </div>
           }
