@@ -195,6 +195,7 @@ function mapBatchDataProperty(record, job) {
     const listingStatusLower = String(listingStatus || '').toLowerCase();
     const saleDate = firstValue(sale.lastSaleDate, lastSale.recordingDate, lastSale.saleDate, lastSale.date, p.lastSaleDate);
     const saleDateMs = saleDate ? new Date(saleDate).getTime() : 0;
+    const hasValidSaleDate = saleDateMs > 0 && !Number.isNaN(saleDateMs);
     const cutoffMs = Date.now() - soldWindowDays(job.sold_months || 12) * 24 * 60 * 60 * 1000;
     const ownerName = firstValue(owner.fullName, owner.name, owner.names?.[0]?.full, owner.names?.[0]);
     const saleAmount = Number(firstValue(sale.amount, lastSale.price, lastSale.salePrice, p.lastSalePrice));
@@ -204,7 +205,7 @@ function mapBatchDataProperty(record, job) {
     const propertyType = firstValue(general.propertyTypeDetail, p.propertyType, p.landUse, building.propertyType) || 'Single Family';
     const nonResidential = /commercial|industrial|vacant|agricultural|land/i.test(String(propertyType));
     const landUseRejected = landUseCode && landUseCode !== 'R2';
-    const rejected = !saleDateMs || saleDateMs < cutoffMs || landUseRejected || nonResidential || listingStatusLower === 'active' || listingStatusLower === 'for sale';
+    const rejected = (hasValidSaleDate && saleDateMs < cutoffMs) || landUseRejected || nonResidential || listingStatusLower === 'active' || listingStatusLower === 'for sale';
 
     const match = address.street.match(/^(\d+)\s+(.*)$/);
     const houseNumber = match ? parseInt(match[1], 10) : 0;
@@ -233,7 +234,7 @@ function mapBatchDataProperty(record, job) {
         property_type: propertyType,
         data_source: 'batchdata',
         sale_confidence: rejected ? 'REJECTED' : 'verified',
-        original_status: rejected ? 'REJECTED' : 'DEED_CONFIRMED',
+        original_status: rejected ? 'REJECTED' : 'BATCHDATA_CONFIRMED',
         route_active: !rejected,
         raw_payload: JSON.stringify(p)
     };

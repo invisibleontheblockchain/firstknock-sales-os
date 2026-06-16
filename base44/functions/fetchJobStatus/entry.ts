@@ -42,9 +42,18 @@ Deno.serve(async (req) => {
                     JOIN properties p ON p.id = wp.property_id
                     WHERE wp.fetch_job_id = ${job.id}
                       AND wp.user_email = ${job.user_email}
-                      AND wp.route_active = TRUE
-                      AND COALESCE(p.original_status, '') <> 'REJECTED'
-                      AND COALESCE(p.sale_confidence, '') <> 'REJECTED'
+                      AND (
+                          wp.route_active = TRUE
+                          OR (
+                              p.data_source = 'batchdata'
+                              AND lower(coalesce(p.property_type, '')) NOT LIKE '%commercial%'
+                              AND lower(coalesce(p.property_type, '')) NOT LIKE '%industrial%'
+                              AND lower(coalesce(p.property_type, '')) NOT LIKE '%vacant%'
+                              AND lower(coalesce(p.property_type, '')) NOT LIKE '%agricultural%'
+                              AND lower(coalesce(p.property_type, '')) NOT LIKE '%land%'
+                              AND lower(coalesce(p.property_type, '')) NOT LIKE '%lot%'
+                          )
+                      )
                 `;
                 active_count = Number(rows?.[0]?.active_count || 0);
             }

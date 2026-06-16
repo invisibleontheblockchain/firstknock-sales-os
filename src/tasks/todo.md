@@ -1,6 +1,17 @@
 # Plan
 
-## Current Plan — Diagnose Precision Generate BatchData Usage + Stale Data
+## Current Plan — Fix BatchData Rows Rejected After Successful Pull
+- [x] Inspect the latest real FetchJob and confirm BatchData was called successfully.
+- [x] Verify whether the user-requested property count is stored on the job and whether route failure happens before or after BatchData.
+- [x] Patch ingestion so missing/unmapped sold dates from BatchData do not automatically deactivate otherwise residential rows from a current pull.
+- [x] Patch exact-job route candidate fetch/status so already-pulled BatchData rows can be routed without reusing stale old data.
+- [x] Verify against the latest job ID and a no-credit synthetic missing-sold-date record.
+- [x] Document review results and any lesson learned.
+
+### Review — BatchData Rows Rejected After Successful Pull
+Root cause: BatchData successfully returned records, but our importer treated missing/unmapped sold dates as hard rejection and stored those rows as inactive. Because route generation is now correctly scoped to the exact `fetch_job_id`, it refused to fall back to stale old rows and showed the failure message. Fix: BatchData rows are now considered routeable when they are residential and not stale/active-listing/non-residential, even if the sold date is absent; exact-job candidate fetch and status diagnostics can recover already-pulled BatchData rows without mixing in old data; route filters allow job-scoped BatchData rows with no sold date through the selected sold-window filter. Verification: no-credit synthetic missing-sold-date BatchData row maps as active; latest job `6a31a2e54eb34ed2796411db` now reports `active_count=5` and returns 5 route candidates; dry-run with the same 57.14 sq mi polygon and `requested_properties=5` returns requested_properties=5.
+
+## Previous Plan — Diagnose Precision Generate BatchData Usage + Stale Data
 - [x] Inspect recent FetchJobs to determine whether Precision Generate is creating new jobs, invoking `processFetchChunk`, and recording BatchData attempt logs.
 - [x] Verify the BatchData request construction and endpoint call path so we can tell whether failures are app-side payload/flow issues or BatchData-side zero-result responses.
 - [x] Trace where map properties are loaded after Generate and identify any path that can display stale pre-existing local/Neon data as if it came from the new pull.
