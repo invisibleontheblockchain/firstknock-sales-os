@@ -46,7 +46,7 @@ export default function MessageThread({
     const grouped = groupByDate(messages);
 
     return (
-        <div className="flex flex-col h-full bg-[#0a0a0f]">
+        <div className="flex flex-col h-full min-h-0 bg-[#0a0a0f]">
             {/* Header */}
             <div className="bg-black/95 backdrop-blur border-b border-white/5 shrink-0">
                 <div className="px-4 py-3 flex items-center gap-3">
@@ -69,7 +69,7 @@ export default function MessageThread({
             </div>
 
             {/* Messages */}
-            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-1">
+            <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-1">
                 {isLoading && (
                     <div className="text-center py-10">
                         <div className="w-8 h-8 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin mx-auto" />
@@ -144,7 +144,7 @@ export default function MessageThread({
             </div>
 
             {/* Message Type + Input */}
-            <div className="bg-black border-t border-white/5 p-3 pb-[max(12px,env(safe-area-inset-bottom))] shrink-0">
+            <div className="bg-black border-t border-white/5 p-3 pb-[max(16px,env(safe-area-inset-bottom))] shrink-0">
                 {/* Type selector */}
                 <div className="flex items-center gap-1.5 mb-2">
                     {[

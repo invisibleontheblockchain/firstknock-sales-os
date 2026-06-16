@@ -1,11 +1,12 @@
 # Plan
 
-## Current Plan — New Manager Polygon Onboarding Card
-- [x] Replace the old Circle/Square market modal with one Freehand Polygon option.
-- [x] Make the polygon card and Start Drawing button send the user directly into map drawing.
-- [x] Remove the sold-month preset UI from the new-user territory card.
-- [x] Preserve the existing skip behavior for reps and returning managers with territory data.
-- [x] Verify old Circle/Square copy is gone and the draw handoff remains wired.
+## Current Plan — Private Account Messaging + Mobile Input Fix
+- [x] Identify the current message read/write path and mobile chat layout.
+- [ ] Add account/team ownership fields to TeamMessage and replace global read access with account-scoped RLS.
+- [ ] Stamp all newly sent messages with manager/team ownership and explicit participant emails.
+- [ ] Scope the old General channel per account instead of globally.
+- [ ] Add mobile bottom-nav-safe spacing so the message input remains visible.
+- [ ] Verify message privacy rules and mobile layout-sensitive classes.
 
-### Review — New Manager Polygon Onboarding Card
-The new-user territory card now shows one Freehand Polygon option with FirstKnock green styling. The old Circle/Square selector, sold-month presets, and upgrade copy are gone; tapping either the polygon card or Start Drawing marks onboarding complete and sends the manager directly into map drawing, while reps and returning managers remain unaffected.
+### Review — Private Account Messaging + Mobile Input Fix
+Pending verification.

@@ -10,7 +10,8 @@ export default function TeamChat({ user, teamMember, onClose }) {
     const [activeChannel, setActiveChannel] = useState(null);
     const [mobileView, setMobileView] = useState('channels'); // 'channels' | 'thread'
 
-    const teamChannel = teamMember?.manager_id || null;
+    const normalizeEmail = (email) => (email || '').trim().toLowerCase();
+    const teamChannel = teamMember?.manager_id || user?.team_manager_id || (user?.app_role === 'manager' ? user?.id : null);
 
     // Fetch team members
     const { data: teamMembers = [] } = useQuery({
@@ -49,11 +50,13 @@ export default function TeamChat({ user, teamMember, onClose }) {
             });
         }
 
-        list.push({
-            id: 'general',
-            name: '🌐 General',
-            type: 'general'
-        });
+        if (teamChannel) {
+            list.push({
+                id: `general_${teamChannel}`,
+                name: '💬 General',
+                type: 'general'
+            });
+        }
 
         // Custom groups
         chatGroups.forEach(g => {
@@ -69,7 +72,7 @@ export default function TeamChat({ user, teamMember, onClose }) {
         teamMembers
             .filter(m => m.email?.toLowerCase() !== user?.email?.toLowerCase())
             .forEach(m => {
-                const emails = [user.email.toLowerCase(), m.email.toLowerCase()].sort();
+                const emails = [normalizeEmail(user.email), normalizeEmail(m.email)].sort();
                 const dmId = `dm_${emails.join('_')}`;
                 list.push({
                     id: dmId,
@@ -82,6 +85,14 @@ export default function TeamChat({ user, teamMember, onClose }) {
         return list;
     }, [teamChannel, chatGroups, teamMembers, user?.email]);
 
+    const getChannelParticipants = (channel) => {
+        if (!channel) return [];
+        if (channel.type === 'dm' || channel.type === 'group') {
+            return [...new Set([normalizeEmail(user?.email), ...(channel.members || []).map(normalizeEmail)].filter(Boolean))];
+        }
+        return [...new Set([normalizeEmail(user?.email), ...teamMembers.map(m => normalizeEmail(m.email))].filter(Boolean))];
+    };
+
     // Default to team channel
     useEffect(() => {
         if (!activeChannel && channels.length > 0) {
@@ -91,32 +102,32 @@ export default function TeamChat({ user, teamMember, onClose }) {
 
     // Fetch messages for active channel
     const { data: messages = [], isLoading: msgsLoading } = useQuery({
-        queryKey: ['teamMessages', activeChannel],
+        queryKey: ['teamMessages', teamChannel, activeChannel],
         queryFn: async () => {
-            if (!activeChannel) return [];
+            if (!activeChannel || !teamChannel) return [];
             const res = await base44.entities.TeamMessage.filter(
-                { channel: activeChannel }, 'created_date', 200
+                { channel: activeChannel, manager_id: teamChannel }, 'created_date', 200
             );
             return Array.isArray(res) ? res : (res?.items || []);
         },
         refetchInterval: 30000, // safety-net only — real-time delivery comes from the TeamMessage subscription below
-        enabled: !!activeChannel,
+        enabled: !!activeChannel && !!teamChannel,
     });
 
     // Real-time subscription
     useEffect(() => {
         const unsubscribe = base44.entities.TeamMessage.subscribe((event) => {
-            if (event.data?.channel === activeChannel) {
-                queryClient.invalidateQueries({ queryKey: ['teamMessages', activeChannel] });
+            if (event.data?.channel === activeChannel && event.data?.manager_id === teamChannel) {
+                queryClient.invalidateQueries({ queryKey: ['teamMessages', teamChannel, activeChannel] });
             }
         });
         return unsubscribe;
-    }, [activeChannel, queryClient]);
+    }, [activeChannel, teamChannel, queryClient]);
 
     const sendMutation = useMutation({
         mutationFn: (msg) => base44.entities.TeamMessage.create(msg),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['teamMessages', activeChannel] });
+            queryClient.invalidateQueries({ queryKey: ['teamMessages', teamChannel, activeChannel] });
         }
     });
 
@@ -125,8 +136,10 @@ export default function TeamChat({ user, teamMember, onClose }) {
         const activeChannelObj = channels.find(c => c.id === activeChannel);
         sendMutation.mutate({
             sender_name: user?.full_name || 'Unknown',
-            sender_email: user?.email,
+            sender_email: normalizeEmail(user?.email),
             sender_role: user?.app_role || teamMember?.role || 'rep',
+            manager_id: teamChannel,
+            participant_emails: getChannelParticipants(activeChannelObj),
             channel: activeChannel,
             channel_name: activeChannelObj?.name || activeChannel,
             message: text.trim(),
@@ -137,8 +150,8 @@ export default function TeamChat({ user, teamMember, onClose }) {
     const handleCreateGroup = async (name, memberEmails) => {
         await base44.entities.ChatGroup.create({
             name,
-            member_emails: memberEmails.map(e => e.toLowerCase()),
-            manager_id: teamMember?.manager_id || user?.id,
+            member_emails: memberEmails.map(normalizeEmail),
+            manager_id: teamChannel,
             is_active: true,
         });
         queryClient.invalidateQueries({ queryKey: ['chatGroups'] });
@@ -152,7 +165,7 @@ export default function TeamChat({ user, teamMember, onClose }) {
         ? activeChannelObj.members
         : activeChannelObj?.type === 'group'
             ? activeChannelObj.members
-            : teamMembers.map(m => m.email);
+            : getChannelParticipants(activeChannelObj);
 
     const selectChannel = (id) => {
         setActiveChannel(id);
@@ -160,8 +173,8 @@ export default function TeamChat({ user, teamMember, onClose }) {
     };
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col" onClick={onClose}>
-            <div className="flex-1 flex max-h-full" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col md:bottom-0 bottom-16" onClick={onClose}>
+            <div className="flex-1 flex max-h-full min-h-0" onClick={e => e.stopPropagation()}>
 
                 {/* Desktop: Side-by-side layout */}
                 {/* Mobile: Toggle between channels and thread */}
