@@ -7,12 +7,12 @@ import 'leaflet/dist/leaflet.css';
 
 const OUTCOMES = [
   { status: 'SOLD', label: 'Sold', color: '#00F5A0' },
-  { status: 'CALLBACK', label: 'Callback', color: '#FFD93D' },
+  { status: 'CALLBACK', label: 'Callback', color: '#39FF4A' },
   { status: 'NO_ANSWER', label: 'No Answer', color: '#E5E7EB' },
   { status: 'HARD_NO', label: 'Not Interested', color: '#FF6B6B' },
   { status: 'DO_NOT_KNOCK', label: 'Do Not Knock', color: '#DC2626' },
   { status: 'VACANT', label: 'Vacant', color: '#94A3B8' },
-  { status: 'NO_ACCESS', label: 'Gated / No Access', color: '#A855F7' },
+  { status: 'NO_ACCESS', label: 'Gated / No Access', color: '#D1D5DB' },
 ];
 
 function TapCapture({ onTap }) {
@@ -66,7 +66,7 @@ export default function CanvasFieldView({ campaign, zone, user, onClose }) {
     <div className="h-full flex flex-col bg-black text-white">
       <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between bg-black">
         <div className="min-w-0">
-          <p className="text-[10px] font-black text-purple-300 tracking-widest uppercase">Canvas Field View</p>
+          <p className="text-[10px] font-black text-[#39FF4A] tracking-widest uppercase">Canvas Field View</p>
           <h1 className="text-lg font-black truncate">Zone {zone.zone_number} — {logs.length} doors knocked</h1>
           <p className="text-xs text-gray-500 truncate">{assignedLabel}</p>
         </div>
@@ -92,7 +92,7 @@ export default function CanvasFieldView({ campaign, zone, user, onClose }) {
               <Tooltip direction="top">{log.label}</Tooltip>
             </CircleMarker>
           ))}
-          {pendingPoint && <CircleMarker center={[pendingPoint.lat, pendingPoint.lng]} radius={9} pathOptions={{ color: '#fff', fillColor: '#FFD93D', fillOpacity: 1, weight: 2 }} />}
+          {pendingPoint && <CircleMarker center={[pendingPoint.lat, pendingPoint.lng]} radius={9} pathOptions={{ color: '#fff', fillColor: '#2EEB57', fillOpacity: 1, weight: 2 }} />}
         </MapContainer>
 
         <div className="absolute top-4 left-4 right-4 z-[1000] flex items-center justify-between gap-2 pointer-events-none">

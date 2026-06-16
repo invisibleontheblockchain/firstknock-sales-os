@@ -2,12 +2,12 @@ import React from 'react';
 import { Check, Home, Phone, Ban, Clock, UserX } from 'lucide-react';
 
 const ACTIONS = [
-    { id: 'SOLD', label: 'SOLD', icon: Check, bg: 'rgba(34, 197, 94, 0.1)', text: '#22c55e', border: 'rgba(34, 197, 94, 0.2)' },
-    { id: 'NO_ANSWER', label: 'NO ANSWER', icon: Home, bg: 'rgba(59, 130, 246, 0.1)', text: '#3b82f6', border: 'rgba(59, 130, 246, 0.2)' },
-    { id: 'CALLBACK', label: 'CALLBACK', icon: Phone, bg: 'rgba(234, 179, 8, 0.1)', text: '#eab308', border: 'rgba(234, 179, 8, 0.2)' },
-    { id: 'HARD_NO', label: 'NOT INT.', icon: Ban, bg: 'rgba(139, 92, 246, 0.1)', text: '#8B5CF6', border: 'rgba(139, 92, 246, 0.2)' },
-    { id: 'NOT_MOVED_IN', label: 'NOT MOVED IN', icon: Clock, bg: 'rgba(249, 115, 22, 0.1)', text: '#f97316', border: 'rgba(249, 115, 22, 0.2)' },
-    { id: 'DM_NOT_HOME', label: 'DM NOT HOME', icon: UserX, bg: 'rgba(6, 182, 212, 0.1)', text: '#06b6d4', border: 'rgba(6, 182, 212, 0.2)' },
+    { id: 'SOLD', label: 'SOLD', icon: Check, bg: 'rgba(46, 235, 87, 0.12)', text: '#39FF4A', border: 'rgba(46, 235, 87, 0.3)' },
+    { id: 'NO_ANSWER', label: 'NO ANSWER', icon: Home, bg: 'rgba(255, 255, 255, 0.055)', text: '#FFFFFF', border: 'rgba(255, 255, 255, 0.12)' },
+    { id: 'CALLBACK', label: 'CALLBACK', icon: Phone, bg: 'rgba(57, 255, 74, 0.1)', text: '#2EEB57', border: 'rgba(57, 255, 74, 0.25)' },
+    { id: 'HARD_NO', label: 'NOT INT.', icon: Ban, bg: 'rgba(255, 107, 107, 0.1)', text: '#FF6B6B', border: 'rgba(255, 107, 107, 0.24)' },
+    { id: 'NOT_MOVED_IN', label: 'NOT MOVED IN', icon: Clock, bg: 'rgba(249, 115, 22, 0.1)', text: '#F97316', border: 'rgba(249, 115, 22, 0.24)' },
+    { id: 'DM_NOT_HOME', label: 'DM NOT HOME', icon: UserX, bg: 'rgba(255, 255, 255, 0.045)', text: '#D1D5DB', border: 'rgba(255, 255, 255, 0.11)' },
 ];
 
 export default function QuickMarkButtons({ onMark, disabled, size = 'normal' }) {

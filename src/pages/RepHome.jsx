@@ -464,8 +464,8 @@ export default function RepHome() {
     return (
       <div className="flex h-screen items-center justify-center bg-black text-white">
                 <div className="text-center">
-                    <Loader2 className="w-10 h-10 animate-spin text-yellow-500 mx-auto mb-4" />
-                    <p className="font-medium animate-pulse">Loading Route Data...</p>
+                    <Loader2 className="w-10 h-10 animate-spin text-[#2EEB57] mx-auto mb-4" />
+                    <p className="font-medium animate-pulse text-white/70">Loading Route Data...</p>
                 </div>
             </div>);
 
@@ -478,8 +478,8 @@ export default function RepHome() {
   if (!activeRoute) {
     return (
       <div className="flex h-screen flex-col items-center justify-center bg-black text-white p-6 text-center">
-                <div className="w-20 h-20 bg-gray-800 rounded-full flex items-center justify-center mb-6">
-                    <Navigation className="w-10 h-10 text-gray-500" />
+                <div className="w-20 h-20 bg-white/[0.04] border border-white/10 rounded-3xl flex items-center justify-center mb-6 shadow-[0_0_40px_rgba(46,235,87,0.12)]">
+                    <Navigation className="w-10 h-10 text-[#2EEB57]" />
                 </div>
                 <h1 className="text-2xl font-bold mb-2">No Active Routes</h1>
                 <p className="text-gray-400 mb-8 max-w-xs">
@@ -560,7 +560,10 @@ export default function RepHome() {
   };
 
   return (
-    <div className="h-full flex flex-col bg-black text-[#F0F0F5]">
+    <div className="h-full flex flex-col bg-black text-[#F0F0F5] relative overflow-hidden">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_-10%,rgba(46,235,87,0.14),transparent_34%),linear-gradient(180deg,#000000_0%,#030303_45%,#000000_100%)]" />
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-white/[0.035] to-transparent" />
+            <div className="relative z-10 h-full flex flex-col">
             {/* Compact Header */}
             <RepHeader
         user={user}
@@ -575,9 +578,9 @@ export default function RepHome() {
       
 
             {/* Filter tabs + search */}
-            <div className="px-4 pt-2 pb-3 space-y-2.5 border-b border-black bg-black">
+            <div className="px-4 pt-3 pb-3 space-y-3 border-b border-white/10 bg-black/70 backdrop-blur-xl shadow-[0_18px_50px_rgba(0,0,0,0.35)]">
                 {/* Top Row: Segmented Control */}
-                <div className="flex bg-black/40 p-0.5 rounded-xl border border-white/5">
+                <div className="flex bg-white/[0.04] p-1 rounded-2xl border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
                     {[
           { id: 'todo', label: `Todo ${routeProperties.length - stats.done}` },
           { id: 'done', label: `Done ${stats.done}` },
@@ -586,7 +589,7 @@ export default function RepHome() {
           <button
             key={tab.id}
             onClick={() => setFilterStatus(tab.id)}
-            className={`flex-1 py-1.5 rounded-lg text-[11px] font-bold tracking-wide transition-all whitespace-nowrap ${filterStatus === tab.id ? 'bg-white text-black shadow-md' : 'text-[#8888A0] hover:text-white'}`
+            className={`flex-1 py-2 rounded-xl text-[11px] font-black tracking-[0.12em] transition-all whitespace-nowrap ${filterStatus === tab.id ? 'bg-white text-black shadow-[0_8px_25px_rgba(255,255,255,0.14)]' : 'text-white/45 hover:text-white'}`
             }>
             
                             {tab.label}
@@ -601,7 +604,7 @@ export default function RepHome() {
                         <select
               value={soldDateFilter}
               onChange={(e) => setSoldDateFilter(e.target.value)}
-              className="appearance-none w-full h-8 pl-3 pr-8 text-[11px] font-bold bg-black/40 border border-white/5 text-white rounded-xl outline-none focus:border-white/15 cursor-pointer [color-scheme:dark]">
+              className="appearance-none w-full h-9 pl-3 pr-8 text-[11px] font-bold bg-white/[0.04] border border-white/10 text-white rounded-xl outline-none focus:border-[#2EEB57]/60 cursor-pointer [color-scheme:dark] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               
                             <option value="all">Sale: All Time</option>
                             <option value="1w">Sale: 1 Week</option>
@@ -620,7 +623,7 @@ export default function RepHome() {
                             <select
               value={decisionFilter}
               onChange={(e) => setDecisionFilter(e.target.value)}
-              className="appearance-none w-full h-8 pl-3 pr-6 text-[11px] font-bold bg-black/40 border border-white/5 text-white rounded-xl outline-none focus:border-white/15 cursor-pointer [color-scheme:dark]">
+              className="appearance-none w-full h-9 pl-3 pr-6 text-[11px] font-bold bg-white/[0.04] border border-white/10 text-white rounded-xl outline-none focus:border-[#2EEB57]/60 cursor-pointer [color-scheme:dark] shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
               
                                 <option value="all">Decision: All</option>
                                 <option value="SOLD">Sold</option>
@@ -641,7 +644,7 @@ export default function RepHome() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search address..."
-              className="h-8 w-full pl-8 pr-8 text-[11px] bg-black/40 border border-white/5 text-white placeholder:text-[#8888A0] focus:border-[#6C5CE7]/50 rounded-xl" />
+              className="h-9 w-full pl-8 pr-8 text-[11px] bg-white/[0.04] border border-white/10 text-white placeholder:text-white/35 focus:border-[#2EEB57]/60 rounded-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]" />
             
                             {searchQuery &&
             <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2">
@@ -654,7 +657,7 @@ export default function RepHome() {
             </div>
 
             {/* Property List */}
-            <div className="flex-1 overflow-y-auto px-3 py-2 pb-20 bg-black">
+            <div className="flex-1 overflow-y-auto px-3 py-3 pb-24 bg-transparent">
                 {filteredProperties.length === 0 ?
         <div className="text-center py-16">
                         <div className="w-14 h-14 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -665,7 +668,7 @@ export default function RepHome() {
                         </p>
                     </div> :
 
-        <div className="space-y-1.5">
+        <div className="space-y-2.5">
                         {filteredProperties.map((prop, idx) =>
           <PropertyCard
             key={prop.address_hash}
@@ -686,30 +689,30 @@ export default function RepHome() {
           onClick={() => {
             if (confirm("Mark route as complete?")) completeRouteMutation.mutate();
           }}
-          className="flex-1 h-10 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-2xl text-xs">
+          className="flex-1 h-11 bg-[#2EEB57] hover:bg-[#39FF4A] text-black font-black rounded-2xl shadow-[0_12px_35px_rgba(46,235,87,0.28)] text-xs tracking-wide">
           
                         ✅ Complete Route
                     </Button>
         }
                 <button
           onClick={() => setShowAnalytics(true)}
-          className="w-10 h-10 rounded-xl bg-[#111] border border-white/5 flex items-center justify-center active:bg-white/10 shadow-lg">
+          className="w-11 h-11 rounded-2xl bg-white text-black border border-white flex items-center justify-center active:scale-95 shadow-[0_12px_35px_rgba(255,255,255,0.16)] transition-all">
           
-                    <TrendingUp className="w-4 h-4 text-yellow-500" />
+                    <TrendingUp className="w-4 h-4" />
                 </button>
                 <button
           onClick={() => setShowChat(true)}
-          className="w-10 h-10 rounded-xl bg-[#111] border border-white/5 flex items-center justify-center active:bg-white/10 shadow-lg">
+          className="w-11 h-11 rounded-2xl bg-[#2EEB57] text-black border border-[#39FF4A]/60 flex items-center justify-center active:scale-95 shadow-[0_12px_35px_rgba(46,235,87,0.25)] transition-all">
           
-                    <MessageCircle className="w-4 h-4 text-blue-400" />
+                    <MessageCircle className="w-4 h-4" />
                 </button>
             </div>
 
             {/* Route Switching Drawer */}
             {showRouteList &&
       <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm" onClick={() => setShowRouteList(false)}>
-                    <div className="bg-[#151515] rounded-t-2xl border-t border-gray-800 max-h-[60vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-                        <div className="p-4 border-b border-gray-800 flex justify-between items-center">
+                    <div className="bg-[#050505]/95 backdrop-blur-2xl rounded-t-3xl border-t border-white/10 max-h-[60vh] flex flex-col shadow-[0_-20px_70px_rgba(0,0,0,0.7)]" onClick={(e) => e.stopPropagation()}>
+                        <div className="p-4 border-b border-white/10 flex justify-between items-center">
                             <h3 className="font-bold text-white">Switch Route</h3>
                             <button onClick={() => setShowRouteList(false)}><X className="w-5 h-5 text-gray-500" /></button>
                         </div>
@@ -723,11 +726,11 @@ export default function RepHome() {
                 window.history.replaceState({}, '', `${window.location.pathname}?route=${route.id}`);
                 setShowRouteList(false);
               }}
-              className={`w-full p-3 rounded-xl border text-left transition-all ${activeRoute?.id === route.id ? 'bg-yellow-500/10 border-yellow-500' : 'bg-gray-900 border-gray-800'}`
+              className={`w-full p-3 rounded-2xl border text-left transition-all ${activeRoute?.id === route.id ? 'bg-[#2EEB57]/10 border-[#2EEB57]/60 shadow-[0_0_24px_rgba(46,235,87,0.12)]' : 'bg-white/[0.04] border-white/10 hover:border-white/20'}`
               }>
               
                                     <div className="flex justify-between items-center">
-                                        <span className={`font-bold text-sm ${activeRoute?.id === route.id ? 'text-yellow-500' : 'text-white'}`}>
+                                        <span className={`font-bold text-sm ${activeRoute?.id === route.id ? 'text-[#39FF4A]' : 'text-white'}`}>
                                             {route.name}
                                         </span>
                                         <span className="text-xs text-gray-500">{route.metrics?.house_count || 0} doors</span>
@@ -795,6 +798,7 @@ export default function RepHome() {
             {showUpgradeGate &&
       <UpgradeGate onClose={() => setShowUpgradeGate(false)} />
       }
+            </div>
         </div>);
 
 }

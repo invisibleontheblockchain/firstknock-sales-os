@@ -1,5 +1,14 @@
 # Plan
 
+## Current Plan — Knock Tab Premium Dark Refresh
+- [x] Refresh Knock header, filters, list cards, floating actions, detail sheet, and map overlay styling with a premium dark / white / green aesthetic.
+- [x] Preserve all route, logging, navigation, filtering, GPS, and data behavior.
+- [x] Remove remaining yellow/purple/blue legacy accents from the Knock experience where they are purely decorative.
+- [x] Verify touched files for visual consistency and document the result.
+
+### Review — Knock Tab Premium Dark Refresh
+The Knock tab now uses a premium dark aesthetic across the route header, filter controls, property cards, floating actions, route switcher, property detail sheet, history, quick outcome actions, FirstKnock map HUD, and Canvas field fallback. Route loading, filtering, navigation, GPS, logging, route switching, analytics, chat, and upgrade behavior were left unchanged. Verification scanned the touched Knock files and found no remaining decorative yellow/purple/blue legacy accents.
+
 ## Current Plan — FirstKnock Black/White/Green Theme
 - [x] Centralize the new palette: primary `#2EEB57`, hover/active `#39FF4A`, background `#000000`, text `#FFFFFF`.
 - [x] Replace core app/theme token gold-purple styling with FirstKnock green/black/white.

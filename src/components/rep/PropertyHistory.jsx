@@ -4,14 +4,14 @@ import { format } from 'date-fns';
 import { CheckCircle2, XCircle, Clock, Home, MessageSquare, Image, MapPin, Trash2, UserX } from 'lucide-react';
 
 const STATUS_ICONS = {
-    SOLD: { icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10' },
-    HARD_NO: { icon: XCircle, color: 'text-purple-500', bg: 'bg-purple-500/10' },
-    CALLBACK: { icon: Clock, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
-    NO_ANSWER: { icon: Home, color: 'text-orange-500', bg: 'bg-orange-500/10' },
+    SOLD: { icon: CheckCircle2, color: 'text-[#39FF4A]', bg: 'bg-[#2EEB57]/10' },
+    HARD_NO: { icon: XCircle, color: 'text-red-400', bg: 'bg-red-500/10' },
+    CALLBACK: { icon: Clock, color: 'text-[#2EEB57]', bg: 'bg-[#2EEB57]/10' },
+    NO_ANSWER: { icon: Home, color: 'text-white', bg: 'bg-white/10' },
     ELIGIBLE: { icon: Home, color: 'text-gray-500', bg: 'bg-gray-500/10' },
-    QUALIFIED: { icon: CheckCircle2, color: 'text-green-500', bg: 'bg-green-500/10' },
-    NOT_MOVED_IN: { icon: Clock, color: 'text-orange-500', bg: 'bg-orange-500/10' },
-    DM_NOT_HOME: { icon: UserX, color: 'text-cyan-500', bg: 'bg-cyan-500/10' },
+    QUALIFIED: { icon: CheckCircle2, color: 'text-[#39FF4A]', bg: 'bg-[#2EEB57]/10' },
+    NOT_MOVED_IN: { icon: Clock, color: 'text-orange-400', bg: 'bg-orange-500/10' },
+    DM_NOT_HOME: { icon: UserX, color: 'text-gray-300', bg: 'bg-white/10' },
 };
 
 export default function PropertyHistory({ logs, onClearDecision }) {
@@ -40,11 +40,11 @@ export default function PropertyHistory({ logs, onClearDecision }) {
                 const callbackTime = timeMatch?.[1]?.trim();
 
                 return (
-                    <div key={log.id || idx} className="bg-[#111] border border-gray-800 rounded-xl p-3 space-y-2">
+                    <div key={log.id || idx} className="bg-white/[0.04] border border-white/10 rounded-2xl p-3 space-y-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                         {/* Header Row */}
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <div className={`w-7 h-7 rounded-lg ${config.bg} flex items-center justify-center`}>
+                                <div className={`w-8 h-8 rounded-xl ${config.bg} border border-white/10 flex items-center justify-center`}>
                                     <StatusIcon className={`w-3.5 h-3.5 ${config.color}`} />
                                 </div>
                                 <div>
@@ -89,13 +89,13 @@ export default function PropertyHistory({ logs, onClearDecision }) {
                                 </span>
                             )}
                             {callbackTime && (
-                                <span className="text-[10px] text-yellow-500/70 bg-yellow-500/5 px-2 py-0.5 rounded-full">
+                                <span className="text-[10px] text-[#39FF4A]/80 bg-[#2EEB57]/10 px-2 py-0.5 rounded-full">
                                     ⏰ {callbackTime}
                                 </span>
                             )}
                             {log.image_url && (
                                 <a href={log.image_url} target="_blank" rel="noreferrer"
-                                    className="text-[10px] text-blue-400 bg-blue-500/5 px-2 py-0.5 rounded-full flex items-center gap-1 hover:bg-blue-500/10">
+                                    className="text-[10px] text-white bg-white/5 px-2 py-0.5 rounded-full flex items-center gap-1 hover:bg-white/10">
                                     <Image className="w-3 h-3" /> Photo
                                 </a>
                             )}

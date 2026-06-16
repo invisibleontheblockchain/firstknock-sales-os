@@ -4,15 +4,15 @@ import { formatPropertyAge } from '@/utils';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
 
 const STATUS_COLORS = {
-    ELIGIBLE: '#FFD700',
-    SOLD: '#22c55e',
-    HARD_NO: '#8B5CF6',
-    CALLBACK: '#eab308',
-    NO_ANSWER: '#6b7280',
-    QUALIFIED: '#3b82f6',
-    RECENT_OFF_MARKET: '#FFD700',
-    NOT_MOVED_IN: '#f97316',
-    DM_NOT_HOME: '#06b6d4'
+    ELIGIBLE: '#FFFFFF',
+    SOLD: '#2EEB57',
+    HARD_NO: '#FF6B6B',
+    CALLBACK: '#39FF4A',
+    NO_ANSWER: '#9CA3AF',
+    QUALIFIED: '#2EEB57',
+    RECENT_OFF_MARKET: '#39FF4A',
+    NOT_MOVED_IN: '#F97316',
+    DM_NOT_HOME: '#D1D5DB'
 };
 
 export default function PropertyCard({ property, index, onSelect, navigationApp = 'apple' }) {
@@ -26,20 +26,22 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
             role="button"
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(property, index); }}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all duration-300 active:scale-[0.98] group cursor-pointer ${!isDone ? 'hover:bg-[#1A1A24] hover:shadow-[0_0_20px_rgba(255,255,255,0.15)] hover:border-white/30' : ''}`}
+            className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-3xl transition-all duration-300 active:scale-[0.985] group cursor-pointer ${!isDone ? 'hover:bg-white/[0.07] hover:shadow-[0_16px_45px_rgba(0,0,0,0.45)] hover:border-[#2EEB57]/35' : ''}`}
             style={{
-                background: isDone ? '#0A0A0F' : '#111',
-                border: `1px solid ${isDone ? '#151515' : '#1F1F1F'}`,
+                background: isDone ? 'rgba(255,255,255,0.025)' : 'linear-gradient(135deg, rgba(255,255,255,0.075), rgba(255,255,255,0.025))',
+                border: `1px solid ${isDone ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.11)'}`,
+                boxShadow: isDone ? 'none' : 'inset 0 1px 0 rgba(255,255,255,0.05)'
             }}
         >
             {/* Number / Check */}
             <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0 transition-all duration-300"
+                className="w-9 h-9 rounded-2xl flex items-center justify-center text-[12px] font-black shrink-0 transition-all duration-300"
                 style={{
-                    background: isDone ? statusColor : '#222',
-                    color: isDone ? '#fff' : '#fff',
-                    border: isDone ? 'none' : '1px solid rgba(255,255,255,0.1)',
-                    opacity: isDone ? 0.6 : 1
+                    background: isDone ? statusColor + '22' : '#FFFFFF',
+                    color: isDone ? statusColor : '#000000',
+                    border: isDone ? `1px solid ${statusColor}33` : '1px solid rgba(255,255,255,0.85)',
+                    opacity: isDone ? 0.72 : 1,
+                    boxShadow: isDone ? 'none' : '0 10px 25px rgba(255,255,255,0.12)'
                 }}
             >
                 {isDone ? <Check className="w-4 h-4" /> : index + 1}
@@ -48,17 +50,17 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
             {/* Address */}
             <div className="flex-1 min-w-0 text-left">
                 <div className="flex items-center gap-2">
-                    <p className={`text-[14px] font-bold truncate leading-tight transition-all duration-300 ${isDone ? 'line-through opacity-40 text-gray-500' : 'text-gray-200 group-hover:text-white group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.8)]'}`}>
+                    <p className={`text-[15px] font-extrabold truncate leading-tight tracking-tight transition-all duration-300 ${isDone ? 'line-through opacity-40 text-gray-500' : 'text-white group-hover:text-[#39FF4A]'}`}>
                         {property.house_number} {property.street_name}
                     </p>
                     {age && (
-                        <span className="text-[10px] font-bold text-yellow-500/80 shrink-0">
+                        <span className="text-[10px] font-black text-[#39FF4A] shrink-0 rounded-full bg-[#2EEB57]/10 border border-[#2EEB57]/20 px-1.5 py-0.5">
                             {age}
                         </span>
                     )}
                 </div>
                 {property.city && (
-                    <p className="text-[11px] truncate leading-tight mt-1 text-gray-600 transition-colors duration-300 group-hover:text-gray-400">
+                    <p className="text-[11px] truncate leading-tight mt-1 text-white/35 transition-colors duration-300 group-hover:text-white/55">
                         {property.city}, {property.state} {property.zip_code}
                     </p>
                 )}
@@ -80,9 +82,9 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
                         e.stopPropagation();
                         openInMaps(property.lat, property.lng, buildFullAddress(property), navigationApp);
                     }}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all active:scale-95 bg-white/10 border border-white/10"
+                    className="w-8 h-8 rounded-2xl flex items-center justify-center shrink-0 transition-all active:scale-95 bg-[#2EEB57]/10 border border-[#2EEB57]/25 hover:bg-[#2EEB57]"
                 >
-                    <Navigation className="w-3.5 h-3.5 text-gray-400" />
+                    <Navigation className="w-3.5 h-3.5 text-[#39FF4A]" />
                 </button>
             )}
         </div>

@@ -6,12 +6,12 @@ import PropertyHistory from './PropertyHistory';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
 
 const STATUS_OPTIONS = [
-    { id: 'SOLD', label: 'Sold', icon: Check, color: '#22c55e' },
-    { id: 'NO_ANSWER', label: 'No Answer', icon: Home, color: '#3b82f6' },
-    { id: 'CALLBACK', label: 'Callback', icon: Phone, color: '#eab308' },
-    { id: 'HARD_NO', label: 'Not Int.', icon: Ban, color: '#8B5CF6' },
-    { id: 'NOT_MOVED_IN', label: 'Not Moved In', icon: Clock, color: '#f97316' },
-    { id: 'DM_NOT_HOME', label: 'DM Not Home', icon: UserX, color: '#06b6d4' },
+    { id: 'SOLD', label: 'Sold', icon: Check, color: '#39FF4A' },
+    { id: 'NO_ANSWER', label: 'No Answer', icon: Home, color: '#FFFFFF' },
+    { id: 'CALLBACK', label: 'Callback', icon: Phone, color: '#2EEB57' },
+    { id: 'HARD_NO', label: 'Not Int.', icon: Ban, color: '#FF6B6B' },
+    { id: 'NOT_MOVED_IN', label: 'Not Moved In', icon: Clock, color: '#F97316' },
+    { id: 'DM_NOT_HOME', label: 'DM Not Home', icon: UserX, color: '#D1D5DB' },
 ];
 
 export default function PropertyDetailSheet({ property, logs, onLog, onClearDecision, onPhotoUpload, uploading, onClose, onViewOnMap, routePosition, totalStops, navigationApp = 'apple' }) {
@@ -61,16 +61,16 @@ export default function PropertyDetailSheet({ property, logs, onLog, onClearDeci
     return (
         <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/70 backdrop-blur-sm" onClick={onClose}>
             <div 
-                className="bg-[#0A0A0A] rounded-t-2xl border-t border-gray-800/50 max-h-[85vh] flex flex-col animate-in slide-in-from-bottom duration-300"
+                className="bg-[#050505]/95 backdrop-blur-2xl rounded-t-[2rem] border-t border-white/10 max-h-[86vh] flex flex-col animate-in slide-in-from-bottom duration-300 shadow-[0_-24px_80px_rgba(0,0,0,0.75)]"
                 onClick={e => e.stopPropagation()}
             >
                 {/* Drag handle */}
                 <div className="flex justify-center pt-3 pb-1">
-                    <div className="w-8 h-1 rounded-full bg-gray-800" />
+                    <div className="w-10 h-1 rounded-full bg-white/15" />
                 </div>
 
                 {/* Close */}
-                <button onClick={onClose} className="absolute top-1 right-1 w-11 h-11 rounded-full bg-white/5 flex items-center justify-center">
+                <button onClick={onClose} className="absolute top-2 right-2 w-11 h-11 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center active:scale-95 transition-all">
                     <X className="w-3.5 h-3.5 text-gray-500" />
                 </button>
 
@@ -78,15 +78,15 @@ export default function PropertyDetailSheet({ property, logs, onLog, onClearDeci
                 <div className="px-5 pb-3 pt-1">
                     {routePosition > 0 && (
                         <div className="flex items-center gap-1.5 mb-1">
-                            <span className="text-[10px] font-bold bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded-full border border-yellow-500/30">
+                            <span className="text-[10px] font-black bg-[#2EEB57]/10 text-[#39FF4A] px-2 py-0.5 rounded-full border border-[#2EEB57]/30 tracking-wide">
                                 Stop #{routePosition}{totalStops ? ` of ${totalStops}` : ''}
                             </span>
                         </div>
                     )}
-                    <h2 className="text-xl font-bold text-white leading-tight">
+                    <h2 className="text-2xl font-black text-white leading-tight tracking-tight">
                         {property.house_number} {property.street_name}
                     </h2>
-                    <p className="text-[12px] text-gray-600 mt-0.5">
+                    <p className="text-[12px] text-white/35 mt-1">
                         {property.city}{property.state ? `, ${property.state}` : ''} {property.zip_code}
                     </p>
                 </div>
@@ -94,15 +94,15 @@ export default function PropertyDetailSheet({ property, logs, onLog, onClearDeci
                 {/* Quick Outcome - 4 column grid matching checklist style */}
                 <div className="px-5 pb-3">
                     <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] font-bold uppercase text-gray-600">Log outcome</span>
+                        <span className="text-[10px] font-black uppercase text-white/45 tracking-[0.2em]">Log outcome</span>
                     </div>
                     <div className="grid grid-cols-3 gap-1.5">
                         {STATUS_OPTIONS.map(opt => (
                             <button
                                 key={opt.id}
                                 onClick={() => handleMark(opt.id)}
-                                className={`flex flex-col items-center gap-1 py-3 rounded-xl text-center transition-all active:scale-95 ${showSaleAmount && opt.id === 'SOLD' ? 'ring-2 ring-green-500' : ''}`}
-                                style={{ background: opt.color + '15', border: `1px solid ${opt.color}25` }}
+                                className={`flex flex-col items-center gap-1 py-3.5 rounded-2xl text-center transition-all active:scale-95 ${showSaleAmount && opt.id === 'SOLD' ? 'ring-2 ring-[#2EEB57]' : ''}`}
+                                style={{ background: opt.color === '#FFFFFF' ? 'rgba(255,255,255,0.055)' : opt.color + '14', border: `1px solid ${opt.color === '#FFFFFF' ? 'rgba(255,255,255,0.14)' : opt.color + '2e'}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}
                             >
                                 <opt.icon className="w-5 h-5" style={{ color: opt.color }} />
                                 <span className="text-[9px] font-bold leading-tight" style={{ color: opt.color }}>{opt.label}</span>
@@ -120,12 +120,12 @@ export default function PropertyDetailSheet({ property, logs, onLog, onClearDeci
                                     onChange={(e) => setSaleAmount(e.target.value)}
                                     placeholder="Sale amount"
                                     autoFocus
-                                    className="w-full bg-black border border-green-500/30 rounded-lg pl-7 pr-3 py-2.5 text-sm text-white focus:border-green-500 focus:outline-none"
+                                    className="w-full bg-black/70 border border-[#2EEB57]/30 rounded-xl pl-7 pr-3 py-2.5 text-sm text-white focus:border-[#39FF4A] focus:outline-none"
                                 />
                             </div>
                             <button
                                 onClick={() => handleMark('SOLD')}
-                                className="px-4 py-2.5 rounded-lg bg-green-500 text-black font-bold text-xs active:scale-95 transition-all"
+                                className="px-4 py-2.5 rounded-xl bg-[#2EEB57] text-black font-black text-xs active:scale-95 transition-all"
                             >
                                 Confirm
                             </button>
@@ -144,7 +144,7 @@ export default function PropertyDetailSheet({ property, logs, onLog, onClearDeci
                     <button
                         onClick={onViewOnMap}
                         className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95"
-                        style={{ background: '#1A1A24', color: '#00D2FF', border: '1px solid rgba(0, 210, 255, 0.2)' }}
+                        style={{ background: 'rgba(46,235,87,0.11)', color: '#39FF4A', border: '1px solid rgba(46,235,87,0.28)' }}
                     >
                         <MapPin className="w-3.5 h-3.5" />
                         View on FirstKnock Map
@@ -152,7 +152,7 @@ export default function PropertyDetailSheet({ property, logs, onLog, onClearDeci
                     <button
                         onClick={() => openInMaps(property.lat, property.lng, buildFullAddress(property), navigationApp)}
                         className="flex items-center justify-center gap-1.5 w-full py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95"
-                        style={{ background: '#111', color: '#666' }}
+                        style={{ background: 'rgba(255,255,255,0.055)', color: '#FFFFFF', border: '1px solid rgba(255,255,255,0.1)' }}
                     >
                         <Navigation className="w-3.5 h-3.5" />
                         Open in {navigationApp === 'google' ? 'Google' : 'Apple'} Maps
@@ -164,7 +164,7 @@ export default function PropertyDetailSheet({ property, logs, onLog, onClearDeci
                     {/* Add Details toggle */}
                     <button 
                         onClick={() => setShowMore(!showMore)}
-                        className="w-full flex items-center justify-between py-2 text-[10px] font-bold text-gray-600 uppercase tracking-wider"
+                        className="w-full flex items-center justify-between py-2 text-[10px] font-black text-white/35 uppercase tracking-[0.18em]"
                     >
                         <span>Add Details</span>
                         <ChevronUp className={`w-3.5 h-3.5 transition-transform ${showMore ? '' : 'rotate-180'}`} />
@@ -176,7 +176,7 @@ export default function PropertyDetailSheet({ property, logs, onLog, onClearDeci
                                 value={logNote}
                                 onChange={(e) => setLogNote(e.target.value)}
                                 placeholder="Quick note..."
-                                className="w-full bg-black border border-gray-800 rounded-xl p-3 text-sm text-white resize-none h-16 focus:border-yellow-500 focus:outline-none"
+                                className="w-full bg-black/70 border border-white/10 rounded-xl p-3 text-sm text-white resize-none h-16 focus:border-[#2EEB57] focus:outline-none"
                             />
                             <div className="flex gap-2">
                                 <div className="flex-1">
@@ -186,7 +186,7 @@ export default function PropertyDetailSheet({ property, logs, onLog, onClearDeci
                                         value={callbackPhone}
                                         onChange={(e) => setCallbackPhone(e.target.value)}
                                         placeholder="(555) 555-5555"
-                                        className="w-full bg-black border border-gray-800 rounded-lg p-2.5 text-sm text-white focus:border-yellow-500 focus:outline-none"
+                                        className="w-full bg-black/70 border border-white/10 rounded-xl p-2.5 text-sm text-white focus:border-[#2EEB57] focus:outline-none"
                                     />
                                 </div>
                                 <div className="flex-1">
@@ -195,7 +195,7 @@ export default function PropertyDetailSheet({ property, logs, onLog, onClearDeci
                                         type="time"
                                         value={callbackTime}
                                         onChange={(e) => setCallbackTime(e.target.value)}
-                                        className="w-full bg-black border border-gray-800 rounded-lg p-2.5 text-sm text-white focus:border-yellow-500 focus:outline-none"
+                                        className="w-full bg-black/70 border border-white/10 rounded-xl p-2.5 text-sm text-white focus:border-[#2EEB57] focus:outline-none"
                                     />
                                 </div>
                             </div>

@@ -26,7 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Navigation, X, Locate, ChevronUp, ChevronDown } from 'lucide-react';
 
-const BRAND = { gold: '#FFD93D', voidBlack: '#0A0A0F' };
+const BRAND = { gold: '#2EEB57', voidBlack: '#0A0A0F' };
 const CANVAS_RENDERER = L.canvas({ padding: 0.5 });
 const TOUCH_TARGET_ICON = L.divIcon({
     className: 'fk-property-touch-target',
@@ -39,10 +39,10 @@ const STATUS_COLORS = {
     ELIGIBLE: '#8888A0',
     SOLD: '#00F5A0',
     HARD_NO: '#FF6B6B',
-    CALLBACK: '#FFD93D',
+    CALLBACK: '#39FF4A',
     NO_ANSWER: '#8888A0',
-    QUALIFIED: '#00F5A0',
-    RECENT_OFF_MARKET: '#FFD93D',
+    QUALIFIED: '#2EEB57',
+    RECENT_OFF_MARKET: '#39FF4A',
 };
 
 function haversine(lat1, lng1, lat2, lng2) {
@@ -131,7 +131,7 @@ function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
                     eventHandlers={{ click: () => onSelectProperty(p) }}
                     bubblingMouseEvents={false}
                     pathOptions={{
-                        fillColor: idx === 0 ? '#22c55e' : color,
+                        fillColor: idx === 0 ? '#2EEB57' : color,
                         fillOpacity: 1,
                         color: '#fff',
                         weight: isNearby ? 2 : 1
@@ -266,7 +266,7 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                             }
                         }}
                         size="icon"
-                        className="touch-manipulation select-none bg-black/80 backdrop-blur-xl border border-yellow-500/50 text-yellow-500 hover:bg-yellow-500 hover:text-black rounded-full w-12 h-12 shadow-xl active:scale-95"
+                        className="touch-manipulation select-none bg-black/80 backdrop-blur-xl border border-[#2EEB57]/50 text-[#39FF4A] hover:bg-[#2EEB57] hover:text-black rounded-full w-12 h-12 shadow-xl active:scale-95"
                     >
                         <Locate className="w-5 h-5" />
                     </Button>
@@ -347,7 +347,7 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
 
             {/* Bottom HUD - Nearby Properties */}
             <div className="absolute bottom-0 left-0 right-0 z-[1100] safe-area-bottom">
-                <div className="bg-black/90 backdrop-blur-xl border-t border-yellow-500/30 rounded-t-2xl shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+                <div className="bg-black/90 backdrop-blur-2xl border-t border-[#2EEB57]/25 rounded-t-3xl shadow-[0_-18px_55px_rgba(0,0,0,0.65)]">
                     {/* Toggle Bar */}
                     <button
                         onClick={() => setHudExpanded(!hudExpanded)}
@@ -355,7 +355,7 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                     >
                         <div className="flex items-center gap-2">
                             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                            <span className="text-[10px] font-bold text-yellow-500 tracking-widest">NEARBY</span>
+                            <span className="text-[10px] font-black text-[#39FF4A] tracking-[0.22em]">NEARBY</span>
                             <Badge variant="outline" className="text-[9px] h-4 border-gray-700 text-gray-400">
                                 {nearbyProps.length}
                             </Badge>
@@ -389,7 +389,7 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                                                 {p.effective_status} • {p._distFt}ft
                                             </p>
                                         </div>
-                                        <Navigation className="w-3.5 h-3.5 text-yellow-500 shrink-0" />
+                                        <Navigation className="w-3.5 h-3.5 text-[#39FF4A] shrink-0" />
                                     </button>
                                 ))
                             )}
