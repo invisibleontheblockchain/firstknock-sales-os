@@ -192,9 +192,16 @@ function LayoutInner({ children }) {
             {!isRoleSelectPage &&
       <header className={`px-4 pt-[env(safe-area-inset-top)] pb-3 z-20 shadow-md bg-black ${isPageActive('RepHome') ? 'border-b border-transparent' : 'border-b border-slate-800'}`}>
                 <div className="flex items-center w-full pt-3">
-                    <div className="flex items-center gap-3 mr-auto">
-                        
-                    </div>
+                    <Link to="/" className="flex items-center gap-2 mr-auto group shrink-0">
+                        <img
+                            src="https://media.base44.com/images/public/695eb764b077190880be21de/1ce2ab937_ChatGPTImageJun16202604_23_59PM.png"
+                            alt="FirstKnock Logo"
+                            className="w-9 h-9 rounded-xl object-cover border border-[#2EEB57]/35 shadow-[0_0_22px_rgba(46,235,87,0.35)]"
+                        />
+                        <span className="text-lg font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-[#39FF4A] group-hover:to-[#2EEB57] transition-all">
+                            FirstKnock
+                        </span>
+                    </Link>
 
                     {/* Desktop */}
                     <div className="hidden md:flex items-center gap-2 ml-auto rounded-full border border-white/10 bg-white/[0.04] px-2 py-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl">
