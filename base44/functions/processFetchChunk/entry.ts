@@ -80,16 +80,92 @@ function isPointInPolygon(point, polygon) {
     return inside;
 }
 
+function closePolygon(points) {
+    const polygon = Array.isArray(points) ? points
+        .map(point => ({ latitude: Number(point.lat ?? point.latitude), longitude: Number(point.lng ?? point.longitude) }))
+        .filter(point => Number.isFinite(point.latitude) && Number.isFinite(point.longitude)) : [];
+    if (polygon.length < 3) throw new Error(`Invalid polygon: minimum 3 distinct points required. Received ${polygon.length} distinct points.`);
+    const first = polygon[0];
+    const last = polygon[polygon.length - 1];
+    if (first.latitude !== last.latitude || first.longitude !== last.longitude) {
+        polygon.push({ ...first });
+    }
+    const distinct = new Set(polygon.slice(0, -1).map(point => `${point.latitude.toFixed(7)},${point.longitude.toFixed(7)}`));
+    if (distinct.size < 3) throw new Error(`Invalid polygon: minimum 3 distinct points required. Received ${distinct.size} distinct points.`);
+    return polygon;
+}
+
+function soldWindowDays(soldMonths) {
+    const months = Number(soldMonths || 1);
+    if (months === 0.25) return 7;
+    if (months === 0.5) return 14;
+    if (months === 1) return 30;
+    if (months === 3) return 90;
+    if (months === 6) return 180;
+    if (months === 9) return 270;
+    if (months === 12) return 365;
+    return Math.max(1, Math.round(months * 30));
+}
+
+function isoDateDaysAgo(days) {
+    const date = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    return date.toISOString().slice(0, 10);
+}
+
+function buildBatchDataRequest(job, skip = 0, take = 500) {
+    const filters = job.dry_run_metadata?.filters || {};
+    const minPriceRaw = Number(filters.min_price);
+    const maxPriceRaw = Number(filters.max_price);
+    const minPrice = Number.isFinite(minPriceRaw) && minPriceRaw > 0 ? minPriceRaw : 100000;
+    const maxPrice = Number.isFinite(maxPriceRaw) && maxPriceRaw > 0 ? maxPriceRaw : null;
+    const estimatedValue = { min: minPrice };
+    if (maxPrice) estimatedValue.max = maxPrice;
+
+    return {
+        searchCriteria: {
+            address: {
+                geoLocationPolygon: {
+                    geoPoints: closePolygon(job.polygon || [])
+                }
+            },
+            general: {
+                standardizedLandUseCode: { equals: 'R2' }
+            },
+            valuation: {
+                estimatedValue
+            },
+            sale: {
+                lastSaleDate: { minDate: isoDateDaysAgo(soldWindowDays(job.sold_months || 1)) }
+            }
+        },
+        options: {
+            skip,
+            take: Math.min(Math.max(Number(take) || 500, 1), 500),
+            datasets: ['basic', 'listing', 'owner']
+        }
+    };
+}
+
+function extractBatchDataRecords(payload) {
+    const batch = payload?.results?.properties || payload?.properties || payload?.results || [];
+    return Array.isArray(batch) ? batch : [batch].filter(Boolean);
+}
+
+function extractBatchDataTotal(payload) {
+    return Number(payload?.results?.totalRecordCount ?? payload?.totalRecordCount ?? payload?.meta?.totalRecordCount ?? 0) || null;
+}
+
 function normalizeBatchDataAddress(record) {
-    const address = record.address || record.propertyAddress || record.situsAddress || {};
-    const street = firstValue(address.street, address.streetAddress, address.addressLine1, record.addressLine1, record.formattedAddress?.split?.(',')?.[0]);
+    const address = record.address || {};
+    const location = address.location || {};
+    const street = firstValue(address.street, address.streetAddress, address.addressLine1);
     return {
         street: street || '',
-        city: firstValue(address.city, record.city) || '',
-        state: firstValue(address.state, record.state) || '',
-        zip: String(firstValue(address.zip, address.zipCode, record.zipCode, '') || '').slice(0, 5),
-        lat: Number(firstValue(address.latitude, address.lat, record.latitude)),
-        lng: Number(firstValue(address.longitude, address.lng, record.longitude))
+        city: firstValue(address.city) || '',
+        state: firstValue(address.state) || '',
+        zip: String(firstValue(address.zip, address.zipCode, '') || '').slice(0, 5),
+        lat: Number(firstValue(location.latitude, address.latitude)),
+        lng: Number(firstValue(location.longitude, address.longitude))
     };
 }
 
@@ -101,31 +177,23 @@ function mapBatchDataProperty(record, job) {
 
     const owner = p.owner || {};
     const listing = p.listing || {};
-    const building = p.building || p.structure || {};
-    const sale = p.sale || p.lastSale || {};
-    const lastSale = sale.lastSale || sale.lastTransfer || sale;
-    const ids = p.ids || p.identifiers || {};
-    const quickLists = p.quickLists || {};
+    const building = p.building || {};
+    const sale = p.sale || {};
+    const valuation = p.valuation || {};
+    const general = p.general || {};
+    const ids = p.ids || {};
     const listingStatus = firstValue(listing.status, listing.statusCategory);
     const listingStatusLower = String(listingStatus || '').toLowerCase();
-    const saleDate = firstValue(lastSale.recordingDate, lastSale.saleDate, lastSale.date, p.lastSaleDate);
+    const saleDate = firstValue(sale.lastSaleDate);
     const saleDateMs = saleDate ? new Date(saleDate).getTime() : 0;
-    const soldMonths = Number(job.sold_months || 12);
-    const cutoffMs = Date.now() - soldMonths * 30 * 24 * 60 * 60 * 1000;
-    const ownerName = firstValue(owner.fullName, owner.name, owner.names?.[0]?.full, owner.names?.[0]);
-    const price = Number(firstValue(lastSale.price, lastSale.salePrice, p.lastSalePrice, listing.price));
-    const filters = job.dry_run_metadata?.filters || {};
-    const minPrice = Number(filters.min_price);
-    const maxPrice = Number(filters.max_price);
-    const hasMinPrice = Number.isFinite(minPrice) && minPrice > 0;
-    const hasMaxPrice = Number.isFinite(maxPrice) && maxPrice > 0;
-    const priceRejected = (hasMinPrice && (!Number.isFinite(price) || price < minPrice)) || (hasMaxPrice && (!Number.isFinite(price) || price > maxPrice));
-    const propertyType = firstValue(p.propertyType, p.landUse, building.propertyType) || 'Single Family';
-    const badType = /commercial|industrial|vacant|agricultural|land/i.test(String(propertyType));
-    const rejected =
-        !saleDateMs || saleDateMs < cutoffMs || priceRejected ||
-        listingStatusLower === 'active' || listingStatusLower === 'for sale' ||
-        owner.ownerOccupied === false || quickLists.corporateOwned === true || quickLists.investorOwned === true || badType;
+    const cutoffMs = Date.now() - soldWindowDays(job.sold_months || 1) * 24 * 60 * 60 * 1000;
+    const ownerName = firstValue(owner.fullName);
+    const saleAmount = Number(firstValue(sale.amount));
+    const estimatedValue = Number(firstValue(valuation.estimatedValue));
+    const price = Number.isFinite(saleAmount) ? saleAmount : estimatedValue;
+    const landUseCode = firstValue(general.standardizedLandUseCode);
+    const propertyType = firstValue(general.propertyTypeDetail) || 'Single Family';
+    const rejected = !saleDateMs || saleDateMs < cutoffMs || landUseCode !== 'R2' || listingStatusLower === 'active' || listingStatusLower === 'for sale';
 
     const match = address.street.match(/^(\d+)\s+(.*)$/);
     const houseNumber = match ? parseInt(match[1], 10) : 0;
@@ -133,7 +201,7 @@ function mapBatchDataProperty(record, job) {
 
     return {
         address_hash: addressHash(address.street, address.zip),
-        legacy_hash: firstValue(ids.addressHash, ids.propertyId, p.id, p._id) || null,
+        legacy_hash: firstValue(ids.propertyId) || null,
         house_number: houseNumber,
         street_name: streetName,
         full_address: [address.street, address.city, address.state, address.zip].filter(Boolean).join(', '),
@@ -143,11 +211,11 @@ function mapBatchDataProperty(record, job) {
         lat: address.lat,
         lng: address.lng,
         owner_full_name: ownerName || null,
-        beds: Number(firstValue(building.bedrooms, p.bedrooms)) || null,
-        baths: Number(firstValue(building.bathrooms, p.bathrooms)) || null,
-        sqft: Number(firstValue(building.livingArea, building.squareFeet, p.squareFootage)) || null,
-        lot_size: Number(firstValue(p.lot?.size, p.lotSize)) || null,
-        year_built: Number(firstValue(building.yearBuilt, p.yearBuilt)) || null,
+        beds: Number(firstValue(building.bedroomCount)) || null,
+        baths: Number(firstValue(building.bathroomCount)) || null,
+        sqft: Number(firstValue(building.livingAreaSquareFeet)) || null,
+        lot_size: null,
+        year_built: Number(firstValue(building.yearBuilt)) || null,
         price: Number.isFinite(price) ? price : null,
         sold_date: saleDate || null,
         sale_type: 'BatchData',
@@ -243,35 +311,49 @@ async function writePropertiesToNeon(sql, properties, job) {
     return { inserted, existed, updated };
 }
 
-async function fetchBatchDataRecords(job) {
-    const requested = Math.min(Math.max(Number(job.estimated_record_count || job.total_expected || 1000), 1), 1000);
-    const criteria = { query: `${job.latitude},${job.longitude}` };
-    const records = [];
-    let pageCursor = null;
-
-    while (records.length < requested) {
-        const take = Math.min(500, requested - records.length);
+async function batchDataFetchWithRetry(requestBody) {
+    for (let attempt = 1; attempt <= 4; attempt++) {
         const response = await fetch(BATCHDATA_BASE, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BATCHDATA_API_KEY}` },
-            body: JSON.stringify({
-                searchCriteria: criteria,
-                options: {
-                    datasets: ['basic', 'listing', 'deed', 'owner'],
-                    take,
-                    useCursorPagination: true,
-                    ...(pageCursor ? { pageCursor } : {})
-                }
-            })
+            body: JSON.stringify(requestBody)
         });
         const text = await response.text();
-        if (!response.ok) throw new Error(`BatchData request failed (${response.status}): ${text.slice(0, 300)}`);
-        const payload = text ? JSON.parse(text) : {};
-        const batch = payload?.results?.properties || payload?.properties || payload?.results || [];
-        const list = Array.isArray(batch) ? batch : [batch].filter(Boolean);
+        let payload = {};
+        try { payload = text ? JSON.parse(text) : {}; } catch { payload = { raw_text: text.slice(0, 1000) }; }
+
+        if (response.ok) return payload;
+        if (response.status === 401) throw new Error('Authentication failed. Verify the BatchData API token is correct and active.');
+        if (response.status === 400) throw new Error(`BatchData rejected the polygon search request: ${text.slice(0, 1000)}`);
+        if (response.status === 429 && attempt < 4) {
+            await sleep(2 ** attempt * 1000);
+            continue;
+        }
+        if ((response.status === 500 || response.status === 503) && attempt < 2) {
+            await sleep(5000);
+            continue;
+        }
+        throw new Error(`BatchData request failed (${response.status}): ${text.slice(0, 1000)}`);
+    }
+    throw new Error('Rate limit exceeded after 3 retries.');
+}
+
+async function fetchBatchDataRecords(job) {
+    const requested = Math.min(Math.max(Number(job.estimated_record_count || job.total_expected || 1000), 1), 1000);
+    const records = [];
+    let skip = 0;
+    let totalRecordCount = null;
+
+    while (records.length < requested) {
+        const take = Math.min(500, requested - records.length);
+        const requestBody = buildBatchDataRequest(job, skip, take);
+        const payload = await batchDataFetchWithRetry(requestBody);
+        const list = extractBatchDataRecords(payload);
+        if (totalRecordCount === null) totalRecordCount = extractBatchDataTotal(payload);
         records.push(...list);
-        pageCursor = payload?.nextPageCursor || payload?.results?.nextPageCursor || payload?.meta?.nextPageCursor || null;
-        if (!pageCursor || list.length === 0) break;
+        if (list.length < take) break;
+        if (totalRecordCount !== null && records.length >= totalRecordCount) break;
+        skip += take;
     }
 
     return records.slice(0, requested);
@@ -285,7 +367,20 @@ Deno.serve(async (req) => {
         const body = await req.json().catch(() => ({}));
 
         if (body.self_test === true) {
-            return Response.json({ success: true, active_provider: 'batchdata', rentcast_active: false, has_batchdata_key: !!BATCHDATA_API_KEY, has_database_url: !!DATABASE_URL });
+            return Response.json({ success: true, active_provider: 'batchdata', rentcast_active: false, batchdata_polygon_search: true, datasets: ['basic', 'listing', 'owner'], has_batchdata_key: !!BATCHDATA_API_KEY, has_database_url: !!DATABASE_URL });
+        }
+
+        if (body.request_preview === true) {
+            const previewJob = body.job || {
+                polygon: body.polygon || [
+                    { lat: 33.4622, lng: -112.1866 },
+                    { lat: 33.3493, lng: -112.1915 },
+                    { lat: 33.2931, lng: -112.1338 }
+                ],
+                sold_months: body.sold_months || 1,
+                dry_run_metadata: { filters: { min_price: body.min_price ?? 100000, max_price: body.max_price ?? null } }
+            };
+            return Response.json({ success: true, request: buildBatchDataRequest(previewJob, 0, 500) });
         }
 
         if (!BATCHDATA_API_KEY) throw new Error('BATCH_DATA_API_KEY is not configured');

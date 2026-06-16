@@ -1,6 +1,17 @@
 # Plan
 
-## Current Plan — Phase 5: Code-Splitting via import.meta.glob
+## Current Plan — BatchData Polygon Search Precision Fix
+- [x] Confirm scope: Precision Generate after freehand polygon must use BatchData Property Search only; no RentCast, no county-radius fallback, no bounding-box-only query.
+- [x] Patch `processFetchChunk` as the source of truth for live pulls: POST `/api/v1/property/search` with `searchCriteria.address.geoLocationPolygon.geoPoints`, closed polygon, `general.standardizedLandUseCode.equals = "R2"`, `valuation.estimatedValue.min = 100000` by default, optional max value, `sale.lastSaleDate.minDate`, `options.skip/take`, and datasets exactly `["basic", "listing", "owner"]`.
+- [x] Replace cursor/query pagination with documented skip/take pagination, max take 500, stop on partial page or totalRecordCount.
+- [x] Map response fields from exact BatchData paths: address/location, owner.fullName, sale.lastSaleDate, sale.amount, valuation.estimatedValue, general.propertyTypeDetail, general.standardizedLandUseCode, ids.propertyId, building fields.
+- [x] Preserve existing Neon/workspace write path so the map populates through `getRouteCandidatesFromNeon` after import completion.
+- [x] Add no-credit request-shape verification and run backend tests before calling this done.
+
+### Review — BatchData Polygon Search Precision Fix
+Precision Generate now sends the canonical BatchData polygon request: closed `geoPoints`, SFR-only `standardizedLandUseCode.equals = "R2"`, default `$100,000` valuation floor, optional max value, sold-date minDate from the selected window, skip/take pagination, and datasets exactly `["basic", "listing", "owner"]`. The processor no longer uses centroid/query or cursor pagination for live pulls, and it maps the exact BatchData response paths into the existing Neon/workspace write path so the map populates through the existing route-candidate loader. No-credit tests passed: processor self-test confirms BatchData-only polygon mode, request preview produced the exact canonical body with a closed polygon and 2026-05-17 30-day minDate, and `startBatchDataPull` dry-run validated the selected polygon without spending records.
+
+## Previous Plan — Phase 5: Code-Splitting via import.meta.glob
 - [x] Inspect pages.config.js: eagerly imported all 22 pages into the main bundle (stale auto-generated file).
 - [x] Rewrite App.jsx routing: `import.meta.glob('./pages/*.{jsx,js}')` + React.lazy → every page is its own on-demand chunk; new page files auto-register as routes without touching pages.config.js.
 - [x] Layout imported directly from './Layout.jsx'; mainPage stays 'RoleSelect'; existing Suspense fallback covers chunk loading.

@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
         const requestedProperties = Math.max(1, Math.min(Number.isFinite(requestedRaw) ? requestedRaw : maxProperties, maxProperties));
         const minPriceRaw = Number(body.min_price);
         const maxPriceRaw = Number(body.max_price);
-        const minPrice = Number.isFinite(minPriceRaw) && minPriceRaw > 0 ? minPriceRaw : null;
+        const minPrice = Number.isFinite(minPriceRaw) && minPriceRaw > 0 ? minPriceRaw : 100000;
         const maxPrice = Number.isFinite(maxPriceRaw) && maxPriceRaw > 0 ? maxPriceRaw : null;
         const box = boundsMiles(polygon);
         const maxSpanMiles = isPaid ? 35 : 15;
@@ -150,7 +150,7 @@ Deno.serve(async (req) => {
                 },
                 paid_pull_started_at: new Date().toISOString()
             },
-            sold_months: Number(body.sold_months || 12),
+            sold_months: Number(body.sold_months || 1),
             include_mls: false,
             user_email: user.email,
             progress_pct: 0,
