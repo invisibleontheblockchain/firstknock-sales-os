@@ -82,11 +82,19 @@ Deno.serve(async (req) => {
 
         const areaSqMi = polygonAreaSqMi(polygon);
         const center = centroid(polygon);
-        const isPaid = user.subscription_status === 'active' || user.is_owner || user.role === 'admin';
+        const forceFreeForSelfTest = body.self_test_force_free === true && body.dry_run === true;
+        const isPaid = !forceFreeForSelfTest && (user.subscription_status === 'active' || user.subscription_status === 'trialing' || user.is_owner || user.role === 'admin');
         const maxArea = isPaid ? PAID_AREA_LIMIT_SQ_MI : FREE_AREA_LIMIT_SQ_MI;
         const maxProperties = isPaid ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
         const requestedRaw = Number(body.requested_properties || maxProperties);
-        const requestedProperties = Math.max(1, Math.min(Number.isFinite(requestedRaw) ? requestedRaw : maxProperties, maxProperties));
+        const requestedValue = Math.max(1, Number.isFinite(requestedRaw) ? requestedRaw : maxProperties);
+        if (!isPaid && requestedValue > FREE_PROPERTY_CAP) {
+            return Response.json({
+                error: 'upgrade_required',
+                message: 'Free Precision accounts are limited to 50 houses. Upgrade to Precision to pull more.'
+            }, { status: 403 });
+        }
+        const requestedProperties = Math.max(1, Math.min(requestedValue, maxProperties));
         const minPriceRaw = Number(body.min_price);
         const maxPriceRaw = Number(body.max_price);
         const minPrice = Number.isFinite(minPriceRaw) && minPriceRaw > 0 ? minPriceRaw : 100000;

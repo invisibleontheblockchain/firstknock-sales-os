@@ -10,7 +10,6 @@ import { createPageUrl } from '@/utils';
 import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
 import { savePolygonToHistory } from '@/components/map/PolygonHistory';
 import PrecisionPullPanel from '@/components/map/PrecisionPullPanel';
-import UpgradeGate from '@/components/upgrade/UpgradeGate';
 
 
 export default function TerritoryPrompt({
@@ -53,7 +52,6 @@ export default function TerritoryPrompt({
   const [minHomeValue, setMinHomeValue] = useState(100000);
   const [maxHomeValue, setMaxHomeValue] = useState('');
   const [showPrecisionPullPanel, setShowPrecisionPullPanel] = useState(false);
-  const [showUpgradeGate, setShowUpgradeGate] = useState(false);
   const [previewResult, setPreviewResult] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [paidPullStarting, setPaidPullStarting] = useState(false);
@@ -485,7 +483,9 @@ export default function TerritoryPrompt({
       const latestUser = await base44.auth.me();
       const upgraded = latestUser?.subscription_status === 'active' || latestUser?.subscription_status === 'trialing' || latestUser?.is_owner || latestUser?.role === 'admin';
       if (!upgraded) {
-        setShowUpgradeGate(true);
+        toast.info('Precision pulls over 50 houses require an upgraded account.');
+        setShowPrecisionPullPanel(false);
+        navigate(createPageUrl('Billing') + '?plan=precision');
         return;
       }
     }
@@ -527,7 +527,6 @@ export default function TerritoryPrompt({
 
   return (
     <>
-            {showUpgradeGate && <UpgradeGate onClose={() => setShowUpgradeGate(false)} />}
             {/* Simple prompt for returning users who already have data */}
             {/* Returning user prompt — skip straight to map, no modal blocking */}
 

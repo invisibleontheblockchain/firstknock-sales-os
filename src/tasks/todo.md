@@ -1,6 +1,18 @@
 # Plan
 
-## Current Plan — Owner Missing From Clicked House Details
+## Current Plan — Precision Free 50-House Upgrade Gate
+- [x] Confirm current frontend behavior for over-50 Precision pulls.
+- [x] Change over-50 free-plan Generate attempts to redirect to Billing/Precision upgrade.
+- [x] Enforce the same 50-house free cap in `startBatchDataPull` so API bypasses cannot start over-limit jobs.
+- [x] Preserve paid/admin/owner Precision cap at 1000.
+- [x] Verify backend rejects free over-limit and allows free in-limit dry runs.
+- [x] Verify upgraded accounts still allow over-50 up to the paid cap.
+- [x] Document the result.
+
+### Review — Precision Free 50-House Upgrade Gate
+Frontend: if a non-upgraded user enters more than 50 Precision houses and taps Generate, the panel closes and sends them to `/Billing?plan=precision` with an upgrade message. Backend: `startBatchDataPull` now rejects non-upgraded requests over 50 with `upgrade_required` instead of silently clamping; active/trialing/owner/admin accounts still use the 1000 cap. Verification: free-plan self-test dry run passed at 50 and returned 403 at 51; upgraded dry run passed at 51.
+
+## Previous Plan — Owner Missing From Clicked House Details
 - [x] Confirm whether the clicked house uses full route candidates or slim map candidates.
 - [x] Patch the source payload so clicked property details include existing owner data.
 - [x] Keep the previous payload reduction mostly intact and avoid route/business logic changes.
