@@ -1535,7 +1535,7 @@ export default function Home() {
                 )}
 
                 {/* Previous drawn area history */}
-                {!drawingMode && <PolygonHistory currentPolygon={drawnPolygon} mode={mode} />}
+                {!drawingMode && !showRoutePanel && <PolygonHistory currentPolygon={drawnPolygon} mode={mode} />}
 
                 {/* GPS TRACKER LAYERS */}
                 <GpsTrackerMapLayers
