@@ -53,6 +53,7 @@ export default function ManagerPropertyDetailSheet({
     const builtYear = numberValue(selectedProperty.year_built, selectedProperty.yearBuilt, selectedProperty.building?.yearBuilt);
     const squareFeet = numberValue(selectedProperty.sqft, selectedProperty.squareFootage, selectedProperty.livingAreaSquareFeet, selectedProperty.building?.livingAreaSquareFeet, selectedProperty.building?.squareFeet);
     const soldDate = dateValue(selectedProperty.sold_date, selectedProperty.soldDate, selectedProperty.lastSaleDate, selectedProperty.sale?.lastSaleDate);
+    const ownerName = selectedProperty.owner_full_name || selectedProperty.ownerFullName || selectedProperty.owner_name || selectedProperty.owner?.fullName || selectedProperty.owner?.ownerName || null;
     const beds = numberValue(selectedProperty.beds, selectedProperty.bedrooms, selectedProperty.building?.bedroomCount);
     const baths = numberValue(selectedProperty.baths, selectedProperty.bathrooms, selectedProperty.building?.bathroomCount);
 
@@ -139,6 +140,14 @@ export default function ManagerPropertyDetailSheet({
                             )}
 
                             <div className="grid grid-cols-2 gap-3">
+                                {ownerName && (
+                                    <div className="col-span-2 p-3 bg-black/40 rounded-lg border border-gray-800">
+                                        <p className="text-[10px] text-gray-500 uppercase mb-1 flex items-center gap-1">
+                                            <User className="w-3 h-3" /> Current Owner
+                                        </p>
+                                        <p className="font-bold text-white text-sm truncate">{ownerName}</p>
+                                    </div>
+                                )}
                                 <div className="p-3 bg-black/40 rounded-lg border border-gray-800">
                                     <p className="text-[10px] text-gray-500 uppercase mb-1 flex items-center gap-1">
                                         <DollarSign className="w-3 h-3" /> Est. Value

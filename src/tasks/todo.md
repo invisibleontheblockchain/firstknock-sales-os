@@ -1,6 +1,15 @@
 # Plan
 
-## Current Plan — Property Detail Metadata Population
+## Current Plan — Route View Phase Removal + Owner Card
+- [x] Remove the Phase dropdown from the active route view without changing route generation.
+- [x] Ensure any existing in-session phase filter is cleared so hidden filtering cannot persist.
+- [x] Add current owner name to the manager property detail card using existing BatchData/Neon owner fields.
+- [x] Verify real route candidate data includes owner names and document the result.
+
+### Review — Route View Phase Removal + Owner Card
+Removed the Phase selector from the active route toolbar and reset any lingering in-session phase filter to `all`, so hidden phase filtering cannot keep affecting route view. Added a full-width Current Owner row to the manager property detail card using `owner_full_name` plus existing owner aliases. Verification: latest real job `6a31a2e54eb34ed2796411db` returns route candidates with `owner_full_name` values such as Nathan Andrew Kidd and Denise Rivera.
+
+## Previous Plan — Property Detail Metadata Population
 - [x] Confirm exactly which card fields must populate: estimated value, built year, square footage, last sold, and available owner/beds/baths.
 - [x] Trace manager map → route → selected property → property detail card to identify where metadata is missing or dropped.
 - [x] Patch the smallest source-of-truth mapping issue so BatchData/imported route properties carry normalized metadata into the card.

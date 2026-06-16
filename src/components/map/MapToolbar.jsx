@@ -135,6 +135,10 @@ export default function MapToolbar({
         try { localStorage.setItem('fk_selectedKnockRouteId', activeRoute.id); } catch {}
     }, [activeRoute?.id]);
 
+    useEffect(() => {
+        if (activeRoutePhaseFilter !== 'all') setActiveRoutePhaseFilter?.('all');
+    }, [activeRoutePhaseFilter, setActiveRoutePhaseFilter]);
+
     // Inline route name editing state
     const [editingName, setEditingName] = useState(false);
     const [draftName, setDraftName] = useState('');
@@ -167,7 +171,6 @@ export default function MapToolbar({
         if (!activeRoute?.properties?.length || !user?.id) return;
         const filterLabels = [];
         if (activeRouteSoldFilter !== 'all') filterLabels.push(`${activeRouteSoldFilter}M`);
-        if (activeRoutePhaseFilter !== 'all') filterLabels.push(activeRoutePhaseFilter);
         if (activeRoutePriceFilter !== 'all') filterLabels.push(`$${Number(activeRoutePriceFilter).toLocaleString()}+`);
 
         const routeName = `${activeRoute.name || 'Route'} (${filterLabels.join(', ') || 'Filtered'} Filter)`;
@@ -345,14 +348,6 @@ export default function MapToolbar({
                                 </select>
                             )}
 
-                            {setActiveRoutePhaseFilter && hasMlsData && (
-                                <select value={activeRoutePhaseFilter} onChange={(e) => { e.stopPropagation(); setActiveRoutePhaseFilter(e.target.value); }} onPointerDown={(e) => e.stopPropagation()} className="text-[10px] md:text-[11px] font-medium bg-white/5 border border-purple-500/30 rounded-md px-1 md:px-1.5 py-0.5 outline-none cursor-pointer hover:bg-white/10 shrink-0" style={{ color: '#c4b5fd', WebkitAppearance: 'menulist' }}>
-                                    <option value="all">Phase</option>
-                                    <option value="deeds">P1 Deeds</option>
-                                    <option value="listings">P2 MLS</option>
-                                </select>
-                            )}
-
                             {setActiveRoutePriceFilter && (
                                 <select value={activeRoutePriceFilter} onChange={(e) => { e.stopPropagation(); setActiveRoutePriceFilter(e.target.value); }} onPointerDown={(e) => e.stopPropagation()} className="text-[10px] md:text-[11px] font-medium bg-white/5 border border-green-500/30 rounded-md px-1 md:px-1.5 py-0.5 outline-none cursor-pointer hover:bg-white/10 shrink-0" style={{ color: '#86efac', WebkitAppearance: 'menulist' }}>
                                     <option value="all">Price</option>
@@ -366,7 +361,7 @@ export default function MapToolbar({
                                 </select>
                             )}
 
-                            {(activeRouteSoldFilter !== 'all' || activeRoutePhaseFilter !== 'all' || activeRoutePriceFilter !== 'all') && onSaveFilteredRoute && (
+                            {(activeRouteSoldFilter !== 'all' || activeRoutePriceFilter !== 'all') && onSaveFilteredRoute && (
                                 <button onClick={(e) => { e.stopPropagation(); handleSaveVisibleFilteredRoute(); }} className="h-5 md:h-6 px-1.5 md:px-2 text-[9px] md:text-[10px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-md flex items-center gap-0.5 shrink-0">
                                     <Save className="w-2.5 h-2.5" /> SAVE
                                 </button>
