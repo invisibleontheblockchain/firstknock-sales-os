@@ -3,11 +3,12 @@
 ## Current Plan — Hide Previous Areas On Routes Tab
 - [x] Confirm previous-area ghost trails render through `PolygonHistory` on `pages/Home`.
 - [x] Hide `PolygonHistory` while the Routes panel/tab is open.
+- [x] Also hide `PolygonHistory` after selecting/opening an active route from the Routes tab.
 - [x] Keep saved previous areas, route display, and route selection behavior unchanged.
 - [x] Verify the render condition and document the result.
 
 ### Review — Hide Previous Areas On Routes Tab
-Previous-area ghost trails now render only when drawing is off and the Routes panel is closed. Opening the Routes tab hides the `PolygonHistory` layer without deleting saved areas or changing route display/selection behavior.
+Previous-area ghost trails now render only when drawing is off, the Routes panel is closed, and no active route is selected. Opening the Routes tab or selecting a route hides the `PolygonHistory` layer without deleting saved areas or changing route display/selection behavior.
 
 ## Current Plan — Bottom PULL DATA Opens Precision Generate
 - [x] Confirm which toolbar button is selected and what existing Precision action it should reuse.

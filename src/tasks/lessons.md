@@ -83,3 +83,4 @@
 - BatchData property-search rows may omit deed/sold-date fields even when the property itself is valid; do not mark exact-job residential BatchData rows inactive solely because `sold_date` is missing.
 - Property detail cards must normalize provider alias fields at both import and display time (`estimatedValue`, `sale.amount`, `building.squareFeet`, `yearBuilt`, etc.); do not assume one canonical metadata field exists for every provider row.
 - When adding fields to property detail UI, verify the exact clicked-object payload, not just the full backend response; slim map projections (`fields='map'`) can silently omit data that exists in the database.
+- When hiding map overlays for a tab/panel, cover both UI states: the panel being open and the selected item/view that remains after the panel closes; otherwise ghost overlays can reappear after selection.
