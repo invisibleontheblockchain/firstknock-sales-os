@@ -81,3 +81,4 @@
 - For paid data-pull UX fixes, do not verify only the click handler or self-test; inspect the latest real FetchJob `raw/mapped/active` counts to prove records actually reached the map source.
 - After any paid Precision pull, route building must be scoped to the exact `fetch_job_id`; never merge old cached/territory/Neon polygon records into a newly pulled route run, or stale records can masquerade as fresh BatchData output.
 - BatchData property-search rows may omit deed/sold-date fields even when the property itself is valid; do not mark exact-job residential BatchData rows inactive solely because `sold_date` is missing.
+- Property detail cards must normalize provider alias fields at both import and display time (`estimatedValue`, `sale.amount`, `building.squareFeet`, `yearBuilt`, etc.); do not assume one canonical metadata field exists for every provider row.

@@ -1,6 +1,17 @@
 # Plan
 
-## Current Plan — Fix BatchData Rows Rejected After Successful Pull
+## Current Plan — Property Detail Metadata Population
+- [x] Confirm exactly which card fields must populate: estimated value, built year, square footage, last sold, and available owner/beds/baths.
+- [x] Trace manager map → route → selected property → property detail card to identify where metadata is missing or dropped.
+- [x] Patch the smallest source-of-truth mapping issue so BatchData/imported route properties carry normalized metadata into the card.
+- [x] Add UI-safe fallbacks so the card reads equivalent BatchData/legacy field names without changing route behavior.
+- [x] Verify with synthetic BatchData shape tests and the latest real job/route candidate response.
+- [x] Document the result and lesson.
+
+### Review — Property Detail Metadata Population
+Root cause: the property card already rendered `price`, `year_built`, `sqft`, and `sold_date`, but BatchData can return the same values under nested/alias fields, and existing property rows were only updated when sale date/status changed — not when newly available metadata appeared. Fix: `processFetchChunk` now normalizes nested numeric/date aliases for owner, beds, baths, sqft, year built, sale amount, estimated value, and sold date; existing Neon rows update when missing metadata is newly available; `ManagerPropertyDetailSheet` also normalizes equivalent aliases before rendering. Verification: no-credit synthetic BatchData metadata test mapped owner, beds/baths, sqft, year built, price, and sold date correctly; latest real job `6a31a2e54eb34ed2796411db` still returns 5 routeable candidates and status active_count=5.
+
+## Previous Plan — Fix BatchData Rows Rejected After Successful Pull
 - [x] Inspect the latest real FetchJob and confirm BatchData was called successfully.
 - [x] Verify whether the user-requested property count is stored on the job and whether route failure happens before or after BatchData.
 - [x] Patch ingestion so missing/unmapped sold dates from BatchData do not automatically deactivate otherwise residential rows from a current pull.

@@ -67,6 +67,33 @@ function firstValue(...values) {
     return values.find(value => value !== undefined && value !== null && value !== '');
 }
 
+function numberValue(...values) {
+    for (const value of values) {
+        if (value === undefined || value === null || value === '') continue;
+        if (typeof value === 'object') {
+            const nested = numberValue(value.amount, value.value, value.estimatedValue, value.total, value.number, value.raw);
+            if (nested !== null) return nested;
+            continue;
+        }
+        const parsed = Number(String(value).replace(/[^0-9.-]/g, ''));
+        if (Number.isFinite(parsed)) return parsed;
+    }
+    return null;
+}
+
+function dateValue(...values) {
+    for (const value of values) {
+        if (value === undefined || value === null || value === '') continue;
+        if (typeof value === 'object') {
+            const nested = dateValue(value.date, value.value, value.recordingDate, value.saleDate);
+            if (nested) return nested;
+            continue;
+        }
+        return value;
+    }
+    return null;
+}
+
 function isPointInPolygon(point, polygon) {
     if (!Array.isArray(polygon) || polygon.length < 3) return true;
     let inside = false;
@@ -193,16 +220,16 @@ function mapBatchDataProperty(record, job) {
     const ids = p.ids || p.identifiers || {};
     const listingStatus = firstValue(listing.status, listing.statusCategory);
     const listingStatusLower = String(listingStatus || '').toLowerCase();
-    const saleDate = firstValue(sale.lastSaleDate, lastSale.recordingDate, lastSale.saleDate, lastSale.date, p.lastSaleDate);
+    const saleDate = dateValue(sale.lastSaleDate, sale.recordingDate, sale.saleDate, sale.date, lastSale.recordingDate, lastSale.saleDate, lastSale.date, p.lastSaleDate);
     const saleDateMs = saleDate ? new Date(saleDate).getTime() : 0;
     const hasValidSaleDate = saleDateMs > 0 && !Number.isNaN(saleDateMs);
     const cutoffMs = Date.now() - soldWindowDays(job.sold_months || 12) * 24 * 60 * 60 * 1000;
-    const ownerName = firstValue(owner.fullName, owner.name, owner.names?.[0]?.full, owner.names?.[0]);
-    const saleAmount = Number(firstValue(sale.amount, lastSale.price, lastSale.salePrice, p.lastSalePrice));
-    const estimatedValue = Number(firstValue(valuation.estimatedValue, valuation.value, p.estimatedValue, listing.price));
-    const price = Number.isFinite(saleAmount) ? saleAmount : estimatedValue;
+    const ownerName = firstValue(owner.fullName, owner.name, owner.ownerName, owner.names?.[0]?.full, owner.names?.[0]?.name, owner.names?.[0]);
+    const saleAmount = numberValue(sale.amount, sale.price, sale.salePrice, lastSale.amount, lastSale.price, lastSale.salePrice, p.lastSalePrice);
+    const estimatedValue = numberValue(valuation.estimatedValue, valuation.value, valuation.avm, valuation.avmValue, p.estimatedValue, p.estimated_value, listing.price, listing.listPrice);
+    const price = saleAmount ?? estimatedValue;
     const landUseCode = firstValue(general.standardizedLandUseCode, p.standardizedLandUseCode);
-    const propertyType = firstValue(general.propertyTypeDetail, p.propertyType, p.landUse, building.propertyType) || 'Single Family';
+    const propertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType) || 'Single Family';
     const nonResidential = /commercial|industrial|vacant|agricultural|land/i.test(String(propertyType));
     const landUseRejected = landUseCode && landUseCode !== 'R2';
     const rejected = (hasValidSaleDate && saleDateMs < cutoffMs) || landUseRejected || nonResidential || listingStatusLower === 'active' || listingStatusLower === 'for sale';
@@ -223,12 +250,12 @@ function mapBatchDataProperty(record, job) {
         lat: address.lat,
         lng: address.lng,
         owner_full_name: ownerName || null,
-        beds: Number(firstValue(building.bedroomCount, building.bedrooms, p.bedrooms)) || null,
-        baths: Number(firstValue(building.bathroomCount, building.bathrooms, p.bathrooms)) || null,
-        sqft: Number(firstValue(building.livingAreaSquareFeet, building.livingArea, building.squareFeet, p.squareFootage)) || null,
-        lot_size: Number(firstValue(p.lot?.size, p.lotSize)) || null,
-        year_built: Number(firstValue(building.yearBuilt, p.yearBuilt)) || null,
-        price: Number.isFinite(price) ? price : null,
+        beds: numberValue(building.bedroomCount, building.bedrooms, building.beds, p.bedrooms, p.beds),
+        baths: numberValue(building.bathroomCount, building.bathrooms, building.baths, p.bathrooms, p.baths),
+        sqft: numberValue(building.livingAreaSquareFeet, building.livingArea, building.squareFeet, building.totalBuildingAreaSquareFeet, building.totalAreaSqFt, building.area, p.squareFootage, p.sqft),
+        lot_size: numberValue(p.lot?.size, p.lotSize, p.lot_size),
+        year_built: numberValue(building.yearBuilt, building.effectiveYearBuilt, p.yearBuilt, p.year_built),
+        price: price ?? null,
         sold_date: saleDate || null,
         sale_type: 'BatchData',
         property_type: propertyType,
@@ -251,7 +278,7 @@ async function writePropertiesToNeon(sql, properties, job) {
 
     for (const p of properties) {
         const existingRows = await sql`
-            SELECT id, sold_date, sale_confidence, original_status
+            SELECT id, sold_date, sale_confidence, original_status, owner_full_name, beds, baths, sqft, lot_size, year_built, price
             FROM properties
             WHERE address_hash = ${p.address_hash}
             LIMIT 1
@@ -287,7 +314,15 @@ async function writePropertiesToNeon(sql, properties, job) {
         existed++;
         const existingDate = existing.sold_date ? new Date(existing.sold_date).getTime() : 0;
         const incomingDate = soldDate ? new Date(soldDate).getTime() : 0;
-        const shouldUpdate = incomingDate > existingDate || p.sale_confidence !== existing.sale_confidence || p.original_status !== existing.original_status;
+        const hasNewMetadata =
+            (!existing.owner_full_name && p.owner_full_name) ||
+            (!existing.beds && p.beds) ||
+            (!existing.baths && p.baths) ||
+            (!existing.sqft && p.sqft) ||
+            (!existing.lot_size && p.lot_size) ||
+            (!existing.year_built && p.year_built) ||
+            (!existing.price && p.price);
+        const shouldUpdate = incomingDate > existingDate || hasNewMetadata || p.sale_confidence !== existing.sale_confidence || p.original_status !== existing.original_status;
 
         if (shouldUpdate) {
             await sql`

@@ -10,6 +10,34 @@ import QuickMarkButtons from '@/components/rep/QuickMarkButtons';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
 import ConfidenceBadge from '@/components/map/ConfidenceBadge';
 
+function numberValue(...values) {
+    for (const value of values) {
+        if (value === undefined || value === null || value === '') continue;
+        if (typeof value === 'object') {
+            const nested = numberValue(value.amount, value.value, value.estimatedValue, value.total);
+            if (nested !== null) return nested;
+            continue;
+        }
+        const parsed = Number(String(value).replace(/[^0-9.-]/g, ''));
+        if (Number.isFinite(parsed)) return parsed;
+    }
+    return null;
+}
+
+function dateValue(...values) {
+    for (const value of values) {
+        if (value === undefined || value === null || value === '') continue;
+        if (typeof value === 'object') {
+            const nested = dateValue(value.date, value.value, value.recordingDate, value.saleDate);
+            if (nested) return nested;
+            continue;
+        }
+        const parsed = new Date(value);
+        if (!isNaN(parsed.getTime())) return parsed;
+    }
+    return null;
+}
+
 export default function ManagerPropertyDetailSheet({
     selectedProperty,
     setSelectedProperty,
@@ -20,6 +48,13 @@ export default function ManagerPropertyDetailSheet({
     toast
 }) {
     if (!selectedProperty) return null;
+
+    const estimatedValue = numberValue(selectedProperty.price, selectedProperty.estimated_value, selectedProperty.estimatedValue, selectedProperty.valuation?.estimatedValue, selectedProperty.valuation?.value);
+    const builtYear = numberValue(selectedProperty.year_built, selectedProperty.yearBuilt, selectedProperty.building?.yearBuilt);
+    const squareFeet = numberValue(selectedProperty.sqft, selectedProperty.squareFootage, selectedProperty.livingAreaSquareFeet, selectedProperty.building?.livingAreaSquareFeet, selectedProperty.building?.squareFeet);
+    const soldDate = dateValue(selectedProperty.sold_date, selectedProperty.soldDate, selectedProperty.lastSaleDate, selectedProperty.sale?.lastSaleDate);
+    const beds = numberValue(selectedProperty.beds, selectedProperty.bedrooms, selectedProperty.building?.bedroomCount);
+    const baths = numberValue(selectedProperty.baths, selectedProperty.bathrooms, selectedProperty.building?.bathroomCount);
 
     return (
         <div className="fixed inset-0 z-[3000] flex flex-col justify-end sm:justify-center sm:items-center">
@@ -108,32 +143,32 @@ export default function ManagerPropertyDetailSheet({
                                     <p className="text-[10px] text-gray-500 uppercase mb-1 flex items-center gap-1">
                                         <DollarSign className="w-3 h-3" /> Est. Value
                                     </p>
-                                    <p className="font-bold text-white">{selectedProperty.price ? `$${(selectedProperty.price / 1000).toFixed(0)}k` : '-'}</p>
+                                    <p className="font-bold text-white">{estimatedValue ? `$${(estimatedValue / 1000).toFixed(0)}k` : '-'}</p>
                                 </div>
                                 <div className="p-3 bg-black/40 rounded-lg border border-gray-800">
                                     <p className="text-[10px] text-gray-500 uppercase mb-1 flex items-center gap-1">
                                         <Calendar className="w-3 h-3" /> Built
                                     </p>
-                                    <p className="font-bold text-white">{selectedProperty.year_built || 'N/A'}</p>
+                                    <p className="font-bold text-white">{builtYear || 'N/A'}</p>
                                 </div>
                                 <div className="p-3 bg-black/40 rounded-lg border border-gray-800">
                                     <p className="text-[10px] text-gray-500 uppercase mb-1 flex items-center gap-1">
                                         <Ruler className="w-3 h-3" /> SqFt
                                     </p>
-                                    <p className="font-bold text-white">{selectedProperty.sqft?.toLocaleString() || '-'}</p>
+                                    <p className="font-bold text-white">{squareFeet ? squareFeet.toLocaleString() : '-'}</p>
                                 </div>
                                 <div className="p-3 bg-black/40 rounded-lg border border-gray-800">
                                     <p className="text-[10px] text-gray-500 uppercase mb-1 flex items-center gap-1">
                                         <User className="w-3 h-3" /> Last Sold
                                     </p>
                                     <p className="font-bold text-white text-xs">
-                                        {selectedProperty.sold_date ? format(new Date(selectedProperty.sold_date), 'MMM d, yyyy') : '-'}
+                                        {soldDate ? format(soldDate, 'MMM d, yyyy') : '-'}
                                     </p>
                                 </div>
-                                {selectedProperty.beds && (
+                                {beds && (
                                     <div className="p-3 bg-black/40 rounded-lg border border-gray-800">
                                         <p className="text-[10px] text-gray-500 uppercase mb-1">Beds/Baths</p>
-                                        <p className="font-bold text-white">{selectedProperty.beds}bd / {selectedProperty.baths || '-'}ba</p>
+                                        <p className="font-bold text-white">{beds}bd / {baths || '-'}ba</p>
                                     </div>
                                 )}
                                 {selectedProperty.equity && (
