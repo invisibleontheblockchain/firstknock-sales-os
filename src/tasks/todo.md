@@ -1,6 +1,14 @@
 # Plan
 
-## Current Plan — Conditional White Reset Filters Button
+## Current Plan — Tone Down Routes Button
+- [x] Make the selected Routes button black.
+- [x] Reduce the visual intensity of its border, text, shadow, and count badge.
+- [x] Verify the button behavior remains unchanged.
+
+### Review — Tone Down Routes Button
+The Routes button now uses a quieter black style with subtle white text, border, shadow, and badge while keeping the same click behavior.
+
+## Previous Plan — Conditional White Reset Filters Button
 - [x] Make the active-route RESET FILTERS button white.
 - [x] Show it only after the date or price filter is changed.
 - [x] Verify it still clears both filters safely.

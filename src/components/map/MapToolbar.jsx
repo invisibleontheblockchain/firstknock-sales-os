@@ -546,17 +546,17 @@ export default function MapToolbar({
                             <Button
               onClick={() => !activeRoute && setShowRoutePanel(true)}
               disabled={!!activeRoute}
-              className={`rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap bg-[#ffffff] ${activeRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-sm transition-all active:scale-95 whitespace-nowrap ${activeRoute ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10'}`}
               style={{
-                background: activeRoute ? 'rgba(31, 31, 31, 0.9)' : '#FFFFFF',
-                color: activeRoute ? BRAND.gold : BRAND.voidBlack,
-                border: activeRoute ? `1px solid ${BRAND.gold}` : '1px solid #FFFFFF'
+                background: activeRoute ? 'rgba(0, 0, 0, 0.62)' : 'rgba(0, 0, 0, 0.78)',
+                color: activeRoute ? 'rgba(255,255,255,0.48)' : 'rgba(255,255,255,0.86)',
+                border: activeRoute ? '1px solid rgba(255,255,255,0.10)' : '1px solid rgba(255,255,255,0.14)'
               }}>
               
                                 <List className="w-4 h-4 mr-1.5" />
                                 ROUTES
                                 {!routesGenerating && (hydratedSavedRoutes.length > 0 || routes.length > 0) &&
-              <Badge className="ml-1.5 h-5 min-w-[20px] px-1.5 text-[10px]" style={{ background: BRAND.voidBlack, color: BRAND.gold }}>
+              <Badge className="ml-1.5 h-5 min-w-[20px] px-1.5 text-[10px] border border-white/10" style={{ background: 'rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.82)' }}>
                                         {hydratedSavedRoutes.length > 0 ? hydratedSavedRoutes.length : routes.length}
                                     </Badge>
               }
