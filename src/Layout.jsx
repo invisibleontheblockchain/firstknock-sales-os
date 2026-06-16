@@ -195,16 +195,17 @@ function LayoutInner({ children }) {
                     </div>
 
                     {/* Desktop */}
-                    <div className="hidden md:flex items-center gap-3 ml-auto">
-                        {!isOnline && <div className="flex items-center gap-1 bg-red-900/50 px-2 py-1 rounded text-[10px] text-red-200 border border-red-800"><div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />OFFLINE</div>}
+                    <div className="hidden md:flex items-center gap-2 ml-auto rounded-full border border-white/10 bg-white/[0.04] px-2 py-1.5 shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+                        {!isOnline && <div className="flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-[10px] font-bold text-red-200"><div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />OFFLINE</div>}
 
-                        <Link to="/About" className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white">ABOUT</Link>
-                        <Link to="/Contact" className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white">CONTACT</Link>
-                        <Link to={createPageUrl('Setup')} className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white">SETUP</Link>
-                        <Link to={createPageUrl('Billing')} className="flex items-center justify-center px-3 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-[10px] font-bold text-white">PLANS</Link>
-                        <button onClick={async () => {try {await base44.auth.logout(window.location.origin);} catch {window.location.reload();}queryClient.clear();}} className="text-xs text-slate-400 hover:text-white">LOGOUT</button>
-                        <Link to={createPageUrl('MobileApp')} className="flex items-center justify-center w-8 h-8 bg-gray-800 hover:bg-gray-700 rounded-full transition-colors text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.6)]"><Smartphone className="w-4 h-4" /></Link>
-                        <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`} />
+                        <Link to="/About" className="rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-white/60 transition-colors hover:text-white">ABOUT</Link>
+                        <Link to="/Contact" className="rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-white/60 transition-colors hover:text-white">CONTACT</Link>
+                        <Link to={createPageUrl('Setup')} className="rounded-full px-3 py-1.5 text-[10px] font-bold tracking-[0.18em] text-white/60 transition-colors hover:text-white">SETUP</Link>
+                        <Link to={createPageUrl('Billing')} className="rounded-full bg-white text-black px-4 py-1.5 text-[10px] font-extrabold tracking-[0.18em] transition-all hover:bg-[#39FF4A]">PLANS</Link>
+                        <div className="h-5 w-px bg-white/10" />
+                        <Link to={createPageUrl('MobileApp')} className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition-all hover:bg-white/10 hover:text-[#39FF4A]"><Smartphone className="w-4 h-4" /></Link>
+                        <button onClick={async () => {try {await base44.auth.logout(window.location.origin);} catch {window.location.reload();}queryClient.clear();}} className="flex h-8 w-8 items-center justify-center rounded-full text-white/45 transition-all hover:bg-white/10 hover:text-white" title="Logout"><LogOut className="w-4 h-4" /></button>
+                        <span className={`mx-1 w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-[#2EEB57] shadow-[0_0_10px_rgba(46,235,87,0.9)]' : 'bg-red-500'}`} />
                     </div>
 
                     {/* Mobile */}
