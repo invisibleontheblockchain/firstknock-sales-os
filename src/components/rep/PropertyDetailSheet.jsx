@@ -70,8 +70,8 @@ export default function PropertyDetailSheet({ property, logs, onLog, onClearDeci
                 </div>
 
                 {/* Close */}
-                <button onClick={onClose} className="absolute top-2 right-2 w-11 h-11 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center active:scale-95 transition-all">
-                    <X className="w-3.5 h-3.5 text-gray-500" />
+                <button onClick={onClose} className="absolute top-4 right-4 z-50 w-10 h-10 rounded-full bg-[#2EEB57] flex items-center justify-center active:scale-90 transition-all shadow-[0_4px_16px_rgba(46,235,87,0.3)] hover:bg-[#39FF4A]">
+                    <X className="w-5 h-5 text-black font-bold" />
                 </button>
 
                 {/* Address */}
