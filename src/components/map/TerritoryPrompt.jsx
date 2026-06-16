@@ -190,6 +190,16 @@ export default function TerritoryPrompt({
       setDraftPolygon([]);
       setDrawingMode(true);
     };
+    const precisionPullHandler = () => {
+      if (!drawnPolygon || drawnPolygon.length < 3) {
+        toast.error('Draw a freehand area first.');
+        return;
+      }
+      setMode('generate');
+      setShowCompare(false);
+      setShowRoutePanel(false);
+      setShowPrecisionPullPanel(true);
+    };
     const historyHandler = (event) => {
       const polygon = event.detail?.polygon;
       if (!polygon || polygon.length < 3) return;
@@ -202,12 +212,14 @@ export default function TerritoryPrompt({
       toast.success('Previous area selected');
     };
     window.addEventListener('fk-start-drawing', drawHandler);
+    window.addEventListener('fk-open-precision-pull', precisionPullHandler);
     window.addEventListener('fk-select-polygon-history', historyHandler);
     return () => {
       window.removeEventListener('fk-start-drawing', drawHandler);
+      window.removeEventListener('fk-open-precision-pull', precisionPullHandler);
       window.removeEventListener('fk-select-polygon-history', historyHandler);
     };
-  }, [setMode, setDrawnPolygon, setDraftPolygon, setDrawingMode]);
+  }, [setMode, setDrawnPolygon, setDraftPolygon, setDrawingMode, setShowCompare, setShowRoutePanel, drawnPolygon]);
 
   const stopMapTouch = (event) => {
     event?.preventDefault?.();

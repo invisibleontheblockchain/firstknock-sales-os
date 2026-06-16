@@ -1,6 +1,15 @@
 # Plan
 
-## Current Plan — Precision Free 50-House Upgrade Gate
+## Current Plan — Bottom PULL DATA Opens Precision Generate
+- [x] Confirm which toolbar button is selected and what existing Precision action it should reuse.
+- [x] Wire MapToolbar to open the existing Precision Generate panel through the same mounted TerritoryPrompt flow.
+- [x] Keep route generation, Canvas mode, and backend pull logic unchanged.
+- [x] Verify the exact changed code path and document the result.
+
+### Review — Bottom PULL DATA Opens Precision Generate
+The selected bottom Builder button now opens the existing Precision “Build your route” panel when a drawn area exists but data has not been pulled yet, instead of only showing an informational toast. The top Precision settings button follows the same path in this state. No backend, Canvas, route-generation, or pull-processing logic was changed; verification confirmed both toolbar buttons dispatch `fk-open-precision-pull`, and `TerritoryPrompt` listens with the latest drawn polygon state before showing `PrecisionPullPanel`.
+
+## Previous Plan — Precision Free 50-House Upgrade Gate
 - [x] Confirm current frontend behavior for over-50 Precision pulls.
 - [x] Change over-50 free-plan Generate attempts to redirect to Billing/Precision upgrade.
 - [x] Enforce the same 50-house free cap in `startBatchDataPull` so API bypasses cannot start over-limit jobs.

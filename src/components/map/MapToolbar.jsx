@@ -270,8 +270,12 @@ export default function MapToolbar({
                         </Button>
                         <Button
                             onClick={() => {
-                                if (mode === 'generate' && routeMode === 'precision' && (!hasDrawnArea || !territoryDataReady)) {
-                                    toast.info(hasDrawnArea ? "Run Precision preview/pull before opening the builder." : "Draw a custom area first.");
+                                if (mode === 'generate' && routeMode === 'precision' && !hasDrawnArea) {
+                                    toast.info("Draw a custom area first.");
+                                    return;
+                                }
+                                if (mode === 'generate' && routeMode === 'precision' && hasDrawnArea && !territoryDataReady) {
+                                    window.dispatchEvent(new CustomEvent('fk-open-precision-pull'));
                                     return;
                                 }
                                 setShowCompare(true);
@@ -502,7 +506,7 @@ export default function MapToolbar({
                                         if (hasDrawnArea) {
                                             if (!territoryDataReady) {
                                                 setShowCompare(false);
-                                                toast.info("Use the Custom Area Active bar to preview or pull Precision data for this area.", { duration: 3500 });
+                                                window.dispatchEvent(new CustomEvent('fk-open-precision-pull'));
                                                 return;
                                             }
                                             setShowCompare(true);
