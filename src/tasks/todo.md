@@ -1,6 +1,14 @@
 # Plan
 
-## Current Plan — Fix Reset Filters Error
+## Current Plan — Conditional White Reset Filters Button
+- [x] Make the active-route RESET FILTERS button white.
+- [x] Show it only after the date or price filter is changed.
+- [x] Verify it still clears both filters safely.
+
+### Review — Conditional White Reset Filters Button
+The RESET FILTERS button is now white, appears only when the date or price filter is changed, and still clears both filters without crashing.
+
+## Previous Plan — Fix Reset Filters Error
 - [x] Make the MapToolbar reset handler safe when called without an event.
 - [x] Verify RESET FILTERS still clears date and price filters.
 - [x] Document the result.

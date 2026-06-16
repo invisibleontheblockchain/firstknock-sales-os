@@ -90,3 +90,4 @@
 - When a user asks for a reset button in a named tab/panel, place the action inside that exact tab/panel, not only in related floating banners or secondary controls.
 - If a user still cannot see a control, check whether conditional rendering hides it in the default state; make essential actions visible by default when requested.
 - Event handlers that may be called directly and from JSX events must treat the event as optional (`e?.stopPropagation?.()`) or always pass the event consistently.
+- When a user asks for a control to appear only after an edit, restore conditional visibility and verify the default unedited state stays hidden.
