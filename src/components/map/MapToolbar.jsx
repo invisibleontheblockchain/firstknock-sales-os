@@ -163,7 +163,7 @@ export default function MapToolbar({
   };
 
   const resetActiveRouteFilters = (e) => {
-    e.stopPropagation();
+    e?.stopPropagation?.();
     setActiveRouteSoldFilter?.('all');
     setActiveRoutePriceFilter?.('all');
     toast.success('Filters reset');

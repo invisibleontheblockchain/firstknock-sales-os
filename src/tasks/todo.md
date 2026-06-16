@@ -1,6 +1,14 @@
 # Plan
 
-## Current Plan — MapToolbar Reset Filters
+## Current Plan — Fix Reset Filters Error
+- [x] Make the MapToolbar reset handler safe when called without an event.
+- [x] Verify RESET FILTERS still clears date and price filters.
+- [x] Document the result.
+
+### Review — Fix Reset Filters Error
+The reset handler now safely handles missing click events, so RESET FILTERS no longer crashes and still clears both date and price filters.
+
+## Previous Plan — MapToolbar Reset Filters
 - [x] Add a visible reset filters button directly in the selected MapToolbar active-route filter area.
 - [x] Verify it clears active route date and price filters.
 - [x] Document the result.

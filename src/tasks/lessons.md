@@ -89,3 +89,4 @@
 - Messaging/privacy fixes must be enforced at both levels: stamp every message with a tenant/account key and participant list, then make the entity RLS use those fields instead of relying only on frontend channel filters.
 - When a user asks for a reset button in a named tab/panel, place the action inside that exact tab/panel, not only in related floating banners or secondary controls.
 - If a user still cannot see a control, check whether conditional rendering hides it in the default state; make essential actions visible by default when requested.
+- Event handlers that may be called directly and from JSX events must treat the event as optional (`e?.stopPropagation?.()`) or always pass the event consistently.
