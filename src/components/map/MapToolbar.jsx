@@ -366,15 +366,15 @@ export default function MapToolbar({
                                 </select>
             }
 
-                            {((activeRouteSoldFilter && activeRouteSoldFilter !== 'all') || (activeRoutePriceFilter && activeRoutePriceFilter !== 'all')) &&
-                            <button
-                                onClick={(e) => { e.stopPropagation(); resetActiveRouteFilters(); }}
-                                className="h-6 md:h-7 px-2 md:px-2.5 text-[9px] md:text-[10px] font-black bg-white hover:bg-gray-200 text-black border border-white/80 rounded-md flex items-center gap-1 shrink-0 shadow-[0_0_12px_rgba(255,255,255,0.18)]"
-                                title="Reset route filters"
-                            >
+                            {(activeRouteSoldFilter && activeRouteSoldFilter !== 'all' || activeRoutePriceFilter && activeRoutePriceFilter !== 'all') &&
+            <button
+              onClick={(e) => {e.stopPropagation();resetActiveRouteFilters();}}
+              className="h-6 md:h-7 px-2 md:px-2.5 text-[9px] md:text-[10px] font-black bg-white hover:bg-gray-200 text-black border border-white/80 rounded-md flex items-center gap-1 shrink-0 shadow-[0_0_12px_rgba(255,255,255,0.18)]"
+              title="Reset route filters">
+              
                                 <RotateCcw className="w-2.5 h-2.5" /> RESET FILTERS
                             </button>
-                            }
+            }
 
                             {(activeRouteSoldFilter !== 'all' || activeRoutePriceFilter !== 'all') && onSaveFilteredRoute &&
             <button onClick={(e) => {e.stopPropagation();handleSaveVisibleFilteredRoute();}} className="h-5 md:h-6 px-1.5 md:px-2 text-[9px] md:text-[10px] font-bold bg-blue-600 hover:bg-blue-500 text-white rounded-md flex items-center gap-0.5 shrink-0">
@@ -527,7 +527,7 @@ export default function MapToolbar({
                 }
               }}
               disabled={routesGenerating}
-              className="rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(46,235,87,0.3)] transition-all active:scale-95 whitespace-nowrap"
+              className="rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(46,235,87,0.3)] transition-all active:scale-95 whitespace-nowrap bg-[hsl(var(--popover-foreground))]"
               style={{ background: 'linear-gradient(135deg, #2EEB57 0%, #39FF4A 100%)', color: BRAND.voidBlack }}>
               
                                     {routesGenerating ?
