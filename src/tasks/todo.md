@@ -1,12 +1,11 @@
 # Plan
 
-## Current Plan — New Manager Direct Draw Onboarding
-- [x] Define the simplified target flow: brand-new manager → Home map → freehand draw starts automatically.
-- [x] Bypass the generic install/welcome onboarding for managers who have not defined a market yet.
-- [x] Replace the manager market setup modal with an automatic hand-draw launch for new users.
-- [x] Preserve existing behavior for reps, returning managers, and users who already have territory data.
-- [x] Clear any old saved/draft polygon when the direct draw URL starts so new users draw from scratch.
-- [x] Verify the changed conditions and document the result.
+## Current Plan — New Manager Polygon Onboarding Card
+- [x] Replace the old Circle/Square market modal with one Freehand Polygon option.
+- [x] Make the polygon card and Start Drawing button send the user directly into map drawing.
+- [x] Remove the sold-month preset UI from the new-user territory card.
+- [x] Preserve the existing skip behavior for reps and returning managers with territory data.
+- [x] Verify old Circle/Square copy is gone and the draw handoff remains wired.
 
-### Review — New Manager Direct Draw Onboarding
-New managers with no territory now skip the extra install/welcome and market-shape modal, then go straight to the Home map with freehand drawing active. Reps still keep the existing onboarding, returning managers with territory data are unaffected, and the direct draw URL clears old draft/current polygons so the first territory starts from scratch.
+### Review — New Manager Polygon Onboarding Card
+The new-user territory card now shows one Freehand Polygon option with FirstKnock green styling. The old Circle/Square selector, sold-month presets, and upgrade copy are gone; tapping either the polygon card or Start Drawing marks onboarding complete and sends the manager directly into map drawing, while reps and returning managers remain unaffected.
