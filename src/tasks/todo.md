@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — Active Route Toolbar Cleanup
+## Current Plan — Filter Reset + Home Screen Dimensions
+- [x] Locate the actual filter tab/panel UI and add a visible reset button there.
+- [x] Verify the active route toolbar reset remains intact.
+- [x] Inspect app install/home-screen metadata and icon sizing.
+- [x] Update PWA/mobile metadata so Add to Home Screen uses the correct standalone dimensions and icon.
+- [x] Verify filter reset and PWA metadata changes.
+
+### Review — Filter Reset + Home Screen Dimensions
+The Data/filter tab now has a visible Reset All Filters button that clears status, sold date, and display filters live, and the app now has proper FirstKnock PWA metadata, standalone display mode, portrait orientation, mobile viewport settings, theme color, and install icons.
+
+## Previous Plan — Active Route Toolbar Cleanup
 - [x] Make the active route name standard white in view and edit states.
 - [x] Add a reset control that clears active route date and price filters.
 - [x] Verify the toolbar still preserves route assignment, save filtered route, optimize, and close behavior.

@@ -120,6 +120,14 @@ export default function MapSettingsPanel({
     });
   };
 
+  const resetDataFilters = () => {
+    setLiveQuickFilter('all');
+    setLiveShowAll(false);
+    setLiveHighlight(false);
+    setLiveSoldDateFilter(null);
+    setLiveZip(false);
+  };
+
   const activeScheme = COLOR_SCHEMES.find(s => s.id === (ms.colorScheme || 'default')) || COLOR_SCHEMES[0];
 
   /* ── tab state ── */
@@ -350,6 +358,13 @@ export default function MapSettingsPanel({
 
             {/* ═══════════ FILTERS TAB ═══════════ */}
             {tab === 'filters' && (<>
+              <button
+                onClick={resetDataFilters}
+                className="w-full h-11 rounded-xl bg-[#2EEB57] hover:bg-[#39FF4A] text-black text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 shadow-[0_0_18px_rgba(46,235,87,0.25)]"
+              >
+                <RotateCcw className="w-4 h-4" /> Reset All Filters
+              </button>
+
               {/* Status Filter */}
               <div>
                 <SectionLabel>Pin Status Filter</SectionLabel>
