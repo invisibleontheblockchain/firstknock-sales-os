@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — Route View Phase Removal + Owner Card
+## Current Plan — Owner Missing From Clicked House Details
+- [x] Confirm whether the clicked house uses full route candidates or slim map candidates.
+- [x] Patch the source payload so clicked property details include existing owner data.
+- [x] Keep the previous payload reduction mostly intact and avoid route/business logic changes.
+- [x] Verify backend response includes owner data in the same map payload used by clicks.
+- [x] Document the result.
+
+### Review — Owner Missing From Clicked House Details
+Root cause: the property detail sheet could render `owner_full_name`, but the clicked map/route properties often came from `getRouteCandidatesFromNeon` with `fields='map'`, whose slim projection excluded `owner_full_name`. Fix: added only `owner_full_name` back to the slim map payload so clicked houses carry owner data without changing route behavior or broad payload size. Verification: the exact slim map response for job `6a31a2e54eb34ed2796411db` now returns owner names including Nathan Andrew Kidd, Denise Rivera, and Dale L Uhl; Janet L Uhl.
+
+## Previous Plan — Route View Phase Removal + Owner Card
 - [x] Remove the Phase dropdown from the active route view without changing route generation.
 - [x] Ensure any existing in-session phase filter is cleared so hidden filtering cannot persist.
 - [x] Add current owner name to the manager property detail card using existing BatchData/Neon owner fields.

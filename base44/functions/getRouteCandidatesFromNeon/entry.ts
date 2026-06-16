@@ -183,7 +183,7 @@ Deno.serve(async (req) => {
         if (body.fields === 'map') {
             const MAP_FIELDS = [
                 'id', 'address_hash', 'legacy_hash', 'full_address', 'house_number', 'street_name',
-                'zip_code', 'lat', 'lng', 'beds', 'baths', 'sqft', 'year_built', 'price',
+                'zip_code', 'lat', 'lng', 'owner_full_name', 'beds', 'baths', 'sqft', 'year_built', 'price',
                 'sold_date', 'property_type', 'mls_id', 'sale_confidence', 'original_status',
                 'route_active', 'status'
             ];
