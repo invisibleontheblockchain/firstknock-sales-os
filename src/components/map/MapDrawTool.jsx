@@ -195,9 +195,9 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
             {displayPoints.length > 2 && (
                 <Polygon
                     positions={displayPoints}
-                    pathOptions={{ fillColor: '#FFD93D', color: '#FFD93D', fillOpacity: 0.2, weight: 2 }}
+                    pathOptions={{ fillColor: '#2EEB57', color: '#2EEB57', fillOpacity: 0.22, weight: 2 }}
                 >
-                    <Tooltip permanent direction="center" className="bg-black/90 text-yellow-400 font-bold text-[10px] border border-yellow-500/50 rounded shadow-xl whitespace-nowrap text-center z-50">
+                    <Tooltip permanent direction="center" className="bg-black/90 text-[#39FF4A] font-bold text-[10px] border border-[#2EEB57]/50 rounded shadow-xl whitespace-nowrap text-center z-50">
                         {getAreaText()}
                     </Tooltip>
                 </Polygon>
@@ -207,7 +207,7 @@ export default function MapDrawTool({ active, onPointsUpdate, onConfirm, drawnPo
                     key={i}
                     center={p}
                     radius={i === 0 ? 5 : 3}
-                    pathOptions={{ color: '#FFD93D', fillColor: '#000', fillOpacity: 1, weight: 1 }}
+                    pathOptions={{ color: '#2EEB57', fillColor: '#000', fillOpacity: 1, weight: 1 }}
                 />
             ))}
         </>

@@ -40,10 +40,10 @@ export default function PrecisionPullPanel({
 }) {
   return (
     <div className="fixed inset-0 z-[2400] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-6">
-      <div className="w-full max-w-md rounded-3xl border border-yellow-500/25 bg-[#070707] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95">
+      <div className="w-full max-w-md rounded-3xl border border-[#2EEB57]/25 bg-[#070707] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95">
         <div className="flex items-start justify-between gap-3 p-5 border-b border-white/10">
           <div>
-            <p className="text-[10px] font-bold tracking-[0.25em] text-yellow-400 uppercase">Precision Generate</p>
+            <p className="text-[10px] font-bold tracking-[0.25em] text-[#39FF4A] uppercase">Precision Generate</p>
             <h2 className="text-xl font-extrabold text-white mt-1">Build your route</h2>
             <p className="text-xs text-gray-400 mt-1">Area selected: <span className="text-white font-bold">{areaLabel}</span></p>
           </div>
@@ -70,7 +70,7 @@ export default function PrecisionPullPanel({
                   setRequestedPropertyCount(Math.min(Number(value) || 1, maxProperties));
                 }}
                 onBlur={() => setRequestedPropertyCount(Math.max(1, Math.min(Number(requestedPropertyCount) || 1, maxProperties)))}
-                className="w-24 h-10 rounded-lg bg-black/40 border border-white/10 px-3 text-white text-sm outline-none focus:border-yellow-500"
+                className="w-24 h-10 rounded-lg bg-black/40 border border-white/10 px-3 text-white text-sm outline-none focus:border-[#2EEB57]"
               />
             </div>
           </div>
@@ -85,7 +85,7 @@ export default function PrecisionPullPanel({
                   placeholder="Min"
                   value={formatMoney(minHomeValue)}
                   onChange={(e) => setMinHomeValue(moneyInputToNumber(e.target.value))}
-                  className="w-full h-12 rounded-xl bg-white/5 border border-white/10 pl-7 pr-3 text-white text-base outline-none focus:border-yellow-500"
+                  className="w-full h-12 rounded-xl bg-white/5 border border-white/10 pl-7 pr-3 text-white text-base outline-none focus:border-[#2EEB57]"
                 />
               </div>
               <span className="text-gray-600 text-xs font-bold">to</span>
@@ -96,7 +96,7 @@ export default function PrecisionPullPanel({
                   placeholder="Max"
                   value={formatMoney(maxHomeValue)}
                   onChange={(e) => setMaxHomeValue(moneyInputToNumber(e.target.value))}
-                  className="w-full h-12 rounded-xl bg-white/5 border border-white/10 pl-7 pr-3 text-white text-base outline-none focus:border-yellow-500"
+                  className="w-full h-12 rounded-xl bg-white/5 border border-white/10 pl-7 pr-3 text-white text-base outline-none focus:border-[#2EEB57]"
                 />
               </div>
             </div>
@@ -109,7 +109,7 @@ export default function PrecisionPullPanel({
                 <button
                   key={option.value}
                   onClick={() => setSoldMonths(option.value)}
-                  className={`h-11 rounded-xl text-xs font-extrabold transition-all ${Number(soldMonths || 12) === option.value ? 'bg-yellow-500 text-black shadow-lg' : 'bg-white/5 text-gray-400 border border-white/10 hover:text-white'}`}
+                  className={`h-11 rounded-xl text-xs font-extrabold transition-all ${Number(soldMonths || 12) === option.value ? 'bg-[#2EEB57] text-black shadow-lg' : 'bg-white/5 text-gray-400 border border-white/10 hover:text-white'}`}
                 >
                   {option.label}
                 </button>
@@ -124,7 +124,7 @@ export default function PrecisionPullPanel({
           <Button
             disabled={generating}
             onClick={onGenerate}
-            className="w-full h-12 rounded-xl bg-yellow-500 hover:bg-yellow-400 text-black font-extrabold tracking-wide"
+            className="w-full h-12 rounded-xl bg-[#2EEB57] hover:bg-[#39FF4A] text-black font-extrabold tracking-wide"
           >
             {generating ? 'GENERATING...' : <><Zap className="w-4 h-4 mr-2" /> GENERATE</>}
           </Button>
