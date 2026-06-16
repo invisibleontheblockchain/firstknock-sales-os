@@ -1604,7 +1604,7 @@ export default function Home() {
                     await queryClient.refetchQueries({ queryKey: ['masterProperties'] });
                     await queryClient.refetchQueries({ queryKey: ['user'] });
 
-                    const pm = pullFetchMonths || 1;
+                    const pm = pullFetchMonths || 12;
                     setMaxDataMonths(pm);
                     try { localStorage.setItem('fk_maxDataMonths', String(pm)); } catch { }
                     setHasMlsData(!!pulledWithMls);

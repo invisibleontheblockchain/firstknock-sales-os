@@ -112,7 +112,7 @@ function isoDateDaysAgo(days) {
     return date.toISOString().slice(0, 10);
 }
 
-function buildBatchDataRequest(job, skip = 0, take = 500) {
+function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon') {
     const filters = job.dry_run_metadata?.filters || {};
     const minPriceRaw = Number(filters.min_price);
     const maxPriceRaw = Number(filters.max_price);
@@ -121,29 +121,36 @@ function buildBatchDataRequest(job, skip = 0, take = 500) {
     const estimatedValue = { min: minPrice };
     if (maxPrice) estimatedValue.max = maxPrice;
 
-    return {
-        searchCriteria: {
-            address: {
-                geoLocationPolygon: {
-                    geoPoints: closePolygon(job.polygon || [])
-                }
+    const options = {
+        skip,
+        take: Math.min(Math.max(Number(take) || 500, 1), 500),
+        datasets: ['basic', 'listing', 'deed', 'owner']
+    };
+
+    if (mode === 'centroid_fallback') {
+        return {
+            searchCriteria: {
+                query: `${job.latitude},${job.longitude}`
             },
-            general: {
-                standardizedLandUseCode: { equals: 'R2' }
-            },
-            valuation: {
-                estimatedValue
-            },
-            sale: {
-                lastSaleDate: { minDate: isoDateDaysAgo(soldWindowDays(job.sold_months || 1)) }
+            options
+        };
+    }
+
+    const searchCriteria = {
+        address: {
+            geoLocationPolygon: {
+                geoPoints: closePolygon(job.polygon || [])
             }
-        },
-        options: {
-            skip,
-            take: Math.min(Math.max(Number(take) || 500, 1), 500),
-            datasets: ['basic', 'listing', 'owner']
         }
     };
+
+    if (mode === 'strict_polygon') {
+        searchCriteria.general = { standardizedLandUseCode: { equals: 'R2' } };
+        searchCriteria.valuation = { estimatedValue };
+        searchCriteria.sale = { lastSaleDate: { minDate: isoDateDaysAgo(soldWindowDays(job.sold_months || 12)) } };
+    }
+
+    return { searchCriteria, options };
 }
 
 function extractBatchDataRecords(payload) {
@@ -156,16 +163,17 @@ function extractBatchDataTotal(payload) {
 }
 
 function normalizeBatchDataAddress(record) {
-    const address = record.address || {};
+    const address = record.address || record.propertyAddress || record.situsAddress || {};
     const location = address.location || {};
-    const street = firstValue(address.street, address.streetAddress, address.addressLine1);
+    const formattedStreet = typeof record.formattedAddress === 'string' ? record.formattedAddress.split(',')[0] : '';
+    const street = firstValue(address.street, address.streetAddress, address.addressLine1, record.addressLine1, formattedStreet);
     return {
         street: street || '',
-        city: firstValue(address.city) || '',
-        state: firstValue(address.state) || '',
-        zip: String(firstValue(address.zip, address.zipCode, '') || '').slice(0, 5),
-        lat: Number(firstValue(location.latitude, address.latitude)),
-        lng: Number(firstValue(location.longitude, address.longitude))
+        city: firstValue(address.city, record.city) || '',
+        state: firstValue(address.state, record.state) || '',
+        zip: String(firstValue(address.zip, address.zipCode, record.zipCode, '') || '').slice(0, 5),
+        lat: Number(firstValue(location.latitude, address.latitude, address.lat, record.latitude, record.lat)),
+        lng: Number(firstValue(location.longitude, address.longitude, address.lng, record.longitude, record.lng))
     };
 }
 
@@ -177,23 +185,26 @@ function mapBatchDataProperty(record, job) {
 
     const owner = p.owner || {};
     const listing = p.listing || {};
-    const building = p.building || {};
-    const sale = p.sale || {};
+    const building = p.building || p.structure || {};
+    const sale = p.sale || p.lastSale || {};
+    const lastSale = sale.lastSale || sale.lastTransfer || sale;
     const valuation = p.valuation || {};
     const general = p.general || {};
-    const ids = p.ids || {};
+    const ids = p.ids || p.identifiers || {};
     const listingStatus = firstValue(listing.status, listing.statusCategory);
     const listingStatusLower = String(listingStatus || '').toLowerCase();
-    const saleDate = firstValue(sale.lastSaleDate);
+    const saleDate = firstValue(sale.lastSaleDate, lastSale.recordingDate, lastSale.saleDate, lastSale.date, p.lastSaleDate);
     const saleDateMs = saleDate ? new Date(saleDate).getTime() : 0;
-    const cutoffMs = Date.now() - soldWindowDays(job.sold_months || 1) * 24 * 60 * 60 * 1000;
-    const ownerName = firstValue(owner.fullName);
-    const saleAmount = Number(firstValue(sale.amount));
-    const estimatedValue = Number(firstValue(valuation.estimatedValue));
+    const cutoffMs = Date.now() - soldWindowDays(job.sold_months || 12) * 24 * 60 * 60 * 1000;
+    const ownerName = firstValue(owner.fullName, owner.name, owner.names?.[0]?.full, owner.names?.[0]);
+    const saleAmount = Number(firstValue(sale.amount, lastSale.price, lastSale.salePrice, p.lastSalePrice));
+    const estimatedValue = Number(firstValue(valuation.estimatedValue, valuation.value, p.estimatedValue, listing.price));
     const price = Number.isFinite(saleAmount) ? saleAmount : estimatedValue;
-    const landUseCode = firstValue(general.standardizedLandUseCode);
-    const propertyType = firstValue(general.propertyTypeDetail) || 'Single Family';
-    const rejected = !saleDateMs || saleDateMs < cutoffMs || landUseCode !== 'R2' || listingStatusLower === 'active' || listingStatusLower === 'for sale';
+    const landUseCode = firstValue(general.standardizedLandUseCode, p.standardizedLandUseCode);
+    const propertyType = firstValue(general.propertyTypeDetail, p.propertyType, p.landUse, building.propertyType) || 'Single Family';
+    const nonResidential = /commercial|industrial|vacant|agricultural|land/i.test(String(propertyType));
+    const landUseRejected = landUseCode && landUseCode !== 'R2';
+    const rejected = !saleDateMs || saleDateMs < cutoffMs || landUseRejected || nonResidential || listingStatusLower === 'active' || listingStatusLower === 'for sale';
 
     const match = address.street.match(/^(\d+)\s+(.*)$/);
     const houseNumber = match ? parseInt(match[1], 10) : 0;
@@ -201,7 +212,7 @@ function mapBatchDataProperty(record, job) {
 
     return {
         address_hash: addressHash(address.street, address.zip),
-        legacy_hash: firstValue(ids.propertyId) || null,
+        legacy_hash: firstValue(ids.propertyId, ids.id, p.id, p.propertyId) || null,
         house_number: houseNumber,
         street_name: streetName,
         full_address: [address.street, address.city, address.state, address.zip].filter(Boolean).join(', '),
@@ -211,11 +222,11 @@ function mapBatchDataProperty(record, job) {
         lat: address.lat,
         lng: address.lng,
         owner_full_name: ownerName || null,
-        beds: Number(firstValue(building.bedroomCount)) || null,
-        baths: Number(firstValue(building.bathroomCount)) || null,
-        sqft: Number(firstValue(building.livingAreaSquareFeet)) || null,
-        lot_size: null,
-        year_built: Number(firstValue(building.yearBuilt)) || null,
+        beds: Number(firstValue(building.bedroomCount, building.bedrooms, p.bedrooms)) || null,
+        baths: Number(firstValue(building.bathroomCount, building.bathrooms, p.bathrooms)) || null,
+        sqft: Number(firstValue(building.livingAreaSquareFeet, building.livingArea, building.squareFeet, p.squareFootage)) || null,
+        lot_size: Number(firstValue(p.lot?.size, p.lotSize)) || null,
+        year_built: Number(firstValue(building.yearBuilt, p.yearBuilt)) || null,
         price: Number.isFinite(price) ? price : null,
         sold_date: saleDate || null,
         sale_type: 'BatchData',
@@ -338,15 +349,14 @@ async function batchDataFetchWithRetry(requestBody) {
     throw new Error('Rate limit exceeded after 3 retries.');
 }
 
-async function fetchBatchDataRecords(job) {
-    const requested = Math.min(Math.max(Number(job.estimated_record_count || job.total_expected || 1000), 1), 1000);
+async function fetchBatchDataRecordsForMode(job, mode, requested) {
     const records = [];
     let skip = 0;
     let totalRecordCount = null;
 
     while (records.length < requested) {
         const take = Math.min(500, requested - records.length);
-        const requestBody = buildBatchDataRequest(job, skip, take);
+        const requestBody = buildBatchDataRequest(job, skip, take, mode);
         const payload = await batchDataFetchWithRetry(requestBody);
         const list = extractBatchDataRecords(payload);
         if (totalRecordCount === null) totalRecordCount = extractBatchDataTotal(payload);
@@ -357,6 +367,20 @@ async function fetchBatchDataRecords(job) {
     }
 
     return records.slice(0, requested);
+}
+
+async function fetchBatchDataRecords(job) {
+    const requested = Math.min(Math.max(Number(job.estimated_record_count || job.total_expected || 1000), 1), 1000);
+    const modes = ['strict_polygon', 'broad_polygon', 'centroid_fallback'];
+    const attempts = [];
+
+    for (const mode of modes) {
+        const records = await fetchBatchDataRecordsForMode(job, mode, requested);
+        attempts.push({ mode, count: records.length });
+        if (records.length > 0) return { records, attempts, mode_used: mode };
+    }
+
+    return { records: [], attempts, mode_used: 'none' };
 }
 
 Deno.serve(async (req) => {
@@ -377,10 +401,30 @@ Deno.serve(async (req) => {
                     { lat: 33.3493, lng: -112.1915 },
                     { lat: 33.2931, lng: -112.1338 }
                 ],
-                sold_months: body.sold_months || 1,
+                latitude: body.latitude || 33.37,
+                longitude: body.longitude || -112.08,
+                sold_months: body.sold_months || 12,
                 dry_run_metadata: { filters: { min_price: body.min_price ?? 100000, max_price: body.max_price ?? null } }
             };
-            return Response.json({ success: true, request: buildBatchDataRequest(previewJob, 0, 500) });
+            return Response.json({
+                success: true,
+                requests: {
+                    strict_polygon: buildBatchDataRequest(previewJob, 0, 500, 'strict_polygon'),
+                    broad_polygon: buildBatchDataRequest(previewJob, 0, 500, 'broad_polygon'),
+                    centroid_fallback: buildBatchDataRequest(previewJob, 0, 500, 'centroid_fallback')
+                }
+            });
+        }
+
+        if (body.map_preview === true) {
+            const previewJob = body.job || {
+                polygon: body.polygon || [],
+                sold_months: body.sold_months || 12,
+                dry_run_metadata: { filters: { min_price: body.min_price ?? 100000, max_price: body.max_price ?? null } }
+            };
+            const records = Array.isArray(body.synthetic_records) ? body.synthetic_records : [];
+            const mapped = records.map(record => mapBatchDataProperty(record, previewJob)).filter(Boolean);
+            return Response.json({ success: true, raw: records.length, mapped: mapped.length, active: mapped.filter(p => p.route_active !== false).length, properties: mapped });
         }
 
         if (!BATCHDATA_API_KEY) throw new Error('BATCH_DATA_API_KEY is not configured');
@@ -417,7 +461,10 @@ Deno.serve(async (req) => {
         });
 
         const sql = neon(DATABASE_URL);
-        const rawRecords = Array.isArray(body.synthetic_records) ? body.synthetic_records : await fetchBatchDataRecords(job);
+        const batchFetch = Array.isArray(body.synthetic_records)
+            ? { records: body.synthetic_records, attempts: [{ mode: 'synthetic_records', count: body.synthetic_records.length }], mode_used: 'synthetic_records' }
+            : await fetchBatchDataRecords(job);
+        const rawRecords = batchFetch.records;
         const seen = new Set();
         const mapped = [];
         let rejected = 0;
@@ -437,7 +484,7 @@ Deno.serve(async (req) => {
         const result = await writePropertiesToNeon(sql, mapped, job);
         const completedAt = new Date().toISOString();
         const activeCount = mapped.filter(p => p.route_active !== false).length;
-        const errorLog = [...(job.error_log || []), `[${completedAt}] BatchData-only Precision complete: raw=${rawRecords.length}, mapped=${mapped.length}, active=${activeCount}, rejected=${rejected}, outside_or_invalid=${outsideOrInvalid}`];
+        const errorLog = [...(job.error_log || []), `[${completedAt}] BatchData-only Precision complete: mode=${batchFetch.mode_used}, attempts=${JSON.stringify(batchFetch.attempts)}, raw=${rawRecords.length}, mapped=${mapped.length}, active=${activeCount}, rejected=${rejected}, outside_or_invalid=${outsideOrInvalid}`];
 
         await base44.asServiceRole.entities.FetchJob.update(job.id, {
             status: 'completed',
@@ -471,7 +518,7 @@ Deno.serve(async (req) => {
         await releasePipelineLock(base44, lockId);
         lockId = null;
         await sleep(10);
-        return Response.json({ success: true, status: 'completed', job_id: job.id, active_provider: 'batchdata', raw: rawRecords.length, mapped: mapped.length, active: activeCount });
+        return Response.json({ success: true, status: 'completed', job_id: job.id, active_provider: 'batchdata', mode_used: batchFetch.mode_used, attempts: batchFetch.attempts, raw: rawRecords.length, mapped: mapped.length, active: activeCount });
     } catch (error) {
         if (base44 && lockId) await releasePipelineLock(base44, lockId);
         console.error('[processFetchChunk batchdata-only] Fatal:', error.message);

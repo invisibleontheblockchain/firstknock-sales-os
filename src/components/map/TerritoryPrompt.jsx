@@ -40,7 +40,7 @@ export default function TerritoryPrompt({
   const navigate = useNavigate();
   const [pulling, setPulling] = useState(false);
   const [pullProgress, setPullProgress] = useState('');
-  const [fetchMonths, setFetchMonths] = useState(() => user?.pull_months_back || 1);
+  const [fetchMonths, setFetchMonths] = useState(() => user?.pull_months_back || 12);
   const [pullPct, setPullPct] = useState(0);
   const [displayPct, setDisplayPct] = useState(0);
   const [etaText, setEtaText] = useState('');

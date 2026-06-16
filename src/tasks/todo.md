@@ -1,6 +1,18 @@
 # Plan
 
-## Current Plan — Unified Precision Fetch + Auto-Generate Flow
+## Current Plan — Precision Generate Map Population Fix
+- [x] Confirm root cause from live FetchJob history: Generate starts and completes, but `processFetchChunk` logs `raw=0, mapped=0`, so the map has no new records to render.
+- [x] Keep the unified pull+auto-generate UX unchanged.
+- [x] Patch BatchData fetching to be resilient: try the strict polygon request first, then automatically retry with a broader BatchData query if strict filters return zero.
+- [x] Preserve final precision trust by still applying the drawn polygon and local eligibility filters before writing to Neon.
+- [x] Broaden local BatchData normalization to support both documented nested paths and observed sandbox/legacy paths so raw records do not get dropped as invalid.
+- [x] Update job diagnostics so future failures clearly show which request mode returned zero.
+- [x] Verify with synthetic records and request-preview tests without spending credits, then document results.
+
+### Review — Precision Generate Map Population Fix
+Root cause was not the click handler: recent live FetchJobs for `baysecurity@gmail.com` completed successfully but logged `raw=0, mapped=0`, so there were no new Neon records for the map to show. The processor now tries three request modes in order — strict polygon, broad polygon, then centroid fallback — and still applies final in-polygon and residential/sold eligibility checks before writing. It also includes the deed dataset again so sold-date fields can be returned, broadens normalization to support both nested BatchData paths and observed sandbox/legacy paths, and records request-mode attempts in `error_log`. I also restored the default sold window to 12 months so default Generate is not overly narrow. Verification passed without spending credits: request preview shows all fallback request bodies, map-preview synthetic record mapped to one active property, and `startBatchDataPull` dry-run accepted the same Anderson-style polygon.
+
+## Previous Plan — Unified Precision Fetch + Auto-Generate Flow
 - [x] Confirm scope: Precision `Build your route` parameters become the single Precision Builder; remove the old separate route-builder step from the normal post-pull flow.
 - [x] Keep the existing drawn-area BatchData pull, caps, paywall, and BatchData-only processor unchanged.
 - [x] After a BatchData job completes, fetch the pulled polygon’s fresh Neon candidates immediately and merge them into map state so pins populate without requiring a manual builder open.

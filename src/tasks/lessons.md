@@ -78,3 +78,4 @@
 - For targeting filter panels, do not auto-fill both min and max range values unless explicitly requested; optional range ends should stay blank so users can pull open-ended categories.
 - An aborted/stopped generation can roll back ALL file changes from the session, not just the in-flight call; on "continue", verify actual file/entity/function state with reads before assuming prior edits survived.
 - Bulk admin backfills against Base44 entities hit API rate limits fast; always throttle writes (~300ms apart), wrap calls in retry-with-backoff on 429, cap writes per invocation, and return a has_more flag so the job is resumable.
+- For paid data-pull UX fixes, do not verify only the click handler or self-test; inspect the latest real FetchJob `raw/mapped/active` counts to prove records actually reached the map source.
