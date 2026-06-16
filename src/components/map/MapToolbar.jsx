@@ -50,7 +50,6 @@ export default function MapToolbar({
 
   // Route Filters
   activeRouteSoldFilter, setActiveRouteSoldFilter,
-  activeRoutePhaseFilter, setActiveRoutePhaseFilter,
   activeRoutePriceFilter, setActiveRoutePriceFilter,
 
   // Drawing state
@@ -135,10 +134,6 @@ export default function MapToolbar({
     try {localStorage.setItem('fk_selectedKnockRouteId', activeRoute.id);} catch {}
   }, [activeRoute?.id]);
 
-  useEffect(() => {
-    if (activeRoutePhaseFilter !== 'all') setActiveRoutePhaseFilter?.('all');
-  }, [activeRoutePhaseFilter, setActiveRoutePhaseFilter]);
-
   // Inline route name editing state
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState('');
@@ -190,7 +185,6 @@ export default function MapToolbar({
     queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
     setActiveRoute((prev) => prev ? { ...prev, name: routeName } : prev);
     setActiveRouteSoldFilter?.('all');
-    setActiveRoutePhaseFilter?.('all');
     setActiveRoutePriceFilter?.('all');
     toast.success('Filtered route saved');
   };

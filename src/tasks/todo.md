@@ -828,3 +828,12 @@ Frontend verification: `MapDrawTool` captures arbitrary freehand coordinates and
 
 ### Review — Precision Generate Panel Paywall + Range Cleanup
 The Precision Generate panel now says “Build your route,” shows property count first, removes Advanced Settings, defaults min home value to $100,000 with max blank, and still allows either value input to be cleared. Generate now checks the latest account status when the requested count is over 50; non-upgraded users see the existing paywall instead of starting the pull. No-charge backend dry-run passed with `min_price=100000` and `max_price=null`; runtime logs showed no new frontend error, only unrelated existing route hydration rate-limit noise.
+
+## Plan — Remove Confidence Filter
+- [x] Locate the Confidence filter UI and related state/filter logic.
+- [x] Remove the Confidence filter without changing property loading, route order, or other filters.
+- [x] Verify there are no remaining Confidence filter controls or broken references.
+- [x] Document the result.
+
+### Review — Remove Confidence Filter
+Removed the old active-route Confidence/phase filter state, filtering logic, toolbar props, and reset wiring. Also removed the visible Confidence color option/default from Map Settings so users no longer see a Confidence control. Verification checked Home, MapToolbar, and MapSettingsPanel for `activeRoutePhaseFilter`, `setActiveRoutePhaseFilter`, `sale_confidence`, visible Confidence labels, and `colorScheme: 'confidence'`; no matches remain.
