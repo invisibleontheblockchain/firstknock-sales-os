@@ -855,3 +855,13 @@ Updated Layout to use one exact-page active helper. The desktop Plans button now
 
 ### Review — Fix Knock Filter Dropdown Readability
 Updated the Knock page dropdown options to render with dark backgrounds and white text while preserving the existing Sale and Decision filter values and behavior. Verification confirmed all 15 dropdown options in RepHome now include readable styling.
+
+## Plan — Premium Property Card Layout
+- [x] Review the current PropertyCard layout and styling.
+- [x] Upgrade the card layout to a cleaner premium dark design.
+- [x] Preserve all existing click behavior, status logic, and displayed property details.
+- [x] Verify the component still exports correctly and uses valid imports/classes.
+- [x] Document the result.
+
+### Review — Premium Property Card Layout
+Updated PropertyCard to a premium dark card layout with refined gradient surfaces, a green accent rail, stronger spacing hierarchy, improved badge placement, and a cleaner navigation button. Verification confirmed selection, keyboard activation, map navigation, status labels, and default export remain intact.
