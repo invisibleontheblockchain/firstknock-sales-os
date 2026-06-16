@@ -535,7 +535,7 @@ export default function MapToolbar({
                             <Button
               onClick={() => !activeRoute && setShowRoutePanel(true)}
               disabled={!!activeRoute}
-              className={`rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap bg-[hsl(var(--primary))] ${activeRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
+              className={`rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap bg-[#ffffff] ${activeRoute ? 'opacity-50 cursor-not-allowed' : ''}`}
               style={{
                 background: activeRoute ? 'rgba(31, 31, 31, 0.9)' : mode === 'generate' && !activeRoute ? 'rgba(31, 31, 31, 0.9)' : 'linear-gradient(135deg, #2EEB57 0%, #39FF4A 100%)',
                 color: activeRoute ? BRAND.gold : mode === 'generate' && !activeRoute ? BRAND.gold : BRAND.voidBlack,
