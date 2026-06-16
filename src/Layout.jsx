@@ -193,7 +193,7 @@ function LayoutInner({ children }) {
       <header className={`px-4 pt-[env(safe-area-inset-top)] pb-3 z-20 shadow-md bg-black ${isPageActive('RepHome') ? 'border-b border-transparent' : 'border-b border-slate-800'}`}>
                 <div className="flex items-center w-full pt-3">
                     <Link to="/" className="flex items-center gap-2 mr-auto group shrink-0">
-                        <span className="text-lg font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-[#39FF4A] group-hover:to-[#2EEB57] transition-all">
+                        <span className="text-lg font-extrabold tracking-tight text-white transition-all">
                             FirstKnock
                         </span>
                     </Link>
