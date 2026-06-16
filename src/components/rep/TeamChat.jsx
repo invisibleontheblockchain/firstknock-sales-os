@@ -173,7 +173,7 @@ export default function TeamChat({ user, teamMember, onClose }) {
     };
 
     return (
-        <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col md:bottom-0 bottom-16" onClick={onClose}>
+        <div className="fixed left-0 right-0 top-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] md:bottom-0 z-50 bg-black/95 backdrop-blur-md flex flex-col" onClick={onClose}>
             <div className="flex-1 flex max-h-full min-h-0" onClick={e => e.stopPropagation()}>
 
                 {/* Desktop: Side-by-side layout */}
