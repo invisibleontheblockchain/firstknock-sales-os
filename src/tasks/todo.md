@@ -18,7 +18,16 @@
 - Setup CsvUploader already wires prepareRedfinCsvImport for Redfin files; the silent failure happens for non-Redfin CSVs and when the user is unauthenticated. Generic CSVs go through processPropertyImport but never create/open a route — fixing by routing the "create" flow to also build + open a route on the map.
 
 ### Review — Knock Mode Freemium Gate + Setup CSV Import Fix
-In progress.
+Done & build-verified:
+- Removed Import CSV from the Builder bottom toolbar (Builder now shows only Draw/Pull Data; Routes button already gated to non-Builder mode).
+- Setup → Import Data: generic CSVs now build + open a route on the map (`?savedRoute=`), same as the Redfin path, so imported data flows into Knock & Analytics as another data source. Redfin auto-detection still works.
+- Added `outcomes_logged` (default 0) to User; initialized all 52 existing users to 0.
+- New `knockGate.js` is the single source of truth: 50-outcome free limit, null-safe counter + plan tier, Pro/owner/exempt bypass.
+- RepHome routes all outcome logging through one guarded `handleLog`: re-fetches user each tap (mid-session upgrade lifts the gate), atomic re-entrancy guard, blocks the 51st attempt before any save, increments the persisted counter only after a successful create (Pro never increments/checks).
+- Added `KnockLimitSheet` (mobile bottom sheet via createPortal: lock icon, heading, body, "Upgrade to Pro" → Billing, "Maybe later" / tap-outside dismiss) and `KnockLimitBanner` (persistent "Upgrade to log more outcomes" after dismissal). PropertyDetailSheet outcome buttons gray out + not-allowed when disabled and re-fire the sheet on tap.
+- No free-facing usage counter anywhere. Removed obsolete UpgradeGate.
+
+Remaining: the 12-point manual QA checklist should be run in-app via the Testing Agent (live free vs Pro accounts, BatchData vs CSV routes) before declaring fully complete.
 
 ## Previous Plan — Builder Toolbar Routes Button
 - [x] Locate the Builder/Routes bottom toolbar rendering in MapToolbar.
