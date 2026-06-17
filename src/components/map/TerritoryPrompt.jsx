@@ -11,6 +11,12 @@ import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/g
 import { savePolygonToHistory } from '@/components/map/PolygonHistory';
 import PrecisionPullPanel from '@/components/map/PrecisionPullPanel';
 
+function isPrecisionProUser(user) {
+  const tier = String(user?.subscription_tier || '').toLowerCase();
+  const status = String(user?.subscription_status || '').toLowerCase();
+  if (user?.is_owner || user?.role === 'admin') return true;
+  return ['active', 'trialing'].includes(status) && ['pro', 'precision'].includes(tier);
+}
 
 export default function TerritoryPrompt({
   mode,
@@ -248,7 +254,6 @@ export default function TerritoryPrompt({
   const hasPulledData = !!user?.has_pulled_data;
   const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
   const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing' || user?.is_owner || user?.role === 'admin';
-  const isAccountActive = user?.subscription_status === 'active' || user?.is_owner || user?.role === 'admin';
   const maxRequestedProperties = 1000;
   const freePropertyLimit = 50;
   const safeRequestedPropertyCount = Math.max(1, Math.min(Number(requestedPropertyCount) || 1, maxRequestedProperties));
@@ -495,7 +500,7 @@ export default function TerritoryPrompt({
     const premiumRecentRange = [0.25, 0.5, 1].includes(Number(fetchMonths));
     const latestUser = (safeRequestedPropertyCount > freePropertyLimit || premiumRecentRange) ? await base44.auth.me() : user;
     const upgraded = latestUser?.subscription_status === 'active' || latestUser?.subscription_status === 'trialing' || latestUser?.is_owner || latestUser?.role === 'admin';
-    const activeAccount = latestUser?.subscription_status === 'active' || latestUser?.is_owner || latestUser?.role === 'admin';
+    const hasPrecisionPro = isPrecisionProUser(latestUser);
 
     if (safeRequestedPropertyCount > freePropertyLimit && !upgraded) {
       toast.info('Precision pulls over 50 houses require an upgraded account.');
@@ -504,8 +509,8 @@ export default function TerritoryPrompt({
       return;
     }
 
-    if (premiumRecentRange && !activeAccount) {
-      toast.info('1 wk, 2 wk, and 1 mo ranges unlock once your account is active.');
+    if (premiumRecentRange && !hasPrecisionPro) {
+      toast.info('Your date range has been updated to 3 months. Upgrade to Pro for shorter ranges.');
       setFetchMonths(3);
       return;
     }
@@ -729,7 +734,7 @@ export default function TerritoryPrompt({
         onClose={() => setShowPrecisionPullPanel(false)}
         onGenerate={handlePaidBatchDataPull}
         generating={paidPullStarting}
-        accountActive={isAccountActive}
+        user={user}
         onClearArea={() => {setDrawnPolygon(null);setDraftPolygon([]);setDrawingMode(false);setShowPrecisionPullPanel(false);}}
       />
       }

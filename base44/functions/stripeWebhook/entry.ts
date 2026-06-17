@@ -87,6 +87,7 @@ Deno.serve(async (req: Request) => {
                         await base44.asServiceRole.entities.User.update(userId, {
                             stripe_customer_id: session.customer,
                             subscription_status: 'active',
+                            subscription_tier: session.metadata?.subscription_tier || 'custom',
                             total_seats: quantity
                         });
 
@@ -110,11 +111,12 @@ Deno.serve(async (req: Request) => {
 
                     if (userId) {
                          await base44.asServiceRole.entities.User.update(userId, {
-                            subscription_status: status,
-                            subscription_plan_id: planId,
-                            subscription_period_end: periodEnd,
-                            total_seats: quantity
-                        });
+                           subscription_status: status,
+                           subscription_plan_id: planId,
+                           subscription_tier: subscription.metadata?.subscription_tier || 'custom',
+                           subscription_period_end: periodEnd,
+                           total_seats: quantity
+                         });
 
                         if (status === 'active' || status === 'trialing') {
                             await syncInviteCode(base44, userId, quantity);

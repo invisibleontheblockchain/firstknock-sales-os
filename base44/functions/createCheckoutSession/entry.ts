@@ -71,7 +71,8 @@ Deno.serve(async (req) => {
             ],
             subscription_data: {
                 metadata: {
-                    base44_user_id: user.id
+                    base44_user_id: user.id,
+                    subscription_tier: planId || 'custom'
                 },
                 ...(trialDays > 0 ? { trial_period_days: trialDays } : {})
             },
@@ -80,7 +81,8 @@ Deno.serve(async (req) => {
             allow_promotion_codes: true,
             metadata: {
                 base44_app_id: Deno.env.get("BASE44_APP_ID"),
-                base44_user_id: user.id
+                base44_user_id: user.id,
+                subscription_tier: planId || 'custom'
             }
         };
 

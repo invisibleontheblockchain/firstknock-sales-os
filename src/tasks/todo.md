@@ -1,6 +1,18 @@
 # Plan
 
-## Current Plan — Split Route Saved Batch Workflow
+## Current Plan — Precision Short Date Range Pro Gate
+- [x] Use the existing User subscription fields as the plan source of truth: `subscription_tier` plus subscription status; unknown/null remains free.
+- [x] Persist `subscription_tier` from checkout/webhook metadata for new Precision subscriptions.
+- [x] Gate only the Precision Pull Panel short ranges: 1 wk, 2 wk, and 1 mo.
+- [x] Show locked free-state styling with a lock/Pro badge while leaving 3, 6, 9, and 12 months unchanged.
+- [x] Add desktop hover upgrade prompt and mobile bottom sheet, both linking to `/Billing?plan=precision`.
+- [x] Fallback legacy free selections to 3 months with the required toast.
+- [x] Verify plan detection, locked-option behavior, upgrade navigation target, and production build.
+
+### Review — Precision Short Date Range Pro Gate
+Implemented Pro gating only inside the Precision Pull Panel date range selector. The source of truth is `User.subscription_tier` plus active/trialing subscription status; null/unknown values behave as free. Free users see 1 wk, 2 wk, and 1 mo grayed out with lock/Pro indicators, desktop hover shows the upgrade prompt, mobile tap opens the upgrade bottom sheet, and both CTAs route to `/Billing?plan=precision`. 3, 6, 9, and 12 months remain selectable. Legacy free selections fall back to 3 months with the required toast. Checkout/webhook now persist `subscription_tier` for new subscriptions. Verified plan logic for free, null, Pro, and trial Pro states, and confirmed the production build passes.
+
+## Previous Plan — Split Route Saved Batch Workflow
 - [x] Explain current status: Split Route existed only as a limited generated-route splitter, not on saved/active routes.
 - [x] Add SavedRoute child-route metadata fields while preserving existing route access rules.
 - [x] Create a reusable split-route modal with stops/day, optional start date, all/per-batch rep assignment, preview, and confirm.

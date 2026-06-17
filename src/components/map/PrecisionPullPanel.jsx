@@ -1,16 +1,27 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { X, Zap, Lock } from 'lucide-react';
+import { toast } from 'sonner';
+import { createPageUrl } from '@/utils';
+import PrecisionProUpgradeSheet from '@/components/map/PrecisionProUpgradeSheet';
 
 const SOLD_OPTIONS = [
-  { value: 0.25, label: '1 wk' },
-  { value: 0.5, label: '2 wk' },
-  { value: 1, label: '1 mo' },
+  { value: 0.25, label: '1 wk', lockedOnFree: true },
+  { value: 0.5, label: '2 wk', lockedOnFree: true },
+  { value: 1, label: '1 mo', lockedOnFree: true },
   { value: 3, label: '3 mo' },
   { value: 6, label: '6 mo' },
   { value: 9, label: '9 mo' },
   { value: 12, label: '12 mo' }
 ];
+
+function isPrecisionProUser(user) {
+  const tier = String(user?.subscription_tier || '').toLowerCase();
+  const status = String(user?.subscription_status || '').toLowerCase();
+  if (user?.is_owner || user?.role === 'admin') return true;
+  return ['active', 'trialing'].includes(status) && ['pro', 'precision'].includes(tier);
+}
 
 function formatMoney(value) {
   if (!value) return '';
@@ -37,15 +48,28 @@ export default function PrecisionPullPanel({
   onGenerate,
   generating,
   onClearArea,
-  accountActive = false
+  user
 }) {
+  const navigate = useNavigate();
+  const [hoveredLockedOption, setHoveredLockedOption] = useState(null);
+  const [showUpgradeSheet, setShowUpgradeSheet] = useState(false);
+  const hasShownFallbackToast = useRef(false);
+  const isProPlan = isPrecisionProUser(user);
+
+  const goToUpgrade = () => navigate(createPageUrl('Billing') + '?plan=precision');
+
   useEffect(() => {
-    if (!accountActive && [0.25, 0.5, 1].includes(Number(soldMonths))) {
+    if (!isProPlan && [0.25, 0.5, 1].includes(Number(soldMonths))) {
       setSoldMonths(3);
+      if (!hasShownFallbackToast.current) {
+        hasShownFallbackToast.current = true;
+        toast.info('Your date range has been updated to 3 months. Upgrade to Pro for shorter ranges.');
+      }
     }
-  }, [accountActive, soldMonths, setSoldMonths]);
+  }, [isProPlan, soldMonths, setSoldMonths]);
 
   return (
+    <>
     <div className="fixed inset-0 z-[2400] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-6">
       <div className="w-full max-w-md rounded-3xl border border-[#2EEB57]/25 bg-[#070707] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95">
         <div className="flex items-start justify-between gap-3 p-5 border-b border-white/10">
@@ -113,31 +137,58 @@ export default function PrecisionPullPanel({
             <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Homes sold in the last</label>
             <div className="grid grid-cols-4 gap-1.5">
               {SOLD_OPTIONS.map(option => {
-                const isLocked = !accountActive && [0.25, 0.5, 1].includes(option.value);
+                const isLocked = !isProPlan && option.lockedOnFree;
+                const isActive = Number(soldMonths || 12) === option.value;
+
                 return (
-                  <button
+                  <div
                     key={option.value}
-                    type="button"
-                    disabled={isLocked}
-                    onClick={() => setSoldMonths(option.value)}
-                    title={isLocked ? 'Active account required' : undefined}
-                    className={`h-11 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1 ${
-                      isLocked
-                        ? 'bg-white/[0.03] text-gray-700 border border-white/[0.06] cursor-not-allowed grayscale opacity-60'
-                        : Number(soldMonths || 12) === option.value
-                          ? 'bg-[#2EEB57] text-black shadow-lg'
-                          : 'bg-white/5 text-gray-400 border border-white/10 hover:text-white'
-                    }`}
+                    className="relative"
+                    onMouseEnter={() => isLocked && setHoveredLockedOption(option.value)}
+                    onMouseLeave={() => setHoveredLockedOption(null)}
                   >
-                    {isLocked && <Lock className="w-3 h-3" />}
-                    {option.label}
-                  </button>
+                    <button
+                      type="button"
+                      aria-disabled={isLocked}
+                      onClick={() => {
+                        if (isLocked) {
+                          setShowUpgradeSheet(true);
+                          return;
+                        }
+                        setSoldMonths(option.value);
+                      }}
+                      className={`h-11 w-full rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1 ${
+                        isLocked
+                          ? 'bg-white/[0.03] text-gray-500 border border-white/[0.06] cursor-not-allowed grayscale opacity-50'
+                          : isActive
+                            ? 'bg-[#2EEB57] text-black shadow-lg'
+                            : 'bg-white/5 text-gray-400 border border-white/10 hover:text-white'
+                      }`}
+                    >
+                      {isLocked && <Lock className="w-3 h-3" />}
+                      {option.label}
+                      {isLocked && <span className="ml-0.5 rounded bg-[#2EEB57]/15 px-1 py-0.5 text-[8px] font-black text-[#39FF4A]">Pro</span>}
+                    </button>
+
+                    {isLocked && hoveredLockedOption === option.value && (
+                      <div className="hidden sm:block absolute bottom-full left-1/2 z-[2700] mb-2 w-64 -translate-x-1/2 rounded-xl border border-[#2EEB57]/30 bg-black p-3 text-center shadow-2xl">
+                        <p className="text-xs font-semibold text-white">Unlock shorter date ranges with a Pro plan</p>
+                        <button
+                          type="button"
+                          onClick={goToUpgrade}
+                          className="mt-2 h-8 rounded-lg bg-[#2EEB57] px-4 text-xs font-extrabold text-black hover:bg-[#39FF4A]"
+                        >
+                          Upgrade
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>
-            {!accountActive && (
+            {!isProPlan && (
               <p className="text-[10px] text-gray-600 leading-tight">
-                1 wk, 2 wk, and 1 mo are unlocked after the account is active.
+                Shorter ranges are available on Pro. Your current free range starts at 3 months.
               </p>
             )}
           </div>
@@ -157,5 +208,12 @@ export default function PrecisionPullPanel({
         </div>
       </div>
     </div>
+    {showUpgradeSheet && (
+      <PrecisionProUpgradeSheet
+        onClose={() => setShowUpgradeSheet(false)}
+        onUpgrade={goToUpgrade}
+      />
+    )}
+    </>
   );
 }
