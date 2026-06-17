@@ -163,9 +163,6 @@ export async function prepareRedfinCsvImport(rows = [], fileName = 'Imported Rou
     throw new Error('Unable to read this file. Please upload a valid CSV file.');
   }
   if (!isRedfinCsvData(rows)) return null;
-  if (rows.length > 1000) {
-    throw new Error(`This file has ${rows.length} rows. Maximum is 1,000. Please split the file and import in batches.`);
-  }
 
   const headers = getHeaders(rows);
   const mapping = buildMapping(headers);

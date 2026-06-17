@@ -83,13 +83,18 @@ export default function CsvUploader() {
             header: true,
             skipEmptyLines: true,
             complete: async (results) => {
-                if (results.errors?.length) {
+                // PapaParse reports non-fatal row warnings (ragged rows, trailing
+                // empty fields) in results.errors even for valid files. Only reject
+                // if NO rows were parsed at all — otherwise import the usable rows.
+                const data = (results.data || []).filter(
+                    (r) => r && Object.values(r).some((v) => v != null && String(v).trim() !== '')
+                );
+                if (data.length === 0) {
                     setUploadStatus({ success: false, message: 'Unable to read this file. Please upload a valid CSV file.' });
                     setIsUploading(false);
                     return;
                 }
 
-                const data = results.data;
                 if (importMode === 'create') {
                     try {
                         const redfinImport = await prepareRedfinCsvImport(data, file.name);
