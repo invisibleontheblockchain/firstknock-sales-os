@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, Navigation } from 'lucide-react';
+import { Check, Navigation, User, DollarSign, Ruler } from 'lucide-react';
 import { formatPropertyAge } from '@/utils';
 import { buildFullAddress, openInMaps } from '@/components/logic/navigation';
 
@@ -15,10 +15,25 @@ const STATUS_COLORS = {
     DM_NOT_HOME: '#D1D5DB'
 };
 
+const formatMoney = (value) => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return n >= 1000000 ? `$${(n / 1000000).toFixed(1)}M` : `$${Math.round(n / 1000)}k`;
+};
+
+const formatNumber = (value) => {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? n.toLocaleString() : null;
+};
+
 export default function PropertyCard({ property, index, onSelect, navigationApp = 'apple' }) {
     const isDone = property.effective_status !== 'ELIGIBLE';
     const statusColor = STATUS_COLORS[property.effective_status] || '#555';
     const age = formatPropertyAge(property.sold_date);
+    const ownerName = property.owner_full_name || property.owner_name || property.ownerFullName;
+    const valueLabel = formatMoney(property.price || property.estimated_value || property.estimatedValue);
+    const sqftLabel = formatNumber(property.sqft || property.squareFootage);
+    const yearBuilt = Number(property.year_built || property.yearBuilt) || null;
 
     return (
         <div
@@ -63,6 +78,27 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
                                 <p className="text-[10px] truncate leading-tight mt-1 text-white/40 transition-colors duration-300 group-hover:text-white/60">
                                     {property.city}, {property.state} {property.zip_code}
                                 </p>
+                            )}
+                            {(ownerName || valueLabel || sqftLabel || yearBuilt) && (
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[9px] font-bold text-white/45">
+                                    {ownerName && (
+                                        <span className="inline-flex max-w-[150px] items-center gap-1 truncate rounded-full bg-white/5 px-1.5 py-0.5">
+                                            <User className="h-2.5 w-2.5 shrink-0 text-[#39FF4A]" />
+                                            <span className="truncate">{ownerName}</span>
+                                        </span>
+                                    )}
+                                    {valueLabel && (
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-[#2EEB57]/10 px-1.5 py-0.5 text-[#39FF4A]">
+                                            <DollarSign className="h-2.5 w-2.5" />{valueLabel}
+                                        </span>
+                                    )}
+                                    {sqftLabel && (
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-1.5 py-0.5">
+                                            <Ruler className="h-2.5 w-2.5" />{sqftLabel} sqft
+                                        </span>
+                                    )}
+                                    {yearBuilt && <span className="rounded-full bg-white/5 px-1.5 py-0.5">Built {yearBuilt}</span>}
+                                </div>
                             )}
                         </div>
 

@@ -212,11 +212,11 @@ function mapBatchDataProperty(record, job) {
 
     const owner = p.owner || {};
     const listing = p.listing || {};
-    const building = p.building || p.structure || {};
-    const sale = p.sale || p.lastSale || {};
+    const building = p.building || p.structure || p.propertyInfo || p.assessment?.building || p.assessor?.building || {};
+    const sale = p.sale || p.lastSale || p.deed?.sale || p.transaction || {};
     const lastSale = sale.lastSale || sale.lastTransfer || sale;
-    const valuation = p.valuation || {};
-    const general = p.general || {};
+    const valuation = p.valuation || p.avm || p.estimatedValue || p.assessment?.valuation || p.assessor?.valuation || {};
+    const general = p.general || p.property || p.propertyInfo || {};
     const ids = p.ids || p.identifiers || {};
     const listingStatus = firstValue(listing.status, listing.statusCategory);
     const listingStatusLower = String(listingStatus || '').toLowerCase();
@@ -226,8 +226,12 @@ function mapBatchDataProperty(record, job) {
     const cutoffMs = Date.now() - soldWindowDays(job.sold_months || 12) * 24 * 60 * 60 * 1000;
     const ownerName = firstValue(owner.fullName, owner.name, owner.ownerName, owner.names?.[0]?.full, owner.names?.[0]?.name, owner.names?.[0]);
     const saleAmount = numberValue(sale.amount, sale.price, sale.salePrice, lastSale.amount, lastSale.price, lastSale.salePrice, p.lastSalePrice);
-    const estimatedValue = numberValue(valuation.estimatedValue, valuation.value, valuation.avm, valuation.avmValue, p.estimatedValue, p.estimated_value, listing.price, listing.listPrice);
-    const price = saleAmount ?? estimatedValue;
+    const estimatedValue = numberValue(
+        valuation.estimatedValue, valuation.value, valuation.avm, valuation.avmValue, valuation.amount,
+        p.estimatedValue, p.estimated_value, p.avm, p.avmValue, p.assessedValue,
+        listing.price, listing.listPrice
+    );
+    const price = estimatedValue ?? saleAmount;
     const landUseCode = firstValue(general.standardizedLandUseCode, p.standardizedLandUseCode);
     const propertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType) || 'Single Family';
     const nonResidential = /commercial|industrial|vacant|agricultural|land/i.test(String(propertyType));
@@ -250,10 +254,14 @@ function mapBatchDataProperty(record, job) {
         lat: address.lat,
         lng: address.lng,
         owner_full_name: ownerName || null,
-        beds: numberValue(building.bedroomCount, building.bedrooms, building.beds, p.bedrooms, p.beds),
-        baths: numberValue(building.bathroomCount, building.bathrooms, building.baths, p.bathrooms, p.baths),
-        sqft: numberValue(building.livingAreaSquareFeet, building.livingArea, building.squareFeet, building.totalBuildingAreaSquareFeet, building.totalAreaSqFt, building.area, p.squareFootage, p.sqft),
-        lot_size: numberValue(p.lot?.size, p.lotSize, p.lot_size),
+        beds: numberValue(building.bedroomCount, building.bedrooms, building.beds, building.rooms?.beds, p.bedrooms, p.beds),
+        baths: numberValue(building.bathroomCount, building.bathrooms, building.baths, building.rooms?.baths, p.bathrooms, p.baths),
+        sqft: numberValue(
+            building.livingAreaSquareFeet, building.livingArea, building.squareFeet,
+            building.totalBuildingAreaSquareFeet, building.totalAreaSqFt, building.area,
+            p.squareFootage, p.sqft, p.livingAreaSquareFeet
+        ),
+        lot_size: numberValue(p.lot?.size, p.lot?.lotSizeSquareFeet, p.lotSize, p.lot_size, p.lotSizeSquareFeet),
         year_built: numberValue(building.yearBuilt, building.effectiveYearBuilt, p.yearBuilt, p.year_built),
         price: price ?? null,
         sold_date: saleDate || null,

@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — Home Screen App Icon
+## Current Plan — Initial Route Metadata Population
+- [x] Trace initial route-build data flow from BatchData/property storage through route generation and hydration.
+- [x] Identify why route cards only show owner names and miss property metadata.
+- [x] Populate core property metadata during the initial build/hydration path without changing route behavior.
+- [x] Verify route card data fields and run a production build.
+- [x] Document the result.
+
+### Review — Initial Route Metadata Population
+Expanded the initial BatchData mapper to capture AVM value, beds, baths, sqft, lot size, year built, sale date, owner, city, and state from more provider field shapes. Added city/state/metadata to the slim map payload so hydrated routes keep full address context, and updated rep route cards/checklist cards to show owner, value, sqft, and build year when available. Verified with a synthetic BatchData mapper test and a production build.
+
+## Previous Plan — Home Screen App Icon
 - [x] Find every place the app/home-screen icon is defined for Safari, PWA manifest, and login display.
 - [x] Replace the old FirstKnock icon with the newly provided square logo image.
 - [x] Keep app name/routing/auth behavior unchanged.
