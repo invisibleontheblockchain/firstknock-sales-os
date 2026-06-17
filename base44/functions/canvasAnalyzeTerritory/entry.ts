@@ -91,8 +91,8 @@ Deno.serve(async (req) => {
     }
 
     const areaSqMi = polygonAreaSqMi(points);
-    if (areaSqMi <= 0 || areaSqMi > MAX_AREA_SQ_MI) {
-      return Response.json({ error: `Canvas analysis supports areas up to ${MAX_AREA_SQ_MI} square miles.` }, { status: 400 });
+    if (areaSqMi <= 0) {
+      return Response.json({ error: 'A valid territory polygon is required' }, { status: 400 });
     }
 
     const databaseUrl = Deno.env.get('DATABASE_URL');

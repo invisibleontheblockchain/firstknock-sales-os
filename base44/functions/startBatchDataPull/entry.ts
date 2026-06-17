@@ -102,13 +102,6 @@ Deno.serve(async (req) => {
         const box = boundsMiles(polygon);
         const maxSpanMiles = isPaid ? 35 : 15;
 
-        if (areaSqMi > maxArea || box.width_miles > maxSpanMiles || box.height_miles > maxSpanMiles) {
-            return Response.json({
-                error: 'area_too_large',
-                message: `Area is too large for this account. Limit is ${maxArea} sq mi and ${maxSpanMiles} miles across.`
-            }, { status: 400 });
-        }
-
         const fips = await resolveFips(center);
         if (!fips?.fips_code) {
             return Response.json({ error: 'Could not resolve county/FIPS for this area. Please redraw inside a supported US county.' }, { status: 400 });

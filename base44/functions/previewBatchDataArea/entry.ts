@@ -112,17 +112,15 @@ Deno.serve(async (req) => {
         const isAdminTestOverride = user.role === 'admin' && body.test_account_type;
         const isPaid = isAdminTestOverride
             ? body.test_account_type === 'paid'
-            : (user.subscription_status === 'active' || user.is_owner || user.role === 'admin');
+            : (user.subscription_status === 'active' || user.subscription_status === 'trialing' || user.is_owner || user.role === 'admin');
         const maxArea = isPaid ? PAID_AREA_LIMIT_SQ_MI : FREE_AREA_LIMIT_SQ_MI;
         const maxProperties = isPaid ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
         const requestedRaw = Number(body.requested_properties || body.record_cap || maxProperties);
         const requestedProperties = Math.max(1, Math.min(Number.isFinite(requestedRaw) ? requestedRaw : maxProperties, maxProperties));
         const box = boundsMiles(polygon);
         const maxSpanMiles = isPaid ? 35 : 15;
-        const hardRejected = areaSqMi > maxArea || box.width_miles > maxSpanMiles || box.height_miles > maxSpanMiles;
-        const rejectionReason = areaSqMi > maxArea
-            ? `Area is ${Math.round(areaSqMi)} sq mi, above the ${maxArea} sq mi limit.`
-            : (hardRejected ? `Area is too wide (${Math.round(Math.max(box.width_miles, box.height_miles))} miles across). Redraw a tighter area.` : null);
+        const hardRejected = false; // Square mileage limits removed entirely for all accounts
+        const rejectionReason = null;
         const costPerRecord = BATCHDATA_PLAN_COST / BATCHDATA_PLAN_RECORDS;
         const estimatedMaxCost = requestedProperties * costPerRecord;
         const sandboxProbe = body.sandbox_probe === true && !hardRejected ? await runSandboxProbe(center) : null;
