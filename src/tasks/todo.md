@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — RepHome FirstKnock Map Exit
+## Current Plan — Home Screen App Icon
+- [x] Find every place the app/home-screen icon is defined for Safari, PWA manifest, and login display.
+- [x] Replace the old FirstKnock icon with the newly provided square logo image.
+- [x] Keep app name/routing/auth behavior unchanged.
+- [x] Verify icon references and run a production build.
+- [x] Document the result.
+
+### Review — Home Screen App Icon
+Updated the static HTML favicon/apple-touch-icon/precomposed icon, the runtime login/app metadata icon in Layout.jsx, and the PWA manifest icons to use the newly provided square FirstKnock logo. Verified the old URL is gone from those files and the production build passes.
+
+## Previous Plan — RepHome FirstKnock Map Exit
 - [x] Locate the RepHome “View on FirstKnock map” overlay and close control.
 - [x] Make the exit/X control always visible above top navigation and safe areas on desktop and mobile.
 - [x] Preserve existing map/property behavior and only change the exit affordance/layout.
