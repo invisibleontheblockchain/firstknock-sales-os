@@ -91,3 +91,4 @@
 - If a user still cannot see a control, check whether conditional rendering hides it in the default state; make essential actions visible by default when requested.
 - Event handlers that may be called directly and from JSX events must treat the event as optional (`e?.stopPropagation?.()`) or always pass the event consistently.
 - When a user asks for a control to appear only after an edit, restore conditional visibility and verify the default unedited state stays hidden.
+- If a fullscreen overlay still appears under the app header/nav after z-index and safe-area fixes, render it through a `createPortal(..., document.body)` body-level overlay; nested app-shell stacking contexts can trap `position: fixed` children.

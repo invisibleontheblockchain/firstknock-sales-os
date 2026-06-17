@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — Messages Escape + Roster Photos
+## Current Plan — RepHome Messages Overlay Fix
+- [x] Locate why the message thread is still rendering behind the app header and bottom nav.
+- [x] Make the messages panel a true fullscreen overlay on mobile and a safe modal/panel on desktop.
+- [x] Ensure the close/back controls and composer are always visible above safe areas and nav bars.
+- [x] Verify the changed code and run a production build.
+- [x] Document the result.
+
+### Review — RepHome Messages Overlay Fix
+Moved TeamChat into a body-level portal with a higher isolated z-index so it can no longer be trapped under RepHome/Layout headers or bottom navigation. Confirmed the mobile/thread close controls and safe-area composer are present, and the production build passes.
+
+## Previous Plan — Messages Escape + Roster Photos
 - [x] Fix the Messages overlay so it sits above the app top/bottom navigation and uses safe-area spacing.
 - [x] Add an always-visible close button when viewing a message thread so users cannot get stuck.
 - [x] Add a profile photo field to team members.

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { X, ChevronLeft } from 'lucide-react';
@@ -172,9 +173,9 @@ export default function TeamChat({ user, teamMember, onClose }) {
         setMobileView('thread');
     };
 
-    return (
-        <div className="fixed inset-0 z-[1000] bg-black/95 backdrop-blur-md flex flex-col" onClick={onClose}>
-            <div className="flex-1 flex max-h-full min-h-0" onClick={e => e.stopPropagation()}>
+    const overlay = (
+        <div className="fixed inset-0 z-[9999] isolate bg-black/95 backdrop-blur-md flex flex-col" onClick={onClose}>
+            <div className="flex-1 flex max-h-[100dvh] min-h-0" onClick={e => e.stopPropagation()}>
 
                 {/* Desktop: Side-by-side layout */}
                 {/* Mobile: Toggle between channels and thread */}
@@ -234,4 +235,6 @@ export default function TeamChat({ user, teamMember, onClose }) {
             </div>
         </div>
     );
+
+    return typeof document !== 'undefined' ? createPortal(overlay, document.body) : overlay;
 }
