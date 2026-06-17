@@ -172,6 +172,30 @@ Deno.serve(async (req) => {
             }
         }
 
+        // Final fallback: direct address_hash lookup in MasterProperty.
+        // CSV-imported routes generate hashes with no ZIP embedded and no
+        // legacy_hash, so the ZIP/legacy fallbacks above can't find them.
+        // address_hash is the canonical key and always matches imported rows.
+        const stillMissingFinal = hashes.filter(hash => !byHash.has(hash));
+        if (stillMissingFinal.length > 0) {
+            try {
+                const BATCH = 100;
+                for (let i = 0; i < stillMissingFinal.length; i += BATCH) {
+                    const slice = stillMissingFinal.slice(i, i + BATCH);
+                    const matches = await base44.asServiceRole.entities.MasterProperty.filter({ address_hash: slice }, null, slice.length);
+                    const arr = Array.isArray(matches) ? matches : (matches?.items || []);
+                    arr.forEach(property => {
+                        if (property?.lat && property?.lng) {
+                            byHash.set(property.address_hash, property);
+                            if (property.legacy_hash) byHash.set(property.legacy_hash, property);
+                        }
+                    });
+                }
+            } catch (directError) {
+                console.warn('MasterProperty direct address_hash fallback skipped:', directError.message);
+            }
+        }
+
         const properties = hashes.map(hash => byHash.get(hash)).filter(Boolean);
 
         return Response.json({
