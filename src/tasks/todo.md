@@ -1,6 +1,14 @@
 # Plan
 
-## Current Plan — Redfin CSV Import-to-Route Workflow
+## Current Plan — Builder Toolbar Routes Button
+- [x] Locate the Builder/Routes bottom toolbar rendering in MapToolbar.
+- [x] Hide the bottom ROUTES button only while Builder mode is active.
+- [x] Verify the app builds and document the result.
+
+### Review — Builder Toolbar Routes Button
+Removed the bottom ROUTES button from active Builder mode so Builder shows only Draw/Pull Data and Import CSV actions, while Routes mode still keeps the Routes button. Production build passes.
+
+## Previous Plan — Redfin CSV Import-to-Route Workflow
 - [x] Inspect current Setup CSV uploader, map builder entry points, route storage, hydration, and route optimization behavior.
 - [x] Add Redfin CSV auto-detection using fuzzy header matching for ADDRESS, CITY, STATE OR PROVINCE, ZIP OR POSTAL CODE, LATITUDE, and LONGITUDE.
 - [x] Add a focused Redfin CSV parser/cleaner that skips disclaimer rows, filters unplottable rows, deduplicates by ADDRESS + ZIP, cleans ZIP strings, parses Month-DD-YYYY sold dates, converts NaN/missing numeric values to null, and preserves unmapped fields in raw metadata.

@@ -616,7 +616,8 @@ export default function MapToolbar({
               </RedfinCsvImportButton>
             </>
             }
-                            <Button
+                            {mode !== 'generate' &&
+            <Button
               onClick={() => !activeRoute && setShowRoutePanel(true)}
               disabled={!!activeRoute}
               className={`rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-sm transition-all active:scale-95 whitespace-nowrap ${activeRoute ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10'}`}
@@ -634,6 +635,7 @@ export default function MapToolbar({
                                     </Badge>
               }
                             </Button>
+            }
                         </>
           }
 
