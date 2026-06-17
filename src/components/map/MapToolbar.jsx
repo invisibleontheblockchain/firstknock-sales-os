@@ -338,10 +338,19 @@ export default function MapToolbar({
                                 <button
                 onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}}
                 onClick={(e) => {e.preventDefault();e.stopPropagation();setShowSplitRouteModal(true);}}
-                className="flex h-11 md:h-7 items-center gap-1 rounded-md bg-[#2EEB57] px-3 md:px-2 text-[10px] font-black text-black hover:bg-[#39FF4A] touch-manipulation select-none active:scale-95"
+                className="hidden md:flex h-7 items-center gap-1 rounded-md bg-[#2EEB57] px-2 text-[10px] font-black text-black hover:bg-[#39FF4A] touch-manipulation select-none active:scale-95"
                 title="Split route into daily batches">
                 
-                                    <Scissors className="w-3 h-3 md:w-2.5 md:h-2.5" /><span>SPLIT ROUTE</span>
+                                    <Scissors className="w-2.5 h-2.5" /><span>SPLIT ROUTE</span>
+                                </button>
+                                <button
+                onPointerDown={(e) => {window.__fkSuppressMapFitUntil = Date.now() + 1500;e.preventDefault();e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();}}
+                onTouchStart={(e) => {window.__fkSuppressMapFitUntil = Date.now() + 1500;e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();}}
+                onClick={(e) => {window.__fkSuppressMapFitUntil = Date.now() + 1500;e.preventDefault();e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();if (onReoptimizeRoute) onReoptimizeRoute(activeRoute);}}
+                className="md:hidden flex h-8 items-center gap-1 rounded-md bg-[#111] px-2 text-[9px] font-bold text-[#39FF4A] border border-[#2EEB57]/30 hover:bg-[#222] touch-manipulation select-none active:scale-95"
+                title="Optimize">
+                
+                                    <Zap className="w-3 h-3" /><span>OPTIMIZE</span>
                                 </button>
                                 <button
                 onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}}
@@ -362,20 +371,20 @@ export default function MapToolbar({
                                 </button>
                                 <DropdownMenu>
                                   <DropdownMenuTrigger asChild>
-                                    <button onPointerDown={(e) => e.stopPropagation()} className="md:hidden flex h-11 w-11 items-center justify-center rounded-md border border-white/10 bg-white/5 text-white touch-manipulation active:scale-95" aria-label="More route actions">
-                                      <MoreVertical className="h-5 w-5" />
+                                    <button onPointerDown={(e) => e.stopPropagation()} className="md:hidden flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-white/5 text-white touch-manipulation active:scale-95" aria-label="More route actions">
+                                      <MoreVertical className="h-4 w-4" />
                                     </button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end" className="z-[5000] bg-[#0A0A0A] border-white/10 text-white">
                                     <DropdownMenuItem onClick={handleExportActiveRouteCsv} className="focus:bg-white/10 focus:text-white">
                                       <Download className="mr-2 h-4 w-4" /> Export CSV
                                     </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={(e) => {window.__fkSuppressMapFitUntil = Date.now() + 1500;e.stopPropagation();if (onReoptimizeRoute) onReoptimizeRoute(activeRoute);}} className="focus:bg-white/10 focus:text-white">
-                                      <Zap className="mr-2 h-4 w-4" /> Optimize
+                                    <DropdownMenuItem onClick={(e) => {e.stopPropagation();setShowSplitRouteModal(true);}} className="focus:bg-white/10 focus:text-white">
+                                      <Scissors className="mr-2 h-4 w-4" /> Split Route
                                     </DropdownMenuItem>
                                   </DropdownMenuContent>
                                 </DropdownMenu>
-                                <button onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}} onClick={(e) => {e.preventDefault();e.stopPropagation();setActiveRoute(null);}} className="flex items-center gap-1 h-11 md:h-6 px-2.5 md:px-2 rounded-md border border-white/10 text-[10px] font-bold text-gray-300 hover:text-white hover:bg-white/10 shrink-0 touch-manipulation active:scale-95">
+                                <button onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}} onClick={(e) => {e.preventDefault();e.stopPropagation();setActiveRoute(null);}} className="flex items-center gap-1 h-8 md:h-6 px-2 md:px-2 rounded-md border border-white/10 text-[10px] font-bold text-gray-300 hover:text-white hover:bg-white/10 shrink-0 touch-manipulation active:scale-95">
                                     <X className="w-3 h-3 md:w-2.5 md:h-2.5" /><span className="hidden sm:inline">CLOSE</span>
                                 </button>
                             </div>

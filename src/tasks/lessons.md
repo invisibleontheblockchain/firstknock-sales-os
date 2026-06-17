@@ -1,5 +1,6 @@
 # Lessons
 
+- On cramped mobile route toolbars, keep the most-used action as the visible compact button and move secondary actions into the overflow menu instead of making every button compete for space.
 - When adding shared handlers that call `toast` into a file, verify the target file already imports `toast`; similar sibling files may have the import while the edited file does not.
 
 - When a user asks where a previously discussed feature is, treat the follow-up as a correction: implement the missing feature minimally, then verify and document it before saying done.
