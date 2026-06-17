@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { MapContainer, TileLayer, CircleMarker, Circle, Polyline, Tooltip, useMap, Marker, LayerGroup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -241,10 +242,10 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                 ? [properties[0].lat, properties[0].lng]
                 : [32.78, -79.93];
 
-    return (
-        <div className="fixed inset-0 z-50 bg-black flex flex-col">
+    const overlay = (
+        <div className="fixed inset-0 z-[9999] isolate bg-black flex flex-col">
             {/* Header */}
-            <div className="absolute top-0 left-0 right-0 z-[1100] p-3 flex items-center justify-between pointer-events-none">
+            <div className="absolute top-[calc(env(safe-area-inset-top)+0.75rem)] left-0 right-0 z-[1200] px-3 flex items-center justify-between pointer-events-none">
                 <Button
                     onPointerDown={(e) => {
                         e.preventDefault();
@@ -256,9 +257,10 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                         e.stopPropagation();
                     }}
                     size="sm"
-                    className="pointer-events-auto touch-manipulation select-none bg-black/90 backdrop-blur-xl text-white border border-gray-700 hover:bg-gray-800 rounded-full h-14 px-6 shadow-xl active:scale-95"
+                    aria-label="Close FirstKnock map and return to Knock tab"
+                    className="pointer-events-auto touch-manipulation select-none bg-black/95 backdrop-blur-xl text-white border border-white/20 hover:bg-gray-800 rounded-full h-12 sm:h-14 px-4 sm:px-6 shadow-[0_12px_35px_rgba(0,0,0,0.65)] active:scale-95"
                 >
-                    <X className="w-4 h-4 mr-1" /> Close Map
+                    <X className="w-4 h-4 sm:mr-1" /> <span className="hidden sm:inline">Close Map</span>
                 </Button>
 
                 <div className="pointer-events-auto flex gap-2">
@@ -406,4 +408,6 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
             </div>
         </div>
     );
+
+    return typeof document !== 'undefined' ? createPortal(overlay, document.body) : overlay;
 }

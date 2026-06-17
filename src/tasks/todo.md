@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — Precision Time Range Paywall
+## Current Plan — RepHome FirstKnock Map Exit
+- [x] Locate the RepHome “View on FirstKnock map” overlay and close control.
+- [x] Make the exit/X control always visible above top navigation and safe areas on desktop and mobile.
+- [x] Preserve existing map/property behavior and only change the exit affordance/layout.
+- [x] Verify the code and run a production build.
+- [x] Document the result.
+
+### Review — RepHome FirstKnock Map Exit
+RepMapView now renders through a body-level portal with z-[9999], so it sits above the app shell instead of under the top/bottom nav. The close/X control is positioned with safe-area top spacing, remains visible on mobile and desktop, and the production build passes.
+
+## Previous Plan — Precision Time Range Paywall
 - [x] Locate the Precision Generate 1 wk / 2 wk / 1 month controls and account-active signal.
 - [x] Gate those time range options visually and functionally until the account is confirmed active.
 - [x] Keep the default/free option usable and avoid changing backend pull logic beyond UI selection rules.
