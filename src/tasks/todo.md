@@ -1,6 +1,22 @@
 # Plan
 
-## Current Plan — Builder Toolbar Routes Button
+## Current Plan — Knock Mode Freemium Gate + Setup CSV Import Fix
+- [ ] Remove Import CSV from the main Builder bottom workflow so Builder only shows Draw/Pull Data controls.
+- [ ] Trace the existing Setup import flow and identify why uploaded CSVs do not populate the map.
+- [ ] Reuse the Redfin/CSV parser from the existing import work inside Setup’s Import Data flow instead of keeping CSV import in Builder.
+- [ ] After Setup CSV import succeeds, save properties with `data_source = redfin_csv`/`csv_import`, create or activate the related SavedRoute, and open it on the map with the same Knock/Analytics compatibility as drawn/Builder routes.
+- [ ] Add `outcomes_logged` to the User schema with default 0 and null-safe handling.
+- [ ] Locate every Knock Mode outcome-save path and route all outcome logging through one guarded save helper.
+- [ ] For free/null-plan users, atomically block the 51st lifetime outcome before any route/property state changes; increment only after a successful save for attempts 1–50.
+- [ ] For Pro/upgraded users, bypass the gate entirely with no counter increment and no UI changes.
+- [ ] Add the mobile bottom sheet upgrade prompt, post-dismiss disabled outcome state, and persistent Knock Mode upgrade banner.
+- [ ] Re-check user plan and latest counter on every outcome tap so upgrades in another tab lift the gate on the next tap.
+- [ ] Verify as much as possible with code-level tests/build, then keep the 12 manual QA checks open until they pass.
+
+### Review — Knock Mode Freemium Gate + Setup CSV Import Fix
+Pending implementation after plan confirmation.
+
+## Previous Plan — Builder Toolbar Routes Button
 - [x] Locate the Builder/Routes bottom toolbar rendering in MapToolbar.
 - [x] Hide the bottom ROUTES button only while Builder mode is active.
 - [x] Verify the app builds and document the result.
