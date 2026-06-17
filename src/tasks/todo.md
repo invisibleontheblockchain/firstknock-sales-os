@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — Initial Route Metadata Population
+## Current Plan — Active Route CSV Export
+- [x] Add a focused CSV export helper for route property lists.
+- [x] Add an EXPORT button to the selected/active route toolbar.
+- [x] Export the full active route list, not only filtered/visible properties.
+- [x] Verify with a sample route payload and production build.
+- [x] Document the result.
+
+### Review — Active Route CSV Export
+Added a focused route CSV export helper and an EXPORT button in the selected/active route toolbar. The export uses the full active route property list and includes stop number, address, owner, value, beds/baths, sqft, lot size, year built, sold date, sale type, property type, coordinates, and address hash. Verified CSV formatting with a sample route payload and confirmed the production build passes.
+
+## Previous Plan — Initial Route Metadata Population
 - [x] Trace initial route-build data flow from BatchData/property storage through route generation and hydration.
 - [x] Identify why route cards only show owner names and miss property metadata.
 - [x] Populate core property metadata during the initial build/hydration path without changing route behavior.

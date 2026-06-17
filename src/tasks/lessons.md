@@ -1,5 +1,7 @@
 # Lessons
 
+- When a user asks where a previously discussed feature is, treat the follow-up as a correction: implement the missing feature minimally, then verify and document it before saying done.
+
 - When rendering nested JSX `.map()` calls, prefer `flatMap()` or extract a small helper component so the closing parentheses are obvious; malformed nested maps can break the whole Vite build.
 
 - For Canvas Opportunity Discovery POCs, make building footprints the primary source of truth and use addresses only as optional confidence enrichment; do not block the trust workflow on national address normalization.

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, Users, Rocket, RotateCcw } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, Users, Rocket, RotateCcw, Download } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
+import { exportRouteToCsv } from '@/components/routes/exportRouteCsv';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -169,6 +170,14 @@ export default function MapToolbar({
     toast.success('Filters reset');
   };
 
+  const handleExportActiveRouteCsv = (e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    const count = exportRouteToCsv(activeRoute);
+    if (count > 0) toast.success(`Exported ${count} route stops`);
+    else toast.error('No route stops to export');
+  };
+
   const handleSaveVisibleFilteredRoute = async () => {
     if (!activeRoute?.properties?.length || !user?.id) return;
     const filterLabels = [];
@@ -318,6 +327,14 @@ export default function MapToolbar({
                             <span className="text-[9px] md:text-[10px] font-mono text-gray-500 shrink-0">{activeRoute.houseCount || activeRoute.properties?.length || 0}h</span>
 
                             <div className="ml-auto flex items-center gap-1 shrink-0">
+                                <button
+                onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}}
+                onClick={handleExportActiveRouteCsv}
+                className="h-8 md:h-7 px-2.5 md:px-2 text-[10px] md:text-[10px] font-bold bg-white hover:bg-gray-200 text-black rounded-md flex items-center gap-1 touch-manipulation select-none active:scale-95"
+                title="Export route as CSV">
+                
+                                    <Download className="w-2.5 h-2.5" /><span>EXPORT</span>
+                                </button>
                                 <button
                 onPointerDown={(e) => {window.__fkSuppressMapFitUntil = Date.now() + 1500;e.preventDefault();e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();}}
                 onTouchStart={(e) => {window.__fkSuppressMapFitUntil = Date.now() + 1500;e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();}}
