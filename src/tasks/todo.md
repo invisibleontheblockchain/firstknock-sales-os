@@ -1,6 +1,19 @@
 # Plan
 
-## Current Plan — Active Route CSV Export
+## Current Plan — Split Route Saved Batch Workflow
+- [x] Explain current status: Split Route existed only as a limited generated-route splitter, not on saved/active routes.
+- [x] Add SavedRoute child-route metadata fields while preserving existing route access rules.
+- [x] Create a reusable split-route modal with stops/day, optional start date, all/per-batch rep assignment, preview, and confirm.
+- [x] Add Split Route access to the selected active-route toolbar with mobile-friendly overflow for secondary actions.
+- [x] Add Split Route access from manager saved-route cards, including Active and By Rep views.
+- [x] Save child routes as independent SavedRoute records without modifying the original route.
+- [x] Verify split math, route payload shape, and production build.
+- [x] Document the result.
+
+### Review — Split Route Saved Batch Workflow
+Split Route previously only existed as a limited generated-route splitter in the New Routes tab, so it was not available on saved/active routes. Added a saved-route Split Route workflow with child-route metadata, a reusable modal for stops/day, optional dates, all/per-batch rep assignment, preview, and confirmation. Added a clear SPLIT ROUTE button to the selected route toolbar with mobile overflow for secondary actions, plus SPLIT ROUTE actions on manager saved-route cards in Active and By Rep views. Confirm creates independent child SavedRoute records and leaves the original route intact. Verified 53 stops at 25/day splits into 25/25/3, verified child route payload shape, and confirmed the production build passes.
+
+## Previous Plan — Active Route CSV Export
 - [x] Add a focused CSV export helper for route property lists.
 - [x] Add an EXPORT button to the selected/active route toolbar.
 - [x] Export the full active route list, not only filtered/visible properties.

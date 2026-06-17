@@ -4,7 +4,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
     Navigation, X, Clock, CheckCircle2, AlertCircle,
-    ChevronRight, Merge, Trash2, RefreshCw, Pencil, Check
+    ChevronRight, Merge, Trash2, RefreshCw, Pencil, Check, Scissors
 } from 'lucide-react';
 import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
 import { base44 } from '@/api/base44Client';
@@ -29,7 +29,9 @@ export default function ActiveRoutesTab({
     onReoptimizeRoute,
     routeConfig,
     logs = [],
-    onReplaceRoutes
+    onReplaceRoutes,
+    teamMembers = [],
+    onSplitRoute
 }) {
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [mergeMode, setMergeMode] = useState(false);
@@ -234,6 +236,7 @@ export default function ActiveRoutesTab({
                     onToggleSelect={toggleSelect}
                     isMultiSelect={isMultiSelect}
                     routeNumberMap={routeNumberMap}
+                    onSplitRoute={onSplitRoute}
                 />
             )}
 
@@ -254,6 +257,7 @@ export default function ActiveRoutesTab({
                     onToggleSelect={toggleSelect}
                     isMultiSelect={isMultiSelect}
                     routeNumberMap={routeNumberMap}
+                    onSplitRoute={onSplitRoute}
                 />
             )}
 
@@ -274,6 +278,7 @@ export default function ActiveRoutesTab({
                     onToggleSelect={toggleSelect}
                     isMultiSelect={isMultiSelect}
                     routeNumberMap={routeNumberMap}
+                    onSplitRoute={onSplitRoute}
                 />
             )}
 
@@ -295,6 +300,7 @@ export default function ActiveRoutesTab({
                     onToggleSelect={toggleSelect}
                     isMultiSelect={isMultiSelect}
                     routeNumberMap={routeNumberMap}
+                    onSplitRoute={onSplitRoute}
                 />
             )}
 
@@ -311,7 +317,7 @@ export default function ActiveRoutesTab({
     );
 }
 
-function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRouteId, collapsed = false, onDeleteRoute, logs = [], onReoptimize, routeConfig, selectedIds, onToggleSelect, isMultiSelect, routeNumberMap }) {
+function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRouteId, collapsed = false, onDeleteRoute, logs = [], onReoptimize, routeConfig, selectedIds, onToggleSelect, isMultiSelect, routeNumberMap, onSplitRoute }) {
     const [isExpanded, setIsExpanded] = useState(!collapsed);
 
     return (
@@ -338,13 +344,14 @@ function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRou
                     isSelected={selectedIds.has(route.id)}
                     onToggleSelect={() => onToggleSelect(route.id)}
                     isMultiSelect={isMultiSelect}
+                    onSplit={() => onSplitRoute?.(route)}
                 />
             ))}
         </div>
     );
 }
 
-function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDelete, logs = [], onReoptimize, routeConfig, isSelected, onToggleSelect, isMultiSelect }) {
+function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDelete, logs = [], onReoptimize, routeConfig, isSelected, onToggleSelect, isMultiSelect, onSplit }) {
     const [editing, setEditing] = useState(false);
     const [newName, setNewName] = useState(route.name);
     const queryClient = useQueryClient();
@@ -465,6 +472,16 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                         <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: '#222' }}>
                             <div className="h-full rounded-full transition-all" style={{ width: `${(knockStats.knocked / knockStats.total) * 100}%`, background: knockStats.knocked === knockStats.total ? '#22c55e' : '#FFD700' }} />
                         </div>
+                    )}
+                    {!isMultiSelect && onSplit && (
+                        <button
+                            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSplit(); }}
+                            className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#2EEB57]/30 bg-[#2EEB57]/10 text-[10px] font-black text-[#39FF4A] hover:bg-[#2EEB57]/20 md:h-8"
+                            title="Split route into daily batches"
+                        >
+                            <Scissors className="h-4 w-4" /> SPLIT ROUTE
+                        </button>
                     )}
                 </div>
                 {!isMultiSelect && onDelete && (

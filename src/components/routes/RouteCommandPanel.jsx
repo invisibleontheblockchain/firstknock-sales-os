@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { HelpCircle } from 'lucide-react';
 import ActiveRoutesTab from './ActiveRoutesTab';
+import SplitRouteModal from './SplitRouteModal';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 // cache-bust v2
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,7 @@ import {
     AlertCircle, ChevronRight, Zap, Trash2, Scissors, Pencil, Check, RefreshCw
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
+import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { hydrateRouteForMap } from '@/components/logic/routeHydration';
 
@@ -56,6 +58,8 @@ export default function RouteCommandPanel({
     };
 
     const [activeTab, setActiveTab] = useState(mode === 'generate' && generatedRoutes.length > 0 ? 'new' : 'active');
+    const [splitRoute, setSplitRoute] = useState(null);
+    const queryClient = useQueryClient();
 
     useEffect(() => {
         if (mode !== 'generate' && activeTab === 'new') setActiveTab('active');
@@ -98,6 +102,11 @@ export default function RouteCommandPanel({
         });
         return groups;
     }, [savedRoutes, teamMembers]);
+
+    const handleSplitRoutesCreated = async (count) => {
+        queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+        toast.success(`Created ${count} split route batches`);
+    };
 
     return (
         <div className="fixed inset-0 z-[2000] overflow-hidden touch-manipulation">
@@ -344,6 +353,8 @@ export default function RouteCommandPanel({
                                 routeConfig={routeConfig}
                                 logs={logs}
                                 onReplaceRoutes={onReplaceRoutes}
+                                teamMembers={teamMembers}
+                                onSplitRoute={setSplitRoute}
                             />
                         )}
 
@@ -378,7 +389,8 @@ export default function RouteCommandPanel({
                                                                      logs={logs}
                                                                      onReoptimize={onReoptimizeRoute}
                                                                      routeConfig={routeConfig}
-                                                                 />
+                                                                     onSplit={() => setSplitRoute(route)}
+                                                                     />
                                                             ))}
                                                         </div>
                                     );
@@ -406,6 +418,7 @@ export default function RouteCommandPanel({
                                                 logs={logs}
                                                 onReoptimize={onReoptimizeRoute}
                                                 routeConfig={routeConfig}
+                                                onSplit={() => setSplitRoute(route)}
                                             />
                                         ))}
                                     </div>
@@ -424,6 +437,15 @@ export default function RouteCommandPanel({
                     </ScrollArea>
                 </div>
             </div>
+            {splitRoute && (
+                <SplitRouteModal
+                    route={splitRoute}
+                    teamMembers={teamMembers}
+                    managerId={splitRoute.manager_id}
+                    onClose={() => setSplitRoute(null)}
+                    onCreated={handleSplitRoutesCreated}
+                />
+            )}
         </div>
     );
 }
@@ -623,7 +645,7 @@ function NewRouteCard({ route, rank, isActive, recommendation, onSelect, onSave,
     );
 }
 
-function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDelete, logs = [], onReoptimize, routeConfig }) {
+function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDelete, logs = [], onReoptimize, routeConfig, onSplit }) {
     const [editing, setEditing] = useState(false);
     const [newName, setNewName] = useState(route.name);
     const queryClient = useQueryClient();
@@ -733,6 +755,16 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                     <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: '#222' }}>
                         <div className="h-full rounded-full transition-all" style={{ width: `${(knockStats.knocked / knockStats.total) * 100}%`, background: knockStats.knocked === knockStats.total ? '#22c55e' : '#FFD700' }} />
                     </div>
+                )}
+                {onSplit && (
+                    <button
+                        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSplit(); }}
+                        className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#2EEB57]/30 bg-[#2EEB57]/10 text-[10px] font-black text-[#39FF4A] hover:bg-[#2EEB57]/20 md:h-8"
+                        title="Split route into daily batches"
+                    >
+                        <Scissors className="h-4 w-4" /> SPLIT ROUTE
+                    </button>
                 )}
             </div>
             {onDelete && (

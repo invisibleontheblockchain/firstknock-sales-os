@@ -78,6 +78,23 @@
     "manager_id": {
       "type": "string",
       "description": "ID of the manager who owns this route (tenant key)"
+    },
+    "parent_route_id": {
+      "type": "string",
+      "description": "Original SavedRoute ID when this route is a split child batch"
+    },
+    "batch_number": {
+      "type": "integer",
+      "description": "Sequential batch number for split child routes"
+    },
+    "batch_total": {
+      "type": "integer",
+      "description": "Total number of batches created from the original route"
+    },
+    "batch_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Optional calendar date assigned to this split batch"
     }
   },
   "required": [
