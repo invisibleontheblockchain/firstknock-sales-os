@@ -10,7 +10,6 @@ import { exportRouteToCsv } from '@/components/routes/exportRouteCsv';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from "@tanstack/react-query";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import RedfinCsvImportButton from '@/components/import/RedfinCsvImportButton';
 
 /**
  * MapToolbar — extracted from Home.jsx
@@ -601,19 +600,6 @@ export default function MapToolbar({
                 <><Navigation className="w-4 h-4 mr-1.5" /> DRAW</>
                 }
                                   </Button>
-              <RedfinCsvImportButton
-                user={user}
-                startLocation={startLocation}
-                onRouteCreated={(route) => {
-                  setActiveRoute(route);
-                  setMode('analyze');
-                  setShowCompare(false);
-                  setShowRoutePanel(false);
-                }}
-                className="rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap bg-black/90 text-[#2EEB57] border border-[#2EEB57]/40 hover:bg-[#111] flex items-center justify-center gap-1.5"
-              >
-                <Upload className="w-4 h-4" /> IMPORT CSV
-              </RedfinCsvImportButton>
             </>
             }
                             {mode !== 'generate' &&

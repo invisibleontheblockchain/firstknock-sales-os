@@ -63,6 +63,11 @@
       "default": 0,
       "description": "Number of unique homes marked/interacted with (free limit = 100)"
     },
+    "outcomes_logged": {
+      "type": "integer",
+      "default": 0,
+      "description": "Lifetime count of Knock Mode outcomes logged by this user (free plan gate at 50). Never decrements."
+    },
     "working_area": {
       "type": "string",
       "description": "Zip code or City, State for default map center"

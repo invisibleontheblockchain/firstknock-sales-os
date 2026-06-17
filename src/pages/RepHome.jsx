@@ -17,7 +17,9 @@ import PropertyDetailSheet from '@/components/rep/PropertyDetailSheet';
 import PullToRefresh from '@/components/mobile/PullToRefresh';
 import RepAnalytics from '@/components/rep/RepAnalytics';
 import TeamChat from '@/components/rep/TeamChat';
-import UpgradeGate, { shouldShowUpgradeGate } from '@/components/upgrade/UpgradeGate';
+import KnockLimitSheet from '@/components/upgrade/KnockLimitSheet';
+import KnockLimitBanner from '@/components/upgrade/KnockLimitBanner';
+import { isProUser, isOutcomeBlocked, getOutcomesLogged } from '@/components/upgrade/knockGate';
 
 export default function RepHome() {
   const queryClient = useQueryClient();
@@ -31,7 +33,9 @@ export default function RepHome() {
   const [focusProperty, setFocusProperty] = useState(null);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showChat, setShowChat] = useState(false);
-  const [showUpgradeGate, setShowUpgradeGate] = useState(false);
+  const [showLimitSheet, setShowLimitSheet] = useState(false);
+  const [limitDismissed, setLimitDismissed] = useState(false);
+  const loggingInFlightRef = React.useRef(false);
   const [soldDateFilter, setSoldDateFilter] = useState('all');
   const [decisionFilter, setDecisionFilter] = useState('all');
 
@@ -279,12 +283,10 @@ export default function RepHome() {
     enabled: !!user?.email
   });
 
-  // Show upgrade gate on load if user is over free limit
-  React.useEffect(() => {
-    if (allMyLogs.length > 0 && user && shouldShowUpgradeGate(user, allMyLogs.length)) {
-      setShowUpgradeGate(true);
-    }
-  }, [allMyLogs.length, user]);
+  // Knock Mode freemium gate: disabled once the limit sheet has been dismissed
+  // this session, OR if the user is already at/over the limit on load.
+  const outcomeLoggingDisabled = !isProUser(user) && (limitDismissed || isOutcomeBlocked(user));
+  const showLimitBanner = limitDismissed && !isProUser(user);
 
   // REAL-TIME UPDATES: Prevent double-knocking (Team Mode)
   React.useEffect(() => {
@@ -342,11 +344,16 @@ export default function RepHome() {
       queryClient.invalidateQueries({ queryKey: ['routeLogs'] });
       queryClient.invalidateQueries({ queryKey: ['allMyLogs'] });
     },
-    onSuccess: () => {
-      // Check if user just hit the 50-house limit
-      const newCount = (allMyLogs?.length || 0) + 1;
-      if (shouldShowUpgradeGate(user, newCount)) {
-        setShowUpgradeGate(true);
+    onSuccess: async () => {
+      // Free users: increment the persisted lifetime counter. The counter only
+      // ever increases and is never checked/incremented for Pro users.
+      if (!isProUser(user)) {
+        try {
+          await base44.auth.updateMe({ outcomes_logged: getOutcomesLogged(user) + 1 });
+          queryClient.invalidateQueries({ queryKey: ['user'] });
+        } catch (e) {
+          console.error('Failed to increment outcomes_logged', e);
+        }
       }
     }
   });
@@ -502,9 +509,36 @@ export default function RepHome() {
     }
   };
 
-  const handleLog = (logData) => {
+  // Re-fetch the user fresh on each tap so a mid-session upgrade (in another tab)
+  // lifts the gate without a full reload. Returns true if the gate fired.
+  const checkAndHandleGate = async () => {
+    let freshUser = user;
+    try {
+      freshUser = await base44.auth.me();
+      if (freshUser) queryClient.setQueryData(['user'], freshUser);
+    } catch { /* keep cached user */ }
+
+    if (isProUser(freshUser)) return false;
+    if (limitDismissed || isOutcomeBlocked(freshUser)) {
+      setShowLimitSheet(true);
+      return true;
+    }
+    return false;
+  };
+
+  const handleLog = async (logData) => {
     if (!selectedProperty && !logData.address_hash) return;
     const prop = selectedProperty || {};
+
+    // Atomic guard: block re-entrancy from rapid double-taps at the boundary.
+    if (loggingInFlightRef.current) return;
+    loggingInFlightRef.current = true;
+    try {
+      const blocked = await checkAndHandleGate();
+      if (blocked) return; // No outcome saved, no stop marked, no state change.
+    } finally {
+      loggingInFlightRef.current = false;
+    }
 
     // Haptic feedback
     if (navigator.vibrate) navigator.vibrate(50);
@@ -582,7 +616,8 @@ export default function RepHome() {
         onShowMap={() => setShowMap(true)}
         onShowRouteList={() => setShowRouteList(true)}
         routeProperties={routeProperties} />
-      
+
+            {showLimitBanner && <KnockLimitBanner />}
 
             {/* Filter tabs + search */}
             <div className="px-3 pt-2 pb-2 space-y-2 border-b border-white/10 bg-black/70 backdrop-blur-xl shadow-[0_12px_36px_rgba(0,0,0,0.32)]">
@@ -765,6 +800,8 @@ export default function RepHome() {
         property={selectedProperty}
         logs={selectedPropertyLogs}
         onLog={handleLog}
+        outcomeDisabled={outcomeLoggingDisabled}
+        onBlockedAttempt={() => setShowLimitSheet(true)}
         onClearDecision={handleClearDecision}
         onPhotoUpload={handlePhotoUpload}
         uploading={uploading}
@@ -801,10 +838,11 @@ export default function RepHome() {
 
       }
 
-            {/* Upgrade Gate - shows after 50 houses */}
-            {showUpgradeGate &&
-      <UpgradeGate onClose={() => setShowUpgradeGate(false)} />
-      }
+            {/* Knock Mode freemium gate sheet */}
+            <KnockLimitSheet
+        open={showLimitSheet}
+        onClose={() => {setShowLimitSheet(false);setLimitDismissed(true);}} />
+      
             </div>
         </div>);
 

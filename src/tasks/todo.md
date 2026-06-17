@@ -13,8 +13,12 @@
 - [ ] Re-check user plan and latest counter on every outcome tap so upgrades in another tab lift the gate on the next tap.
 - [ ] Verify as much as possible with code-level tests/build, then keep the 12 manual QA checks open until they pass.
 
+### Implementation Notes
+- Existing UpgradeGate (25-house, log-count based) replaced by spec-compliant 50-outcome persisted gate.
+- Setup CsvUploader already wires prepareRedfinCsvImport for Redfin files; the silent failure happens for non-Redfin CSVs and when the user is unauthenticated. Generic CSVs go through processPropertyImport but never create/open a route — fixing by routing the "create" flow to also build + open a route on the map.
+
 ### Review — Knock Mode Freemium Gate + Setup CSV Import Fix
-Pending implementation after plan confirmation.
+In progress.
 
 ## Previous Plan — Builder Toolbar Routes Button
 - [x] Locate the Builder/Routes bottom toolbar rendering in MapToolbar.

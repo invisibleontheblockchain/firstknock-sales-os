@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { createPageUrl } from '@/utils';
 import RedfinImportSummary from '@/components/import/RedfinImportSummary';
 import { createRouteFromRedfinImport, prepareRedfinCsvImport } from '@/components/import/redfinCsvImport';
+import { optimizeRouteByDistance } from '@/components/logic/routeOptimizer';
 
 export default function CsvUploader() {
     const navigate = useNavigate();
@@ -445,9 +446,33 @@ export default function CsvUploader() {
             }
 
             await storage.saveProperties(entities);
-            await queryClient.invalidateQueries({ queryKey: ['masterProperties'], refetchType: 'all' });
 
-            setUploadStatus({ success: true, message: `✓ ${importedCount} properties imported!` });
+            // Build a route from the imported list and open it on the map, so the
+            // CSV behaves like a Builder draw: it populates the map and feeds Knock
+            // & Analytics as another data source.
+            setUploadStatus({ success: null, message: 'Building route...' });
+            const currentUser = user || await base44.auth.me().catch(() => null);
+            const ordered = optimizeRouteByDistance(entities, null);
+            const route = await base44.entities.SavedRoute.create({
+                name: `Imported List ${new Date().toLocaleDateString()}`,
+                route_mode: 'precision',
+                status: 'ACTIVE',
+                property_hashes: ordered.map(p => p.address_hash),
+                metrics: { house_count: ordered.length, distance: 0, score: 100 },
+                manager_id: currentUser?.id || null,
+                assigned_to: currentUser?.id || null,
+                assigned_to_name: currentUser?.full_name || 'Me',
+                metadata: { source: 'csv_import', import_date: new Date().toISOString().slice(0, 10) }
+            });
+
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ['masterProperties'], refetchType: 'all' }),
+                queryClient.invalidateQueries({ queryKey: ['savedRoutes'], refetchType: 'all' }),
+                queryClient.invalidateQueries({ queryKey: ['localProperties'], refetchType: 'all' })
+            ]);
+
+            setUploadStatus({ success: true, message: `✓ ${importedCount} properties imported! Opening map...` });
+            navigate(`${createPageUrl('Home')}?savedRoute=${encodeURIComponent(route.id)}`);
         } catch (error) {
             console.error("Import error", error);
             setUploadStatus({ success: false, message: `Import failed: ${error.message}` });

@@ -14,7 +14,7 @@ const STATUS_OPTIONS = [
     { id: 'DM_NOT_HOME', label: 'DM Not Home', icon: UserX, color: '#D1D5DB' },
 ];
 
-export default function PropertyDetailSheet({ property, logs, onLog, onClearDecision, onPhotoUpload, uploading, onClose, onViewOnMap, routePosition, totalStops, navigationApp = 'apple' }) {
+export default function PropertyDetailSheet({ property, logs, onLog, outcomeDisabled = false, onBlockedAttempt, onClearDecision, onPhotoUpload, uploading, onClose, onViewOnMap, routePosition, totalStops, navigationApp = 'apple' }) {
     const [showMore, setShowMore] = useState(false);
     const [logNote, setLogNote] = useState('');
     const [callbackTime, setCallbackTime] = useState('');
@@ -23,6 +23,13 @@ export default function PropertyDetailSheet({ property, logs, onLog, onClearDeci
     const [saleAmount, setSaleAmount] = useState('');
 
     const handleMark = (status) => {
+        // Free-limit gate: when disabled, every tap re-fires the upgrade prompt
+        // and never saves an outcome.
+        if (outcomeDisabled) {
+            onBlockedAttempt?.();
+            return;
+        }
+
         if (status === 'SOLD' && !showSaleAmount) {
             setShowSaleAmount(true);
             return;
@@ -95,7 +102,7 @@ export default function PropertyDetailSheet({ property, logs, onLog, onClearDeci
                             <button
                                 key={opt.id}
                                 onClick={() => handleMark(opt.id)}
-                                className={`flex flex-col items-center gap-1 py-3.5 rounded-2xl text-center transition-all active:scale-95 ${showSaleAmount && opt.id === 'SOLD' ? 'ring-2 ring-[#2EEB57]' : ''}`}
+                                className={`flex flex-col items-center gap-1 py-3.5 rounded-2xl text-center transition-all ${outcomeDisabled ? 'opacity-40 cursor-not-allowed' : 'active:scale-95'} ${showSaleAmount && opt.id === 'SOLD' ? 'ring-2 ring-[#2EEB57]' : ''}`}
                                 style={{ background: opt.color === '#FFFFFF' ? 'rgba(255,255,255,0.055)' : opt.color + '14', border: `1px solid ${opt.color === '#FFFFFF' ? 'rgba(255,255,255,0.14)' : opt.color + '2e'}`, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)' }}
                             >
                                 <opt.icon className="w-5 h-5" style={{ color: opt.color }} />
