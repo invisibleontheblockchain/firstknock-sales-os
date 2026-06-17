@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, Users, Rocket, RotateCcw, Download, MoreVertical, Scissors } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, Users, Rocket, RotateCcw, Download, MoreVertical, Scissors, Upload } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
@@ -10,6 +10,7 @@ import { exportRouteToCsv } from '@/components/routes/exportRouteCsv';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from "@tanstack/react-query";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import RedfinCsvImportButton from '@/components/import/RedfinCsvImportButton';
 
 /**
  * MapToolbar — extracted from Home.jsx
@@ -69,6 +70,7 @@ export default function MapToolbar({
 
   // Route Optimization
   onReoptimizeRoute,
+  startLocation,
 
   // MLS data flag
   hasMlsData
@@ -569,35 +571,50 @@ export default function MapToolbar({
 
           <>
                             {mode === 'generate' && !activeRoute &&
-            <Button
-              onClick={() => {
-                if (hasDrawnArea) {
-                  if (!territoryDataReady) {
+            <>
+              <Button
+                onClick={() => {
+                  if (hasDrawnArea) {
+                    if (!territoryDataReady) {
+                      setShowCompare(false);
+                      window.dispatchEvent(new CustomEvent('fk-open-precision-pull'));
+                      return;
+                    }
+                    setShowCompare(true);
+                  } else {
                     setShowCompare(false);
-                    window.dispatchEvent(new CustomEvent('fk-open-precision-pull'));
-                    return;
+                    window.dispatchEvent(new CustomEvent('fk-start-drawing'));
                   }
-                  setShowCompare(true);
-                } else {
-                  setShowCompare(false);
-                  window.dispatchEvent(new CustomEvent('fk-start-drawing'));
+                }}
+                disabled={routesGenerating}
+                className="rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(255,255,255,0.22)] transition-all active:scale-95 whitespace-nowrap bg-white text-black hover:bg-white/90">
+                
+                                      {routesGenerating ?
+                <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> BUILDING</> :
+                hasDrawnArea ?
+                territoryDataReady ?
+                <><Zap className="w-4 h-4 mr-1.5" /> GENERATE</> :
+
+                <><Zap className="w-4 h-4 mr-1.5" /> PULL DATA</> :
+
+
+                <><Navigation className="w-4 h-4 mr-1.5" /> DRAW</>
                 }
-              }}
-              disabled={routesGenerating}
-              className="rounded-full h-10 px-4 text-xs font-bold tracking-wide shadow-[0_0_20px_rgba(255,255,255,0.22)] transition-all active:scale-95 whitespace-nowrap bg-white text-black hover:bg-white/90">
-              
-                                    {routesGenerating ?
-              <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> BUILDING</> :
-              hasDrawnArea ?
-              territoryDataReady ?
-              <><Zap className="w-4 h-4 mr-1.5" /> GENERATE</> :
-
-              <><Zap className="w-4 h-4 mr-1.5" /> PULL DATA</> :
-
-
-              <><Navigation className="w-4 h-4 mr-1.5" /> DRAW</>
-              }
-                                </Button>
+                                  </Button>
+              <RedfinCsvImportButton
+                user={user}
+                startLocation={startLocation}
+                onRouteCreated={(route) => {
+                  setActiveRoute(route);
+                  setMode('analyze');
+                  setShowCompare(false);
+                  setShowRoutePanel(false);
+                }}
+                className="rounded-full h-10 px-3 sm:px-4 text-[10px] sm:text-xs font-bold tracking-wide shadow-lg transition-all active:scale-95 whitespace-nowrap bg-black/90 text-[#2EEB57] border border-[#2EEB57]/40 hover:bg-[#111] flex items-center justify-center gap-1.5"
+              >
+                <Upload className="w-4 h-4" /> IMPORT CSV
+              </RedfinCsvImportButton>
+            </>
             }
                             <Button
               onClick={() => !activeRoute && setShowRoutePanel(true)}

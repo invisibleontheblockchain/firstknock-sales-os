@@ -22,6 +22,10 @@
       "type": "string",
       "description": "Display address"
     },
+    "address": {
+      "type": "string",
+      "description": "Source address field from imports"
+    },
     "city": {
       "type": "string",
       "description": "City"
@@ -33,6 +37,10 @@
     "zip_code": {
       "type": "string",
       "description": "Zip Code"
+    },
+    "zip": {
+      "type": "string",
+      "description": "Cleaned ZIP code from imports"
     },
     "lat": {
       "type": "number",
@@ -58,12 +66,17 @@
       "default": "ELIGIBLE",
       "description": "The baseline status from the Master File"
     },
+    "status": {
+      "type": "string",
+      "description": "Raw imported listing status"
+    },
     "data_source": {
       "type": "string",
       "enum": [
         "rentcast",
         "csv_import",
-        "manual"
+        "manual",
+        "redfin_csv"
       ],
       "description": "Origin of this record for data quality tracking"
     },
@@ -99,8 +112,17 @@
     "price": {
       "type": "number"
     },
+    "sale_price": {
+      "type": "number",
+      "description": "Imported sale price"
+    },
     "sold_date": {
       "type": "string"
+    },
+    "sale_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Imported sale date in ISO format"
     },
     "sale_type": {
       "type": "string"
@@ -113,6 +135,10 @@
     },
     "url": {
       "type": "string"
+    },
+    "raw_metadata": {
+      "type": "object",
+      "description": "Unmapped source fields from imported CSV rows"
     }
   },
   "required": [

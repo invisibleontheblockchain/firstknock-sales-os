@@ -1579,6 +1579,7 @@ export default function Home() {
                 setShowRouteLines={setShowRouteLines}
                 onSaveFilteredRoute={handleSaveFilteredRoute}
                 onReoptimizeRoute={handleReoptimizeRoute}
+                startLocation={startLocation}
                 hasMlsData={hasMlsData}
             />
 

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Upload, History, FilePlus, AlertCircle } from 'lucide-react';
 import Papa from 'papaparse';
 import { base44 } from '@/api/base44Client';
@@ -7,12 +8,18 @@ import { storage } from '@/lib/storage';
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { createPageUrl } from '@/utils';
+import RedfinImportSummary from '@/components/import/RedfinImportSummary';
+import { createRouteFromRedfinImport, prepareRedfinCsvImport } from '@/components/import/redfinCsvImport';
 
 export default function CsvUploader() {
+    const navigate = useNavigate();
     const [isUploading, setIsUploading] = useState(false);
     const [uploadStatus, setUploadStatus] = useState(null);
     const [importMode, setImportMode] = useState('create'); // 'create', 'history', or 'analyze'
     const [analysisReport, setAnalysisReport] = useState(null);
+    const [pendingRedfinImport, setPendingRedfinImport] = useState(null);
+    const [isCreatingRedfinRoute, setIsCreatingRedfinRoute] = useState(false);
     
     const queryClient = useQueryClient();
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
@@ -75,14 +82,58 @@ export default function CsvUploader() {
             header: true,
             skipEmptyLines: true,
             complete: async (results) => {
+                if (results.errors?.length) {
+                    setUploadStatus({ success: false, message: 'Unable to read this file. Please upload a valid CSV file.' });
+                    setIsUploading(false);
+                    return;
+                }
+
                 const data = results.data;
+                if (importMode === 'create') {
+                    try {
+                        const redfinImport = await prepareRedfinCsvImport(data, file.name);
+                        if (redfinImport) {
+                            setPendingRedfinImport(redfinImport);
+                            setUploadStatus(null);
+                            setIsUploading(false);
+                            return;
+                        }
+                    } catch (error) {
+                        setUploadStatus({ success: false, message: error.message || 'Unable to read this file. Please upload a valid CSV file.' });
+                        setIsUploading(false);
+                        return;
+                    }
+                }
+
                 await processData(data);
             },
-            error: (err) => {
-                setUploadStatus({ success: false, message: `CSV parse failed: ${err.message}` });
+            error: () => {
+                setUploadStatus({ success: false, message: 'Unable to read this file. Please upload a valid CSV file.' });
                 setIsUploading(false);
             }
         });
+    };
+
+    const handleCreateRedfinRoute = async () => {
+        if (!pendingRedfinImport) return;
+        setIsCreatingRedfinRoute(true);
+        try {
+            const currentUser = user || await base44.auth.me();
+            const route = await createRouteFromRedfinImport(pendingRedfinImport, { user: currentUser });
+            await Promise.all([
+                queryClient.invalidateQueries({ queryKey: ['masterProperties'], refetchType: 'all' }),
+                queryClient.invalidateQueries({ queryKey: ['savedRoutes'], refetchType: 'all' }),
+                queryClient.invalidateQueries({ queryKey: ['localProperties'], refetchType: 'all' })
+            ]);
+            setPendingRedfinImport(null);
+            setUploadStatus({ success: true, message: `✓ Created route with ${route.houseCount} properties!` });
+            navigate(`${createPageUrl('Home')}?savedRoute=${encodeURIComponent(route.id)}`);
+        } catch (error) {
+            setUploadStatus({ success: false, message: `Import failed: ${error.message}` });
+        } finally {
+            setIsCreatingRedfinRoute(false);
+            setIsUploading(false);
+        }
     };
 
     const processData = async (data) => {
@@ -465,6 +516,16 @@ export default function CsvUploader() {
                     </div>
                 </div>
             </label>
+
+            <RedfinImportSummary
+                importBatch={pendingRedfinImport}
+                isSaving={isCreatingRedfinRoute}
+                onCancel={() => {
+                    setPendingRedfinImport(null);
+                    setUploadStatus(null);
+                }}
+                onCreateRoute={handleCreateRedfinRoute}
+            />
 
             {uploadStatus && (
                 <div className={`flex items-start gap-2 px-3 py-2 rounded-lg text-xs font-medium ${

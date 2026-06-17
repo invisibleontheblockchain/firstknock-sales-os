@@ -1,6 +1,20 @@
 # Plan
 
-## Current Plan — Precision Short Date Range Pro Gate
+## Current Plan — Redfin CSV Import-to-Route Workflow
+- [x] Inspect current Setup CSV uploader, map builder entry points, route storage, hydration, and route optimization behavior.
+- [x] Add Redfin CSV auto-detection using fuzzy header matching for ADDRESS, CITY, STATE OR PROVINCE, ZIP OR POSTAL CODE, LATITUDE, and LONGITUDE.
+- [x] Add a focused Redfin CSV parser/cleaner that skips disclaimer rows, filters unplottable rows, deduplicates by ADDRESS + ZIP, cleans ZIP strings, parses Month-DD-YYYY sold dates, converts NaN/missing numeric values to null, and preserves unmapped fields in raw metadata.
+- [x] Add a summary screen before saving with ready/skipped/duplicate counts plus Create Route and Cancel actions.
+- [x] On Create Route, save valid properties and a SavedRoute named from the filename with source metadata, immediately set/open it on the map, and preserve existing route behavior by using the same SavedRoute/property_hash pattern.
+- [x] Use CSV coordinates directly and geocode only rows that have an address but missing coordinates.
+- [x] Add an Import CSV button in Builder Mode beside the existing Draw/Builder controls that opens the same upload flow.
+- [x] Keep non-Redfin CSV and JSON behavior unchanged.
+- [ ] Verify all 12 requested tests, including build verification, before marking complete.
+
+### Review — Redfin CSV Import-to-Route Workflow
+Implementation is in place. Code-level verification passed for Redfin detection on all three attached files, disclaimer-row skipping, route-name cleanup, ZIP cleanup, Month-DD-YYYY sale-date parsing, raw metadata preservation, non-Redfin fallback, >1,000-row rejection, mocked route-save metadata/source payload, and production build. Full in-app click-through tests remain open and should be run in the preview/Testing Agent before marking this task complete.
+
+## Previous Plan — Precision Short Date Range Pro Gate
 - [x] Use the existing User subscription fields as the plan source of truth: `subscription_tier` plus subscription status; unknown/null remains free.
 - [x] Persist `subscription_tier` from checkout/webhook metadata for new Precision subscriptions.
 - [x] Gate only the Precision Pull Panel short ranges: 1 wk, 2 wk, and 1 mo.

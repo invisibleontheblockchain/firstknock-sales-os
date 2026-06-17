@@ -79,6 +79,10 @@
       "type": "string",
       "description": "ID of the manager who owns this route (tenant key)"
     },
+    "metadata": {
+      "type": "object",
+      "description": "Route metadata such as import source, import date, and source filename"
+    },
     "parent_route_id": {
       "type": "string",
       "description": "Original SavedRoute ID when this route is a split child batch"
