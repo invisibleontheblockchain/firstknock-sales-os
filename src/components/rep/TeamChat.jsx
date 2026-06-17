@@ -173,7 +173,7 @@ export default function TeamChat({ user, teamMember, onClose }) {
     };
 
     return (
-        <div className="fixed left-0 right-0 top-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] md:bottom-0 z-50 bg-black/95 backdrop-blur-md flex flex-col" onClick={onClose}>
+        <div className="fixed inset-0 z-[1000] bg-black/95 backdrop-blur-md flex flex-col" onClick={onClose}>
             <div className="flex-1 flex max-h-full min-h-0" onClick={e => e.stopPropagation()}>
 
                 {/* Desktop: Side-by-side layout */}
@@ -184,7 +184,7 @@ export default function TeamChat({ user, teamMember, onClose }) {
                     mobileView === 'channels' ? 'flex flex-col' : 'hidden md:flex md:flex-col'
                 }`}>
                     {/* Close button on mobile */}
-                    <div className="flex items-center justify-between p-4 md:hidden border-b border-white/5">
+                    <div className="flex items-center justify-between px-4 pb-4 pt-[max(1rem,env(safe-area-inset-top))] md:hidden border-b border-white/5">
                         <h2 className="font-bold text-white text-lg">Messages</h2>
                         <button onClick={onClose} className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center">
                             <X className="w-4 h-4 text-gray-400" />
@@ -222,6 +222,7 @@ export default function TeamChat({ user, teamMember, onClose }) {
                             channelMembers={channelMembers}
                             onSend={handleSend}
                             onBack={() => setMobileView('channels')}
+                            onClose={onClose}
                             isSending={sendMutation.isPending}
                         />
                     ) : (

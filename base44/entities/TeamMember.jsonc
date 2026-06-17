@@ -18,6 +18,10 @@
       "type": "string",
       "description": "Phone number"
     },
+    "profile_image_url": {
+      "type": "string",
+      "description": "Uploaded profile picture for roster and team display"
+    },
     "role": {
       "type": "string",
       "enum": [

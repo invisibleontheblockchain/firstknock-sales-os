@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { 
     Map, CheckCircle2, AlertCircle, TrendingUp, 
-    Home, MessageSquare, DollarSign, ChevronRight, Zap, Trash2
+    Home, MessageSquare, DollarSign, ChevronRight, Zap, Trash2, Camera, Loader2
 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link } from 'react-router-dom';
@@ -36,6 +36,25 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
         }
     });
 
+    const uploadPhotoMutation = useMutation({
+        mutationFn: async (file) => {
+            const uploaded = await base44.integrations.Core.UploadFile({ file });
+            const imageUrl = uploaded?.file_url || uploaded?.url;
+            await base44.entities.TeamMember.update(member.id, { profile_image_url: imageUrl });
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['teamMembers'] });
+            toast.success("Profile photo updated");
+        }
+    });
+
+    const handlePhotoChange = (event) => {
+        event.stopPropagation();
+        const file = event.target.files?.[0];
+        if (file && !member.isManagerSelf) uploadPhotoMutation.mutate(file);
+        event.target.value = '';
+    };
+
     // Calculate conversion rate
     const conversionRate = metrics.doorsKnocked > 0 
         ? ((metrics.sales / metrics.doorsKnocked) * 100).toFixed(1) 
@@ -48,10 +67,24 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                 <div className="flex justify-between items-center">
                     <div className="flex gap-2 md:gap-3 items-center min-w-0">
                         <div className="relative flex-shrink-0">
-                            <div className="w-8 h-8 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center text-black font-bold text-sm md:text-lg">
-                                {member.name?.[0]?.toUpperCase() || '?'}
+                            <div className="w-8 h-8 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center text-black font-bold text-sm md:text-lg overflow-hidden">
+                                {member.profile_image_url ? (
+                                    <img src={member.profile_image_url} alt={member.name || 'Team member'} className="h-full w-full object-cover" />
+                                ) : (
+                                    member.name?.[0]?.toUpperCase() || '?'
+                                )}
                             </div>
-                            <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 md:w-3 md:h-3 bg-green-500 border-2 border-[#151515] rounded-full" />
+                            {!member.isManagerSelf && (
+                                <label
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="absolute -bottom-1 -right-1 w-5 h-5 md:w-6 md:h-6 rounded-full bg-[#2EEB57] border-2 border-[#151515] flex items-center justify-center cursor-pointer shadow-lg active:scale-95"
+                                    title="Change profile photo"
+                                >
+                                    {uploadPhotoMutation.isPending ? <Loader2 className="w-3 h-3 text-black animate-spin" /> : <Camera className="w-3 h-3 text-black" />}
+                                    <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} disabled={uploadPhotoMutation.isPending} />
+                                </label>
+                            )}
+                            <div className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 md:w-3 md:h-3 bg-green-500 border-2 border-[#151515] rounded-full" />
                         </div>
                         
                         <div className="min-w-0">

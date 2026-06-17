@@ -1,6 +1,17 @@
 # Plan
 
-## Current Plan — Mobile Compatibility Enhancements
+## Current Plan — Messages Escape + Roster Photos
+- [x] Fix the Messages overlay so it sits above the app top/bottom navigation and uses safe-area spacing.
+- [x] Add an always-visible close button when viewing a message thread so users cannot get stuck.
+- [x] Add a profile photo field to team members.
+- [x] Add image upload/change support directly on roster cards in Command Center > Roster.
+- [x] Verify changed files and run a production build.
+- [x] Document results.
+
+### Review — Messages Escape + Roster Photos
+Messages now open above both nav bars with safe-area headers and an always-visible close button in message threads. Roster cards now support uploading/changing rep profile photos, stored on TeamMember.profile_image_url. Verified the code changes and the production build passes.
+
+## Previous Plan — Mobile Compatibility Enhancements
 - [x] Add rubber-band prevention to root/body containers in index.css.
 - [x] Add non-selectable touch behavior to interactive UI while preserving selectable text content.
 - [x] Replace native selects in RouteCommandPanel and CanvasBuilderSettings with styled Select components.

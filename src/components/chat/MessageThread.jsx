@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { Send, Megaphone, ArrowLeft, Users, PartyPopper } from 'lucide-react';
+import { Send, Megaphone, ArrowLeft, Users, X } from 'lucide-react';
 import { format } from 'date-fns';
 
 export default function MessageThread({
@@ -10,6 +10,7 @@ export default function MessageThread({
     channelMembers,
     onSend,
     onBack,
+    onClose,
     isSending
 }) {
     const [message, setMessage] = useState('');
@@ -49,7 +50,7 @@ export default function MessageThread({
         <div className="flex flex-col h-full min-h-0 bg-[#0a0a0f]">
             {/* Header */}
             <div className="bg-black/95 backdrop-blur border-b border-white/5 shrink-0">
-                <div className="px-4 py-3 flex items-center gap-3">
+                <div className="px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] flex items-center gap-3">
                     <button
                         onClick={onBack}
                         className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center md:hidden"
@@ -65,6 +66,13 @@ export default function MessageThread({
                             {channelMembers?.length || 0} members · {messages.length} messages
                         </p>
                     </div>
+                    <button
+                        onClick={onClose}
+                        className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 shrink-0"
+                        aria-label="Close messages"
+                    >
+                        <X className="w-4 h-4 text-gray-400" />
+                    </button>
                 </div>
             </div>
 
