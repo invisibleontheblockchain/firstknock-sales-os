@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { X, Zap } from 'lucide-react';
+import { X, Zap, Lock } from 'lucide-react';
 
 const SOLD_OPTIONS = [
   { value: 0.25, label: '1 wk' },
@@ -36,8 +36,15 @@ export default function PrecisionPullPanel({
   onClose,
   onGenerate,
   generating,
-  onClearArea
+  onClearArea,
+  accountActive = false
 }) {
+  useEffect(() => {
+    if (!accountActive && [0.25, 0.5, 1].includes(Number(soldMonths))) {
+      setSoldMonths(3);
+    }
+  }, [accountActive, soldMonths, setSoldMonths]);
+
   return (
     <div className="fixed inset-0 z-[2400] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-6">
       <div className="w-full max-w-md rounded-3xl border border-[#2EEB57]/25 bg-[#070707] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95">
@@ -105,16 +112,34 @@ export default function PrecisionPullPanel({
           <div className="space-y-2">
             <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Homes sold in the last</label>
             <div className="grid grid-cols-4 gap-1.5">
-              {SOLD_OPTIONS.map(option => (
-                <button
-                  key={option.value}
-                  onClick={() => setSoldMonths(option.value)}
-                  className={`h-11 rounded-xl text-xs font-extrabold transition-all ${Number(soldMonths || 12) === option.value ? 'bg-[#2EEB57] text-black shadow-lg' : 'bg-white/5 text-gray-400 border border-white/10 hover:text-white'}`}
-                >
-                  {option.label}
-                </button>
-              ))}
+              {SOLD_OPTIONS.map(option => {
+                const isLocked = !accountActive && [0.25, 0.5, 1].includes(option.value);
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    disabled={isLocked}
+                    onClick={() => setSoldMonths(option.value)}
+                    title={isLocked ? 'Active account required' : undefined}
+                    className={`h-11 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1 ${
+                      isLocked
+                        ? 'bg-white/[0.03] text-gray-700 border border-white/[0.06] cursor-not-allowed grayscale opacity-60'
+                        : Number(soldMonths || 12) === option.value
+                          ? 'bg-[#2EEB57] text-black shadow-lg'
+                          : 'bg-white/5 text-gray-400 border border-white/10 hover:text-white'
+                    }`}
+                  >
+                    {isLocked && <Lock className="w-3 h-3" />}
+                    {option.label}
+                  </button>
+                );
+              })}
             </div>
+            {!accountActive && (
+              <p className="text-[10px] text-gray-600 leading-tight">
+                1 wk, 2 wk, and 1 mo are unlocked after the account is active.
+              </p>
+            )}
           </div>
 
           <button onClick={onClearArea} className="text-[11px] font-bold text-red-300 hover:text-red-200">Clear drawn area</button>

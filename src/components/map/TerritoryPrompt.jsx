@@ -248,6 +248,7 @@ export default function TerritoryPrompt({
   const hasPulledData = !!user?.has_pulled_data;
   const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
   const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing' || user?.is_owner || user?.role === 'admin';
+  const isAccountActive = user?.subscription_status === 'active' || user?.is_owner || user?.role === 'admin';
   const maxRequestedProperties = 1000;
   const freePropertyLimit = 50;
   const safeRequestedPropertyCount = Math.max(1, Math.min(Number(requestedPropertyCount) || 1, maxRequestedProperties));
@@ -491,15 +492,22 @@ export default function TerritoryPrompt({
       return;
     }
 
-    if (safeRequestedPropertyCount > freePropertyLimit) {
-      const latestUser = await base44.auth.me();
-      const upgraded = latestUser?.subscription_status === 'active' || latestUser?.subscription_status === 'trialing' || latestUser?.is_owner || latestUser?.role === 'admin';
-      if (!upgraded) {
-        toast.info('Precision pulls over 50 houses require an upgraded account.');
-        setShowPrecisionPullPanel(false);
-        navigate(createPageUrl('Billing') + '?plan=precision');
-        return;
-      }
+    const premiumRecentRange = [0.25, 0.5, 1].includes(Number(fetchMonths));
+    const latestUser = (safeRequestedPropertyCount > freePropertyLimit || premiumRecentRange) ? await base44.auth.me() : user;
+    const upgraded = latestUser?.subscription_status === 'active' || latestUser?.subscription_status === 'trialing' || latestUser?.is_owner || latestUser?.role === 'admin';
+    const activeAccount = latestUser?.subscription_status === 'active' || latestUser?.is_owner || latestUser?.role === 'admin';
+
+    if (safeRequestedPropertyCount > freePropertyLimit && !upgraded) {
+      toast.info('Precision pulls over 50 houses require an upgraded account.');
+      setShowPrecisionPullPanel(false);
+      navigate(createPageUrl('Billing') + '?plan=precision');
+      return;
+    }
+
+    if (premiumRecentRange && !activeAccount) {
+      toast.info('1 wk, 2 wk, and 1 mo ranges unlock once your account is active.');
+      setFetchMonths(3);
+      return;
     }
 
     setPaidPullStarting(true);
@@ -721,6 +729,7 @@ export default function TerritoryPrompt({
         onClose={() => setShowPrecisionPullPanel(false)}
         onGenerate={handlePaidBatchDataPull}
         generating={paidPullStarting}
+        accountActive={isAccountActive}
         onClearArea={() => {setDrawnPolygon(null);setDraftPolygon([]);setDrawingMode(false);setShowPrecisionPullPanel(false);}}
       />
       }

@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — RepHome Messages Overlay Fix
+## Current Plan — Precision Time Range Paywall
+- [x] Locate the Precision Generate 1 wk / 2 wk / 1 month controls and account-active signal.
+- [x] Gate those time range options visually and functionally until the account is confirmed active.
+- [x] Keep the default/free option usable and avoid changing backend pull logic beyond UI selection rules.
+- [x] Verify the UI code and run a production build.
+- [x] Document the result.
+
+### Review — Precision Time Range Paywall
+The Precision Generate panel now greys out and locks 1 wk, 2 wk, and 1 mo unless the account is confirmed active, while 3+ month ranges remain selectable. Stale locked selections reset to 3 months, submit is guarded, and the production build passes.
+
+## Previous Plan — RepHome Messages Overlay Fix
 - [x] Locate why the message thread is still rendering behind the app header and bottom nav.
 - [x] Make the messages panel a true fullscreen overlay on mobile and a safe modal/panel on desktop.
 - [x] Ensure the close/back controls and composer are always visible above safe areas and nav bars.
