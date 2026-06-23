@@ -148,6 +148,9 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
     const estimatedValue = { min: minPrice };
     if (maxPrice) estimatedValue.max = maxPrice;
 
+    // Always compute the sold window date filter — applied to ALL modes
+    const soldMinDate = isoDateDaysAgo(soldWindowDays(job.sold_months || 12));
+
     const options = {
         skip,
         take: Math.min(Math.max(Number(take) || 500, 1), 500),
@@ -157,7 +160,8 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
     if (mode === 'centroid_fallback') {
         return {
             searchCriteria: {
-                query: `${job.latitude},${job.longitude}`
+                query: `${job.latitude},${job.longitude}`,
+                intel: { lastSoldDate: { minDate: soldMinDate } }
             },
             options
         };
@@ -168,13 +172,13 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
             geoLocationPolygon: {
                 geoPoints: closePolygon(job.polygon || [])
             }
-        }
+        },
+        intel: { lastSoldDate: { minDate: soldMinDate } }
     };
 
     if (mode === 'strict_polygon') {
         searchCriteria.general = { standardizedLandUseCode: { equals: 'R2' } };
         searchCriteria.valuation = { estimatedValue };
-        searchCriteria.intel = { lastSoldDate: { minDate: isoDateDaysAgo(soldWindowDays(job.sold_months || 12)) } };
     }
 
     return { searchCriteria, options };
@@ -257,7 +261,16 @@ function mapBatchDataProperty(record, job) {
     const propertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType) || 'Single Family';
     const nonResidential = /commercial|industrial|vacant|agricultural|land/i.test(String(propertyType));
     const landUseRejected = landUseCode && landUseCode !== 'R2';
-    const rejected = !hasValidSaleDate || saleDateMs < cutoffMs || landUseRejected || nonResidential || listingStatusLower === 'active' || listingStatusLower === 'for sale';
+
+    // ── Confirmed-sale gate ──────────────────────────────────────────────
+    // A property is only a confirmed sale if it has POSITIVE evidence:
+    //   1. Listing status explicitly says Sold / Closed / Settled, OR
+    //   2. There is a real sale amount (deed recorded with money changing hands)
+    // Off-market properties with just a date but no sale evidence are rejected.
+    const isSoldStatus = ['sold', 'closed', 'settled'].includes(listingStatusLower);
+    const hasSaleEvidence = saleAmount !== null && saleAmount > 0;
+    const isConfirmedSale = hasValidSaleDate && saleDateMs >= cutoffMs && (isSoldStatus || hasSaleEvidence);
+    const rejected = !isConfirmedSale || landUseRejected || nonResidential || listingStatusLower === 'active' || listingStatusLower === 'for sale';
 
     const match = address.street.match(/^(\d+)\s+(.*)$/);
     const houseNumber = match ? parseInt(match[1], 10) : 0;
