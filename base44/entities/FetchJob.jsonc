@@ -84,7 +84,7 @@
       "description": "No-cost preview details for drawn area and cost modeling"
     },
     "sold_months": {
-      "type": "integer",
+      "type": "number",
       "default": 12,
       "description": "How many months back to search for sold properties"
     },
