@@ -151,7 +151,7 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
     const options = {
         skip,
         take: Math.min(Math.max(Number(take) || 500, 1), 500),
-        datasets: ['basic', 'listing', 'deed', 'owner']
+        datasets: ['basic', 'listing', 'owner']
     };
 
     if (mode === 'centroid_fallback') {
@@ -174,7 +174,7 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
     if (mode === 'strict_polygon') {
         searchCriteria.general = { standardizedLandUseCode: { equals: 'R2' } };
         searchCriteria.valuation = { estimatedValue };
-        searchCriteria.sale = { lastSaleDate: { minDate: isoDateDaysAgo(soldWindowDays(job.sold_months || 12)) } };
+        searchCriteria.intel = { lastSoldDate: { minDate: isoDateDaysAgo(soldWindowDays(job.sold_months || 12)) } };
     }
 
     return { searchCriteria, options };
@@ -220,12 +220,12 @@ function mapBatchDataProperty(record, job) {
     const ids = p.ids || p.identifiers || {};
     const listingStatus = firstValue(listing.status, listing.statusCategory);
     const listingStatusLower = String(listingStatus || '').toLowerCase();
-    const saleDate = dateValue(sale.lastSaleDate, sale.recordingDate, sale.saleDate, sale.date, lastSale.recordingDate, lastSale.saleDate, lastSale.date, p.lastSaleDate);
+    const saleDate = dateValue(p.intel?.lastSoldDate, sale.lastSaleDate, sale.recordingDate, sale.saleDate, sale.date, lastSale.recordingDate, lastSale.saleDate, lastSale.date, p.lastSaleDate);
     const saleDateMs = saleDate ? new Date(saleDate).getTime() : 0;
     const hasValidSaleDate = saleDateMs > 0 && !Number.isNaN(saleDateMs);
     const cutoffMs = Date.now() - soldWindowDays(job.sold_months || 12) * 24 * 60 * 60 * 1000;
     const ownerName = firstValue(owner.fullName, owner.name, owner.ownerName, owner.names?.[0]?.full, owner.names?.[0]?.name, owner.names?.[0]);
-    const saleAmount = numberValue(sale.amount, sale.price, sale.salePrice, lastSale.amount, lastSale.price, lastSale.salePrice, p.lastSalePrice);
+    const saleAmount = numberValue(p.intel?.lastSoldPrice, sale.amount, sale.price, sale.salePrice, lastSale.amount, lastSale.price, lastSale.salePrice, p.lastSalePrice);
     const estimatedValue = numberValue(
         valuation.estimatedValue, valuation.value, valuation.avm, valuation.avmValue, valuation.amount,
         p.estimatedValue, p.estimated_value, p.avm, p.avmValue, p.assessedValue,

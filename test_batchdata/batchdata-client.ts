@@ -102,11 +102,13 @@ export class BatchDataClient {
       listingStatus: rawStatus,
       isSold,
       lastSaleDate:
+        property?.intel?.lastSoldDate ||
         property?.lastSale?.saleDate ||
         property?.saleDate ||
         property?.lastSaleDate ||
         null,
       lastSalePrice:
+        property?.intel?.lastSoldPrice ||
         property?.lastSale?.salePrice ||
         property?.salePrice ||
         property?.lastSalePrice ||
