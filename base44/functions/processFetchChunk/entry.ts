@@ -174,7 +174,7 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
     if (mode === 'strict_polygon') {
         searchCriteria.general = { standardizedLandUseCode: { equals: 'R2' } };
         searchCriteria.valuation = { estimatedValue };
-        searchCriteria.sale = { lastSaleDate: { minDate: isoDateDaysAgo(soldWindowDays(job.sold_months || 12)) } };
+        searchCriteria.intel = { lastSoldDate: { minDate: isoDateDaysAgo(soldWindowDays(job.sold_months || 12)) } };
     }
 
     return { searchCriteria, options };
@@ -223,6 +223,7 @@ function mapBatchDataProperty(record, job) {
     const saleDate = dateValue(
         p.listing?.soldDate,
         p.deedHistory?.[0]?.saleDate,
+        p.intel?.lastSoldDate,
         sale?.lastSaleDate,
         sale?.recordingDate,
         sale?.saleDate,
@@ -256,7 +257,7 @@ function mapBatchDataProperty(record, job) {
     const propertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType) || 'Single Family';
     const nonResidential = /commercial|industrial|vacant|agricultural|land/i.test(String(propertyType));
     const landUseRejected = landUseCode && landUseCode !== 'R2';
-    const rejected = (hasValidSaleDate && saleDateMs < cutoffMs) || landUseRejected || nonResidential || listingStatusLower === 'active' || listingStatusLower === 'for sale';
+    const rejected = !hasValidSaleDate || saleDateMs < cutoffMs || landUseRejected || nonResidential || listingStatusLower === 'active' || listingStatusLower === 'for sale';
 
     const match = address.street.match(/^(\d+)\s+(.*)$/);
     const houseNumber = match ? parseInt(match[1], 10) : 0;
