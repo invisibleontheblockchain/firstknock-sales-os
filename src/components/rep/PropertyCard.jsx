@@ -51,7 +51,6 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
       }}>
       
             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
-            <div className="absolute bottom-0 left-0 top-0 w-1 bg-gradient-to-b from-[#39FF4A] via-[#2EEB57]/60 to-transparent opacity-70" />
 
             <div className="flex items-start gap-2">
                 {/* Number / Check */}
@@ -59,7 +58,6 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
                     className="flex h-7 w-7 shrink-0 items-center justify-center gap-1 transition-all duration-300"
                     style={{ color: isDone ? statusColor : '#FFFFFF' }}
                 >
-                    {!isDone && <span className="h-3.5 w-1 rounded-full bg-[#7AA27D]" />}
                     {isDone ? <Check className="w-3 h-3" /> : <span className="text-[18px] font-black leading-none tracking-[-0.08em] text-white">{index + 1}</span>}
                 </div>
 
