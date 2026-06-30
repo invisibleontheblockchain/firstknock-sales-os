@@ -10,6 +10,7 @@ import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { FOLLOW_UP_STATUSES, getRouteHashes, getRouteOutcomeStats, getRerunHashes, buildRerunRoutePayload } from '@/components/routes/routeRerunUtils';
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -17,52 +18,6 @@ const BRAND = {
     charcoal: '#1F1F1F',
     offWhite: '#E5E5E5'
 };
-
-const FOLLOW_UP_STATUSES = new Set(['NO_ANSWER', 'CALLBACK', 'NOT_MOVED_IN', 'DM_NOT_HOME']);
-
-function getRouteHashes(route) {
-    const hashes = route.property_hashes || (route.properties || []).map(p => p.address_hash);
-    return [...new Set((hashes || []).filter(Boolean))];
-}
-
-function getRouteOutcomeStats(route, logs = []) {
-    const routeHashes = getRouteHashes(route);
-    const canonicalByHash = new Map(routeHashes.map(hash => [hash, hash]));
-    (route.properties || []).forEach((property) => {
-        const canonical = property.address_hash || property.legacy_hash;
-        if (!canonical) return;
-        if (property.address_hash) canonicalByHash.set(property.address_hash, canonical);
-        if (property.legacy_hash) canonicalByHash.set(property.legacy_hash, canonical);
-    });
-
-    const latestByHash = new Map();
-    [...logs]
-        .filter(log => log?.address_hash && canonicalByHash.has(log.address_hash))
-        .sort((a, b) => new Date(b.created_date || 0) - new Date(a.created_date || 0))
-        .forEach((log) => {
-            const canonical = canonicalByHash.get(log.address_hash);
-            if (canonical && !latestByHash.has(canonical)) latestByHash.set(canonical, log.parsed_status || 'OTHER');
-        });
-
-    const byStatus = { SOLD: 0, NO_ANSWER: 0, CALLBACK: 0, HARD_NO: 0, NOT_MOVED_IN: 0, DM_NOT_HOME: 0, OTHER: 0 };
-    latestByHash.forEach((status) => {
-        if (byStatus[status] === undefined) byStatus.OTHER += 1;
-        else byStatus[status] += 1;
-    });
-
-    return { total: routeHashes.length, knocked: latestByHash.size, byStatus, latestByHash, routeHashes };
-}
-
-function getRerunHashes(route, stats, filter) {
-    if (filter === 'all') return stats.routeHashes;
-    return stats.routeHashes.filter((hash) => {
-        const status = stats.latestByHash.get(hash);
-        if (filter === 'no_answer') return status === 'NO_ANSWER';
-        if (filter === 'callbacks') return status === 'CALLBACK';
-        if (filter === 'unsold') return !status || FOLLOW_UP_STATUSES.has(status);
-        return true;
-    });
-}
 
 export default function ActiveRoutesTab({
     savedRoutes = [],
@@ -442,28 +397,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
             return;
         }
 
-        const rerunRoute = await base44.entities.SavedRoute.create({
-            name: `${route.name || 'Completed Route'} Rerun — ${label}`,
-            description: `Rerun from completed route: ${route.name || route.id}`,
-            route_mode: route.route_mode || 'precision',
-            status: 'ACTIVE',
-            assigned_to: route.assigned_to || null,
-            assigned_to_name: route.assigned_to_name || null,
-            priority: 0,
-            property_hashes: selectedHashes,
-            metrics: {
-                ...(route.metrics || {}),
-                house_count: selectedHashes.length
-            },
-            start_location: route.start_location || null,
-            manager_id: route.manager_id || null,
-            metadata: {
-                ...(route.metadata || {}),
-                rerun_from_route_id: route.id,
-                rerun_filter: filter,
-                rerun_created_at: new Date().toISOString()
-            }
-        });
+        const rerunRoute = await base44.entities.SavedRoute.create(buildRerunRoutePayload(route, selectedHashes, filter, label));
 
         queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
         try { localStorage.setItem('fk_selectedKnockRouteId', rerunRoute.id); } catch {}

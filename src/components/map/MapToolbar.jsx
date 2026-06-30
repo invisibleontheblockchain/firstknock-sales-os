@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
 import SplitRouteModal from '@/components/routes/SplitRouteModal';
 import { exportRouteToCsv } from '@/components/routes/exportRouteCsv';
+import { FOLLOW_UP_STATUSES, getRouteOutcomeStats, getRerunHashes, buildRerunRoutePayload } from '@/components/routes/routeRerunUtils';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from "@tanstack/react-query";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -63,6 +64,8 @@ export default function MapToolbar({
   setShowRouteDetails,
   showRouteLines,
   setShowRouteLines,
+  routeStatusView,
+  setRouteStatusView,
 
   // Filter Saving
   onSaveFilteredRoute,
@@ -72,7 +75,8 @@ export default function MapToolbar({
   startLocation,
 
   // MLS data flag
-  hasMlsData
+  hasMlsData,
+  logs = []
 }) {
   const queryClient = useQueryClient();
   const hasDrawnArea = drawnPolygon && drawnPolygon.length > 2;
@@ -148,6 +152,7 @@ export default function MapToolbar({
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState('');
   const [showSplitRouteModal, setShowSplitRouteModal] = useState(false);
+  const [showRerunMenu, setShowRerunMenu] = useState(false);
 
   const handleStartRename = (e) => {
     e.stopPropagation();
@@ -218,6 +223,29 @@ export default function MapToolbar({
     setActiveRouteSoldFilter?.('all');
     setActiveRoutePriceFilter?.('all');
     toast.success('Filtered route saved');
+  };
+
+  const isCompletedRoute = activeRoute?.status === 'COMPLETED';
+  const completedOutcomeStats = React.useMemo(() => getRouteOutcomeStats(activeRoute, logs), [activeRoute, logs]);
+  const rerunOptions = [
+    { filter: 'all', label: 'All Doors', count: completedOutcomeStats.total },
+    { filter: 'no_answer', label: 'No Answer', count: completedOutcomeStats.byStatus.NO_ANSWER },
+    { filter: 'callbacks', label: 'Callbacks', count: completedOutcomeStats.byStatus.CALLBACK },
+    { filter: 'unsold', label: 'Unsold Follow-Up', count: completedOutcomeStats.routeHashes.filter(hash => !completedOutcomeStats.latestByHash.get(hash) || FOLLOW_UP_STATUSES.has(completedOutcomeStats.latestByHash.get(hash))).length }
+  ];
+
+  const handleRerunCompletedRoute = async (filter, label) => {
+    const selectedHashes = getRerunHashes(activeRoute, completedOutcomeStats, filter);
+    if (selectedHashes.length === 0) {
+      toast.error(`No ${label.toLowerCase()} doors found on this route`);
+      return;
+    }
+    const rerunRoute = await base44.entities.SavedRoute.create(buildRerunRoutePayload(activeRoute, selectedHashes, filter, label));
+    queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+    try { localStorage.setItem('fk_selectedKnockRouteId', rerunRoute.id); } catch {}
+    setShowRerunMenu(false);
+    setActiveRoute({ ...rerunRoute, properties: activeRoute.properties?.filter(p => selectedHashes.includes(p.address_hash || p.id)) || [], houseCount: selectedHashes.length });
+    toast.success(`Created rerun with ${selectedHashes.length} doors`);
   };
 
   return (
@@ -295,6 +323,15 @@ export default function MapToolbar({
                         </Button>
                         <Button
               onClick={() => {
+                const next = routeStatusView === 'completed' ? 'active' : 'completed';
+                setRouteStatusView?.(next);
+                toast.success(next === 'completed' ? 'Completed routes visible' : 'Active routes visible');
+              }}
+              className={`inline-flex bg-black/80 hover:bg-black backdrop-blur-md border shadow-xl h-8 sm:h-11 rounded-lg sm:rounded-xl px-2 sm:px-3 text-[9px] sm:text-[10px] font-black transition-all ${routeStatusView === 'completed' ? 'border-[#2EEB57]/50 text-[#39FF4A]' : 'border-gray-800 text-white/70'}`}>
+                            {routeStatusView === 'completed' ? 'DONE' : 'ACTIVE'}
+                        </Button>
+                        <Button
+              onClick={() => {
                 if (mode === 'generate' && routeMode === 'precision' && !hasDrawnArea) {
                   toast.info("Draw a custom area first.");
                   return;
@@ -340,6 +377,16 @@ export default function MapToolbar({
 
                             {/* House count badge */}
                             <span className="text-[9px] md:text-[10px] font-mono text-gray-500 shrink-0">{activeRoute.houseCount || activeRoute.properties?.length || 0}h</span>
+
+                            {isCompletedRoute && (
+                                <button
+                                  onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}}
+                                  onClick={(e) => {e.preventDefault();e.stopPropagation();setShowRerunMenu(!showRerunMenu);}}
+                                  className="h-8 md:h-7 rounded-md bg-[#2EEB57] px-2 text-[9px] md:text-[10px] font-black text-black hover:bg-[#39FF4A] shrink-0"
+                                  title="Rerun completed route">
+                                  RERUN
+                                </button>
+                            )}
 
                             <div className="ml-auto flex items-center gap-1 shrink-0">
                                 <button
@@ -396,6 +443,21 @@ export default function MapToolbar({
                                 </button>
                             </div>
                         </div>
+
+                        {isCompletedRoute && showRerunMenu && (
+                            <div className="mt-2 grid grid-cols-2 gap-1.5 rounded-xl border border-white/10 bg-black/45 p-2" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
+                                {rerunOptions.map(option => (
+                                  <button
+                                    key={option.filter}
+                                    onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}}
+                                    onClick={(e) => {e.preventDefault();e.stopPropagation();handleRerunCompletedRoute(option.filter, option.label);}}
+                                    className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-2 text-left text-[10px] font-black text-white/80 hover:border-[#2EEB57]/45 hover:bg-[#2EEB57]/10">
+                                    <span className="block">{option.label}</span>
+                                    <span className="text-[9px] text-white/40">{option.count} doors</span>
+                                  </button>
+                                ))}
+                            </div>
+                        )}
 
                         {/* Row 2: Filters — scrollable grid on mobile, inline on desktop */}
                         <div className="flex items-center gap-1 md:gap-1.5 mt-1.5 overflow-x-auto scrollbar-hide pb-0.5 -mx-0.5 px-0.5" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>

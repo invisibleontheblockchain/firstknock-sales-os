@@ -4,6 +4,7 @@ import L from 'leaflet';
 import { DarkRoomClient } from '@/components/logic/neonClient';
 import { CONFIDENCE_COLORS } from '@/components/map/ConfidenceLegend';
 import CanvasZoneOverlay from './CanvasZoneOverlay';
+import { getCompletedPinColor } from '@/components/routes/routeRerunUtils';
 
 /**
  * ActiveRouteLayer — High-performance active route renderer.
@@ -77,13 +78,17 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
             });
             group.addLayer(hitbox);
 
+            const completedColor = activeRoute.status === 'COMPLETED'
+                ? getCompletedPinColor(p.effective_status, routeColor)
+                : routeColor;
+
             // Circle pin (canvas-rendered, fast)
             const circle = L.circleMarker([p.lat, p.lng], {
-                radius: 5,
-                fillColor: isFirst ? '#22c55e' : routeColor,
+                radius: activeRoute.status === 'COMPLETED' && (p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED') ? 7 : 5,
+                fillColor: isFirst && activeRoute.status !== 'COMPLETED' ? '#22c55e' : completedColor,
                 fillOpacity: 1,
-                color: '#fff',
-                weight: 1.5,
+                color: activeRoute.status === 'COMPLETED' && (p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED') ? '#ffffff' : '#fff',
+                weight: activeRoute.status === 'COMPLETED' && (p.effective_status === 'SOLD' || p.effective_status === 'QUALIFIED') ? 2.5 : 1.5,
             });
             circle.on('click', (e) => {
                 L.DomEvent.stopPropagation(e);
@@ -330,7 +335,7 @@ function ViewportCulledPins({
 function SavedRoutesLayer({
     mode, activeRoute, zoomLevel, hydratedSavedRoutes,
     analyzeZipFilter, quickFilter, repColors, ROUTE_COLORS,
-    showRouteDetails, showRouteLines, pinSize, mapSettings,
+    showRouteDetails, showRouteLines, routeStatusView, pinSize, mapSettings,
     lineDashArray, setActiveRoute, allSavedRoutes
 }) {
     const map = useMap();
@@ -352,6 +357,9 @@ function SavedRoutesLayer({
         const group = L.layerGroup();
 
         const filteredRoutes = hydratedSavedRoutes.filter(route => {
+            const isCompleted = route.status === 'COMPLETED';
+            if (routeStatusView === 'completed' && !isCompleted) return false;
+            if (routeStatusView !== 'completed' && isCompleted) return false;
             if (mode === 'generate') return true;
             if (analyzeZipFilter === 'all') return true;
             return route.properties.some(p => p.zip_code === analyzeZipFilter);
@@ -457,7 +465,7 @@ function SavedRoutesLayer({
             }
         };
     }, [map, mode, activeRoute, zoomLevel, hydratedSavedRoutes, analyzeZipFilter, quickFilter,
-        repColors, ROUTE_COLORS, showRouteDetails, showRouteLines, pinSize, mapSettings, lineDashArray, setActiveRoute, allSavedRoutes]);
+        routeStatusView, repColors, ROUTE_COLORS, showRouteDetails, showRouteLines, pinSize, mapSettings, lineDashArray, setActiveRoute, allSavedRoutes]);
 
     return null; // Imperative layer — no React DOM output
 }
@@ -497,6 +505,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
     showAllProperties,
     showRouteDetails,
     showRouteLines,
+    routeStatusView,
     highlightRecentlySold,
 
     // Map settings
@@ -547,6 +556,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                 ROUTE_COLORS={ROUTE_COLORS}
                 showRouteDetails={showRouteDetails}
                 showRouteLines={showRouteLines}
+                routeStatusView={routeStatusView}
                 pinSize={pinSize}
                 mapSettings={mapSettings}
                 lineDashArray={lineDashArray}

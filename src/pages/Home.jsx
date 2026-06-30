@@ -164,6 +164,9 @@ export default function Home() {
         const saved = localStorage.getItem('fk_showRouteLines_v2');
         return saved ? JSON.parse(saved) : true;
     });
+    const [routeStatusView, setRouteStatusView] = useState(() => {
+        try { return localStorage.getItem('fk_routeStatusView') || 'active'; } catch { return 'active'; }
+    });
     const [mapSettings, setMapSettings] = useState(() => {
         const saved = localStorage.getItem('fk_mapSettings_v3');
         return saved ? JSON.parse(saved) : {
@@ -188,11 +191,12 @@ export default function Home() {
             localStorage.setItem('fk_showRouteDetails_v2', JSON.stringify(showRouteDetails));
             localStorage.setItem('fk_pinSize_v2', JSON.stringify(pinSize));
             localStorage.setItem('fk_showRouteLines_v2', JSON.stringify(showRouteLines));
+            localStorage.setItem('fk_routeStatusView', routeStatusView);
             localStorage.setItem('fk_mapSettings_v3', JSON.stringify(mapSettings));
         } catch (e) {
             // Ignore quota errors in preview if any
         }
-    }, [mapTheme, showRouteDetails, pinSize, showRouteLines, mapSettings]);
+    }, [mapTheme, showRouteDetails, pinSize, showRouteLines, routeStatusView, mapSettings]);
     const [darkRoomProperties] = useState([]);
     const [darkRoomClusters] = useState([]);
     const [fetchedProperties, setFetchedProperties] = useState([]); // Dynamic fetch storage
@@ -1555,6 +1559,7 @@ export default function Home() {
                     showAllProperties={showAllProperties}
                     showRouteDetails={showRouteDetails}
                     showRouteLines={showRouteLines}
+                    routeStatusView={routeStatusView}
                     highlightRecentlySold={highlightRecentlySold}
                     mapSettings={mapSettings}
                     pinSize={pinSize}
@@ -1621,10 +1626,13 @@ export default function Home() {
                 setShowRouteDetails={setShowRouteDetails}
                 showRouteLines={showRouteLines}
                 setShowRouteLines={setShowRouteLines}
+                routeStatusView={routeStatusView}
+                setRouteStatusView={setRouteStatusView}
                 onSaveFilteredRoute={handleSaveFilteredRoute}
                 onReoptimizeRoute={handleReoptimizeRoute}
                 startLocation={startLocation}
                 hasMlsData={hasMlsData}
+                logs={logs}
             />
 
             {/* Territory Prompt - Drawing Controls + Initial Prompt */}
