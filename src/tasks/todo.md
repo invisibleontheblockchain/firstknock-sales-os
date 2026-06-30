@@ -1,3 +1,15 @@
+## Plan — Fix Confirmed-Sales Precision Pull Regression
+- [x] Compare current `processFetchChunk` behavior to commit `0d1fd07` and identify what still differs in live behavior.
+- [x] Verify with synthetic records that off-market, pending, blank-status/no-price, and active rows are rejected while sold/closed/settled or paid-deed rows remain eligible.
+- [x] Inspect the post-import route candidate path so rejected rows cannot be reintroduced from Neon/older territory queries.
+- [x] Patch the smallest root cause and update diagnostics so the job reports active vs rejected clearly.
+- [x] Re-test the mapper and route-candidate path, then document the result and lesson.
+
+### Review — Fix Confirmed-Sales Precision Pull Regression
+The commit `0d1fd07` ingestion gate was present and correctly rejected off-market/pending/blank-status rows unless they had sold/closed/settled status or paid sale evidence. The remaining bug was downstream in `getRouteCandidatesFromNeon`: exact BatchData job candidates were being force-reactivated even when ingestion stored them as `REJECTED` with `route_active=false`. I removed that override so route candidates must stay `route_active=true` and not have rejected workspace/property statuses. Verification: synthetic mapper test kept rejected off-market/pending rows inactive, static checks confirmed no exact-job override remains, and a real completed pull with 50 rejected rows now returns 0 route candidates.
+
+---
+
 ## Plan — Remove Generate Option Button
 - [x] Locate the selected map toolbar action button and identify only the Generate branch.
 - [x] Change the drawn-area action to always open Pull Data instead of showing/running Generate.

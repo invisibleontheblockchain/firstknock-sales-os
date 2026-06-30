@@ -65,19 +65,15 @@ Deno.serve(async (req) => {
                 try { raw = row.raw_payload ? JSON.parse(row.raw_payload) : {}; } catch { raw = {}; }
                 const listingStatus = String(raw?.listing?.status || raw?.listing?.statusCategory || '').toLowerCase();
                 const landUseCode = raw?.general?.standardizedLandUseCode || raw?.standardizedLandUseCode || null;
-                const propertyType = String(row.property_type || '').toLowerCase();
-                const exactJobBatchDataCandidate = row.data_source === 'batchdata' && !/commercial|industrial|vacant|agricultural|land|lot/.test(propertyType);
-                const reason = row.route_active === true && row.original_status !== 'REJECTED' && row.sale_confidence !== 'REJECTED'
+                const reason = row.route_active === true && row.status !== 'REJECTED' && row.original_status !== 'REJECTED' && row.sale_confidence !== 'REJECTED'
                     ? 'active'
-                    : exactJobBatchDataCandidate
-                        ? 'active_by_exact_batchdata_job'
-                        : !row.sold_date
-                            ? 'missing_or_unmapped_sold_date'
-                            : (landUseCode && landUseCode !== 'R2')
-                                ? `land_use_${landUseCode}`
-                                : (listingStatus === 'active' || listingStatus === 'for sale')
-                                    ? `listing_${listingStatus}`
-                                    : 'rejected_by_local_eligibility';
+                    : !row.sold_date
+                        ? 'missing_or_unmapped_sold_date'
+                        : (landUseCode && landUseCode !== 'R2')
+                            ? `land_use_${landUseCode}`
+                            : (listingStatus === 'active' || listingStatus === 'for sale' || listingStatus === 'off market' || listingStatus === 'pending' || listingStatus === 'withdrawn')
+                                ? `listing_${listingStatus}`
+                                : 'rejected_by_local_eligibility';
                 const rawShape = {
                     top_level: Object.keys(raw || {}).slice(0, 30),
                     intel_keys: Object.keys(raw?.intel || {}).slice(0, 30),
@@ -136,23 +132,12 @@ Deno.serve(async (req) => {
             JOIN properties p ON p.id = wp.property_id
             WHERE wp.user_email = ${targetEmail}
               AND (${fetchJobId === null} OR wp.fetch_job_id = ${fetchJobId})
-              AND (
-                  wp.route_active = TRUE
-                  OR (
-                      ${fetchJobId !== null}
-                      AND p.data_source = 'batchdata'
-                      AND lower(coalesce(p.property_type, '')) NOT LIKE '%commercial%'
-                      AND lower(coalesce(p.property_type, '')) NOT LIKE '%industrial%'
-                      AND lower(coalesce(p.property_type, '')) NOT LIKE '%vacant%'
-                      AND lower(coalesce(p.property_type, '')) NOT LIKE '%agricultural%'
-                      AND lower(coalesce(p.property_type, '')) NOT LIKE '%land%'
-                      AND lower(coalesce(p.property_type, '')) NOT LIKE '%lot%'
-                  )
-              )
+              AND wp.route_active = TRUE
               AND p.lat IS NOT NULL
               AND p.lng IS NOT NULL
-              AND (${fetchJobId !== null} OR COALESCE(p.original_status, '') <> 'REJECTED')
-              AND (${fetchJobId !== null} OR COALESCE(p.sale_confidence, '') <> 'REJECTED')
+              AND COALESCE(wp.status, '') <> 'REJECTED'
+              AND COALESCE(p.original_status, '') <> 'REJECTED'
+              AND COALESCE(p.sale_confidence, '') <> 'REJECTED'
               AND (${zipCodes.length === 0} OR p.zip_code = ANY(${zipCodes}))
               AND (${soldAfter === null} OR p.sold_date IS NULL OR p.sold_date >= ${soldAfter})
               AND (${!bounds?.minLat} OR p.lat >= ${bounds?.minLat || 0})
@@ -163,20 +148,13 @@ Deno.serve(async (req) => {
             LIMIT ${limit}
         `;
 
-        let properties = rows.map(row => {
-            const exactJobBatchDataCandidate = !!fetchJobId && row.data_source === 'batchdata';
-            return {
-                ...row,
-                id: String(row.id),
-                address_hash: row.address_hash || String(row.id),
-                route_active: exactJobBatchDataCandidate ? true : row.route_active,
-                status: exactJobBatchDataCandidate && row.status === 'REJECTED' ? 'BATCHDATA_CONFIRMED' : row.status,
-                original_status: exactJobBatchDataCandidate && row.original_status === 'REJECTED' ? 'BATCHDATA_CONFIRMED' : row.original_status,
-                sale_confidence: exactJobBatchDataCandidate && row.sale_confidence === 'REJECTED' ? 'verified' : row.sale_confidence,
-                created_date: row.created_at,
-                updated_date: row.updated_at
-            };
-        });
+        let properties = rows.map(row => ({
+            ...row,
+            id: String(row.id),
+            address_hash: row.address_hash || String(row.id),
+            created_date: row.created_at,
+            updated_date: row.updated_at
+        }));
 
         // Payload reduction: fields='map' returns only what the map pipeline needs
         // (pins, status colors, sold/price/phase filters, dedupe, detail sheet basics).

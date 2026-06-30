@@ -140,3 +140,4 @@
 - Deep links that focus map/detail state must validate URL params before mutating UI state. `Number(null)` becomes `0`, so always require `params.has('lat') && params.has('lng')` and reject null-island coordinates before centering a map or opening a property sheet.
 - Data pages must not use `initialData: []` for first-load entity queries when an empty state is meaningful; it masks loading as a real empty result. Use `enabled: !!user`, `isLoading/isFetching`, and show persisted rows while slower reconciliation queries continue.
 - BatchData property search currently rejects `options.take` values above 100. Max Available must mean paginated 100-record requests up to the plan cap, not one oversized request.
+- Confirmed-sale gates must be enforced through the entire import-to-route path: if ingestion marks a BatchData row `REJECTED`/`route_active=false`, downstream exact-job route candidate queries must not override it back to active.
