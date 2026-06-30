@@ -14,7 +14,7 @@ const STATUS_ICONS = {
     DM_NOT_HOME: { icon: UserX, color: 'text-gray-300', bg: 'bg-white/10' },
 };
 
-export default function PropertyHistory({ logs, onClearDecision }) {
+export default function PropertyHistory({ logs, onClearDecision, allowDeleteAll = false }) {
     if (!logs || logs.length === 0) {
         return (
             <div className="text-center py-6 border border-dashed border-gray-800 rounded-xl bg-gray-900/20">
@@ -36,7 +36,7 @@ export default function PropertyHistory({ logs, onClearDecision }) {
                 const note = noteMatch?.[1]?.trim();
                 const phoneMatch = log.raw_input_text?.match(/Phone:\s*(.+?)(\s*\||$)/);
                 const phone = phoneMatch?.[1]?.trim();
-                const timeMatch = log.raw_input_text?.match(/Time:\s*(.+?)(\s*\||$)/);
+                const timeMatch = log.raw_input_text?.match(/(?:Time|Callback):\s*(.+?)(\s*\||$)/);
                 const callbackTime = timeMatch?.[1]?.trim();
 
                 return (
@@ -54,13 +54,13 @@ export default function PropertyHistory({ logs, onClearDecision }) {
                                 </div>
                             </div>
                             <div className="flex items-center gap-2">
-                                {log.parsed_status !== 'ELIGIBLE' && onClearDecision && idx === 0 && (
+                                {log.parsed_status !== 'ELIGIBLE' && onClearDecision && (allowDeleteAll || idx === 0) && (
                                     <button
                                         onClick={() => onClearDecision(log)}
                                         className="flex items-center gap-1 px-2 py-1 rounded-lg bg-red-500/10 text-red-400 border border-red-500/20 text-[10px] font-bold active:scale-95"
                                     >
                                         <Trash2 className="w-3 h-3" />
-                                        Clear
+                                        {allowDeleteAll ? 'Remove' : 'Clear'}
                                     </button>
                                 )}
                                 <div className="text-right">

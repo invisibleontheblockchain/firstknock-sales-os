@@ -86,6 +86,13 @@ export default function Appointments() {
         enabled: !!user?.id,
     });
 
+    const { data: savedRoutes = [] } = useQuery({
+        queryKey: ['savedRoutes-appts', user?.id],
+        queryFn: () => user ? base44.entities.SavedRoute.list('-created_date', 500).then(r => Array.isArray(r) ? r : (r?.items || [])) : [],
+        enabled: !!user,
+        staleTime: 1000 * 60 * 2,
+    });
+
     // Tenant key: managers own their team's appointments; reps roll up to their manager
     const tenantManagerId = user?.app_role === 'rep' ? (user?.team_manager_id || null) : (user?.id || null);
 
@@ -134,8 +141,15 @@ export default function Appointments() {
         });
     }, [user, logs, appointments, properties, tenantManagerId, queryClient]);
 
+    const routeNameById = useMemo(() => new Map((Array.isArray(savedRoutes) ? savedRoutes : []).map(route => [route.id, route.name])), [savedRoutes]);
+
+    const appointmentRows = useMemo(() => (Array.isArray(appointments) ? appointments : []).map(appointment => ({
+        ...appointment,
+        route_name: appointment.route_name || (appointment.route_id ? routeNameById.get(appointment.route_id) : null)
+    })), [appointments, routeNameById]);
+
     const stats = useMemo(() => {
-        const all = Array.isArray(appointments) ? appointments : [];
+        const all = appointmentRows;
         const now = new Date();
         return {
             total: all.length,
@@ -146,11 +160,11 @@ export default function Appointments() {
             noShow: all.filter(a => a.status === 'no_show').length,
             cancelled: all.filter(a => a.status === 'cancelled').length,
         };
-    }, [appointments]);
+    }, [appointmentRows]);
 
     const filteredAppointments = useMemo(() => {
         const now = new Date();
-        return (Array.isArray(appointments) ? appointments : [])
+        return appointmentRows
             .filter(a => {
                 if (statusFilter !== 'all' && a.status !== statusFilter) return false;
                 if (timeFilter === 'today' && a.scheduled_date && !isToday(parseISO(a.scheduled_date))) return false;
@@ -164,7 +178,9 @@ export default function Appointments() {
                 if (timeFilter === 'past') return new Date(b.scheduled_date) - new Date(a.scheduled_date);
                 return new Date(a.scheduled_date) - new Date(b.scheduled_date);
             });
-    }, [appointments, statusFilter, timeFilter]);
+    }, [appointmentRows, statusFilter, timeFilter]);
+
+    const appointmentNumbers = useMemo(() => new Map(filteredAppointments.map((appointment, index) => [appointment.id, index + 1])), [filteredAppointments]);
 
     const grouped = useMemo(() => {
         const groups = {};
@@ -323,7 +339,8 @@ export default function Appointments() {
                                         <AppointmentCard
                                             key={appointment.id}
                                             appointment={appointment}
-                                            onClick={setSelectedAppointment}
+                                            appointmentNumber={appointmentNumbers.get(appointment.id)}
+                                            onClick={(appt) => setSelectedAppointment({ ...appt, appointment_number: appointmentNumbers.get(appt.id) })}
                                         />
                                     ))}
                                 </div>

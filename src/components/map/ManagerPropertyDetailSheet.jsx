@@ -45,8 +45,15 @@ export default function ManagerPropertyDetailSheet({
     navigationApp,
     selectedPropertyLogs,
     handleLogResult,
+    onClearInteraction,
     toast
 }) {
+    const [showCallbackPrompt, setShowCallbackPrompt] = React.useState(false);
+    const [callbackName, setCallbackName] = React.useState('');
+    const [callbackPhone, setCallbackPhone] = React.useState('');
+    const [callbackTime, setCallbackTime] = React.useState('');
+    const [callbackError, setCallbackError] = React.useState('');
+
     if (!selectedProperty) return null;
 
     const estimatedValue = numberValue(selectedProperty.price, selectedProperty.estimated_value, selectedProperty.estimatedValue, selectedProperty.valuation?.estimatedValue, selectedProperty.valuation?.value);
@@ -56,6 +63,42 @@ export default function ManagerPropertyDetailSheet({
     const ownerName = selectedProperty.owner_full_name || selectedProperty.ownerFullName || selectedProperty.owner_name || selectedProperty.owner?.fullName || selectedProperty.owner?.ownerName || null;
     const beds = numberValue(selectedProperty.beds, selectedProperty.bedrooms, selectedProperty.building?.bedroomCount);
     const baths = numberValue(selectedProperty.baths, selectedProperty.bathrooms, selectedProperty.building?.bathroomCount);
+
+    const resetCallbackForm = () => {
+        setShowCallbackPrompt(false);
+        setCallbackName('');
+        setCallbackPhone('');
+        setCallbackTime('');
+        setCallbackError('');
+    };
+
+    const handleQuickMark = (status) => {
+        if (status === 'CALLBACK') {
+            setShowCallbackPrompt(true);
+            if (!callbackName.trim() || !callbackPhone.trim() || !callbackTime) {
+                setCallbackError(showCallbackPrompt ? 'Name, phone number, and callback date/time are required.' : '');
+                return;
+            }
+            const nextDate = new Date(callbackTime).toISOString();
+            handleLogResult(selectedProperty, {
+                address_hash: selectedProperty.address_hash,
+                raw_input_text: `Marked as CALLBACK | Contact: ${callbackName.trim()} | Phone: ${callbackPhone.trim()} | Callback: ${callbackTime}`,
+                parsed_status: 'CALLBACK',
+                next_eligible_date: nextDate,
+                callback_contact_name: callbackName.trim(),
+                callback_contact_phone: callbackPhone.trim(),
+                callback_time: callbackTime
+            });
+            resetCallbackForm();
+            setSelectedProperty(null);
+            toast.success('Callback saved');
+            return;
+        }
+
+        handleLogResult(selectedProperty, status);
+        setSelectedProperty(null);
+        toast.success(`Logged as ${status}`);
+    };
 
     return (
         <div className="fixed inset-0 z-[3000] flex flex-col justify-end sm:justify-center sm:items-center">
@@ -194,7 +237,7 @@ export default function ManagerPropertyDetailSheet({
                             <h4 className="text-xs font-bold text-gray-500 uppercase mb-3 flex items-center gap-2">
                                 <span className="w-4 h-4 text-yellow-500">📋</span> Interaction History
                             </h4>
-                            <PropertyHistory logs={selectedPropertyLogs} />
+                            <PropertyHistory logs={selectedPropertyLogs} onClearDecision={onClearInteraction} allowDeleteAll />
                         </div>
 
                     </div>
@@ -207,12 +250,43 @@ export default function ManagerPropertyDetailSheet({
                         <h4 className="text-xs font-bold text-gray-500 uppercase mb-2">Quick Log</h4>
                         <QuickMarkButtons
                             size="large"
-                            onMark={(status) => {
-                                handleLogResult(selectedProperty, status);
-                                setSelectedProperty(null);
-                                toast.success(`Logged as ${status}`);
-                            }}
+                            onMark={handleQuickMark}
                         />
+                        {showCallbackPrompt && (
+                            <div className="mt-3 rounded-2xl border border-[#2EEB57]/30 bg-[#2EEB57]/[0.08] p-3">
+                                <p className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#39FF4A]">Callback contact</p>
+                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                    <input
+                                        value={callbackName}
+                                        onChange={(e) => { setCallbackName(e.target.value); setCallbackError(''); }}
+                                        placeholder="Name"
+                                        className="selectable-text w-full bg-black/70 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:border-[#2EEB57] focus:outline-none"
+                                    />
+                                    <input
+                                        type="tel"
+                                        value={callbackPhone}
+                                        onChange={(e) => { setCallbackPhone(e.target.value); setCallbackError(''); }}
+                                        placeholder="Phone number"
+                                        className="selectable-text w-full bg-black/70 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:border-[#2EEB57] focus:outline-none"
+                                    />
+                                </div>
+                                <div className="mt-2 flex gap-2">
+                                    <input
+                                        type="datetime-local"
+                                        value={callbackTime}
+                                        onChange={(e) => { setCallbackTime(e.target.value); setCallbackError(''); }}
+                                        className="w-full bg-black/70 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:border-[#2EEB57] focus:outline-none [color-scheme:dark]"
+                                    />
+                                    <button
+                                        onClick={() => handleQuickMark('CALLBACK')}
+                                        className="px-4 py-2.5 rounded-xl bg-[#2EEB57] text-black font-black text-xs active:scale-95 transition-all whitespace-nowrap"
+                                    >
+                                        Save
+                                    </button>
+                                </div>
+                                {callbackError && <p className="mt-2 text-[10px] font-bold text-red-300">{callbackError}</p>}
+                            </div>
+                        )}
                     </div>
 
                     {/* Map Link */}

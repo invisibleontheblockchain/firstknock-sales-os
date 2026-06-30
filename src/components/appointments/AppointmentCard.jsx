@@ -1,7 +1,6 @@
 import React from 'react';
-import { Calendar, User, Star, ChevronRight, MapPin, Phone } from 'lucide-react';
+import { Calendar, ChevronRight, MapPin, Phone } from 'lucide-react';
 import { format, isToday, isPast, parseISO } from 'date-fns';
-import { getIndustryLabel } from './EligibilityScorer';
 
 const STATUS_STYLES = {
     scheduled: { bg: 'bg-blue-500/10', text: 'text-blue-400', border: 'border-blue-500/20', label: 'Scheduled' },
@@ -20,12 +19,8 @@ const OUTCOME_LABELS = {
     pending: { label: '', color: '' },
 };
 
-export default function AppointmentCard({ appointment, onClick }) {
+export default function AppointmentCard({ appointment, appointmentNumber, onClick }) {
     const status = STATUS_STYLES[appointment.status] || STATUS_STYLES.scheduled;
-    const score = appointment.eligibility_score || 0;
-    const scoreColor = score >= 70 ? 'text-green-400' : score >= 40 ? 'text-yellow-400' : 'text-red-400';
-    const scoreBg = score >= 70 ? 'bg-green-500/10 border-green-500/20' : score >= 40 ? 'bg-yellow-500/10 border-yellow-500/20' : 'bg-red-500/10 border-red-500/20';
-
     const isOverdue = appointment.scheduled_date && isPast(new Date(appointment.scheduled_date)) && !['completed', 'cancelled'].includes(appointment.status);
     const isTodayAppt = appointment.scheduled_date && isToday(parseISO(appointment.scheduled_date));
     const outcome = OUTCOME_LABELS[appointment.outcome] || OUTCOME_LABELS.pending;
@@ -40,18 +35,20 @@ export default function AppointmentCard({ appointment, onClick }) {
             }`}
         >
             <div className="flex items-start gap-2 sm:gap-3 md:gap-4">
-                {/* Score circle */}
-                <div className={`w-12 h-12 sm:w-14 md:w-16 rounded-lg sm:rounded-xl md:rounded-2xl flex flex-col items-center justify-center shrink-0 border ${scoreBg}`}>
-                    <span className={`text-base sm:text-lg md:text-xl font-black leading-none ${scoreColor}`}>{score}</span>
-                    <Star className={`w-2.5 h-2.5 md:w-3.5 md:h-3.5 mt-1 ${scoreColor}`} />
+                <div className="w-12 h-12 sm:w-14 md:w-16 rounded-lg sm:rounded-xl md:rounded-2xl flex flex-col items-center justify-center shrink-0 border border-white/10 bg-white/[0.04] text-white">
+                    <span className="text-[9px] font-black uppercase tracking-wider text-white/35">Appt</span>
+                    <span className="text-base sm:text-lg md:text-xl font-black leading-none">#{appointmentNumber || '-'}</span>
                 </div>
 
-                {/* Content */}
                 <div className="flex-1 min-w-0 flex flex-col">
-                    {/* Address */}
-                    <p className="text-xs sm:text-sm md:text-base font-bold text-white truncate mb-1.5">{appointment.full_address || 'Unknown'}</p>
+                    <p className="text-xs sm:text-sm md:text-base font-bold text-white truncate mb-1">{appointment.full_address || 'Unknown'}</p>
+                    {appointment.route_name && (
+                        <p className="flex items-center gap-1 text-[9px] sm:text-[10px] text-[#39FF4A]/80 truncate mb-1.5">
+                            <MapPin className="w-2.5 h-2.5 shrink-0" />
+                            {appointment.route_name}
+                        </p>
+                    )}
 
-                    {/* Status badges - wrap on mobile */}
                     <div className="flex flex-wrap items-center gap-1 mb-1.5">
                         <span className={`text-[8px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full border ${status.bg} ${status.text} ${status.border} whitespace-nowrap`}>
                             {status.label}
@@ -61,7 +58,6 @@ export default function AppointmentCard({ appointment, onClick }) {
                         )}
                     </div>
 
-                    {/* Key details - hide less important on mobile */}
                     <div className="flex items-center gap-1.5 text-[8px] sm:text-[10px] text-gray-500">
                         <Calendar className="w-2.5 h-2.5 shrink-0" />
                         <span className="truncate">{appointment.scheduled_date ? format(new Date(appointment.scheduled_date), 'MMM d') : 'Unscheduled'}</span>

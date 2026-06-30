@@ -1,11 +1,9 @@
 import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
-import { Calendar, User, Phone, Mail, FileText, ChevronLeft, Check, Ban, Clock, RotateCcw, Star, MapPin, Pencil } from 'lucide-react';
+import { Calendar, User, Phone, Mail, FileText, ChevronLeft, Check, Ban, Clock, RotateCcw, MapPin, Pencil } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
-import { getIndustryLabel } from './EligibilityScorer';
-
 const OUTCOMES = [
     { value: 'sold', label: 'Sold', color: '#22c55e', icon: Check },
     { value: 'follow_up', label: 'Follow Up', color: '#eab308', icon: Clock },
@@ -33,9 +31,8 @@ export default function AppointmentDetail({ appointment, onClose, onUpdate }) {
     });
     const [saving, setSaving] = useState(false);
 
-    const score = appointment.eligibility_score || 0;
-    const scoreColor = score >= 70 ? '#22c55e' : score >= 40 ? '#eab308' : '#ef4444';
-    const factors = appointment.scoring_factors || {};
+    const appointmentNumber = appointment.appointment_number || appointment.appointmentNumber;
+    const routeName = appointment.route_name || appointment.routeName;
 
     const handleSave = async () => {
         setSaving(true);
@@ -74,39 +71,16 @@ export default function AppointmentDetail({ appointment, onClose, onUpdate }) {
                         <ChevronLeft className="w-4 h-4" /> Back
                     </button>
                     <div className="flex-1 min-w-0 selectable-text">
+                        <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#39FF4A]">Appointment #{appointmentNumber || '-'}</p>
                         <p className="text-sm font-bold text-white truncate">{appointment.full_address || 'Unknown Address'}</p>
                         <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] text-gray-500">{getIndustryLabel(appointment.industry)}</span>
+                            {routeName && <span className="text-[10px] text-gray-500 truncate">{routeName}</span>}
                             {appointment.zip_code && <span className="text-[10px] text-gray-600">• {appointment.zip_code}</span>}
                         </div>
                     </div>
                 </div>
 
                 <div className="p-5 space-y-5">
-
-                    {/* Score card */}
-                    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-2">
-                                <Star className="w-4 h-4" style={{ color: scoreColor }} />
-                                <span className="text-xs font-bold text-gray-400">Lead Score</span>
-                            </div>
-                            <span className="text-2xl font-black" style={{ color: scoreColor }}>{score}</span>
-                        </div>
-                        {Object.keys(factors).length > 0 && (
-                            <div className="space-y-2">
-                                {Object.entries(factors).map(([key, val]) => (
-                                    <div key={key} className="flex items-center gap-2">
-                                        <span className="text-[10px] text-gray-500 w-20 capitalize truncate">{key.replace(/_/g, ' ')}</span>
-                                        <div className="flex-1 h-1.5 bg-white/[0.04] rounded-full overflow-hidden">
-                                            <div className="h-full rounded-full transition-all" style={{ width: `${val}%`, background: val >= 70 ? '#22c55e' : val >= 40 ? '#eab308' : '#ef4444' }} />
-                                        </div>
-                                        <span className="text-[10px] font-bold text-gray-500 w-6 text-right">{val}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
 
                     {/* Details */}
                     <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-3">

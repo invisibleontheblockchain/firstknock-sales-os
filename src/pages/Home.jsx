@@ -1420,16 +1420,31 @@ export default function Home() {
         enabled: !!selectedProperty?.address_hash
     });
 
-    const handleLogResult = useCallback((property, status, note = null) => {
+    const handleLogResult = useCallback((property, statusOrLogData, note = null) => {
+        const logData = typeof statusOrLogData === 'object'
+            ? statusOrLogData
+            : {
+                raw_input_text: note || statusOrLogData,
+                parsed_status: statusOrLogData,
+            };
+
         createLogMutation.mutate({
+            ...logData,
             address_hash: property.address_hash,
-            raw_input_text: note || status,
-            parsed_status: status,
             gps_proof_lat: property.lat,
             gps_proof_lng: property.lng,
-            route_id: activeRoute?.id || null
+            route_id: logData.route_id || activeRoute?.id || null
         });
     }, [createLogMutation, activeRoute]);
+
+    const handleDeleteInteraction = useCallback(async (log) => {
+        if (!log?.id) return;
+        if (!confirm('Remove this interaction history?')) return;
+        await base44.entities.InteractionLog.delete(log.id);
+        queryClient.invalidateQueries({ queryKey: ['interactionLogs'] });
+        queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] });
+        toast.success('Interaction removed');
+    }, [queryClient]);
 
     const generateRoutesRef = useRef(generateRoutes);
     useEffect(() => {
@@ -2023,7 +2038,7 @@ export default function Home() {
             )}
 
 
-            <ManagerPropertyDetailSheet selectedProperty={selectedProperty} setSelectedProperty={setSelectedProperty} STATUS_COLORS={STATUS_COLORS} navigationApp={navigationApp} selectedPropertyLogs={selectedPropertyLogs} handleLogResult={handleLogResult} toast={toast} />
+            <ManagerPropertyDetailSheet selectedProperty={selectedProperty} setSelectedProperty={setSelectedProperty} STATUS_COLORS={STATUS_COLORS} navigationApp={navigationApp} selectedPropertyLogs={selectedPropertyLogs} handleLogResult={handleLogResult} onClearInteraction={handleDeleteInteraction} toast={toast} />
         </div>
     );
 }
