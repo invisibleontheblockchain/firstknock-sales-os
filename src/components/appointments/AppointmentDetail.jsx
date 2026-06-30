@@ -33,6 +33,7 @@ export default function AppointmentDetail({ appointment, onClose, onUpdate }) {
 
     const appointmentNumber = appointment.appointment_number || appointment.appointmentNumber;
     const routeName = appointment.route_name || appointment.routeName;
+    const isLogOnly = appointment._source === 'interaction_log';
 
     const handleSave = async () => {
         setSaving(true);
@@ -86,7 +87,7 @@ export default function AppointmentDetail({ appointment, onClose, onUpdate }) {
                     <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-3">
                         <div className="flex items-center justify-between">
                             <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Details</span>
-                            {!editing && (
+                            {!editing && !isLogOnly && (
                                 <button onClick={() => setEditing(true)} className="text-[10px] font-bold text-gray-500 hover:text-white flex items-center gap-1 transition-colors">
                                     <Pencil className="w-3 h-3" /> Edit
                                 </button>
@@ -117,6 +118,12 @@ export default function AppointmentDetail({ appointment, onClose, onUpdate }) {
                             <DetailRow icon={User} label={<span>Rep: <span className="text-white font-medium">{appointment.assigned_rep_name}</span></span>} />
                         )}
 
+                        {isLogOnly && (
+                            <div className="rounded-xl border border-[#2EEB57]/20 bg-[#2EEB57]/[0.06] p-3 text-[11px] font-medium text-[#39FF4A]/80">
+                                This callback came directly from interaction history and will become editable after it is saved as an appointment.
+                            </div>
+                        )}
+
                         {editing && (
                             <div className="flex gap-2 pt-2">
                                 <Button onClick={handleSave} disabled={saving} className="flex-1 h-9 font-bold bg-white text-black hover:bg-gray-200 text-xs rounded-xl">
@@ -127,6 +134,8 @@ export default function AppointmentDetail({ appointment, onClose, onUpdate }) {
                         )}
                     </div>
 
+                    {!isLogOnly && (
+                    <>
                     {/* Status selector */}
                     <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4">
                         <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-3">Status</span>
@@ -170,6 +179,8 @@ export default function AppointmentDetail({ appointment, onClose, onUpdate }) {
                     <button onClick={handleDelete} className="w-full text-center text-[10px] text-gray-600 hover:text-red-400 font-bold py-2 transition-colors">
                         Delete Appointment
                     </button>
+                    </>
+                    )}
                 </div>
             </div>
         </div>

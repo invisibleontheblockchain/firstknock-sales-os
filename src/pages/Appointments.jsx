@@ -42,13 +42,13 @@ export default function Appointments() {
     const [showAutoSchedule, setShowAutoSchedule] = useState(false);
     const [showNewForm, setShowNewForm] = useState(false);
     const [statusFilter, setStatusFilter] = useState('all');
-    const [timeFilter, setTimeFilter] = useState('upcoming');
+    const [timeFilter, setTimeFilter] = useState('all');
     const [showFilters, setShowFilters] = useState(false);
     const backfilledCallbackLogsRef = React.useRef(new Set());
 
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
 
-    const { data: appointments = [], isLoading } = useQuery({
+    const { data: appointments = [], isLoading: appointmentsLoading } = useQuery({
         queryKey: ['appointments'],
         staleTime: 1000 * 60 * 2,
         queryFn: () => base44.entities.Appointment.list('-scheduled_date', 500),
@@ -72,7 +72,7 @@ export default function Appointments() {
         enabled: !!user,
     });
 
-    const { data: logs = [] } = useQuery({
+    const { data: logs = [], isLoading: logsLoading } = useQuery({
         queryKey: ['interactionLogs-appts'],
         queryFn: () => base44.entities.InteractionLog.list('-created_date', 5000),
         enabled: !!user,
@@ -96,16 +96,20 @@ export default function Appointments() {
     // Tenant key: managers own their team's appointments; reps roll up to their manager
     const tenantManagerId = user?.app_role === 'rep' ? (user?.team_manager_id || null) : (user?.id || null);
 
+    const propertyByHash = useMemo(() => {
+        const map = new Map();
+        (Array.isArray(properties) ? properties : []).forEach((property) => {
+            if (property.address_hash) map.set(property.address_hash, property);
+            if (property.legacy_hash) map.set(property.legacy_hash, property);
+        });
+        return map;
+    }, [properties]);
+
     React.useEffect(() => {
         if (!user || !Array.isArray(logs) || logs.length === 0) return;
 
         const existingKeys = new Set((Array.isArray(appointments) ? appointments : []).map(callbackKey));
         const seenKeys = new Set(existingKeys);
-        const propertyByHash = new Map();
-        (Array.isArray(properties) ? properties : []).forEach((property) => {
-            if (property.address_hash) propertyByHash.set(property.address_hash, property);
-            if (property.legacy_hash) propertyByHash.set(property.legacy_hash, property);
-        });
 
         const toCreate = logs
             .filter((log) => log?.parsed_status === 'CALLBACK' && log.address_hash && !backfilledCallbackLogsRef.current.has(log.id))
@@ -139,14 +143,55 @@ export default function Appointments() {
         base44.entities.Appointment.bulkCreate(toCreate).then(() => {
             queryClient.invalidateQueries({ queryKey: ['appointments'] });
         });
-    }, [user, logs, appointments, properties, tenantManagerId, queryClient]);
+    }, [user, logs, appointments, propertyByHash, tenantManagerId, queryClient]);
 
     const routeNameById = useMemo(() => new Map((Array.isArray(savedRoutes) ? savedRoutes : []).map(route => [route.id, route.name])), [savedRoutes]);
 
-    const appointmentRows = useMemo(() => (Array.isArray(appointments) ? appointments : []).map(appointment => ({
+    const persistedAppointmentRows = useMemo(() => (Array.isArray(appointments) ? appointments : []).map(appointment => ({
         ...appointment,
         route_name: appointment.route_name || (appointment.route_id ? routeNameById.get(appointment.route_id) : null)
     })), [appointments, routeNameById]);
+
+    const appointmentRows = useMemo(() => {
+        const rows = [...persistedAppointmentRows];
+        const existingKeys = new Set(rows.map(callbackKey));
+        const existingLogIds = new Set(rows
+            .map((appointment) => (appointment.notes || '').match(/callback_log:([^\]]+)/)?.[1])
+            .filter(Boolean));
+
+        (Array.isArray(logs) ? logs : [])
+            .filter((log) => log?.parsed_status === 'CALLBACK' && log.address_hash)
+            .forEach((log) => {
+                const scheduledDate = safeIsoDate(log.next_eligible_date, log.created_date);
+                const key = callbackKey({ ...log, scheduled_date: scheduledDate });
+                if (existingKeys.has(key) || (log.id && existingLogIds.has(log.id))) return;
+                existingKeys.add(key);
+                const property = propertyByHash.get(log.address_hash) || {};
+                rows.push({
+                    id: `callback-log-${log.id || key}`,
+                    _source: 'interaction_log',
+                    address_hash: log.address_hash,
+                    manager_id: log.manager_id || tenantManagerId,
+                    full_address: property.full_address || property.address || `${property.house_number || ''} ${property.street_name || ''}`.trim() || 'Callback address',
+                    homeowner_name: null,
+                    phone: null,
+                    scheduled_date: scheduledDate,
+                    industry: 'other',
+                    status: 'scheduled',
+                    outcome: 'follow_up',
+                    route_id: log.route_id || null,
+                    route_name: log.route_id ? routeNameById.get(log.route_id) : null,
+                    zip_code: property.zip_code || property.zip || null,
+                    lat: property.lat || null,
+                    lng: property.lng || null,
+                    notes: `${log.raw_input_text || 'Callback scheduled from Knock Mode'}${log.id ? ` [callback_log:${log.id}]` : ''}`,
+                    created_by: log.created_by,
+                    created_date: log.created_date
+                });
+            });
+
+        return rows;
+    }, [persistedAppointmentRows, logs, propertyByHash, routeNameById, tenantManagerId]);
 
     const stats = useMemo(() => {
         const all = appointmentRows;
@@ -225,7 +270,10 @@ export default function Appointments() {
         return () => timers.forEach((timer) => window.clearTimeout(timer));
     }, [appointments]);
 
-    const handleRefresh = () => queryClient.invalidateQueries({ queryKey: ['appointments'] });
+    const handleRefresh = () => {
+        queryClient.invalidateQueries({ queryKey: ['appointments'] });
+        queryClient.invalidateQueries({ queryKey: ['interactionLogs-appts'] });
+    };
 
     const formatDateLabel = (dateKey) => {
         if (dateKey === 'unscheduled') return 'Unscheduled';
@@ -311,7 +359,7 @@ export default function Appointments() {
                         />
                     )}
 
-                    {isLoading ? (
+                    {(appointmentsLoading || logsLoading) ? (
                         <div className="flex flex-col items-center justify-center py-24 gap-3">
                             <Loader2 className="w-6 h-6 animate-spin text-white/30" />
                             <span className="text-xs text-gray-600">Loading appointments...</span>
