@@ -1771,7 +1771,10 @@ export default function Home() {
                     if ((jobStatus?.active_count || pulledProperties.length) > 0) {
                         await generateRoutesRef.current?.();
                     } else {
-                        setGenerationError('This pull produced no active routeable properties. Route generation was stopped so stale old data is not reused. Try a larger area or looser parameters.');
+                        const isUltraRecent = Number(pm) <= 0.25;
+                        setGenerationError(isUltraRecent
+                            ? 'No BatchData-confirmed sales were returned inside this exact area for the selected last-week window. Route generation was stopped so stale old data is not reused. Provider sale/intel records can lag — try 2 weeks or 1 month for this territory.'
+                            : 'This pull produced no active routeable properties. Route generation was stopped so stale old data is not reused. Try a larger area or looser parameters.');
                     }
                 }}
             />

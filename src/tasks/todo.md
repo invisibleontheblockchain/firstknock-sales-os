@@ -1,3 +1,15 @@
+## Plan — Re-check 500 Sq Mi Last-Week Zero Pull
+- [x] Inspect the newest 1-week FetchJob and confirm its exact area, request settings, provider attempts, and active count.
+- [x] Compare strict polygon vs broad polygon behavior to determine whether the zero is provider-side or caused by our filters.
+- [x] Check for a polygon/request-shape issue that could make a large drawn area under-query BatchData.
+- [x] Patch the smallest root cause if the request is malformed or too restrictive.
+- [x] Verify with backend request previews/status checks and record the result.
+
+### Review — Re-check 500 Sq Mi Last-Week Zero Pull
+The newest drawn-area pulls were 470.74 sq mi with 34 polygon points, exact `sold_months=0.25`, and requested counts of 1-2. Both production attempts returned zero: strict polygon 0 and broad polygon 0, with `active_count=0`. A no-write production BatchData probe against the same polygon proved the polygon itself works: no date filter returned 100 records, 2-week `intel.lastSoldDate.minDate=2026-06-16` returned 10 records, and exact 1-week `minDate=2026-06-23` returned 0 records. So the issue is provider-side sale/intel recency lag, not area size, polygon geometry, route filtering, or stale-data reuse. I updated the zero-result route message for ultra-recent pulls to explain BatchData-confirmed sale lag and recommend 2 weeks or 1 month. `npm run build` passes.
+
+---
+
 ## Plan — Diagnose Short-Window Precision Pulls
 - [x] Inspect latest 1-day/2-day/1-week/2-week FetchJob settings and counts.
 - [x] Compare provider request dates against stored raw/mapped/active results.

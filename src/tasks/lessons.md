@@ -146,4 +146,5 @@
 - Route generation has multiple date gates: provider request, exact-job candidate query, and final local route filter. All three must honor the user's exact selected sold-date range unless the user explicitly approves a broader fallback.
 - If an exact short-window pull returns zero, surface that truth clearly instead of backfilling with older provider-buffer records that can look like stale or incorrect targeting.
 - Precision polygon pulls should not fall back to centroid searches after polygon zero-results; centroid hits are not the selected territory and create misleading raw counts that are discarded by polygon validation.
+- When a user challenges a zero-result recent-sale pull, prove whether the polygon works separately from the date window: run no-date, 2-week, and exact-window probes before blaming filters or coverage.
 - When a user challenges an implausible zero-result claim, do not defend the result. Inspect the real latest job, prove counts at each stage, and verify route creation from the actual returned candidates before answering.

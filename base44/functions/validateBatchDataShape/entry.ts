@@ -80,16 +80,22 @@ Deno.serve(async (req) => {
         }
 
         const query = String(body.query || '1295 Chrismill Ln, Mount Pleasant, SC 29466').trim();
+        const requestBody = body.request_body && typeof body.request_body === 'object'
+            ? body.request_body
+            : body.searchCriteria && typeof body.searchCriteria === 'object'
+                ? { searchCriteria: body.searchCriteria, options: body.options || { take: 10 } }
+                : {
+                    searchCriteria: { query },
+                    options: { datasets: ['basic', 'listing', 'deed', 'owner'] }
+                };
+
         const response = await fetch(BATCHDATA_BASE_URL, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
             },
-            body: JSON.stringify({
-                searchCriteria: { query },
-                options: { datasets: ['basic', 'listing', 'deed', 'owner'] }
-            })
+            body: JSON.stringify(requestBody)
         });
 
         const responseText = await response.text();
@@ -114,7 +120,8 @@ Deno.serve(async (req) => {
         return Response.json({
             success: true,
             sandbox: useSandbox,
-            query,
+            query: requestBody?.searchCriteria?.query || query,
+            request_body: body.include_request === true ? requestBody : undefined,
             record_count: list.length,
             mapped_preview: mapped,
             top_level_keys: payload && typeof payload === 'object' ? Object.keys(payload).sort() : [],
