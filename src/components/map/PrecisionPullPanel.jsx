@@ -138,7 +138,7 @@ export default function PrecisionPullPanel({
               </div>
               {repullMode === 'max_since_last' ? (
                 <p className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-[11px] leading-snug text-gray-300">
-                  This sends BatchData a sold-date window from <span className="font-bold text-white">{formatMaxSinceRange(historyDate)}</span> for this same drawn area.
+                  This sends a sold date window from <span className="font-bold text-white">{formatMaxSinceRange(historyDate)}</span> depending on the search criteria. It will be unique for each previous area.
                 </p>
               ) : (
                 <label className="flex items-start gap-2 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-[11px] leading-snug text-gray-300">

@@ -92,6 +92,7 @@
 - Mobile drawing flows need an explicit confirm/checkmark action after the outline is visible; relying on touch release alone can leave users stuck in drawing mode with no path to preview/pull data.
 - Billing price changes must update both visible copy and the checkout source of truth; never show a new price while sending users to a stale Stripe price ID.
 - User-facing map/billing copy should use FirstKnock branding unless the user explicitly wants provider names like BatchData shown.
+- Ghost Builder copy should explain the user outcome/date logic and avoid provider names; previous-area guidance should read like a field workflow, not an implementation detail.
 - Canvas territory subdivision should clip the drawn polygon by padded grid cells, not discard small edge overlaps; exact requested zone count should be achieved by grouping/splitting valid clipped cells while rendering all zone parts.
 - Canvas density controls must affect actual capacity math, not just labels: estimated doors and zone count should respond to density, while rep count acts as a minimum floor rather than the only zone-count driver.
 - Canvas mode bottom navigation must not expose Precision route concepts like saved route counts; keep it focused on Canvas Builder, Live View, and Deploy Campaign.
