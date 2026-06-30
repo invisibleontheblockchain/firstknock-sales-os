@@ -1,6 +1,18 @@
 # Plan
 
-## Current Plan — Completed Route Rerun
+## Current Plan — Completed Routes Map Toggle + Rerun
+- [ ] Add a map-level route status view toggle beside the existing eye control: Active vs Completed.
+- [ ] Keep the existing eye button as visibility on/off, and make the new toggle control which saved-route status group is shown.
+- [ ] Filter map route overlays so Active shows PENDING/ACTIVE/IN_PROGRESS routes and Completed shows only COMPLETED routes.
+- [ ] When a completed route is selected on the map, keep its pins visible and color SOLD pins clearly green while keeping other outcomes visually distinct.
+- [ ] Add an easily accessible Rerun Route action directly in the selected completed-route toolbar/banner, reusing the same rerun-create behavior from completed route cards.
+- [ ] Ensure the new rerun creates a new ACTIVE route and leaves the completed historical route untouched.
+- [ ] Run a production build and document the result.
+
+### Review — Completed Routes Map Toggle + Rerun
+Pending implementation after plan confirmation.
+
+## Previous Plan — Completed Route Rerun
 - [x] Inspect completed route card rendering and current Start Route behavior.
 - [x] Add completed-route outcome stats using the latest logged decision per door.
 - [x] Replace Start Route with Rerun for completed routes.
