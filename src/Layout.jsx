@@ -57,7 +57,7 @@ function LayoutInner({ children }) {
     document.title = "FirstKnock Sales OS";
 
     // FirstKnock green app icon for Home Screen
-    const LOGO_URL = "https://media.base44.com/images/public/695eb764b077190880be21de/de184ac23_ChatGPTImageJun16202605_35_45PM.png";
+    const LOGO_URL = "https://media.base44.com/images/public/695eb764b077190880be21de/e03632dc3_ChatGPTImageJun30202609_47_06AM.png";
 
     const updateLink = (rel, href) => {
       // Remove any existing links of this type to ensure ours takes precedence
@@ -109,7 +109,7 @@ function LayoutInner({ children }) {
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] bg-[#2EEB57]/20 blur-[120px] rounded-full pointer-events-none"></div>
                 
                 <div className="relative z-10 flex flex-col items-center space-y-8 max-w-sm w-full">
-                    <img src="https://media.base44.com/images/public/695eb764b077190880be21de/de184ac23_ChatGPTImageJun16202605_35_45PM.png" alt="FirstKnock Logo" className="w-20 h-20 rounded-2xl object-cover shadow-[0_0_40px_rgba(46,235,87,0.5)] border border-white/10" />
+                    <img src="https://media.base44.com/images/public/695eb764b077190880be21de/e03632dc3_ChatGPTImageJun30202609_47_06AM.png" alt="FirstKnock Logo" className="w-20 h-20 rounded-2xl object-cover shadow-[0_0_40px_rgba(46,235,87,0.5)] border border-white/10" />
                     
                     <div className="space-y-3">
                         <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-[#39FF4A]" style={{ textShadow: '0 0 40px rgba(46,235,87,0.3)' }}>FirstKnock</h1>
@@ -193,9 +193,7 @@ function LayoutInner({ children }) {
       <header className={`px-4 pt-[env(safe-area-inset-top)] pb-3 z-20 shadow-md bg-black ${isPageActive('RepHome') ? 'border-b border-transparent' : 'border-b border-slate-800'}`}>
                 <div className="flex items-center w-full pt-3">
                     <Link to="/" className="flex items-center gap-2 mr-auto group shrink-0">
-                        <span className="text-lg font-extrabold tracking-tight text-white transition-all">
-                            FirstKnock
-                        </span>
+                        <img src="https://media.base44.com/images/public/695eb764b077190880be21de/e03632dc3_ChatGPTImageJun30202609_47_06AM.png" alt="FirstKnock" className="h-8 w-auto object-contain" />
                     </Link>
 
                     {/* Desktop */}
