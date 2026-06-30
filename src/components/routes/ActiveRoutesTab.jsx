@@ -19,6 +19,12 @@ const BRAND = {
     offWhite: '#E5E5E5'
 };
 
+const isRerunRoute = (route) => Boolean(
+    route?.metadata?.rerun_from_route_id ||
+    route?.metadata?.rerun_filter ||
+    (route?.name || '').includes(' Rerun — ')
+);
+
 export default function ActiveRoutesTab({
     savedRoutes = [],
     routesByStatus,
@@ -45,6 +51,14 @@ export default function ActiveRoutesTab({
         savedRoutes.forEach((r, i) => map.set(r.id, i + 1));
         return map;
     }, [savedRoutes]);
+
+    const rerunRoutes = useMemo(() => savedRoutes.filter(isRerunRoute), [savedRoutes]);
+    const normalRoutesByStatus = useMemo(() => ({
+        IN_PROGRESS: (routesByStatus.IN_PROGRESS || []).filter(route => !isRerunRoute(route)),
+        ACTIVE: (routesByStatus.ACTIVE || []).filter(route => !isRerunRoute(route)),
+        PENDING: (routesByStatus.PENDING || []).filter(route => !isRerunRoute(route)),
+        COMPLETED: (routesByStatus.COMPLETED || []).filter(route => !isRerunRoute(route))
+    }), [routesByStatus]);
 
     const toggleSelect = (routeId) => {
         setSelectedIds(prev => {
@@ -232,11 +246,11 @@ export default function ActiveRoutesTab({
             </div>
 
             {/* In Progress */}
-            {routesByStatus.IN_PROGRESS.length > 0 && (
+            {normalRoutesByStatus.IN_PROGRESS.length > 0 && (
                 <RouteSection
                     title="In Progress"
                     icon={<Clock className="w-4 h-4 text-blue-500" />}
-                    routes={routesByStatus.IN_PROGRESS}
+                    routes={normalRoutesByStatus.IN_PROGRESS}
                     repColors={repColors}
                     onSelectRoute={onSelectRoute}
                     activeRouteId={activeRouteId}
@@ -253,11 +267,11 @@ export default function ActiveRoutesTab({
             )}
 
             {/* Active/Queued */}
-            {routesByStatus.ACTIVE.length > 0 && (
+            {normalRoutesByStatus.ACTIVE.length > 0 && (
                 <RouteSection
                     title="Queued"
                     icon={<Navigation className="w-4 h-4 text-yellow-500" />}
-                    routes={routesByStatus.ACTIVE}
+                    routes={normalRoutesByStatus.ACTIVE}
                     repColors={repColors}
                     onSelectRoute={onSelectRoute}
                     activeRouteId={activeRouteId}
@@ -274,11 +288,32 @@ export default function ActiveRoutesTab({
             )}
 
             {/* Pending */}
-            {routesByStatus.PENDING.length > 0 && (
+            {normalRoutesByStatus.PENDING.length > 0 && (
                 <RouteSection
                     title="Pending Assignment"
                     icon={<AlertCircle className="w-4 h-4 text-orange-500" />}
-                    routes={routesByStatus.PENDING}
+                    routes={normalRoutesByStatus.PENDING}
+                    repColors={repColors}
+                    onSelectRoute={onSelectRoute}
+                    activeRouteId={activeRouteId}
+                    onDeleteRoute={onDeleteRoute}
+                    logs={logs}
+                    onReoptimize={onReoptimizeRoute}
+                    routeConfig={routeConfig}
+                    selectedIds={selectedIds}
+                    onToggleSelect={toggleSelect}
+                    isMultiSelect={isMultiSelect}
+                    routeNumberMap={routeNumberMap}
+                    onSplitRoute={onSplitRoute}
+                />
+            )}
+
+            {/* Reruns */}
+            {rerunRoutes.length > 0 && (
+                <RouteSection
+                    title="Reruns"
+                    icon={<RefreshCw className="w-4 h-4 text-[#39FF4A]" />}
+                    routes={rerunRoutes}
                     repColors={repColors}
                     onSelectRoute={onSelectRoute}
                     activeRouteId={activeRouteId}
@@ -295,11 +330,11 @@ export default function ActiveRoutesTab({
             )}
 
             {/* Completed */}
-            {routesByStatus.COMPLETED.length > 0 && (
+            {normalRoutesByStatus.COMPLETED.length > 0 && (
                 <RouteSection
                     title="Completed"
                     icon={<CheckCircle2 className="w-4 h-4 text-green-500" />}
-                    routes={routesByStatus.COMPLETED}
+                    routes={normalRoutesByStatus.COMPLETED}
                     repColors={repColors}
                     onSelectRoute={onSelectRoute}
                     activeRouteId={activeRouteId}

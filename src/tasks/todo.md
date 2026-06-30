@@ -1,6 +1,15 @@
 # Plan
 
-## Current Plan — Completed Route Rerun Map Glitch Fix
+## Current Plan — Separate Rerun Route Category
+- [x] Identify rerun-created routes using their rerun metadata/name marker.
+- [x] Exclude rerun routes from the normal In Progress, Queued, Pending, and Completed sections.
+- [x] Add a dedicated Reruns section that keeps the same Start/Split/Delete behavior.
+- [x] Run a production build and document the result.
+
+### Review — Separate Rerun Route Category
+Rerun-created routes are now detected from rerun metadata or the rerun name marker, removed from the normal status sections, and shown in their own Reruns section in Route Command. The route cards keep the same Start, Split, Delete, and selection behavior. Production build passes.
+
+## Previous Plan — Completed Route Rerun Map Glitch Fix
 - [x] Confirm why Unsold Follow-Up can make the selected map route disappear.
 - [x] Preserve hydrated route properties by matching selected rerun hashes against address, legacy, and id aliases.
 - [x] Add stronger event suppression to rerun menu taps so Leaflet does not receive the touch/click.
