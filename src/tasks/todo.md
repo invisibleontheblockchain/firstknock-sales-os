@@ -1,6 +1,15 @@
 # Plan
 
-## Current Plan — BatchData Intel Property Details
+## Current Plan — Map Toolbar Dropdown Polish
+- [x] Inspect the selected active-route dropdown controls and keep behavior unchanged.
+- [x] Replace the white/native-looking dropdown styling with dark FirstKnock glass styling.
+- [x] Ensure opened menu options use dark backgrounds where browser styling allows.
+- [x] Run a production build and document the result.
+
+### Review — Map Toolbar Dropdown Polish
+Polished the active-route Assign, Dates, and Price dropdowns with a darker FirstKnock glass look, stronger borders, green focus states, and dark option backgrounds/color-scheme so the opened menus no longer default to a stark white look where browser styling allows. Behavior is unchanged. Production build passes.
+
+## Previous Plan — BatchData Intel Property Details
 - [x] Confirm where BatchData records are mapped into stored properties.
 - [x] Confirm where generated route candidates read stored property detail fields.
 - [x] Expand the BatchData mapper to persist intel estimated value, building sqft, build year, and last sold date/price into the existing property fields used by route details.

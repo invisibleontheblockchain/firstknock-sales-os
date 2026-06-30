@@ -1,5 +1,6 @@
 # Lessons
 
+- Native select popups can fall back to stark white browser/OS styling; when polishing map toolbar dropdowns, set the closed select styling plus `colorScheme: 'dark'` and dark option styles so opened menus match the app where supported.
 - When changing BatchData search criteria such as `intel.lastSoldDate`, also verify response mapping into stored route-detail fields; pulling the right houses is incomplete if `intel` value/build/sqft/last-sold fields are not persisted.
 - Route naming should be set at the generation/save source of truth, not just in display cards; otherwise every auto-saved route can inherit indistinguishable stock names like “Precision Route 1.”
 - When changing a repeated route-card workflow, update every route list variant in the same pass (Active, By Rep, selected-route toolbars) so tabs do not drift.

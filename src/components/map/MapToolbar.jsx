@@ -76,6 +76,12 @@ export default function MapToolbar({
 }) {
   const queryClient = useQueryClient();
   const hasDrawnArea = drawnPolygon && drawnPolygon.length > 2;
+  const routeSelectClass = "h-6 md:h-7 text-[10px] md:text-[11px] font-extrabold rounded-lg px-2 md:px-2.5 outline-none cursor-pointer shrink-0 bg-[#050505]/95 border border-white/15 text-white shadow-[0_8px_24px_rgba(0,0,0,0.35)] hover:border-[#2EEB57]/50 hover:bg-[#0D0D0D] focus:border-[#2EEB57] focus:ring-2 focus:ring-[#2EEB57]/20 transition-all";
+  const routeSelectAccentClass = `${routeSelectClass} border-[#2EEB57]/35 text-[#86efac]`;
+  const routeSelectStyle = { backgroundColor: '#050505', color: '#F9FAFB', colorScheme: 'dark', WebkitAppearance: 'menulist' };
+  const routeSelectAccentStyle = { ...routeSelectStyle, color: '#86efac' };
+  const routeOptionStyle = { backgroundColor: '#050505', color: '#F9FAFB' };
+  const routeOptionAccentStyle = { backgroundColor: '#050505', color: '#86efac' };
   const [routeMode, setRouteMode] = useState(() => {
     try {return localStorage.getItem('fk_routeMode') || 'precision';} catch {return 'precision';}
   });
@@ -393,34 +399,34 @@ export default function MapToolbar({
 
                         {/* Row 2: Filters — scrollable grid on mobile, inline on desktop */}
                         <div className="flex items-center gap-1 md:gap-1.5 mt-1.5 overflow-x-auto scrollbar-hide pb-0.5 -mx-0.5 px-0.5" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
-                            <select value={activeRoute.assigned_to || ""} onChange={(e) => {e.stopPropagation();handleAssignRoute(activeRoute.id, e.target.value);}} onPointerDown={(e) => e.stopPropagation()} className="text-[10px] md:text-[11px] font-medium bg-white/5 border border-white/10 rounded-md px-1 md:px-1.5 py-0.5 outline-none cursor-pointer hover:bg-white/10 shrink-0" style={{ color: '#ccc', WebkitAppearance: 'menulist' }}>
-                                <option value="">Assign</option>
-                                <option value={user?.id || 'manager'}>Me</option>
-                                {teamMembers.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                            <select value={activeRoute.assigned_to || ""} onChange={(e) => {e.stopPropagation();handleAssignRoute(activeRoute.id, e.target.value);}} onPointerDown={(e) => e.stopPropagation()} className={routeSelectClass} style={routeSelectStyle}>
+                                <option value="" style={routeOptionStyle}>Assign</option>
+                                <option value={user?.id || 'manager'} style={routeOptionStyle}>Me</option>
+                                {teamMembers.map((m) => <option key={m.id} value={m.id} style={routeOptionStyle}>{m.name}</option>)}
                             </select>
 
                             {setActiveRouteSoldFilter &&
-            <select value={activeRouteSoldFilter} onChange={(e) => {e.stopPropagation();setActiveRouteSoldFilter(e.target.value);}} onPointerDown={(e) => e.stopPropagation()} className="text-[10px] md:text-[11px] font-medium bg-white/5 border border-white/10 rounded-md px-1 md:px-1.5 py-0.5 outline-none cursor-pointer hover:bg-white/10 shrink-0" style={{ color: '#ccc', WebkitAppearance: 'menulist' }}>
-                                    <option value="all">Dates</option>
-                                    <option value="0.25">1W</option>
-                                    <option value="0.5">2W</option>
-                                    <option value="1">1M</option>
-                                    <option value="3">3M</option>
-                                    <option value="6">6M</option>
-                                    <option value="12">1Y</option>
+            <select value={activeRouteSoldFilter} onChange={(e) => {e.stopPropagation();setActiveRouteSoldFilter(e.target.value);}} onPointerDown={(e) => e.stopPropagation()} className={routeSelectClass} style={routeSelectStyle}>
+                                    <option value="all" style={routeOptionStyle}>Dates</option>
+                                    <option value="0.25" style={routeOptionStyle}>1W</option>
+                                    <option value="0.5" style={routeOptionStyle}>2W</option>
+                                    <option value="1" style={routeOptionStyle}>1M</option>
+                                    <option value="3" style={routeOptionStyle}>3M</option>
+                                    <option value="6" style={routeOptionStyle}>6M</option>
+                                    <option value="12" style={routeOptionStyle}>1Y</option>
                                 </select>
             }
 
                             {setActiveRoutePriceFilter &&
-            <select value={activeRoutePriceFilter} onChange={(e) => {e.stopPropagation();setActiveRoutePriceFilter(e.target.value);}} onPointerDown={(e) => e.stopPropagation()} className="text-[10px] md:text-[11px] font-medium bg-white/5 border border-green-500/30 rounded-md px-1 md:px-1.5 py-0.5 outline-none cursor-pointer hover:bg-white/10 shrink-0" style={{ color: '#86efac', WebkitAppearance: 'menulist' }}>
-                                    <option value="all">Price</option>
-                                    <option value="50000">&gt;$50K</option>
-                                    <option value="100000">&gt;$100K</option>
-                                    <option value="200000">&gt;$200K</option>
-                                    <option value="300000">&gt;$300K</option>
-                                    <option value="500000">&gt;$500K</option>
-                                    <option value="750000">&gt;$750K</option>
-                                    <option value="1000000">&gt;$1M</option>
+            <select value={activeRoutePriceFilter} onChange={(e) => {e.stopPropagation();setActiveRoutePriceFilter(e.target.value);}} onPointerDown={(e) => e.stopPropagation()} className={routeSelectAccentClass} style={routeSelectAccentStyle}>
+                                    <option value="all" style={routeOptionAccentStyle}>Price</option>
+                                    <option value="50000" style={routeOptionAccentStyle}>&gt;$50K</option>
+                                    <option value="100000" style={routeOptionAccentStyle}>&gt;$100K</option>
+                                    <option value="200000" style={routeOptionAccentStyle}>&gt;$200K</option>
+                                    <option value="300000" style={routeOptionAccentStyle}>&gt;$300K</option>
+                                    <option value="500000" style={routeOptionAccentStyle}>&gt;$500K</option>
+                                    <option value="750000" style={routeOptionAccentStyle}>&gt;$750K</option>
+                                    <option value="1000000" style={routeOptionAccentStyle}>&gt;$1M</option>
                                 </select>
             }
 
