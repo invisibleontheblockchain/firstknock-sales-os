@@ -409,7 +409,7 @@ export default function TerritoryPrompt({
           setEtaText('Building routes now');
           setPullProgress('Data ready — building optimized routes...');
 
-          const totalLoaded = (d.active_count || 0) || (d.total_inserted || 0) + (d.total_existed || 0);
+          const totalLoaded = d.active_count || 0 || (d.total_inserted || 0) + (d.total_existed || 0);
           toast.success(`${totalLoaded.toLocaleString()} properties ready. Building routes now...`, { duration: 4000 });
 
           // Update user status
@@ -561,12 +561,12 @@ export default function TerritoryPrompt({
     const historyCriteria = isPreviousAreaPull ? selectedHistoryArea?.criteria || {} : {};
     const historyDate = isPreviousAreaPull ? selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date : null;
     const effectiveSoldMonths = isPreviousAreaPull && repullMode === 'max_since_last' ? monthsSinceHistoryPull(historyDate) : Number(historyCriteria.sold_months || fetchMonths || 12);
-    const usingMaxAvailable = (isPreviousAreaPull && repullMode === 'max_since_last') || propertyCountMode === 'max_available';
+    const usingMaxAvailable = isPreviousAreaPull && repullMode === 'max_since_last' || propertyCountMode === 'max_available';
     const effectiveRequestedPropertyCount = usingMaxAvailable ? maxRequestedProperties : safeRequestedPropertyCount;
     const effectiveMinPrice = minHomeValue ? Number(minHomeValue) : null;
     const effectiveMaxPrice = maxHomeValue ? Number(maxHomeValue) : null;
     const premiumRecentRange = effectiveSoldMonths <= 1;
-    const latestUser = (effectiveRequestedPropertyCount > freePropertyLimit || premiumRecentRange) ? await base44.auth.me() : user;
+    const latestUser = effectiveRequestedPropertyCount > freePropertyLimit || premiumRecentRange ? await base44.auth.me() : user;
     const upgraded = latestUser?.subscription_status === 'active' || latestUser?.subscription_status === 'trialing' || latestUser?.is_owner || latestUser?.role === 'admin';
     const hasPrecisionPro = isPrecisionProUser(latestUser);
 
@@ -647,8 +647,8 @@ export default function TerritoryPrompt({
         className="absolute top-3 left-3 right-3 sm:top-16 sm:left-4 sm:right-auto z-[2000] animate-in slide-in-from-top-4"
         onPointerDown={stopMapTouch}
         onTouchStart={stopMapTouch}
-        onMouseDown={stopMapTouch}
-      >
+        onMouseDown={stopMapTouch}>
+        
                     <div className="bg-black/85 backdrop-blur-md border border-[#2EEB57]/30 rounded-2xl px-3 py-2 shadow-2xl flex flex-wrap items-center gap-2 max-w-[calc(100vw-1.5rem)] sm:max-w-[640px]">
                         <div className="flex items-center gap-2 shrink-0">
                             <div className="w-6 h-6 rounded-full bg-[#2EEB57]/20 flex items-center justify-center">
@@ -785,7 +785,7 @@ export default function TerritoryPrompt({
                         <Button
             disabled={paidPullStarting || pulling}
             onClick={() => setShowPrecisionPullPanel(true)}
-            className="flex h-11 flex-1 items-center justify-center rounded-xl border border-[#2EEB57]/25 bg-[#2EEB57]/10 px-4 text-[11px] font-black tracking-wide text-[#86efac] shadow-none hover:border-[#2EEB57]/45 hover:bg-[#2EEB57]/15 sm:h-9 sm:flex-none min-w-0">
+            className="flex h-11 flex-1 items-center justify-center rounded-xl border border-[#2EEB57]/25 px-4 text-[11px] font-black tracking-wide text-[#86efac] shadow-none hover:border-[#2EEB57]/45 hover:bg-[#2EEB57]/15 sm:h-9 sm:flex-none min-w-0 bg-[#ffffff]">
             
                             PULL DATA
                         </Button>
@@ -830,8 +830,8 @@ export default function TerritoryPrompt({
         setForceFullRefresh={setForceFullRefresh}
         includeUnresolvedFollowUps={includeUnresolvedFollowUps}
         setIncludeUnresolvedFollowUps={setIncludeUnresolvedFollowUps}
-        onClearArea={() => {setDrawnPolygon(null);setDraftPolygon([]);setDrawingMode(false);setShowPrecisionPullPanel(false);setSelectedHistoryArea(null);}}
-      />
+        onClearArea={() => {setDrawnPolygon(null);setDraftPolygon([]);setDrawingMode(false);setShowPrecisionPullPanel(false);setSelectedHistoryArea(null);}} />
+
       }
         </>);
 
