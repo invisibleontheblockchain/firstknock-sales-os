@@ -48,11 +48,14 @@ export default function Appointments() {
 
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
 
-    const { data: appointments = [], isLoading: appointmentsLoading } = useQuery({
-        queryKey: ['appointments'],
+    const { data: appointments = [], isLoading: appointmentsLoading, isFetching: appointmentsFetching } = useQuery({
+        queryKey: ['appointments', user?.id, user?.team_manager_id],
         staleTime: 1000 * 60 * 2,
-        queryFn: () => base44.entities.Appointment.list('-scheduled_date', 500),
-        initialData: [],
+        queryFn: async () => {
+            const result = await base44.entities.Appointment.list('-scheduled_date', 500);
+            return Array.isArray(result) ? result : (result?.items || []);
+        },
+        enabled: !!user,
     });
 
     const { data: properties = [] } = useQuery({
@@ -226,6 +229,7 @@ export default function Appointments() {
     }, [appointmentRows, statusFilter, timeFilter]);
 
     const appointmentNumbers = useMemo(() => new Map(filteredAppointments.map((appointment, index) => [appointment.id, index + 1])), [filteredAppointments]);
+    const showInitialLoading = !user || appointmentsLoading || (appointmentsFetching && appointmentRows.length === 0) || (logsLoading && appointmentRows.length === 0);
 
     const grouped = useMemo(() => {
         const groups = {};
@@ -386,7 +390,7 @@ export default function Appointments() {
                         />
                     )}
 
-                    {(appointmentsLoading || logsLoading) ? (
+                    {showInitialLoading ? (
                         <div className="flex flex-col items-center justify-center py-24 gap-3">
                             <Loader2 className="w-6 h-6 animate-spin text-white/30" />
                             <span className="text-xs text-gray-600">Loading appointments...</span>

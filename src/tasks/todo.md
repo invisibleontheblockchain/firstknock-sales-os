@@ -1,3 +1,15 @@
+## Plan — Fix Appointments Loading / Empty State
+- [x] Inspect the appointment data queries, callback-log merge, loading gates, and current filters.
+- [x] Identify why existing appointments are hidden or the page stays effectively empty.
+- [x] Patch the smallest root cause without changing appointment business logic.
+- [x] Verify with build/static checks and, if needed, data-shape checks against existing records.
+- [x] Document the result and lesson from this correction.
+
+### Review — Fix Appointments Loading / Empty State
+The Appointments page was masking the first real appointment fetch as an empty result because the query used `initialData: []`, and the render gate waited on slower callback-history reconciliation before showing saved appointment rows. I removed the false initial empty data, made the appointment query wait for the signed-in user and use a user-scoped cache key, and changed the loading gate so saved appointments render while callback history continues loading. `npm run build` passes, static checks confirmed the guards, and service-side data confirms existing appointments belong to the current manager account.
+
+---
+
 ## Plan — Fix Appointment View Map White Screen
 - [x] Re-check the appointment-to-map URL path that just caused the white screen.
 - [x] Patch invalid/missing coordinate handling so missing lat/lng never becomes a fake 0,0 map target.
