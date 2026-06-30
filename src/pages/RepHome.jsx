@@ -352,6 +352,7 @@ export default function RepHome() {
       queryClient.invalidateQueries({ queryKey: ['myLogs'] });
       queryClient.invalidateQueries({ queryKey: ['routeLogs'] });
       queryClient.invalidateQueries({ queryKey: ['allMyLogs'] });
+      queryClient.invalidateQueries({ queryKey: ['propertyHistory'] });
     },
     onSuccess: async () => {
       // Free users: increment the persisted lifetime counter. The counter only

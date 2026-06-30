@@ -18,7 +18,10 @@ export default function PropertyDetailSheet({ property, logs, onLog, outcomeDisa
     const [showMore, setShowMore] = useState(false);
     const [logNote, setLogNote] = useState('');
     const [callbackTime, setCallbackTime] = useState('');
+    const [callbackName, setCallbackName] = useState('');
     const [callbackPhone, setCallbackPhone] = useState('');
+    const [callbackError, setCallbackError] = useState('');
+    const [showCallbackPrompt, setShowCallbackPrompt] = useState(false);
     const [showSaleAmount, setShowSaleAmount] = useState(false);
     const [saleAmount, setSaleAmount] = useState('');
 
@@ -32,11 +35,26 @@ export default function PropertyDetailSheet({ property, logs, onLog, outcomeDisa
 
         if (status === 'SOLD' && !showSaleAmount) {
             setShowSaleAmount(true);
+            setShowCallbackPrompt(false);
             return;
+        }
+
+        if (status === 'CALLBACK') {
+            setShowCallbackPrompt(true);
+            if (!showCallbackPrompt && (!callbackName.trim() || !callbackPhone.trim())) {
+                setCallbackError('');
+                return;
+            }
+            if (!callbackName.trim() || !callbackPhone.trim()) {
+                setCallbackError('Name and phone number are required for callbacks.');
+                return;
+            }
+            setCallbackError('');
         }
 
         let noteText = `Marked as ${status}`;
         if (logNote) noteText += ` | Note: ${logNote}`;
+        if (status === 'CALLBACK' && callbackName.trim()) noteText += ` | Contact: ${callbackName.trim()}`;
         if (callbackPhone) noteText += ` | Phone: ${callbackPhone}`;
         if (callbackTime) noteText += ` | Time: ${callbackTime}`;
         if (saleAmount) noteText += ` | Sale: $${saleAmount}`;
@@ -63,6 +81,13 @@ export default function PropertyDetailSheet({ property, logs, onLog, outcomeDisa
         onLog(logData);
         setShowSaleAmount(false);
         setSaleAmount('');
+        if (status === 'CALLBACK') {
+            setShowCallbackPrompt(false);
+            setCallbackName('');
+            setCallbackPhone('');
+            setCallbackTime('');
+            setCallbackError('');
+        }
     };
 
     return (
@@ -110,6 +135,43 @@ export default function PropertyDetailSheet({ property, logs, onLog, outcomeDisa
                             </button>
                         ))}
                     </div>
+
+                    {showCallbackPrompt && (
+                        <div className="mt-2 rounded-2xl border border-[#2EEB57]/30 bg-[#2EEB57]/[0.08] p-3 animate-in slide-in-from-top-2 duration-200">
+                            <p className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-[#39FF4A]">Callback contact</p>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                <input
+                                    value={callbackName}
+                                    onChange={(e) => { setCallbackName(e.target.value); setCallbackError(''); }}
+                                    placeholder="Name"
+                                    autoFocus
+                                    className="selectable-text w-full bg-black/70 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:border-[#2EEB57] focus:outline-none"
+                                />
+                                <input
+                                    type="tel"
+                                    value={callbackPhone}
+                                    onChange={(e) => { setCallbackPhone(e.target.value); setCallbackError(''); }}
+                                    placeholder="Phone number"
+                                    className="selectable-text w-full bg-black/70 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:border-[#2EEB57] focus:outline-none"
+                                />
+                            </div>
+                            <div className="mt-2 flex gap-2">
+                                <input
+                                    type="time"
+                                    value={callbackTime}
+                                    onChange={(e) => setCallbackTime(e.target.value)}
+                                    className="w-full bg-black/70 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:border-[#2EEB57] focus:outline-none [color-scheme:dark]"
+                                />
+                                <button
+                                    onClick={() => handleMark('CALLBACK')}
+                                    className="px-4 py-2.5 rounded-xl bg-[#2EEB57] text-black font-black text-xs active:scale-95 transition-all whitespace-nowrap"
+                                >
+                                    Save Callback
+                                </button>
+                            </div>
+                            {callbackError && <p className="mt-2 text-[10px] font-bold text-red-300">{callbackError}</p>}
+                        </div>
+                    )}
 
                     {showSaleAmount && (
                         <div className="mt-2 flex gap-2 items-center animate-in slide-in-from-top-2 duration-200">

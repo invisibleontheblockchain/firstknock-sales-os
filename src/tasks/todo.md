@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — Data Pull Progress + Route Generation Handoff
+## Current Plan — Knock Callback Contact Prompt
+- [x] Add a callback-specific prompt in the Knock property sheet when a rep taps Callback.
+- [x] Require homeowner/contact name and phone before saving the Callback outcome.
+- [x] Save the name, phone, optional time, and notes into the existing interaction log text so it appears automatically in History.
+- [x] Keep all other outcome buttons and the freemium gate behavior unchanged.
+- [x] Verify with production build and document the result.
+
+### Review — Knock Callback Contact Prompt
+Callback now opens a focused contact prompt inside the Knock property sheet instead of immediately saving. The rep must enter a name and phone number before Save Callback records the CALLBACK outcome. The saved interaction log includes the contact name, phone, optional callback time, and any existing note in `raw_input_text`, so it appears in the property History through the existing logging path. Other outcomes and the Knock limit gate remain unchanged. Production build passes.
+
+## Previous Plan — Data Pull Progress + Route Generation Handoff
 - [x] Keep the import overlay visible until route generation has actually started/finished its handoff, so users do not see a dead gap after data import completes.
 - [x] Replace noisy long ETA math with conservative stage-based timing/counter text that cannot show inflated estimates like 12 minutes for normal Precision pulls.
 - [x] Make the data counter emphasize records found/ready and only show expected totals when available.

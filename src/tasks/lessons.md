@@ -70,6 +70,7 @@
 - When optimizing a mobile panel, check the parent shell, tab row, section header actions, and cards together; fixing only the inner padding can leave fixed-width children off-screen.
 - In mobile multi-select lists, make selection controls and section expand arrows explicit, high-contrast, and non-shrinking; hover-only affordances do not work on touch screens.
 - Rep-facing Knock and Checklist views must share one interpretation of interaction decisions; temporary outcomes like NO_ANSWER should still count as done until a user explicitly clears the decision back to Todo.
+- Callback outcomes in Knock mode should collect contact name and phone before saving, and the saved interaction text must include those details so History shows the callback context without a separate lookup.
 - Saved route ordering must have one source of truth: `SavedRoute.property_hashes`. Checklist, map, and Knock should preserve that order and subscribe/refetch when the saved route changes; do not apply a second local optimizer in only one view.
 - When adding React hooks to existing components, update the destructured React import in the same edit batch; missing hook imports can make a correct sync fix fail at runtime.
 - Do not keep patching oversized files after the tool blocks edits; stop, re-plan, and extract the risky logic into smaller shared modules before changing behavior.
