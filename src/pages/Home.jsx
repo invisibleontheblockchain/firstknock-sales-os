@@ -927,11 +927,14 @@ export default function Home() {
         if (params.get('appointment') !== '1' || appointmentMapFocusHandledRef.current) return;
 
         const savedRouteId = params.get('savedRoute');
-        if (savedRouteId && !activeRoute) return;
+        const routeExistsHere = savedRouteId && savedRoutes.some(route => route.id === savedRouteId);
+        if (routeExistsHere && !activeRoute) return;
 
         const focusHash = params.get('focus');
-        const lat = Number(params.get('lat'));
-        const lng = Number(params.get('lng'));
+        const hasLatLng = params.has('lat') && params.has('lng');
+        const lat = hasLatLng ? Number(params.get('lat')) : null;
+        const lng = hasLatLng ? Number(params.get('lng')) : null;
+        const hasValidLatLng = Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) > 0.0001 && Math.abs(lng) > 0.0001;
         const address = params.get('address') || 'Appointment address';
         const routeProps = activeRoute?.properties || activeRoute?.allProperties || [];
         const allProps = [...routeProps, ...effectiveProperties];
@@ -941,11 +944,13 @@ export default function Home() {
                 property.legacy_hash === focusHash ||
                 property.id === focusHash
             )
-        ) || (Number.isFinite(lat) && Number.isFinite(lng) ? {
+        ) || (hasValidLatLng ? {
             id: focusHash || `appointment-${lat}-${lng}`,
             address_hash: focusHash || `appointment-${lat}-${lng}`,
             full_address: address,
             address,
+            house_number: '',
+            street_name: address,
             lat,
             lng,
             effective_status: 'CALLBACK'
@@ -956,10 +961,12 @@ export default function Home() {
         setShowRoutePanel(false);
         setShowCompare(false);
 
-        if (target?.lat && target?.lng) {
-            setSelectedProperty(target);
+        const targetLat = Number(target?.lat);
+        const targetLng = Number(target?.lng);
+        if (Number.isFinite(targetLat) && Number.isFinite(targetLng) && Math.abs(targetLat) > 0.0001 && Math.abs(targetLng) > 0.0001) {
+            setSelectedProperty({ ...target, lat: targetLat, lng: targetLng });
             if (mapRef.current) {
-                try { mapRef.current.setView([target.lat, target.lng], 18, { animate: true }); } catch { }
+                try { mapRef.current.setView([targetLat, targetLng], 18, { animate: true }); } catch { }
             }
             toast.success('Opened appointment on the map');
         } else {

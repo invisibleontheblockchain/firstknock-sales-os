@@ -280,9 +280,11 @@ export default function Appointments() {
         params.set('appointment', '1');
         if (appointment.route_id) params.set('savedRoute', appointment.route_id);
         if (appointment.address_hash) params.set('focus', appointment.address_hash);
-        if (appointment.lat && appointment.lng) {
-            params.set('lat', String(appointment.lat));
-            params.set('lng', String(appointment.lng));
+        const lat = Number(appointment.lat);
+        const lng = Number(appointment.lng);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            params.set('lat', String(lat));
+            params.set('lng', String(lng));
         }
         if (appointment.full_address) params.set('address', appointment.full_address);
         return params;

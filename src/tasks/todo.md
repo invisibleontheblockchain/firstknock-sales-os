@@ -1,3 +1,15 @@
+## Plan — Fix Appointment View Map White Screen
+- [x] Re-check the appointment-to-map URL path that just caused the white screen.
+- [x] Patch invalid/missing coordinate handling so missing lat/lng never becomes a fake 0,0 map target.
+- [x] Make the map focus handler stop waiting forever when a saved route cannot be loaded on the manager map.
+- [x] Verify the app builds and static checks prove the white-screen path now has safe guards.
+- [x] Add a lesson so future deep links validate URL params before opening map/detail state.
+
+### Review — Fix Appointment View Map White Screen
+The white-screen path was caused by fragile appointment map deep-link handling: missing lat/lng could be parsed as numeric 0/0 and pushed into map/detail focus state. The appointment link now only serializes finite coordinates, Home only accepts coordinates when both params exist and are not null-island values, and route handoff no longer waits forever for a route that is not available in the manager map scope. `npm run build` passes and static checks confirmed the guarded path.
+
+---
+
 ## Plan — Appointment Map / Run Handoff
 - [x] Add Appointment list/detail actions for “View Map” and “Run”.
 - [x] Deep-link View Map into the FirstKnock manager map, centered on the appointment address/property when possible.
