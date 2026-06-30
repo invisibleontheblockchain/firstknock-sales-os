@@ -744,28 +744,32 @@ export default function RepHome() {
             </PullToRefresh>
 
             {/* Floating action buttons */}
-            <div className="fixed bottom-20 left-4 right-4 z-30 flex items-center gap-2">
+            <div className="fixed bottom-20 left-4 right-4 z-30 flex items-center gap-2 rounded-[28px] border border-white/10 bg-black/55 p-2 shadow-[0_22px_70px_rgba(0,0,0,0.65)] backdrop-blur-2xl">
                 {stats.percent >= 100 &&
         <Button
           onClick={() => {
             if (confirm("Mark route as complete?")) completeRouteMutation.mutate();
           }}
-          className="flex-1 h-11 bg-[#2EEB57] hover:bg-[#39FF4A] text-black font-black rounded-2xl shadow-[0_12px_35px_rgba(46,235,87,0.28)] text-xs tracking-wide">
+          className="flex-1 h-12 rounded-[20px] border border-[#B6FF5C]/40 bg-gradient-to-r from-[#2EEB57] via-[#39FF4A] to-[#B6FF5C] text-black font-black text-xs tracking-[0.16em] shadow-[0_14px_34px_rgba(46,235,87,0.35)] transition-all hover:scale-[1.01] hover:shadow-[0_18px_46px_rgba(57,255,74,0.45)] active:scale-[0.98]">
           
                         ✅ Complete Route
                     </Button>
         }
                 <button
           onClick={() => setShowAnalytics(true)}
-          className="w-11 h-11 rounded-2xl bg-white text-black border border-white flex items-center justify-center active:scale-95 shadow-[0_12px_35px_rgba(255,255,255,0.16)] transition-all">
+          className="group relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-[20px] border border-white/15 bg-white/[0.08] text-white shadow-[0_14px_34px_rgba(255,255,255,0.12)] transition-all hover:-translate-y-0.5 hover:border-white/30 hover:bg-white/[0.14] active:translate-y-0 active:scale-95">
           
-                    <TrendingUp className="w-4 h-4" />
+                    <span className="absolute inset-0 bg-gradient-to-br from-white/28 via-white/5 to-transparent opacity-80" />
+                    <span className="absolute -bottom-5 left-1/2 h-10 w-10 -translate-x-1/2 rounded-full bg-white/20 blur-xl transition-opacity group-hover:opacity-100" />
+                    <TrendingUp className="relative mx-auto h-4 w-4" />
                 </button>
                 <button
           onClick={() => setShowChat(true)}
-          className="w-11 h-11 rounded-2xl bg-[#2EEB57] text-black border border-[#39FF4A]/60 flex items-center justify-center active:scale-95 shadow-[0_12px_35px_rgba(46,235,87,0.25)] transition-all">
+          className="group relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-[20px] border border-[#39FF4A]/50 bg-gradient-to-br from-[#39FF4A] via-[#2EEB57] to-[#139B38] text-black shadow-[0_14px_34px_rgba(46,235,87,0.32)] transition-all hover:-translate-y-0.5 hover:shadow-[0_18px_46px_rgba(57,255,74,0.45)] active:translate-y-0 active:scale-95">
           
-                    <MessageCircle className="w-4 h-4" />
+                    <span className="absolute inset-0 bg-gradient-to-br from-white/45 via-transparent to-black/10" />
+                    <span className="absolute -bottom-5 left-1/2 h-10 w-10 -translate-x-1/2 rounded-full bg-[#39FF4A]/60 blur-xl transition-opacity group-hover:opacity-100" />
+                    <MessageCircle className="relative mx-auto h-4 w-4" />
                 </button>
             </div>
 

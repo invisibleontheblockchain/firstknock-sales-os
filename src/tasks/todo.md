@@ -1,6 +1,14 @@
 # Plan
 
-## Current Plan — Knock Callback Contact Prompt
+## Current Plan — Knock Floating Buttons Polish
+- [x] Keep the selected floating action row behavior unchanged.
+- [x] Upgrade the visual treatment with a premium glass dock, stronger gradients, glow, and smoother tap/hover states.
+- [x] Verify the app still builds.
+
+### Review — Knock Floating Buttons Polish
+The selected floating action row now uses a glass dock container with elevated blur, soft border, premium gradient treatment, stronger glow, and smoother hover/tap states. Analytics and chat actions retain the same handlers, and Complete Route keeps the same completion flow. Production build passes.
+
+## Previous Plan — Knock Callback Contact Prompt
 - [x] Add a callback-specific prompt in the Knock property sheet when a rep taps Callback.
 - [x] Require homeowner/contact name and phone before saving the Callback outcome.
 - [x] Save the name, phone, optional time, and notes into the existing interaction log text so it appears automatically in History.
