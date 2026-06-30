@@ -20,8 +20,6 @@ function getBoundsFromPolygon(polygon) {
     };
 }
 
-const MIN_RECENT_PULL_LOOKBACK_DAYS = 14;
-
 function requestedSoldWindowDays(soldMonths) {
     const months = Number(soldMonths || 1);
     if (Math.abs(months - (1 / 30)) < 0.0001) return 1;
@@ -37,7 +35,7 @@ function requestedSoldWindowDays(soldMonths) {
 }
 
 function routeCandidateSoldWindowDays(soldMonths) {
-    return Math.max(requestedSoldWindowDays(soldMonths), MIN_RECENT_PULL_LOOKBACK_DAYS);
+    return requestedSoldWindowDays(soldMonths);
 }
 
 Deno.serve(async (req) => {

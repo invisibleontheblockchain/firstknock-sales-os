@@ -5,7 +5,6 @@ const BATCHDATA_API_KEY = Deno.env.get('BATCH_DATA_API_KEY');
 const DATABASE_URL = Deno.env.get('DATABASE_URL');
 const BATCHDATA_BASE = 'https://api.batchdata.com/api/v1/property/search';
 const BATCHDATA_MAX_TAKE = 100;
-const MIN_RECENT_PULL_LOOKBACK_DAYS = 14;
 const PIPELINE_LOCK_TTL_MS = 90 * 1000;
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
@@ -139,7 +138,7 @@ function requestedSoldWindowDays(soldMonths) {
 }
 
 function soldWindowDays(soldMonths) {
-    return Math.max(requestedSoldWindowDays(soldMonths), MIN_RECENT_PULL_LOOKBACK_DAYS);
+    return requestedSoldWindowDays(soldMonths);
 }
 
 function isoDateDaysAgo(days) {

@@ -1,3 +1,14 @@
+## Plan — Use Exact Sold-Date Request Windows
+- [x] Remove provider-side minimum sold-date widening from the live BatchData pull request.
+- [x] Remove matching route-candidate widening so exact-job retrieval follows the selected timeframe.
+- [x] Verify request previews for 1 day, 2 days, and 1 week send exact `intel.lastSoldDate.minDate` values.
+- [x] Run build/backend checks and document the correction.
+
+### Review — Use Exact Sold-Date Request Windows
+The live Precision data request now sends the exact selected timeframe to `intel.lastSoldDate.minDate`: 1 day sends 2026-06-29, 2 days sends 2026-06-28, and 1 week sends 2026-06-23 on the current Jun 30, 2026 clock. The route-candidate query now uses the same exact selected window instead of a provider-safe minimum. `processFetchChunk` request previews and `npm run build` pass.
+
+---
+
 ## Plan — Keep Visible Last-Week Filter Strict
 - [x] Separate provider-safe acquisition window from user-facing route/display filter.
 - [x] Patch the final local route filter so “last week” means exactly 7 days on screen.
