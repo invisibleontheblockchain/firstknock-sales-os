@@ -12,6 +12,7 @@
 - If a user says a control is probably present but hidden, inspect both conditional rendering and visual hierarchy; low-contrast controls inside lower scroll regions should be moved into the primary visible action area when they are core workflow controls.
 - Bottom sheets inside the app shell can still be visually blocked by the persistent bottom nav; add nav-safe bottom spacing or lift the sheet above the nav when action buttons sit near the bottom.
 - Native select popups can fall back to stark white browser/OS styling; when polishing map toolbar dropdowns, set the closed select styling plus `colorScheme: 'dark'` and dark option styles so opened menus match the app where supported.
+- When adding premium Precision date ranges, gate them in both the UI and the backend start function; UI locks alone can be bypassed by direct function calls.
 - When changing BatchData search criteria such as `intel.lastSoldDate`, also verify response mapping into stored route-detail fields; pulling the right houses is incomplete if `intel` value/build/sqft/last-sold fields are not persisted.
 - Route naming should be set at the generation/save source of truth, not just in display cards; otherwise every auto-saved route can inherit indistinguishable stock names like “Precision Route 1.”
 - When changing a repeated route-card workflow, update every route list variant in the same pass (Active, By Rep, selected-route toolbars) so tabs do not drift.

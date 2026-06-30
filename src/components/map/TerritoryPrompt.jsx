@@ -497,7 +497,7 @@ export default function TerritoryPrompt({
       return;
     }
 
-    const premiumRecentRange = [2 / 30, 0.25, 0.5, 1].includes(Number(fetchMonths));
+    const premiumRecentRange = [1 / 30, 2 / 30, 0.25, 0.5, 1].includes(Number(fetchMonths));
     const latestUser = (safeRequestedPropertyCount > freePropertyLimit || premiumRecentRange) ? await base44.auth.me() : user;
     const upgraded = latestUser?.subscription_status === 'active' || latestUser?.subscription_status === 'trialing' || latestUser?.is_owner || latestUser?.role === 'admin';
     const hasPrecisionPro = isPrecisionProUser(latestUser);

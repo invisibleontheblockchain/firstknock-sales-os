@@ -124,6 +124,8 @@ function closePolygon(points) {
 
 function soldWindowDays(soldMonths) {
     const months = Number(soldMonths || 1);
+    if (Math.abs(months - (1 / 30)) < 0.0001) return 1;
+    if (Math.abs(months - (2 / 30)) < 0.0001) return 2;
     if (months === 0.25) return 7;
     if (months === 0.5) return 14;
     if (months === 1) return 30;

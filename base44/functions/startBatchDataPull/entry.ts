@@ -34,6 +34,18 @@ function centroid(points) {
     };
 }
 
+function isPrecisionProUser(user) {
+    const tier = String(user?.subscription_tier || '').toLowerCase();
+    const status = String(user?.subscription_status || '').toLowerCase();
+    if (user?.is_owner || user?.role === 'admin') return true;
+    return ['active', 'trialing'].includes(status) && ['pro', 'precision'].includes(tier);
+}
+
+function isPremiumRecentRange(soldMonths) {
+    const months = Number(soldMonths || 12);
+    return [1 / 30, 2 / 30, 0.25, 0.5, 1].some(value => Math.abs(months - value) < 0.0001);
+}
+
 function boundsMiles(points) {
     const lats = points.map(p => p.lat);
     const lngs = points.map(p => p.lng);
@@ -84,6 +96,14 @@ Deno.serve(async (req) => {
         const center = centroid(polygon);
         const forceFreeForSelfTest = body.self_test_force_free === true && body.dry_run === true;
         const isPaid = !forceFreeForSelfTest && (user.subscription_status === 'active' || user.subscription_status === 'trialing' || user.is_owner || user.role === 'admin');
+        const hasPrecisionPro = !forceFreeForSelfTest && isPrecisionProUser(user);
+        const requestedSoldMonths = Number(body.sold_months || 12);
+        if (isPremiumRecentRange(requestedSoldMonths) && !hasPrecisionPro) {
+            return Response.json({
+                error: 'upgrade_required',
+                message: '1 day, 2 day, 1 week, 2 week, and 1 month Precision pulls require a Pro plan.'
+            }, { status: 403 });
+        }
         const maxArea = isPaid ? PAID_AREA_LIMIT_SQ_MI : FREE_AREA_LIMIT_SQ_MI;
         const maxProperties = isPaid ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
         const requestedRaw = Number(body.requested_properties || maxProperties);
@@ -151,7 +171,7 @@ Deno.serve(async (req) => {
                 },
                 paid_pull_started_at: new Date().toISOString()
             },
-            sold_months: Number(body.sold_months || 12),
+            sold_months: requestedSoldMonths,
             include_mls: false,
             user_email: user.email,
             progress_pct: 0,

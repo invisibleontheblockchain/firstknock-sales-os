@@ -6,14 +6,16 @@ import { toast } from 'sonner';
 import { createPageUrl } from '@/utils';
 import PrecisionProUpgradeSheet from '@/components/map/PrecisionProUpgradeSheet';
 
+const PREMIUM_RECENT_RANGES = [1 / 30, 2 / 30, 0.25, 0.5, 1];
+
 const SOLD_OPTIONS = [
+  { value: 1 / 30, label: '1 day', lockedOnFree: true },
   { value: 2 / 30, label: '2 day', lockedOnFree: true },
   { value: 0.25, label: '1 wk', lockedOnFree: true },
   { value: 0.5, label: '2 wk', lockedOnFree: true },
   { value: 1, label: '1 mo', lockedOnFree: true },
   { value: 3, label: '3 mo' },
   { value: 6, label: '6 mo' },
-  { value: 9, label: '9 mo' },
   { value: 12, label: '12 mo' }
 ];
 
@@ -60,7 +62,7 @@ export default function PrecisionPullPanel({
   const goToUpgrade = () => navigate(createPageUrl('Billing') + '?plan=precision');
 
   useEffect(() => {
-    if (!isProPlan && [2 / 30, 0.25, 0.5, 1].includes(Number(soldMonths))) {
+    if (!isProPlan && PREMIUM_RECENT_RANGES.includes(Number(soldMonths))) {
       setSoldMonths(3);
       if (!hasShownFallbackToast.current) {
         hasShownFallbackToast.current = true;
@@ -173,7 +175,7 @@ export default function PrecisionPullPanel({
 
                     {isLocked && hoveredLockedOption === option.value && (
                       <div className="hidden sm:block absolute bottom-full left-1/2 z-[2700] mb-2 w-64 -translate-x-1/2 rounded-xl border border-[#2EEB57]/30 bg-black p-3 text-center shadow-2xl">
-                        <p className="text-xs font-semibold text-white">Unlock shorter date ranges with a Pro plan</p>
+                        <p className="text-xs font-semibold text-white">Unlock 1 day, 2 day, 1 week, 2 week, and 1 month ranges with Pro</p>
                         <button
                           type="button"
                           onClick={goToUpgrade}
@@ -189,7 +191,7 @@ export default function PrecisionPullPanel({
             </div>
             {!isProPlan && (
               <p className="text-[10px] text-gray-600 leading-tight">
-                Shorter ranges are available on Pro. Your current free range starts at 3 months.
+                1 day, 2 day, 1 week, 2 week, and 1 month are available on Pro. Your current free range starts at 3 months.
               </p>
             )}
           </div>

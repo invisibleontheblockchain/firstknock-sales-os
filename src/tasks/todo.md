@@ -1,6 +1,17 @@
 # Plan
 
-## Current Plan — Map Active/Completed Route Toggle
+## Current Plan — Precision 1-Day Range + Paywall Gate
+- [x] Trace the Precision pull date-range UI and submitted payload.
+- [x] Replace the 9-month option with a 1-day option.
+- [x] Gate 1 day, 2 day, 1 week, 2 week, and 1 month in the UI for non-Pro users.
+- [x] Add a backend guard so non-Pro users cannot bypass the UI and call short ranges directly.
+- [x] Verify the BatchData request still uses `intel.lastSoldDate.minDate` for the selected day/week/month range.
+- [x] Run backend request preview and production build verification.
+
+### Review — Precision 1-Day Range + Paywall Gate
+Replaced the old 9-month option with 1 day in the Precision pull selector. 1 day, 2 day, 1 week, 2 week, and 1 month are now locked for non-Pro users in the UI, and `startBatchDataPull` also rejects those ranges for non-Pro callers so the gate cannot be bypassed. Verified `processFetchChunk` sends BatchData `intel.lastSoldDate.minDate` for 1 day (`2026-06-29` on 2026-06-30), verified the backend free-user guard returns `upgrade_required`, and confirmed the production build passes.
+
+## Previous Plan — Map Active/Completed Route Toggle
 - [x] Trace the map toolbar toggle state and what it sends to the map layers.
 - [x] Trace how saved routes are grouped/rendered as active vs completed on the map.
 - [x] Fix the map filter so Active shows only non-completed routes and Completed shows completed routes.
