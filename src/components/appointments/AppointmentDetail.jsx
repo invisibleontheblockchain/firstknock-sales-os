@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
-import { Calendar, User, Phone, Mail, FileText, ChevronLeft, Check, Ban, Clock, RotateCcw, MapPin, Pencil } from 'lucide-react';
+import { Calendar, User, Phone, Mail, FileText, ChevronLeft, Check, Ban, Clock, RotateCcw, MapPin, Pencil, Navigation } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';
@@ -20,7 +20,7 @@ const STATUSES = [
     { value: 'rescheduled', label: 'Rescheduled', color: '#8b5cf6' },
 ];
 
-export default function AppointmentDetail({ appointment, onClose, onUpdate }) {
+export default function AppointmentDetail({ appointment, onClose, onUpdate, onViewMap, onRun }) {
     const [editing, setEditing] = useState(false);
     const [form, setForm] = useState({
         homeowner_name: appointment.homeowner_name || '',
@@ -34,6 +34,7 @@ export default function AppointmentDetail({ appointment, onClose, onUpdate }) {
     const appointmentNumber = appointment.appointment_number || appointment.appointmentNumber;
     const routeName = appointment.route_name || appointment.routeName;
     const isLogOnly = appointment._source === 'interaction_log';
+    const canRun = !!appointment.route_id;
 
     const handleSave = async () => {
         setSaving(true);
@@ -82,6 +83,14 @@ export default function AppointmentDetail({ appointment, onClose, onUpdate }) {
                 </div>
 
                 <div className="p-5 space-y-5">
+                    <div className="grid grid-cols-2 gap-2">
+                        <Button onClick={() => onViewMap?.(appointment)} className="h-11 rounded-2xl bg-[#39FF4A] text-black hover:bg-[#2EEB57] font-black text-xs uppercase tracking-[0.12em]">
+                            <MapPin className="w-4 h-4" /> View Map
+                        </Button>
+                        <Button onClick={() => canRun && onRun?.(appointment)} disabled={!canRun} variant="outline" className="h-11 rounded-2xl border-white/[0.1] bg-white/[0.04] text-white hover:bg-white/[0.08] font-black text-xs uppercase tracking-[0.12em] disabled:opacity-35">
+                            <Navigation className="w-4 h-4" /> Run
+                        </Button>
+                    </div>
 
                     {/* Details */}
                     <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 space-y-3">

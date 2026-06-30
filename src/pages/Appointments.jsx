@@ -275,6 +275,31 @@ export default function Appointments() {
         queryClient.invalidateQueries({ queryKey: ['interactionLogs-appts'] });
     };
 
+    const buildAppointmentMapParams = (appointment) => {
+        const params = new URLSearchParams();
+        params.set('appointment', '1');
+        if (appointment.route_id) params.set('savedRoute', appointment.route_id);
+        if (appointment.address_hash) params.set('focus', appointment.address_hash);
+        if (appointment.lat && appointment.lng) {
+            params.set('lat', String(appointment.lat));
+            params.set('lng', String(appointment.lng));
+        }
+        if (appointment.full_address) params.set('address', appointment.full_address);
+        return params;
+    };
+
+    const handleViewOnMap = (appointment) => {
+        window.location.href = `/Home?${buildAppointmentMapParams(appointment).toString()}`;
+    };
+
+    const handleRunAppointment = (appointment) => {
+        if (!appointment.route_id) return;
+        const params = new URLSearchParams();
+        params.set('route', appointment.route_id);
+        if (appointment.address_hash) params.set('focus', appointment.address_hash);
+        window.location.href = `/RepHome?${params.toString()}`;
+    };
+
     const formatDateLabel = (dateKey) => {
         if (dateKey === 'unscheduled') return 'Unscheduled';
         const date = parseISO(dateKey);
@@ -389,6 +414,8 @@ export default function Appointments() {
                                             appointment={appointment}
                                             appointmentNumber={appointmentNumbers.get(appointment.id)}
                                             onClick={(appt) => setSelectedAppointment({ ...appt, appointment_number: appointmentNumbers.get(appt.id) })}
+                                            onViewMap={handleViewOnMap}
+                                            onRun={handleRunAppointment}
                                         />
                                     ))}
                                 </div>
@@ -404,6 +431,8 @@ export default function Appointments() {
                     appointment={selectedAppointment}
                     onClose={() => setSelectedAppointment(null)}
                     onUpdate={() => { handleRefresh(); setSelectedAppointment(null); }}
+                    onViewMap={handleViewOnMap}
+                    onRun={handleRunAppointment}
                 />
             )}
         </div>

@@ -37,6 +37,7 @@ export default function RepHome() {
   const [limitDismissed, setLimitDismissed] = useState(false);
   const [gateMode, setGateMode] = useState('limit');
   const loggingInFlightRef = React.useRef(false);
+  const appointmentRunFocusHandledRef = React.useRef(false);
   const [soldDateFilter, setSoldDateFilter] = useState('all');
   const [decisionFilter, setDecisionFilter] = useState('all');
 
@@ -460,6 +461,36 @@ export default function RepHome() {
     // so Knock must preserve it exactly instead of applying another local reorder.
     return orderedProps;
   }, [activeRoute, properties, logs]);
+
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const focusHash = params.get('focus');
+    if (!focusHash || appointmentRunFocusHandledRef.current || !routeProperties.length) return;
+
+    const index = routeProperties.findIndex((property) =>
+      property.address_hash === focusHash ||
+      property.legacy_hash === focusHash ||
+      property.id === focusHash
+    );
+
+    appointmentRunFocusHandledRef.current = true;
+    if (index >= 0) {
+      const property = routeProperties[index];
+      setFilterStatus('all');
+      setSearchQuery('');
+      setSelectedProperty(property);
+      setSelectedPropertyIndex(index);
+      setFocusProperty(property);
+      setShowMap(true);
+      toast.success('Opened appointment route');
+    } else {
+      toast.error('Opened route, but this appointment address was not found on it.');
+    }
+
+    if (activeRoute?.id) {
+      window.history.replaceState({}, '', `${window.location.pathname}?route=${encodeURIComponent(activeRoute.id)}`);
+    }
+  }, [routeProperties, activeRoute?.id]);
 
   // Stats
   const stats = useMemo(() => {

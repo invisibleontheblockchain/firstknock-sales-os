@@ -226,6 +226,7 @@ export default function Home() {
         includeUnverifiedSales: false,
     });
     const mapRef = useRef(null);
+    const appointmentMapFocusHandledRef = useRef(false);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
 
     const fetchRouteCandidatesFromNeon = useCallback(async ({ zipCodes = [], zipCodeFilterValue = '', soldMonths = null, polygon = null, limit = 100000, fetchJobId = null } = {}) => {
@@ -911,12 +912,61 @@ export default function Home() {
                         competitivenessScore: saved.metrics?.score || 0,
                         status: saved.status
                     });
-                    // Clear param so we don't reload it if we navigate away and back without intent
-                    window.history.replaceState({}, '', window.location.pathname);
+                    // Clear route-only deep links after loading, but keep appointment links until the appointment focus handler runs.
+                    if (params.get('appointment') !== '1') {
+                        window.history.replaceState({}, '', window.location.pathname);
+                    }
                 }
             }
         }
     }, [savedRoutes, effectiveProperties, activeRoute]);
+
+    // Handle appointment deep links from the Appointments tab.
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('appointment') !== '1' || appointmentMapFocusHandledRef.current) return;
+
+        const savedRouteId = params.get('savedRoute');
+        if (savedRouteId && !activeRoute) return;
+
+        const focusHash = params.get('focus');
+        const lat = Number(params.get('lat'));
+        const lng = Number(params.get('lng'));
+        const address = params.get('address') || 'Appointment address';
+        const routeProps = activeRoute?.properties || activeRoute?.allProperties || [];
+        const allProps = [...routeProps, ...effectiveProperties];
+        const target = allProps.find((property) =>
+            focusHash && (
+                property.address_hash === focusHash ||
+                property.legacy_hash === focusHash ||
+                property.id === focusHash
+            )
+        ) || (Number.isFinite(lat) && Number.isFinite(lng) ? {
+            id: focusHash || `appointment-${lat}-${lng}`,
+            address_hash: focusHash || `appointment-${lat}-${lng}`,
+            full_address: address,
+            address,
+            lat,
+            lng,
+            effective_status: 'CALLBACK'
+        } : null);
+
+        appointmentMapFocusHandledRef.current = true;
+        setModeRaw('analyze');
+        setShowRoutePanel(false);
+        setShowCompare(false);
+
+        if (target?.lat && target?.lng) {
+            setSelectedProperty(target);
+            if (mapRef.current) {
+                try { mapRef.current.setView([target.lat, target.lng], 18, { animate: true }); } catch { }
+            }
+            toast.success('Opened appointment on the map');
+        } else {
+            toast.error("Couldn't find this appointment on the map yet.");
+        }
+        window.history.replaceState({}, '', window.location.pathname);
+    }, [activeRoute, effectiveProperties]);
 
     // Generate routes with configurable houses per route
     const [routesGenerating, setRoutesGenerating] = useState(false);

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, ChevronRight, MapPin, Phone } from 'lucide-react';
+import { Calendar, ChevronRight, MapPin, Phone, Navigation } from 'lucide-react';
 import { format, isToday, isPast, parseISO } from 'date-fns';
 
 const STATUS_STYLES = {
@@ -19,22 +19,22 @@ const OUTCOME_LABELS = {
     pending: { label: '', color: '' },
 };
 
-export default function AppointmentCard({ appointment, appointmentNumber, onClick }) {
+export default function AppointmentCard({ appointment, appointmentNumber, onClick, onViewMap, onRun }) {
     const status = STATUS_STYLES[appointment.status] || STATUS_STYLES.scheduled;
     const isOverdue = appointment.scheduled_date && isPast(new Date(appointment.scheduled_date)) && !['completed', 'cancelled'].includes(appointment.status);
     const isTodayAppt = appointment.scheduled_date && isToday(parseISO(appointment.scheduled_date));
     const outcome = OUTCOME_LABELS[appointment.outcome] || OUTCOME_LABELS.pending;
+    const canRun = !!appointment.route_id;
 
     return (
-        <button
-            onClick={() => onClick?.(appointment)}
+        <div
             className={`w-full text-left rounded-xl sm:rounded-2xl p-3 sm:p-4 md:p-5 transition-all group border min-h-[100px] ${
                 isOverdue ? 'bg-red-500/[0.03] border-red-500/10 hover:border-red-500/20' :
                 isTodayAppt ? 'bg-yellow-500/[0.03] border-yellow-500/10 hover:border-yellow-500/20' :
                 'bg-white/[0.02] border-white/[0.05] hover:border-white/[0.1]'
             }`}
         >
-            <div className="flex items-start gap-2 sm:gap-3 md:gap-4">
+            <button onClick={() => onClick?.(appointment)} className="w-full text-left flex items-start gap-2 sm:gap-3 md:gap-4">
                 <div className="w-12 h-12 sm:w-14 md:w-16 rounded-lg sm:rounded-xl md:rounded-2xl flex flex-col items-center justify-center shrink-0 border border-white/10 bg-white/[0.04] text-white">
                     <span className="text-[9px] font-black uppercase tracking-wider text-white/35">Appt</span>
                     <span className="text-base sm:text-lg md:text-xl font-black leading-none">#{appointmentNumber || '-'}</span>
@@ -72,7 +72,16 @@ export default function AppointmentCard({ appointment, appointmentNumber, onClic
                 </div>
 
                 <ChevronRight className="w-4 h-4 sm:w-5 text-gray-700 group-hover:text-gray-400 transition-colors shrink-0 mt-1" />
+            </button>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 pl-14 sm:pl-16 md:pl-20">
+                <button onClick={() => onViewMap?.(appointment)} className="h-9 rounded-xl border border-[#39FF4A]/30 bg-[#39FF4A]/10 text-[10px] font-black uppercase tracking-[0.12em] text-[#39FF4A] flex items-center justify-center gap-1.5 active:scale-95">
+                    <MapPin className="w-3.5 h-3.5" /> View Map
+                </button>
+                <button onClick={() => canRun && onRun?.(appointment)} disabled={!canRun} className="h-9 rounded-xl border border-white/10 bg-white/[0.06] text-[10px] font-black uppercase tracking-[0.12em] text-white disabled:opacity-35 disabled:text-white/40 flex items-center justify-center gap-1.5 active:scale-95">
+                    <Navigation className="w-3.5 h-3.5" /> Run
+                </button>
             </div>
-        </button>
+        </div>
     );
 }
