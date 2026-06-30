@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — Route Command UI Polish
+## Current Plan — Area-Based Route Naming
+- [x] Locate the stock route naming source in frontend generation, backend large-route generation, and save-time persistence.
+- [x] Add area-aware naming that prefers county, then city, then ZIP, then street.
+- [x] Replace repeated stock names like “Precision Route 1” before routes are saved.
+- [x] Preserve manual/custom route names and existing route behavior.
+- [x] Run build/backend verification and document the result.
+
+### Review — Area-Based Route Naming
+New route names now prefer county, then city, then ZIP, then street, producing names like “Oconee County Precision Route 1” instead of repeated “Precision Route 1.” The save path also renames any future stock-named generated route before persistence while preserving custom/manual names. Production build passes, and backend large-route generation returned area-based names in a sample test.
+
+## Previous Plan — Route Command UI Polish
 - [x] Inspect the existing Route Command panel and active route card workflow.
 - [x] Replace the prominent per-route Split Route CTA with a primary Start Route CTA.
 - [x] Keep Split Route available as a secondary route action instead of the main workflow.

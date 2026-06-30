@@ -41,6 +41,43 @@ function routeDistance(properties, startLocation) {
     return Math.round(total * 100) / 100;
 }
 
+function cleanAreaLabel(value) {
+    if (value === undefined || value === null) return '';
+    return String(value).trim().replace(/\s+/g, ' ').replace(/\bcounty\b$/i, '').trim();
+}
+
+function mostCommonLabel(properties, getters) {
+    const counts = new Map();
+    properties.forEach((property) => {
+        for (const getter of getters) {
+            const value = cleanAreaLabel(getter(property));
+            if (value) {
+                counts.set(value, (counts.get(value) || 0) + 1);
+                break;
+            }
+        }
+    });
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+}
+
+function buildRouteName(properties, routeMode, routeNumber) {
+    const county = mostCommonLabel(properties, [
+        p => p.county,
+        p => p.county_name,
+        p => p.countyName,
+        p => p.raw_metadata?.county,
+        p => p.raw_metadata?.county_name,
+        p => p.raw_metadata?.COUNTY,
+        p => p.raw_metadata?.County
+    ]);
+    const city = mostCommonLabel(properties, [p => p.city, p => p.raw_metadata?.city, p => p.raw_metadata?.CITY, p => p.raw_metadata?.City]);
+    const zip = mostCommonLabel(properties, [p => p.zip_code, p => p.zip, p => p.raw_metadata?.zip, p => p.raw_metadata?.ZIP]);
+    const street = mostCommonLabel(properties, [p => p.street_name]);
+    const area = county ? `${county} County` : city || (zip ? `ZIP ${zip}` : street || 'Territory');
+    const type = routeMode === 'canvas' ? 'Canvas' : 'Precision';
+    return `${area} ${type} Route ${routeNumber}`;
+}
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -52,7 +89,6 @@ Deno.serve(async (req) => {
         const housesPerRoute = Math.min(Math.max(Number(body.houses_per_route || 100), 1), 10000);
         const startLocation = body.start_location || null;
         const routeMode = body.route_mode === 'canvas' ? 'canvas' : 'precision';
-        const routePrefix = routeMode === 'canvas' ? 'Canvas Route' : 'Precision Route';
 
         if (properties.length === 0) return Response.json({ success: true, routes: [] });
         if (properties.length > 10000) return Response.json({ error: 'Too many properties for one backend route generation request. Limit is 10,000.' }, { status: 400 });
@@ -63,7 +99,7 @@ Deno.serve(async (req) => {
             const chunk = ordered.slice(i, i + housesPerRoute);
             routes.push({
                 id: `backend-route-${Date.now()}-${routes.length + 1}`,
-                name: `${routePrefix} ${routes.length + 1}`,
+                name: buildRouteName(chunk, routeMode, routes.length + 1),
                 route_mode: routeMode,
                 properties: chunk,
                 houseCount: chunk.length,

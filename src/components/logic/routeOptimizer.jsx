@@ -16,6 +16,43 @@ import { filterByStreetCooldown, COOLDOWN_CONFIG } from './territoryLogic';
 import { latLngToCell, gridDisk } from 'h3-js';
 import { batchScoreProperties, ownershipDurationScore, SCORING_CONSTANTS } from './leadScoring';
 
+function cleanAreaLabel(value) {
+    if (value === undefined || value === null) return '';
+    return String(value).trim().replace(/\s+/g, ' ').replace(/\bcounty\b$/i, '').trim();
+}
+
+function mostCommonLabel(properties, getters) {
+    const counts = new Map();
+    properties.forEach((property) => {
+        for (const getter of getters) {
+            const value = cleanAreaLabel(getter(property));
+            if (value) {
+                counts.set(value, (counts.get(value) || 0) + 1);
+                break;
+            }
+        }
+    });
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+}
+
+function buildRouteName(properties, routeMode, routeNumber) {
+    const county = mostCommonLabel(properties, [
+        p => p.county,
+        p => p.county_name,
+        p => p.countyName,
+        p => p.raw_metadata?.county,
+        p => p.raw_metadata?.county_name,
+        p => p.raw_metadata?.COUNTY,
+        p => p.raw_metadata?.County
+    ]);
+    const city = mostCommonLabel(properties, [p => p.city, p => p.raw_metadata?.city, p => p.raw_metadata?.CITY, p => p.raw_metadata?.City]);
+    const zip = mostCommonLabel(properties, [p => p.zip_code, p => p.zip, p => p.raw_metadata?.zip, p => p.raw_metadata?.ZIP]);
+    const street = mostCommonLabel(properties, [p => p.street_name]);
+    const area = county ? `${county} County` : city || (zip ? `ZIP ${zip}` : street || 'Territory');
+    const type = routeMode === 'canvas' ? 'Canvas' : 'Precision';
+    return `${area} ${type} Route ${routeNumber}`;
+}
+
 // Haversine distance in miles
 function calculateDistance(lat1, lng1, lat2, lng2) {
     const R = 3959; // Earth radius in miles
@@ -776,10 +813,9 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 
         let routeMode = 'precision';
         try { if (typeof localStorage !== 'undefined') routeMode = localStorage.getItem('fk_routeMode') || 'precision'; } catch (e) {}
-        const routePrefix = routeMode === 'canvas' ? 'Canvas Route' : 'Precision Route';
         routes.push({
             id: `route_${i + 1}`,
-            name: `${routePrefix} ${i + 1}`,
+            name: buildRouteName(orderedProps, routeMode, i + 1),
             route_mode: routeMode,
             properties: orderedProps,
             houseCount: orderedProps.length,
@@ -798,10 +834,9 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
     // Sort routes by competitiveness
     routes.sort((a, b) => b.competitivenessScore - a.competitivenessScore);
 
-    // Rename routes sequentially based on rank
+    // Rename routes sequentially by rank while keeping the area context visible.
     routes.forEach((route, index) => {
-        const routePrefix = route.route_mode === 'canvas' ? 'Canvas Route' : 'Precision Route';
-        route.name = `${routePrefix} ${index + 1}`;
+        route.name = buildRouteName(route.properties || [], route.route_mode, index + 1);
     });
 
     // Attach cooldown info to result

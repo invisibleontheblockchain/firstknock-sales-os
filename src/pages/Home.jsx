@@ -463,13 +463,57 @@ export default function Home() {
         }
     });
 
+    const cleanRouteAreaLabel = (value) => {
+        if (value === undefined || value === null) return '';
+        return String(value).trim().replace(/\s+/g, ' ').replace(/\bcounty\b$/i, '').trim();
+    };
+
+    const mostCommonRouteLabel = (properties, getters) => {
+        const counts = new Map();
+        properties.forEach((property) => {
+            for (const getter of getters) {
+                const value = cleanRouteAreaLabel(getter(property));
+                if (value) {
+                    counts.set(value, (counts.get(value) || 0) + 1);
+                    break;
+                }
+            }
+        });
+        return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+    };
+
+    const isStockRouteName = (name) => /^(precision\s+route|canvas\s+route|route)\s+\d+$/i.test(String(name || '').trim());
+
+    const deriveRouteName = (route) => {
+        if (route?.name && !isStockRouteName(route.name)) return route.name;
+        const props = route?.allProperties || route?.properties || [];
+        const routeNumber = String(route?.name || '').match(/(\d+)$/)?.[1] || route?.route_number || 1;
+        const county = mostCommonRouteLabel(props, [
+            p => p.county,
+            p => p.county_name,
+            p => p.countyName,
+            p => p.raw_metadata?.county,
+            p => p.raw_metadata?.county_name,
+            p => p.raw_metadata?.COUNTY,
+            p => p.raw_metadata?.County
+        ]);
+        const city = mostCommonRouteLabel(props, [p => p.city, p => p.raw_metadata?.city, p => p.raw_metadata?.CITY, p => p.raw_metadata?.City]);
+        const zip = mostCommonRouteLabel(props, [p => p.zip_code, p => p.zip, p => p.raw_metadata?.zip, p => p.raw_metadata?.ZIP]);
+        const street = mostCommonRouteLabel(props, [p => p.street_name]);
+        const area = county ? `${county} County` : city || (zip ? `ZIP ${zip}` : street || 'Territory');
+        const type = route?.route_mode === 'canvas' ? 'Canvas' : 'Precision';
+        return `${area} ${type} Route ${routeNumber}`;
+    };
+
     const handleSaveRoute = async (route, assignedRepId = null, assignedRepName = null, silent = false) => {
         const defaultAssigneeId = assignedRepId || user?.id;
         const defaultAssigneeName = assignedRepName || user?.full_name || 'Me';
+        const routeName = deriveRouteName(route);
 
         // @ts-ignore - 'mutateAsync' incorrectly expects 'void' instead of the data object
         return await createRouteMutation.mutateAsync({
-            name: route.name,
+            name: routeName,
+            route_mode: route.route_mode || 'precision',
             property_hashes: route.properties.map(p => p.address_hash),
             metrics: {
                 distance: route.totalDistance,
