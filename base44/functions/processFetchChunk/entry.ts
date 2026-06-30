@@ -4,6 +4,7 @@ import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 const BATCHDATA_API_KEY = Deno.env.get('BATCH_DATA_API_KEY');
 const DATABASE_URL = Deno.env.get('DATABASE_URL');
 const BATCHDATA_BASE = 'https://api.batchdata.com/api/v1/property/search';
+const BATCHDATA_MAX_TAKE = 100;
 const PIPELINE_LOCK_TTL_MS = 90 * 1000;
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
@@ -155,7 +156,7 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
 
     const options = {
         skip,
-        take: Math.min(Math.max(Number(take) || 500, 1), 500),
+        take: Math.min(Math.max(Number(take) || BATCHDATA_MAX_TAKE, 1), BATCHDATA_MAX_TAKE),
         datasets: ['basic', 'listing', 'deed', 'owner']
     };
 
@@ -444,7 +445,7 @@ async function fetchBatchDataRecordsForMode(job, mode, requested) {
     let totalRecordCount = null;
 
     while (records.length < requested) {
-        const take = Math.min(500, requested - records.length);
+        const take = Math.min(BATCHDATA_MAX_TAKE, requested - records.length);
         const requestBody = buildBatchDataRequest(job, skip, take, mode);
         const payload = await batchDataFetchWithRetry(requestBody);
         const list = extractBatchDataRecords(payload);
@@ -498,9 +499,9 @@ Deno.serve(async (req) => {
             return Response.json({
                 success: true,
                 requests: {
-                    strict_polygon: buildBatchDataRequest(previewJob, 0, 500, 'strict_polygon'),
-                    broad_polygon: buildBatchDataRequest(previewJob, 0, 500, 'broad_polygon'),
-                    centroid_fallback: buildBatchDataRequest(previewJob, 0, 500, 'centroid_fallback')
+                    strict_polygon: buildBatchDataRequest(previewJob, 0, BATCHDATA_MAX_TAKE, 'strict_polygon'),
+                    broad_polygon: buildBatchDataRequest(previewJob, 0, BATCHDATA_MAX_TAKE, 'broad_polygon'),
+                    centroid_fallback: buildBatchDataRequest(previewJob, 0, BATCHDATA_MAX_TAKE, 'centroid_fallback')
                 }
             });
         }

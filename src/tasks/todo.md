@@ -1,3 +1,16 @@
+## Plan — Verify Recent Sold Precision Pulls
+- [x] Trace fixed-count and Max Available selections from the pull panel into the backend start job.
+- [x] Inspect the actual BatchData search payload for 1 day, 2 day, 1 week, and 2 week windows.
+- [x] Patch only the broken payload/count-mode handling needed for BatchData compatibility.
+- [x] Verify generated payloads for all four recent windows in both fixed and max-available modes.
+- [x] Run build/backend self-checks and record the result.
+- [x] Add a lesson for provider payload field compatibility.
+
+### Review — Verify Recent Sold Precision Pulls
+The front end was correctly sending `sold_months`, fixed vs Max Available mode, and the requested cap into `startBatchDataPull`. The live processor was failing because it sent `options.take: 500`, and BatchData rejects anything over 100. I changed the processor to page requests in batches of 100 while still continuing until the fixed count or max-available plan cap is reached. Verification confirmed 1 day, 2 day, 1 week, and 2 week windows produce the expected `intel.lastSoldDate.minDate` values for both fixed and Max Available modes, all with `take <= 100`; dry-run starts passed for fixed 10 and Max Available 1000, and `npm run build` passes.
+
+---
+
 ## Plan — Fix Appointments Loading / Empty State
 - [x] Inspect the appointment data queries, callback-log merge, loading gates, and current filters.
 - [x] Identify why existing appointments are hidden or the page stays effectively empty.
