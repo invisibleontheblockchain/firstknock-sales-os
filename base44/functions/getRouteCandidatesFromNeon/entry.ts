@@ -20,6 +20,26 @@ function getBoundsFromPolygon(polygon) {
     };
 }
 
+const MIN_RECENT_PULL_LOOKBACK_DAYS = 14;
+
+function requestedSoldWindowDays(soldMonths) {
+    const months = Number(soldMonths || 1);
+    if (Math.abs(months - (1 / 30)) < 0.0001) return 1;
+    if (Math.abs(months - (2 / 30)) < 0.0001) return 2;
+    if (months === 0.25) return 7;
+    if (months === 0.5) return 14;
+    if (months === 1) return 30;
+    if (months === 3) return 90;
+    if (months === 6) return 180;
+    if (months === 9) return 270;
+    if (months === 12) return 365;
+    return Math.max(1, Math.round(months * 30));
+}
+
+function routeCandidateSoldWindowDays(soldMonths) {
+    return Math.max(requestedSoldWindowDays(soldMonths), MIN_RECENT_PULL_LOOKBACK_DAYS);
+}
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -37,7 +57,7 @@ Deno.serve(async (req) => {
         const bounds = body.bounds || polygonBounds;
         const limit = Math.min(Math.max(Number(body.limit || 50000), 1), 100000);
         const soldMonths = body.sold_months === 'all' || body.sold_months === null ? null : Number(body.sold_months || 12);
-        const soldAfter = soldMonths ? new Date(Date.now() - soldMonths * 30 * 24 * 60 * 60 * 1000).toISOString() : null;
+        const soldAfter = soldMonths ? new Date(Date.now() - routeCandidateSoldWindowDays(soldMonths) * 24 * 60 * 60 * 1000).toISOString() : null;
         const fetchJobId = body.fetch_job_id ? String(body.fetch_job_id) : null;
 
         if (body.debug_job === true && fetchJobId) {

@@ -1,3 +1,16 @@
+## Plan — Fix Route Generation Still Failing After Successful Precision Pull
+- [x] Compare the pasted working processor behavior to the live processor and identify behavior differences that affect routeability.
+- [x] Inspect the latest completed FetchJob counts and logs to determine whether homes are lost during provider fetch, local mapping, Neon write, candidate query, or route generation.
+- [x] Verify the exact-job route candidate query using the latest failed job and diff the result with and without the suspected downstream filters.
+- [x] Patch the smallest root cause so route generation uses the same confirmed-sale window as ingestion and remains exact-job scoped.
+- [x] Re-test backend self-checks, latest-job candidate retrieval, and synthetic/preview behavior.
+- [x] Record the review and lesson from this correction.
+
+### Review — Fix Route Generation Still Failing After Successful Precision Pull
+The latest pull was not failing at ingestion: FetchJob `6a444b4051b572e37576ab49` completed with `raw=2`, `mapped=2`, `active=2`, and debug showed both rows active. The generation failure happened one step later because `getRouteCandidatesFromNeon` recalculated the sold-date filter as `sold_months * 30`, so a 1-week pull still filtered candidates to about 7.5 days while ingestion now correctly uses a 14-day provider-safe minimum. That made exact-job candidates return `0` even though active homes existed. I updated the exact candidate query to use the same recent-window helper as ingestion. Verification: the latest exact job now returns 2 route candidates with `sold_months=0.25`, the prior 50-home job now returns 4 candidates, and `generateRoutesBackend` creates 1 Precision route from the latest two homes.
+
+---
+
 ## Plan — Fix Latest Precision Pull Returning Zero Raw Records
 - [x] Inspect the latest real FetchJob payload and confirm whether failure is before mapping, during mapping, or route-candidate selection.
 - [x] Run no-write provider probes against the exact failed polygon with progressively looser request shapes.
