@@ -168,6 +168,7 @@ Deno.serve(async (req) => {
             dry_run_metadata: {
                 county_resolution: fips,
                 requested_properties: requestedProperties,
+                count_mode: body.count_mode === 'max_available' ? 'max_available' : 'fixed',
                 repull_mode: body.repull_mode || 'new_area',
                 previous_pull_date: body.previous_pull_date || null,
                 force_full_refresh: body.force_full_refresh === true,

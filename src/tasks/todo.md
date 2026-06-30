@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — Ghost Toggle Gate for Previous-Area Pulls
+## Current Plan — Precision Max Available Pull Count
+- [x] Add a count mode to Precision pulls: fixed amount or max available.
+- [x] Add a Max Available button while keeping the normal editable property count.
+- [x] Send the selected count mode with the BatchData pull request and store it in job metadata.
+- [x] Ensure fixed input edits switch back to fixed-count mode.
+- [x] Verify the app builds and document the result.
+
+### Review — Precision Max Available Pull Count
+Added Fixed Count / Max Available controls to the Precision Pull panel. Fixed Count keeps the normal editable property amount. Max Available sets the pull cap to the current plan limit and sends `count_mode: max_available` with the BatchData pull, while the backend stores that mode in the job metadata. Editing the property count switches back to fixed mode. Route generation already uses the actual homes found after the pull, so fewer-than-cap results still generate normally as long as at least one active home is returned. Production build passes.
+
+## Previous Plan — Ghost Toggle Gate for Previous-Area Pulls
 - [x] Add a local Ghost-visible state listener inside the Precision pull controller.
 - [x] Clear previous-area selection when Ghost is turned off or a normal new area is drawn.
 - [x] Treat previous-area repull settings as active only when Ghost is on and a ghost area is selected.

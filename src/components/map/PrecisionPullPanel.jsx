@@ -54,6 +54,8 @@ export default function PrecisionPullPanel({
   maxProperties,
   requestedPropertyCount,
   setRequestedPropertyCount,
+  propertyCountMode = 'fixed',
+  setPropertyCountMode,
   minHomeValue,
   setMinHomeValue,
   maxHomeValue,
@@ -158,7 +160,7 @@ export default function PrecisionPullPanel({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Property count</label>
-                <p className="text-[10px] text-gray-600">Over 50 requires an upgraded account.</p>
+                <p className="text-[10px] text-gray-600">Choose a fixed cap or pull every match up to your plan limit.</p>
               </div>
               <input
                 type="number"
@@ -166,6 +168,7 @@ export default function PrecisionPullPanel({
                 max={maxProperties}
                 value={requestedPropertyCount}
                 onChange={(e) => {
+                  setPropertyCountMode?.('fixed');
                   const value = e.target.value;
                   if (value === '') return setRequestedPropertyCount('');
                   setRequestedPropertyCount(Math.min(Number(value) || 1, maxProperties));
@@ -174,6 +177,30 @@ export default function PrecisionPullPanel({
                 className="w-24 h-10 rounded-lg bg-black/40 border border-white/10 px-3 text-white text-sm outline-none focus:border-[#2EEB57]"
               />
             </div>
+            <div className="grid grid-cols-2 gap-1.5 rounded-2xl border border-white/10 bg-white/[0.03] p-1.5">
+              <button
+                type="button"
+                onClick={() => setPropertyCountMode?.('fixed')}
+                className={`rounded-xl px-3 py-2 text-[10px] font-black transition-all ${propertyCountMode === 'fixed' ? 'bg-white text-black' : 'text-gray-400 hover:text-white'}`}
+              >
+                Fixed Count
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPropertyCountMode?.('max_available');
+                  setRequestedPropertyCount(maxProperties);
+                }}
+                className={`rounded-xl px-3 py-2 text-[10px] font-black transition-all ${propertyCountMode === 'max_available' ? 'bg-[#2EEB57] text-black' : 'text-[#39FF4A] hover:bg-[#2EEB57]/10'}`}
+              >
+                Max Available
+              </button>
+            </div>
+            {propertyCountMode === 'max_available' && (
+              <p className="rounded-xl border border-[#2EEB57]/20 bg-[#2EEB57]/[0.06] px-3 py-2 text-[11px] leading-snug text-gray-300">
+                Pulls every matching home BatchData returns for this date range, up to <span className="font-bold text-white">{maxProperties}</span>. If fewer exist, routes generate from the actual found homes.
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">

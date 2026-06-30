@@ -57,6 +57,7 @@ export default function TerritoryPrompt({
   const [includeUnresolvedFollowUps, setIncludeUnresolvedFollowUps] = useState(true);
   const [recoverableJob, setRecoverableJob] = useState(null);
   const [requestedPropertyCount, setRequestedPropertyCount] = useState(50);
+  const [propertyCountMode, setPropertyCountMode] = useState('fixed');
   const [minHomeValue, setMinHomeValue] = useState(100000);
   const [maxHomeValue, setMaxHomeValue] = useState('');
   const [showPrecisionPullPanel, setShowPrecisionPullPanel] = useState(false);
@@ -577,7 +578,8 @@ export default function TerritoryPrompt({
     const historyCriteria = isPreviousAreaPull ? selectedHistoryArea?.criteria || {} : {};
     const historyDate = isPreviousAreaPull ? selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date : null;
     const effectiveSoldMonths = isPreviousAreaPull && repullMode === 'max_since_last' ? monthsSinceHistoryPull(historyDate) : Number(historyCriteria.sold_months || fetchMonths || 12);
-    const effectiveRequestedPropertyCount = isPreviousAreaPull && repullMode === 'max_since_last' ? maxRequestedProperties : safeRequestedPropertyCount;
+    const usingMaxAvailable = (isPreviousAreaPull && repullMode === 'max_since_last') || propertyCountMode === 'max_available';
+    const effectiveRequestedPropertyCount = usingMaxAvailable ? maxRequestedProperties : safeRequestedPropertyCount;
     const effectiveMinPrice = minHomeValue ? Number(minHomeValue) : null;
     const effectiveMaxPrice = maxHomeValue ? Number(maxHomeValue) : null;
     const premiumRecentRange = effectiveSoldMonths <= 1;
@@ -603,6 +605,7 @@ export default function TerritoryPrompt({
       const res = await base44.functions.invoke('startBatchDataPull', {
         polygon: drawnPolygon,
         requested_properties: effectiveRequestedPropertyCount,
+        count_mode: usingMaxAvailable ? 'max_available' : 'fixed',
         sold_months: effectiveSoldMonths,
         min_price: effectiveMinPrice,
         max_price: effectiveMaxPrice,
@@ -622,6 +625,7 @@ export default function TerritoryPrompt({
         repull_mode: isPreviousAreaPull ? repullMode : 'new_area',
         criteria: {
           requested_properties: effectiveRequestedPropertyCount,
+          count_mode: usingMaxAvailable ? 'max_available' : 'fixed',
           sold_months: effectiveSoldMonths,
           min_price: effectiveMinPrice,
           max_price: effectiveMaxPrice,
@@ -824,6 +828,8 @@ export default function TerritoryPrompt({
         maxProperties={maxRequestedProperties}
         requestedPropertyCount={requestedPropertyCount}
         setRequestedPropertyCount={setRequestedPropertyCount}
+        propertyCountMode={propertyCountMode}
+        setPropertyCountMode={setPropertyCountMode}
         minHomeValue={minHomeValue}
         setMinHomeValue={setMinHomeValue}
         maxHomeValue={maxHomeValue}
