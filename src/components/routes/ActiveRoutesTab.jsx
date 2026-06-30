@@ -10,7 +10,7 @@ import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { FOLLOW_UP_STATUSES, getRouteHashes, getRouteOutcomeStats, getRerunHashes, buildRerunRoutePayload } from '@/components/routes/routeRerunUtils';
+import { FOLLOW_UP_STATUSES, getRouteHashes, getRouteOutcomeStats, getRerunHashes, getRerunProperties, buildRerunRoutePayload } from '@/components/routes/routeRerunUtils';
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -397,13 +397,14 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
             return;
         }
 
+        const rerunProperties = getRerunProperties(route, selectedHashes);
         const rerunRoute = await base44.entities.SavedRoute.create(buildRerunRoutePayload(route, selectedHashes, filter, label));
 
         queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
         try { localStorage.setItem('fk_selectedKnockRouteId', rerunRoute.id); } catch {}
         setShowRerunMenu(false);
         toast.success(`Created rerun with ${selectedHashes.length} doors`);
-        onSelect({ ...rerunRoute, route_number: routeNumber });
+        onSelect({ ...rerunRoute, properties: rerunProperties, allProperties: rerunProperties, houseCount: selectedHashes.length, route_number: routeNumber });
     };
 
     const handleRename = async () => {
@@ -535,8 +536,8 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                                             ].map(option => (
                                                 <button
                                                     key={option.filter}
-                                                    onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleRerun(option.filter, option.label); }}
+                                                    onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); e.nativeEvent?.stopImmediatePropagation?.(); }}
+                                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); e.nativeEvent?.stopImmediatePropagation?.(); handleRerun(option.filter, option.label); }}
                                                     className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-2 text-left text-[10px] font-black text-white/80 hover:border-[#2EEB57]/45 hover:bg-[#2EEB57]/10"
                                                 >
                                                     <span className="block">{option.label}</span>

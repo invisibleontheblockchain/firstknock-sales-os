@@ -1,5 +1,6 @@
 # Lessons
 
+- Completed-route reruns must preserve hydrated property objects after save, not just `property_hashes`; match selected hashes against `address_hash`, `legacy_hash`, and `id` or map-selected reruns can appear to click off/disappear.
 - Completed-route workflows must be available in both places managers work: route cards and the selected map-route banner. If rerun exists in the route list only, map-selected completed routes still feel unsupported.
 - Completed-route reruns should create a new active route from selected original `property_hashes` instead of reopening the completed route; keep the completed route as historical proof and route the new active copy through the existing map/Knock selection flow.
 - If a user says a control is probably present but hidden, inspect both conditional rendering and visual hierarchy; low-contrast controls inside lower scroll regions should be moved into the primary visible action area when they are core workflow controls.

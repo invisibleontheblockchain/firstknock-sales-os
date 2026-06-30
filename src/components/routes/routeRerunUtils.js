@@ -5,6 +5,14 @@ export function getRouteHashes(route) {
   return [...new Set((hashes || []).filter(Boolean))];
 }
 
+export function getRerunProperties(route, selectedHashes) {
+  const selected = new Set(selectedHashes || []);
+  return (route?.properties || route?.allProperties || []).filter((property) => {
+    const aliases = [property?.address_hash, property?.legacy_hash, property?.id].filter(Boolean);
+    return aliases.some((hash) => selected.has(hash));
+  });
+}
+
 export function getRouteOutcomeStats(route, logs = []) {
   const routeHashes = getRouteHashes(route);
   const canonicalByHash = new Map(routeHashes.map(hash => [hash, hash]));

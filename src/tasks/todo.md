@@ -1,6 +1,15 @@
 # Plan
 
-## Current Plan — Completed Routes Map Toggle + Rerun
+## Current Plan — Completed Route Rerun Map Glitch Fix
+- [x] Confirm why Unsold Follow-Up can make the selected map route disappear.
+- [x] Preserve hydrated route properties by matching selected rerun hashes against address, legacy, and id aliases.
+- [x] Add stronger event suppression to rerun menu taps so Leaflet does not receive the touch/click.
+- [x] Run a production build and document the result.
+
+### Review — Completed Route Rerun Map Glitch Fix
+Fixed the rerun glitch by preserving the selected route's hydrated properties when creating a rerun. Rerun selection now matches each selected hash against `address_hash`, `legacy_hash`, and `id`, so Unsold Follow-Up does not create a selected route with empty map pins. The same hydrated-property preservation was applied to route-card reruns. Rerun menu taps now also stop immediate pointer/click propagation so Leaflet does not receive the underlying tap. Production build passes.
+
+## Previous Plan — Completed Routes Map Toggle + Rerun
 - [x] Add a map-level route status view toggle beside the existing eye control: Active vs Completed.
 - [x] Keep the existing eye button as visibility on/off, and make the new toggle control which saved-route status group is shown.
 - [x] Filter map route overlays so Active shows PENDING/ACTIVE/IN_PROGRESS routes and Completed shows only COMPLETED routes.

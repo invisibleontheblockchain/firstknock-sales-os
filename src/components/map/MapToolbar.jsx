@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
 import SplitRouteModal from '@/components/routes/SplitRouteModal';
 import { exportRouteToCsv } from '@/components/routes/exportRouteCsv';
-import { FOLLOW_UP_STATUSES, getRouteOutcomeStats, getRerunHashes, buildRerunRoutePayload } from '@/components/routes/routeRerunUtils';
+import { FOLLOW_UP_STATUSES, getRouteOutcomeStats, getRerunHashes, getRerunProperties, buildRerunRoutePayload } from '@/components/routes/routeRerunUtils';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from "@tanstack/react-query";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -240,11 +240,12 @@ export default function MapToolbar({
       toast.error(`No ${label.toLowerCase()} doors found on this route`);
       return;
     }
+    const rerunProperties = getRerunProperties(activeRoute, selectedHashes);
     const rerunRoute = await base44.entities.SavedRoute.create(buildRerunRoutePayload(activeRoute, selectedHashes, filter, label));
     queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
     try { localStorage.setItem('fk_selectedKnockRouteId', rerunRoute.id); } catch {}
     setShowRerunMenu(false);
-    setActiveRoute({ ...rerunRoute, properties: activeRoute.properties?.filter(p => selectedHashes.includes(p.address_hash || p.id)) || [], houseCount: selectedHashes.length });
+    setActiveRoute({ ...rerunRoute, properties: rerunProperties, allProperties: rerunProperties, houseCount: selectedHashes.length });
     toast.success(`Created rerun with ${selectedHashes.length} doors`);
   };
 
@@ -445,12 +446,12 @@ export default function MapToolbar({
                         </div>
 
                         {isCompletedRoute && showRerunMenu && (
-                            <div className="mt-2 grid grid-cols-2 gap-1.5 rounded-xl border border-white/10 bg-black/45 p-2" onClick={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
+                            <div className="mt-2 grid grid-cols-2 gap-1.5 rounded-xl border border-white/10 bg-black/45 p-2" onClick={(e) => {e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();}} onTouchStart={(e) => {e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();}}>
                                 {rerunOptions.map(option => (
                                   <button
                                     key={option.filter}
-                                    onPointerDown={(e) => {e.preventDefault();e.stopPropagation();}}
-                                    onClick={(e) => {e.preventDefault();e.stopPropagation();handleRerunCompletedRoute(option.filter, option.label);}}
+                                    onPointerDown={(e) => {e.preventDefault();e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();}}
+                                    onClick={(e) => {e.preventDefault();e.stopPropagation();e.nativeEvent?.stopImmediatePropagation?.();handleRerunCompletedRoute(option.filter, option.label);}}
                                     className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-2 text-left text-[10px] font-black text-white/80 hover:border-[#2EEB57]/45 hover:bg-[#2EEB57]/10">
                                     <span className="block">{option.label}</span>
                                     <span className="text-[9px] text-white/40">{option.count} doors</span>
