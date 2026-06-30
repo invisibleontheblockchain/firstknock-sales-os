@@ -671,12 +671,8 @@ export default function MapToolbar({
               <Button
                 onClick={() => {
                   if (hasDrawnArea) {
-                    if (!territoryDataReady) {
-                      setShowCompare(false);
-                      window.dispatchEvent(new CustomEvent('fk-open-precision-pull'));
-                      return;
-                    }
-                    setShowCompare(true);
+                    setShowCompare(false);
+                    window.dispatchEvent(new CustomEvent('fk-open-precision-pull'));
                   } else {
                     setShowCompare(false);
                     window.dispatchEvent(new CustomEvent('fk-start-drawing'));
@@ -688,9 +684,6 @@ export default function MapToolbar({
                                       {routesGenerating ?
                 <><Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> BUILDING</> :
                 hasDrawnArea ?
-                territoryDataReady ?
-                <><Zap className="w-4 h-4 mr-1.5" /> GENERATE</> :
-
                 <><Zap className="w-4 h-4 mr-1.5" /> PULL DATA</> :
 
 

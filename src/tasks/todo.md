@@ -1,3 +1,13 @@
+## Plan — Remove Generate Option Button
+- [x] Locate the selected map toolbar action button and identify only the Generate branch.
+- [x] Change the drawn-area action to always open Pull Data instead of showing/running Generate.
+- [x] Verify the build and record the result.
+
+### Review — Remove Generate Option Button
+The selected map toolbar action no longer shows or triggers Generate after an area is drawn. It now always opens Pull Data for a drawn area, while still keeping Draw available when no area exists. `npm run build` passes and static checks confirmed the Generate label/action is gone from that control.
+
+---
+
 ## Plan — Verify Recent Sold Precision Pulls
 - [x] Trace fixed-count and Max Available selections from the pull panel into the backend start job.
 - [x] Inspect the actual BatchData search payload for 1 day, 2 day, 1 week, and 2 week windows.
