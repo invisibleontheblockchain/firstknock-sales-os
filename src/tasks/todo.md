@@ -450,3 +450,14 @@ Route dots now use one outcome color rule: green for sold/callback/qualified-sty
 
 ### Review — Private Account Messaging + Mobile Input Fix
 Team messages are now scoped by manager/account ID and participant emails at the entity rule level, new messages are stamped with that account ownership, General is now account-specific, and the mobile chat overlay/input reserves space above the bottom nav and safe area.
+
+## Plan — Billing Gates + Callback Appointments
+- [x] Add a card-on-file threshold at 25 logged homes while preserving the 50-home hard free limit.
+- [x] Ensure Stripe Checkout always collects a payment method and records card-on-file confirmation on successful checkout/subscription events.
+- [x] Put team management actions behind the paid/trial subscription paywall.
+- [x] Create callback appointment records automatically when a callback outcome is logged.
+- [x] Render callback appointments in the Appointments section and surface 30-minute reminder prompts in-app.
+- [x] Run a production build and document the result.
+
+### Review — Billing Gates + Callback Appointments
+Team management now requires an active/trialing plan, Knock Mode now requires a Stripe card on file after 25 logged homes and still blocks at 50, Stripe Checkout is configured to collect a payment method, callback logs create scheduled appointment records, Appointments renders those callback records, and the build passed.

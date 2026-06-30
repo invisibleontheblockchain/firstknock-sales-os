@@ -45,8 +45,8 @@ export default function PropertyDetailSheet({ property, logs, onLog, outcomeDisa
                 setCallbackError('');
                 return;
             }
-            if (!callbackName.trim() || !callbackPhone.trim()) {
-                setCallbackError('Name and phone number are required for callbacks.');
+            if (!callbackName.trim() || !callbackPhone.trim() || !callbackTime) {
+                setCallbackError('Name, phone number, and callback date/time are required.');
                 return;
             }
             setCallbackError('');
@@ -56,22 +56,29 @@ export default function PropertyDetailSheet({ property, logs, onLog, outcomeDisa
         if (logNote) noteText += ` | Note: ${logNote}`;
         if (status === 'CALLBACK' && callbackName.trim()) noteText += ` | Contact: ${callbackName.trim()}`;
         if (callbackPhone) noteText += ` | Phone: ${callbackPhone}`;
-        if (callbackTime) noteText += ` | Time: ${callbackTime}`;
+        if (callbackTime) noteText += ` | Callback: ${callbackTime}`;
         if (saleAmount) noteText += ` | Sale: $${saleAmount}`;
 
         let nextDate = null;
         if (status === 'CALLBACK' && callbackTime) {
-            const today = new Date();
-            const [hours, minutes] = callbackTime.split(':');
-            today.setHours(parseInt(hours), parseInt(minutes));
-            nextDate = today.toISOString();
+            if (callbackTime.includes('T')) {
+                nextDate = new Date(callbackTime).toISOString();
+            } else {
+                const today = new Date();
+                const [hours, minutes] = callbackTime.split(':');
+                today.setHours(parseInt(hours), parseInt(minutes));
+                nextDate = today.toISOString();
+            }
         }
 
         const logData = {
             address_hash: property.address_hash,
             raw_input_text: noteText,
             parsed_status: status,
-            next_eligible_date: nextDate
+            next_eligible_date: nextDate,
+            callback_contact_name: status === 'CALLBACK' ? callbackName.trim() : null,
+            callback_contact_phone: status === 'CALLBACK' ? callbackPhone.trim() : null,
+            callback_time: status === 'CALLBACK' ? callbackTime : null
         };
 
         if (status === 'SOLD' && saleAmount) {
@@ -157,7 +164,7 @@ export default function PropertyDetailSheet({ property, logs, onLog, outcomeDisa
                             </div>
                             <div className="mt-2 flex gap-2">
                                 <input
-                                    type="time"
+                                    type="datetime-local"
                                     value={callbackTime}
                                     onChange={(e) => setCallbackTime(e.target.value)}
                                     className="w-full bg-black/70 border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white focus:border-[#2EEB57] focus:outline-none [color-scheme:dark]"
@@ -232,7 +239,7 @@ export default function PropertyDetailSheet({ property, logs, onLog, outcomeDisa
                                     />
                                 </div>
                                 <div className="flex-1">
-                                    <label className="text-[9px] font-bold text-white/45 uppercase mb-1 block">Callback</label>
+                                    <label className="text-[9px] font-bold text-white/45 uppercase mb-1 block">Callback Date/Time</label>
                                     <input
                                         type="time"
                                         value={callbackTime}

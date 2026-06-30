@@ -27,6 +27,15 @@
     "stripe_customer_id": {
       "type": "string"
     },
+    "stripe_card_on_file_confirmed": {
+      "type": "boolean",
+      "default": false,
+      "description": "True once Stripe confirms a payment method/card on file through Checkout or an active/trialing subscription."
+    },
+    "stripe_card_confirmed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
     "has_seen_onboarding": {
       "type": "boolean"
     },

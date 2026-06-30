@@ -78,6 +78,7 @@ Deno.serve(async (req) => {
             },
             success_url: successUrl,
             cancel_url: cancelUrl,
+            payment_method_collection: 'always',
             allow_promotion_codes: true,
             metadata: {
                 base44_app_id: Deno.env.get("BASE44_APP_ID"),

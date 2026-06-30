@@ -311,6 +311,8 @@ export default function AdminTeam() {
         [filteredTeamMembers]
     );
 
+    const teamToolsUnlocked = user?.is_owner || user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+
     const handleAddRep = () => {
         if (!newRep.name || !newRep.email) {
             toast.error("Name and Email are required");
@@ -329,14 +331,16 @@ export default function AdminTeam() {
             return;
         }
         
-        // Free Plan Check
-        const isActiveSub = user?.subscription_status === 'active';
-        const effectiveLimit = isActiveSub ? (user.total_seats || 1) : 1;
+        if (!teamToolsUnlocked) {
+            toast.error("Team management requires an active plan.");
+            navigate(createPageUrl('Billing'));
+            return;
+        }
+
+        const effectiveLimit = user?.total_seats || 1;
         
         if (teamMembers.length >= effectiveLimit) {
-             const message = isActiveSub 
-                ? `You have reached your seat limit (${effectiveLimit}). Upgrade to add more users.`
-                : "Free plan limit reached. Upgrade to add team members.";
+             const message = `You have reached your seat limit (${effectiveLimit}). Upgrade to add more users.`;
                 
              toast.error(message);
              
@@ -354,6 +358,11 @@ export default function AdminTeam() {
     };
 
     const handleAssign = (routeId, memberId) => {
+        if (!teamToolsUnlocked) {
+            toast.error("Route assignment requires an active team plan.");
+            navigate(createPageUrl('Billing'));
+            return;
+        }
         const member = teamMembers.find(m => m.id === memberId);
         assignRouteMutation.mutate({ 
             routeId, 
@@ -364,6 +373,31 @@ export default function AdminTeam() {
 
     if (teamLoading || routesLoading) {
         return <div className="p-10 text-center text-white">Loading Team Data...</div>;
+    }
+
+    if (!teamToolsUnlocked) {
+        return (
+            <div className="h-full overflow-y-auto bg-black text-white p-4 md:p-6 pb-24">
+                <div className="max-w-3xl mx-auto min-h-[70vh] flex items-center justify-center">
+                    <Card className="bg-[#111] border-yellow-500/30 text-white shadow-[0_0_40px_rgba(255,215,0,0.08)]">
+                        <CardHeader className="text-center space-y-3">
+                            <div className="mx-auto w-14 h-14 rounded-2xl bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center">
+                                <Lock className="w-7 h-7 text-yellow-500" />
+                            </div>
+                            <CardTitle className="text-2xl font-black">Team tools are a paid feature</CardTitle>
+                            <CardDescription className="text-gray-400">
+                                Add reps, assign routes, manage invite codes, and view team performance after starting a Canvas or Precision plan.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="flex justify-center pb-6">
+                            <Button onClick={() => navigate(createPageUrl('Billing'))} className="bg-yellow-500 text-black hover:bg-yellow-400 font-black">
+                                View Plans
+                            </Button>
+                        </CardContent>
+                    </Card>
+                </div>
+            </div>
+        );
     }
 
     return (
@@ -422,6 +456,7 @@ export default function AdminTeam() {
                         <Button 
                             onClick={() => {
                                 const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
+                                if (!teamToolsUnlocked) { navigate(createPageUrl('Billing')); return; }
                                 createCodeMutation.mutate({ code: randomCode, max_uses: 5, role: 'rep', label: `Demo Team (${randomCode})` });
                             }}
                             className="flex-1 md:flex-none h-9 bg-gray-800 text-gray-300 font-bold hover:bg-gray-700 hover:text-white border border-gray-700 text-[10px] md:text-sm"
@@ -877,7 +912,10 @@ export default function AdminTeam() {
                                             </SelectContent>
                                         </Select>
                                         <Button 
-                                            onClick={() => createCodeMutation.mutate(newCode)}
+                                            onClick={() => {
+                                                if (!teamToolsUnlocked) { navigate(createPageUrl('Billing')); return; }
+                                                createCodeMutation.mutate(newCode);
+                                            }}
                                             disabled={!newCode.code}
                                             className="bg-green-600 hover:bg-green-700 font-bold px-8"
                                         >

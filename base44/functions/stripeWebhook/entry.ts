@@ -86,6 +86,8 @@ Deno.serve(async (req: Request) => {
 
                         await base44.asServiceRole.entities.User.update(userId, {
                             stripe_customer_id: session.customer,
+                            stripe_card_on_file_confirmed: true,
+                            stripe_card_confirmed_at: new Date().toISOString(),
                             subscription_status: 'active',
                             subscription_tier: session.metadata?.subscription_tier || 'custom',
                             total_seats: quantity
@@ -112,6 +114,8 @@ Deno.serve(async (req: Request) => {
                     if (userId) {
                          await base44.asServiceRole.entities.User.update(userId, {
                            subscription_status: status,
+                           stripe_card_on_file_confirmed: status === 'active' || status === 'trialing',
+                           ...(status === 'active' || status === 'trialing' ? { stripe_card_confirmed_at: new Date().toISOString() } : {}),
                            subscription_plan_id: planId,
                            subscription_tier: subscription.metadata?.subscription_tier || 'custom',
                            subscription_period_end: periodEnd,

@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Calendar, Loader2, Plus, Zap, Filter, ChevronDown, Clock, CheckCircle2, XCircle, AlertTriangle, CalendarDays, X } from 'lucide-react';
+import { Calendar, Loader2, Plus, Zap, Filter, ChevronDown, Clock, CheckCircle2, XCircle, AlertTriangle, CalendarDays, X, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import PullToRefresh from '@/components/mobile/PullToRefresh';
 import { format, isToday, isTomorrow, isThisWeek, parseISO, isPast } from 'date-fns';
+import { toast } from 'sonner';
 
 import AppointmentCard from '@/components/appointments/AppointmentCard';
 import AppointmentDetail from '@/components/appointments/AppointmentDetail';
@@ -84,6 +85,7 @@ export default function Appointments() {
             total: all.length,
             upcoming: all.filter(a => a.scheduled_date && new Date(a.scheduled_date) >= now && !['cancelled', 'completed'].includes(a.status)).length,
             today: all.filter(a => a.scheduled_date && isToday(parseISO(a.scheduled_date))).length,
+            callbacks: all.filter(a => a.outcome === 'follow_up' || /callback/i.test(a.notes || '')).length,
             completed: all.filter(a => a.status === 'completed').length,
             noShow: all.filter(a => a.status === 'no_show').length,
             cancelled: all.filter(a => a.status === 'cancelled').length,
@@ -120,6 +122,36 @@ export default function Appointments() {
             return a.localeCompare(b);
         });
     }, [filteredAppointments, timeFilter]);
+
+    React.useEffect(() => {
+        if (!appointments.length) return;
+        const timers = appointments
+            .filter(a => a.scheduled_date && !['completed', 'cancelled'].includes(a.status))
+            .map((appointment) => {
+                const scheduled = new Date(appointment.scheduled_date).getTime();
+                const reminderAt = scheduled - 30 * 60 * 1000;
+                const delay = reminderAt - Date.now();
+                if (delay < 0 || delay > 24 * 60 * 60 * 1000) return null;
+                return window.setTimeout(() => {
+                    const key = `fk_callback_reminded_${appointment.id}`;
+                    if (localStorage.getItem(key)) return;
+                    localStorage.setItem(key, '1');
+                    const title = 'Callback in 30 minutes';
+                    const body = appointment.full_address || appointment.homeowner_name || 'Scheduled callback';
+                    toast.info(`${title}: ${body}`, { duration: 10000 });
+                    if ('Notification' in window) {
+                        if (Notification.permission === 'granted') new Notification(title, { body });
+                        else if (Notification.permission !== 'denied') {
+                            Notification.requestPermission().then((permission) => {
+                                if (permission === 'granted') new Notification(title, { body });
+                            });
+                        }
+                    }
+                }, delay);
+            })
+            .filter(Boolean);
+        return () => timers.forEach((timer) => window.clearTimeout(timer));
+    }, [appointments]);
 
     const handleRefresh = () => queryClient.invalidateQueries({ queryKey: ['appointments'] });
 
@@ -162,6 +194,7 @@ export default function Appointments() {
                     <div className="hidden sm:flex gap-2 md:gap-3 mb-3 md:mb-4 overflow-x-auto no-scrollbar">
                         <StatPill icon={CalendarDays} label="Upcoming" value={stats.upcoming} color="#3b82f6" />
                         <StatPill icon={Clock} label="Today" value={stats.today} color="#eab308" />
+                        <StatPill icon={Phone} label="Callbacks" value={stats.callbacks} color="#39FF4A" />
                         <StatPill icon={CheckCircle2} label="Done" value={stats.completed} color="#22c55e" />
                         <StatPill icon={AlertTriangle} label="No-Show" value={stats.noShow} color="#f97316" />
                     </div>
@@ -232,7 +265,15 @@ export default function Appointments() {
                                     <span className="text-[10px] md:text-xs text-gray-700 bg-white/[0.04] px-1.5 md:px-2 py-0.5 md:py-1 rounded-full font-bold">{appts.length}</span>
                                     <div className="flex-1 h-px bg-white/[0.04]" />
                                 </div>
-
+                                <div className="space-y-2 md:space-y-3">
+                                    {appts.map((appointment) => (
+                                        <AppointmentCard
+                                            key={appointment.id}
+                                            appointment={appointment}
+                                            onClick={setSelectedAppointment}
+                                        />
+                                    ))}
+                                </div>
                             </div>
                         ))
                     )}

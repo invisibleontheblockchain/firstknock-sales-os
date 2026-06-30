@@ -4,12 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Lock } from 'lucide-react';
 
-// Mobile bottom sheet shown when a free user hits the 50-outcome Knock Mode limit.
-// Animates up from the bottom. Tapping outside == "Maybe later".
-export default function KnockLimitSheet({ open, onClose }) {
+// Mobile bottom sheet shown when a free user hits the 25-card or 50-outcome Knock Mode gate.
+export default function KnockLimitSheet({ open, onClose, mode = 'limit' }) {
   const navigate = useNavigate();
   if (!open) return null;
 
+  const isCardGate = mode === 'card';
   const goToPlans = () => {
     onClose?.();
     navigate(createPageUrl('Billing'));
@@ -31,24 +31,26 @@ export default function KnockLimitSheet({ open, onClose }) {
         </div>
 
         <h2 className="text-xl font-extrabold text-white text-center mb-2">
-          You've reached your free limit
+          {isCardGate ? 'Add a card to keep knocking' : "You've reached your free limit"}
         </h2>
         <p className="text-[#9CA3AF] text-sm text-center mb-6 leading-relaxed max-w-sm mx-auto">
-          You've logged 50 stops — upgrade to keep knocking and unlock unlimited routes, CSV imports, and rep management.
+          {isCardGate
+            ? "You've logged 25 stops. Add a card on file with Stripe to continue toward your 50 free stops."
+            : "You've logged 50 stops — upgrade to keep knocking and unlock unlimited routes, CSV imports, and rep management."}
         </p>
 
         <button
           onClick={goToPlans}
           className="w-full h-13 py-3.5 rounded-2xl bg-[#2EEB57] hover:bg-[#39FF4A] text-black font-black tracking-wide shadow-[0_12px_35px_rgba(46,235,87,0.28)] active:scale-95 transition-all"
         >
-          Upgrade to Pro
+          {isCardGate ? 'Add Card on File' : 'Upgrade to Pro'}
         </button>
 
         <button
           onClick={onClose}
           className="w-full text-center text-xs text-white/45 hover:text-white/80 py-3 mt-1 transition-colors"
         >
-          Maybe later
+          {isCardGate ? 'Not now' : 'Maybe later'}
         </button>
       </div>
     </div>,

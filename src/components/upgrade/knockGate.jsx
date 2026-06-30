@@ -7,6 +7,7 @@
 // null-safe (treated as 0) and never decrements.
 
 export const FREE_OUTCOME_LIMIT = 50;
+export const CARD_ON_FILE_THRESHOLD = 25;
 
 const EXEMPT_EMAILS = [
   'christian@nativepest.com',
@@ -32,6 +33,18 @@ export function isProUser(user) {
 export function getOutcomesLogged(user) {
   const value = user?.outcomes_logged;
   return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+export function hasCardOnFile(user) {
+  if (!user) return false;
+  if (isProUser(user)) return true;
+  return user.stripe_card_on_file_confirmed === true;
+}
+
+export function needsCardOnFile(user) {
+  if (isProUser(user)) return false;
+  if (hasCardOnFile(user)) return false;
+  return getOutcomesLogged(user) >= CARD_ON_FILE_THRESHOLD;
 }
 
 // Returns true when a free user attempting another outcome must be blocked.

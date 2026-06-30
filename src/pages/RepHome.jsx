@@ -19,7 +19,7 @@ import RepAnalytics from '@/components/rep/RepAnalytics';
 import TeamChat from '@/components/rep/TeamChat';
 import KnockLimitSheet from '@/components/upgrade/KnockLimitSheet';
 import KnockLimitBanner from '@/components/upgrade/KnockLimitBanner';
-import { isProUser, isOutcomeBlocked, getOutcomesLogged } from '@/components/upgrade/knockGate';
+import { isProUser, isOutcomeBlocked, getOutcomesLogged, needsCardOnFile } from '@/components/upgrade/knockGate';
 
 export default function RepHome() {
   const queryClient = useQueryClient();
@@ -35,6 +35,7 @@ export default function RepHome() {
   const [showChat, setShowChat] = useState(false);
   const [showLimitSheet, setShowLimitSheet] = useState(false);
   const [limitDismissed, setLimitDismissed] = useState(false);
+  const [gateMode, setGateMode] = useState('limit');
   const loggingInFlightRef = React.useRef(false);
   const [soldDateFilter, setSoldDateFilter] = useState('all');
   const [decisionFilter, setDecisionFilter] = useState('all');
@@ -294,7 +295,7 @@ export default function RepHome() {
 
   // Knock Mode freemium gate: disabled once the limit sheet has been dismissed
   // this session, OR if the user is already at/over the limit on load.
-  const outcomeLoggingDisabled = !isProUser(user) && (limitDismissed || isOutcomeBlocked(user));
+  const outcomeLoggingDisabled = !isProUser(user) && (limitDismissed || needsCardOnFile(user) || isOutcomeBlocked(user));
   const showLimitBanner = limitDismissed && !isProUser(user);
 
   // REAL-TIME UPDATES: Prevent double-knocking (Team Mode)
@@ -331,11 +332,14 @@ export default function RepHome() {
 
   // Log Result Mutation
   const createLogMutation = useMutation({
-    mutationFn: (logData) => base44.entities.InteractionLog.create({
-      ...logData,
-      route_id: activeRoute?.id || null,
-      manager_id: repManagerId
-    }),
+    mutationFn: (logData) => {
+      const { property_snapshot, callback_contact_name, callback_contact_phone, callback_time, ...persistedLog } = logData;
+      return base44.entities.InteractionLog.create({
+        ...persistedLog,
+        route_id: activeRoute?.id || null,
+        manager_id: repManagerId
+      });
+    },
     onMutate: async (newLog) => {
       await queryClient.cancelQueries({ queryKey: ['routeLogs', activeRoute?.id] });
       const previousLogs = queryClient.getQueryData(['routeLogs', activeRoute?.id]);
@@ -354,7 +358,31 @@ export default function RepHome() {
       queryClient.invalidateQueries({ queryKey: ['allMyLogs'] });
       queryClient.invalidateQueries({ queryKey: ['propertyHistory'] });
     },
-    onSuccess: async () => {
+    onSuccess: async (createdLog, logData) => {
+      if (logData?.parsed_status === 'CALLBACK' && logData?.next_eligible_date) {
+        const p = logData.property_snapshot || {};
+        const fullAddress = p.full_address || p.address || `${p.house_number || ''} ${p.street_name || ''}`.trim();
+        await base44.entities.Appointment.create({
+          address_hash: logData.address_hash,
+          manager_id: repManagerId,
+          full_address: fullAddress || 'Callback address',
+          homeowner_name: logData.callback_contact_name || null,
+          phone: logData.callback_contact_phone || null,
+          scheduled_date: logData.next_eligible_date,
+          industry: 'other',
+          status: 'scheduled',
+          outcome: 'follow_up',
+          route_id: activeRoute?.id || null,
+          assigned_rep: teamMember?.id || user?.id || null,
+          assigned_rep_name: teamMember?.name || user?.full_name || null,
+          zip_code: p.zip_code || p.zip || null,
+          lat: p.lat || null,
+          lng: p.lng || null,
+          notes: logData.raw_input_text || 'Callback scheduled from Knock Mode'
+        });
+        queryClient.invalidateQueries({ queryKey: ['appointments'] });
+      }
+
       // Free users: increment the persisted lifetime counter. The counter only
       // ever increases and is never checked/incremented for Pro users.
       if (!isProUser(user)) {
@@ -538,7 +566,13 @@ export default function RepHome() {
     } catch { /* keep cached user */ }
 
     if (isProUser(freshUser)) return false;
+    if (needsCardOnFile(freshUser)) {
+      setGateMode('card');
+      setShowLimitSheet(true);
+      return true;
+    }
     if (limitDismissed || isOutcomeBlocked(freshUser)) {
+      setGateMode('limit');
       setShowLimitSheet(true);
       return true;
     }
@@ -559,6 +593,8 @@ export default function RepHome() {
       loggingInFlightRef.current = false;
     }
 
+    const enrichedLogData = { ...logData, property_snapshot: prop };
+
     // Haptic feedback
     if (navigator.vibrate) navigator.vibrate(50);
 
@@ -567,7 +603,7 @@ export default function RepHome() {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           createLogMutation.mutate({
-            ...logData,
+            ...enrichedLogData,
             gps_proof_lat: position.coords.latitude,
             gps_proof_lng: position.coords.longitude,
             gps_accuracy: position.coords.accuracy
@@ -575,7 +611,7 @@ export default function RepHome() {
         },
         () => {
           createLogMutation.mutate({
-            ...logData,
+            ...enrichedLogData,
             gps_proof_lat: prop.lat,
             gps_proof_lng: prop.lng,
             gps_accuracy: 0
@@ -636,7 +672,7 @@ export default function RepHome() {
         onShowRouteList={() => setShowRouteList(true)}
         routeProperties={routeProperties} />
 
-            {showLimitBanner && <KnockLimitBanner />}
+            {showLimitBanner && <KnockLimitBanner mode={gateMode} />}
 
             {/* Filter tabs + search */}
             <div className="px-3 pt-2 pb-2 space-y-2 border-b border-white/10 bg-black/70 backdrop-blur-xl shadow-[0_12px_36px_rgba(0,0,0,0.32)]">
@@ -824,7 +860,7 @@ export default function RepHome() {
         logs={selectedPropertyLogs}
         onLog={handleLog}
         outcomeDisabled={outcomeLoggingDisabled}
-        onBlockedAttempt={() => setShowLimitSheet(true)}
+        onBlockedAttempt={() => { setGateMode(needsCardOnFile(user) ? 'card' : 'limit'); setShowLimitSheet(true); }}
         onClearDecision={handleClearDecision}
         onPhotoUpload={handlePhotoUpload}
         uploading={uploading}
@@ -864,6 +900,7 @@ export default function RepHome() {
             {/* Knock Mode freemium gate sheet */}
             <KnockLimitSheet
         open={showLimitSheet}
+        mode={gateMode}
         onClose={() => {setShowLimitSheet(false);setLimitDismissed(true);}} />
       
             </div>
