@@ -1,6 +1,15 @@
 # Plan
 
-## Current Plan — Separate Rerun Route Category
+## Current Plan — Rerun Route Knock Tab Hydration
+- [x] Trace how selected queued routes are stored before opening Knock mode.
+- [x] Trace how RepHome loads a selected route and hydrates route homes.
+- [x] Fix rerun route hydration so all selected rerun homes appear in Knock mode.
+- [x] Verify with a production build and document results.
+
+### Review — Rerun Route Knock Tab Hydration
+Rerun routes now treat homes as fresh stops in Knock mode by ignoring visit outcomes that happened before the rerun was created. Knock mode also loads logs by the active route ID in addition to property hashes, so homes knocked on the rerun remain tracked even when legacy/canonical hashes differ. Production build passes.
+
+## Previous Plan — Separate Rerun Route Category
 - [x] Identify rerun-created routes using their rerun metadata/name marker.
 - [x] Exclude rerun routes from the normal In Progress, Queued, Pending, and Completed sections.
 - [x] Add a dedicated Reruns section that keeps the same Start/Split/Delete behavior.

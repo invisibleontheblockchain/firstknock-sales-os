@@ -1,6 +1,7 @@
 # Lessons
 
 - Rerun-created routes are their own workflow category, not just active/completed status rows; route lists should group them by rerun metadata before generic status sections.
+- In Knock mode, rerun routes must ignore pre-rerun visit history for current stop status; only logs created on/after the rerun or tied to that rerun route should count toward Done.
 - Completed-route reruns must preserve hydrated property objects after save, not just `property_hashes`; match selected hashes against `address_hash`, `legacy_hash`, and `id` or map-selected reruns can appear to click off/disappear.
 - Completed-route workflows must be available in both places managers work: route cards and the selected map-route banner. If rerun exists in the route list only, map-selected completed routes still feel unsupported.
 - Completed-route reruns should create a new active route from selected original `property_hashes` instead of reopening the completed route; keep the completed route as historical proof and route the new active copy through the existing map/Knock selection flow.

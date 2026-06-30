@@ -260,9 +260,18 @@ export default function RepHome() {
     queryKey: ['routeLogs', activeRoute?.id],
     queryFn: async () => {
       if (activeRoute?.property_hashes?.length > 0) {
-        return await base44.entities.InteractionLog.filter({
-          address_hash: activeRoute.property_hashes
-        }, '-created_date', 1000);
+        const [hashLogsRes, routeLogsRes] = await Promise.all([
+          base44.entities.InteractionLog.filter({ address_hash: activeRoute.property_hashes }, '-created_date', 1000),
+          activeRoute.id ? base44.entities.InteractionLog.filter({ route_id: activeRoute.id }, '-created_date', 1000) : []
+        ]);
+        const merged = [...(Array.isArray(hashLogsRes) ? hashLogsRes : hashLogsRes?.items || []), ...(Array.isArray(routeLogsRes) ? routeLogsRes : routeLogsRes?.items || [])];
+        const seen = new Set();
+        return merged.filter((log) => {
+          const key = log.id || `${log.address_hash}-${log.created_date}-${log.parsed_status}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
       }
       if (user?.email) {
         return await base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 500);
@@ -400,11 +409,20 @@ export default function RepHome() {
       if (p.legacy_hash) byHash.set(p.legacy_hash, p);
     });
 
+    const rerunCreatedAt = activeRoute?.metadata?.rerun_created_at ? new Date(activeRoute.metadata.rerun_created_at).getTime() : null;
+
     const orderedProps = (activeRoute.property_hashes || []).
     map((hash) => byHash.get(hash)).
     filter(Boolean).
     map((p) => {
-      const pLogs = logs.filter((l) => l.address_hash === p.address_hash || p.legacy_hash && l.address_hash === p.legacy_hash);
+      const pLogs = logs.filter((l) => {
+        const matchesProperty = l.address_hash === p.address_hash || p.legacy_hash && l.address_hash === p.legacy_hash;
+        if (!matchesProperty) return false;
+        if (!rerunCreatedAt) return true;
+        if (l.route_id === activeRoute.id) return true;
+        const logTime = new Date(l.created_date || 0).getTime();
+        return !Number.isNaN(logTime) && logTime >= rerunCreatedAt;
+      });
       const status = determineEffectiveStatus(p, pLogs);
       return { ...p, effective_status: status };
     });
