@@ -66,6 +66,9 @@ export default function TerritoryPrompt({
   const [routeMode, setRouteMode] = useState(() => {
     try {return localStorage.getItem('fk_routeMode') || 'precision';} catch {return 'precision';}
   });
+  const [ghostAreasVisible, setGhostAreasVisible] = useState(() => {
+    try {return localStorage.getItem('fk_showGhostAreas') === 'true';} catch {return false;}
+  });
   // v15: MLS Phase 2 always runs with verification — no toggle needed
   const pollRef = useRef(null);
   const activeJobIdRef = useRef(null);
@@ -191,11 +194,45 @@ export default function TerritoryPrompt({
     return () => window.removeEventListener('fk-route-mode-changed', handler);
   }, []);
 
+  useEffect(() => {
+    const handler = (event) => {
+      const visible = !!event.detail?.visible;
+      setGhostAreasVisible(visible);
+      if (!visible) {
+        setSelectedHistoryArea(null);
+        setRepullMode('fill_gaps');
+        setForceFullRefresh(false);
+        setIncludeUnresolvedFollowUps(true);
+      }
+    };
+    window.addEventListener('fk-ghost-areas-visibility', handler);
+    return () => window.removeEventListener('fk-ghost-areas-visibility', handler);
+  }, []);
+
+  useEffect(() => {
+    if (!selectedHistoryArea) return;
+    const historyPolygon = selectedHistoryArea.polygon || [];
+    const samePolygon = ghostAreasVisible && drawnPolygon?.length === historyPolygon.length && drawnPolygon.every((point, index) => {
+      const historyPoint = historyPolygon[index] || {};
+      return Math.abs(Number(point.lat) - Number(historyPoint.lat)) < 0.000001 && Math.abs(Number(point.lng) - Number(historyPoint.lng)) < 0.000001;
+    });
+    if (!samePolygon) {
+      setSelectedHistoryArea(null);
+      setRepullMode('fill_gaps');
+      setForceFullRefresh(false);
+      setIncludeUnresolvedFollowUps(true);
+    }
+  }, [drawnPolygon, ghostAreasVisible, selectedHistoryArea]);
+
   // Listen for toolbar draw button and previous-area selection events
   useEffect(() => {
     const drawHandler = () => {
       setDrawnPolygon(null);
       setDraftPolygon([]);
+      setSelectedHistoryArea(null);
+      setRepullMode('fill_gaps');
+      setForceFullRefresh(false);
+      setIncludeUnresolvedFollowUps(true);
       setDrawingMode(true);
     };
     const precisionPullHandler = () => {
@@ -206,9 +243,18 @@ export default function TerritoryPrompt({
       setMode('generate');
       setShowCompare(false);
       setShowRoutePanel(false);
+      if (!ghostAreasVisible) {
+        setSelectedHistoryArea(null);
+        setRepullMode('fill_gaps');
+        setForceFullRefresh(false);
+        setIncludeUnresolvedFollowUps(true);
+      }
       setShowPrecisionPullPanel(true);
     };
     const historyHandler = (event) => {
+      let ghostOn = false;
+      try {ghostOn = localStorage.getItem('fk_showGhostAreas') === 'true';} catch {}
+      if (!ghostOn) return;
       const polygon = event.detail?.polygon;
       if (!polygon || polygon.length < 3) return;
       setMode('generate');
@@ -236,7 +282,7 @@ export default function TerritoryPrompt({
       window.removeEventListener('fk-open-precision-pull', precisionPullHandler);
       window.removeEventListener('fk-select-polygon-history', historyHandler);
     };
-  }, [setMode, setDrawnPolygon, setDraftPolygon, setDrawingMode, setShowCompare, setShowRoutePanel, drawnPolygon]);
+  }, [setMode, setDrawnPolygon, setDraftPolygon, setDrawingMode, setShowCompare, setShowRoutePanel, drawnPolygon, ghostAreasVisible]);
 
   const stopMapTouch = (event) => {
     event?.preventDefault?.();
@@ -260,6 +306,10 @@ export default function TerritoryPrompt({
     }
     setDrawnPolygon(draftPolygon);
     setDraftPolygon([]);
+    setSelectedHistoryArea(null);
+    setRepullMode('fill_gaps');
+    setForceFullRefresh(false);
+    setIncludeUnresolvedFollowUps(true);
     setDrawingMode(false);
     toast.success('Area selected. Run Preview to check available data.');
   };
@@ -523,10 +573,11 @@ export default function TerritoryPrompt({
       return;
     }
 
-    const historyCriteria = selectedHistoryArea?.criteria || {};
-    const historyDate = selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date;
-    const effectiveSoldMonths = repullMode === 'max_since_last' ? monthsSinceHistoryPull(historyDate) : Number(historyCriteria.sold_months || fetchMonths || 12);
-    const effectiveRequestedPropertyCount = repullMode === 'max_since_last' ? maxRequestedProperties : safeRequestedPropertyCount;
+    const isPreviousAreaPull = ghostAreasVisible && !!selectedHistoryArea;
+    const historyCriteria = isPreviousAreaPull ? selectedHistoryArea?.criteria || {} : {};
+    const historyDate = isPreviousAreaPull ? selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date : null;
+    const effectiveSoldMonths = isPreviousAreaPull && repullMode === 'max_since_last' ? monthsSinceHistoryPull(historyDate) : Number(historyCriteria.sold_months || fetchMonths || 12);
+    const effectiveRequestedPropertyCount = isPreviousAreaPull && repullMode === 'max_since_last' ? maxRequestedProperties : safeRequestedPropertyCount;
     const effectiveMinPrice = minHomeValue ? Number(minHomeValue) : null;
     const effectiveMaxPrice = maxHomeValue ? Number(maxHomeValue) : null;
     const premiumRecentRange = effectiveSoldMonths <= 1;
@@ -555,10 +606,10 @@ export default function TerritoryPrompt({
         sold_months: effectiveSoldMonths,
         min_price: effectiveMinPrice,
         max_price: effectiveMaxPrice,
-        force_full_refresh: repullMode === 'fill_gaps' || forceFullRefresh,
-        include_unresolved_followups: selectedHistoryArea ? includeUnresolvedFollowUps : false,
-        repull_mode: selectedHistoryArea ? repullMode : 'new_area',
-        previous_pull_date: selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date || null
+        force_full_refresh: isPreviousAreaPull ? repullMode === 'fill_gaps' || forceFullRefresh : false,
+        include_unresolved_followups: isPreviousAreaPull ? includeUnresolvedFollowUps : false,
+        repull_mode: isPreviousAreaPull ? repullMode : 'new_area',
+        previous_pull_date: isPreviousAreaPull ? selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date || null : null
       });
       const data = res.data || {};
       if (data.error) {
@@ -568,14 +619,14 @@ export default function TerritoryPrompt({
       savePolygonToHistory(drawnPolygon, {
         last_pull_date: new Date().toISOString(),
         job_id: data.job_id,
-        repull_mode: selectedHistoryArea ? repullMode : 'new_area',
+        repull_mode: isPreviousAreaPull ? repullMode : 'new_area',
         criteria: {
           requested_properties: effectiveRequestedPropertyCount,
           sold_months: effectiveSoldMonths,
           min_price: effectiveMinPrice,
           max_price: effectiveMaxPrice,
-          force_full_refresh: repullMode === 'fill_gaps' || forceFullRefresh,
-          include_unresolved_followups: selectedHistoryArea ? includeUnresolvedFollowUps : false
+          force_full_refresh: isPreviousAreaPull ? repullMode === 'fill_gaps' || forceFullRefresh : false,
+          include_unresolved_followups: isPreviousAreaPull ? includeUnresolvedFollowUps : false
         }
       });
       localStorage.setItem('fk_drawnPolygonQueried', 'true');
@@ -783,7 +834,7 @@ export default function TerritoryPrompt({
         onGenerate={handlePaidBatchDataPull}
         generating={paidPullStarting}
         user={user}
-        selectedHistoryArea={selectedHistoryArea}
+        selectedHistoryArea={ghostAreasVisible ? selectedHistoryArea : null}
         repullMode={repullMode}
         setRepullMode={setRepullMode}
         forceFullRefresh={forceFullRefresh}

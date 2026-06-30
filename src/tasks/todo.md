@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — Ghost Builder Pull Screen Fit + Repull Criteria
+## Current Plan — Ghost Toggle Gate for Previous-Area Pulls
+- [x] Add a local Ghost-visible state listener inside the Precision pull controller.
+- [x] Clear previous-area selection when Ghost is turned off or a normal new area is drawn.
+- [x] Treat previous-area repull settings as active only when Ghost is on and a ghost area is selected.
+- [x] Keep standard Precision Builder pulls on the normal new-area payload.
+- [x] Verify production build and document the result.
+
+### Review — Ghost Toggle Gate for Previous-Area Pulls
+Previous-area repull state is now gated behind the Ghost toggle. Turning Ghost off clears the selected previous area and resets repull/full-refresh/follow-up options. Normal draw and normal Precision Pull Data now clear stale ghost selection, and the submit payload only sends repull fields when Ghost is on and a ghost area is selected. Standard Builder Precision pulls now send `repull_mode: new_area`, no previous pull date, no unresolved-follow-up flag, and no forced full refresh. Production build passes.
+
+## Previous Plan — Ghost Builder Pull Screen Fit + Repull Criteria
 - [x] Fix the ghost-only Precision Pull screen so it is not clipped at the top and can scroll safely on mobile.
 - [x] Make ghost mode visually/verbally unique from normal new-area pulls.
 - [x] Remove the confusing Same Criteria option.
