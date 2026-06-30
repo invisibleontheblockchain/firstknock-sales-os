@@ -18,6 +18,13 @@ function isPrecisionProUser(user) {
   return ['active', 'trialing'].includes(status) && ['pro', 'precision'].includes(tier);
 }
 
+function hasConfirmedPaidPrecisionAccess(user) {
+  const tier = String(user?.subscription_tier || '').toLowerCase();
+  const status = String(user?.subscription_status || '').toLowerCase();
+  if (user?.is_owner || user?.role === 'admin') return true;
+  return status === 'active' && user?.subscription_paid_confirmed === true && ['pro', 'precision'].includes(tier);
+}
+
 export default function TerritoryPrompt({
   mode,
   setMode,
@@ -323,8 +330,9 @@ export default function TerritoryPrompt({
   const hasPulledData = !!user?.has_pulled_data;
   const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
   const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing' || user?.is_owner || user?.role === 'admin';
-  const maxRequestedProperties = 1000;
   const freePropertyLimit = 50;
+  const hasPaidPrecisionCapacity = hasConfirmedPaidPrecisionAccess(user);
+  const maxRequestedProperties = hasPaidPrecisionCapacity ? 1000 : freePropertyLimit;
   const safeRequestedPropertyCount = Math.max(1, Math.min(Number(requestedPropertyCount) || 1, maxRequestedProperties));
   const pullCount = user?.area_pulls_count || 0;
   const maxPulls = 9999; // unlimited for testing
@@ -567,11 +575,11 @@ export default function TerritoryPrompt({
     const effectiveMaxPrice = maxHomeValue ? Number(maxHomeValue) : null;
     const premiumRecentRange = effectiveSoldMonths <= 1;
     const latestUser = (effectiveRequestedPropertyCount > freePropertyLimit || premiumRecentRange) ? await base44.auth.me() : user;
-    const upgraded = latestUser?.subscription_status === 'active' || latestUser?.subscription_status === 'trialing' || latestUser?.is_owner || latestUser?.role === 'admin';
+    const hasPaidPrecision = hasConfirmedPaidPrecisionAccess(latestUser);
     const hasPrecisionPro = isPrecisionProUser(latestUser);
 
-    if (effectiveRequestedPropertyCount > freePropertyLimit && !upgraded) {
-      toast.info('Precision pulls over 50 houses require an upgraded account.');
+    if (effectiveRequestedPropertyCount > freePropertyLimit && !hasPaidPrecision) {
+      toast.info('Precision pulls over 50 houses require the paid $99/month Precision plan after the first payment clears.');
       setShowPrecisionPullPanel(false);
       navigate(createPageUrl('Billing') + '?plan=precision');
       return;

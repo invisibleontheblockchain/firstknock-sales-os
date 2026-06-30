@@ -73,12 +73,21 @@ Deno.serve(async (req: Request) => {
                     
                     if (userId) {
                         let quantity = 1;
-                        if (session.subscription) {
+                        let subscriptionStatus = 'active';
+                        let subscriptionId = session.subscription ? (typeof session.subscription === 'string' ? session.subscription : session.subscription.id) : null;
+                        let subscriptionTier = session.metadata?.subscription_tier || 'custom';
+                        let paidConfirmed = session.payment_status === 'paid';
+                        if (subscriptionId) {
                             try {
-                                const sub = await stripe.subscriptions.retrieve(session.subscription);
+                                const sub = await stripe.subscriptions.retrieve(subscriptionId, { expand: ['latest_invoice'] });
+                                subscriptionStatus = sub.status;
+                                subscriptionId = sub.id;
+                                subscriptionTier = sub.metadata?.subscription_tier || subscriptionTier;
                                 if (sub.items && sub.items.data.length > 0) {
                                     quantity = sub.items.data[0].quantity || 1;
                                 }
+                                const latestInvoice = sub.latest_invoice;
+                                paidConfirmed = paidConfirmed || (sub.status === 'active' && latestInvoice && typeof latestInvoice !== 'string' && latestInvoice.status === 'paid');
                             } catch (subErr: any) {
                                 console.error(`Error retrieving subscription ${session.subscription}:`, subErr.message);
                             }
@@ -88,12 +97,17 @@ Deno.serve(async (req: Request) => {
                             stripe_customer_id: session.customer,
                             stripe_card_on_file_confirmed: true,
                             stripe_card_confirmed_at: new Date().toISOString(),
-                            subscription_status: 'active',
-                            subscription_tier: session.metadata?.subscription_tier || 'custom',
+                            subscription_id: subscriptionId,
+                            subscription_status: subscriptionStatus,
+                            subscription_tier: subscriptionTier,
+                            subscription_paid_confirmed: paidConfirmed,
+                            ...(paidConfirmed ? { subscription_paid_confirmed_at: new Date().toISOString() } : {}),
                             total_seats: quantity
                         });
 
-                        await syncInviteCode(base44, userId, quantity);
+                        if (subscriptionStatus === 'active' || subscriptionStatus === 'trialing') {
+                            await syncInviteCode(base44, userId, quantity);
+                        }
                         console.log(`Successfully processed checkout.session.completed for user ${userId}`);
                     } else {
                         console.warn(`No userId in session metadata for ${session.id}`);
@@ -110,12 +124,27 @@ Deno.serve(async (req: Request) => {
                     const quantity = firstItem?.quantity || 1;
                     const planId = firstItem?.price?.id;
                     const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+                    let latestInvoicePaid = false;
+                    if (subscription.latest_invoice) {
+                        try {
+                            const invoice = typeof subscription.latest_invoice === 'string'
+                                ? await stripe.invoices.retrieve(subscription.latest_invoice)
+                                : subscription.latest_invoice;
+                            latestInvoicePaid = invoice?.status === 'paid';
+                        } catch (invoiceErr: any) {
+                            console.error(`Error retrieving latest invoice for ${subscription.id}:`, invoiceErr.message);
+                        }
+                    }
+                    const paidConfirmed = status === 'active' && latestInvoicePaid;
 
                     if (userId) {
                          await base44.asServiceRole.entities.User.update(userId, {
+                           subscription_id: subscription.id,
                            subscription_status: status,
                            stripe_card_on_file_confirmed: status === 'active' || status === 'trialing',
                            ...(status === 'active' || status === 'trialing' ? { stripe_card_confirmed_at: new Date().toISOString() } : {}),
+                           subscription_paid_confirmed: paidConfirmed,
+                           ...(paidConfirmed ? { subscription_paid_confirmed_at: new Date().toISOString() } : {}),
                            subscription_plan_id: planId,
                            subscription_tier: subscription.metadata?.subscription_tier || 'custom',
                            subscription_period_end: periodEnd,
@@ -131,12 +160,49 @@ Deno.serve(async (req: Request) => {
                     }
                     break;
                 }
+                case 'invoice.paid': {
+                    const invoice = event.data.object;
+                    const subscriptionId = invoice.subscription ? (typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription.id) : null;
+                    if (!subscriptionId) break;
+                    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+                    const userId = subscription.metadata?.base44_user_id;
+                    if (userId) {
+                        await base44.asServiceRole.entities.User.update(userId, {
+                            subscription_id: subscription.id,
+                            subscription_status: subscription.status,
+                            subscription_tier: subscription.metadata?.subscription_tier || 'custom',
+                            subscription_paid_confirmed: true,
+                            subscription_paid_confirmed_at: new Date().toISOString(),
+                            stripe_card_on_file_confirmed: true,
+                            stripe_card_confirmed_at: new Date().toISOString()
+                        });
+                        console.log(`Confirmed paid subscription invoice for user ${userId}`);
+                    }
+                    break;
+                }
+                case 'invoice.payment_failed': {
+                    const invoice = event.data.object;
+                    const subscriptionId = invoice.subscription ? (typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription.id) : null;
+                    if (!subscriptionId) break;
+                    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+                    const userId = subscription.metadata?.base44_user_id;
+                    if (userId) {
+                        await base44.asServiceRole.entities.User.update(userId, {
+                            subscription_id: subscription.id,
+                            subscription_status: subscription.status,
+                            subscription_paid_confirmed: false
+                        });
+                        console.log(`Marked subscription payment failed for user ${userId}`);
+                    }
+                    break;
+                }
                 case 'customer.subscription.deleted': {
                     const subscription = event.data.object;
                     const userId = subscription.metadata?.base44_user_id;
                     if (userId) {
                         await base44.asServiceRole.entities.User.update(userId, {
-                            subscription_status: 'canceled'
+                            subscription_status: 'canceled',
+                            subscription_paid_confirmed: false
                         });
                         
                         try {

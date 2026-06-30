@@ -21,6 +21,19 @@
     "subscription_tier": {
       "type": "string"
     },
+    "subscription_id": {
+      "type": "string",
+      "description": "Stripe subscription ID for server-side paid access verification"
+    },
+    "subscription_paid_confirmed": {
+      "type": "boolean",
+      "default": false,
+      "description": "True only after Stripe confirms an actual paid invoice for the subscription. Trials/card-on-file alone do not set this."
+    },
+    "subscription_paid_confirmed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
     "total_seats": {
       "type": "integer"
     },

@@ -26,6 +26,13 @@ function isPrecisionProUser(user) {
   return ['active', 'trialing'].includes(status) && ['pro', 'precision'].includes(tier);
 }
 
+function hasConfirmedPaidPrecisionAccess(user) {
+  const tier = String(user?.subscription_tier || '').toLowerCase();
+  const status = String(user?.subscription_status || '').toLowerCase();
+  if (user?.is_owner || user?.role === 'admin') return true;
+  return status === 'active' && user?.subscription_paid_confirmed === true && ['pro', 'precision'].includes(tier);
+}
+
 function formatMoney(value) {
   if (!value) return '';
   return Number(value).toLocaleString();
@@ -80,6 +87,7 @@ export default function PrecisionPullPanel({
   const [showUpgradeSheet, setShowUpgradeSheet] = useState(false);
   const hasShownFallbackToast = useRef(false);
   const isProPlan = isPrecisionProUser(user);
+  const hasPaidPrecisionCapacity = hasConfirmedPaidPrecisionAccess(user);
 
   const goToUpgrade = () => navigate(createPageUrl('Billing') + '?plan=precision');
   const historyCriteria = selectedHistoryArea?.criteria || {};
@@ -160,7 +168,7 @@ export default function PrecisionPullPanel({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Property count</label>
-                <p className="text-[10px] text-gray-600">Choose a fixed cap or pull every match up to your plan limit.</p>
+                <p className="text-[10px] text-gray-600">{hasPaidPrecisionCapacity ? 'Choose a fixed cap or pull every match up to your paid plan limit.' : 'Free trials and card-on-file accounts are capped at 50 homes until the $99 payment clears.'}</p>
               </div>
               <input
                 type="number"

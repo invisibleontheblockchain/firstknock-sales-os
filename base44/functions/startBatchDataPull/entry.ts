@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import Stripe from 'npm:stripe@14.14.0';
 
 const FREE_AREA_LIMIT_SQ_MI = 40;
 const PAID_AREA_LIMIT_SQ_MI = 300;
@@ -39,6 +40,34 @@ function isPrecisionProUser(user) {
     const status = String(user?.subscription_status || '').toLowerCase();
     if (user?.is_owner || user?.role === 'admin') return true;
     return ['active', 'trialing'].includes(status) && ['pro', 'precision'].includes(tier);
+}
+
+async function hasConfirmedPaidPrecisionAccess(user) {
+    const tier = String(user?.subscription_tier || '').toLowerCase();
+    const status = String(user?.subscription_status || '').toLowerCase();
+    if (user?.is_owner || user?.role === 'admin') return true;
+    if (!['pro', 'precision'].includes(tier)) return false;
+    if (status === 'active' && user?.subscription_paid_confirmed === true) return true;
+    if (!user?.stripe_customer_id) return false;
+
+    const secret = Deno.env.get('STRIPE_SECRET_KEY');
+    if (!secret) return false;
+
+    const stripe = new Stripe(secret);
+    const subscriptions = await stripe.subscriptions.list({
+        customer: user.stripe_customer_id,
+        status: 'all',
+        limit: 10,
+        expand: ['data.latest_invoice']
+    });
+
+    return subscriptions.data.some((subscription) => {
+        const amountCents = subscription.items?.data?.[0]?.price?.unit_amount || 0;
+        const latestInvoice = subscription.latest_invoice;
+        const invoicePaid = latestInvoice && typeof latestInvoice !== 'string' && latestInvoice.status === 'paid';
+        const trialEnded = !subscription.trial_end || subscription.trial_end * 1000 <= Date.now();
+        return subscription.status === 'active' && trialEnded && invoicePaid && amountCents >= 9900;
+    });
 }
 
 function isPremiumRecentRange(soldMonths) {
@@ -96,6 +125,7 @@ Deno.serve(async (req) => {
         const center = centroid(polygon);
         const forceFreeForSelfTest = body.self_test_force_free === true && body.dry_run === true;
         const isPaid = !forceFreeForSelfTest && (user.subscription_status === 'active' || user.subscription_status === 'trialing' || user.is_owner || user.role === 'admin');
+        const hasPaidPrecisionCapacity = !forceFreeForSelfTest && await hasConfirmedPaidPrecisionAccess(user);
         const hasPrecisionPro = !forceFreeForSelfTest && isPrecisionProUser(user);
         const requestedSoldMonths = Number(body.sold_months || 12);
         if (isPremiumRecentRange(requestedSoldMonths) && !hasPrecisionPro) {
@@ -105,13 +135,13 @@ Deno.serve(async (req) => {
             }, { status: 403 });
         }
         const maxArea = isPaid ? PAID_AREA_LIMIT_SQ_MI : FREE_AREA_LIMIT_SQ_MI;
-        const maxProperties = isPaid ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
+        const maxProperties = hasPaidPrecisionCapacity ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
         const requestedRaw = Number(body.requested_properties || maxProperties);
         const requestedValue = Math.max(1, Number.isFinite(requestedRaw) ? requestedRaw : maxProperties);
-        if (!isPaid && requestedValue > FREE_PROPERTY_CAP) {
+        if (!hasPaidPrecisionCapacity && requestedValue > FREE_PROPERTY_CAP) {
             return Response.json({
-                error: 'upgrade_required',
-                message: 'Free Precision accounts are limited to 50 houses. Upgrade to Precision to pull more.'
+                error: 'paid_precision_required',
+                message: 'Precision pulls over 50 houses require the paid $99/month Precision plan after the first payment clears. Free trials and card-on-file accounts stay capped at 50 houses.'
             }, { status: 403 });
         }
         const requestedProperties = Math.max(1, Math.min(requestedValue, maxProperties));

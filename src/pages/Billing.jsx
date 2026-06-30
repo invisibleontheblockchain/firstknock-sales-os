@@ -9,6 +9,13 @@ import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import BetaUsageMeter from '../components/beta/BetaUsageMeter';
 
+function hasConfirmedPaidPrecisionAccess(user) {
+  const tier = String(user?.subscription_tier || '').toLowerCase();
+  const status = String(user?.subscription_status || '').toLowerCase();
+  if (user?.is_owner || user?.role === 'admin') return true;
+  return status === 'active' && user?.subscription_paid_confirmed === true && ['pro', 'precision'].includes(tier);
+}
+
 const PLANS = [
   {
     id: 'precision',
@@ -131,7 +138,8 @@ export default function Billing() {
   }, []);
 
   const isSubscribed = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-  const precisionLimit = user?.precision_property_limit || user?.monthly_property_limit || 1000;
+  const hasPaidPrecisionAccess = hasConfirmedPaidPrecisionAccess(user);
+  const precisionLimit = user?.precision_property_limit || user?.monthly_property_limit || (hasPaidPrecisionAccess ? 1000 : 50);
   const precisionUsed = Math.min(user?.precision_properties_used || user?.territory_property_count || 0, precisionLimit);
   const precisionUsage = {
     limit: precisionLimit,
