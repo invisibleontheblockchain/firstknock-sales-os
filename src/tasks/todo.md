@@ -6,9 +6,10 @@
 - [x] Keep Split Route available as a secondary route action instead of the main workflow.
 - [x] Move/select Merge and Delete All into a polished top command bar.
 - [x] Verify the changed JSX paths for active route selection, merge mode, split access, and delete-all access.
+- [x] Apply the same Start Route/Split treatment to the By Rep route cards.
 
 ### Review — Route Command UI Polish
-Route cards now lead with Start Route, while Split is still available as a secondary action. The active routes tab now has a cleaner command bar at the top with route count, select-to-merge/merge controls, and Delete All grouped in one polished action area. Production build passes.
+Route cards now lead with Start Route, while Split is still available as a secondary action in both Active and By Rep route lists. The active routes tab now has a cleaner command bar at the top with route count, select-to-merge/merge controls, and Delete All grouped in one polished action area. Production build passes.
 
 ## Previous Plan — Knock Mode Freemium Gate + Setup CSV Import Fix
 - [ ] Remove Import CSV from the main Builder bottom workflow so Builder only shows Draw/Pull Data controls.

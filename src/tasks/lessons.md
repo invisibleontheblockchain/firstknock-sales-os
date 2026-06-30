@@ -1,5 +1,6 @@
 # Lessons
 
+- When changing a repeated route-card workflow, update every route list variant in the same pass (Active, By Rep, selected-route toolbars) so tabs do not drift.
 - On cramped mobile route toolbars, keep the most-used action as the visible compact button and move secondary actions into the overflow menu instead of making every button compete for space.
 - When adding shared handlers that call `toast` into a file, verify the target file already imports `toast`; similar sibling files may have the import while the edited file does not.
 

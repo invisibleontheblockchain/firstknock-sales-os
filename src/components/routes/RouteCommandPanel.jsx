@@ -11,7 +11,7 @@ import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
 import {
     Navigation, X, BarChart3, User, Shield, MapPin,
     ArrowRight, Flame, Plus, Clock, CheckCircle2,
-    AlertCircle, ChevronRight, Zap, Trash2, Scissors, Pencil, Check, RefreshCw
+    AlertCircle, ChevronRight, Zap, Trash2, Scissors, Pencil, Check, RefreshCw, Play
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from "sonner";
@@ -686,10 +686,10 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                 onClick={onSelect}
                 role="button"
                 tabIndex={0}
-                className="w-full max-w-full p-2 sm:p-2.5 rounded-xl border transition-all text-left hover:border-gray-600 cursor-pointer overflow-hidden"
+                className="w-full max-w-full overflow-hidden rounded-2xl border p-3 text-left shadow-[0_10px_28px_rgba(0,0,0,0.28)] transition-all hover:-translate-y-0.5 hover:border-[#2EEB57]/40 cursor-pointer"
                 style={{
-                    background: isActive ? `${BRAND.gold}15` : '#151515',
-                    borderColor: isActive ? BRAND.gold : '#222',
+                    background: isActive ? 'linear-gradient(135deg, rgba(46,235,87,0.16), rgba(21,21,21,0.98))' : 'linear-gradient(135deg, rgba(255,255,255,0.045), rgba(10,10,10,0.98))',
+                    borderColor: isActive ? '#2EEB57' : 'rgba(255,255,255,0.08)',
                     borderLeftWidth: '3px',
                     borderLeftColor: repColor
                 }}
@@ -756,16 +756,26 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                         <div className="h-full rounded-full transition-all" style={{ width: `${(knockStats.knocked / knockStats.total) * 100}%`, background: knockStats.knocked === knockStats.total ? '#22c55e' : '#FFD700' }} />
                     </div>
                 )}
-                {onSplit && (
+                <div className="mt-3 grid grid-cols-[1fr_auto] gap-2" onClick={(e) => e.stopPropagation()}>
                     <button
                         onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSplit(); }}
-                        className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#2EEB57]/30 bg-[#2EEB57]/10 text-[10px] font-black text-[#39FF4A] hover:bg-[#2EEB57]/20 md:h-8"
-                        title="Split route into daily batches"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSelect(); }}
+                        className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#2EEB57] text-[11px] font-black text-black shadow-[0_8px_24px_rgba(46,235,87,0.24)] hover:bg-[#39FF4A] md:h-9"
+                        title="Start this route"
                     >
-                        <Scissors className="h-4 w-4" /> SPLIT ROUTE
+                        <Play className="h-4 w-4 fill-black" /> START ROUTE
                     </button>
-                )}
+                    {onSplit && (
+                        <button
+                            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSplit(); }}
+                            className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-[10px] font-black text-white/70 hover:bg-white/10 hover:text-white md:h-9"
+                            title="Split route into daily batches"
+                        >
+                            <Scissors className="h-4 w-4" /> SPLIT
+                        </button>
+                    )}
+                </div>
             </div>
             {onDelete && (
                 <button
