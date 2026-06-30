@@ -1,6 +1,18 @@
 # Plan
 
-## Current Plan — Precision 1-Day Range + Paywall Gate
+## Current Plan — Builder Previous-Area Ghosts + Repull Workflow
+- [x] Review lessons before planning, especially route/polygon overlay visibility and repull/delta-pull rules.
+- [x] Inspect current previous-area storage/rendering and confirm the bug: `PolygonHistory` currently hides history in Builder and can show it outside Builder, which is opposite of the requested behavior.
+- [ ] Add a Builder-only ghost toggle button to the map toolbar using a ghost-style icon/label; default off so previous areas do not clutter routes.
+- [ ] Make previous drawn areas render only when Builder mode is active, no active route is selected, no route panel is open, and the ghost toggle is on.
+- [ ] When a ghost area is tapped, restore that polygon as the active Builder area so Pull Data can run over the exact same drawn area.
+- [ ] Store lightweight pull metadata with polygon history entries when available: last pull date, criteria used, and job ID, so reused areas can show “last pulled” context.
+- [ ] Extend the Precision Pull panel for reused ghost areas with clear choices: Same Criteria, Fill Gaps / Full Refresh, and Max Since Last Pull.
+- [ ] Wire those choices to the existing BatchData pull path without changing normal new-area pulls: same criteria reuses the last criteria, fill gaps sends the existing full-refresh flag, and max-since-last-pull uses the current area plus last-pull context to request the freshest allowed homes.
+- [ ] Ensure ghost overlays never appear on active/completed route views or active selected route overlays.
+- [ ] Verify with a production build and at least one backend request-preview/dry-run path before marking complete.
+
+## Previous Plan — Precision 1-Day Range + Paywall Gate
 - [x] Trace the Precision pull date-range UI and submitted payload.
 - [x] Replace the 9-month option with a 1-day option.
 - [x] Gate 1 day, 2 day, 1 week, 2 week, and 1 month in the UI for non-Pro users.
