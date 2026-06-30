@@ -5,6 +5,7 @@
 - Mobile modal panels inside the app shell need safe-area top padding plus their own scrollable body and fixed footer; otherwise builder screens can be clipped under the header/status area.
 - When the user selects a specific UI atom and asks for visual polish, scope the change to that selected atom unless they explicitly ask for the surrounding card/section.
 - For mobile property-card density fixes, remove truncation from address/owner/metadata first, then reduce padding, gaps, and fixed control sizes; compact cards should show more rows without hiding field context.
+- When a user says a selected polished element stands out too much, simplify by removing filled backgrounds/glows first and preserve the smallest recognizable cue, such as a muted tick plus plain text.
 - If a user asks to make a polished UI element simpler after an iteration, remove decorative layers first and keep one strong shape, one accent color, and minimal shadow.
 - Map status toggles must clear selected active-route overlays and force route pins/lines visible; otherwise the toggle state changes but the map still appears unchanged.
 - Completed saved routes should not be filtered by active sold-date windows, or finished routes can disappear from the map even though they still exist in Route Command.

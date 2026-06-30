@@ -56,15 +56,11 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
             <div className="flex items-start gap-2">
                 {/* Number / Check */}
                 <div
-          className="h-7 w-7 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0 transition-all duration-300 text-[hsl(var(--primary))] bg-[hsl(var(--primary))]"
-          style={{
-            background: isDone ? `${statusColor}14` : 'rgba(46,235,87,0.92)',
-            color: isDone ? statusColor : '#000000',
-            border: isDone ? `1px solid ${statusColor}2e` : '1px solid rgba(57,255,74,0.55)',
-            boxShadow: isDone ? 'none' : '0 6px 18px rgba(46,235,87,0.18)'
-          }}>
-          
-                    {isDone ? <Check className="w-3 h-3" /> : index + 1}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center gap-1 transition-all duration-300"
+                    style={{ color: isDone ? statusColor : '#FFFFFF' }}
+                >
+                    {!isDone && <span className="h-3.5 w-1 rounded-full bg-[#7AA27D]" />}
+                    {isDone ? <Check className="w-3 h-3" /> : <span className="text-[18px] font-black leading-none tracking-[-0.08em] text-white">{index + 1}</span>}
                 </div>
 
                 {/* Address */}

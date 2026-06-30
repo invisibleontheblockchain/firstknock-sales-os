@@ -1,6 +1,15 @@
 # Plan
 
-## Current Plan — Mobile Property Card Density + Wrapping
+## Current Plan — Plain Property Card Number Marker
+- [x] Replace the bright green filled route number badge with a plain number plus tiny muted green tick.
+- [x] Preserve click, keyboard, done-state, and navigation behavior.
+- [x] Build and visually validate the RepHome card marker against the selected mockup.
+- [x] Document the result.
+
+### Review — Plain Property Card Number Marker
+The active property route marker no longer uses the bright filled green badge. It now renders as a plain white number with a small muted green vertical tick, matching the selected basic direction while leaving card selection, keyboard selection, completed-state checkmarks, and navigation behavior unchanged. Production build passes. Mobile screenshot capture opened the sign-in screen in the preview environment, so authenticated card verification could not be visually captured there.
+
+## Previous Plan — Mobile Property Card Density + Wrapping
 - [x] Inspect the selected property card layout and identify truncation/oversizing classes.
 - [x] Reduce vertical spacing/padding enough to show about 3 cards on mobile without changing card behavior.
 - [x] Let names and metadata wrap naturally instead of being clipped.
