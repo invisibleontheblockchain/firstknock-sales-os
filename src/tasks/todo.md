@@ -1,3 +1,15 @@
+## Plan — Prove Why 890 Sq Mi Precision Pull Returns Too Few Homes
+- [x] Inspect the latest Precision pull settings, provider/job counts, and active candidate counts.
+- [x] Trace the exact filters in order: sold-date window, home-value minimum, provider cap, area geometry, and final local route filters.
+- [x] Identify whether the system is under-fetching before filters, filtering too early, or failing to page until 2 eligible homes are found.
+- [x] Patch the smallest root cause so a request for 2 homes in a large area searches enough records to satisfy the final filters.
+- [x] Verify with the latest job/settings and record the result.
+
+### Review — Prove Why 890 Sq Mi Precision Pull Returns Too Few Homes
+The latest pull did send the intended settings: 884.52 square miles, fixed count 2, minimum value $100k, and “sold in the last week.” The data was not missing: the latest job has two active BatchData-confirmed homes, both over $100k, with sold dates on 2026-06-17 and 2026-06-18. Candidate retrieval returns both homes, and direct route generation creates one Precision route with 2 homes. The failure was the already-patched final route filter still treating the 1-week selection as a strict 7-day cutoff while ingestion/candidate retrieval correctly used the provider-safe 14-day effective window.
+
+---
+
 ## Plan — Fix Final Route Filter Rejecting Fresh Precision Homes
 - [x] Inspect the final local route filter that emits “No homes sold in last 0.25 months.”
 - [x] Compare its date-window logic against the ingestion and exact-job candidate query windows.
