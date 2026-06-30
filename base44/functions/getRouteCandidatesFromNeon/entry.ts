@@ -80,6 +80,7 @@ Deno.serve(async (req) => {
                                     : 'rejected_by_local_eligibility';
                 const rawShape = {
                     top_level: Object.keys(raw || {}).slice(0, 30),
+                    intel_keys: Object.keys(raw?.intel || {}).slice(0, 30),
                     sale_keys: Object.keys(raw?.sale || {}).slice(0, 30),
                     last_sale_keys: Object.keys(raw?.lastSale || {}).slice(0, 30),
                     deed_keys: Object.keys(raw?.deed || {}).slice(0, 30),

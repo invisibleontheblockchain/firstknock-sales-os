@@ -216,6 +216,7 @@ function mapBatchDataProperty(record, job) {
 
     const owner = p.owner || {};
     const listing = p.listing || {};
+    const intel = p.intel || {};
     const building = p.building || p.structure || p.propertyInfo || p.assessment?.building || p.assessor?.building || {};
     const sale = p.sale || p.lastSale || p.deed?.sale || p.transaction || {};
     const lastSale = sale.lastSale || sale.lastTransfer || sale;
@@ -227,7 +228,9 @@ function mapBatchDataProperty(record, job) {
     const saleDate = dateValue(
         p.listing?.soldDate,
         p.deedHistory?.[0]?.saleDate,
-        p.intel?.lastSoldDate,
+        intel.lastSoldDate,
+        intel.lastSaleDate,
+        intel.lastTransferDate,
         sale?.lastSaleDate,
         sale?.recordingDate,
         sale?.saleDate,
@@ -242,7 +245,9 @@ function mapBatchDataProperty(record, job) {
     const cutoffMs = Date.now() - soldWindowDays(job.sold_months || 12) * 24 * 60 * 60 * 1000;
     const ownerName = firstValue(owner.fullName, owner.name, owner.ownerName, owner.names?.[0]?.full, owner.names?.[0]?.name, owner.names?.[0]);
     const saleAmount = numberValue(
-        p.intel?.lastSoldPrice,
+        intel.lastSoldPrice,
+        intel.lastSalePrice,
+        intel.lastTransferPrice,
         sale?.amount,
         sale?.price,
         sale?.salePrice,
@@ -252,6 +257,8 @@ function mapBatchDataProperty(record, job) {
         p.lastSalePrice
     );
     const estimatedValue = numberValue(
+        intel.estimatedValue, intel.estimatedMarketValue, intel.totalMarketValue, intel.propertyValue, intel.estValue,
+        intel.avm, intel.avmValue, intel.value, intel.amount,
         valuation.estimatedValue, valuation.value, valuation.avm, valuation.avmValue, valuation.amount,
         p.estimatedValue, p.estimated_value, p.avm, p.avmValue, p.assessedValue,
         listing.price, listing.listPrice
@@ -291,12 +298,14 @@ function mapBatchDataProperty(record, job) {
         beds: numberValue(building.bedroomCount, building.bedrooms, building.beds, building.rooms?.beds, p.bedrooms, p.beds),
         baths: numberValue(building.bathroomCount, building.bathrooms, building.baths, building.rooms?.baths, p.bathrooms, p.baths),
         sqft: numberValue(
+            intel.livingAreaSquareFeet, intel.totalBuildingAreaSquareFeet, intel.buildingSquareFeet, intel.squareFeet,
+            intel.sqft, intel.livingArea, intel.buildingSqft,
             building.livingAreaSquareFeet, building.livingArea, building.squareFeet,
             building.totalBuildingAreaSquareFeet, building.totalAreaSqFt, building.area,
             p.squareFootage, p.sqft, p.livingAreaSquareFeet
         ),
         lot_size: numberValue(p.lot?.size, p.lot?.lotSizeSquareFeet, p.lotSize, p.lot_size, p.lotSizeSquareFeet),
-        year_built: numberValue(building.yearBuilt, building.effectiveYearBuilt, p.yearBuilt, p.year_built),
+        year_built: numberValue(intel.yearBuilt, intel.effectiveYearBuilt, intel.buildYear, intel.year_built, building.yearBuilt, building.effectiveYearBuilt, p.yearBuilt, p.year_built),
         price: price ?? null,
         sold_date: saleDate || null,
         sale_type: 'BatchData',

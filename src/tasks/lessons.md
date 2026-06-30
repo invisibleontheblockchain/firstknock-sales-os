@@ -1,5 +1,6 @@
 # Lessons
 
+- When changing BatchData search criteria such as `intel.lastSoldDate`, also verify response mapping into stored route-detail fields; pulling the right houses is incomplete if `intel` value/build/sqft/last-sold fields are not persisted.
 - Route naming should be set at the generation/save source of truth, not just in display cards; otherwise every auto-saved route can inherit indistinguishable stock names like “Precision Route 1.”
 - When changing a repeated route-card workflow, update every route list variant in the same pass (Active, By Rep, selected-route toolbars) so tabs do not drift.
 - On cramped mobile route toolbars, keep the most-used action as the visible compact button and move secondary actions into the overflow menu instead of making every button compete for space.

@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — Area-Based Route Naming
+## Current Plan — BatchData Intel Property Details
+- [x] Confirm where BatchData records are mapped into stored properties.
+- [x] Confirm where generated route candidates read stored property detail fields.
+- [x] Expand the BatchData mapper to persist intel estimated value, building sqft, build year, and last sold date/price into the existing property fields used by route details.
+- [x] Verify with a backend synthetic BatchData payload and production build.
+- [x] Document the result.
+
+### Review — BatchData Intel Property Details
+Updated the BatchData property mapper so `property.intel` now feeds the existing route-detail fields: estimated value → `price`, building square footage → `sqft`, build year → `year_built`, last sold date → `sold_date`, and last sold price as sale evidence. Route candidates already return those fields to the map and detail screens, so no UI changes were needed. Verified with a synthetic BatchData payload containing only intel values; it mapped to an active property with `price: 425000`, `sqft: 2184`, `year_built: 2006`, and `sold_date: 2026-06-28`. Production build passes.
+
+## Previous Plan — Area-Based Route Naming
 - [x] Locate the stock route naming source in frontend generation, backend large-route generation, and save-time persistence.
 - [x] Add area-aware naming that prefers county, then city, then ZIP, then street.
 - [x] Replace repeated stock names like “Precision Route 1” before routes are saved.
