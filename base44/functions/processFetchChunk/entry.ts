@@ -156,8 +156,7 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
 
     const options = {
         skip,
-        take: Math.min(Math.max(Number(take) || BATCHDATA_MAX_TAKE, 1), BATCHDATA_MAX_TAKE),
-        datasets: ['basic', 'listing', 'deed', 'owner']
+        take: Math.min(Math.max(Number(take) || BATCHDATA_MAX_TAKE, 1), BATCHDATA_MAX_TAKE)
     };
 
     if (mode === 'centroid_fallback') {
@@ -481,7 +480,7 @@ Deno.serve(async (req) => {
         const body = await req.json().catch(() => ({}));
 
         if (body.self_test === true) {
-            return Response.json({ success: true, active_provider: 'batchdata', rentcast_active: false, batchdata_polygon_search: true, datasets: ['basic', 'listing', 'deed', 'owner'], has_batchdata_key: !!BATCHDATA_API_KEY, has_database_url: !!DATABASE_URL });
+            return Response.json({ success: true, active_provider: 'batchdata', rentcast_active: false, batchdata_polygon_search: true, dataset_scope: 'omitted_for_sale_evidence', has_batchdata_key: !!BATCHDATA_API_KEY, has_database_url: !!DATABASE_URL });
         }
 
         if (body.request_preview === true) {
@@ -516,6 +515,7 @@ Deno.serve(async (req) => {
             const mapped = records.map(record => mapBatchDataProperty(record, previewJob)).filter(Boolean);
             return Response.json({ success: true, raw: records.length, mapped: mapped.length, active: mapped.filter(p => p.route_active !== false).length, properties: mapped });
         }
+
 
         if (!BATCHDATA_API_KEY) throw new Error('BATCH_DATA_API_KEY is not configured');
         if (!DATABASE_URL) throw new Error('DATABASE_URL is not configured');

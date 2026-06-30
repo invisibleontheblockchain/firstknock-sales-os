@@ -1,3 +1,15 @@
+## Plan — Fix Zero Active Properties After Confirmed-Sales Gate
+- [x] Inspect current failed pulls to confirm whether BatchData returns no records or records that the mapper rejects.
+- [x] Add a no-write raw-shape diagnostic so we can verify the provider response fields without creating properties/routes.
+- [x] Patch only the mapper/request logic needed to recognize confirmed sales while still rejecting off-market non-sales.
+- [x] Verify with live no-write preview, synthetic map tests, and exact-job route candidate checks.
+- [x] Record the review and lesson.
+
+### Review — Fix Zero Active Properties After Confirmed-Sales Gate
+Failed pulls were not empty: recent jobs fetched and mapped BatchData records, but every row was rejected because `options.datasets: ['basic','listing','deed','owner']` caused the live response to omit the `intel`/`sale` fields used by the confirmed-sale gate. A no-write live preview proved the same polygon returned `active=0` with scoped datasets and `active>0` when dataset scoping was omitted. I removed dataset scoping from production BatchData requests while keeping the 100-record page limit and the confirmed-sale/off-market rejection gate. Verification: request preview now shows no dataset scope and `take: 100`; live no-write preview returned active rows with `intel`/`sale` evidence before the diagnostic hook was removed; synthetic tests still reject off-market/no-evidence rows.
+
+---
+
 ## Plan — Fix Confirmed-Sales Precision Pull Regression
 - [x] Compare current `processFetchChunk` behavior to commit `0d1fd07` and identify what still differs in live behavior.
 - [x] Verify with synthetic records that off-market, pending, blank-status/no-price, and active rows are rejected while sold/closed/settled or paid-deed rows remain eligible.
