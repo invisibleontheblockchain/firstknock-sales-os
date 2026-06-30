@@ -1,5 +1,6 @@
 # Lessons
 
+- Completed-route reruns should create a new active route from selected original `property_hashes` instead of reopening the completed route; keep the completed route as historical proof and route the new active copy through the existing map/Knock selection flow.
 - If a user says a control is probably present but hidden, inspect both conditional rendering and visual hierarchy; low-contrast controls inside lower scroll regions should be moved into the primary visible action area when they are core workflow controls.
 - Bottom sheets inside the app shell can still be visually blocked by the persistent bottom nav; add nav-safe bottom spacing or lift the sheet above the nav when action buttons sit near the bottom.
 - Native select popups can fall back to stark white browser/OS styling; when polishing map toolbar dropdowns, set the closed select styling plus `colorScheme: 'dark'` and dark option styles so opened menus match the app where supported.

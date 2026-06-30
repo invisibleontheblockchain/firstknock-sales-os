@@ -18,6 +18,52 @@ const BRAND = {
     offWhite: '#E5E5E5'
 };
 
+const FOLLOW_UP_STATUSES = new Set(['NO_ANSWER', 'CALLBACK', 'NOT_MOVED_IN', 'DM_NOT_HOME']);
+
+function getRouteHashes(route) {
+    const hashes = route.property_hashes || (route.properties || []).map(p => p.address_hash);
+    return [...new Set((hashes || []).filter(Boolean))];
+}
+
+function getRouteOutcomeStats(route, logs = []) {
+    const routeHashes = getRouteHashes(route);
+    const canonicalByHash = new Map(routeHashes.map(hash => [hash, hash]));
+    (route.properties || []).forEach((property) => {
+        const canonical = property.address_hash || property.legacy_hash;
+        if (!canonical) return;
+        if (property.address_hash) canonicalByHash.set(property.address_hash, canonical);
+        if (property.legacy_hash) canonicalByHash.set(property.legacy_hash, canonical);
+    });
+
+    const latestByHash = new Map();
+    [...logs]
+        .filter(log => log?.address_hash && canonicalByHash.has(log.address_hash))
+        .sort((a, b) => new Date(b.created_date || 0) - new Date(a.created_date || 0))
+        .forEach((log) => {
+            const canonical = canonicalByHash.get(log.address_hash);
+            if (canonical && !latestByHash.has(canonical)) latestByHash.set(canonical, log.parsed_status || 'OTHER');
+        });
+
+    const byStatus = { SOLD: 0, NO_ANSWER: 0, CALLBACK: 0, HARD_NO: 0, NOT_MOVED_IN: 0, DM_NOT_HOME: 0, OTHER: 0 };
+    latestByHash.forEach((status) => {
+        if (byStatus[status] === undefined) byStatus.OTHER += 1;
+        else byStatus[status] += 1;
+    });
+
+    return { total: routeHashes.length, knocked: latestByHash.size, byStatus, latestByHash, routeHashes };
+}
+
+function getRerunHashes(route, stats, filter) {
+    if (filter === 'all') return stats.routeHashes;
+    return stats.routeHashes.filter((hash) => {
+        const status = stats.latestByHash.get(hash);
+        if (filter === 'no_answer') return status === 'NO_ANSWER';
+        if (filter === 'callbacks') return status === 'CALLBACK';
+        if (filter === 'unsold') return !status || FOLLOW_UP_STATUSES.has(status);
+        return true;
+    });
+}
+
 export default function ActiveRoutesTab({
     savedRoutes = [],
     routesByStatus,
@@ -365,6 +411,7 @@ function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRou
 function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDelete, logs = [], onReoptimize, routeConfig, isSelected, onToggleSelect, isMultiSelect, onSplit }) {
     const [editing, setEditing] = useState(false);
     const [newName, setNewName] = useState(route.name);
+    const [showRerunMenu, setShowRerunMenu] = useState(false);
     const queryClient = useQueryClient();
 
     const knockStats = useMemo(() => {
@@ -384,6 +431,46 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
         const max = new Date(Math.max(...dates));
         return formatDateRange(min, max);
     }, [route.properties]);
+
+    const isCompletedRoute = route.status === 'COMPLETED';
+    const outcomeStats = useMemo(() => getRouteOutcomeStats(route, logs), [route, logs]);
+
+    const handleRerun = async (filter, label) => {
+        const selectedHashes = getRerunHashes(route, outcomeStats, filter);
+        if (selectedHashes.length === 0) {
+            toast.error(`No ${label.toLowerCase()} doors found on this route`);
+            return;
+        }
+
+        const rerunRoute = await base44.entities.SavedRoute.create({
+            name: `${route.name || 'Completed Route'} Rerun — ${label}`,
+            description: `Rerun from completed route: ${route.name || route.id}`,
+            route_mode: route.route_mode || 'precision',
+            status: 'ACTIVE',
+            assigned_to: route.assigned_to || null,
+            assigned_to_name: route.assigned_to_name || null,
+            priority: 0,
+            property_hashes: selectedHashes,
+            metrics: {
+                ...(route.metrics || {}),
+                house_count: selectedHashes.length
+            },
+            start_location: route.start_location || null,
+            manager_id: route.manager_id || null,
+            metadata: {
+                ...(route.metadata || {}),
+                rerun_from_route_id: route.id,
+                rerun_filter: filter,
+                rerun_created_at: new Date().toISOString()
+            }
+        });
+
+        queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
+        try { localStorage.setItem('fk_selectedKnockRouteId', rerunRoute.id); } catch {}
+        setShowRerunMenu(false);
+        toast.success(`Created rerun with ${selectedHashes.length} doors`);
+        onSelect({ ...rerunRoute, route_number: routeNumber });
+    };
 
     const handleRename = async () => {
         if (!newName.trim() || newName === route.name) { setEditing(false); return; }
@@ -479,30 +566,73 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                             <span className="text-yellow-500 font-bold">{knockStats.knocked}/{knockStats.total} knocked</span>
                         )}
                     </div>
+                    {isCompletedRoute && outcomeStats.knocked > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                            <span className="rounded-full border border-[#2EEB57]/25 bg-[#2EEB57]/10 px-2 py-1 text-[9px] font-black text-[#39FF4A]">Sold {outcomeStats.byStatus.SOLD}</span>
+                            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[9px] font-black text-white/70">No Answer {outcomeStats.byStatus.NO_ANSWER}</span>
+                            <span className="rounded-full border border-blue-400/20 bg-blue-400/10 px-2 py-1 text-[9px] font-black text-blue-300">Callback {outcomeStats.byStatus.CALLBACK}</span>
+                            <span className="rounded-full border border-red-400/20 bg-red-400/10 px-2 py-1 text-[9px] font-black text-red-300">Not Int. {outcomeStats.byStatus.HARD_NO}</span>
+                        </div>
+                    )}
                     {knockStats.total > 0 && (
                         <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: '#222' }}>
                             <div className="h-full rounded-full transition-all" style={{ width: `${(knockStats.knocked / knockStats.total) * 100}%`, background: knockStats.knocked === knockStats.total ? '#22c55e' : '#FFD700' }} />
                         </div>
                     )}
                     {!isMultiSelect && (
-                        <div className="mt-3 grid grid-cols-[1fr_auto] gap-2" onClick={(e) => e.stopPropagation()}>
-                            <button
-                                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSelect(); }}
-                                className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#2EEB57] text-[11px] font-black text-black shadow-[0_8px_24px_rgba(46,235,87,0.24)] hover:bg-[#39FF4A] md:h-9"
-                                title="Start this route"
-                            >
-                                <Play className="h-4 w-4 fill-black" /> START ROUTE
-                            </button>
-                            {onSplit && (
-                                <button
-                                    onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSplit(); }}
-                                    className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-[10px] font-black text-white/70 hover:bg-white/10 hover:text-white md:h-9"
-                                    title="Split route into daily batches"
-                                >
-                                    <Scissors className="h-4 w-4" /> SPLIT
-                                </button>
+                        <div className="mt-3" onClick={(e) => e.stopPropagation()}>
+                            {isCompletedRoute ? (
+                                <div className="space-y-2">
+                                    <button
+                                        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowRerunMenu(!showRerunMenu); }}
+                                        className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#2EEB57] text-[11px] font-black text-black shadow-[0_8px_24px_rgba(46,235,87,0.24)] hover:bg-[#39FF4A] md:h-9"
+                                        title="Create a new active route from this completed route"
+                                    >
+                                        <RefreshCw className="h-4 w-4" /> RERUN ROUTE
+                                    </button>
+                                    {showRerunMenu && (
+                                        <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-white/10 bg-black/55 p-2">
+                                            {[
+                                                { filter: 'all', label: 'All Doors', count: outcomeStats.total },
+                                                { filter: 'no_answer', label: 'No Answer', count: outcomeStats.byStatus.NO_ANSWER },
+                                                { filter: 'callbacks', label: 'Callbacks', count: outcomeStats.byStatus.CALLBACK },
+                                                { filter: 'unsold', label: 'Unsold Follow-Up', count: outcomeStats.routeHashes.filter(hash => !outcomeStats.latestByHash.get(hash) || FOLLOW_UP_STATUSES.has(outcomeStats.latestByHash.get(hash))).length }
+                                            ].map(option => (
+                                                <button
+                                                    key={option.filter}
+                                                    onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleRerun(option.filter, option.label); }}
+                                                    className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-2 text-left text-[10px] font-black text-white/80 hover:border-[#2EEB57]/45 hover:bg-[#2EEB57]/10"
+                                                >
+                                                    <span className="block">{option.label}</span>
+                                                    <span className="text-[9px] text-white/40">{option.count} doors</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-[1fr_auto] gap-2">
+                                    <button
+                                        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSelect(); }}
+                                        className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#2EEB57] text-[11px] font-black text-black shadow-[0_8px_24px_rgba(46,235,87,0.24)] hover:bg-[#39FF4A] md:h-9"
+                                        title="Start this route"
+                                    >
+                                        <Play className="h-4 w-4 fill-black" /> START ROUTE
+                                    </button>
+                                    {onSplit && (
+                                        <button
+                                            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSplit(); }}
+                                            className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-[10px] font-black text-white/70 hover:bg-white/10 hover:text-white md:h-9"
+                                            title="Split route into daily batches"
+                                        >
+                                            <Scissors className="h-4 w-4" /> SPLIT
+                                        </button>
+                                    )}
+                                </div>
                             )}
                         </div>
                     )}

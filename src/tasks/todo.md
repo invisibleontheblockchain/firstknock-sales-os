@@ -1,6 +1,17 @@
 # Plan
 
-## Current Plan — Rep Property Sheet Visibility Polish
+## Current Plan — Completed Route Rerun
+- [x] Inspect completed route card rendering and current Start Route behavior.
+- [x] Add completed-route outcome stats using the latest logged decision per door.
+- [x] Replace Start Route with Rerun for completed routes.
+- [x] Add a simple rerun menu for all doors, no-answer doors, callbacks, and unsold follow-up doors.
+- [x] Save a rerun as a new active SavedRoute and open it on the map/Knock flow.
+- [x] Run a production build and document the result.
+
+### Review — Completed Route Rerun
+Completed route cards now show outcome stats for Sold, No Answer, Callback, and Not Interested based on the latest decision per door. Completed routes use a Rerun Route button instead of Start Route; tapping it opens simple choices for All Doors, No Answer, Callbacks, or Unsold Follow-Up. Choosing one creates a new active SavedRoute with the selected property hashes, opens it through the existing map/Knock route selection flow, and leaves the original completed route untouched. Production build passes.
+
+## Previous Plan — Rep Property Sheet Visibility Polish
 - [x] Make the Add Details button label white and remove the helper text under it.
 - [x] Keep notes, phone, callback, and photo proof available inside the expanded dropdown.
 - [x] Lift the property sheet above the bottom navigation so both map buttons are visible.
