@@ -1,3 +1,15 @@
+## Plan — Fix Latest Precision Pull Returning Zero Raw Records
+- [x] Inspect the latest real FetchJob payload and confirm whether failure is before mapping, during mapping, or route-candidate selection.
+- [x] Run no-write provider probes against the exact failed polygon with progressively looser request shapes.
+- [x] Patch only the smallest production request issue that prevents BatchData from returning fresh homes.
+- [x] Verify against the latest failed polygon and exact-job route-candidate path.
+- [x] Record the review and add a lesson from this correction.
+
+### Review — Fix Latest Precision Pull Returning Zero Raw Records
+The latest real pulls were failing before routing: BatchData returned `raw=0` for the exact 7-day request, so no properties ever reached Neon. A no-write provider probe on the same failed polygon showed the area returns homes at a 14-day `intel.lastSoldDate` window, and those rows often have `intel.lastSoldDate` plus residential land use but no listing status or sale amount. I changed the production pull request to use a 14-day minimum lookback for ultra-recent ranges and changed the mapper to treat neutral BatchData `intel.lastSoldDate` rows as confirmed sale evidence while still rejecting explicit active/for-sale/off-market/pending/withdrawn statuses and non-residential land use. Verification: request preview now sends `minDate=2026-06-16` for a 7-day pull, the failed polygon probe returned live rows at that window, synthetic mapping activates neutral `intel.lastSoldDate` records and rejects pending records, and the exact-job candidate path was already confirmed to have no stale fallback rows.
+
+---
+
 ## Plan — Fix Zero Active Properties After Confirmed-Sales Gate
 - [x] Inspect current failed pulls to confirm whether BatchData returns no records or records that the mapper rejects.
 - [x] Add a no-write raw-shape diagnostic so we can verify the provider response fields without creating properties/routes.

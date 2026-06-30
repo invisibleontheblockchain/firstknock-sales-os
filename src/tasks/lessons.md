@@ -142,3 +142,4 @@
 - BatchData property search currently rejects `options.take` values above 100. Max Available must mean paginated 100-record requests up to the plan cap, not one oversized request.
 - Confirmed-sale gates must be enforced through the entire import-to-route path: if ingestion marks a BatchData row `REJECTED`/`route_active=false`, downstream exact-job route candidate queries must not override it back to active.
 - For BatchData confirmed-sale pulls, verify that requested `options.datasets` actually returns `intel`/`sale` evidence. In this app's live token, scoping to `basic/listing/deed/owner` suppresses those fields; omitting dataset scoping returns the sale evidence needed by the gate.
+- Ultra-recent BatchData sold windows can return zero raw rows even for large territories; use a provider-safe minimum lookback and treat neutral rows with `intel.lastSoldDate` as sale evidence while still rejecting explicit active/for-sale/off-market/pending/withdrawn statuses.

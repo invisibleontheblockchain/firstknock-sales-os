@@ -5,6 +5,7 @@ const BATCHDATA_API_KEY = Deno.env.get('BATCH_DATA_API_KEY');
 const DATABASE_URL = Deno.env.get('DATABASE_URL');
 const BATCHDATA_BASE = 'https://api.batchdata.com/api/v1/property/search';
 const BATCHDATA_MAX_TAKE = 100;
+const MIN_RECENT_PULL_LOOKBACK_DAYS = 14;
 const PIPELINE_LOCK_TTL_MS = 90 * 1000;
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
@@ -123,7 +124,7 @@ function closePolygon(points) {
     return polygon;
 }
 
-function soldWindowDays(soldMonths) {
+function requestedSoldWindowDays(soldMonths) {
     const months = Number(soldMonths || 1);
     if (Math.abs(months - (1 / 30)) < 0.0001) return 1;
     if (Math.abs(months - (2 / 30)) < 0.0001) return 2;
@@ -135,6 +136,10 @@ function soldWindowDays(soldMonths) {
     if (months === 9) return 270;
     if (months === 12) return 365;
     return Math.max(1, Math.round(months * 30));
+}
+
+function soldWindowDays(soldMonths) {
+    return Math.max(requestedSoldWindowDays(soldMonths), MIN_RECENT_PULL_LOOKBACK_DAYS);
 }
 
 function isoDateDaysAgo(days) {
@@ -272,14 +277,15 @@ function mapBatchDataProperty(record, job) {
     const landUseRejected = landUseCode && landUseCode !== 'R2';
 
     // ── Confirmed-sale gate ──────────────────────────────────────────────
-    // A property is only a confirmed sale if it has POSITIVE evidence:
-    //   1. Listing status explicitly says Sold / Closed / Settled, OR
-    //   2. There is a real sale amount (deed recorded with money changing hands)
-    // Off-market properties with just a date but no sale evidence are rejected.
+    // BatchData default property rows often provide intel.lastSoldDate without
+    // listing status or sale amount. Treat that dated intel value as sale evidence
+    // unless the listing status explicitly conflicts with route eligibility.
     const isSoldStatus = ['sold', 'closed', 'settled'].includes(listingStatusLower);
     const hasSaleEvidence = saleAmount !== null && saleAmount > 0;
-    const isConfirmedSale = hasValidSaleDate && saleDateMs >= cutoffMs && (isSoldStatus || hasSaleEvidence);
-    const rejected = !isConfirmedSale || landUseRejected || nonResidential || listingStatusLower === 'active' || listingStatusLower === 'for sale';
+    const hasNeutralStatus = !listingStatusLower;
+    const conflictingStatus = ['active', 'for sale', 'off market', 'pending', 'withdrawn'].includes(listingStatusLower);
+    const isConfirmedSale = hasValidSaleDate && saleDateMs >= cutoffMs && (isSoldStatus || hasSaleEvidence || hasNeutralStatus);
+    const rejected = !isConfirmedSale || landUseRejected || nonResidential || conflictingStatus;
 
     const match = address.street.match(/^(\d+)\s+(.*)$/);
     const houseNumber = match ? parseInt(match[1], 10) : 0;
