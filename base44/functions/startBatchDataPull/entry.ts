@@ -151,6 +151,18 @@ Deno.serve(async (req) => {
         const maxPrice = Number.isFinite(maxPriceRaw) && maxPriceRaw > 0 ? maxPriceRaw : null;
         const box = boundsMiles(polygon);
         const maxSpanMiles = isPaid ? 35 : 15;
+        if (areaSqMi > maxArea) {
+            return Response.json({
+                error: 'area_too_large',
+                message: `Precision pulls are limited to ${maxArea.toLocaleString()} square miles per draw. Your selected area is ${Math.round(areaSqMi).toLocaleString()} square miles. Please draw a smaller territory.`
+            }, { status: 400 });
+        }
+        if (box.width_miles > maxSpanMiles || box.height_miles > maxSpanMiles) {
+            return Response.json({
+                error: 'area_span_too_large',
+                message: `Precision pulls are limited to about ${maxSpanMiles} miles across per draw. Please draw a tighter territory.`
+            }, { status: 400 });
+        }
 
         const fips = await resolveFips(center);
         if (!fips?.fips_code) {

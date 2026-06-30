@@ -444,37 +444,65 @@ async function batchDataFetchWithRetry(requestBody) {
 }
 
 async function fetchBatchDataRecordsForMode(job, mode, requested) {
-    const records = [];
+    const selected = [];
+    const rejectedSamples = [];
     let skip = 0;
+    let reviewed = 0;
     let totalRecordCount = null;
+    const maxReviewed = Math.min(1000, Math.max(BATCHDATA_MAX_TAKE, requested * 50));
 
-    while (records.length < requested) {
-        const take = Math.min(BATCHDATA_MAX_TAKE, requested - records.length);
+    while (selected.length < requested && reviewed < maxReviewed) {
+        const take = Math.min(BATCHDATA_MAX_TAKE, maxReviewed - reviewed);
         const requestBody = buildBatchDataRequest(job, skip, take, mode);
         const payload = await batchDataFetchWithRetry(requestBody);
         const list = extractBatchDataRecords(payload);
         if (totalRecordCount === null) totalRecordCount = extractBatchDataTotal(payload);
-        records.push(...list);
+        reviewed += list.length;
+
+        for (const raw of list) {
+            const mapped = mapBatchDataProperty(raw, job);
+            if (mapped && mapped.route_active !== false) {
+                selected.push(raw);
+                if (selected.length >= requested) break;
+            } else if (rejectedSamples.length < Math.min(10, Math.max(requested, 2))) {
+                rejectedSamples.push(raw);
+            }
+        }
+
         if (list.length < take) break;
-        if (totalRecordCount !== null && records.length >= totalRecordCount) break;
+        if (totalRecordCount !== null && reviewed >= totalRecordCount) break;
         skip += take;
     }
 
-    return records.slice(0, requested);
+    return {
+        records: selected.length > 0 ? selected.slice(0, requested) : rejectedSamples,
+        reviewed,
+        active: selected.length,
+        rejected_samples: rejectedSamples.length,
+        totalRecordCount
+    };
 }
 
 async function fetchBatchDataRecords(job) {
     const requested = Math.min(Math.max(Number(job.estimated_record_count || job.total_expected || 1000), 1), 1000);
     const modes = ['strict_polygon', 'broad_polygon'];
     const attempts = [];
+    let fallback = [];
+    let fallbackMode = 'none';
+    let fallbackActive = 0;
 
     for (const mode of modes) {
-        const records = await fetchBatchDataRecordsForMode(job, mode, requested);
-        attempts.push({ mode, count: records.length });
-        if (records.length > 0) return { records, attempts, mode_used: mode };
+        const result = await fetchBatchDataRecordsForMode(job, mode, requested);
+        attempts.push({ mode, count: result.records.length, reviewed: result.reviewed, active: result.active, rejected_samples: result.rejected_samples, total: result.totalRecordCount });
+        if (result.active >= requested) return { records: result.records, attempts, mode_used: mode };
+        if (result.active > fallbackActive || (fallback.length === 0 && result.records.length > 0)) {
+            fallback = result.records;
+            fallbackMode = mode;
+            fallbackActive = result.active;
+        }
     }
 
-    return { records: [], attempts, mode_used: 'none' };
+    return { records: fallback, attempts, mode_used: fallback.length > 0 ? fallbackMode : 'none' };
 }
 
 Deno.serve(async (req) => {
@@ -518,6 +546,22 @@ Deno.serve(async (req) => {
             const records = Array.isArray(body.synthetic_records) ? body.synthetic_records : [];
             const mapped = records.map(record => mapBatchDataProperty(record, previewJob)).filter(Boolean);
             return Response.json({ success: true, raw: records.length, mapped: mapped.length, active: mapped.filter(p => p.route_active !== false).length, properties: mapped });
+        }
+
+        if (body.fetch_preview === true) {
+            if (!BATCHDATA_API_KEY) throw new Error('BATCH_DATA_API_KEY is not configured');
+            const previewJob = body.job || {
+                polygon: body.polygon || [],
+                latitude: body.latitude || 33.37,
+                longitude: body.longitude || -112.08,
+                sold_months: body.sold_months || 12,
+                estimated_record_count: body.requested_properties || 2,
+                total_expected: body.requested_properties || 2,
+                dry_run_metadata: { filters: { min_price: body.min_price ?? 100000, max_price: body.max_price ?? null } }
+            };
+            const batchFetch = await fetchBatchDataRecords(previewJob);
+            const mapped = batchFetch.records.map(record => mapBatchDataProperty(record, previewJob)).filter(Boolean);
+            return Response.json({ success: true, mode_used: batchFetch.mode_used, attempts: batchFetch.attempts, raw: batchFetch.records.length, mapped: mapped.length, active: mapped.filter(p => p.route_active !== false).length });
         }
 
 

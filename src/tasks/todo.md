@@ -1,3 +1,15 @@
+## Plan — Diagnose Huge-Area Last-Week Zero Pull
+- [x] Inspect the newest huge-area 1-week FetchJob: area, polygon size, requested count, provider attempts, and routeable count.
+- [x] Compare exact last-week, 2-week, and no-date provider probes on the same shape to separate date-window coverage from geometry/API limits.
+- [x] Check whether the requested property count or route-start handoff can make a huge area look empty even when provider data exists.
+- [x] Patch the smallest root cause if the app is under-querying, misreporting, or using a provider-incompatible shape.
+- [x] Verify with backend status/probe/build checks and document the result.
+
+### Review — Diagnose Huge-Area Last-Week Zero Pull
+The latest pull was 573,337.11 sq mi with 36 polygon points, `sold_months=0.25`, requested count 2, and provider returned 2 raw records. Both raw records were rejected by the routeability gate, so the old backend incorrectly stopped and showed zero routeable properties. I changed BatchData fetching so requested count means routeable homes wanted: it now pages through provider results up to a safe review cap, maps/filter-checks records, and only stops when it finds routeable records or exhausts the provider set. A no-write preview against the same giant polygon now finds 1 active routeable property instead of 0. I also enforced the existing Precision area/span limits in `startBatchDataPull`; the app now rejects oversized Precision draws up front instead of sending provider-incompatible 573k sq mi polygons. Verification: huge dry-run returns `area_too_large`, no-write routeability preview works, and `npm run build` passes.
+
+---
+
 ## Plan — Re-check 500 Sq Mi Last-Week Zero Pull
 - [x] Inspect the newest 1-week FetchJob and confirm its exact area, request settings, provider attempts, and active count.
 - [x] Compare strict polygon vs broad polygon behavior to determine whether the zero is provider-side or caused by our filters.
