@@ -41,94 +41,93 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
             role="button"
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(property, index); }}
-            className={`group relative w-full cursor-pointer overflow-hidden rounded-[30px] border p-[3px] text-left transition-all duration-300 active:scale-[0.985] ${!isDone ? 'hover:-translate-y-0.5 hover:shadow-[0_0_42px_rgba(46,235,87,0.34)]' : 'opacity-85'}`}
+            className={`relative w-full overflow-hidden rounded-2xl border px-3 py-2.5 text-left transition-all duration-300 active:scale-[0.985] group cursor-pointer ${!isDone ? 'hover:-translate-y-0.5 hover:border-[#2EEB57]/45 hover:shadow-[0_14px_42px_rgba(0,0,0,0.46)]' : 'opacity-80'}`}
             style={{
-                backgroundImage: `linear-gradient(135deg, rgba(46,235,87,0.72), rgba(255,255,255,0.11) 28%, rgba(46,235,87,0.42) 100%), url('https://media.base44.com/images/public/695eb764b077190880be21de/d37334add_generated_image.png')`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                borderColor: isDone ? 'rgba(46,235,87,0.22)' : 'rgba(46,235,87,0.58)',
-                boxShadow: isDone ? '0 14px 32px rgba(0,0,0,0.35)' : '0 0 34px rgba(46,235,87,0.24), 0 18px 42px rgba(0,0,0,0.48)'
+                background: isDone
+                    ? 'linear-gradient(135deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))'
+                    : 'linear-gradient(135deg, rgba(255,255,255,0.095), rgba(46,235,87,0.045), rgba(255,255,255,0.025))',
+                borderColor: isDone ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.13)',
+                boxShadow: isDone ? 'none' : 'inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 35px rgba(0,0,0,0.28)'
             }}
         >
-            <div
-                className="relative min-h-[186px] rounded-[26px] border px-7 py-6 overflow-hidden"
-                style={{
-                    backgroundImage: `linear-gradient(135deg, rgba(5,16,10,0.92), rgba(0,0,0,0.96) 62%), url('https://media.base44.com/images/public/695eb764b077190880be21de/d37334add_generated_image.png')`,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                    borderColor: 'rgba(255,255,255,0.08)',
-                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10), inset 0 -18px 38px rgba(0,0,0,0.64)'
-                }}
-            >
-                <div className="flex items-start justify-between gap-4">
-                    <div className={`text-[42px] font-black leading-none tracking-tight ${isDone ? 'text-white/45 line-through' : 'text-white'}`}>
-                        {index + 1}
-                    </div>
-                    {isDone && (
-                        <div
-                            className="flex h-10 w-10 items-center justify-center rounded-2xl shrink-0"
-                            style={{ background: '#2EEB57', color: '#031008', boxShadow: '0 0 22px rgba(46,235,87,0.46)' }}
-                        >
-                            <Check className="h-6 w-6 stroke-[4]" />
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+            <div className="absolute bottom-0 left-0 top-0 w-1 bg-gradient-to-b from-[#39FF4A] via-[#2EEB57]/60 to-transparent opacity-70" />
+
+            <div className="flex items-center gap-2.5">
+                {/* Number / Check */}
+                <div
+                    className="w-8 h-8 rounded-xl flex items-center justify-center text-[11px] font-black shrink-0 transition-all duration-300"
+                    style={{
+                        background: isDone ? statusColor + '18' : 'linear-gradient(135deg, #FFFFFF, #D8FFE0)',
+                        color: isDone ? statusColor : '#000000',
+                        border: isDone ? `1px solid ${statusColor}33` : '1px solid rgba(255,255,255,0.9)',
+                        boxShadow: isDone ? 'none' : '0 10px 28px rgba(46,235,87,0.16)'
+                    }}
+                >
+                    {isDone ? <Check className="w-3.5 h-3.5" /> : index + 1}
+                </div>
+
+                {/* Address */}
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <p className={`text-[14px] font-extrabold truncate leading-tight tracking-tight transition-all duration-300 ${isDone ? 'line-through opacity-45 text-white/45' : 'text-white group-hover:text-[#39FF4A]'}`}>
+                                {property.house_number} {property.street_name}
+                            </p>
+                            {property.city && (
+                                <p className="text-[10px] truncate leading-tight mt-1 text-white/40 transition-colors duration-300 group-hover:text-white/60">
+                                    {property.city}, {property.state} {property.zip_code}
+                                </p>
+                            )}
+                            {(ownerName || valueLabel || sqftLabel || yearBuilt) && (
+                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[9px] font-bold text-white/45">
+                                    {ownerName && (
+                                        <span className="inline-flex max-w-[150px] items-center gap-1 truncate rounded-full bg-white/5 px-1.5 py-0.5">
+                                            <User className="h-2.5 w-2.5 shrink-0 text-[#39FF4A]" />
+                                            <span className="truncate">{ownerName}</span>
+                                        </span>
+                                    )}
+                                    {valueLabel && (
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-[#2EEB57]/10 px-1.5 py-0.5 text-[#39FF4A]">
+                                            <DollarSign className="h-2.5 w-2.5" />{valueLabel}
+                                        </span>
+                                    )}
+                                    {sqftLabel && (
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-white/5 px-1.5 py-0.5">
+                                            <Ruler className="h-2.5 w-2.5" />{sqftLabel} sqft
+                                        </span>
+                                    )}
+                                    {yearBuilt && <span className="rounded-full bg-white/5 px-1.5 py-0.5">Built {yearBuilt}</span>}
+                                </div>
+                            )}
                         </div>
-                    )}
-                </div>
 
-                <div className="mt-5 min-w-0">
-                    <p className={`truncate text-[20px] font-semibold leading-tight tracking-tight ${isDone ? 'text-white/45 line-through' : 'text-white'}`}>
-                        {property.house_number} {property.street_name}
-                    </p>
-                    {property.city && (
-                        <p className="mt-1 truncate text-[18px] leading-tight text-white/90">
-                            {property.city}, {property.state} {property.zip_code}
-                        </p>
-                    )}
-                </div>
+                        {/* Navigate shortcut */}
+                        {!isDone && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    openInMaps(property.lat, property.lng, buildFullAddress(property), navigationApp);
+                                }}
+                                className="group/nav w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all active:scale-95 bg-[#2EEB57]/12 border border-[#2EEB57]/25 hover:bg-[#2EEB57] hover:shadow-[0_0_18px_rgba(46,235,87,0.32)]"
+                            >
+                                <Navigation className="w-3.5 h-3.5 text-[#39FF4A] transition-colors group-hover/nav:text-black" />
+                            </button>
+                        )}
+                    </div>
 
-                <div className="mt-8 grid grid-cols-2 gap-x-10 gap-y-5 text-[17px] leading-tight text-white/92">
-                    <div className="min-w-0">
-                        <p className="text-white/55 text-[10px] font-black uppercase tracking-[0.18em]">Owner</p>
-                        <p className="mt-1 truncate">{ownerName || 'Owner'}</p>
-                    </div>
-                    <div>
-                        <p className="text-white/55 text-[10px] font-black uppercase tracking-[0.18em]">Price</p>
-                        <p className="mt-1">{valueLabel || 'Price'}</p>
-                    </div>
-                    <div>
-                        <p className="text-white/55 text-[10px] font-black uppercase tracking-[0.18em]">Sqft</p>
-                        <p className="mt-1">{sqftLabel ? `${sqftLabel} sqft` : 'Sqft'}</p>
-                    </div>
-                    <div>
-                        <p className="text-white/55 text-[10px] font-black uppercase tracking-[0.18em]">Built year</p>
-                        <p className="mt-1">{yearBuilt || 'Built year'}</p>
-                    </div>
-                </div>
-
-                {!isDone && (
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            openInMaps(property.lat, property.lng, buildFullAddress(property), navigationApp);
-                        }}
-                        className="mt-6 text-left text-[20px] font-medium leading-tight text-[#39FF4A] transition-colors hover:text-[#86efac]"
-                    >
-                        Navigate shortcut
-                    </button>
-                )}
-
-                <div className="mt-6 grid grid-cols-2 items-end gap-10 text-[17px] text-white/92">
-                    <div>
-                        <p className="text-white/55 text-[10px] font-black uppercase tracking-[0.18em]">Sold age</p>
-                        <p className="mt-1">{age || 'Sold age'}</p>
-                    </div>
-                    <div>
-                        <p className="text-white/55 text-[10px] font-black uppercase tracking-[0.18em]">Status</p>
-                        <span
-                            className="mt-1 inline-flex rounded-full px-3 py-1 text-[18px] font-semibold leading-none"
-                            style={{ background: isDone ? statusColor : '#2EEB57', color: '#021006' }}
-                        >
-                            {isDone ? (property.effective_status === 'NO_ANSWER' ? 'N/A' : property.effective_status === 'HARD_NO' ? 'NO' : property.effective_status === 'NOT_MOVED_IN' ? 'NMI' : property.effective_status === 'DM_NOT_HOME' ? 'DM' : property.effective_status) : 'Status'}
-                        </span>
+                    <div className="mt-2 flex items-center gap-1.5 min-h-[18px]">
+                        {age && (
+                            <span className="text-[9px] font-black text-[#39FF4A] shrink-0 rounded-full bg-[#2EEB57]/10 border border-[#2EEB57]/20 px-1.5 py-0.5 tracking-wide">
+                                {age}
+                            </span>
+                        )}
+                        {isDone && (
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full shrink-0 tracking-wide border"
+                                style={{ background: statusColor + '18', color: statusColor, borderColor: statusColor + '30' }}>
+                                {property.effective_status === 'NO_ANSWER' ? 'N/A' : property.effective_status === 'HARD_NO' ? 'NO' : property.effective_status === 'NOT_MOVED_IN' ? 'NMI' : property.effective_status === 'DM_NOT_HOME' ? 'DM' : property.effective_status}
+                            </span>
+                        )}
                     </div>
                 </div>
             </div>
