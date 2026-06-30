@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — Precision Max Available Pull Count
+## Current Plan — Data Pull Progress + Route Generation Handoff
+- [x] Keep the import overlay visible until route generation has actually started/finished its handoff, so users do not see a dead gap after data import completes.
+- [x] Replace noisy long ETA math with conservative stage-based timing/counter text that cannot show inflated estimates like 12 minutes for normal Precision pulls.
+- [x] Make the data counter emphasize records found/ready and only show expected totals when available.
+- [x] Remove user-facing provider names from the pull panel, preview/start/success/error messages, and progress copy.
+- [x] Verify with production build and document the result.
+
+### Review — Data Pull Progress + Route Generation Handoff
+Updated the Precision pull flow so completion moves straight into route building instead of closing the import overlay and waiting for a delayed auto-generate tick. The route builder now uses the completed job ID through a ref so fresh pulled records are available immediately for route generation. Replaced noisy percent-rate ETA estimates with safer stage text like “Usually under 2 minutes” and “Almost done,” and changed the counter to show records checked plus records ready for routes. Removed visible BatchData/provider wording from the pull panel, preview/start/success/error messages, Builder mode copy, and billing plan copy. Final provider-word scan for map/pages returned no visible matches, and production build passes.
+
+## Previous Plan — Precision Max Available Pull Count
 - [x] Add a count mode to Precision pulls: fixed amount or max available.
 - [x] Add a Max Available button while keeping the normal editable property count.
 - [x] Send the selected count mode with the BatchData pull request and store it in job metadata.

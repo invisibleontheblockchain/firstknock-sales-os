@@ -226,7 +226,7 @@ export default function PrecisionPullPanel({
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-gray-400">{selectedHistoryArea && repullMode === 'max_since_last' ? 'BatchData sold-date window' : 'Homes sold in the last'}</label>
+            <label className="text-xs font-bold uppercase tracking-wider text-gray-400">{selectedHistoryArea && repullMode === 'max_since_last' ? 'Sold-date window' : 'Homes sold in the last'}</label>
             {selectedHistoryArea && repullMode === 'max_since_last' ? (
               <div className="rounded-2xl border border-[#2EEB57]/25 bg-[#2EEB57]/[0.06] px-3 py-3 text-sm font-extrabold text-white">
                 {formatMaxSinceRange(historyDate)}

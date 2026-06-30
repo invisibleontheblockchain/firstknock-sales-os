@@ -380,33 +380,22 @@ export default function TerritoryPrompt({
         // Keep last 10 samples
         if (pctHistoryRef.current.length > 10) pctHistoryRef.current.shift();
 
-        // Calculate ETA from progress rate
-        if (pctHistoryRef.current.length >= 2 && pct > 0 && pct < 100) {
-          const first = pctHistoryRef.current[0];
-          const last = pctHistoryRef.current[pctHistoryRef.current.length - 1];
-          const pctDelta = last.pct - first.pct;
-          const timeDelta = (last.time - first.time) / 1000; // seconds
-          if (pctDelta > 0 && timeDelta > 0) {
-            const pctPerSec = pctDelta / timeDelta;
-            const remainPct = 100 - pct;
-            const remainSec = remainPct / pctPerSec;
-            if (remainSec < 60) {
-              setEtaText('Less than 1 min remaining');
-            } else {
-              const mins = Math.ceil(remainSec / 60);
-              setEtaText(`~${mins} min remaining`);
-            }
+        const elapsedSec = Math.max(1, Math.round((Date.now() - pollStartTime) / 1000));
+        if (pct < 100) {
+          if (pct < 8 || elapsedSec < 10) {
+            setEtaText('Starting import...');
+          } else if (pct < 85) {
+            setEtaText('Usually under 2 minutes');
+          } else {
+            setEtaText('Almost done');
           }
-        } else if (pct === 0 && expected > 0) {
-          // Give rough estimate based on total expected
-          const estMins = Math.ceil(expected / 15000); // ~15000 per chunk, ~1 min per chunk
-          setEtaText(`Estimated ${estMins} min for ${expected.toLocaleString()} properties`);
         }
 
+        const readyCount = Math.max(d.active_count || 0, inserted + (d.total_existed || 0), inserted + (d.total_updated || 0));
         if (expected > 0) {
-          setPullProgress(`${fetched.toLocaleString()} / ${expected.toLocaleString()} properties fetched, ${inserted.toLocaleString()} new`);
+          setPullProgress(`${fetched.toLocaleString()} of ${expected.toLocaleString()} records checked • ${readyCount.toLocaleString()} ready for routes`);
         } else {
-          setPullProgress(`${fetched.toLocaleString()} properties fetched so far...`);
+          setPullProgress(`${fetched.toLocaleString()} records checked • ${readyCount.toLocaleString()} ready for routes`);
         }
 
         if (d.status === 'completed') {
@@ -417,18 +406,11 @@ export default function TerritoryPrompt({
           setPullPct(100);
           targetPctRef.current = 100;
           setDisplayPct(100);
-          setEtaText('');
-          setPullProgress('Complete!');
-          // Small delay so user sees 100% before we clear
-          await new Promise((r) => setTimeout(r, 800));
-          setPulling(false);
+          setEtaText('Building routes now');
+          setPullProgress('Data ready — building optimized routes...');
 
-          const totalLoaded = (d.total_inserted || 0) + (d.total_existed || 0);
-          const deltaSavings = d.delta_savings;
-          const savingsMsg = deltaSavings?.savings_pct > 0 ?
-          ` Saved ${deltaSavings.savings_pct}% on DB writes (${deltaSavings.records_skipped?.toLocaleString() || 0} unchanged records skipped)!` :
-          '';
-          toast.success(`${totalLoaded.toLocaleString()} properties loaded!${savingsMsg} Generating routes now...`, { duration: 6000 });
+          const totalLoaded = (d.active_count || 0) || (d.total_inserted || 0) + (d.total_existed || 0);
+          toast.success(`${totalLoaded.toLocaleString()} properties ready. Building routes now...`, { duration: 4000 });
 
           // Update user status
           try {
@@ -454,6 +436,7 @@ export default function TerritoryPrompt({
             setShowRoutePanel(false);
             setShowCompare(false);
           }
+          setPulling(false);
         } else if (d.status === 'cancelled') {
           clearInterval(pollRef.current);
           pollRef.current = null;
@@ -558,7 +541,7 @@ export default function TerritoryPrompt({
       localStorage.setItem('fk_drawnPolygonQueried', 'true');
       setDrawnPolygon(drawnPolygon, true);
       window.dispatchEvent(new CustomEvent('fk-polygon-history-updated'));
-      toast.success(`Preview ready: ${d.returned_property_count || safeRequestedPropertyCount} properties allowed. Pull Data will use BatchData.`);
+      toast.success(`Preview ready: ${d.returned_property_count || safeRequestedPropertyCount} properties allowed.`);
     } catch (e) {
       const msg = e.response?.data?.message || e.message;
       toast.error(`Sandbox preview failed: ${msg}`);
@@ -640,14 +623,14 @@ export default function TerritoryPrompt({
       setPullPct(0);
       setDisplayPct(0);
       targetPctRef.current = 0;
-      setPullProgress('Starting paid BatchData pull...');
-      setEtaText('Starting...');
+      setPullProgress('Starting property import...');
+      setEtaText('Starting import...');
       startPolling(data.job_id);
       setShowPrecisionPullPanel(false);
-      toast.success(data.message || 'Paid BatchData pull started.');
+      toast.success('Property import started. Routes will build automatically.');
     } catch (e) {
       const msg = e.response?.data?.message || e.response?.data?.error || e.message;
-      toast.error(`Paid BatchData pull failed: ${msg}`);
+      toast.error(`Property import failed: ${msg}`);
     } finally {
       setPaidPullStarting(false);
     }

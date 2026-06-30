@@ -16,7 +16,7 @@ const PLANS = [
     price: 99,
     unit: '/user/mo',
     isPopular: true,
-    subtitle: 'For BatchData-backed property acquisition before routing.',
+    subtitle: 'For targeted property acquisition before routing.',
     includedFeatures: [
       'Freehand area preview before using paid credits',
       'Properties counter shows how many records remain',
@@ -25,7 +25,7 @@ const PLANS = [
     ],
     features: [
       'Precision Mode at $99 per user per month',
-      'BatchData-backed property acquisition',
+      'Targeted property acquisition',
       'Freehand area pulls and property imports',
       'Advanced Filters & Property Intel',
       'Priority Support'
@@ -42,14 +42,14 @@ const PLANS = [
       'Per-rep pricing scales with your field team',
       'Route builder, dispatch, Knock tab, and Checklist sync',
       'GPS proof, outcomes, team progress, and route switching',
-      'No paid BatchData pull required for route execution'
+      'No paid property pull required for route execution'
     ],
     features: [
       'Canvas Mode at $19 per rep per month',
       'AI-Optimized Walking Routes',
       'Live GPS Tracking & Proof of Visit',
       'Team Management & Dispatch',
-      'No paid BatchData pull required'
+      'No paid property pull required'
     ]
   }
 ];
@@ -163,7 +163,7 @@ export default function Billing() {
                 <div className="text-center space-y-2 sm:space-y-3">
                     <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">FirstKnock Plans</h1>
                     <p className="text-sm sm:text-base text-gray-400 max-w-2xl mx-auto">
-                        Canvas is $19 per rep/month for high-volume teams. Precision is $99 per user/month for paid BatchData-backed targeting.
+                        Canvas is $19 per rep/month for high-volume teams. Precision is $99 per user/month for paid targeted property discovery.
                     </p>
                 </div>
 

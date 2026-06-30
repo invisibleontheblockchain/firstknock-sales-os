@@ -95,6 +95,8 @@
 - Ghost Builder copy should explain the user outcome/date logic and avoid provider names; previous-area guidance should read like a field workflow, not an implementation detail.
 - Previous-area repull state must be gated by the Ghost toggle at both display and submit time; clearing or drawing a normal Builder area must reset stale ghost metadata so standard Precision pulls stay `new_area`.
 - BatchData requested property count should be treated as a maximum cap, not an exact required total; UI should distinguish fixed count from max-available pulls and route generation should rely on actual active homes returned.
+- Data-pull progress should use user-facing FirstKnock language, not provider names, and should avoid noisy long ETA calculations from early progress samples; stage-based timing plus route-ready counters is safer.
+- After a paid pull completes, begin route generation directly from the completed job context instead of waiting for a delayed state/effect tick, or users see a dead gap between import completion and routes appearing.
 - Canvas territory subdivision should clip the drawn polygon by padded grid cells, not discard small edge overlaps; exact requested zone count should be achieved by grouping/splitting valid clipped cells while rendering all zone parts.
 - Canvas density controls must affect actual capacity math, not just labels: estimated doors and zone count should respond to density, while rep count acts as a minimum floor rather than the only zone-count driver.
 - Canvas mode bottom navigation must not expose Precision route concepts like saved route counts; keep it focused on Canvas Builder, Live View, and Deploy Campaign.

@@ -114,6 +114,8 @@ export default function Home() {
     const [maxDataMonths, setMaxDataMonths] = useState(() => { try { return parseInt(localStorage.getItem('fk_maxDataMonths')) || null; } catch { return null; } });
     const [hasMlsData, setHasMlsData] = useState(() => { try { return localStorage.getItem('fk_hasMlsData') === 'true'; } catch { return false; } });
     const [currentBatchDataJobId, setCurrentBatchDataJobId] = useState(null);
+    const currentBatchDataJobIdRef = useRef(null);
+    const currentBatchDataSoldMonthsRef = useRef(null);
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
@@ -978,18 +980,20 @@ export default function Home() {
                         ? storedPolygon
                         : null;
             console.log(`[generateRoutes] Polygon source: state=${Array.isArray(drawnPolygon) ? drawnPolygon.length : 0}, draft=${Array.isArray(draftPolygon) ? draftPolygon.length : 0}, stored=${Array.isArray(storedPolygon) ? storedPolygon.length : 0}`);
-            const isCurrentBatchDataRun = !!currentBatchDataJobId && !!activeGenerationPolygon;
+            const activeFetchJobId = currentBatchDataJobIdRef.current || currentBatchDataJobId;
+            const effectiveGenerationSoldFilter = activeFetchJobId ? (currentBatchDataSoldMonthsRef.current || soldDateFilter) : soldDateFilter;
+            const isCurrentBatchDataRun = !!activeFetchJobId && !!activeGenerationPolygon;
             if (activeGenerationPolygon) {
                 const polygonProps = await fetchRouteCandidatesFromNeon({
                     polygon: activeGenerationPolygon,
-                    soldMonths: isCurrentBatchDataRun ? soldDateFilter : 'all',
+                    soldMonths: isCurrentBatchDataRun ? effectiveGenerationSoldFilter : 'all',
                     limit: 50000,
-                    fetchJobId: isCurrentBatchDataRun ? currentBatchDataJobId : null
+                    fetchJobId: isCurrentBatchDataRun ? activeFetchJobId : null
                 });
-                console.log(`[Generate] Drawn area candidate fetch returned ${polygonProps.length} properties${isCurrentBatchDataRun ? ` for job ${currentBatchDataJobId}` : ''}`);
+                console.log(`[Generate] Drawn area candidate fetch returned ${polygonProps.length} properties${isCurrentBatchDataRun ? ` for job ${activeFetchJobId}` : ''}`);
                 if (isCurrentBatchDataRun && polygonProps.length === 0) {
                     toast.dismiss('build-routes');
-                    setGenerationError('This BatchData pull returned no active routeable properties, so route generation was stopped to avoid using stale old data. Try broadening the area or relaxing the parameters.');
+                    setGenerationError('This pull returned no active routeable properties, so route generation was stopped to avoid using stale old data. Try broadening the area or relaxing the parameters.');
                     return;
                 }
 
@@ -1138,7 +1142,7 @@ export default function Home() {
             const filterResult = applyRouteFilters({
                 initialSet, drawnPolygon: activeGenerationPolygon, zipCodeFilter,
                 territoryZipCodes: user?.territory_zip_codes,
-                soldDateFilter, routeConfig, lastPullMode, logsByAddress, assignedHashes,
+                soldDateFilter: effectiveGenerationSoldFilter, routeConfig, lastPullMode, logsByAddress, assignedHashes,
             });
             console.log(`[generateRoutes] Filter funnel: ${formatStageCounts(filterResult.stages)}`);
             if (filterResult.frozenSet) setFrozenWorkingSet(filterResult.frozenSet);
@@ -1662,7 +1666,9 @@ export default function Home() {
                 onPullComplete={async (pullFetchMonths, pulledWithMls, jobStatus = {}) => {
                     setFrozenWorkingSet(null);
                     setFetchedProperties([]);
-                    setCurrentBatchDataJobId(jobStatus?.job_id || null);
+                    const completedJobId = jobStatus?.job_id || null;
+                    setCurrentBatchDataJobId(completedJobId);
+                    currentBatchDataJobIdRef.current = completedJobId;
                     setRoutes([]);
                     setShowCompare(false);
                     setShowRoutePanel(false);
@@ -1670,6 +1676,7 @@ export default function Home() {
                     await queryClient.refetchQueries({ queryKey: ['user'] });
 
                     const pm = pullFetchMonths || 12;
+                    currentBatchDataSoldMonthsRef.current = pm;
                     setMaxDataMonths(pm);
                     try { localStorage.setItem('fk_maxDataMonths', String(pm)); } catch { }
                     setHasMlsData(!!pulledWithMls);
@@ -1690,9 +1697,9 @@ export default function Home() {
                     setLastPullMode('batchdata_job');
                     setSoldDateFilterRaw(pm);
                     if ((jobStatus?.active_count || pulledProperties.length) > 0) {
-                        setPendingAutoGenerate(true);
+                        await generateRoutesRef.current?.();
                     } else {
-                        setGenerationError('BatchData was called, but this pull produced no active routeable properties. Route generation was stopped so stale old data is not reused. Try a larger area or looser parameters.');
+                        setGenerationError('This pull produced no active routeable properties. Route generation was stopped so stale old data is not reused. Try a larger area or looser parameters.');
                     }
                 }}
             />

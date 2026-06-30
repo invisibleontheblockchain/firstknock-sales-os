@@ -159,7 +159,7 @@ export default function RouteBuilderSettings({
                     <div className="p-4 space-y-6">
                         <div className={`rounded-xl border p-3 ${routeMode === 'canvas' ? 'bg-purple-500/10 border-purple-500/30' : 'bg-yellow-500/10 border-yellow-500/30'}`}>
                             <p className={`text-xs font-bold ${routeMode === 'canvas' ? 'text-purple-300' : 'text-yellow-400'}`}>
-                                {routeMode === 'canvas' ? 'Canvas Mode: per-rep field execution for large door-knocking teams.' : 'Precision Mode: BatchData-backed property acquisition with usage limits.'}
+                                {routeMode === 'canvas' ? 'Canvas Mode: per-rep field execution for large door-knocking teams.' : 'Precision Mode: targeted property acquisition with usage limits.'}
                             </p>
                             <p className="text-[10px] text-gray-400 mt-1">
                                 {routeMode === 'canvas' ? 'Build and dispatch routes from existing territory doors without starting a paid property pull.' : 'Draw an area, preview allowed properties, then use Start Paid Pull when live credits are ready.'}
