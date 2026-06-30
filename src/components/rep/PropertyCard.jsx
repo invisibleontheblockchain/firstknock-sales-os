@@ -41,7 +41,7 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
             role="button"
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(property, index); }}
-            className={`relative w-full overflow-hidden rounded-2xl border px-3 py-2.5 text-left transition-all duration-300 active:scale-[0.985] group cursor-pointer ${!isDone ? 'hover:-translate-y-0.5 hover:border-[#2EEB57]/45 hover:shadow-[0_14px_42px_rgba(0,0,0,0.46)]' : 'opacity-80'}`}
+            className={`relative w-full overflow-hidden rounded-xl border px-2.5 py-2 text-left transition-all duration-300 active:scale-[0.985] group cursor-pointer ${!isDone ? 'hover:-translate-y-0.5 hover:border-[#2EEB57]/45 hover:shadow-[0_14px_42px_rgba(0,0,0,0.46)]' : 'opacity-80'}`}
             style={{
                 background: isDone
                     ? 'linear-gradient(135deg, rgba(255,255,255,0.035), rgba(255,255,255,0.012))'
@@ -53,10 +53,10 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
             <div className="absolute bottom-0 left-0 top-0 w-1 bg-gradient-to-b from-[#39FF4A] via-[#2EEB57]/60 to-transparent opacity-70" />
 
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-start gap-2">
                 {/* Number / Check */}
                 <div
-                    className="h-8 w-8 rounded-xl flex items-center justify-center text-[11px] font-black shrink-0 transition-all duration-300"
+                    className="h-7 w-7 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0 transition-all duration-300"
                     style={{
                         background: isDone ? `${statusColor}14` : 'rgba(46,235,87,0.92)',
                         color: isDone ? statusColor : '#000000',
@@ -64,27 +64,27 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
                         boxShadow: isDone ? 'none' : '0 6px 18px rgba(46,235,87,0.18)'
                     }}
                 >
-                    {isDone ? <Check className="w-3.5 h-3.5" /> : index + 1}
+                    {isDone ? <Check className="w-3 h-3" /> : index + 1}
                 </div>
 
                 {/* Address */}
                 <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                            <p className={`text-[14px] font-extrabold truncate leading-tight tracking-tight transition-all duration-300 ${isDone ? 'line-through opacity-45 text-white/45' : 'text-white group-hover:text-[#39FF4A]'}`}>
-                                {property.house_number} {property.street_name}
+                <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                        <p className={`text-[13px] font-extrabold leading-tight tracking-tight break-words transition-all duration-300 ${isDone ? 'line-through opacity-45 text-white/45' : 'text-white group-hover:text-[#39FF4A]'}`}>
+                            {property.house_number} {property.street_name}
+                        </p>
+                        {property.city && (
+                            <p className="mt-0.5 text-[9px] leading-tight break-words text-white/40 transition-colors duration-300 group-hover:text-white/60">
+                                {property.city}, {property.state} {property.zip_code}
                             </p>
-                            {property.city && (
-                                <p className="text-[10px] truncate leading-tight mt-1 text-white/40 transition-colors duration-300 group-hover:text-white/60">
-                                    {property.city}, {property.state} {property.zip_code}
-                                </p>
-                            )}
+                        )}
                             {(ownerName || valueLabel || sqftLabel || yearBuilt) && (
-                                <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[9px] font-bold text-white/45">
+                                <div className="mt-1 flex flex-wrap items-center gap-1 text-[8.5px] font-bold leading-tight text-white/45">
                                     {ownerName && (
-                                        <span className="inline-flex max-w-[150px] items-center gap-1 truncate rounded-full bg-white/5 px-1.5 py-0.5">
-                                            <User className="h-2.5 w-2.5 shrink-0 text-[#39FF4A]" />
-                                            <span className="truncate">{ownerName}</span>
+                                        <span className="inline-flex max-w-full items-start gap-1 rounded-full bg-white/5 px-1.5 py-0.5">
+                                            <User className="mt-px h-2.5 w-2.5 shrink-0 text-[#39FF4A]" />
+                                            <span className="break-words leading-tight">{ownerName}</span>
                                         </span>
                                     )}
                                     {valueLabel && (
@@ -109,14 +109,14 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
                                     e.stopPropagation();
                                     openInMaps(property.lat, property.lng, buildFullAddress(property), navigationApp);
                                 }}
-                                className="group/nav w-8 h-8 rounded-xl flex items-center justify-center shrink-0 transition-all active:scale-95 bg-[#2EEB57]/12 border border-[#2EEB57]/25 hover:bg-[#2EEB57] hover:shadow-[0_0_18px_rgba(46,235,87,0.32)]"
+                                className="group/nav w-7 h-7 rounded-lg flex items-center justify-center shrink-0 transition-all active:scale-95 bg-[#2EEB57]/12 border border-[#2EEB57]/25 hover:bg-[#2EEB57] hover:shadow-[0_0_18px_rgba(46,235,87,0.32)]"
                             >
-                                <Navigation className="w-3.5 h-3.5 text-[#39FF4A] transition-colors group-hover/nav:text-black" />
+                                <Navigation className="w-3 h-3 text-[#39FF4A] transition-colors group-hover/nav:text-black" />
                             </button>
                         )}
                     </div>
 
-                    <div className="mt-2 flex items-center gap-1.5 min-h-[18px]">
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1 min-h-[16px]">
                         {age && (
                             <span className="text-[9px] font-black text-[#39FF4A] shrink-0 rounded-full bg-[#2EEB57]/10 border border-[#2EEB57]/20 px-1.5 py-0.5 tracking-wide">
                                 {age}

@@ -4,6 +4,7 @@
 - Ghost Builder repulls must not expose normal new-area choices that imply a duplicate 12-month regeneration; use clear modes like Fill Gaps and Max Since Last, and show the exact prior-pull-to-today date window.
 - Mobile modal panels inside the app shell need safe-area top padding plus their own scrollable body and fixed footer; otherwise builder screens can be clipped under the header/status area.
 - When the user selects a specific UI atom and asks for visual polish, scope the change to that selected atom unless they explicitly ask for the surrounding card/section.
+- For mobile property-card density fixes, remove truncation from address/owner/metadata first, then reduce padding, gaps, and fixed control sizes; compact cards should show more rows without hiding field context.
 - If a user asks to make a polished UI element simpler after an iteration, remove decorative layers first and keep one strong shape, one accent color, and minimal shadow.
 - Map status toggles must clear selected active-route overlays and force route pins/lines visible; otherwise the toggle state changes but the map still appears unchanged.
 - Completed saved routes should not be filtered by active sold-date windows, or finished routes can disappear from the map even though they still exist in Route Command.

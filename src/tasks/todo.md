@@ -1,6 +1,15 @@
 # Plan
 
-## Current Plan — Knock Floating Buttons Polish
+## Current Plan — Mobile Property Card Density + Wrapping
+- [x] Inspect the selected property card layout and identify truncation/oversizing classes.
+- [x] Reduce vertical spacing/padding enough to show about 3 cards on mobile without changing card behavior.
+- [x] Let names and metadata wrap naturally instead of being clipped.
+- [x] Verify the app still builds and document the result.
+
+### Review — Mobile Property Card Density + Wrapping
+Property cards now use tighter mobile spacing, smaller action/number controls, and reduced gaps so more cards fit in the Knock list. Address, city, owner name, and metadata chips no longer use truncation and can wrap instead of being cut off. Card tap and navigation behavior are unchanged. Production build passes.
+
+## Previous Plan — Knock Floating Buttons Polish
 - [x] Keep the selected floating action row behavior unchanged.
 - [x] Upgrade the visual treatment with a premium glass dock, stronger gradients, glow, and smoother tap/hover states.
 - [x] Verify the app still builds.
