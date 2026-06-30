@@ -1,3 +1,15 @@
+## Plan — Fix Final Route Filter Rejecting Fresh Precision Homes
+- [x] Inspect the final local route filter that emits “No homes sold in last 0.25 months.”
+- [x] Compare its date-window logic against the ingestion and exact-job candidate query windows.
+- [x] Patch only the final filter so 1-week Precision pulls use the same effective provider-safe window already used upstream.
+- [x] Verify the latest two-home pull passes the filter and does not regress the existing imported-candidate fallback.
+- [x] Record the review and lesson.
+
+### Review — Fix Final Route Filter Rejecting Fresh Precision Homes
+The backend pull and exact-job candidate query were fixed, but the final frontend route filter still hard-coded `0.25` months to 7 days. The latest two active homes had valid `sold_date` values on 2026-06-17 and 2026-06-18, which are inside the provider-safe 14-day pull window but outside the old final 7-day route filter, causing the “No homes sold in last 0.25 months” error. I changed the local route filter to use the same effective sold-date window mapping as ingestion and candidate retrieval. Verification: the actual filter now treats `0.25` as 14 effective days, keeps both latest homes through every route-filter stage, and `npm run build` passes.
+
+---
+
 ## Plan — Fix Route Generation Still Failing After Successful Precision Pull
 - [x] Compare the pasted working processor behavior to the live processor and identify behavior differences that affect routeability.
 - [x] Inspect the latest completed FetchJob counts and logs to determine whether homes are lost during provider fetch, local mapping, Neon write, candidate query, or route generation.

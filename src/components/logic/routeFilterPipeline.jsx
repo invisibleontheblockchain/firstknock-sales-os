@@ -2,8 +2,28 @@
 // Separates filter logic from Home.jsx for clarity and testability.
 // Returns { workingSet, stageCounts, error } so the UI can show exactly where properties are dropping out.
 
-import { subDays, subMonths } from 'date-fns';
+import { subDays } from 'date-fns';
 import { isPointInPolygon } from './territoryLogic';
+
+const MIN_RECENT_PULL_LOOKBACK_DAYS = 14;
+
+function requestedSoldWindowDays(soldMonths) {
+    const months = Number(soldMonths || 1);
+    if (Math.abs(months - (1 / 30)) < 0.0001) return 1;
+    if (Math.abs(months - (2 / 30)) < 0.0001) return 2;
+    if (months === 0.25) return 7;
+    if (months === 0.5) return 14;
+    if (months === 1) return 30;
+    if (months === 3) return 90;
+    if (months === 6) return 180;
+    if (months === 9) return 270;
+    if (months === 12) return 365;
+    return Math.max(1, Math.round(months * 30));
+}
+
+function effectiveSoldWindowDays(soldMonths) {
+    return Math.max(requestedSoldWindowDays(soldMonths), MIN_RECENT_PULL_LOOKBACK_DAYS);
+}
 
 /**
  * Apply all route-generation filters in sequence, tracking counts at each stage.
@@ -61,10 +81,7 @@ export function applyRouteFilters({
     // --- Sold Date Filter (THE BIG ONE — often culls 99% of properties) ---
     const beforeSoldDate = workingSet.length;
     if (soldDateFilter !== null && soldDateFilter !== 'all') {
-        let cutoff;
-        const now = new Date();
-        if (soldDateFilter === 0.25 || soldDateFilter === '0.25') cutoff = subDays(now, 7);
-        else cutoff = subMonths(now, Number(soldDateFilter));
+        const cutoff = subDays(new Date(), effectiveSoldWindowDays(soldDateFilter));
         cutoff.setHours(0, 0, 0, 0);
 
         workingSet = workingSet.filter(p => {
