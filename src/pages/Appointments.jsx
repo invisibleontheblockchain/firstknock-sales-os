@@ -29,6 +29,13 @@ const STATUS_CHIPS = [
     { id: 'no_show', label: 'No Show' },
 ];
 
+const callbackKey = (item) => `${item.address_hash || ''}|${item.scheduled_date || item.next_eligible_date || ''}|${item.route_id || ''}`;
+
+const safeIsoDate = (value, fallback) => {
+    const date = new Date(value || fallback || Date.now());
+    return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+};
+
 export default function Appointments() {
     const queryClient = useQueryClient();
     const [selectedAppointment, setSelectedAppointment] = useState(null);
@@ -37,6 +44,7 @@ export default function Appointments() {
     const [statusFilter, setStatusFilter] = useState('all');
     const [timeFilter, setTimeFilter] = useState('upcoming');
     const [showFilters, setShowFilters] = useState(false);
+    const backfilledCallbackLogsRef = React.useRef(new Set());
 
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
 
@@ -77,6 +85,54 @@ export default function Appointments() {
             : [],
         enabled: !!user?.id,
     });
+
+    // Tenant key: managers own their team's appointments; reps roll up to their manager
+    const tenantManagerId = user?.app_role === 'rep' ? (user?.team_manager_id || null) : (user?.id || null);
+
+    React.useEffect(() => {
+        if (!user || !Array.isArray(logs) || logs.length === 0) return;
+
+        const existingKeys = new Set((Array.isArray(appointments) ? appointments : []).map(callbackKey));
+        const seenKeys = new Set(existingKeys);
+        const propertyByHash = new Map();
+        (Array.isArray(properties) ? properties : []).forEach((property) => {
+            if (property.address_hash) propertyByHash.set(property.address_hash, property);
+            if (property.legacy_hash) propertyByHash.set(property.legacy_hash, property);
+        });
+
+        const toCreate = logs
+            .filter((log) => log?.parsed_status === 'CALLBACK' && log.address_hash && !backfilledCallbackLogsRef.current.has(log.id))
+            .map((log) => {
+                const scheduledDate = safeIsoDate(log.next_eligible_date, log.created_date);
+                const key = callbackKey({ ...log, scheduled_date: scheduledDate });
+                if (seenKeys.has(key) || (log.id && appointments.some((appointment) => (appointment.notes || '').includes(`callback_log:${log.id}`)))) return null;
+                seenKeys.add(key);
+                const property = propertyByHash.get(log.address_hash) || {};
+                return {
+                    address_hash: log.address_hash,
+                    manager_id: log.manager_id || tenantManagerId,
+                    full_address: property.full_address || property.address || `${property.house_number || ''} ${property.street_name || ''}`.trim() || 'Callback address',
+                    homeowner_name: null,
+                    phone: null,
+                    scheduled_date: scheduledDate,
+                    industry: 'other',
+                    status: 'scheduled',
+                    outcome: 'follow_up',
+                    route_id: log.route_id || null,
+                    zip_code: property.zip_code || property.zip || null,
+                    lat: property.lat || null,
+                    lng: property.lng || null,
+                    notes: `${log.raw_input_text || 'Callback scheduled from Knock Mode'}${log.id ? ` [callback_log:${log.id}]` : ''}`
+                };
+            })
+            .filter(Boolean);
+
+        if (!toCreate.length) return;
+        toCreate.forEach((appointment) => backfilledCallbackLogsRef.current.add(appointment.notes.match(/callback_log:([^\]]+)/)?.[1]));
+        base44.entities.Appointment.bulkCreate(toCreate).then(() => {
+            queryClient.invalidateQueries({ queryKey: ['appointments'] });
+        });
+    }, [user, logs, appointments, properties, tenantManagerId, queryClient]);
 
     const stats = useMemo(() => {
         const all = Array.isArray(appointments) ? appointments : [];
@@ -154,9 +210,6 @@ export default function Appointments() {
     }, [appointments]);
 
     const handleRefresh = () => queryClient.invalidateQueries({ queryKey: ['appointments'] });
-
-    // Tenant key: managers own their team's appointments; reps roll up to their manager
-    const tenantManagerId = user?.app_role === 'rep' ? (user?.team_manager_id || null) : (user?.id || null);
 
     const formatDateLabel = (dateKey) => {
         if (dateKey === 'unscheduled') return 'Unscheduled';
