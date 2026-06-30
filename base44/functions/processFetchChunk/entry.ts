@@ -465,7 +465,7 @@ async function fetchBatchDataRecordsForMode(job, mode, requested) {
 
 async function fetchBatchDataRecords(job) {
     const requested = Math.min(Math.max(Number(job.estimated_record_count || job.total_expected || 1000), 1), 1000);
-    const modes = ['strict_polygon', 'broad_polygon', 'centroid_fallback'];
+    const modes = ['strict_polygon', 'broad_polygon'];
     const attempts = [];
 
     for (const mode of modes) {
@@ -504,8 +504,7 @@ Deno.serve(async (req) => {
                 success: true,
                 requests: {
                     strict_polygon: buildBatchDataRequest(previewJob, 0, BATCHDATA_MAX_TAKE, 'strict_polygon'),
-                    broad_polygon: buildBatchDataRequest(previewJob, 0, BATCHDATA_MAX_TAKE, 'broad_polygon'),
-                    centroid_fallback: buildBatchDataRequest(previewJob, 0, BATCHDATA_MAX_TAKE, 'centroid_fallback')
+                    broad_polygon: buildBatchDataRequest(previewJob, 0, BATCHDATA_MAX_TAKE, 'broad_polygon')
                 }
             });
         }

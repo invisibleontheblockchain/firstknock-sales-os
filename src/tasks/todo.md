@@ -1,3 +1,15 @@
+## Plan — Diagnose Short-Window Precision Pulls
+- [x] Inspect latest 1-day/2-day/1-week/2-week FetchJob settings and counts.
+- [x] Compare provider request dates against stored raw/mapped/active results.
+- [x] Determine whether short windows are failing at BatchData response, ingestion mapping, or final route filter.
+- [x] If the cause is in our code, patch the smallest root cause; if provider coverage is the cause, surface a clear product explanation.
+- [x] Verify with backend previews/data checks and record the result.
+
+### Review — Diagnose Short-Window Precision Pulls
+The 1-week failure is not from the local route filter anymore. The latest 1-week, 1,929.71 sq mi exact polygon pull sent `intel.lastSoldDate.minDate = 2026-06-23`; BatchData returned 0 for both strict polygon and broad polygon. The same area at 2 weeks returned 2 active homes, whose sold dates are Jun 18, which is outside 1 week but inside 2 weeks. Earlier 1-day/1-week jobs showing Jun 18 were from the now-removed widened request behavior. I also removed the centroid fallback from production Precision polygon pulls and request previews so a failed polygon request no longer reports unrelated center-point records. `fetchJobStatus` confirms the latest 1-week job has `active_count: 0`, and `npm run build` passes.
+
+---
+
 ## Plan — Use Exact Sold-Date Request Windows
 - [x] Remove provider-side minimum sold-date widening from the live BatchData pull request.
 - [x] Remove matching route-candidate widening so exact-job retrieval follows the selected timeframe.
