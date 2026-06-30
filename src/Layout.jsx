@@ -190,7 +190,7 @@ function LayoutInner({ children }) {
 
             {/* Header */}
             {!isRoleSelectPage &&
-      <header className={`px-4 pt-[env(safe-area-inset-top)] pb-0 z-20 shadow-md bg-black ${isPageActive('RepHome') ? 'border-b border-transparent' : 'border-b border-slate-800'}`}>
+      <header className={`px-4 pt-[env(safe-area-inset-top)] pb-0 z-20 shadow-md ${isPageActive('RepHome') ? 'border-b border-transparent' : 'border-b border-slate-800'}`} style={{ background: 'linear-gradient(135deg, #a8aaa6 0%, #73776f 52%, #565a55 100%)' }}>
                 <div className="flex items-center w-full pt-0">
                     <Link to="/" className="flex items-center gap-2 mr-auto group shrink-0">
                         <img src="https://media.base44.com/images/public/695eb764b077190880be21de/3c68a784d_ChatGPTImageJun30202609_55_39AM.png" alt="FirstKnock" className="h-[64px] w-auto object-contain" />
