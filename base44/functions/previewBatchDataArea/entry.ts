@@ -1,7 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
-const FREE_AREA_LIMIT_SQ_MI = 40;
-const PAID_AREA_LIMIT_SQ_MI = 300;
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
 const MAX_COUNTIES_PER_PULL = 1;
@@ -113,12 +111,10 @@ Deno.serve(async (req) => {
         const isPaid = isAdminTestOverride
             ? body.test_account_type === 'paid'
             : (user.subscription_status === 'active' || user.subscription_status === 'trialing' || user.is_owner || user.role === 'admin');
-        const maxArea = isPaid ? PAID_AREA_LIMIT_SQ_MI : FREE_AREA_LIMIT_SQ_MI;
         const maxProperties = isPaid ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
         const requestedRaw = Number(body.requested_properties || body.record_cap || maxProperties);
         const requestedProperties = Math.max(1, Math.min(Number.isFinite(requestedRaw) ? requestedRaw : maxProperties, maxProperties));
         const box = boundsMiles(polygon);
-        const maxSpanMiles = isPaid ? 35 : 15;
         const hardRejected = false; // Square mileage limits removed entirely for all accounts
         const rejectionReason = null;
         const costPerRecord = BATCHDATA_PLAN_COST / BATCHDATA_PLAN_RECORDS;
@@ -138,10 +134,10 @@ Deno.serve(async (req) => {
             bounds_miles: {
                 width: Number(box.width_miles.toFixed(2)),
                 height: Number(box.height_miles.toFixed(2)),
-                max_allowed_span: maxSpanMiles
+                max_allowed_span: null
             },
             account_type: isPaid ? 'paid_or_admin' : 'free',
-            max_area_sq_mi: maxArea,
+            max_area_sq_mi: null,
             max_allowed_properties: maxProperties,
             requested_properties: requestedProperties,
             returned_property_count: hardRejected ? 0 : requestedProperties,

@@ -1,8 +1,6 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.14.0';
 
-const FREE_AREA_LIMIT_SQ_MI = 40;
-const PAID_AREA_LIMIT_SQ_MI = 300;
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
 
@@ -75,20 +73,6 @@ function isPremiumRecentRange(soldMonths) {
     return Number.isFinite(months) && months <= 1;
 }
 
-function boundsMiles(points) {
-    const lats = points.map(p => p.lat);
-    const lngs = points.map(p => p.lng);
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-    const minLng = Math.min(...lngs);
-    const maxLng = Math.max(...lngs);
-    const midLat = (minLat + maxLat) / 2;
-    return {
-        width_miles: Math.abs(maxLng - minLng) * 69.0 * Math.cos(midLat * Math.PI / 180),
-        height_miles: Math.abs(maxLat - minLat) * 69.0
-    };
-}
-
 async function resolveFips(center) {
     const url = `https://geo.fcc.gov/api/census/block/find?latitude=${encodeURIComponent(center.lat)}&longitude=${encodeURIComponent(center.lng)}&format=json`;
     const response = await fetch(url);
@@ -134,7 +118,6 @@ Deno.serve(async (req) => {
                 message: '1 day, 2 day, 1 week, 2 week, and 1 month Precision pulls require a Pro plan.'
             }, { status: 403 });
         }
-        const maxArea = isPaid ? PAID_AREA_LIMIT_SQ_MI : FREE_AREA_LIMIT_SQ_MI;
         const maxProperties = hasPaidPrecisionCapacity ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
         const requestedRaw = Number(body.requested_properties || maxProperties);
         const requestedValue = Math.max(1, Number.isFinite(requestedRaw) ? requestedRaw : maxProperties);
@@ -149,21 +132,6 @@ Deno.serve(async (req) => {
         const maxPriceRaw = Number(body.max_price);
         const minPrice = Number.isFinite(minPriceRaw) && minPriceRaw > 0 ? minPriceRaw : 100000;
         const maxPrice = Number.isFinite(maxPriceRaw) && maxPriceRaw > 0 ? maxPriceRaw : null;
-        const box = boundsMiles(polygon);
-        const maxSpanMiles = isPaid ? 35 : 15;
-        if (areaSqMi > maxArea) {
-            return Response.json({
-                error: 'area_too_large',
-                message: `Precision pulls are limited to ${maxArea.toLocaleString()} square miles per draw. Your selected area is ${Math.round(areaSqMi).toLocaleString()} square miles. Please draw a smaller territory.`
-            }, { status: 400 });
-        }
-        if (box.width_miles > maxSpanMiles || box.height_miles > maxSpanMiles) {
-            return Response.json({
-                error: 'area_span_too_large',
-                message: `Precision pulls are limited to about ${maxSpanMiles} miles across per draw. Please draw a tighter territory.`
-            }, { status: 400 });
-        }
-
         const fips = await resolveFips(center);
         if (!fips?.fips_code) {
             return Response.json({ error: 'Could not resolve county/FIPS for this area. Please redraw inside a supported US county.' }, { status: 400 });

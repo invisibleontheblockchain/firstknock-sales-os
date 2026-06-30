@@ -1,3 +1,15 @@
+## Plan — Remove Precision Square-Mile Cap
+- [x] Remove backend square-mile and span rejection from live Precision pull starts.
+- [x] Remove old area-limit metadata from Precision previews so only property caps remain.
+- [x] Keep existing property caps and paid-plan gates unchanged.
+- [x] Verify a large dry-run no longer returns `area_too_large` and build still passes.
+- [x] Document the correction and lesson.
+
+### Review — Remove Precision Square-Mile Cap
+Precision pulls no longer reject by square miles or width/height span. `startBatchDataPull` now allows a 1,169,994.86 sq mi dry-run and returns success, while the self-test free account still rejects 1,000 requested properties with the paid Precision gate. `previewBatchDataArea` now reports `max_area_sq_mi: null` and `max_allowed_span: null`, with property caps still intact. `npm run build` passes.
+
+---
+
 ## Plan — Diagnose Huge-Area Last-Week Zero Pull
 - [x] Inspect the newest huge-area 1-week FetchJob: area, polygon size, requested count, provider attempts, and routeable count.
 - [x] Compare exact last-week, 2-week, and no-date provider probes on the same shape to separate date-window coverage from geometry/API limits.

@@ -148,5 +148,5 @@
 - Precision polygon pulls should not fall back to centroid searches after polygon zero-results; centroid hits are not the selected territory and create misleading raw counts that are discarded by polygon validation.
 - When a user challenges a zero-result recent-sale pull, prove whether the polygon works separately from the date window: run no-date, 2-week, and exact-window probes before blaming filters or coverage.
 - For paid-data pulls, requested property count must mean routeable homes requested, not raw provider rows sampled; keep paging until routeable records are found or the provider/cap is exhausted.
-- Enforce area/span limits in backend start functions, not only in UI/preview copy; oversized polygons produce misleading provider behavior and should be rejected before paid requests start.
+- When the product decision is “no square-mile cap,” do not add area/span gates to paid-data starts; enforce only the property-count cap and make preview metadata reflect unlimited area.
 - When a user challenges an implausible zero-result claim, do not defend the result. Inspect the real latest job, prove counts at each stage, and verify route creation from the actual returned candidates before answering.
