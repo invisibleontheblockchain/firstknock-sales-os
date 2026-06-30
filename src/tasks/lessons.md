@@ -1,5 +1,6 @@
 # Lessons
 
+- Previous-area/ghost territory overlays must be opt-in and Builder-only; never let them render in route analysis, completed-route views, or selected-route overlays.
 - When the user selects a specific UI atom and asks for visual polish, scope the change to that selected atom unless they explicitly ask for the surrounding card/section.
 - If a user asks to make a polished UI element simpler after an iteration, remove decorative layers first and keep one strong shape, one accent color, and minimal shadow.
 - Map status toggles must clear selected active-route overlays and force route pins/lines visible; otherwise the toggle state changes but the map still appears unchanged.

@@ -36,6 +36,13 @@ function moneyInputToNumber(value) {
   return raw ? Number(raw) : '';
 }
 
+function formatHistoryDate(value) {
+  if (!value) return 'previous pull';
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return 'previous pull';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 export default function PrecisionPullPanel({
   areaLabel,
   maxProperties,
@@ -51,7 +58,12 @@ export default function PrecisionPullPanel({
   onGenerate,
   generating,
   onClearArea,
-  user
+  user,
+  selectedHistoryArea,
+  repullMode = 'same',
+  setRepullMode,
+  forceFullRefresh,
+  setForceFullRefresh
 }) {
   const navigate = useNavigate();
   const [hoveredLockedOption, setHoveredLockedOption] = useState(null);
@@ -60,6 +72,8 @@ export default function PrecisionPullPanel({
   const isProPlan = isPrecisionProUser(user);
 
   const goToUpgrade = () => navigate(createPageUrl('Billing') + '?plan=precision');
+  const historyCriteria = selectedHistoryArea?.criteria || {};
+  const historyDate = selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date;
 
   useEffect(() => {
     if (!isProPlan && PREMIUM_RECENT_RANGES.includes(Number(soldMonths))) {
@@ -87,6 +101,44 @@ export default function PrecisionPullPanel({
         </div>
 
         <div className="p-5 space-y-5">
+          {selectedHistoryArea && (
+            <div className="rounded-2xl border border-[#2EEB57]/25 bg-[#2EEB57]/[0.06] p-3 space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#39FF4A]">Previous area</p>
+                  <p className="text-[11px] text-gray-400">Last used {formatHistoryDate(historyDate)}. Pick how to refresh it.</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRepullMode?.('same');
+                    setForceFullRefresh?.(false);
+                    if (historyCriteria.requested_properties) setRequestedPropertyCount(historyCriteria.requested_properties);
+                    if (historyCriteria.sold_months) setSoldMonths(historyCriteria.sold_months);
+                    if (historyCriteria.min_price !== undefined && historyCriteria.min_price !== null) setMinHomeValue(historyCriteria.min_price);
+                    if (historyCriteria.max_price !== undefined && historyCriteria.max_price !== null) setMaxHomeValue(historyCriteria.max_price || '');
+                  }}
+                  className={`rounded-xl px-2 py-2 text-[9px] font-black transition-all ${repullMode === 'same' ? 'bg-[#2EEB57] text-black' : 'bg-white/5 text-gray-300 border border-white/10'}`}>
+                  Same Criteria
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setRepullMode?.('fill_gaps'); setForceFullRefresh?.(true); }}
+                  className={`rounded-xl px-2 py-2 text-[9px] font-black transition-all ${repullMode === 'fill_gaps' || forceFullRefresh ? 'bg-[#2EEB57] text-black' : 'bg-white/5 text-gray-300 border border-white/10'}`}>
+                  Fill Gaps
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setRepullMode?.('max_since_last'); setForceFullRefresh?.(false); setRequestedPropertyCount(maxProperties); }}
+                  className={`rounded-xl px-2 py-2 text-[9px] font-black transition-all ${repullMode === 'max_since_last' ? 'bg-[#2EEB57] text-black' : 'bg-white/5 text-gray-300 border border-white/10'}`}>
+                  Max Since Last
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
               <div>

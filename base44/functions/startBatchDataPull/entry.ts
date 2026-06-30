@@ -43,7 +43,7 @@ function isPrecisionProUser(user) {
 
 function isPremiumRecentRange(soldMonths) {
     const months = Number(soldMonths || 12);
-    return [1 / 30, 2 / 30, 0.25, 0.5, 1].some(value => Math.abs(months - value) < 0.0001);
+    return Number.isFinite(months) && months <= 1;
 }
 
 function boundsMiles(points) {
@@ -165,6 +165,9 @@ Deno.serve(async (req) => {
             dry_run_metadata: {
                 county_resolution: fips,
                 requested_properties: requestedProperties,
+                repull_mode: body.repull_mode || 'new_area',
+                previous_pull_date: body.previous_pull_date || null,
+                force_full_refresh: body.force_full_refresh === true,
                 filters: {
                     min_price: minPrice,
                     max_price: maxPrice
@@ -172,6 +175,8 @@ Deno.serve(async (req) => {
                 paid_pull_started_at: new Date().toISOString()
             },
             sold_months: requestedSoldMonths,
+            force_full_refresh: body.force_full_refresh === true,
+            pull_mode: body.force_full_refresh === true ? 'full_refresh' : 'new_area',
             include_mls: false,
             user_email: user.email,
             progress_pct: 0,

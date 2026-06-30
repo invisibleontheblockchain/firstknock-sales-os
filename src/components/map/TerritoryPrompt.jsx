@@ -53,6 +53,7 @@ export default function TerritoryPrompt({
   const [isDeltaPull, setIsDeltaPull] = useState(false);
   const [forceFullRefresh, setForceFullRefresh] = useState(false);
   const [selectedHistoryArea, setSelectedHistoryArea] = useState(null);
+  const [repullMode, setRepullMode] = useState('same');
   const [recoverableJob, setRecoverableJob] = useState(null);
   const [requestedPropertyCount, setRequestedPropertyCount] = useState(50);
   const [minHomeValue, setMinHomeValue] = useState(100000);
@@ -210,11 +211,19 @@ export default function TerritoryPrompt({
       const polygon = event.detail?.polygon;
       if (!polygon || polygon.length < 3) return;
       setMode('generate');
+      const historyEntry = event.detail || { polygon };
+      const criteria = historyEntry.criteria || {};
       setDrawnPolygon(polygon);
       setDraftPolygon([]);
       setDrawingMode(false);
-      setSelectedHistoryArea(event.detail || { polygon });
+      setSelectedHistoryArea(historyEntry);
+      setRepullMode('same');
       setForceFullRefresh(false);
+      if (criteria.requested_properties) setRequestedPropertyCount(criteria.requested_properties);
+      if (criteria.sold_months) setFetchMonths(criteria.sold_months);
+      if (criteria.min_price !== undefined && criteria.min_price !== null) setMinHomeValue(criteria.min_price);
+      if (criteria.max_price !== undefined && criteria.max_price !== null) setMaxHomeValue(criteria.max_price || '');
+      setShowPrecisionPullPanel(true);
       toast.success('Previous area selected');
     };
     window.addEventListener('fk-start-drawing', drawHandler);
@@ -231,6 +240,13 @@ export default function TerritoryPrompt({
     event?.preventDefault?.();
     event?.stopPropagation?.();
     event?.nativeEvent?.stopImmediatePropagation?.();
+  };
+
+  const monthsSinceHistoryPull = (value) => {
+    const date = value ? new Date(value) : null;
+    const ms = date && !isNaN(date.getTime()) ? Date.now() - date.getTime() : 30 * 24 * 60 * 60 * 1000;
+    const days = Math.max(1, Math.ceil(ms / (24 * 60 * 60 * 1000)));
+    return Math.max(1 / 30, Math.min(12, days / 30));
   };
 
   const confirmDraftPolygon = (event) => {
@@ -477,7 +493,15 @@ export default function TerritoryPrompt({
         return;
       }
 
-      savePolygonToHistory(drawnPolygon);
+      savePolygonToHistory(drawnPolygon, {
+        previewed_at: new Date().toISOString(),
+        criteria: {
+          requested_properties: safeRequestedPropertyCount,
+          sold_months: fetchMonths,
+          min_price: minHomeValue ? Number(minHomeValue) : null,
+          max_price: maxHomeValue ? Number(maxHomeValue) : null
+        }
+      });
       localStorage.setItem('fk_drawnPolygonQueried', 'true');
       setDrawnPolygon(drawnPolygon, true);
       window.dispatchEvent(new CustomEvent('fk-polygon-history-updated'));
@@ -497,12 +521,17 @@ export default function TerritoryPrompt({
       return;
     }
 
-    const premiumRecentRange = [1 / 30, 2 / 30, 0.25, 0.5, 1].includes(Number(fetchMonths));
-    const latestUser = (safeRequestedPropertyCount > freePropertyLimit || premiumRecentRange) ? await base44.auth.me() : user;
+    const historyDate = selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date;
+    const effectiveSoldMonths = repullMode === 'max_since_last' ? monthsSinceHistoryPull(historyDate) : Number(fetchMonths || 12);
+    const effectiveRequestedPropertyCount = repullMode === 'max_since_last' ? maxRequestedProperties : safeRequestedPropertyCount;
+    const effectiveMinPrice = minHomeValue ? Number(minHomeValue) : null;
+    const effectiveMaxPrice = maxHomeValue ? Number(maxHomeValue) : null;
+    const premiumRecentRange = effectiveSoldMonths <= 1;
+    const latestUser = (effectiveRequestedPropertyCount > freePropertyLimit || premiumRecentRange) ? await base44.auth.me() : user;
     const upgraded = latestUser?.subscription_status === 'active' || latestUser?.subscription_status === 'trialing' || latestUser?.is_owner || latestUser?.role === 'admin';
     const hasPrecisionPro = isPrecisionProUser(latestUser);
 
-    if (safeRequestedPropertyCount > freePropertyLimit && !upgraded) {
+    if (effectiveRequestedPropertyCount > freePropertyLimit && !upgraded) {
       toast.info('Precision pulls over 50 houses require an upgraded account.');
       setShowPrecisionPullPanel(false);
       navigate(createPageUrl('Billing') + '?plan=precision');
@@ -519,17 +548,31 @@ export default function TerritoryPrompt({
     try {
       const res = await base44.functions.invoke('startBatchDataPull', {
         polygon: drawnPolygon,
-        requested_properties: safeRequestedPropertyCount,
-        sold_months: fetchMonths,
-        min_price: minHomeValue ? Number(minHomeValue) : null,
-        max_price: maxHomeValue ? Number(maxHomeValue) : null
+        requested_properties: effectiveRequestedPropertyCount,
+        sold_months: effectiveSoldMonths,
+        min_price: effectiveMinPrice,
+        max_price: effectiveMaxPrice,
+        force_full_refresh: repullMode === 'fill_gaps' || forceFullRefresh,
+        repull_mode: selectedHistoryArea ? repullMode : 'new_area',
+        previous_pull_date: selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date || null
       });
       const data = res.data || {};
       if (data.error) {
         toast.error(data.message || data.error);
         return;
       }
-      savePolygonToHistory(drawnPolygon);
+      savePolygonToHistory(drawnPolygon, {
+        last_pull_date: new Date().toISOString(),
+        job_id: data.job_id,
+        repull_mode: selectedHistoryArea ? repullMode : 'new_area',
+        criteria: {
+          requested_properties: effectiveRequestedPropertyCount,
+          sold_months: effectiveSoldMonths,
+          min_price: effectiveMinPrice,
+          max_price: effectiveMaxPrice,
+          force_full_refresh: repullMode === 'fill_gaps' || forceFullRefresh
+        }
+      });
       localStorage.setItem('fk_drawnPolygonQueried', 'true');
       setDrawnPolygon(drawnPolygon, true);
       window.dispatchEvent(new CustomEvent('fk-polygon-history-updated'));
@@ -735,7 +778,12 @@ export default function TerritoryPrompt({
         onGenerate={handlePaidBatchDataPull}
         generating={paidPullStarting}
         user={user}
-        onClearArea={() => {setDrawnPolygon(null);setDraftPolygon([]);setDrawingMode(false);setShowPrecisionPullPanel(false);}}
+        selectedHistoryArea={selectedHistoryArea}
+        repullMode={repullMode}
+        setRepullMode={setRepullMode}
+        forceFullRefresh={forceFullRefresh}
+        setForceFullRefresh={setForceFullRefresh}
+        onClearArea={() => {setDrawnPolygon(null);setDraftPolygon([]);setDrawingMode(false);setShowPrecisionPullPanel(false);setSelectedHistoryArea(null);}}
       />
       }
         </>);

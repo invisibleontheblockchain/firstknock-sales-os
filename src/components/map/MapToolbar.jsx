@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, Users, Rocket, RotateCcw, Download, MoreVertical, Scissors, Upload } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, Users, Rocket, RotateCcw, Download, MoreVertical, Scissors, Ghost } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
@@ -92,6 +92,9 @@ export default function MapToolbar({
   const [canvasFocusMode, setCanvasFocusMode] = useState(() => {
     try {return localStorage.getItem('fk_canvasFocusMode') === 'true';} catch {return false;}
   });
+  const [showGhostAreas, setShowGhostAreas] = useState(() => {
+    try {return localStorage.getItem('fk_showGhostAreas') === 'true';} catch {return false;}
+  });
 
   const updateRouteMode = (nextMode) => {
     setRouteMode(nextMode);
@@ -115,6 +118,14 @@ export default function MapToolbar({
     try {localStorage.setItem('fk_canvasFocusMode', String(next));} catch {}
     window.dispatchEvent(new CustomEvent('fk-canvas-focus-mode-changed', { detail: { focusMode: next } }));
     toast.success(next ? 'Focus mode on' : 'Focus mode off');
+  };
+
+  const toggleGhostAreas = () => {
+    const next = !showGhostAreas;
+    setShowGhostAreas(next);
+    try {localStorage.setItem('fk_showGhostAreas', String(next));} catch {}
+    window.dispatchEvent(new CustomEvent('fk-ghost-areas-visibility', { detail: { visible: next } }));
+    toast.success(next ? 'Previous areas visible' : 'Previous areas hidden');
   };
 
   // Track whether data has been pulled for the current drawn territory
@@ -337,6 +348,15 @@ export default function MapToolbar({
               className={`inline-flex bg-black/80 hover:bg-black backdrop-blur-md border shadow-xl h-8 sm:h-11 rounded-lg sm:rounded-xl px-2 sm:px-3 text-[9px] sm:text-[10px] font-black transition-all ${routeStatusView === 'completed' ? 'border-[#2EEB57]/50 text-[#39FF4A]' : 'border-gray-800 text-white/70'}`}>
                             {routeStatusView === 'completed' ? 'DONE' : 'ACTIVE'}
                         </Button>
+                        {mode === 'generate' && routeMode === 'precision' && !activeRoute && (
+                          <Button
+                            onClick={toggleGhostAreas}
+                            size="icon"
+                            title="Show previous drawn areas"
+                            className={`inline-flex bg-black/80 hover:bg-black backdrop-blur-md border shadow-xl h-8 w-8 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl transition-all ${showGhostAreas ? 'border-[#2EEB57]/60 text-[#39FF4A]' : 'border-gray-800 text-white/55'}`}>
+                            <Ghost className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+                          </Button>
+                        )}
                         <Button
               onClick={() => {
                 if (mode === 'generate' && routeMode === 'precision' && !hasDrawnArea) {

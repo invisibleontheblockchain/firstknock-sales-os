@@ -11,13 +11,21 @@ function polygonKey(polygon = []) {
     return `${Number(first.lat || 0).toFixed(5)}:${Number(first.lng || 0).toFixed(5)}:${polygon.length}`;
 }
 
-export function savePolygonToHistory(polygon) {
+export function savePolygonToHistory(polygon, metadata = {}) {
     if (!polygon || polygon.length < 3) return;
     try {
         const history = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
         const key = polygonKey(polygon);
+        const existing = history.find(entry => polygonKey(entry.polygon) === key) || {};
         const deduped = history.filter(entry => polygonKey(entry.polygon) !== key);
-        deduped.unshift({ polygon, date: new Date().toISOString(), queried: true });
+        deduped.unshift({
+            ...existing,
+            ...metadata,
+            polygon,
+            date: metadata.date || existing.date || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            queried: true
+        });
         if (deduped.length > MAX_HISTORY) deduped.length = MAX_HISTORY;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(deduped));
     } catch {}
@@ -51,6 +59,9 @@ function trashIcon(onDelete) {
 export default function PolygonHistory({ currentPolygon, mode }) {
     const [history, setHistory] = useState([]);
     const [selectedKey, setSelectedKey] = useState(null);
+    const [ghostVisible, setGhostVisible] = useState(() => {
+        try { return localStorage.getItem('fk_showGhostAreas') === 'true'; } catch { return false; }
+    });
     const isBuilder = mode === 'generate';
 
     useEffect(() => {
@@ -63,8 +74,13 @@ export default function PolygonHistory({ currentPolygon, mode }) {
             } catch {}
         };
         loadHistory();
+        const visibilityHandler = (event) => setGhostVisible(!!event.detail?.visible);
         window.addEventListener('fk-polygon-history-updated', loadHistory);
-        return () => window.removeEventListener('fk-polygon-history-updated', loadHistory);
+        window.addEventListener('fk-ghost-areas-visibility', visibilityHandler);
+        return () => {
+            window.removeEventListener('fk-polygon-history-updated', loadHistory);
+            window.removeEventListener('fk-ghost-areas-visibility', visibilityHandler);
+        };
     }, [currentPolygon]);
 
     useEffect(() => {
@@ -81,7 +97,7 @@ export default function PolygonHistory({ currentPolygon, mode }) {
         if (selectedKey === keyToDelete) setSelectedKey(null);
     };
 
-    if (isBuilder || visibleHistory.length === 0) return null;
+    if (!isBuilder || !ghostVisible || visibleHistory.length === 0) return null;
 
     return (
         <>
