@@ -4,7 +4,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
     Navigation, X, Clock, CheckCircle2, AlertCircle,
-    ChevronRight, Merge, Trash2, RefreshCw, Pencil, Check, Scissors
+    ChevronRight, Merge, Trash2, RefreshCw, Pencil, Check, Scissors, Play
 } from 'lucide-react';
 import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
 import { base44 } from '@/api/base44Client';
@@ -167,54 +167,65 @@ export default function ActiveRoutesTab({
 
     return (
         <>
-            {/* Header with actions */}
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-2 px-1 gap-2 min-w-0 overflow-hidden">
-                <span className="text-[11px] sm:text-xs font-bold text-gray-500 uppercase tracking-wide shrink-0">All Campaigns</span>
-                <div className="grid grid-cols-2 sm:flex sm:items-center gap-1 sm:gap-2 min-w-0 w-full sm:w-auto">
-                    {isMultiSelect && (
+            {/* Top command bar */}
+            <div className="mb-3 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-[#151515] via-[#0f0f0f] to-black p-3 shadow-[0_16px_40px_rgba(0,0,0,0.45)]">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                        <p className="text-[10px] font-black uppercase tracking-[0.24em] text-[#39FF4A]">Route Command</p>
+                        <h3 className="truncate text-base font-black text-white">{savedRoutes.length} active route{savedRoutes.length === 1 ? '' : 's'}</h3>
+                    </div>
+                    <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[10px] font-bold text-white/60">
+                        {isMultiSelect ? `${selectedIds.size} selected` : 'Ready'}
+                    </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+                    {isMultiSelect ? (
                         <>
                             <Button
                                 onClick={handleMerge}
                                 size="sm"
                                 disabled={selectedIds.size < 2}
-                                className="h-7 text-[9px] sm:text-[10px] bg-purple-600 hover:bg-purple-500 text-white font-bold px-2 sm:px-3 whitespace-nowrap"
+                                className="h-10 rounded-xl bg-[#2EEB57] px-3 text-[10px] font-black text-black hover:bg-[#39FF4A] disabled:opacity-40"
                             >
-                                <Merge className="w-3 h-3 mr-1" />
+                                <Merge className="mr-1 h-3.5 w-3.5" />
                                 MERGE {selectedNumbers || selectedIds.size}
                             </Button>
                             <Button
                                 onClick={() => { setMergeMode(false); setSelectedIds(new Set()); }}
                                 variant="ghost"
                                 size="sm"
-                                className="h-7 text-[9px] sm:text-[10px] text-gray-400 hover:text-white px-2 whitespace-nowrap"
+                                className="h-10 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-[10px] font-black text-white/70 hover:bg-white/10 hover:text-white"
                             >
-                                <X className="w-3 h-3 mr-1" /> CANCEL
+                                <X className="mr-1 h-3.5 w-3.5" /> CANCEL
                             </Button>
                         </>
-                    )}
-                    {!isMultiSelect && savedRoutes.length >= 2 && (
-                        <Button
-                            onClick={() => setMergeMode(true)}
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-[9px] sm:text-[10px] text-purple-400 hover:text-purple-300 hover:bg-purple-900/20 px-1.5 sm:px-2 whitespace-nowrap w-full sm:w-auto justify-center"
-                        >
-                            <Merge className="w-3 h-3 mr-1" /> SELECT TO MERGE
-                        </Button>
-                    )}
-                    {savedRoutes.length > 0 && !isMultiSelect && (
-                        <Button
-                            onClick={() => {
-                                if (confirm("Delete ALL saved routes? This cannot be undone.")) {
-                                    onDeleteAllRoutes && onDeleteAllRoutes();
-                                }
-                            }}
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-[9px] sm:text-[10px] text-red-500 hover:text-red-400 hover:bg-red-900/20 px-1.5 sm:px-2 whitespace-nowrap w-full sm:w-auto justify-center"
-                        >
-                            <X className="w-3 h-3 mr-1" /> DELETE ALL
-                        </Button>
+                    ) : (
+                        <>
+                            {savedRoutes.length >= 2 && (
+                                <Button
+                                    onClick={() => setMergeMode(true)}
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-10 rounded-xl border border-[#2EEB57]/25 bg-[#2EEB57]/10 px-3 text-[10px] font-black text-[#39FF4A] hover:bg-[#2EEB57]/20"
+                                >
+                                    <Merge className="mr-1 h-3.5 w-3.5" /> SELECT TO MERGE
+                                </Button>
+                            )}
+                            {savedRoutes.length > 0 && (
+                                <Button
+                                    onClick={() => {
+                                        if (confirm("Delete ALL saved routes? This cannot be undone.")) {
+                                            onDeleteAllRoutes && onDeleteAllRoutes();
+                                        }
+                                    }}
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-10 rounded-xl border border-red-500/20 bg-red-500/10 px-3 text-[10px] font-black text-red-300 hover:bg-red-500/20 hover:text-red-200"
+                                >
+                                    <Trash2 className="mr-1 h-3.5 w-3.5" /> DELETE ALL
+                                </Button>
+                            )}
+                        </>
                     )}
                 </div>
             </div>
@@ -321,12 +332,12 @@ function RouteSection({ title, icon, routes, repColors, onSelectRoute, activeRou
     const [isExpanded, setIsExpanded] = useState(!collapsed);
 
     return (
-        <div className="space-y-1.5">
-            <button onClick={() => setIsExpanded(!isExpanded)} className="flex items-center gap-2 px-1 w-full text-left min-w-0">
+        <div className="space-y-2">
+            <button onClick={() => setIsExpanded(!isExpanded)} className="flex w-full min-w-0 items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2 text-left transition-colors hover:bg-white/[0.06]">
                 {icon}
-                <span className="text-xs font-bold text-gray-400 uppercase truncate min-w-0">{title}</span>
-                <Badge variant="outline" className="bg-white/10 text-white text-[9px] shrink-0">{routes.length}</Badge>
-                <ChevronRight className={`w-4 h-4 text-gray-400 ml-auto shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                <span className="min-w-0 truncate text-xs font-black uppercase tracking-[0.16em] text-white/70">{title}</span>
+                <Badge variant="outline" className="shrink-0 border-white/10 bg-white/10 text-[9px] text-white">{routes.length}</Badge>
+                <ChevronRight className={`ml-auto h-4 w-4 shrink-0 text-gray-400 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
             </button>
 
             {isExpanded && routes.map(route => (
@@ -384,7 +395,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
     const displayName = routeNumber && (!route.name || /^Route\s+\d+$/i.test(route.name)) ? `Route ${routeNumber}` : route.name;
 
     return (
-        <div className={`relative group flex items-start gap-1.5 sm:gap-2 min-w-0 max-w-full overflow-hidden ${isSelected ? 'ring-2 ring-purple-500 rounded-xl' : ''}`}>
+        <div className={`relative group flex items-start gap-1.5 sm:gap-2 min-w-0 max-w-full overflow-hidden ${isSelected ? 'ring-2 ring-[#39FF4A] rounded-2xl' : ''}`}>
             {/* Multi-select checkbox */}
             {isMultiSelect && (
                 <div className="flex items-center pt-2.5 pl-0.5 pr-0.5 shrink-0 z-10" onClick={e => e.stopPropagation()}>
@@ -401,10 +412,10 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                     onClick={isMultiSelect ? onToggleSelect : onSelect}
                     role="button"
                     tabIndex={0}
-                    className="w-full max-w-full p-2 sm:p-2.5 rounded-xl border transition-all text-left hover:border-gray-600 cursor-pointer overflow-hidden"
+                    className="w-full max-w-full overflow-hidden rounded-2xl border p-3 text-left shadow-[0_10px_28px_rgba(0,0,0,0.28)] transition-all hover:-translate-y-0.5 hover:border-[#2EEB57]/40 cursor-pointer"
                     style={{
-                        background: isActive ? `${BRAND.gold}15` : '#151515',
-                        borderColor: isActive ? BRAND.gold : '#222',
+                        background: isActive ? 'linear-gradient(135deg, rgba(46,235,87,0.16), rgba(21,21,21,0.98))' : 'linear-gradient(135deg, rgba(255,255,255,0.045), rgba(10,10,10,0.98))',
+                        borderColor: isActive ? '#2EEB57' : 'rgba(255,255,255,0.08)',
                         borderLeftWidth: '3px',
                         borderLeftColor: repColor
                     }}
@@ -473,15 +484,27 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                             <div className="h-full rounded-full transition-all" style={{ width: `${(knockStats.knocked / knockStats.total) * 100}%`, background: knockStats.knocked === knockStats.total ? '#22c55e' : '#FFD700' }} />
                         </div>
                     )}
-                    {!isMultiSelect && onSplit && (
-                        <button
-                            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSplit(); }}
-                            className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-[#2EEB57]/30 bg-[#2EEB57]/10 text-[10px] font-black text-[#39FF4A] hover:bg-[#2EEB57]/20 md:h-8"
-                            title="Split route into daily batches"
-                        >
-                            <Scissors className="h-4 w-4" /> SPLIT ROUTE
-                        </button>
+                    {!isMultiSelect && (
+                        <div className="mt-3 grid grid-cols-[1fr_auto] gap-2" onClick={(e) => e.stopPropagation()}>
+                            <button
+                                onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSelect(); }}
+                                className="flex h-11 items-center justify-center gap-2 rounded-xl bg-[#2EEB57] text-[11px] font-black text-black shadow-[0_8px_24px_rgba(46,235,87,0.24)] hover:bg-[#39FF4A] md:h-9"
+                                title="Start this route"
+                            >
+                                <Play className="h-4 w-4 fill-black" /> START ROUTE
+                            </button>
+                            {onSplit && (
+                                <button
+                                    onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onSplit(); }}
+                                    className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-[10px] font-black text-white/70 hover:bg-white/10 hover:text-white md:h-9"
+                                    title="Split route into daily batches"
+                                >
+                                    <Scissors className="h-4 w-4" /> SPLIT
+                                </button>
+                            )}
+                        </div>
                     )}
                 </div>
                 {!isMultiSelect && onDelete && (
