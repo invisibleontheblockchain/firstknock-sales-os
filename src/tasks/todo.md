@@ -1,6 +1,15 @@
 # Plan
 
-## Current Plan — Rep Property Add Details Visibility
+## Current Plan — Rep Property Sheet Visibility Polish
+- [x] Make the Add Details button label white and remove the helper text under it.
+- [x] Keep notes, phone, callback, and photo proof available inside the expanded dropdown.
+- [x] Lift the property sheet above the bottom navigation so both map buttons are visible.
+- [x] Run a production build and document the result.
+
+### Review — Rep Property Sheet Visibility Polish
+Updated the property detail sheet so Add Details is white with no helper text underneath, while the notes, phone, callback, and photo proof inputs remain inside the expanded dropdown. Lifted the sheet above the bottom navigation so the View on FirstKnock Map and external map buttons are no longer covered. Production build passes.
+
+## Previous Plan — Rep Property Add Details Visibility
 - [x] Locate the Add Details control in the property detail sheet and identify why it is hard to see.
 - [x] Move the Add Details control into the always-visible main sheet area without changing outcome logging behavior.
 - [x] Make the collapsed Add Details button high-contrast and clearly tappable.

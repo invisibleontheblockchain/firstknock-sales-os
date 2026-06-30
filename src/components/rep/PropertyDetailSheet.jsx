@@ -66,7 +66,7 @@ export default function PropertyDetailSheet({ property, logs, onLog, outcomeDisa
     };
 
     return (
-        <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-black/70 backdrop-blur-sm" onClick={onClose}>
+        <div className="fixed inset-x-0 top-0 bottom-20 z-[60] flex flex-col justify-end bg-black/70 backdrop-blur-sm" onClick={onClose}>
             <div 
                 className="bg-[#050505]/95 backdrop-blur-2xl rounded-t-[2rem] border-t border-white/10 max-h-[86vh] flex flex-col animate-in slide-in-from-bottom duration-300 shadow-[0_-24px_80px_rgba(0,0,0,0.75)]"
                 onClick={e => e.stopPropagation()}
@@ -146,11 +146,8 @@ export default function PropertyDetailSheet({ property, logs, onLog, outcomeDisa
                         onClick={() => setShowMore(!showMore)}
                         className="w-full flex items-center justify-between rounded-2xl border border-[#2EEB57]/35 bg-[#2EEB57]/10 px-4 py-3 text-left shadow-[0_10px_30px_rgba(46,235,87,0.10)] active:scale-[0.99] transition-all"
                     >
-                        <div>
-                            <span className="block text-[11px] font-black uppercase tracking-[0.18em] text-[#39FF4A]">Add Details</span>
-                            <span className="mt-0.5 block text-[10px] font-medium text-white/45">Notes, phone, callback time, or photo proof</span>
-                        </div>
-                        <ChevronUp className={`w-4 h-4 text-[#39FF4A] transition-transform ${showMore ? '' : 'rotate-180'}`} />
+                        <span className="block text-[11px] font-black uppercase tracking-[0.18em] text-white">Add Details</span>
+                        <ChevronUp className={`w-4 h-4 text-white transition-transform ${showMore ? '' : 'rotate-180'}`} />
                     </button>
 
                     {showMore && (
