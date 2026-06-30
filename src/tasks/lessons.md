@@ -96,6 +96,7 @@
 - Canvas territory subdivision should clip the drawn polygon by padded grid cells, not discard small edge overlaps; exact requested zone count should be achieved by grouping/splitting valid clipped cells while rendering all zone parts.
 - Canvas density controls must affect actual capacity math, not just labels: estimated doors and zone count should respond to density, while rep count acts as a minimum floor rather than the only zone-count driver.
 - Canvas mode bottom navigation must not expose Precision route concepts like saved route counts; keep it focused on Canvas Builder, Live View, and Deploy Campaign.
+- Builder mode top controls should not expose route-list status toggles like Active/Done; keep those controls inside the Routes/analysis workflow where they affect saved routes.
 - Canvas auto-density thresholds should be calibrated for field-sales territory sizes, not generic area labels; suburban residential polygons can be tens of square miles and still need suburban door-density math.
 - Manual Canvas boundary edits must persist back into the builder campaign state; otherwise the next builder render can overwrite map-only adjusted geometry.
 - For road-aware Canvas generation, verify the data-fetch path separately from the geometry algorithm; a correct DCEL/face generator still fails in production if OSM road data is never fetched into the live builder flow.
