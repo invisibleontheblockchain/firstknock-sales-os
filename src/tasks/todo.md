@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — Rerun Route Knock Tab Hydration
+## Current Plan — Map Active/Completed Route Toggle
+- [x] Trace the map toolbar toggle state and what it sends to the map layers.
+- [x] Trace how saved routes are grouped/rendered as active vs completed on the map.
+- [x] Fix the map filter so Active shows only non-completed routes and Completed shows completed routes.
+- [x] Ensure completed routes remain findable from the map after finishing a route.
+- [x] Verify with a production build and document results.
+
+### Review — Map Active/Completed Route Toggle
+The map status toggle now returns the map to route-overview mode, clears any selected active route, re-enables route pins/lines, and switches between Active and Completed overlays. Completed routes no longer get removed by the saved-route date filter, so finished routes remain findable directly from the map. Production build passes.
+
+## Previous Plan — Rerun Route Knock Tab Hydration
 - [x] Trace how selected queued routes are stored before opening Knock mode.
 - [x] Trace how RepHome loads a selected route and hydrates route homes.
 - [x] Fix rerun route hydration so all selected rerun homes appear in Knock mode.

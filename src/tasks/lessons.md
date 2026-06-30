@@ -1,5 +1,7 @@
 # Lessons
 
+- Map status toggles must clear selected active-route overlays and force route pins/lines visible; otherwise the toggle state changes but the map still appears unchanged.
+- Completed saved routes should not be filtered by active sold-date windows, or finished routes can disappear from the map even though they still exist in Route Command.
 - Rerun-created routes are their own workflow category, not just active/completed status rows; route lists should group them by rerun metadata before generic status sections.
 - In Knock mode, rerun routes must ignore pre-rerun visit history for current stop status; only logs created on/after the rerun or tied to that rerun route should count toward Done.
 - Completed-route reruns must preserve hydrated property objects after save, not just `property_hashes`; match selected hashes against `address_hash`, `legacy_hash`, and `id` or map-selected reruns can appear to click off/disappear.

@@ -815,8 +815,10 @@ export default function Home() {
                     .filter(Boolean);
                 let routeProps = allRouteProps;
 
-                // Apply soldDateFilter to saved routes if active
-                if (soldDateFilter !== null && soldDateFilter !== 'all') {
+                // Apply soldDateFilter to active saved routes only.
+                // Completed routes must remain findable on the Completed map view even if their homes
+                // fall outside the current date window or have non-sale completion outcomes.
+                if (route.status !== 'COMPLETED' && soldDateFilter !== null && soldDateFilter !== 'all') {
                     let cutoff;
                     const now = new Date();
                     if (soldDateFilter === 0.25 || soldDateFilter === '0.25') {
