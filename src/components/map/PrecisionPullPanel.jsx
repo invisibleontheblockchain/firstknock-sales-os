@@ -196,11 +196,6 @@ export default function PrecisionPullPanel({
                 Max Available
               </button>
             </div>
-            {propertyCountMode === 'max_available' && (
-              <p className="rounded-xl border border-[#2EEB57]/20 bg-[#2EEB57]/[0.06] px-3 py-2 text-[11px] leading-snug text-gray-300">
-                Pulls every matching home BatchData returns for this date range, up to <span className="font-bold text-white">{maxProperties}</span>. If fewer exist, routes generate from the actual found homes.
-              </p>
-            )}
           </div>
 
           <div className="space-y-2">
