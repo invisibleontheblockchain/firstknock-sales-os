@@ -43,6 +43,12 @@ function formatHistoryDate(value) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+function formatMaxSinceRange(value) {
+  const start = formatHistoryDate(value);
+  const end = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `${start} → ${end}`;
+}
+
 export default function PrecisionPullPanel({
   areaLabel,
   maxProperties,
@@ -60,10 +66,12 @@ export default function PrecisionPullPanel({
   onClearArea,
   user,
   selectedHistoryArea,
-  repullMode = 'same',
+  repullMode = 'fill_gaps',
   setRepullMode,
   forceFullRefresh,
-  setForceFullRefresh
+  setForceFullRefresh,
+  includeUnresolvedFollowUps = true,
+  setIncludeUnresolvedFollowUps
 }) {
   const navigate = useNavigate();
   const [hoveredLockedOption, setHoveredLockedOption] = useState(null);
@@ -87,12 +95,12 @@ export default function PrecisionPullPanel({
 
   return (
     <>
-    <div className="fixed inset-0 z-[2400] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-6">
-      <div className="w-full max-w-md rounded-3xl border border-[#2EEB57]/25 bg-[#070707] shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95">
-        <div className="flex items-start justify-between gap-3 p-5 border-b border-white/10">
+    <div className="fixed inset-0 z-[2400] flex items-start sm:items-center justify-center overflow-y-auto bg-black/70 backdrop-blur-sm px-3 pb-[calc(env(safe-area-inset-bottom)+5rem)] pt-[calc(env(safe-area-inset-top)+5rem)] sm:p-6">
+      <div className="flex max-h-[calc(100dvh-env(safe-area-inset-top)-6rem)] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-[#2EEB57]/25 bg-[#070707] shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95">
+        <div className="flex items-start justify-between gap-3 p-4 sm:p-5 border-b border-white/10 shrink-0">
           <div>
-            <p className="text-[10px] font-bold tracking-[0.25em] text-[#39FF4A] uppercase">Precision Generate</p>
-            <h2 className="text-xl font-extrabold text-white mt-1">Build your route</h2>
+            <p className="text-[10px] font-bold tracking-[0.25em] text-[#39FF4A] uppercase">{selectedHistoryArea ? 'Ghost Builder' : 'Precision Generate'}</p>
+            <h2 className="text-xl font-extrabold text-white mt-1">{selectedHistoryArea ? 'Refresh previous area' : 'Build your route'}</h2>
             <p className="text-xs text-gray-400 mt-1">Area selected: <span className="text-white font-bold">{areaLabel}</span></p>
           </div>
           <button onClick={onClose} className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white flex items-center justify-center">
@@ -100,32 +108,24 @@ export default function PrecisionPullPanel({
           </button>
         </div>
 
-        <div className="p-5 space-y-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 sm:space-y-5">
           {selectedHistoryArea && (
-            <div className="rounded-2xl border border-[#2EEB57]/25 bg-[#2EEB57]/[0.06] p-3 space-y-2">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#39FF4A]">Previous area</p>
-                  <p className="text-[11px] text-gray-400">Last used {formatHistoryDate(historyDate)}. Pick how to refresh it.</p>
-                </div>
+            <div className="rounded-2xl border border-[#2EEB57]/25 bg-[#2EEB57]/[0.06] p-3 space-y-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#39FF4A]">Previous area pull</p>
+                <p className="text-[11px] text-gray-400">Last pulled {formatHistoryDate(historyDate)}. Choose the ghost-mode refresh type.</p>
               </div>
-              <div className="grid grid-cols-3 gap-1.5">
+              <div className="grid grid-cols-2 gap-1.5">
                 <button
                   type="button"
                   onClick={() => {
-                    setRepullMode?.('same');
-                    setForceFullRefresh?.(false);
+                    setRepullMode?.('fill_gaps');
+                    setForceFullRefresh?.(true);
                     if (historyCriteria.requested_properties) setRequestedPropertyCount(historyCriteria.requested_properties);
                     if (historyCriteria.sold_months) setSoldMonths(historyCriteria.sold_months);
                     if (historyCriteria.min_price !== undefined && historyCriteria.min_price !== null) setMinHomeValue(historyCriteria.min_price);
                     if (historyCriteria.max_price !== undefined && historyCriteria.max_price !== null) setMaxHomeValue(historyCriteria.max_price || '');
                   }}
-                  className={`rounded-xl px-2 py-2 text-[9px] font-black transition-all ${repullMode === 'same' ? 'bg-[#2EEB57] text-black' : 'bg-white/5 text-gray-300 border border-white/10'}`}>
-                  Same Criteria
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setRepullMode?.('fill_gaps'); setForceFullRefresh?.(true); }}
                   className={`rounded-xl px-2 py-2 text-[9px] font-black transition-all ${repullMode === 'fill_gaps' || forceFullRefresh ? 'bg-[#2EEB57] text-black' : 'bg-white/5 text-gray-300 border border-white/10'}`}>
                   Fill Gaps
                 </button>
@@ -136,6 +136,21 @@ export default function PrecisionPullPanel({
                   Max Since Last
                 </button>
               </div>
+              {repullMode === 'max_since_last' ? (
+                <p className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-[11px] leading-snug text-gray-300">
+                  This sends BatchData a sold-date window from <span className="font-bold text-white">{formatMaxSinceRange(historyDate)}</span> for this same drawn area.
+                </p>
+              ) : (
+                <label className="flex items-start gap-2 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-[11px] leading-snug text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={includeUnresolvedFollowUps}
+                    onChange={(event) => setIncludeUnresolvedFollowUps?.(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-white/20 accent-[#2EEB57]"
+                  />
+                  <span>When routing this refreshed area, include unresolved follow-ups like Not Home, Callback, DM Not Home, or other non-final decisions.</span>
+                </label>
+              )}
             </div>
           )}
 
@@ -189,7 +204,13 @@ export default function PrecisionPullPanel({
           </div>
 
           <div className="space-y-2">
-            <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Homes sold in the last</label>
+            <label className="text-xs font-bold uppercase tracking-wider text-gray-400">{selectedHistoryArea && repullMode === 'max_since_last' ? 'BatchData sold-date window' : 'Homes sold in the last'}</label>
+            {selectedHistoryArea && repullMode === 'max_since_last' ? (
+              <div className="rounded-2xl border border-[#2EEB57]/25 bg-[#2EEB57]/[0.06] px-3 py-3 text-sm font-extrabold text-white">
+                {formatMaxSinceRange(historyDate)}
+                <p className="mt-1 text-[10px] font-medium text-gray-400">The 12-month selector is bypassed for Max Since Last.</p>
+              </div>
+            ) : (
             <div className="grid grid-cols-4 gap-1.5">
               {SOLD_OPTIONS.map(option => {
                 const isLocked = !isProPlan && option.lockedOnFree;
@@ -241,7 +262,8 @@ export default function PrecisionPullPanel({
                 );
               })}
             </div>
-            {!isProPlan && (
+            )}
+            {!isProPlan && !(selectedHistoryArea && repullMode === 'max_since_last') && (
               <p className="text-[10px] text-gray-600 leading-tight">
                 1 day, 2 day, 1 week, 2 week, and 1 month are available on Pro. Your current free range starts at 3 months.
               </p>
@@ -250,13 +272,13 @@ export default function PrecisionPullPanel({
 
         </div>
 
-        <div className="p-5 border-t border-white/10 bg-black">
+        <div className="shrink-0 p-4 sm:p-5 border-t border-white/10 bg-black">
           <Button
             disabled={generating}
             onClick={onGenerate}
             className="w-full h-12 rounded-xl bg-[#2EEB57] hover:bg-[#39FF4A] text-black font-extrabold tracking-wide"
           >
-            {generating ? 'GENERATING...' : <><Zap className="w-4 h-4 mr-2" /> GENERATE</>}
+            {generating ? 'GENERATING...' : <><Zap className="w-4 h-4 mr-2" /> {selectedHistoryArea ? 'REFRESH AREA' : 'GENERATE'}</>}
           </Button>
           <p className="text-[10px] text-gray-500 text-center mt-2">Pulls newly sold homes in your selected range, then prepares them for optimized routing.</p>
         </div>

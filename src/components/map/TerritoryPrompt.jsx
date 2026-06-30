@@ -53,7 +53,8 @@ export default function TerritoryPrompt({
   const [isDeltaPull, setIsDeltaPull] = useState(false);
   const [forceFullRefresh, setForceFullRefresh] = useState(false);
   const [selectedHistoryArea, setSelectedHistoryArea] = useState(null);
-  const [repullMode, setRepullMode] = useState('same');
+  const [repullMode, setRepullMode] = useState('fill_gaps');
+  const [includeUnresolvedFollowUps, setIncludeUnresolvedFollowUps] = useState(true);
   const [recoverableJob, setRecoverableJob] = useState(null);
   const [requestedPropertyCount, setRequestedPropertyCount] = useState(50);
   const [minHomeValue, setMinHomeValue] = useState(100000);
@@ -217,8 +218,9 @@ export default function TerritoryPrompt({
       setDraftPolygon([]);
       setDrawingMode(false);
       setSelectedHistoryArea(historyEntry);
-      setRepullMode('same');
-      setForceFullRefresh(false);
+      setRepullMode('fill_gaps');
+      setForceFullRefresh(true);
+      setIncludeUnresolvedFollowUps(true);
       if (criteria.requested_properties) setRequestedPropertyCount(criteria.requested_properties);
       if (criteria.sold_months) setFetchMonths(criteria.sold_months);
       if (criteria.min_price !== undefined && criteria.min_price !== null) setMinHomeValue(criteria.min_price);
@@ -521,8 +523,9 @@ export default function TerritoryPrompt({
       return;
     }
 
+    const historyCriteria = selectedHistoryArea?.criteria || {};
     const historyDate = selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date;
-    const effectiveSoldMonths = repullMode === 'max_since_last' ? monthsSinceHistoryPull(historyDate) : Number(fetchMonths || 12);
+    const effectiveSoldMonths = repullMode === 'max_since_last' ? monthsSinceHistoryPull(historyDate) : Number(historyCriteria.sold_months || fetchMonths || 12);
     const effectiveRequestedPropertyCount = repullMode === 'max_since_last' ? maxRequestedProperties : safeRequestedPropertyCount;
     const effectiveMinPrice = minHomeValue ? Number(minHomeValue) : null;
     const effectiveMaxPrice = maxHomeValue ? Number(maxHomeValue) : null;
@@ -553,6 +556,7 @@ export default function TerritoryPrompt({
         min_price: effectiveMinPrice,
         max_price: effectiveMaxPrice,
         force_full_refresh: repullMode === 'fill_gaps' || forceFullRefresh,
+        include_unresolved_followups: selectedHistoryArea ? includeUnresolvedFollowUps : false,
         repull_mode: selectedHistoryArea ? repullMode : 'new_area',
         previous_pull_date: selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date || null
       });
@@ -570,7 +574,8 @@ export default function TerritoryPrompt({
           sold_months: effectiveSoldMonths,
           min_price: effectiveMinPrice,
           max_price: effectiveMaxPrice,
-          force_full_refresh: repullMode === 'fill_gaps' || forceFullRefresh
+          force_full_refresh: repullMode === 'fill_gaps' || forceFullRefresh,
+          include_unresolved_followups: selectedHistoryArea ? includeUnresolvedFollowUps : false
         }
       });
       localStorage.setItem('fk_drawnPolygonQueried', 'true');
@@ -783,6 +788,8 @@ export default function TerritoryPrompt({
         setRepullMode={setRepullMode}
         forceFullRefresh={forceFullRefresh}
         setForceFullRefresh={setForceFullRefresh}
+        includeUnresolvedFollowUps={includeUnresolvedFollowUps}
+        setIncludeUnresolvedFollowUps={setIncludeUnresolvedFollowUps}
         onClearArea={() => {setDrawnPolygon(null);setDraftPolygon([]);setDrawingMode(false);setShowPrecisionPullPanel(false);setSelectedHistoryArea(null);}}
       />
       }

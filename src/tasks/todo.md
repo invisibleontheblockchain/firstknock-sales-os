@@ -1,6 +1,18 @@
 # Plan
 
-## Current Plan — Builder Previous-Area Ghosts + Repull Workflow
+## Current Plan — Ghost Builder Pull Screen Fit + Repull Criteria
+- [x] Fix the ghost-only Precision Pull screen so it is not clipped at the top and can scroll safely on mobile.
+- [x] Make ghost mode visually/verbally unique from normal new-area pulls.
+- [x] Remove the confusing Same Criteria option.
+- [x] Keep Fill Gaps as a full refresh of the previous area and add a clear unresolved-follow-up checkbox for not-home/callback/non-final decisions.
+- [x] Make Max Since Last send the real sold-date range from the previous pull date to today, not a 12-month-style pull.
+- [x] Verify the BatchData request preview/dry-run behavior and production build.
+- [x] Document results and update lessons for this correction.
+
+### Review — Ghost Builder Pull Screen Fit + Repull Criteria
+Updated the previous-area screen into a distinct Ghost Builder refresh panel with safe top/bottom spacing, a scrollable body, and a fixed action footer so it no longer clips under the app header. Removed Same Criteria. Fill Gaps now defaults for previous areas, keeps the prior criteria, sends the full-refresh flag, and includes a checkbox for unresolved follow-up doors. Max Since Last now bypasses the 12-month selector and sends a sold-date window from the last pull date to today; verified a June 17 previous pull produces BatchData `intel.lastSoldDate.minDate = 2026-06-17`. Verified the dry-run payload preserves `include_unresolved_followups: true` and production build passes.
+
+## Previous Plan — Builder Previous-Area Ghosts + Repull Workflow
 - [x] Review lessons before planning, especially route/polygon overlay visibility and repull/delta-pull rules.
 - [x] Inspect current previous-area storage/rendering and confirm the bug: `PolygonHistory` currently hides history in Builder and can show it outside Builder, which is opposite of the requested behavior.
 - [x] Add a Builder-only ghost toggle button to the map toolbar using a ghost-style icon/label; default off so previous areas do not clutter routes.

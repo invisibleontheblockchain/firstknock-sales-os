@@ -134,6 +134,9 @@ Deno.serve(async (req) => {
                 provider: 'batchdata',
                 fips_code: fips.fips_code,
                 requested_properties: requestedProperties,
+                sold_months: requestedSoldMonths,
+                previous_pull_date: body.previous_pull_date || null,
+                include_unresolved_followups: body.include_unresolved_followups === true,
                 area_sq_mi: Number(areaSqMi.toFixed(2))
             });
         }
@@ -168,6 +171,7 @@ Deno.serve(async (req) => {
                 repull_mode: body.repull_mode || 'new_area',
                 previous_pull_date: body.previous_pull_date || null,
                 force_full_refresh: body.force_full_refresh === true,
+                include_unresolved_followups: body.include_unresolved_followups === true,
                 filters: {
                     min_price: minPrice,
                     max_price: maxPrice
