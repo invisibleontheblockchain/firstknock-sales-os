@@ -140,6 +140,62 @@ export default function PropertyDetailSheet({ property, logs, onLog, outcomeDisa
                     )}
                 </div>
 
+                {/* Add Details */}
+                <div className="px-5 pb-3">
+                    <button 
+                        onClick={() => setShowMore(!showMore)}
+                        className="w-full flex items-center justify-between rounded-2xl border border-[#2EEB57]/35 bg-[#2EEB57]/10 px-4 py-3 text-left shadow-[0_10px_30px_rgba(46,235,87,0.10)] active:scale-[0.99] transition-all"
+                    >
+                        <div>
+                            <span className="block text-[11px] font-black uppercase tracking-[0.18em] text-[#39FF4A]">Add Details</span>
+                            <span className="mt-0.5 block text-[10px] font-medium text-white/45">Notes, phone, callback time, or photo proof</span>
+                        </div>
+                        <ChevronUp className={`w-4 h-4 text-[#39FF4A] transition-transform ${showMore ? '' : 'rotate-180'}`} />
+                    </button>
+
+                    {showMore && (
+                        <div className="mt-3 space-y-3 animate-in slide-in-from-top-2 duration-200">
+                            <textarea
+                                value={logNote}
+                                onChange={(e) => setLogNote(e.target.value)}
+                                placeholder="Quick note..."
+                                className="selectable-text w-full bg-black/70 border border-[#2EEB57]/25 rounded-xl p-3 text-sm text-white resize-none h-16 focus:border-[#39FF4A] focus:outline-none"
+                            />
+                            <div className="flex gap-2">
+                                <div className="flex-1">
+                                    <label className="text-[9px] font-bold text-white/45 uppercase mb-1 block">Phone</label>
+                                    <input
+                                        type="tel"
+                                        value={callbackPhone}
+                                        onChange={(e) => setCallbackPhone(e.target.value)}
+                                        placeholder="(555) 555-5555"
+                                        className="w-full bg-black/70 border border-white/10 rounded-xl p-2.5 text-sm text-white focus:border-[#2EEB57] focus:outline-none"
+                                    />
+                                </div>
+                                <div className="flex-1">
+                                    <label className="text-[9px] font-bold text-white/45 uppercase mb-1 block">Callback</label>
+                                    <input
+                                        type="time"
+                                        value={callbackTime}
+                                        onChange={(e) => setCallbackTime(e.target.value)}
+                                        className="w-full bg-black/70 border border-white/10 rounded-xl p-2.5 text-sm text-white focus:border-[#2EEB57] focus:outline-none [color-scheme:dark]"
+                                    />
+                                </div>
+                            </div>
+                            <div className="relative">
+                                <input type="file" accept="image/*" capture="environment" onChange={onPhotoUpload} className="hidden" id="camera-input-sheet" disabled={uploading} />
+                                <label 
+                                    htmlFor="camera-input-sheet"
+                                    className="flex items-center justify-center w-full h-10 rounded-xl font-bold text-[11px] cursor-pointer bg-white/5 text-white/70 border border-white/10 active:bg-white/10"
+                                >
+                                    {uploading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Camera className="w-3.5 h-3.5 mr-1.5" />}
+                                    {uploading ? 'Uploading...' : 'Photo Proof'}
+                                </label>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
                 {/* Navigate */}
                 <div className="px-5 pb-3 space-y-2">
                     <button
@@ -162,57 +218,6 @@ export default function PropertyDetailSheet({ property, logs, onLog, outcomeDisa
 
                 {/* Scrollable extras */}
                 <div className="flex-1 overflow-y-auto px-5 pb-8 space-y-3">
-                    {/* Add Details toggle */}
-                    <button 
-                        onClick={() => setShowMore(!showMore)}
-                        className="w-full flex items-center justify-between py-2 text-[10px] font-black text-white/35 uppercase tracking-[0.18em]"
-                    >
-                        <span>Add Details</span>
-                        <ChevronUp className={`w-3.5 h-3.5 transition-transform ${showMore ? '' : 'rotate-180'}`} />
-                    </button>
-
-                    {showMore && (
-                        <div className="space-y-3 animate-in slide-in-from-top-2 duration-200">
-                            <textarea
-                                value={logNote}
-                                onChange={(e) => setLogNote(e.target.value)}
-                                placeholder="Quick note..."
-                                className="selectable-text w-full bg-black/70 border border-white/10 rounded-xl p-3 text-sm text-white resize-none h-16 focus:border-[#2EEB57] focus:outline-none"
-                            />
-                            <div className="flex gap-2">
-                                <div className="flex-1">
-                                    <label className="text-[9px] font-bold text-gray-700 uppercase mb-1 block">Phone</label>
-                                    <input
-                                        type="tel"
-                                        value={callbackPhone}
-                                        onChange={(e) => setCallbackPhone(e.target.value)}
-                                        placeholder="(555) 555-5555"
-                                        className="w-full bg-black/70 border border-white/10 rounded-xl p-2.5 text-sm text-white focus:border-[#2EEB57] focus:outline-none"
-                                    />
-                                </div>
-                                <div className="flex-1">
-                                    <label className="text-[9px] font-bold text-gray-700 uppercase mb-1 block">Callback</label>
-                                    <input
-                                        type="time"
-                                        value={callbackTime}
-                                        onChange={(e) => setCallbackTime(e.target.value)}
-                                        className="w-full bg-black/70 border border-white/10 rounded-xl p-2.5 text-sm text-white focus:border-[#2EEB57] focus:outline-none"
-                                    />
-                                </div>
-                            </div>
-                            <div className="relative">
-                                <input type="file" accept="image/*" capture="environment" onChange={onPhotoUpload} className="hidden" id="camera-input-sheet" disabled={uploading} />
-                                <label 
-                                    htmlFor="camera-input-sheet"
-                                    className="flex items-center justify-center w-full h-10 rounded-xl font-bold text-[11px] cursor-pointer bg-white/5 text-gray-400 active:bg-white/10"
-                                >
-                                    {uploading ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Camera className="w-3.5 h-3.5 mr-1.5" />}
-                                    {uploading ? 'Uploading...' : 'Photo Proof'}
-                                </label>
-                            </div>
-                        </div>
-                    )}
-
                     {/* Property intel chips */}
                     {(property.price || property.sqft || property.year_built) && (
                         <div className="flex gap-2 flex-wrap">

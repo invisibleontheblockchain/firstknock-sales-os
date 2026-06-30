@@ -1,6 +1,16 @@
 # Plan
 
-## Current Plan — Map Toolbar Dropdown Polish
+## Current Plan — Rep Property Add Details Visibility
+- [x] Locate the Add Details control in the property detail sheet and identify why it is hard to see.
+- [x] Move the Add Details control into the always-visible main sheet area without changing outcome logging behavior.
+- [x] Make the collapsed Add Details button high-contrast and clearly tappable.
+- [x] Keep the notes, phone, callback, and photo proof inputs connected to the existing log flow.
+- [x] Run a production build and document the result.
+
+### Review — Rep Property Add Details Visibility
+The Add Details control was present but buried in the lower scrollable extras area with very low contrast. Moved it directly under Log Outcome in the main property sheet, restyled it as a high-contrast green action card, and kept the existing note, phone, callback time, and photo proof fields wired to the same outcome logging flow. Production build passes.
+
+## Previous Plan — Map Toolbar Dropdown Polish
 - [x] Inspect the selected active-route dropdown controls and keep behavior unchanged.
 - [x] Replace the white/native-looking dropdown styling with dark FirstKnock glass styling.
 - [x] Ensure opened menu options use dark backgrounds where browser styling allows.
