@@ -7,6 +7,7 @@ import { createPageUrl } from '@/utils';
 import PrecisionProUpgradeSheet from '@/components/map/PrecisionProUpgradeSheet';
 
 const SOLD_OPTIONS = [
+  { value: 2 / 30, label: '2 day', lockedOnFree: true },
   { value: 0.25, label: '1 wk', lockedOnFree: true },
   { value: 0.5, label: '2 wk', lockedOnFree: true },
   { value: 1, label: '1 mo', lockedOnFree: true },
@@ -59,7 +60,7 @@ export default function PrecisionPullPanel({
   const goToUpgrade = () => navigate(createPageUrl('Billing') + '?plan=precision');
 
   useEffect(() => {
-    if (!isProPlan && [0.25, 0.5, 1].includes(Number(soldMonths))) {
+    if (!isProPlan && [2 / 30, 0.25, 0.5, 1].includes(Number(soldMonths))) {
       setSoldMonths(3);
       if (!hasShownFallbackToast.current) {
         hasShownFallbackToast.current = true;
