@@ -635,7 +635,7 @@ export default function MapToolbar({
 
             {/* Bottom Action Bar */}
             <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 z-[1000] pointer-events-none flex justify-center px-2">
-                <div className={`pointer-events-auto flex items-center justify-center gap-2 bg-black/80 backdrop-blur-lg p-1.5 border border-white/10 shadow-2xl ${routeMode === 'canvas' && mode === 'generate' && !activeRoute ? 'rounded-2xl sm:rounded-full max-w-[calc(100vw-1rem)] overflow-x-auto' : 'rounded-full'}`}>
+                <div className={`pointer-events-auto flex items-center justify-center gap-2 ${routeMode === 'canvas' && mode === 'generate' && !activeRoute ? 'max-w-[calc(100vw-1rem)] overflow-x-auto' : ''}`}>
                     {routeMode === 'canvas' && mode === 'generate' && !activeRoute ?
           <>
                             <Button
