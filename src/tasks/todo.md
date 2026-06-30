@@ -1,6 +1,17 @@
 # Plan
 
-## Current Plan — Map Active/Completed Route Toggle
+## Current Plan — Premium Glass Property Cards
+- [x] Generate a subtle dark glass background asset for the card surface.
+- [x] Update only the Property Card visual structure/styles to match the Premium Glass mockup.
+- [x] Preserve existing card selection and navigation actions.
+- [x] Build-check the app.
+- [x] Capture the RepHome preview and compare spacing, color, hierarchy, and card proportions against the mockup.
+- [x] Document the result.
+
+### Review — Premium Glass Property Cards
+Property cards now use a Premium Glass layout with a rounded green-glow shell, dark generated glass background, large stop number, top-right completed check state, stacked address, two-column intel fields, text navigation shortcut, and sold/status footer. Existing card select and navigation actions were preserved. Production build passes. Preview capture succeeded, but the captured app state was the logged-out screen, so visual validation inside RepHome could not be completed from the capture tool; the logged-in live preview should show the updated card immediately.
+
+## Previous Plan — Map Active/Completed Route Toggle
 - [x] Trace the map toolbar toggle state and what it sends to the map layers.
 - [x] Trace how saved routes are grouped/rendered as active vs completed on the map.
 - [x] Fix the map filter so Active shows only non-completed routes and Completed shows completed routes.
