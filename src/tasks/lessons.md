@@ -1,6 +1,7 @@
 # Lessons
 
 - When the user selects a specific UI atom and asks for visual polish, scope the change to that selected atom unless they explicitly ask for the surrounding card/section.
+- If a user asks to make a polished UI element simpler after an iteration, remove decorative layers first and keep one strong shape, one accent color, and minimal shadow.
 - Map status toggles must clear selected active-route overlays and force route pins/lines visible; otherwise the toggle state changes but the map still appears unchanged.
 - Completed saved routes should not be filtered by active sold-date windows, or finished routes can disappear from the map even though they still exist in Route Command.
 - Rerun-created routes are their own workflow category, not just active/completed status rows; route lists should group them by rerun metadata before generic status sections.

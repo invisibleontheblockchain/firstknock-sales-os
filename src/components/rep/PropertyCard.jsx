@@ -56,21 +56,15 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
             <div className="flex items-center gap-2.5">
                 {/* Number / Check */}
                 <div
-                    className="relative h-9 w-9 overflow-hidden rounded-2xl flex items-center justify-center text-[12px] font-black shrink-0 transition-all duration-300"
+                    className="h-8 w-8 rounded-xl flex items-center justify-center text-[11px] font-black shrink-0 transition-all duration-300"
                     style={{
-                        background: isDone
-                            ? `linear-gradient(145deg, ${statusColor}24, rgba(255,255,255,0.035))`
-                            : 'linear-gradient(145deg, rgba(255,255,255,0.98), rgba(216,255,224,0.92) 42%, rgba(46,235,87,0.72))',
-                        color: isDone ? statusColor : '#020403',
-                        border: isDone ? `1px solid ${statusColor}3d` : '1px solid rgba(255,255,255,0.92)',
-                        boxShadow: isDone
-                            ? `inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 22px ${statusColor}10`
-                            : 'inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -10px 18px rgba(46,235,87,0.22), 0 10px 28px rgba(46,235,87,0.20)'
+                        background: isDone ? `${statusColor}14` : 'rgba(46,235,87,0.92)',
+                        color: isDone ? statusColor : '#000000',
+                        border: isDone ? `1px solid ${statusColor}2e` : '1px solid rgba(57,255,74,0.55)',
+                        boxShadow: isDone ? 'none' : '0 6px 18px rgba(46,235,87,0.18)'
                     }}
                 >
-                    <span className="absolute inset-x-1 top-1 h-px rounded-full bg-white/70" />
-                    <span className="absolute -right-2 -top-2 h-5 w-5 rounded-full bg-white/45 blur-md" />
-                    <span className="relative z-10 drop-shadow-sm">{isDone ? <Check className="w-3.5 h-3.5" /> : index + 1}</span>
+                    {isDone ? <Check className="w-3.5 h-3.5" /> : index + 1}
                 </div>
 
                 {/* Address */}
