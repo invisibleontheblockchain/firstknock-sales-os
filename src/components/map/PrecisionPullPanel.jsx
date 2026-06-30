@@ -193,7 +193,6 @@ export default function PrecisionPullPanel({
             )}
           </div>
 
-          <button onClick={onClearArea} className="text-[11px] font-bold text-red-300 hover:text-red-200">Clear drawn area</button>
         </div>
 
         <div className="p-5 border-t border-white/10 bg-black">
