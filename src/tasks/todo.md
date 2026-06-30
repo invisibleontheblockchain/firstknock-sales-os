@@ -1,3 +1,15 @@
+## Plan — Verify BatchData Sold-Date Payload
+- [x] Find the latest matching Anderson-area Precision job/polygon.
+- [x] Generate the outbound BatchData request preview from the live backend builder.
+- [x] Confirm it uses `searchCriteria.intel.lastSoldDate.minDate` with the exact selected 1-week window.
+- [x] Confirm property caps and confirmed-sale post-filtering remain in place.
+- [x] Document the result and only patch if the live payload differs.
+
+### Review — Verify BatchData Sold-Date Payload
+The matching Anderson-area jobs are `6a4454d77e067b5d1cd2559b` and `6a4454bae2c208ca0c269325`, both 301.35 sq mi, `sold_months=0.25`, requested count 2. The live backend request preview sends `searchCriteria.intel.lastSoldDate.minDate = "2026-06-23"` under `searchCriteria`, with polygon points under `address.geoLocationPolygon.geoPoints`, `options.take = 100`, and no dataset scoping. Strict mode adds residential land use and min value; broad mode removes those extra filters but keeps the same `intel.lastSoldDate` filter. The completed job logs show BatchData returned zero raw rows for both strict and broad modes, so there was no app-side off-market rejection on these two jobs. A live no-write refetch against the same polygon timed out, so I stopped that path rather than retrying an expensive duplicate provider call. No code patch was needed because the live payload already matches BatchData's recommended `intel.lastSoldDate.minDate` structure.
+
+---
+
 ## Plan — Remove Precision Square-Mile Cap
 - [x] Remove backend square-mile and span rejection from live Precision pull starts.
 - [x] Remove old area-limit metadata from Precision previews so only property caps remain.

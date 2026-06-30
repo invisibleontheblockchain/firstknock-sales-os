@@ -150,3 +150,4 @@
 - For paid-data pulls, requested property count must mean routeable homes requested, not raw provider rows sampled; keep paging until routeable records are found or the provider/cap is exhausted.
 - When the product decision is “no square-mile cap,” do not add area/span gates to paid-data starts; enforce only the property-count cap and make preview metadata reflect unlimited area.
 - When a user challenges an implausible zero-result claim, do not defend the result. Inspect the real latest job, prove counts at each stage, and verify route creation from the actual returned candidates before answering.
+- For provider payload disputes, use a cheap request-preview and completed job logs before running another live provider fetch; if a no-write fetch times out, stop and rely on already-recorded job attempts instead of retrying the expensive call.
