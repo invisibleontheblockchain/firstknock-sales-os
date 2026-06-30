@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { base44 } from '@/api/base44Client';
-import { Map as MapIcon, Pencil, X, Trash2, Loader2, List, Zap, Lock, ArrowRight, Check } from 'lucide-react';
+import { Map as MapIcon, Pencil, X, Trash2, Loader2, List, Zap, Lock, ArrowRight, Check, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
@@ -785,9 +785,9 @@ export default function TerritoryPrompt({
                         <Button
             disabled={paidPullStarting || pulling}
             onClick={() => setShowPrecisionPullPanel(true)}
-            className="text-black text-[10px] h-9 sm:h-6 px-3 py-0 rounded-md font-bold tracking-wide bg-[#2EEB57] hover:bg-[#39FF4A] shadow-[0_0_15px_rgba(46,235,87,0.35)] flex-1 sm:flex-none min-w-0">
+            className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-[#2EEB57] px-4 text-[11px] font-black tracking-wide text-black shadow-[0_8px_24px_rgba(46,235,87,0.24)] hover:bg-[#39FF4A] sm:h-9 sm:flex-none min-w-0">
             
-                            Pull Data
+                            <Play className="h-4 w-4 fill-black" /> PULL DATA
                         </Button>
                     </div>
                     <button
