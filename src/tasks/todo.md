@@ -1,3 +1,14 @@
+## Plan — Keep Visible Last-Week Filter Strict
+- [x] Separate provider-safe acquisition window from user-facing route/display filter.
+- [x] Patch the final local route filter so “last week” means exactly 7 days on screen.
+- [x] Verify Jun 17, 2026 is excluded from a Jun 30, 2026 one-week local filter while the broader provider pull remains unchanged.
+- [x] Run build verification and record the correction.
+
+### Review — Keep Visible Last-Week Filter Strict
+The broader 14-day window belongs only to provider acquisition so BatchData can return deed-lagged recent-sale evidence. The user-facing route/display filter now uses the exact selected range, so “last week” is strictly 7 days. Verification with a Jun 30, 2026 clock excludes Jun 17 and Jun 18 sold dates, while Jun 24/Jun 29 dates pass. The no-match message now says the sampled dates are outside the selected range instead of implying sold dates are missing. `npm run build` passes.
+
+---
+
 ## Plan — Prove Why 890 Sq Mi Precision Pull Returns Too Few Homes
 - [x] Inspect the latest Precision pull settings, provider/job counts, and active candidate counts.
 - [x] Trace the exact filters in order: sold-date window, home-value minimum, provider cap, area geometry, and final local route filters.

@@ -5,8 +5,6 @@
 import { subDays } from 'date-fns';
 import { isPointInPolygon } from './territoryLogic';
 
-const MIN_RECENT_PULL_LOOKBACK_DAYS = 14;
-
 function requestedSoldWindowDays(soldMonths) {
     const months = Number(soldMonths || 1);
     if (Math.abs(months - (1 / 30)) < 0.0001) return 1;
@@ -21,8 +19,15 @@ function requestedSoldWindowDays(soldMonths) {
     return Math.max(1, Math.round(months * 30));
 }
 
-function effectiveSoldWindowDays(soldMonths) {
-    return Math.max(requestedSoldWindowDays(soldMonths), MIN_RECENT_PULL_LOOKBACK_DAYS);
+function soldDateFilterLabel(soldMonths) {
+    const days = requestedSoldWindowDays(soldMonths);
+    if (days === 1) return 'last 1 day';
+    if (days === 2) return 'last 2 days';
+    if (days === 7) return 'last 7 days';
+    if (days === 14) return 'last 14 days';
+    if (days < 30) return `last ${days} days`;
+    const months = Number(soldMonths || 1);
+    return `last ${months} month${months === 1 ? '' : 's'}`;
 }
 
 /**
@@ -81,7 +86,10 @@ export function applyRouteFilters({
     // --- Sold Date Filter (THE BIG ONE — often culls 99% of properties) ---
     const beforeSoldDate = workingSet.length;
     if (soldDateFilter !== null && soldDateFilter !== 'all') {
-        const cutoff = subDays(new Date(), effectiveSoldWindowDays(soldDateFilter));
+        // User-facing route filters stay strict to the selected range.
+        // The backend may pull a wider provider-safe window, but older buffer records
+        // should not appear when the user selected “last week.”
+        const cutoff = subDays(new Date(), requestedSoldWindowDays(soldDateFilter));
         cutoff.setHours(0, 0, 0, 0);
 
         workingSet = workingSet.filter(p => {
@@ -106,8 +114,8 @@ export function applyRouteFilters({
         const examples = sample.filter(p => p.sold_date).slice(0, 5).map(p => p.sold_date);
         return {
             workingSet: [], stages, frozenSet,
-            error: `No homes sold in last ${soldDateFilter} months. Of ${sample.length} sampled, only ${withSoldDate} have a sold_date. Try increasing the filter or pulling fresh data.`,
-            diagnostic: { withSoldDateInSample: withSoldDate, sampleSize: sample.length, exampleDates: examples }
+            error: `No homes match ${soldDateFilterLabel(soldDateFilter)}. Of ${sample.length} sampled, ${withSoldDate} have sold dates, but none are inside that selected range. Example sold dates: ${examples.join(', ') || 'none'}.`,
+            diagnostic: { selectedRange: soldDateFilterLabel(soldDateFilter), withSoldDateInSample: withSoldDate, sampleSize: sample.length, exampleDates: examples }
         };
     }
 
