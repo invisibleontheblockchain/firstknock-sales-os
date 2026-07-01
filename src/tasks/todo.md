@@ -1,3 +1,14 @@
+## Plan — Compact Header Logo Correction
+- [x] Remove the oversized logo treatment from the top header.
+- [x] Make the header height match the compact bottom-bar scale.
+- [x] Avoid using any logo image with an internal black rectangle by rendering the FirstKnock wordmark directly on the black header.
+- [x] Keep the change design-only with navigation/actions untouched.
+
+### Review — Compact Header Logo Correction
+The header is compact again with a 64px row height, matching the bottom navigation scale. The internal-background logo image was removed and replaced with a clean FirstKnock text wordmark directly on the black header, so there is no image box/seam to fight.
+
+---
+
 ## Plan — Enlarge Header Logo
 - [x] Remove the separate FirstKnock text label from the selected header logo area.
 - [x] Increase the black-background logo to roughly triple its previous size.
