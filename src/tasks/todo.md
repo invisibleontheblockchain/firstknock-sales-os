@@ -1,3 +1,13 @@
+## Plan — Scale Header Logo Down Again
+- [x] Keep the approved header bar unchanged.
+- [x] Reduce only the visible logo size by another roughly 20%.
+- [x] Preserve the transparent-padding crop so the mark remains centered.
+
+### Review — Scale Header Logo Down Again
+The header dimensions and actions are unchanged. The final transparent logo is now displayed in a smaller cropped frame, reducing the visible wordmark by about another 20% while keeping it centered.
+
+---
+
 ## Plan — Use Final Transparent Logo
 - [x] Keep the approved compact header bar unchanged.
 - [x] Replace the header image with the newly uploaded transparent logo.
