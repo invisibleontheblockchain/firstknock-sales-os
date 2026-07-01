@@ -1,3 +1,14 @@
+## Plan — Cross-Reference BatchData June 23 Reply
+- [x] Compare BatchData's suggested `intel.lastSoldDate.minDate` payload against our current production polygon payload.
+- [x] Determine whether the current failure looks like ignored filtering, provider zero-results, stale/off-market semantics, or app-side filtering.
+- [x] Update the BatchData escalation packet with a sharper follow-up referencing their June 23 answer.
+- [x] Record the result.
+
+### Review — Cross-Reference BatchData June 23 Reply
+BatchData's reply confirms the `searchCriteria.intel.lastSoldDate.minDate` path and date-only format, but only for city/state geography. Our current production request uses the same intel path with polygon geometry. The latest no-write probe proves the polygon can return inventory without the date filter, while the same polygon plus `minDate=2026-06-24` returns zero raw records before app-side filtering. Updated `src/tasks/batchdata-escalation.md` with a cross-reference section and a revised follow-up asking BatchData to confirm polygon support, field semantics, large-polygon behavior, provider lag, and the exact listing-status filter for MLS-confirmed sold listings.
+
+---
+
 ## Plan — BatchData Last-Week Escalation Packet
 - [x] Identify the exact latest failing last-week large-area FetchJob and its selected area/request settings.
 - [x] Extract the exact BatchData request payload shape from the live request-preview builder.

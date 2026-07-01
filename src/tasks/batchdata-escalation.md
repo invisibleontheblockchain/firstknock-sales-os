@@ -3,15 +3,64 @@
 ## Subject
 Urgent: Polygon + `intel.lastSoldDate.minDate` returns zero recent-sale records while same polygon without date returns records
 
-## Email Draft
+## Update — Cross-Reference With BatchData's June 23 Reply
+
+BatchData's June 23 reply confirmed this example shape:
+
+```json
+{
+  "searchCriteria": {
+    "address": {
+      "city": { "equals": "Anderson" },
+      "state": { "equals": "SC" }
+    },
+    "intel": {
+      "lastSoldDate": {
+        "minDate": "2026-06-16"
+      }
+    }
+  },
+  "options": {
+    "take": 10
+  }
+}
+```
+
+### What matches our current request
+- We are using the same confirmed namespace/path: `searchCriteria.intel.lastSoldDate.minDate`.
+- We are using the same date-only format: `YYYY-MM-DD`.
+- We are using the same Search API endpoint style.
+- We are keeping the request broad in production: no dataset scoping, no listing-status gate, no local sale-confirmation gate before ingestion.
+
+### What differs from their example
+- Their example scopes geography by `address.city.equals` + `address.state.equals`.
+- Our production request scopes geography by `address.geoLocationPolygon.geoPoints`.
+- Their example does not answer whether `intel.lastSoldDate.minDate` behaves identically when combined with polygon geometry.
+- Their example does not answer whether `intel.lastSoldDate` means deed transfer, MLS closed sale, owner change, or a composite field.
+- Their example does not answer how to require listing status/category `sold` at query time.
+
+### Current diagnosis after cross-reference
+This no longer looks like our app silently ignoring `intel.lastSoldDate.minDate` on the latest job. The latest no-write probe shows:
+
+- Same polygon + `intel.lastSoldDate.minDate = "2026-06-24"`: `0` raw records.
+- Same polygon with `intel.lastSoldDate` removed: `1` raw record returned, with `intel.lastSoldDate = 2024-05-24T00:00:00.000Z`.
+
+That proves the polygon can return inventory and that the date filter is affecting the result. The unresolved question is now provider-side: whether BatchData has any records in that polygon with `intel.lastSoldDate >= 2026-06-24`, whether large polygon + intel filtering has limitations, and whether `intel.lastSoldDate` is the right field for confirmed recent sales versus historical owner-transfer data.
+
+### Important product semantics
+A Redfin/Zillow page showing `Off Market` does not always disprove that a sale/transfer happened. After a property closes, consumer portals often show the listing as off-market. If our product needs only MLS-confirmed closed-sale listings, not deed/owner-transfer history, then `intel.lastSoldDate` may be too broad by itself and we need BatchData's exact listing-status filter path.
+
+## Revised Follow-Up Email Draft
 
 Hi BatchData team,
 
-We need help diagnosing a production issue with BatchData property search for recent owner-change / last-sold records.
+Thank you for your June 23 reply confirming the `searchCriteria.intel.lastSoldDate.minDate` structure using a city/state example.
 
-We are sending a polygon search over a large North Carolina territory with `searchCriteria.intel.lastSoldDate.minDate = "2026-06-24"` for a selected last-week window. BatchData returns zero properties for both our broad exact-date request and a stricter residential/value version of the same request. However, when we send the same polygon request with the `intel.lastSoldDate` filter removed, BatchData returns properties, which confirms the polygon geometry itself is accepted and can return inventory.
+We implemented the same `intel.lastSoldDate.minDate` path, but our production geography is a drawn polygon rather than city/state. We need help confirming whether this same field is fully supported with `address.geoLocationPolygon.geoPoints`, and whether it represents deed transfer, MLS closed sale, owner change, or a composite value.
 
-Can you verify whether `intel.lastSoldDate.minDate` is the correct field/path for identifying homes sold or transferred since 2026-06-24 in this polygon, and whether there is expected data lag or coverage limitation for this geography/window?
+For the latest production test, we sent a large North Carolina polygon with `searchCriteria.intel.lastSoldDate.minDate = "2026-06-24"` for a selected last-week window. BatchData returned zero properties for both our broad exact-date request and a stricter residential/value version. When we send the same polygon request with the `intel.lastSoldDate` filter removed, BatchData returns properties, including a stale sample with `intel.lastSoldDate = "2024-05-24T00:00:00.000Z"`. That confirms the polygon can return inventory and the issue is specific to the recent-sale date constraint or provider coverage/lag.
+
+Can you verify whether `intel.lastSoldDate.minDate` is expected to return any homes sold/transferred since 2026-06-24 in this polygon, whether large polygon + intel filtering has limitations, and whether there is a more precise query path for MLS-confirmed closed sales?
 
 ### What we expected
 At least some owner-change / last-sold property records inside a 24,360.22 sq mi North Carolina polygon for the last-week window.
