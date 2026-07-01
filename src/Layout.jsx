@@ -139,7 +139,7 @@ function LayoutInner({ children }) {
   if (!user.app_role && !isRoleSelectPage) {window.location.href = createPageUrl('RoleSelect');return null;}
 
   return (
-    <div className="fixed top-0 left-0 right-0 flex flex-col font-sans overflow-hidden bg-[#000000] text-[#FFFFFF]" style={{ height: 'var(--fk-app-height, 100dvh)' }}>
+    <div className="fixed inset-0 flex flex-col font-sans overflow-hidden bg-[#000000] text-[#FFFFFF]">
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
                 
@@ -257,7 +257,7 @@ function LayoutInner({ children }) {
 
             {/* Bottom Nav */}
             {!isRoleSelectPage &&
-      <nav className="bg-black border-t border-slate-800 z-20 shrink-0">
+      <nav className="bg-black border-t border-slate-800 z-20 shrink-0 pb-[env(safe-area-inset-bottom)]">
                 {user.app_role === 'rep' ?
         <div className="flex justify-around items-center h-16 max-w-full mx-auto">
                         <NavItem icon={Map} label="My Route" to={createPageUrl('RepHome')} active={isPageActive('RepHome')} accent={accent} />
