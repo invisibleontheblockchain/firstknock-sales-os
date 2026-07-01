@@ -1,3 +1,14 @@
+## Plan — Check 1–2 Day Sold Records
+- [x] Identify the recent BatchData jobs and their imported property rows.
+- [x] Count returned homes with sale evidence within the last 1 day and within the last 2 days.
+- [x] Distinguish provider-returned rows from routeable/active rows so we know whether zero is provider coverage or our filtering.
+- [x] Report the result clearly.
+
+### Review — Check 1–2 Day Sold Records
+Checked the latest baysecurity BatchData Precision jobs plus the stored rows updated since `2026-06-30T23:00:00Z`. The corrected Neon diagnostic checked 16 recently updated workspace rows and found `sold_1_day_count=0` using cutoff `2026-06-29`, and `sold_2_day_count=0` using cutoff `2026-06-28`. The sale dates that actually came back were `2026-06-24`, `2026-06-23`, `2026-06-18`, `2026-06-17`, and `2026-06-16`. This means the recent pulls did not receive any homes sold in the last 1–2 days; the available provider evidence is older, with the freshest stored row dated Jun 24.
+
+---
+
 ## Plan — Diagnose East-Coast Zero Precision Pull
 - [x] Inspect the latest 155k sq mi FetchJob and its processor logs.
 - [x] Add a no-write raw BatchData probe that fetches one small page and reports raw rows, mapped rows, active rows, and sale/status fields.
