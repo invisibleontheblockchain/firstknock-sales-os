@@ -193,7 +193,9 @@ function LayoutInner({ children }) {
       <header className={`px-4 pt-[env(safe-area-inset-top)] pb-0 z-20 shadow-md bg-black ${isPageActive('RepHome') ? 'border-b border-transparent' : 'border-b border-slate-800'}`}>
                 <div className="flex items-center w-full h-16 pt-0">
                     <Link to="/" className="flex items-center mr-auto group shrink-0 text-white">
-                        <img src="https://media.base44.com/images/public/695eb764b077190880be21de/b20476661_transparentfirstknock.png" alt="FirstKnock" className="h-12 w-auto max-w-[220px] object-contain" />
+                        <span className="relative block h-12 w-[190px] overflow-hidden">
+                            <img src="https://media.base44.com/images/public/695eb764b077190880be21de/80866e548_ChatGPTImageJul1202611_48_19AM.png" alt="FirstKnock" className="h-[127px] w-auto max-w-none -translate-y-[34px] object-contain" />
+                        </span>
                     </Link>
 
                     {/* Desktop */}

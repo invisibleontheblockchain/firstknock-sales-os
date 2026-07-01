@@ -1,3 +1,14 @@
+## Plan — Use Final Transparent Logo
+- [x] Keep the approved compact header bar unchanged.
+- [x] Replace the header image with the newly uploaded transparent logo.
+- [x] Reduce the displayed logo size by roughly 20% from the previous header sizing.
+- [x] Verify the header source points to the final logo URL.
+
+### Review — Use Final Transparent Logo
+The header still uses the compact 64px bar. The brand image now points to the new transparent logo asset; its transparent padding is cropped within a fixed header-safe frame, leaving the visible wordmark about 20% smaller than the previous 220px display.
+
+---
+
 ## Plan — Use Transparent Header Logo
 - [x] Keep the compact header height unchanged.
 - [x] Replace the temporary text wordmark with the uploaded transparent FirstKnock logo.
