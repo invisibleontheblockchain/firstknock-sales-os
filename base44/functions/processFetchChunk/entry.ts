@@ -141,8 +141,21 @@ function soldWindowDays(soldMonths) {
     return requestedSoldWindowDays(soldMonths);
 }
 
-function isoDateDaysAgo(days) {
-    const date = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+function jobReferenceTimeMs(job) {
+    const value = job?.created_date || job?.started_at;
+    const time = value ? new Date(value).getTime() : NaN;
+    return Number.isFinite(time) ? time : Date.now();
+}
+
+function isoDateDaysAgo(days, referenceMs = Date.now()) {
+    const date = new Date(referenceMs - days * 24 * 60 * 60 * 1000);
+    return date.toISOString().slice(0, 10);
+}
+
+function isoDateOnly(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
     return date.toISOString().slice(0, 10);
 }
 
@@ -156,7 +169,7 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
     if (maxPrice) estimatedValue.max = maxPrice;
 
     // Always compute the sold window date filter — applied to ALL modes
-    const soldMinDate = isoDateDaysAgo(soldWindowDays(job.sold_months || 12));
+    const soldMinDate = isoDateDaysAgo(soldWindowDays(job.sold_months || 12), jobReferenceTimeMs(job));
 
     const options = {
         skip,
@@ -248,7 +261,9 @@ function mapBatchDataProperty(record, job) {
     );
     const saleDateMs = saleDate ? new Date(saleDate).getTime() : 0;
     const hasValidSaleDate = saleDateMs > 0 && !Number.isNaN(saleDateMs);
-    const cutoffMs = Date.now() - soldWindowDays(job.sold_months || 12) * 24 * 60 * 60 * 1000;
+    const saleDateOnly = isoDateOnly(saleDate);
+    const cutoffDate = isoDateDaysAgo(soldWindowDays(job.sold_months || 12), jobReferenceTimeMs(job));
+    const isSoldInWindow = !!saleDateOnly && saleDateOnly >= cutoffDate;
     const ownerName = firstValue(owner.fullName, owner.name, owner.ownerName, owner.names?.[0]?.full, owner.names?.[0]?.name, owner.names?.[0]);
     const saleAmount = numberValue(
         intel.lastSoldPrice,
@@ -283,7 +298,7 @@ function mapBatchDataProperty(record, job) {
     const hasSaleEvidence = saleAmount !== null && saleAmount > 0;
     const hasNeutralStatus = !listingStatusLower;
     const conflictingStatus = ['active', 'for sale', 'off market', 'pending', 'withdrawn'].includes(listingStatusLower);
-    const isConfirmedSale = hasValidSaleDate && saleDateMs >= cutoffMs && (isSoldStatus || hasSaleEvidence || hasNeutralStatus);
+    const isConfirmedSale = hasValidSaleDate && isSoldInWindow && (isSoldStatus || hasSaleEvidence || hasNeutralStatus);
     const rejected = !isConfirmedSale || landUseRejected || nonResidential || conflictingStatus;
 
     const match = address.street.match(/^(\d+)\s+(.*)$/);
@@ -562,6 +577,64 @@ Deno.serve(async (req) => {
             const batchFetch = await fetchBatchDataRecords(previewJob);
             const mapped = batchFetch.records.map(record => mapBatchDataProperty(record, previewJob)).filter(Boolean);
             return Response.json({ success: true, mode_used: batchFetch.mode_used, attempts: batchFetch.attempts, raw: batchFetch.records.length, mapped: mapped.length, active: mapped.filter(p => p.route_active !== false).length });
+        }
+
+        if (body.raw_probe === true) {
+            if (!BATCHDATA_API_KEY) throw new Error('BATCH_DATA_API_KEY is not configured');
+            let previewJob = body.job || null;
+            if (!previewJob && body.job_id) {
+                previewJob = await base44.asServiceRole.entities.FetchJob.get(body.job_id);
+            }
+            if (!previewJob) {
+                previewJob = {
+                    polygon: body.polygon || [],
+                    latitude: body.latitude || 33.37,
+                    longitude: body.longitude || -112.08,
+                    sold_months: body.sold_months || 12,
+                    dry_run_metadata: { filters: { min_price: body.min_price ?? 100000, max_price: body.max_price ?? null } }
+                };
+            }
+            const take = Math.min(Math.max(Number(body.take) || 10, 1), 10);
+            const probes = [
+                { label: 'strict_exact_date', mode: 'strict_polygon', omitSoldDate: false },
+                { label: 'broad_exact_date', mode: 'broad_polygon', omitSoldDate: false },
+                { label: 'broad_no_sold_date', mode: 'broad_polygon', omitSoldDate: true }
+            ];
+            const results = [];
+            for (const probe of probes) {
+                const requestBody = buildBatchDataRequest(previewJob, 0, take, probe.mode);
+                if (probe.omitSoldDate) delete requestBody.searchCriteria.intel;
+                const payload = await batchDataFetchWithRetry(requestBody);
+                const records = extractBatchDataRecords(payload);
+                const mapped = records.map(record => mapBatchDataProperty(record, previewJob)).filter(Boolean);
+                const samples = records.slice(0, 3).map((record) => {
+                    const p = record.property || record;
+                    const mappedProperty = mapBatchDataProperty(record, previewJob);
+                    return {
+                        address: firstValue(p.formattedAddress, p.address?.street, p.address?.streetAddress, p.addressLine1),
+                        listing_status: firstValue(p.listing?.status, p.listing?.statusCategory),
+                        listing_sold_date: p.listing?.soldDate,
+                        intel_last_sold_date: p.intel?.lastSoldDate,
+                        intel_last_sold_price: p.intel?.lastSoldPrice,
+                        sale_last_sale_date: firstValue(p.sale?.lastSaleDate, p.sale?.saleDate, p.lastSaleDate),
+                        sale_amount: firstValue(p.sale?.amount, p.sale?.price, p.sale?.salePrice, p.intel?.lastSoldPrice),
+                        land_use: firstValue(p.general?.standardizedLandUseCode, p.standardizedLandUseCode),
+                        mapped_active: mappedProperty?.route_active === true,
+                        mapped_status: mappedProperty?.original_status || null,
+                        mapped_sold_date: mappedProperty?.sold_date || null
+                    };
+                });
+                results.push({
+                    label: probe.label,
+                    request: requestBody,
+                    raw: records.length,
+                    total: extractBatchDataTotal(payload),
+                    mapped: mapped.length,
+                    active: mapped.filter(p => p.route_active !== false).length,
+                    samples
+                });
+            }
+            return Response.json({ success: true, job_id: previewJob.id || null, sold_months: previewJob.sold_months, results });
         }
 
 

@@ -1,3 +1,12 @@
+## Plan — Diagnose East-Coast Zero Precision Pull
+- [ ] Inspect the latest 155k sq mi FetchJob and its processor logs.
+- [ ] Add a no-write raw BatchData probe that fetches one small page and reports raw rows, mapped rows, active rows, and sale/status fields.
+- [ ] Probe exact sold-date request and polygon-without-sold-date request to isolate whether the date filter or app-side filtering is responsible.
+- [ ] Patch only if the evidence shows our mapper/request is dropping usable properties.
+- [ ] Document the result and the root cause.
+
+---
+
 ## Plan — Verify BatchData Sold-Date Payload
 - [x] Find the latest matching Anderson-area Precision job/polygon.
 - [x] Generate the outbound BatchData request preview from the live backend builder.
