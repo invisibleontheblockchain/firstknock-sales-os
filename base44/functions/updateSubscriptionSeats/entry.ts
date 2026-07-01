@@ -51,8 +51,9 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Unauthorized or no subscription' }, { status: 401 });
         }
 
-        const { quantity } = await req.json();
+        const { quantity, returnUrl } = await req.json();
         const newSeatCount = parseInt(quantity);
+        const stripeReturnUrl = returnUrl || req.headers.get('origin') || 'https://app.base44.com';
 
         // 1. Find active subscription
         const subscriptions = await stripe.subscriptions.list({
@@ -91,16 +92,33 @@ Deno.serve(async (req) => {
             }
         );
 
-        const latestInvoice = updatedSubscription.latest_invoice;
-        const invoiceUrl = latestInvoice && typeof latestInvoice !== 'string' ? latestInvoice.hosted_invoice_url : null;
-        const invoiceStatus = latestInvoice && typeof latestInvoice !== 'string' ? latestInvoice.status : null;
+        let invoice = updatedSubscription.latest_invoice;
+        if (invoice && typeof invoice === 'string') {
+            invoice = await stripe.invoices.retrieve(invoice);
+        }
+        if (invoice && invoice.status === 'draft') {
+            invoice = await stripe.invoices.finalizeInvoice(invoice.id);
+        }
+        if (invoice && invoice.id && !invoice.hosted_invoice_url) {
+            invoice = await stripe.invoices.retrieve(invoice.id);
+        }
+
+        let stripeUrl = invoice?.hosted_invoice_url || null;
+        if (!stripeUrl) {
+            const portalSession = await stripe.billingPortal.sessions.create({
+                customer: user.stripe_customer_id,
+                return_url: stripeReturnUrl
+            });
+            stripeUrl = portalSession.url;
+        }
 
         return Response.json({ 
             success: true, 
             status: updatedSubscription.status,
             new_quantity: newSeatCount,
-            invoice_status: invoiceStatus,
-            invoice_url: invoiceUrl
+            invoice_status: invoice?.status || null,
+            invoice_url: stripeUrl,
+            url: stripeUrl
         });
 
     } catch (error) {

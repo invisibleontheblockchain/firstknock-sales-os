@@ -366,7 +366,10 @@ export default function AdminTeam() {
         setIsOpeningSeatBilling(true);
         try {
             const res = hasExistingStripeSubscription
-                ? await base44.functions.invoke('updateSubscriptionSeats', { quantity: targetSeatCount })
+                ? await base44.functions.invoke('updateSubscriptionSeats', {
+                    quantity: targetSeatCount,
+                    returnUrl: window.location.origin + createPageUrl('AdminTeam')
+                })
                 : await base44.functions.invoke('createCheckoutSession', {
                     planId: normalizedSeatPlan,
                     productName: 'FirstKnock Rep Seats',

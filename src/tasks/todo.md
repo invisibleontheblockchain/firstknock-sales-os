@@ -578,3 +578,15 @@ The Add Rep click path now always opens the seat quantity dialog first. Confirma
 
 ### Review — Correct Rep Seat Price To $99
 Rep seats now calculate at $99/month in the Add Rep dialog. First-time checkout uses the $99 Precision price instead of the $19 Canvas price, and existing subscription seat updates switch the subscription item to a $99/month rep-seat price before invoicing. Static checks confirmed the frontend and backend both reference $99 / 9900 cents, and the backend smoke test still deploys with the expected no-active-subscription response in the test account.
+
+---
+
+## Plan — Force Stripe Confirmation Before Seat Activation
+- [x] Pass the Team return URL into the existing-seat update request.
+- [x] Make the seat update backend finalize/retrieve the generated invoice and return its Stripe-hosted payment URL.
+- [x] Add a Stripe billing-portal fallback if Stripe does not expose an invoice URL, so the confirm button still opens Stripe.
+- [x] Verify the confirm flow always has a Stripe redirect path and still waits for webhook payment confirmation before seats activate.
+- [x] Document the review and correction lesson.
+
+### Review — Force Stripe Confirmation Before Seat Activation
+Confirming seats now passes the Team return URL into the seat update request, and the backend retrieves/finalizes the generated invoice and returns a Stripe-hosted URL. If Stripe does not expose an invoice URL, it falls back to a Stripe billing portal URL so the user is still sent to Stripe. Static checks verified the frontend redirects to that URL, and seats still activate only from the `invoice.paid` webhook path.
