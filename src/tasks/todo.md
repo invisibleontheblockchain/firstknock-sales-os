@@ -1,3 +1,15 @@
+## Plan — Fix iOS Bottom Nav Gap
+- [x] Keep the bottom navigation design and button layout unchanged.
+- [x] Pin the authenticated app shell to the real viewport so iOS WebView height quirks cannot leave blank space below the nav.
+- [x] Ensure the document root fills the viewport and does not create extra body space under the app.
+- [x] Remove the unused bottom safe-area class from the nav container.
+- [x] Verify the bottom nav remains a fixed 64px row at the bottom of the shell.
+
+### Review — Fix iOS Bottom Nav Gap
+The app shell now uses a fixed inset viewport container, and the document root is locked to full height with hidden body overflow. The bottom navigation remains the same 64px button row, but it is now anchored to the bottom of the visible app instead of allowing iOS to show a black gap underneath.
+
+---
+
 ## Plan — Scale Header Logo Down Again
 - [x] Keep the approved header bar unchanged.
 - [x] Reduce only the visible logo size by another roughly 20%.
