@@ -69,12 +69,24 @@ export default function Appointments() {
         return () => window.removeEventListener('fk-navigation-app-changed', handler);
     }, []);
 
+    // Tenant key: managers own their team's appointments; reps roll up to their manager.
+    // The UI filters again after RLS because admins can read global data, but this page must stay account-scoped.
+    const tenantManagerId = user?.app_role === 'rep' ? (user?.team_manager_id || null) : (user?.id || null);
+    const userEmail = (user?.email || '').toLowerCase();
+    const belongsToCurrentAccount = (record) => {
+        if (!record || !user) return false;
+        if (tenantManagerId && record.manager_id === tenantManagerId) return true;
+        const creator = String(record.created_by || '').toLowerCase();
+        return !record.manager_id && !!userEmail && creator === userEmail;
+    };
+
     const { data: appointments = [], isLoading: appointmentsLoading, isFetching: appointmentsFetching } = useQuery({
-        queryKey: ['appointments', user?.id, user?.team_manager_id],
+        queryKey: ['appointments', tenantManagerId, userEmail],
         staleTime: 1000 * 60 * 2,
         queryFn: async () => {
             const result = await base44.entities.Appointment.list('-scheduled_date', 500);
-            return Array.isArray(result) ? result : (result?.items || []);
+            const rows = Array.isArray(result) ? result : (result?.items || []);
+            return rows.filter(belongsToCurrentAccount);
         },
         enabled: !!user,
     });
@@ -97,8 +109,12 @@ export default function Appointments() {
     });
 
     const { data: logs = [], isLoading: logsLoading } = useQuery({
-        queryKey: ['interactionLogs-appts', user?.id, user?.team_manager_id],
-        queryFn: () => base44.entities.InteractionLog.list('-created_date', 5000),
+        queryKey: ['interactionLogs-appts', tenantManagerId, userEmail],
+        queryFn: async () => {
+            const result = await base44.entities.InteractionLog.list('-created_date', 5000);
+            const rows = Array.isArray(result) ? result : (result?.items || []);
+            return rows.filter(belongsToCurrentAccount);
+        },
         enabled: !!user,
     });
 
@@ -135,9 +151,6 @@ export default function Appointments() {
         enabled: !!user,
         staleTime: 1000 * 60 * 2,
     });
-
-    // Tenant key: managers own their team's appointments; reps roll up to their manager
-    const tenantManagerId = user?.app_role === 'rep' ? (user?.team_manager_id || null) : (user?.id || null);
 
     const propertyByHash = useMemo(() => {
         const map = new Map();
@@ -363,7 +376,7 @@ export default function Appointments() {
     const removeAppointmentsFromCache = (items) => {
         const ids = new Set(items.map((item) => item.id).filter((id) => id && !String(id).startsWith('callback-log-')));
         if (!ids.size) return;
-        queryClient.setQueryData(['appointments', user?.id, user?.team_manager_id], (old) => {
+        queryClient.setQueryData(['appointments', tenantManagerId, userEmail], (old) => {
             const rows = Array.isArray(old) ? old : (old?.items || []);
             const nextRows = rows.filter((row) => !ids.has(row.id));
             return Array.isArray(old) ? nextRows : { ...old, items: nextRows };

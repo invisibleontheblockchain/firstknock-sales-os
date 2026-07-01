@@ -590,3 +590,15 @@ Rep seats now calculate at $99/month in the Add Rep dialog. First-time checkout 
 
 ### Review — Force Stripe Confirmation Before Seat Activation
 Confirming seats now passes the Team return URL into the seat update request, and the backend retrieves/finalizes the generated invoice and returns a Stripe-hosted URL. If Stripe does not expose an invoice URL, it falls back to a Stripe billing portal URL so the user is still sent to Stripe. Static checks verified the frontend redirects to that URL, and seats still activate only from the `invoice.paid` webhook path.
+
+---
+
+## Plan — Make Appointments Account-Specific
+- [x] Identify why South Carolina appointments/callbacks can appear in another account.
+- [x] Add a single account-ownership filter for persisted appointments, callback logs, and reminder timers.
+- [x] Keep manually-created and auto-scheduled appointments stamped with the current manager/account ID.
+- [x] Verify the appointment page no longer renders global/admin-visible records.
+- [x] Document the review and lesson.
+
+### Review — Make Appointments Account-Specific
+The Appointments page was using broad list reads for appointments and callback interaction logs. Because admin-readable records can include global/demo data, the page could render appointments outside the current account. The page now applies a single account ownership filter after reads: manager accounts only show records for their own manager ID, reps only show their manager's account records, and legacy unscoped rows only remain visible to the creator who made them. Manual and auto-scheduled appointments already stamp `manager_id`, and the production build passed after the change.

@@ -188,3 +188,4 @@
 - For provider support emails, keep the first draft extremely simple: show the exact payloads, the result for each payload, and one clear question. Avoid long app-side explanations unless the provider asks for implementation details.
 - Rep seat billing is fixed at $99/month per seat; do not derive seat price from Canvas vs Precision plan labels, and verify both displayed math and Stripe amount use 9900 cents.
 - Add Rep confirmation must always redirect to a Stripe-hosted confirmation/payment page before a new seat can become available; seat activation remains webhook-driven from `invoice.paid`.
+- Appointment and callback views must apply an explicit current-account ownership filter after broad entity reads, because admin-readable/demo records can otherwise appear in normal account views despite RLS allowing access.
