@@ -1,3 +1,16 @@
+## Plan — Restore Callback Visibility in Appointments
+- [x] Trace how callback InteractionLog rows are merged into the Appointments tab.
+- [x] Identify why route/Neon-backed callbacks can be read by the system but still hidden from Appointments.
+- [x] Add callback property hydration through the existing route-property lookup, not only the old MasterProperty query.
+- [x] Keep every visible callback log in the Appointments list, even if property hydration is still missing, without saving fake placeholder Appointment records.
+- [x] Refresh callback hydration when the Appointments page refreshes.
+- [x] Document the correction pattern.
+
+### Review — Restore Callback Visibility in Appointments
+Root cause: the Appointments tab merged callback InteractionLog rows only when their property could be found in the older MasterProperty list. Callbacks tied to route/Neon properties could be readable logs but still skipped because address hydration failed. The page now hydrates callback hashes through the existing route-property lookup and still displays unreadable callback rows as display-only callbacks instead of dropping them, so each user's visible callback logs appear in Appointments.
+
+---
+
 ## Plan — Appointment Run Opens Preferred Maps App
 - [x] Find the existing Apple/Google Maps navigation helper and preference source.
 - [x] Update the Appointments Run action to open the user's preferred maps app directly instead of routing through Knock mode.

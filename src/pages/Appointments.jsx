@@ -97,9 +97,28 @@ export default function Appointments() {
     });
 
     const { data: logs = [], isLoading: logsLoading } = useQuery({
-        queryKey: ['interactionLogs-appts'],
+        queryKey: ['interactionLogs-appts', user?.id, user?.team_manager_id],
         queryFn: () => base44.entities.InteractionLog.list('-created_date', 5000),
         enabled: !!user,
+    });
+
+    const callbackHashes = useMemo(() => [...new Set((Array.isArray(logs) ? logs : [])
+        .filter((log) => log?.parsed_status === 'CALLBACK' && log.address_hash)
+        .map((log) => String(log.address_hash).trim())
+        .filter(Boolean))], [logs]);
+
+    const { data: callbackRouteProperties = [] } = useQuery({
+        queryKey: ['callbackRouteProperties-appts', user?.id, user?.team_manager_id, callbackHashes.join('|')],
+        staleTime: 1000 * 60 * 5,
+        queryFn: async () => {
+            if (!callbackHashes.length) return [];
+            const response = await base44.functions.invoke('getRoutePropertiesByHashes', {
+                address_hashes: callbackHashes.slice(0, 5000),
+                limit: callbackHashes.length
+            });
+            return Array.isArray(response.data?.properties) ? response.data.properties : [];
+        },
+        enabled: !!user && callbackHashes.length > 0,
     });
 
     const { data: teamMembers = [] } = useQuery({
@@ -122,12 +141,12 @@ export default function Appointments() {
 
     const propertyByHash = useMemo(() => {
         const map = new Map();
-        (Array.isArray(properties) ? properties : []).forEach((property) => {
+        [...(Array.isArray(properties) ? properties : []), ...(Array.isArray(callbackRouteProperties) ? callbackRouteProperties : [])].forEach((property) => {
             if (property.address_hash) map.set(property.address_hash, property);
             if (property.legacy_hash) map.set(property.legacy_hash, property);
         });
         return map;
-    }, [properties]);
+    }, [properties, callbackRouteProperties]);
 
     const routeNameById = useMemo(() => new Map((Array.isArray(savedRoutes) ? savedRoutes : []).map(route => [route.id, route.name])), [savedRoutes]);
 
@@ -154,13 +173,13 @@ export default function Appointments() {
                 existingKeys.add(key);
                 const property = propertyByHash.get(log.address_hash) || {};
                 const fullAddress = property.full_address || property.address || `${property.house_number || ''} ${property.street_name || ''}`.trim();
-                if (!fullAddress) return;
                 rows.push({
                     id: `callback-log-${log.id || key}`,
                     _source: 'interaction_log',
                     address_hash: log.address_hash,
                     manager_id: log.manager_id || tenantManagerId,
-                    full_address: fullAddress,
+                    full_address: fullAddress || `Callback — ${log.address_hash}`,
+                    is_unresolved_callback: !fullAddress,
                     homeowner_name: null,
                     phone: null,
                     scheduled_date: scheduledDate,
@@ -264,6 +283,7 @@ export default function Appointments() {
     const handleRefresh = () => {
         queryClient.invalidateQueries({ queryKey: ['appointments'] });
         queryClient.invalidateQueries({ queryKey: ['interactionLogs-appts'] });
+        queryClient.invalidateQueries({ queryKey: ['callbackRouteProperties-appts'] });
     };
 
     const buildAppointmentMapParams = (appointment) => {
@@ -283,6 +303,10 @@ export default function Appointments() {
     };
 
     const handleViewOnMap = (appointment) => {
+        if (appointment.is_unresolved_callback) {
+            toast.error('This callback is visible, but its address is still being hydrated.');
+            return;
+        }
         window.location.href = `/Home?${buildAppointmentMapParams(appointment).toString()}`;
     };
 
@@ -290,7 +314,7 @@ export default function Appointments() {
         const lat = Number(appointment.lat);
         const lng = Number(appointment.lng);
         const hasCoords = appointment.lat !== null && appointment.lat !== undefined && appointment.lng !== null && appointment.lng !== undefined && Number.isFinite(lat) && Number.isFinite(lng);
-        const address = appointment.full_address || '';
+        const address = appointment.is_unresolved_callback ? '' : (appointment.full_address || '');
         if (!hasCoords && !address.trim()) {
             toast.error('This appointment needs an address before it can open in maps.');
             return;

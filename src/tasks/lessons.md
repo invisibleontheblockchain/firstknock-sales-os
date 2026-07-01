@@ -1,7 +1,8 @@
 # Lessons
 
 - Appointment views must not persist derived callback/history rows as real Appointment records automatically; derived rows should stay display-only unless the user explicitly creates or assigns an appointment.
-- Never use placeholder address text like `Callback address` as a saved appointment address; if a callback cannot resolve to a real address, hide it from appointment lists until it can be hydrated.
+- Callback visibility must be driven by readable `CALLBACK` InteractionLog rows, not only saved Appointment rows or old MasterProperty hydration. Hydrate callback hashes through the same Neon-backed route-property lookup used by routes, and keep unresolved callbacks visible as display-only rows instead of silently dropping them.
+- Never use placeholder address text like `Callback address` as a saved appointment address; if a callback cannot resolve to a real address, show it as an unresolved display-only callback rather than saving fake address text.
 
 - When adding an extra action to compact mobile cards or headers, remove inherited left padding and make the action row/grid mobile-first; adding a third button to a two-button row can push controls off-screen.
 - Bulk delete flows should continue through all selected rows and report partial failures instead of aborting on the first problematic record, especially when the list merges records from multiple sources.

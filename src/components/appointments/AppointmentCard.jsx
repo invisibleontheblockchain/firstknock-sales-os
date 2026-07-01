@@ -25,7 +25,7 @@ export default function AppointmentCard({ appointment, appointmentNumber, onClic
     const isTodayAppt = appointment.scheduled_date && isToday(parseISO(appointment.scheduled_date));
     const outcome = OUTCOME_LABELS[appointment.outcome] || OUTCOME_LABELS.pending;
     const hasCoords = appointment.lat !== null && appointment.lat !== undefined && appointment.lng !== null && appointment.lng !== undefined && Number.isFinite(Number(appointment.lat)) && Number.isFinite(Number(appointment.lng));
-    const canRun = hasCoords || !!appointment.full_address;
+    const canNavigate = !appointment.is_unresolved_callback && (hasCoords || !!appointment.full_address);
 
     return (
         <div
@@ -76,10 +76,10 @@ export default function AppointmentCard({ appointment, appointmentNumber, onClic
             </button>
 
             <div className="mt-3 grid grid-cols-3 gap-1.5 sm:gap-2 pl-0 sm:pl-16 md:pl-20">
-                <button onClick={() => onViewMap?.(appointment)} className="h-9 rounded-xl border border-[#39FF4A]/30 bg-[#39FF4A]/10 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.1em] text-[#39FF4A] flex items-center justify-center gap-1 active:scale-95">
+                <button onClick={() => canNavigate && onViewMap?.(appointment)} disabled={!canNavigate} className="h-9 rounded-xl border border-[#39FF4A]/30 bg-[#39FF4A]/10 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.1em] text-[#39FF4A] disabled:opacity-35 disabled:text-[#39FF4A]/40 flex items-center justify-center gap-1 active:scale-95">
                     <MapPin className="w-3.5 h-3.5" /> Map
                 </button>
-                <button onClick={() => canRun && onRun?.(appointment)} disabled={!canRun} className="h-9 rounded-xl border border-white/10 bg-white/[0.06] text-[9px] sm:text-[10px] font-black uppercase tracking-[0.1em] text-white disabled:opacity-35 disabled:text-white/40 flex items-center justify-center gap-1 active:scale-95">
+                <button onClick={() => canNavigate && onRun?.(appointment)} disabled={!canNavigate} className="h-9 rounded-xl border border-white/10 bg-white/[0.06] text-[9px] sm:text-[10px] font-black uppercase tracking-[0.1em] text-white disabled:opacity-35 disabled:text-white/40 flex items-center justify-center gap-1 active:scale-95">
                     <Navigation className="w-3.5 h-3.5" /> Run
                 </button>
                 <button onClick={() => onDelete?.(appointment)} className="h-9 rounded-xl border border-red-500/20 bg-red-500/10 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.1em] text-red-300 flex items-center justify-center gap-1 active:scale-95">

@@ -35,7 +35,7 @@ export default function AppointmentDetail({ appointment, onClose, onUpdate, onVi
     const routeName = appointment.route_name || appointment.routeName;
     const isLogOnly = appointment._source === 'interaction_log';
     const hasCoords = appointment.lat !== null && appointment.lat !== undefined && appointment.lng !== null && appointment.lng !== undefined && Number.isFinite(Number(appointment.lat)) && Number.isFinite(Number(appointment.lng));
-    const canRun = hasCoords || !!appointment.full_address;
+    const canNavigate = !appointment.is_unresolved_callback && (hasCoords || !!appointment.full_address);
 
     const handleSave = async () => {
         setSaving(true);
@@ -89,10 +89,10 @@ export default function AppointmentDetail({ appointment, onClose, onUpdate, onVi
 
                 <div className="p-5 space-y-5">
                     <div className="grid grid-cols-2 gap-2">
-                        <Button onClick={() => onViewMap?.(appointment)} className="h-11 rounded-2xl bg-[#39FF4A] text-black hover:bg-[#2EEB57] font-black text-xs uppercase tracking-[0.12em]">
+                        <Button onClick={() => canNavigate && onViewMap?.(appointment)} disabled={!canNavigate} className="h-11 rounded-2xl bg-[#39FF4A] text-black hover:bg-[#2EEB57] font-black text-xs uppercase tracking-[0.12em] disabled:opacity-35">
                             <MapPin className="w-4 h-4" /> View Map
                         </Button>
-                        <Button onClick={() => canRun && onRun?.(appointment)} disabled={!canRun} variant="outline" className="h-11 rounded-2xl border-white/[0.1] bg-white/[0.04] text-white hover:bg-white/[0.08] font-black text-xs uppercase tracking-[0.12em] disabled:opacity-35">
+                        <Button onClick={() => canNavigate && onRun?.(appointment)} disabled={!canNavigate} variant="outline" className="h-11 rounded-2xl border-white/[0.1] bg-white/[0.04] text-white hover:bg-white/[0.08] font-black text-xs uppercase tracking-[0.12em] disabled:opacity-35">
                             <Navigation className="w-4 h-4" /> Run
                         </Button>
                     </div>
