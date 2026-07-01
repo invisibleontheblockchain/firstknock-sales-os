@@ -11,6 +11,7 @@ import AppointmentCard from '@/components/appointments/AppointmentCard';
 import AppointmentDetail from '@/components/appointments/AppointmentDetail';
 import AutoSchedulePanel from '@/components/appointments/AutoSchedulePanel';
 import { getIndustryLabel, INDUSTRIES } from '@/components/appointments/EligibilityScorer';
+import { openInMaps } from '@/components/logic/navigation';
 
 const TIME_TABS = [
     { id: 'upcoming', label: 'Upcoming' },
@@ -50,6 +51,23 @@ export default function Appointments() {
     const deletedCallbackLogsRef = React.useRef(new Set());
 
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
+    const [localNavigationApp, setLocalNavigationApp] = useState(() => {
+        try { return localStorage.getItem('fk_navigation_app') || 'apple'; } catch { return 'apple'; }
+    });
+    const navigationApp = user?.navigation_app || localNavigationApp || 'apple';
+
+    React.useEffect(() => {
+        if (user?.navigation_app) setLocalNavigationApp(user.navigation_app);
+    }, [user?.navigation_app]);
+
+    React.useEffect(() => {
+        const handler = (event) => {
+            const nextApp = event.detail?.navigationApp;
+            if (nextApp === 'apple' || nextApp === 'google') setLocalNavigationApp(nextApp);
+        };
+        window.addEventListener('fk-navigation-app-changed', handler);
+        return () => window.removeEventListener('fk-navigation-app-changed', handler);
+    }, []);
 
     const { data: appointments = [], isLoading: appointmentsLoading, isFetching: appointmentsFetching } = useQuery({
         queryKey: ['appointments', user?.id, user?.team_manager_id],
@@ -255,7 +273,8 @@ export default function Appointments() {
         if (appointment.address_hash) params.set('focus', appointment.address_hash);
         const lat = Number(appointment.lat);
         const lng = Number(appointment.lng);
-        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        const hasCoords = appointment.lat !== null && appointment.lat !== undefined && appointment.lng !== null && appointment.lng !== undefined && Number.isFinite(lat) && Number.isFinite(lng);
+        if (hasCoords) {
             params.set('lat', String(lat));
             params.set('lng', String(lng));
         }
@@ -268,11 +287,15 @@ export default function Appointments() {
     };
 
     const handleRunAppointment = (appointment) => {
-        if (!appointment.route_id) return;
-        const params = new URLSearchParams();
-        params.set('route', appointment.route_id);
-        if (appointment.address_hash) params.set('focus', appointment.address_hash);
-        window.location.href = `/RepHome?${params.toString()}`;
+        const lat = Number(appointment.lat);
+        const lng = Number(appointment.lng);
+        const hasCoords = appointment.lat !== null && appointment.lat !== undefined && appointment.lng !== null && appointment.lng !== undefined && Number.isFinite(lat) && Number.isFinite(lng);
+        const address = appointment.full_address || '';
+        if (!hasCoords && !address.trim()) {
+            toast.error('This appointment needs an address before it can open in maps.');
+            return;
+        }
+        openInMaps(hasCoords ? lat : undefined, hasCoords ? lng : undefined, address, navigationApp);
     };
 
     const deleteAppointmentRecord = async (appointment) => {

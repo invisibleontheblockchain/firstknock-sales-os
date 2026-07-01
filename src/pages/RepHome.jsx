@@ -363,25 +363,27 @@ export default function RepHome() {
       if (logData?.parsed_status === 'CALLBACK' && logData?.next_eligible_date) {
         const p = logData.property_snapshot || {};
         const fullAddress = p.full_address || p.address || `${p.house_number || ''} ${p.street_name || ''}`.trim();
-        await base44.entities.Appointment.create({
-          address_hash: logData.address_hash,
-          manager_id: repManagerId,
-          full_address: fullAddress || 'Callback address',
-          homeowner_name: logData.callback_contact_name || null,
-          phone: logData.callback_contact_phone || null,
-          scheduled_date: logData.next_eligible_date,
-          industry: 'other',
-          status: 'scheduled',
-          outcome: 'follow_up',
-          route_id: activeRoute?.id || null,
-          assigned_rep: teamMember?.id || user?.id || null,
-          assigned_rep_name: teamMember?.name || user?.full_name || null,
-          zip_code: p.zip_code || p.zip || null,
-          lat: p.lat || null,
-          lng: p.lng || null,
-          notes: logData.raw_input_text || 'Callback scheduled from Knock Mode'
-        });
-        queryClient.invalidateQueries({ queryKey: ['appointments'] });
+        if (fullAddress) {
+          await base44.entities.Appointment.create({
+            address_hash: logData.address_hash,
+            manager_id: repManagerId,
+            full_address: fullAddress,
+            homeowner_name: logData.callback_contact_name || null,
+            phone: logData.callback_contact_phone || null,
+            scheduled_date: logData.next_eligible_date,
+            industry: 'other',
+            status: 'scheduled',
+            outcome: 'follow_up',
+            route_id: activeRoute?.id || null,
+            assigned_rep: teamMember?.id || user?.id || null,
+            assigned_rep_name: teamMember?.name || user?.full_name || null,
+            zip_code: p.zip_code || p.zip || null,
+            lat: p.lat || null,
+            lng: p.lng || null,
+            notes: logData.raw_input_text || 'Callback scheduled from Knock Mode'
+          });
+          queryClient.invalidateQueries({ queryKey: ['appointments'] });
+        }
       }
 
       // Free users: increment the persisted lifetime counter. The counter only

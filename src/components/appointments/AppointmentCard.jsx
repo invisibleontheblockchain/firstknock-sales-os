@@ -24,7 +24,8 @@ export default function AppointmentCard({ appointment, appointmentNumber, onClic
     const isOverdue = appointment.scheduled_date && isPast(new Date(appointment.scheduled_date)) && !['completed', 'cancelled'].includes(appointment.status);
     const isTodayAppt = appointment.scheduled_date && isToday(parseISO(appointment.scheduled_date));
     const outcome = OUTCOME_LABELS[appointment.outcome] || OUTCOME_LABELS.pending;
-    const canRun = !!appointment.route_id;
+    const hasCoords = appointment.lat !== null && appointment.lat !== undefined && appointment.lng !== null && appointment.lng !== undefined && Number.isFinite(Number(appointment.lat)) && Number.isFinite(Number(appointment.lng));
+    const canRun = hasCoords || !!appointment.full_address;
 
     return (
         <div

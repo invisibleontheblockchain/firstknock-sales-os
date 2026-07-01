@@ -34,7 +34,8 @@ export default function AppointmentDetail({ appointment, onClose, onUpdate, onVi
     const appointmentNumber = appointment.appointment_number || appointment.appointmentNumber;
     const routeName = appointment.route_name || appointment.routeName;
     const isLogOnly = appointment._source === 'interaction_log';
-    const canRun = !!appointment.route_id;
+    const hasCoords = appointment.lat !== null && appointment.lat !== undefined && appointment.lng !== null && appointment.lng !== undefined && Number.isFinite(Number(appointment.lat)) && Number.isFinite(Number(appointment.lng));
+    const canRun = hasCoords || !!appointment.full_address;
 
     const handleSave = async () => {
         setSaving(true);

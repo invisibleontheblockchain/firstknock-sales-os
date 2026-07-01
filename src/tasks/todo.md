@@ -1,3 +1,16 @@
+## Plan — Appointment Run Opens Preferred Maps App
+- [x] Find the existing Apple/Google Maps navigation helper and preference source.
+- [x] Update the Appointments Run action to open the user's preferred maps app directly instead of routing through Knock mode.
+- [x] Enable Run for appointments that have either coordinates or a real address, not only route-linked appointments.
+- [x] Keep View Map as the FirstKnock map action and reserve Run for external navigation.
+- [x] Remove the remaining `Callback address` save fallback from Knock callback appointment creation.
+- [x] Record the result.
+
+### Review — Appointment Run Opens Preferred Maps App
+Appointments now use the shared navigation helper and the same `fk_navigation_app` / user `navigation_app` preference as Knock mode. Tapping Run opens Apple Maps or Google Maps directly for the appointment address/coordinates; View Map still opens FirstKnock. Run is available for any appointment with a usable address or coordinates. The last callback-creation fallback that could save `Callback address` was also removed.
+
+---
+
 ## Plan — Stop Random Callback Appointment Backfill
 - [x] Identify why appointments are being populated even though the user did not assign any.
 - [x] Remove the automatic callback-log-to-Appointment database backfill.

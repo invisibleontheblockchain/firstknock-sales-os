@@ -9,7 +9,7 @@ export function buildFullAddress(property = {}) {
 
 export function getNavigationUrl(lat, lng, address, app = 'apple') {
     const cleanAddress = typeof address === 'string' ? address.trim() : '';
-    const hasCoords = Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
+    const hasCoords = lat !== null && lat !== undefined && lng !== null && lng !== undefined && Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
     const coordinateText = hasCoords ? `${lat},${lng}` : '';
     const destination = encodeURIComponent(coordinateText || cleanAddress);
     const label = cleanAddress ? encodeURIComponent(cleanAddress) : destination;
