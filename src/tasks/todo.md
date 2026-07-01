@@ -531,3 +531,14 @@ Appointments now show touch-safe View Map and Run actions on each card and in th
 
 ### Review — Gate 1,000 Homes Behind Paid $99 Plan
 The 1,000-home Precision capacity now requires an active Precision/Pro subscription with `subscription_paid_confirmed === true`, which Stripe sets only after a paid invoice/paid checkout. Free trials and card-on-file accounts are capped at 50 homes in the UI and blocked in `startBatchDataPull`; direct forced-free self-test rejected 1,000 with 403 and allowed 50 with 200. `npm run build` passes.
+
+---
+
+## Plan — Paid Seat Before Rep Activation
+- [x] Change every visible “Add Rep/Add Team Member” entry point to open paid seat billing instead of creating a TeamMember directly.
+- [x] Keep backend invite redemption as the activation gate: reps can only join when the manager has paid-confirmed seat capacity.
+- [x] Verify the invite function still deploys and rejects invalid/missing codes normally.
+- [x] Document the result and lesson so future team flows never rely on frontend-only seat checks.
+
+### Review — Paid Seat Before Rep Activation
+“Add Rep” now opens seat billing instead of a manual team-member creation form, and the roster add-card now says “Add Paid Seat” and uses the same billing action. Invite redemption remains the backend activation gate: it rejects joins when the manager has no paid-confirmed rep seats, and the smoke test returned the expected missing-code validation response.

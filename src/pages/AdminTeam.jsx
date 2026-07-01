@@ -576,53 +576,9 @@ export default function AdminTeam() {
                             </DialogContent>
                         </Dialog>
 
-                        <Dialog open={isAddRepOpen} onOpenChange={setIsAddRepOpen}>
-                            <DialogTrigger asChild>
-                                <Button className="flex-1 md:flex-none h-10 md:h-9 bg-yellow-500 text-black font-bold hover:bg-yellow-400 text-xs md:text-sm">
-                                    <UserPlus className="w-4 h-4 mr-2" /> Add Rep
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent className="bg-[#111] border-gray-800 text-white">
-                                <DialogHeader>
-                                    <DialogTitle>Add New Team Member</DialogTitle>
-                                </DialogHeader>
-                                <div className="space-y-4 py-4">
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-gray-500">FULL NAME</label>
-                                        <Input 
-                                            value={newRep.name}
-                                            onChange={(e) => setNewRep({...newRep, name: e.target.value})}
-                                            className="bg-black border-gray-700"
-                                            placeholder="Ex: John Doe"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-gray-500">EMAIL</label>
-                                        <Input 
-                                            value={newRep.email}
-                                            onChange={(e) => setNewRep({...newRep, email: e.target.value})}
-                                            className="bg-black border-gray-700"
-                                            placeholder="john@example.com"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-xs font-bold text-gray-500">ROLE</label>
-                                        <Select value={newRep.role} onValueChange={(v) => setNewRep({...newRep, role: v})}>
-                                            <SelectTrigger className="bg-black border-gray-700">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent className="bg-[#111] border-gray-800 text-white">
-                                                <SelectItem value="rep">Sales Rep</SelectItem>
-                                                <SelectItem value="manager">Manager</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <Button onClick={handleAddRep} className="w-full bg-yellow-500 text-black font-bold mt-2">
-                                        Create Account
-                                    </Button>
-                                </div>
-                            </DialogContent>
-                        </Dialog>
+                        <Button onClick={handleAddSeat} className="flex-1 md:flex-none h-10 md:h-9 bg-yellow-500 text-black font-bold hover:bg-yellow-400 text-xs md:text-sm">
+                            <UserPlus className="w-4 h-4 mr-2" /> {isOpeningSeatBilling ? 'Opening...' : 'Add Rep'}
+                        </Button>
                     </div>
                 </div>
 
@@ -768,13 +724,13 @@ export default function AdminTeam() {
                                 })}
                                 {/* Add New Card */}
                                 <button 
-                                    onClick={() => setIsAddRepOpen(true)}
+                                    onClick={handleAddSeat}
                                     className="flex flex-col items-center justify-center p-6 md:p-8 bg-[#111] border-2 border-dashed border-gray-800 rounded-xl hover:border-yellow-500/50 hover:bg-yellow-500/5 transition-all group h-full min-h-[140px] md:min-h-[200px]"
                                 >
                                     <div className="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center mb-4 group-hover:bg-yellow-500 group-hover:text-black transition-colors">
                                         <Plus className="w-6 h-6" />
                                     </div>
-                                    <p className="font-bold text-gray-400 group-hover:text-white">Add Team Member</p>
+                                    <p className="font-bold text-gray-400 group-hover:text-white">Add Paid Seat</p>
                                 </button>
                             </div>
                         )}
