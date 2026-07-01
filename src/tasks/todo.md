@@ -649,3 +649,14 @@ New team codes now start with `max_uses: 0`, so redeeming a new code is blocked 
 
 ### Review — Sales Live Feed
 The analytics sales card is now a read-only live feed that only shows `SOLD` interaction records for the current account/team logs. Each row shows the rep who logged it, the logged time, and the sale value. The feed subscribes to InteractionLog changes and refreshes the existing Team page query; `npm run build -- --mode development` passed.
+
+---
+
+## Plan — Team Role Tabs, Route Links, Compact Cards, and Test Code
+- [ ] Make Route Registry rows open the selected route on the map.
+- [ ] Hide Routes and Codes tabs from reps; reps should only see Analytics and Roster.
+- [ ] Keep team creators/managers able to see Routes and Codes.
+- [ ] Make roster cards smaller and hide active assignments until a rep card is selected.
+- [ ] Add a limited 0000 test team code with exactly 2 seats and no payment requirement.
+- [ ] Verify the app builds and test-code records are present.
+- [ ] Document the review.

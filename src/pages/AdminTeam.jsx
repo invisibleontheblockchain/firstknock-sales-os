@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -58,37 +58,44 @@ export default function AdminTeam() {
         staleTime: 1000 * 60 * 5
     });
 
+    const isRepView = user?.app_role === 'rep';
+    const canManageTeam = !!user && !isRepView;
+    const managerId = isRepView ? user?.team_manager_id : user?.id;
+
+    useEffect(() => {
+        if (isRepView && (activeTab === 'logistics' || activeTab === 'access')) {
+            setActiveTab('analytics');
+        }
+    }, [isRepView, activeTab]);
+
     const { data: teamMembers = [], isLoading: teamLoading } = useQuery({
-        queryKey: ['teamMembers', user?.id],
+        queryKey: ['teamMembers', managerId],
         queryFn: async () => {
-            if (!user?.id) return [];
-            // Filter by manager_id (current user)
-            const res = await base44.entities.TeamMember.filter({ manager_id: user.id }, '-created_date', 100);
+            if (!managerId) return [];
+            const res = await base44.entities.TeamMember.filter({ manager_id: managerId }, '-created_date', 100);
             return Array.isArray(res) ? res : (res?.items || []);
         },
-        enabled: !!user?.id
+        enabled: !!managerId
     });
 
     const { data: routes = [], isLoading: routesLoading } = useQuery({
-        queryKey: ['allRoutes', user?.id],
+        queryKey: ['allRoutes', managerId],
         queryFn: async () => {
-            if (!user?.id) return [];
-            // Filter by manager_id
-            const res = await base44.entities.SavedRoute.filter({ manager_id: user.id }, '-created_date', 200);
+            if (!managerId) return [];
+            const res = await base44.entities.SavedRoute.filter({ manager_id: managerId }, '-created_date', 200);
             return Array.isArray(res) ? res : (res?.items || []);
         },
-        enabled: !!user?.id
+        enabled: !!managerId
     });
 
     const { data: inviteCodes = [] } = useQuery({
-        queryKey: ['inviteCodes', user?.id],
+        queryKey: ['inviteCodes', managerId],
         queryFn: async () => {
-            if (!user?.id) return [];
-            // Only fetch codes linked to this manager
-            const res = await base44.entities.InviteCode.filter({ linked_user_id: user.id }, '-created_date', 50);
+            if (!managerId || !canManageTeam) return [];
+            const res = await base44.entities.InviteCode.filter({ linked_user_id: managerId }, '-created_date', 50);
             return Array.isArray(res) ? res : (res?.items || []);
         },
-        enabled: !!user?.id
+        enabled: !!managerId && canManageTeam
     });
 
     const { data: logs = [] } = useQuery({
@@ -321,7 +328,9 @@ export default function AdminTeam() {
         [filteredTeamMembers]
     );
 
-    const teamToolsUnlocked = user?.is_owner || user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+    const teamToolsUnlocked = canManageTeam
+        ? (user?.is_owner || user?.subscription_status === 'active' || user?.subscription_status === 'trialing')
+        : !!managerId;
     const paidSeatLimit = user?.is_owner || user?.subscription_paid_confirmed === true ? (user?.total_seats || 1) : 0;
     const normalizedSeatPlan = 'precision';
     const seatUnitPrice = 99;
@@ -418,6 +427,11 @@ export default function AdminTeam() {
 
         const normalizedEmail = newRep.email.trim().toLowerCase();
 
+        if (!canManageTeam) {
+            toast.error("Only the team creator can add reps.");
+            return;
+        }
+
         // Duplicate check — don't add if email matches manager or existing member
         if (normalizedEmail === user?.email?.toLowerCase()) {
             toast.error("That's your own email — you're already on the team as Manager.");
@@ -453,6 +467,10 @@ export default function AdminTeam() {
     };
 
     const handleAssign = (routeId, memberId) => {
+        if (!canManageTeam) {
+            toast.error("Only the team creator can assign routes.");
+            return;
+        }
         if (!teamToolsUnlocked) {
             toast.error("Route assignment requires an active team plan.");
             navigate(createPageUrl('Billing'));
@@ -572,7 +590,7 @@ export default function AdminTeam() {
                             </Select>
                         )}
                     </div>
-                    <div className="flex w-full md:w-auto gap-2">
+                    <div className={`${canManageTeam ? 'flex' : 'hidden'} w-full md:w-auto gap-2`}>
                         <Dialog open={isCreateTeamOpen} onOpenChange={setIsCreateTeamOpen}>
                             <DialogTrigger asChild>
                                 <Button 
@@ -712,8 +730,8 @@ export default function AdminTeam() {
                     <TabsList className="bg-[#111] border border-gray-800 p-0.5 md:p-1 h-9 md:h-12 w-full flex overflow-x-auto no-scrollbar justify-start">
                         <TabsTrigger value="analytics" className="flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide">Analytics</TabsTrigger>
                         <TabsTrigger value="roster" className="flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide">Roster</TabsTrigger>
-                        <TabsTrigger value="logistics" className="flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide">Routes</TabsTrigger>
-                        <TabsTrigger value="access" className="flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide">Codes</TabsTrigger>
+                        <TabsTrigger value="logistics" className={`${canManageTeam ? 'flex' : 'hidden'} flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide`}>Routes</TabsTrigger>
+                        <TabsTrigger value="access" className={`${canManageTeam ? 'flex' : 'hidden'} flex-1 md:flex-none h-full px-2 md:px-6 data-[state=active]:bg-yellow-500 data-[state=active]:text-black font-bold text-[10px] md:text-xs uppercase tracking-wide`}>Codes</TabsTrigger>
                     </TabsList>
 
                     {/* ANALYTICS TAB */}
@@ -735,7 +753,8 @@ export default function AdminTeam() {
                                 logs={logs}
                                 teamAverage={teamAverage}
                                 onClose={() => setSelectedRep(null)}
-                            />
+                                routes={routesByRep[selectedRep.id] || []}
+                                />
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
                                 {filteredTeamMembers.map(member => {
@@ -814,7 +833,8 @@ export default function AdminTeam() {
                                                             deleteRepMutation.mutate(m);
                                                         }
                                                     }}
-                                                    action={AssignZipsAction}
+                                                    action={canManageTeam ? AssignZipsAction : null}
+                                                    canManage={canManageTeam}
                                                 />
                                             </div>
                                         </div>
@@ -889,7 +909,7 @@ export default function AdminTeam() {
                                     {routes
                                         .filter(r => r.name.toLowerCase().includes(routeSearch.toLowerCase()))
                                         .map(route => (
-                                            <div key={route.id} className="p-2.5 md:p-4 flex items-center justify-between hover:bg-white/5 transition-colors">
+                                            <div key={route.id} onClick={() => navigate(createPageUrl('Home') + `?savedRoute=${route.id}`)} className="p-2.5 md:p-4 flex items-center justify-between hover:bg-white/5 transition-colors cursor-pointer">
                                                 <div className="flex items-center gap-2 md:gap-4 min-w-0">
                                                     <div className={`w-1.5 md:w-2 h-8 md:h-12 rounded-full shrink-0 ${route.assigned_to ? 'bg-green-500' : 'bg-red-500'}`} />
                                                     <div className="min-w-0">
@@ -921,8 +941,9 @@ export default function AdminTeam() {
                                                         <Badge className="bg-red-900/20 text-red-400 hover:bg-red-900/30 border-0 text-[8px] md:text-xs hidden sm:inline-flex">UNASSIGNED</Badge>
                                                     )}
                                                     
+                                                    <div onClick={(e) => e.stopPropagation()}>
                                                     <Select onValueChange={(memberId) => handleAssign(route.id, memberId)}>
-                                                        <SelectTrigger className="w-[90px] md:w-[160px] h-7 md:h-9 text-[9px] md:text-xs bg-[#000] border-gray-700">
+                                                       <SelectTrigger className="w-[90px] md:w-[160px] h-7 md:h-9 text-[9px] md:text-xs bg-[#000] border-gray-700">
                                                             <SelectValue placeholder="Assign" />
                                                         </SelectTrigger>
                                                         <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
@@ -931,6 +952,7 @@ export default function AdminTeam() {
                                                             ))}
                                                         </SelectContent>
                                                     </Select>
+                                                     </div>
                                                 </div>
                                             </div>
                                     ))}

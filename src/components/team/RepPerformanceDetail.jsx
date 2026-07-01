@@ -8,7 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from '@/api/base44Client';
-import { Loader2, Lightbulb, TrendingUp, Target, Award } from 'lucide-react';
+import { Loader2, Lightbulb, TrendingUp, Target, Award, ChevronDown } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '../../utils';
 
 const BRAND = {
     gold: '#FFD700',
@@ -18,7 +20,7 @@ const BRAND = {
     blue: '#3b82f6'
 };
 
-export default function RepPerformanceDetail({ member, logs, teamAverage, onClose }) {
+export default function RepPerformanceDetail({ member, logs, teamAverage, onClose, routes = [] }) {
     
     // 1. Coaching Tips Query
     const { data: coaching, isLoading: tipsLoading } = useQuery({
@@ -65,6 +67,11 @@ export default function RepPerformanceDetail({ member, logs, teamAverage, onClos
             conversion: total > 0 ? (sales / total * 100) : 0
         };
     }, [logs, member]);
+
+    const activeRoutes = useMemo(
+        () => routes.filter(route => route.status === 'ACTIVE' || route.status === 'IN_PROGRESS'),
+        [routes]
+    );
 
     // 4. Completed Routes (History)
     const { data: completedRoutes = [] } = useQuery({
@@ -134,6 +141,37 @@ export default function RepPerformanceDetail({ member, logs, teamAverage, onClos
                     </CardContent>
                 </Card>
             </div>
+
+            <Card className="bg-[#111] border-gray-800">
+                <details className="group">
+                    <summary className="flex cursor-pointer list-none items-center justify-between px-3 md:px-6 py-3 md:py-4">
+                        <div>
+                            <CardTitle className="text-xs md:text-sm font-bold text-gray-400 uppercase">Active Assignments ({activeRoutes.length})</CardTitle>
+                            <p className="text-[10px] md:text-xs text-gray-500 mt-1">Click to view this rep's active routes.</p>
+                        </div>
+                        <ChevronDown className="w-4 h-4 text-gray-500 transition-transform group-open:rotate-180" />
+                    </summary>
+                    <CardContent className="px-3 md:px-6 pb-3 md:pb-5">
+                        {activeRoutes.length === 0 ? (
+                            <p className="text-xs text-gray-500 italic">No active assignments.</p>
+                        ) : (
+                            <div className="space-y-2">
+                                {activeRoutes.map(route => (
+                                    <Link key={route.id} to={createPageUrl('Home') + `?savedRoute=${route.id}`} className="flex items-center justify-between p-2 md:p-3 bg-[#151515] rounded border border-gray-800 hover:border-yellow-500/50 transition-colors">
+                                        <div className="min-w-0">
+                                            <p className="text-xs md:text-sm font-bold text-white truncate">{route.name}</p>
+                                            <p className="text-[9px] md:text-xs text-gray-500">{route.metrics?.house_count || 0} doors</p>
+                                        </div>
+                                        <Badge variant="outline" className="border-blue-900 text-blue-400 bg-blue-900/10 text-[8px] md:text-xs shrink-0">
+                                            {route.status}
+                                        </Badge>
+                                    </Link>
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
+                </details>
+            </Card>
 
             {/* Progress Chart */}
             <Card className="bg-[#111] border-gray-800 overflow-hidden">

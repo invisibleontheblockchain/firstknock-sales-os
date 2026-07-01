@@ -6,13 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { 
-    Map, CheckCircle2, AlertCircle, TrendingUp, 
-    Home, MessageSquare, DollarSign, ChevronRight, Zap, Trash2, Camera, Loader2
-} from 'lucide-react';
+import { TrendingUp, Trash2, Camera, Loader2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Link } from 'react-router-dom';
-import { createPageUrl } from '../../utils';
 import { toast } from "sonner";
 
 const BRAND = {
@@ -23,7 +18,7 @@ const BRAND = {
     blue: '#3b82f6'
 };
 
-export default function TeamMemberCard({ member, routes, metrics, allRoutes, onAssignRoute, onUnassignAll, onDelete, action }) {
+export default function TeamMemberCard({ member, routes, metrics, allRoutes, onAssignRoute, onDelete, action, canManage = true }) {
     const queryClient = useQueryClient();
     const completedRoutes = routes.filter(r => r.status === 'COMPLETED');
     const activeRoutes = routes.filter(r => r.status === 'ACTIVE' || r.status === 'IN_PROGRESS');
@@ -63,11 +58,11 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
     return (
         <div className="bg-[#111] border border-gray-800 rounded-xl overflow-hidden hover:border-yellow-500/30 transition-all duration-300 shadow-lg group">
             {/* Header / Profile - Compact */}
-            <div className="p-2.5 md:p-4 border-b border-gray-800 bg-gradient-to-r from-[#151515] to-[#0A0A0A] relative">
+            <div className="p-2 md:p-3 border-b border-gray-800 bg-gradient-to-r from-[#151515] to-[#0A0A0A] relative">
                 <div className="flex justify-between items-center">
                     <div className="flex gap-2 md:gap-3 items-center min-w-0">
                         <div className="relative flex-shrink-0">
-                            <div className="w-8 h-8 md:w-12 md:h-12 rounded-lg md:rounded-xl bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center text-black font-bold text-sm md:text-lg overflow-hidden">
+                            <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center text-black font-bold text-sm md:text-base overflow-hidden">
                                 {member.profile_image_url ? (
                                     <img src={member.profile_image_url} alt={member.name || 'Team member'} className="h-full w-full object-cover" />
                                 ) : (
@@ -88,7 +83,7 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                         </div>
                         
                         <div className="min-w-0">
-                            <h3 className="font-bold text-sm md:text-lg text-white tracking-tight truncate">{member.name}</h3>
+                            <h3 className="font-bold text-sm md:text-base text-white tracking-tight truncate">{member.name}</h3>
                             <div className="flex items-center gap-1.5 md:gap-2">
                                 <Badge variant="outline" className="bg-white/5 border-white/10 text-[8px] md:text-[10px] font-medium text-gray-400 h-4 md:h-5 px-1 md:px-2">
                                     {member.role?.toUpperCase()}
@@ -103,10 +98,10 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
 
                     <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
                         <div className="text-right">
-                            <p className="text-xl md:text-3xl font-bold text-white tracking-tighter">{metrics.sales}</p>
+                            <p className="text-lg md:text-2xl font-bold text-white tracking-tighter">{metrics.sales}</p>
                             <p className="text-[8px] md:text-[9px] text-gray-500 font-bold uppercase">Sales</p>
                         </div>
-                        {!member.isManagerSelf && onDelete && (
+                        {canManage && !member.isManagerSelf && onDelete && (
                             <button
                                 onClick={(e) => { e.stopPropagation(); onDelete(member); }}
                                 className="p-2 rounded-lg text-gray-600 hover:text-red-500 hover:bg-red-900/20 transition-colors opacity-0 group-hover:opacity-100"
@@ -121,63 +116,43 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
 
             {/* Metrics Grid - Compact */}
             <div className="grid grid-cols-3 divide-x divide-gray-800 border-b border-gray-800 bg-[#0F0F0F]">
-                <div className="py-1.5 md:p-3 text-center">
-                    <p className="text-sm md:text-xl font-bold text-white">{metrics.doorsKnocked}</p>
+                <div className="py-1.5 md:p-2 text-center">
+                    <p className="text-sm md:text-lg font-bold text-white">{metrics.doorsKnocked}</p>
                     <p className="text-[7px] md:text-[9px] font-bold text-gray-600 uppercase">Knocked</p>
                 </div>
-                <div className="py-1.5 md:p-3 text-center">
-                    <p className="text-sm md:text-xl font-bold text-white">{metrics.talkedTo}</p>
+                <div className="py-1.5 md:p-2 text-center">
+                    <p className="text-sm md:text-lg font-bold text-white">{metrics.talkedTo}</p>
                     <p className="text-[7px] md:text-[9px] font-bold text-gray-600 uppercase">Talked</p>
                 </div>
-                <div className="py-1.5 md:p-3 text-center">
-                    <p className="text-sm md:text-xl font-bold text-blue-400">{routes.length}</p>
+                <div className="py-1.5 md:p-2 text-center">
+                    <p className="text-sm md:text-lg font-bold text-blue-400">{routes.length}</p>
                     <p className="text-[7px] md:text-[9px] font-bold text-gray-600 uppercase">Routes</p>
                 </div>
             </div>
 
-            {/* Routes Section - Compact */}
-            <div className="p-2 md:p-3 bg-[#0A0A0A]">
-                {/* Controls Row */}
-                <div className="flex items-center justify-between mb-3 px-1" onClick={(e) => e.stopPropagation()}>
-                    {!member.isManagerSelf ? (
-                        <div className="flex items-center space-x-2" title="Automatically assign a new route when the current one is completed">
-                            <Switch 
-                                id={`auto-assign-${member.id}`} 
-                                checked={member.auto_assign_enabled || false}
-                                onCheckedChange={(c) => toggleAutoAssignMutation.mutate(c)}
-                                className="scale-75 data-[state=checked]:bg-yellow-500"
-                            />
-                            <Label htmlFor={`auto-assign-${member.id}`} className="text-[10px] text-gray-400 flex items-center gap-1 cursor-pointer select-none">
-                                <Zap className="w-3 h-3 text-yellow-500" /> Auto-Assign
-                            </Label>
-                        </div>
-                    ) : (
-                        <div /> /* Spacer if no toggle */
-                    )}
-                    
-                    {/* Injected Action (Assign Zips) */}
-                    <div>{action}</div>
-                </div>
-
-                {activeRoutes.length > 0 && (
-                    <div className="flex justify-between items-center mb-2 px-1">
-                        <span className="text-[10px] font-bold text-gray-500 uppercase">Active Assignments</span>
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); onUnassignAll(); }}
-                            className="text-[10px] text-red-500 hover:text-red-400 font-bold"
-                        >
-                            Unassign All
-                        </button>
+            {canManage && (
+                <div className="p-2 bg-[#0A0A0A]" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-between gap-2">
+                        {!member.isManagerSelf ? (
+                            <div className="flex items-center space-x-2" title="Automatically assign a new route when the current one is completed">
+                                <Switch 
+                                    id={`auto-assign-${member.id}`} 
+                                    checked={member.auto_assign_enabled || false}
+                                    onCheckedChange={(c) => toggleAutoAssignMutation.mutate(c)}
+                                    className="scale-75 data-[state=checked]:bg-yellow-500"
+                                />
+                                <Label htmlFor={`auto-assign-${member.id}`} className="text-[10px] text-gray-400 cursor-pointer select-none">
+                                    Auto-Assign
+                                </Label>
+                            </div>
+                        ) : <div />}
+                        <div>{action}</div>
                     </div>
-                )}
-
-                {activeRoutes.length === 0 ? (
-                    <div className="text-center py-4 border border-dashed border-gray-800 rounded-lg bg-gray-900/20">
-                        <p className="text-xs text-gray-500 mb-2">No active routes</p>
-                        <div onClick={e => e.stopPropagation()}>
+                    {activeRoutes.length === 0 && (
+                        <div className="mt-2">
                             <Select onValueChange={(routeId) => onAssignRoute(routeId, member.id)}>
-                                <SelectTrigger className="w-32 mx-auto h-7 text-[10px] bg-yellow-500/10 border-yellow-500/50 text-yellow-500">
-                                    <SelectValue placeholder="Assign" />
+                                <SelectTrigger className="w-full h-7 text-[10px] bg-yellow-500/10 border-yellow-500/50 text-yellow-500">
+                                    <SelectValue placeholder="Assign route" />
                                 </SelectTrigger>
                                 <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
                                     {allRoutes.filter(r => !r.assigned_to).map(r => (
@@ -186,33 +161,9 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                                 </SelectContent>
                             </Select>
                         </div>
-                    </div>
-                ) : (
-                    <div className="space-y-1.5">
-                        {activeRoutes.slice(0, 3).map(route => (
-                            <Link 
-                                key={route.id} 
-                                to={createPageUrl('Home') + `?routeId=${route.id}`}
-                                className="flex items-center justify-between bg-[#151515] p-2 rounded-lg border border-gray-800 hover:border-yellow-500/50 transition-colors"
-                            >
-                                <div className="flex items-center gap-2 min-w-0">
-                                    <div className="w-2 h-2 rounded-full flex-shrink-0 bg-blue-500 animate-pulse" />
-                                    <div className="min-w-0">
-                                        <p className="text-[11px] font-bold text-white truncate">{route.name}</p>
-                                        <p className="text-[9px] text-gray-500">{route.metrics?.house_count || 0} homes</p>
-                                    </div>
-                                </div>
-                                <ChevronRight className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                            </Link>
-                        ))}
-                        {activeRoutes.length > 3 && (
-                            <p className="text-[10px] text-center text-gray-500 py-1">
-                                +{activeRoutes.length - 3} more routes
-                            </p>
-                        )}
-                    </div>
-                )}
-            </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }
