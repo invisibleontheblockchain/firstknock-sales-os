@@ -988,69 +988,6 @@ export default function AdminTeam() {
                                     </div>
                                 ))}
 
-                                <div className="bg-black/40 p-3 md:p-5 rounded-xl border border-gray-800 space-y-3 md:space-y-4">
-                                    <h3 className="text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wide">Generate Custom Code</h3>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-4">
-                                        <div className="relative">
-                                            <Input 
-                                                placeholder="Code (Auto or Custom)" 
-                                                value={newCode.code}
-                                                onChange={(e) => setNewCode({...newCode, code: e.target.value})}
-                                                className="bg-black border-gray-700"
-                                            />
-                                            <button 
-                                                onClick={() => setNewCode({...newCode, code: "0000", max_uses: 5})}
-                                                className="absolute right-8 top-1/2 -translate-y-1/2 text-xs text-gray-500 hover:text-white mr-2"
-                                            >
-                                                Test Code (0000)
-                                            </button>
-                                            <button 
-                                                onClick={() => setNewCode({...newCode, code: Math.floor(1000 + Math.random() * 9000).toString()})}
-                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-yellow-500 hover:text-white"
-                                            >
-                                                <Sparkles className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                        <Input 
-                                            placeholder="Label (e.g. Sales Team)" 
-                                            value={newCode.label}
-                                            onChange={(e) => setNewCode({...newCode, label: e.target.value})}
-                                            className="bg-black border-gray-700"
-                                        />
-                                    </div>
-                                    <div className="flex gap-4">
-                                        <Select 
-                                            value={newCode.role} 
-                                            onValueChange={(v) => {
-                                                const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
-                                                setNewCode({
-                                                    ...newCode, 
-                                                    role: v, 
-                                                    code: newCode.code || randomCode
-                                                });
-                                            }}
-                                        >
-                                            <SelectTrigger className="bg-black border-gray-700 flex-1">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
-                                                <SelectItem value="rep">Sales Rep</SelectItem>
-                                                <SelectItem value="manager">Manager</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                        <Button 
-                                            onClick={() => {
-                                                if (!teamToolsUnlocked) { navigate(createPageUrl('Billing')); return; }
-                                                createCodeMutation.mutate(newCode);
-                                            }}
-                                            disabled={!newCode.code}
-                                            className="bg-green-600 hover:bg-green-700 font-bold px-8"
-                                        >
-                                            Create Code
-                                        </Button>
-                                    </div>
-                                </div>
-
                                 <div className="space-y-3">
                                     <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide">Active Invites</h3>
                                     {inviteCodes.length === 0 ? (
