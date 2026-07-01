@@ -1,3 +1,18 @@
+## Plan — Move Rep Join + Paid Seat Path to Team Page
+- [x] Inspect the Team page paid gate, invite-code redemption, billing checkout, seat update, and Stripe webhook behavior.
+- [x] Add “I'm a Rep” beside “View Plans” on the paid Team gate.
+- [x] Prompt reps for the manager's team code and redeem it through the existing trusted invite-code backend.
+- [x] Add an “Add Seat” action on the Team Access panel that opens Stripe billing instead of granting a seat locally.
+- [x] Treat unpaid/trial seat quantity as zero usable rep seats until a paid invoice is confirmed.
+- [x] Update the seat-limit path to send managers to paid seat billing before they can add another rep.
+- [x] Enforce the same paid-seat capacity on the backend invite redemption function.
+- [x] Smoke-test invite redemption after the backend change.
+
+### Review — Move Rep Join + Paid Seat Path to Team Page
+The Team page now supports the simplest switch: unpaid users can either view plans or choose “I'm a Rep,” enter a manager's team code, and join through invite redemption. Managers now see an “Add Seat” action in Team Access, usable rep seat capacity stays at zero until payment is confirmed, and the backend also rejects invite redemption when the manager has no paid seats available. Smoke test returned the expected missing-code validation response.
+
+---
+
 ## Plan — Refine Team Invite Language
 - [x] Inspect the current manager team screen and role-selection join flow.
 - [x] Rename the quick invite action from demo language to team language.

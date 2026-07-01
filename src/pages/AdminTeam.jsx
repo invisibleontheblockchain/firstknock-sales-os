@@ -42,6 +42,10 @@ export default function AdminTeam() {
     const [createdCode, setCreatedCode] = useState(null); // For popup
     const [activeTeamCode, setActiveTeamCode] = useState('all'); // 'all' or specific code
     const [editingZips, setEditingZips] = useState(null); // { memberId, zips: string }
+    const [isJoinTeamOpen, setIsJoinTeamOpen] = useState(false);
+    const [joinTeamCode, setJoinTeamCode] = useState('');
+    const [isJoiningTeam, setIsJoiningTeam] = useState(false);
+    const [isOpeningSeatBilling, setIsOpeningSeatBilling] = useState(false);
 
     // --- Queries ---
     const { data: user } = useQuery({
@@ -312,6 +316,57 @@ export default function AdminTeam() {
     );
 
     const teamToolsUnlocked = user?.is_owner || user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+    const paidSeatLimit = user?.is_owner || user?.subscription_paid_confirmed === true ? (user?.total_seats || 1) : 0;
+
+    const handleJoinTeam = async () => {
+        const code = joinTeamCode.trim().toUpperCase();
+        if (!code) {
+            toast.error("Enter your team code first.");
+            return;
+        }
+        setIsJoiningTeam(true);
+        try {
+            const res = await base44.functions.invoke('redeemInviteCode', { code });
+            if (!res.data?.success) {
+                toast.error("Invalid or expired team code");
+                return;
+            }
+            queryClient.invalidateQueries({ queryKey: ['user'] });
+            toast.success("Joined team successfully.");
+            setIsJoinTeamOpen(false);
+            setJoinTeamCode('');
+            navigate(res.data.role === 'manager' ? createPageUrl('Home') : createPageUrl('RepHome'));
+        } catch (error) {
+            const msg = error?.response?.data?.error || error?.message || "Failed to join team";
+            toast.error(msg);
+        } finally {
+            setIsJoiningTeam(false);
+        }
+    };
+
+    const handleAddSeat = async () => {
+        if (!teamToolsUnlocked || !user?.stripe_customer_id || user?.subscription_paid_confirmed !== true) {
+            toast.info("Add seats after starting a paid plan.");
+            navigate(createPageUrl('Billing'));
+            return;
+        }
+        if (window.self !== window.top) {
+            toast.error("Open the app in a new tab to manage billing.");
+            return;
+        }
+        setIsOpeningSeatBilling(true);
+        try {
+            const res = await base44.functions.invoke('createPortalSession', {
+                returnUrl: window.location.origin + createPageUrl('AdminTeam')
+            });
+            const url = res?.data?.url || res?.url;
+            if (url) window.location.href = url;
+            else toast.error("Failed to open billing portal");
+        } catch (error) {
+            toast.error("Failed to open billing portal: " + (error?.message || "Unknown error"));
+            setIsOpeningSeatBilling(false);
+        }
+    };
 
     const handleAddRep = () => {
         if (!newRep.name || !newRep.email) {
@@ -337,15 +392,13 @@ export default function AdminTeam() {
             return;
         }
 
-        const effectiveLimit = user?.total_seats || 1;
-        
-        if (teamMembers.length >= effectiveLimit) {
-             const message = `You have reached your seat limit (${effectiveLimit}). Upgrade to add more users.`;
+        if (teamMembers.length >= paidSeatLimit) {
+             const message = `You have reached your paid seat limit (${paidSeatLimit}). Add a paid seat to add more users.`;
                 
              toast.error(message);
              
-             if(confirm(`${message} Go to Billing?`)) {
-                 navigate(createPageUrl('Billing'));
+             if(confirm(`${message} Add a paid seat now?`)) {
+                 handleAddSeat();
              }
              return;
         }
@@ -389,10 +442,35 @@ export default function AdminTeam() {
                                 Add reps, assign routes, manage invite codes, and view team performance after starting a Canvas or Precision plan.
                             </CardDescription>
                         </CardHeader>
-                        <CardContent className="flex justify-center pb-6">
+                        <CardContent className="flex flex-col sm:flex-row justify-center gap-3 pb-6">
                             <Button onClick={() => navigate(createPageUrl('Billing'))} className="bg-yellow-500 text-black hover:bg-yellow-400 font-black">
                                 View Plans
                             </Button>
+                            <Dialog open={isJoinTeamOpen} onOpenChange={setIsJoinTeamOpen}>
+                                <DialogTrigger asChild>
+                                    <Button variant="outline" className="border-yellow-500/60 text-yellow-500 hover:bg-yellow-500/10 font-black">
+                                        I'm a Rep
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent className="bg-[#111] border-gray-800 text-white sm:max-w-md">
+                                    <DialogHeader>
+                                        <DialogTitle>Join Your Team</DialogTitle>
+                                    </DialogHeader>
+                                    <div className="space-y-4 py-2">
+                                        <p className="text-sm text-gray-400">Enter the team code your manager shared with you.</p>
+                                        <Input
+                                            value={joinTeamCode}
+                                            onChange={(e) => setJoinTeamCode(e.target.value.toUpperCase())}
+                                            placeholder="TEAM CODE"
+                                            maxLength={8}
+                                            className="bg-black border-gray-700 text-white text-center tracking-widest font-mono uppercase"
+                                        />
+                                        <Button onClick={handleJoinTeam} disabled={!joinTeamCode.trim() || isJoiningTeam} className="w-full bg-yellow-500 text-black hover:bg-yellow-400 font-black">
+                                            {isJoiningTeam ? 'Joining...' : 'Join Team'}
+                                        </Button>
+                                    </div>
+                                </DialogContent>
+                            </Dialog>
                         </CardContent>
                     </Card>
                 </div>
@@ -564,7 +642,7 @@ export default function AdminTeam() {
                         <Users className="w-3 h-3 md:w-4 md:h-4 text-blue-500 mb-0.5 md:mb-1" />
                         <div className="flex items-baseline gap-0.5">
                             <span className="text-sm md:text-2xl font-extrabold text-white">{teamMembers.length}</span>
-                            <span className="text-[8px] md:text-sm font-bold text-gray-500">/{user?.total_seats || 1}</span>
+                            <span className="text-[8px] md:text-sm font-bold text-gray-500">/{paidSeatLimit}</span>
                         </div>
                         <span className="text-[7px] md:text-[10px] font-bold text-gray-500 uppercase">Seats</span>
                     </div>
@@ -828,9 +906,14 @@ export default function AdminTeam() {
                                     </CardTitle>
                                     <CardDescription className="text-gray-400 text-[10px] md:text-sm">Manage invite codes.</CardDescription>
                                 </div>
-                                <Button onClick={() => navigate(createPageUrl('Billing'))} variant="outline" size="sm" className="border-yellow-500 text-yellow-500 hover:bg-yellow-500/10 text-[10px] md:text-xs h-7 md:h-8">
-                                    Seats ({teamMembers.length}/{user?.total_seats || 1})
-                                </Button>
+                                <div className="flex gap-2 w-full md:w-auto">
+                                    <Button onClick={handleAddSeat} size="sm" className="bg-yellow-500 text-black hover:bg-yellow-400 text-[10px] md:text-xs h-7 md:h-8 flex-1 md:flex-none font-bold">
+                                        {isOpeningSeatBilling ? 'Opening...' : 'Add Seat'}
+                                    </Button>
+                                    <Button onClick={() => navigate(createPageUrl('Billing'))} variant="outline" size="sm" className="border-yellow-500 text-yellow-500 hover:bg-yellow-500/10 text-[10px] md:text-xs h-7 md:h-8 flex-1 md:flex-none">
+                                        Seats ({teamMembers.length}/{paidSeatLimit})
+                                    </Button>
+                                </div>
                             </CardHeader>
                             <CardContent className="p-3 md:p-6 space-y-4 md:space-y-8">
                                 
