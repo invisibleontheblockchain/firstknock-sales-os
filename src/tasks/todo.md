@@ -637,3 +637,15 @@ All existing InviteCode records were removed so previous team codes no longer wo
 
 ### Review — Keep New Team Codes Locked Until Paid
 New team codes now start with `max_uses: 0`, so redeeming a new code is blocked until paid seat capacity exists. The Team Created dialog no longer says the code is valid for 5 users; it tells managers the code unlocks after a paid rep seat is confirmed. Stripe webhook syncing now updates all of a manager's invite codes only after paid confirmation, and `npm run build -- --mode development` passed.
+
+---
+
+## Plan — Sales Live Feed
+- [x] Replace the editable sales/revenue card with a read-only sales feed.
+- [x] Show only sale records, including sale value, time, and who logged it.
+- [x] Subscribe to new/updated/deleted sales logs so the feed refreshes live.
+- [x] Verify the app builds successfully.
+- [x] Document the review.
+
+### Review — Sales Live Feed
+The analytics sales card is now a read-only live feed that only shows `SOLD` interaction records for the current account/team logs. Each row shows the rep who logged it, the logged time, and the sale value. The feed subscribes to InteractionLog changes and refreshes the existing Team page query; `npm run build -- --mode development` passed.
