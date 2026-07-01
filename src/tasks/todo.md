@@ -1,3 +1,14 @@
+## Plan — Replace Home Screen Icon
+- [x] Replace the static favicon/apple-touch-icon references with the requested large FirstKnock icon.
+- [x] Replace the runtime metadata icon updater so it does not overwrite the home-screen icon with the old asset.
+- [x] Add a web manifest icon for browsers that use manifest metadata when adding to home screen.
+- [x] Bump the installed-app release key so cached icon metadata refreshes.
+
+### Review — Replace Home Screen Icon
+The old narrow wordmark icon was still used by both the static HTML and the runtime metadata updater. Both now point to the requested large square FirstKnock icon, and the app has a manifest entry for browsers that use manifest metadata during add-to-home-screen.
+
+---
+
 ## Plan — Remove Mobile Bottom-Bar Blank Space
 - [x] Identify the screenshot symptom: the bottom nav icons render above a large black reserved area.
 - [x] Remove the bottom safe-area padding from the nav container because it creates visible blank space below the icons in the installed mobile shell.
