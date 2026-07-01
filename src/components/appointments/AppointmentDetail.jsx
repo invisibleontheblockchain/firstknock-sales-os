@@ -20,7 +20,7 @@ const STATUSES = [
     { value: 'rescheduled', label: 'Rescheduled', color: '#8b5cf6' },
 ];
 
-export default function AppointmentDetail({ appointment, onClose, onUpdate, onViewMap, onRun }) {
+export default function AppointmentDetail({ appointment, onClose, onUpdate, onViewMap, onRun, onDelete }) {
     const [editing, setEditing] = useState(false);
     const [form, setForm] = useState({
         homeowner_name: appointment.homeowner_name || '',
@@ -58,6 +58,10 @@ export default function AppointmentDetail({ appointment, onClose, onUpdate, onVi
     };
 
     const handleDelete = async () => {
+        if (onDelete) {
+            onDelete(appointment);
+            return;
+        }
         if (!confirm('Delete this appointment?')) return;
         await base44.entities.Appointment.delete(appointment.id);
         onUpdate?.();

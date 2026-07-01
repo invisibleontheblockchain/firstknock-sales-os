@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Calendar, Loader2, Plus, Zap, Filter, ChevronDown, Clock, CheckCircle2, XCircle, AlertTriangle, CalendarDays, X, Phone } from 'lucide-react';
+import { Calendar, Loader2, Plus, Zap, Filter, ChevronDown, Clock, CheckCircle2, XCircle, AlertTriangle, CalendarDays, X, Phone, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import PullToRefresh from '@/components/mobile/PullToRefresh';
 import { format, isToday, isTomorrow, isThisWeek, parseISO, isPast } from 'date-fns';
@@ -30,6 +30,8 @@ const STATUS_CHIPS = [
 ];
 
 const callbackKey = (item) => `${item.address_hash || ''}|${item.scheduled_date || item.next_eligible_date || ''}|${item.route_id || ''}`;
+const callbackLogId = (item) => (item?.notes || '').match(/callback_log:([^\]]+)/)?.[1] || (item?._source === 'interaction_log' ? String(item.id || '').replace('callback-log-', '') : null);
+const isCallbackAppointment = (item) => item?._source === 'interaction_log' || item?.outcome === 'follow_up' || /callback/i.test(item?.notes || '');
 
 const safeIsoDate = (value, fallback) => {
     const date = new Date(value || fallback || Date.now());
@@ -43,8 +45,10 @@ export default function Appointments() {
     const [showNewForm, setShowNewForm] = useState(false);
     const [statusFilter, setStatusFilter] = useState('all');
     const [timeFilter, setTimeFilter] = useState('all');
+    const [sourceFilter, setSourceFilter] = useState('all');
     const [showFilters, setShowFilters] = useState(false);
     const backfilledCallbackLogsRef = React.useRef(new Set());
+    const deletedCallbackLogsRef = React.useRef(new Set());
 
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
 
@@ -115,7 +119,7 @@ export default function Appointments() {
         const seenKeys = new Set(existingKeys);
 
         const toCreate = logs
-            .filter((log) => log?.parsed_status === 'CALLBACK' && log.address_hash && !backfilledCallbackLogsRef.current.has(log.id))
+            .filter((log) => log?.parsed_status === 'CALLBACK' && log.address_hash && !backfilledCallbackLogsRef.current.has(log.id) && !deletedCallbackLogsRef.current.has(log.id))
             .map((log) => {
                 const scheduledDate = safeIsoDate(log.next_eligible_date, log.created_date);
                 const key = callbackKey({ ...log, scheduled_date: scheduledDate });
@@ -163,7 +167,7 @@ export default function Appointments() {
             .filter(Boolean));
 
         (Array.isArray(logs) ? logs : [])
-            .filter((log) => log?.parsed_status === 'CALLBACK' && log.address_hash)
+            .filter((log) => log?.parsed_status === 'CALLBACK' && log.address_hash && !deletedCallbackLogsRef.current.has(log.id))
             .forEach((log) => {
                 const scheduledDate = safeIsoDate(log.next_eligible_date, log.created_date);
                 const key = callbackKey({ ...log, scheduled_date: scheduledDate });
@@ -203,7 +207,7 @@ export default function Appointments() {
             total: all.length,
             upcoming: all.filter(a => a.scheduled_date && new Date(a.scheduled_date) >= now && !['cancelled', 'completed'].includes(a.status)).length,
             today: all.filter(a => a.scheduled_date && isToday(parseISO(a.scheduled_date))).length,
-            callbacks: all.filter(a => a.outcome === 'follow_up' || /callback/i.test(a.notes || '')).length,
+            callbacks: all.filter(isCallbackAppointment).length,
             completed: all.filter(a => a.status === 'completed').length,
             noShow: all.filter(a => a.status === 'no_show').length,
             cancelled: all.filter(a => a.status === 'cancelled').length,
@@ -215,6 +219,8 @@ export default function Appointments() {
         return appointmentRows
             .filter(a => {
                 if (statusFilter !== 'all' && a.status !== statusFilter) return false;
+                if (sourceFilter === 'callbacks' && !isCallbackAppointment(a)) return false;
+                if (sourceFilter === 'appointments' && isCallbackAppointment(a)) return false;
                 if (timeFilter === 'today' && a.scheduled_date && !isToday(parseISO(a.scheduled_date))) return false;
                 if (timeFilter === 'tomorrow' && a.scheduled_date && !isTomorrow(parseISO(a.scheduled_date))) return false;
                 if (timeFilter === 'this_week' && a.scheduled_date && !isThisWeek(parseISO(a.scheduled_date))) return false;
@@ -226,7 +232,7 @@ export default function Appointments() {
                 if (timeFilter === 'past') return new Date(b.scheduled_date) - new Date(a.scheduled_date);
                 return new Date(a.scheduled_date) - new Date(b.scheduled_date);
             });
-    }, [appointmentRows, statusFilter, timeFilter]);
+    }, [appointmentRows, statusFilter, sourceFilter, timeFilter]);
 
     const appointmentNumbers = useMemo(() => new Map(filteredAppointments.map((appointment, index) => [appointment.id, index + 1])), [filteredAppointments]);
     const showInitialLoading = !user || appointmentsLoading || (appointmentsFetching && appointmentRows.length === 0) || (logsLoading && appointmentRows.length === 0);
@@ -306,6 +312,53 @@ export default function Appointments() {
         window.location.href = `/RepHome?${params.toString()}`;
     };
 
+    const deleteAppointmentRecord = async (appointment) => {
+        const logId = callbackLogId(appointment);
+        if (logId) deletedCallbackLogsRef.current.add(logId);
+        if (appointment._source === 'interaction_log') {
+            if (logId) await base44.entities.InteractionLog.delete(logId);
+            return;
+        }
+        await base44.entities.Appointment.delete(appointment.id);
+        if (logId) {
+            try { await base44.entities.InteractionLog.delete(logId); }
+            catch (error) { console.warn('Linked callback log could not be deleted', error); }
+        }
+    };
+
+    const deleteMutation = useMutation({
+        mutationFn: deleteAppointmentRecord,
+        onSuccess: () => {
+            toast.success('Appointment deleted');
+            setSelectedAppointment(null);
+            handleRefresh();
+        },
+        onError: () => toast.error('Could not delete appointment'),
+    });
+
+    const deleteAllMutation = useMutation({
+        mutationFn: async (items) => {
+            for (const appointment of items) await deleteAppointmentRecord(appointment);
+        },
+        onSuccess: () => {
+            toast.success('Appointments deleted');
+            setSelectedAppointment(null);
+            handleRefresh();
+        },
+        onError: () => toast.error('Could not delete all appointments'),
+    });
+
+    const handleDeleteAppointment = (appointment) => {
+        if (!confirm('Delete this appointment?')) return;
+        deleteMutation.mutate(appointment);
+    };
+
+    const handleDeleteAllShown = () => {
+        if (!filteredAppointments.length) return;
+        if (!confirm(`Delete ${filteredAppointments.length} currently shown appointment${filteredAppointments.length === 1 ? '' : 's'}?`)) return;
+        deleteAllMutation.mutate(filteredAppointments);
+    };
+
     const formatDateLabel = (dateKey) => {
         if (dateKey === 'unscheduled') return 'Unscheduled';
         const date = parseISO(dateKey);
@@ -335,6 +388,13 @@ export default function Appointments() {
                             >
                                 <Zap className="w-3 h-3 md:w-4 md:h-4 text-yellow-400" /> Auto-Schedule
                             </Button>
+                            <Button
+                                onClick={handleDeleteAllShown}
+                                disabled={deleteAllMutation.isPending || filteredAppointments.length === 0}
+                                className="h-8 md:h-10 px-3 md:px-5 text-[10px] md:text-xs font-bold rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/20 gap-1.5 disabled:opacity-35"
+                            >
+                                <Trash2 className="w-3 h-3 md:w-4 md:h-4" /> Delete All
+                            </Button>
                         </div>
                     </div>
 
@@ -353,6 +413,18 @@ export default function Appointments() {
                             <button key={t.id} onClick={() => setTimeFilter(t.id)}
                                 className={`py-2.5 px-2 sm:px-5 rounded-lg text-[8px] sm:text-xs font-bold transition-all whitespace-nowrap text-center h-full ${timeFilter === t.id ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-white'}`}
                             >{t.label}</button>
+                        ))}
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5 mt-2 sm:flex sm:gap-2">
+                        {[
+                            { id: 'all', label: 'All' },
+                            { id: 'callbacks', label: 'Callbacks' },
+                            { id: 'appointments', label: 'Appointments' },
+                        ].map(source => (
+                            <button key={source.id} onClick={() => setSourceFilter(source.id)}
+                                className={`py-2 px-2 sm:px-4 rounded-lg text-[9px] sm:text-xs font-bold transition-all border ${sourceFilter === source.id ? 'bg-[#39FF4A]/15 border-[#39FF4A]/30 text-[#39FF4A]' : 'border-white/[0.04] text-gray-500 hover:text-white'}`}
+                            >{source.label}</button>
                         ))}
                     </div>
 
@@ -422,6 +494,7 @@ export default function Appointments() {
                                             onClick={(appt) => setSelectedAppointment({ ...appt, appointment_number: appointmentNumbers.get(appt.id) })}
                                             onViewMap={handleViewOnMap}
                                             onRun={handleRunAppointment}
+                                            onDelete={handleDeleteAppointment}
                                         />
                                     ))}
                                 </div>
@@ -439,6 +512,7 @@ export default function Appointments() {
                     onUpdate={() => { handleRefresh(); setSelectedAppointment(null); }}
                     onViewMap={handleViewOnMap}
                     onRun={handleRunAppointment}
+                    onDelete={handleDeleteAppointment}
                 />
             )}
         </div>

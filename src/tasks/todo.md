@@ -1,3 +1,16 @@
+## Plan — Appointments Delete + Callback Filter
+- [x] Inspect the Appointments page, appointment cards, detail modal, and callback-log merge behavior.
+- [x] Add a callbacks-vs-appointments filter that separates callback-created rows from regular appointments.
+- [x] Add a per-card delete action and preserve the existing detail delete flow.
+- [x] Add a delete-all action for the currently shown filtered appointments/callbacks.
+- [x] Prevent deleted callback logs from immediately reappearing through the callback backfill merge.
+- [x] Record the result.
+
+### Review — Appointments Delete + Callback Filter
+Added source filtering to the Appointments page so users can view All, Callbacks, or Appointments. Added per-card delete plus a Delete All action for the currently shown filtered results. Callback-derived appointments now delete their linked callback log when available, and the page suppresses deleted callback logs from being immediately backfilled again during the same session.
+
+---
+
 ## Plan — Simplify BatchData Email
 - [x] Remove the complicated explanation from the escalation draft.
 - [x] Keep only the exact payloads we are sending and the observed result for each.

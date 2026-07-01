@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, ChevronRight, MapPin, Phone, Navigation } from 'lucide-react';
+import { Calendar, ChevronRight, MapPin, Phone, Navigation, Trash2 } from 'lucide-react';
 import { format, isToday, isPast, parseISO } from 'date-fns';
 
 const STATUS_STYLES = {
@@ -19,7 +19,7 @@ const OUTCOME_LABELS = {
     pending: { label: '', color: '' },
 };
 
-export default function AppointmentCard({ appointment, appointmentNumber, onClick, onViewMap, onRun }) {
+export default function AppointmentCard({ appointment, appointmentNumber, onClick, onViewMap, onRun, onDelete }) {
     const status = STATUS_STYLES[appointment.status] || STATUS_STYLES.scheduled;
     const isOverdue = appointment.scheduled_date && isPast(new Date(appointment.scheduled_date)) && !['completed', 'cancelled'].includes(appointment.status);
     const isTodayAppt = appointment.scheduled_date && isToday(parseISO(appointment.scheduled_date));
@@ -74,12 +74,15 @@ export default function AppointmentCard({ appointment, appointmentNumber, onClic
                 <ChevronRight className="w-4 h-4 sm:w-5 text-gray-700 group-hover:text-gray-400 transition-colors shrink-0 mt-1" />
             </button>
 
-            <div className="mt-3 grid grid-cols-2 gap-2 pl-14 sm:pl-16 md:pl-20">
-                <button onClick={() => onViewMap?.(appointment)} className="h-9 rounded-xl border border-[#39FF4A]/30 bg-[#39FF4A]/10 text-[10px] font-black uppercase tracking-[0.12em] text-[#39FF4A] flex items-center justify-center gap-1.5 active:scale-95">
-                    <MapPin className="w-3.5 h-3.5" /> View Map
+            <div className="mt-3 grid grid-cols-3 gap-2 pl-14 sm:pl-16 md:pl-20">
+                <button onClick={() => onViewMap?.(appointment)} className="h-9 rounded-xl border border-[#39FF4A]/30 bg-[#39FF4A]/10 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.1em] text-[#39FF4A] flex items-center justify-center gap-1 active:scale-95">
+                    <MapPin className="w-3.5 h-3.5" /> Map
                 </button>
-                <button onClick={() => canRun && onRun?.(appointment)} disabled={!canRun} className="h-9 rounded-xl border border-white/10 bg-white/[0.06] text-[10px] font-black uppercase tracking-[0.12em] text-white disabled:opacity-35 disabled:text-white/40 flex items-center justify-center gap-1.5 active:scale-95">
+                <button onClick={() => canRun && onRun?.(appointment)} disabled={!canRun} className="h-9 rounded-xl border border-white/10 bg-white/[0.06] text-[9px] sm:text-[10px] font-black uppercase tracking-[0.1em] text-white disabled:opacity-35 disabled:text-white/40 flex items-center justify-center gap-1 active:scale-95">
                     <Navigation className="w-3.5 h-3.5" /> Run
+                </button>
+                <button onClick={() => onDelete?.(appointment)} className="h-9 rounded-xl border border-red-500/20 bg-red-500/10 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.1em] text-red-300 flex items-center justify-center gap-1 active:scale-95">
+                    <Trash2 className="w-3.5 h-3.5" /> Delete
                 </button>
             </div>
         </div>
