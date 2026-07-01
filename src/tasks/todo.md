@@ -1,9 +1,12 @@
 ## Plan — Diagnose East-Coast Zero Precision Pull
-- [ ] Inspect the latest 155k sq mi FetchJob and its processor logs.
-- [ ] Add a no-write raw BatchData probe that fetches one small page and reports raw rows, mapped rows, active rows, and sale/status fields.
-- [ ] Probe exact sold-date request and polygon-without-sold-date request to isolate whether the date filter or app-side filtering is responsible.
-- [ ] Patch only if the evidence shows our mapper/request is dropping usable properties.
-- [ ] Document the result and the root cause.
+- [x] Inspect the latest 155k sq mi FetchJob and its processor logs.
+- [x] Add a no-write raw BatchData probe that fetches one small page and reports raw rows, mapped rows, active rows, and sale/status fields.
+- [x] Probe exact sold-date request and polygon-without-sold-date request to isolate whether the date filter or app-side filtering is responsible.
+- [x] Patch only if the evidence shows our mapper/request is dropping usable properties.
+- [x] Document the result and the root cause.
+
+### Review — Diagnose East-Coast Zero Precision Pull
+Root cause: BatchData did return properties for the 155,585.63 sq mi east-coast job, but our side silently filtered them out. Job `6a4457023615809c140a8a19` originally received 3 raw strict rows and 4 broad rows, all with `intel.lastSoldDate = 2026-06-23T00:00:00.000Z` and residential `R2` land use, but the mapper compared those midnight dates against a rolling `now - 7*24h` timestamp. Because the job ran late on Jun 30, Jun 23 midnight was treated as a few hours too old even though it matched the exact `minDate: 2026-06-23` sent to BatchData. I changed ingestion and Neon candidate retrieval to use job-anchored calendar-date cutoffs, reprocessed the affected job, and verified it now stores `raw=3`, `mapped=3`, `active=3`; owner-scoped candidate retrieval returns 3 active homes; `generateRoutesBackend` creates 1 route with 3 homes.
 
 ---
 

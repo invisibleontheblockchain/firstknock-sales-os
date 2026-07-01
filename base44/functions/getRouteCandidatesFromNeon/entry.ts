@@ -38,6 +38,11 @@ function routeCandidateSoldWindowDays(soldMonths) {
     return requestedSoldWindowDays(soldMonths);
 }
 
+function isoDateDaysAgo(days, referenceMs = Date.now()) {
+    const date = new Date(referenceMs - days * 24 * 60 * 60 * 1000);
+    return date.toISOString().slice(0, 10);
+}
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -55,8 +60,15 @@ Deno.serve(async (req) => {
         const bounds = body.bounds || polygonBounds;
         const limit = Math.min(Math.max(Number(body.limit || 50000), 1), 100000);
         const soldMonths = body.sold_months === 'all' || body.sold_months === null ? null : Number(body.sold_months || 12);
-        const soldAfter = soldMonths ? new Date(Date.now() - routeCandidateSoldWindowDays(soldMonths) * 24 * 60 * 60 * 1000).toISOString() : null;
         const fetchJobId = body.fetch_job_id ? String(body.fetch_job_id) : null;
+        let referenceMs = Date.now();
+        if (fetchJobId) {
+            const fetchJob = await base44.asServiceRole.entities.FetchJob.get(fetchJobId).catch(() => null);
+            const fetchJobTime = fetchJob?.created_date || fetchJob?.started_at;
+            const parsed = fetchJobTime ? new Date(fetchJobTime).getTime() : NaN;
+            if (Number.isFinite(parsed)) referenceMs = parsed;
+        }
+        const soldAfter = soldMonths ? `${isoDateDaysAgo(routeCandidateSoldWindowDays(soldMonths), referenceMs)}T00:00:00.000Z` : null;
 
         if (body.debug_job === true && fetchJobId) {
             const debugRows = await sql`

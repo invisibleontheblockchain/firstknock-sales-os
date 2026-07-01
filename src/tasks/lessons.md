@@ -151,3 +151,4 @@
 - When the product decision is “no square-mile cap,” do not add area/span gates to paid-data starts; enforce only the property-count cap and make preview metadata reflect unlimited area.
 - When a user challenges an implausible zero-result claim, do not defend the result. Inspect the real latest job, prove counts at each stage, and verify route creation from the actual returned candidates before answering.
 - For provider payload disputes, use a cheap request-preview and completed job logs before running another live provider fetch; if a no-write fetch times out, stop and rely on already-recorded job attempts instead of retrying the expensive call.
+- When a provider request uses a date-only `minDate`, every downstream sale-date gate must compare calendar dates anchored to the job/request time, not rolling millisecond cutoffs from current runtime; midnight provider dates can otherwise be falsely rejected.
