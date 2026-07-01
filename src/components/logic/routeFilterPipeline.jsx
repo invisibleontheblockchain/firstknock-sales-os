@@ -96,7 +96,9 @@ export function applyRouteFilters({
             if (p.original_status === 'PENDING') return true;
             if (p.original_status === 'RECENT_OFF_MARKET' && p.sale_confidence !== 'low') return true;
             const hasInteraction = ['CALLBACK', 'NO_ANSWER', 'QUALIFIED'].includes(p.effective_status);
-            const isImportedCandidate = ['csv_import', 'manual', 'batchdata'].includes(String(p.data_source || '').toLowerCase()) || p.original_status === 'UNVERIFIED' || p.original_status === 'BATCHDATA_CONFIRMED';
+            const isBatchDataCandidate = String(p.data_source || '').toLowerCase() === 'batchdata' || p.original_status === 'BATCHDATA_CONFIRMED';
+            if (isBatchDataCandidate) return true;
+            const isImportedCandidate = ['csv_import', 'manual'].includes(String(p.data_source || '').toLowerCase()) || p.original_status === 'UNVERIFIED';
             if (!p.sold_date) return hasInteraction || isImportedCandidate;
             try {
                 const date = new Date(p.sold_date);
@@ -139,19 +141,17 @@ export function applyRouteFilters({
         const kw = ['land', 'lot', 'vacant', 'acreage', 'farm'];
         workingSet = workingSet.filter(p => !p.property_type || !kw.some(k => p.property_type.toLowerCase().includes(k)));
     }
-    // v16 Fix 5: SFR Hard Filter — always applied, not a routeConfig toggle (~5% FP reduction)
-    // Graceful fallback: null/undefined property_type passes through
-    workingSet = workingSet.filter(p => {
-        if (!p.property_type) return true;
-        return p.property_type.toLowerCase().includes('single family');
-    });
+    // Keep only user-configured property-type exclusions here. BatchData pulls already
+    // target owner-change properties; a hard single-family-only gate can hide valid homes.
     track('propertyType');
 
     // --- Confidence / Rejection Filters ---
-    workingSet = workingSet.filter(p => p.original_status !== 'REJECTED');
+    const isBatchDataCandidate = (p) => String(p.data_source || '').toLowerCase() === 'batchdata' || p.original_status === 'BATCHDATA_CONFIRMED';
+    workingSet = workingSet.filter(p => isBatchDataCandidate(p) || p.original_status !== 'REJECTED');
 
-    // Exclude records explicitly deactivated by cleanup or delta sync.
-    workingSet = workingSet.filter(p => p.route_active !== false);
+    // Exclude records explicitly deactivated by cleanup or delta sync, but do not let
+    // older strict BatchData parsing hide exact-job rows during this verification pass.
+    workingSet = workingSet.filter(p => isBatchDataCandidate(p) || p.route_active !== false);
 
     // Match MLS_CLERK_GAP_DAYS in processFetchChunk.
     const MLS_WINDOW_DAYS = 30;
@@ -184,6 +184,7 @@ export function applyRouteFilters({
         // Deed or Corporate sale_type? Ground truth — always let through.
         const saleType = (p.sale_type || '').toLowerCase();
         if (saleType === 'deed' || saleType === 'corporate') return true;
+        if (isBatchDataCandidate(p)) return true;
         // SOLD status from Phase 1 (county records)? Let through.
         if (p.original_status === 'SOLD' || p.original_status === 'ELIGIBLE') return true;
         // Deed-confirmed or BatchData-confirmed? Let through.
@@ -223,7 +224,7 @@ export function applyRouteFilters({
     // Skip low-confidence properties unless the user explicitly opts in.
     // (Previously 40mi and 300mi branched differently here — now unified.)
     if (!routeConfig.includeUnverifiedSales) {
-        workingSet = workingSet.filter(p => p.sale_confidence !== 'low');
+        workingSet = workingSet.filter(p => isBatchDataCandidate(p) || p.sale_confidence !== 'low');
     }
     track('confidence');
 

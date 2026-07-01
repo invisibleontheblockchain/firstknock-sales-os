@@ -1,3 +1,17 @@
+## Plan — Loosen BatchData Local Guardrails
+- [x] Keep the BatchData request date/polygon targeting intact so paid pulls still ask for recent owner-change properties.
+- [x] Change ingestion so BatchData-returned polygon matches are saved as routeable unless they fail only hard safety checks: invalid address/coordinates, outside drawn area, or clearly non-residential land/commercial type.
+- [x] Stop preselect paging from depending on the same strict route_active gate so we do not sample rejected rows when usable provider rows exist.
+- [x] Loosen exact-job candidate retrieval so it does not re-drop rows due to rejected/confidence flags from older stricter parsing.
+- [x] Loosen final local route filters for BatchData exact-job/imported candidates while keeping user-configured geography, assigned-route, previously-knocked, callback, and price/year filters.
+- [x] Verify with synthetic BatchData rows that previously rejected neutral/missing-sale-field records now survive, while outside-polygon/invalid rows still fail.
+- [x] Record the result and lesson.
+
+### Review — Loosen BatchData Local Guardrails
+Changed the Precision BatchData path to trust the paid provider request more: production fetching now uses the broad polygon request with `intel.lastSoldDate.minDate`, ingestion saves BatchData rows as routeable unless they fail hard safety checks, exact-job candidate retrieval no longer re-drops rows because of older strict rejection/confidence flags, and the final route filter lets BatchData candidates survive repeated sold-date/confidence/SFR gates. Verification passed: synthetic BatchData rows with active listing status, missing sale fields, and old/flagged local statuses now stay routeable when inside the polygon; a commercial row remains inactive; an outside-polygon row is dropped; the latest real exact job still returns 3 active candidates; and `npm run build` passes.
+
+---
+
 ## Plan — Check 1–2 Day Sold Records
 - [x] Identify the recent BatchData jobs and their imported property rows.
 - [x] Count returned homes with sale evidence within the last 1 day and within the last 2 days.

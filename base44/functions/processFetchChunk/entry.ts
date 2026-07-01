@@ -290,16 +290,11 @@ function mapBatchDataProperty(record, job) {
     const nonResidential = /commercial|industrial|vacant|agricultural|land/i.test(String(propertyType));
     const landUseRejected = landUseCode && landUseCode !== 'R2';
 
-    // ── Confirmed-sale gate ──────────────────────────────────────────────
-    // BatchData default property rows often provide intel.lastSoldDate without
-    // listing status or sale amount. Treat that dated intel value as sale evidence
-    // unless the listing status explicitly conflicts with route eligibility.
-    const isSoldStatus = ['sold', 'closed', 'settled'].includes(listingStatusLower);
-    const hasSaleEvidence = saleAmount !== null && saleAmount > 0;
-    const hasNeutralStatus = !listingStatusLower;
-    const conflictingStatus = ['active', 'for sale', 'off market', 'pending', 'withdrawn'].includes(listingStatusLower);
-    const isConfirmedSale = hasValidSaleDate && isSoldInWindow && (isSoldStatus || hasSaleEvidence || hasNeutralStatus);
-    const rejected = !isConfirmedSale || landUseRejected || nonResidential || conflictingStatus;
+    // ── Loosened BatchData gate ──────────────────────────────────────────
+    // The paid BatchData request already asks for owner-change / last-sold records.
+    // Do not reject neutral or incomplete rows locally just because a secondary
+    // listing/sale field is blank or stale. Keep only hard safety exclusions here.
+    const rejected = nonResidential;
 
     const match = address.street.match(/^(\d+)\s+(.*)$/);
     const houseNumber = match ? parseInt(match[1], 10) : 0;
@@ -500,7 +495,7 @@ async function fetchBatchDataRecordsForMode(job, mode, requested) {
 
 async function fetchBatchDataRecords(job) {
     const requested = Math.min(Math.max(Number(job.estimated_record_count || job.total_expected || 1000), 1), 1000);
-    const modes = ['strict_polygon', 'broad_polygon'];
+    const modes = ['broad_polygon'];
     const attempts = [];
     let fallback = [];
     let fallbackMode = 'none';
