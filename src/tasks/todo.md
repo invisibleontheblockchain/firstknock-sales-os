@@ -1,3 +1,14 @@
+## Plan — Fix Command Center Mobile Top Cutoff
+- [x] Inspect the Command Center overlay shell that renders over the map.
+- [x] Identify that the overlay begins at raw viewport top without safe-area spacing.
+- [x] Add mobile safe-area top padding to the full-screen overlay so its header clears the phone status/header area.
+- [x] Keep the dashboard content, filters, and close action unchanged.
+
+### Review — Fix Command Center Mobile Top Cutoff
+Command Center now pads its full-screen overlay by `env(safe-area-inset-top)`, so on mobile/PWA views the title bar starts below the phone status area instead of being clipped. Dashboard behavior and content remain unchanged.
+
+---
+
 ## Plan — Replace Home Screen Icon
 - [x] Replace the static favicon/apple-touch-icon references with the requested large FirstKnock icon.
 - [x] Replace the runtime metadata icon updater so it does not overwrite the home-screen icon with the old asset.

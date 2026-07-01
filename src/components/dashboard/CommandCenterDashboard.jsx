@@ -129,7 +129,7 @@ export default function CommandCenterDashboard({ properties, logs, routes, teamM
     ];
 
     return (
-        <div className="fixed inset-0 z-[5000] flex flex-col bg-[#050505] text-white overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-[5000] flex flex-col bg-[#050505] text-white overflow-hidden pt-[env(safe-area-inset-top)] animate-in fade-in zoom-in-95 duration-200">
             {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3 sm:px-6 lg:px-8 py-2 sm:py-3 lg:py-4 border-b border-white/[0.04] bg-[#0A0A0A] shrink-0 gap-3">
                 <div className="flex items-center gap-2 lg:gap-3">
