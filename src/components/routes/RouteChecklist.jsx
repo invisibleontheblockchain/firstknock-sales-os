@@ -190,9 +190,9 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
     const progressPct = stats.total > 0 ? (stats.done / stats.total) * 100 : 0;
 
     return (
-        <div className="h-full flex flex-col" style={{ background: BRAND.voidBlack }}>
+        <div className="h-full flex flex-col pt-[calc(env(safe-area-inset-top)+0.5rem)]" style={{ background: BRAND.voidBlack }}>
             {/* Compact Header */}
-            <div className="px-4 pt-4 pb-3 space-y-3">
+            <div className="px-4 pt-2 pb-3 space-y-3">
                 {/* Title Row */}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2.5 min-w-0">

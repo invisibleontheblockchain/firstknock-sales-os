@@ -515,7 +515,9 @@ export default function Home() {
     const handleSaveRoute = async (route, assignedRepId = null, assignedRepName = null, silent = false) => {
         const defaultAssigneeId = assignedRepId || user?.id;
         const defaultAssigneeName = assignedRepName || user?.full_name || 'Me';
-        const routeName = deriveRouteName(route);
+        const baseRouteName = deriveRouteName(route);
+        const isGeneratedRoute = !route?.isSaved && Array.isArray(route?.properties) && route.properties.length > 0;
+        const routeName = isGeneratedRoute && !/^New\b/i.test(baseRouteName) ? `New — ${baseRouteName}` : baseRouteName;
 
         // @ts-ignore - 'mutateAsync' incorrectly expects 'void' instead of the data object
         return await createRouteMutation.mutateAsync({
@@ -532,6 +534,7 @@ export default function Home() {
             assigned_to: defaultAssigneeId,
             assigned_to_name: defaultAssigneeName,
             manager_id: user.id,
+            metadata: isGeneratedRoute ? { ...(route.metadata || {}), newly_generated: true, generated_at: new Date().toISOString() } : route.metadata,
             silent // Pass silent flag to mutation
         });
     };
@@ -977,6 +980,7 @@ export default function Home() {
 
     // Generate routes with configurable houses per route
     const [routesGenerating, setRoutesGenerating] = useState(false);
+    const routesGeneratingRef = useRef(false);
     const [generationStage, setGenerationStage] = useState('Preparing data...');
 
     const [streetCooldownDays, setStreetCooldownDays] = useState(30);
@@ -998,10 +1002,18 @@ export default function Home() {
     }, [effectiveProperties, zoomLevel, activeRoute]);
 
     const generateRoutes = useCallback(async () => {
+        if (routesGeneratingRef.current) {
+            toast.info('Route generation is already running.');
+            return;
+        }
+        routesGeneratingRef.current = true;
+
         // If frozen data exists, reorder instead of refetch (unless filter just changed, which clears frozen)
         if (frozenWorkingSet?.length > 0) {
             console.log(`[generateRoutes] Frozen data exists (${frozenWorkingSet.length} props). Using handleReorder.`);
-            await handleReorder(); return;
+            try { await handleReorder(); }
+            finally { routesGeneratingRef.current = false; }
+            return;
         }
 
         // IMMEDIATE visual feedback — show overlay + toast BEFORE any heavy work.
@@ -1277,6 +1289,7 @@ export default function Home() {
         } finally {
             // Hide overlay — but if an error was set, keep it visible until user dismisses
             // (we re-check generationError via a functional setState)
+            routesGeneratingRef.current = false;
             setRoutesGenerating(false);
         }
     }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, draftPolygon, frozenWorkingSet, effectiveProperties, fetchRouteCandidatesFromNeon, currentBatchDataJobId, user?.territory_zip_codes, user?.generated_zip_codes, user?.email]);

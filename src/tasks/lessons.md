@@ -1,5 +1,7 @@
 # Lessons
 
+- Route generation actions need a synchronous ref guard in addition to disabled/loading UI state; React state can update too late to prevent rapid double taps or auto-generate collisions from creating duplicate saved routes.
+- Newly generated routes should be labeled at the save/source-of-truth layer, not only in display cards, so active route lists and selected-route banners clearly distinguish the freshest route from older similar routes.
 - Appointment views must not persist derived callback/history rows as real Appointment records automatically; derived rows should stay display-only unless the user explicitly creates or assigns an appointment.
 - Callback visibility must be driven by readable `CALLBACK` InteractionLog rows, not only saved Appointment rows or old MasterProperty hydration. Hydrate callback hashes through the same Neon-backed route-property lookup used by routes, and keep unresolved callbacks visible as display-only rows instead of silently dropping them.
 - Never use placeholder address text like `Callback address` as a saved appointment address; if a callback cannot resolve to a real address, show it as an unresolved display-only callback rather than saving fake address text.

@@ -1,3 +1,16 @@
+## Plan — Checklist + New Route Generation Fixes
+- [x] Inspect the checklist overlay shell to find why the top header can be clipped on mobile.
+- [x] Add safe-area top spacing to the checklist view without changing checklist behavior.
+- [x] Trace route generation and auto-save to identify why duplicate creation can happen from rapid/repeated starts.
+- [x] Add a synchronous in-flight guard so one route generation/save flow cannot start twice.
+- [x] Mark newly generated saved routes with a visible “New” prefix at the save source of truth.
+- [x] Document the result and lessons.
+
+### Review — Checklist + New Route Generation Fixes
+The checklist view now includes safe-area top spacing so its header no longer starts under the top of the screen. Route generation now has a ref-based in-flight guard, preventing same-tick double starts before React state updates. Newly generated saved routes are named with a visible “New —” prefix and metadata timestamp so the freshest route is easier to distinguish from existing active routes.
+
+---
+
 ## Plan — Appointment Closest-Date Ordering
 - [x] Identify the Appointments date sorting and grouped date ordering.
 - [x] Change the default appointment ordering so nearest upcoming appointments show first and farthest future dates move lower.
