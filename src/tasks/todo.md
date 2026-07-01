@@ -1,3 +1,15 @@
+## Plan — Appointment Closest-Date Ordering
+- [x] Identify the Appointments date sorting and grouped date ordering.
+- [x] Change the default appointment ordering so nearest upcoming appointments show first and farthest future dates move lower.
+- [x] Keep past-only view sorted with the most recent past appointment first.
+- [x] Keep unscheduled items at the bottom.
+- [x] Record the result.
+
+### Review — Appointment Closest-Date Ordering
+The Appointments tab now sorts visible appointments by closest upcoming date first, then later future dates, then past dates with the most recent past first, and unscheduled rows last. The date group headers follow the same order so opening Appointments no longer shows the furthest-away appointments first.
+
+---
+
 ## Plan — Restore Callback Visibility in Appointments
 - [x] Trace how callback InteractionLog rows are merged into the Appointments tab.
 - [x] Identify why route/Neon-backed callbacks can be read by the system but still hidden from Appointments.

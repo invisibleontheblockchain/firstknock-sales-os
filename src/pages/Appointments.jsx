@@ -229,8 +229,19 @@ export default function Appointments() {
                 return true;
             })
             .sort((a, b) => {
-                if (timeFilter === 'past') return new Date(b.scheduled_date) - new Date(a.scheduled_date);
-                return new Date(a.scheduled_date) - new Date(b.scheduled_date);
+                const now = Date.now();
+                const aTime = a.scheduled_date ? new Date(a.scheduled_date).getTime() : Number.POSITIVE_INFINITY;
+                const bTime = b.scheduled_date ? new Date(b.scheduled_date).getTime() : Number.POSITIVE_INFINITY;
+                const aValid = Number.isFinite(aTime);
+                const bValid = Number.isFinite(bTime);
+                if (!aValid && !bValid) return 0;
+                if (!aValid) return 1;
+                if (!bValid) return -1;
+                if (timeFilter === 'past') return bTime - aTime;
+                const aUpcoming = aTime >= now;
+                const bUpcoming = bTime >= now;
+                if (aUpcoming !== bUpcoming) return aUpcoming ? -1 : 1;
+                return aUpcoming ? aTime - bTime : bTime - aTime;
             });
     }, [appointmentRows, statusFilter, sourceFilter, timeFilter]);
 
@@ -245,8 +256,18 @@ export default function Appointments() {
             groups[dateKey].push(a);
         });
         return Object.entries(groups).sort(([a], [b]) => {
+            if (a === 'unscheduled' && b === 'unscheduled') return 0;
+            if (a === 'unscheduled') return 1;
+            if (b === 'unscheduled') return -1;
             if (timeFilter === 'past') return b.localeCompare(a);
-            return a.localeCompare(b);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const aTime = new Date(a).getTime();
+            const bTime = new Date(b).getTime();
+            const aUpcoming = aTime >= today.getTime();
+            const bUpcoming = bTime >= today.getTime();
+            if (aUpcoming !== bUpcoming) return aUpcoming ? -1 : 1;
+            return aUpcoming ? aTime - bTime : bTime - aTime;
         });
     }, [filteredAppointments, timeFilter]);
 
