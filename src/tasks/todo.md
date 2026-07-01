@@ -1,3 +1,14 @@
+## Plan — Enlarge Header Logo
+- [x] Remove the separate FirstKnock text label from the selected header logo area.
+- [x] Increase the black-background logo to roughly triple its previous size.
+- [x] Adjust the header row height/padding so the enlarged logo is contained by the header and does not sit underneath controls.
+- [x] Keep this design-only with no navigation or interaction changes.
+
+### Review — Enlarge Header Logo
+The header logo text label was removed, the logo icon was enlarged from 40px to 112px, and the header row now has enough height and bottom padding to contain the larger logo without the top controls overlapping it.
+
+---
+
 ## Plan — Header Logo Seam Fix
 - [x] Inspect the page/header logo source responsible for the visible top-left seam.
 - [x] Replace the problematic wide logo image with a clean icon + text mark on the native black header background.
