@@ -257,7 +257,7 @@ function LayoutInner({ children }) {
 
             {/* Bottom Nav */}
             {!isRoleSelectPage &&
-      <nav className="bg-black border-t border-slate-800 z-20 shrink-0 pb-[env(safe-area-inset-bottom)]">
+      <nav className="bg-black border-t border-slate-800 z-20 shrink-0">
                 {user.app_role === 'rep' ?
         <div className="flex justify-around items-center h-16 max-w-full mx-auto">
                         <NavItem icon={Map} label="My Route" to={createPageUrl('RepHome')} active={isPageActive('RepHome')} accent={accent} />

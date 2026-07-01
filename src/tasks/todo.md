@@ -1,3 +1,14 @@
+## Plan — Remove Mobile Bottom-Bar Blank Space
+- [x] Identify the screenshot symptom: the bottom nav icons render above a large black reserved area.
+- [x] Remove the bottom safe-area padding from the nav container because it creates visible blank space below the icons in the installed mobile shell.
+- [x] Keep the app shell pinned with `inset-0` and keep the existing 64px bottom navigation row.
+- [x] Bump the installed-app release key so the home-screen app refreshes cached shell assets again.
+
+### Review — Remove Mobile Bottom-Bar Blank Space
+The massive blank area below the bottom bar came from adding `padding-bottom: env(safe-area-inset-bottom)` to a nav whose icon row stayed fixed at 64px, so the padding rendered as empty black space under the icons. The nav now returns to a plain 64px bar pinned by the full-screen shell, and the PWA cache version was bumped so installed Safari/Brave launches can pick up this corrected shell.
+
+---
+
 ## Plan — Fix Installed iOS PWA Bottom Gap
 - [x] Confirm the startup HTML already includes iOS standalone viewport metadata.
 - [x] Stop the runtime layout from downgrading that viewport metadata after login.
