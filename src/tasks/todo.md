@@ -602,3 +602,14 @@ Confirming seats now passes the Team return URL into the seat update request, an
 
 ### Review — Make Appointments Account-Specific
 The Appointments page was using broad list reads for appointments and callback interaction logs. Because admin-readable records can include global/demo data, the page could render appointments outside the current account. The page now applies a single account ownership filter after reads: manager accounts only show records for their own manager ID, reps only show their manager's account records, and legacy unscoped rows only remain visible to the creator who made them. Manual and auto-scheduled appointments already stamp `manager_id`, and the production build passed after the change.
+
+---
+
+## Plan — Rep Bottom Navigation Tabs
+- [x] Replace the old rep-only Knock/Help bottom nav with Knock, Analytics, Appts, and Team.
+- [x] Keep the Map tab hidden for reps.
+- [x] Verify the updated layout builds successfully.
+- [x] Document the review and lesson.
+
+### Review — Rep Bottom Navigation Tabs
+Rep accounts now see Knock, Analytics, Appts, and Team in the bottom navigation. The Map tab remains hidden for reps, and the production build passed after the layout update.
