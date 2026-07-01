@@ -136,6 +136,7 @@
 - Team seat capacity must be enforced in both frontend and invite-redemption backend. Frontend gating alone is insufficient because reps can redeem codes directly; backend must reject joins when the manager has no paid-confirmed seats.
 - “Add Rep” must not create or open a manual TeamMember form in the paid-seat model; it should start seat billing, and only successful paid seat capacity should allow later invite-code activation.
 - Avoid duplicate Team roster entry points for the same paid-seat action; if an Add Rep button already exists in the header, do not add a second roster card unless explicitly requested.
+- For paid seat increases, separate Stripe intent from activation: the Add Rep UI can request a new subscription quantity, but Base44 `total_seats` and invite capacity must update only from a paid Stripe webhook event.
 - Team onboarding should let unpaid/new users identify as reps directly from the Team gate and redeem a manager code there, instead of forcing them back through an older role-selection screen.
 - Team onboarding copy should match the real production workflow; avoid “demo” labels for manager invite/team creation controls when the action creates real invite codes and team membership paths.
 - Messaging/privacy fixes must be enforced at both levels: stamp every message with a tenant/account key and participant list, then make the entity RLS use those fields instead of relying only on frontend channel filters.

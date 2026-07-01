@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.6';
 import Stripe from 'npm:stripe@^14.0.0';
 
-const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || Deno.env.get("STRIPE_TEST_SECRET_KEY"), {
+const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY"), {
   apiVersion: '2023-10-16',
 });
 
@@ -69,7 +69,8 @@ Deno.serve(async (req) => {
         const subscription = subscriptions.data[0];
         const itemId = subscription.items.data[0].id; 
 
-        // 2. Update quantity in Stripe
+        // 2. Update quantity in Stripe and invoice immediately.
+        // Do not update Base44 seats here — webhook payment confirmation activates the seats.
         const updatedSubscription = await stripe.subscriptions.update(
             subscription.id,
             {
@@ -77,27 +78,22 @@ Deno.serve(async (req) => {
                     id: itemId,
                     quantity: newSeatCount
                 }],
-                proration_behavior: 'always_invoice', 
+                proration_behavior: 'always_invoice',
+                payment_behavior: 'pending_if_incomplete',
+                expand: ['latest_invoice.payment_intent']
             }
         );
 
-        // 3. Update DB immediately (User & InviteCode)
-        // We use user-scoped client since the user is authenticated and updating their own data (mostly)
-        // But for InviteCode linked to user, user should have access.
-        // Updating 'total_seats' on self might require service role if we restricted it, but typically users can update self attributes unless protected.
-        // Assuming we can update self. If not, use asServiceRole.
-        
-        // Let's use service role to be safe for logic enforcement
-        await base44.asServiceRole.entities.User.update(user.id, {
-            total_seats: newSeatCount
-        });
-
-        await syncInviteCode(base44.asServiceRole, user.id, newSeatCount);
+        const latestInvoice = updatedSubscription.latest_invoice;
+        const invoiceUrl = latestInvoice && typeof latestInvoice !== 'string' ? latestInvoice.hosted_invoice_url : null;
+        const invoiceStatus = latestInvoice && typeof latestInvoice !== 'string' ? latestInvoice.status : null;
 
         return Response.json({ 
             success: true, 
             status: updatedSubscription.status,
-            new_quantity: newSeatCount
+            new_quantity: newSeatCount,
+            invoice_status: invoiceStatus,
+            invoice_url: invoiceUrl
         });
 
     } catch (error) {

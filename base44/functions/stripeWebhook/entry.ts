@@ -166,6 +166,7 @@ Deno.serve(async (req: Request) => {
                     if (!subscriptionId) break;
                     const subscription = await stripe.subscriptions.retrieve(subscriptionId);
                     const userId = subscription.metadata?.base44_user_id;
+                    const quantity = subscription.items?.data?.[0]?.quantity || 1;
                     if (userId) {
                         await base44.asServiceRole.entities.User.update(userId, {
                             subscription_id: subscription.id,
@@ -174,9 +175,11 @@ Deno.serve(async (req: Request) => {
                             subscription_paid_confirmed: true,
                             subscription_paid_confirmed_at: new Date().toISOString(),
                             stripe_card_on_file_confirmed: true,
-                            stripe_card_confirmed_at: new Date().toISOString()
+                            stripe_card_confirmed_at: new Date().toISOString(),
+                            total_seats: quantity
                         });
-                        console.log(`Confirmed paid subscription invoice for user ${userId}`);
+                        await syncInviteCode(base44, userId, quantity);
+                        console.log(`Confirmed paid subscription invoice for user ${userId} with ${quantity} seats`);
                     }
                     break;
                 }

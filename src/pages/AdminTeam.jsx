@@ -46,6 +46,8 @@ export default function AdminTeam() {
     const [joinTeamCode, setJoinTeamCode] = useState('');
     const [isJoiningTeam, setIsJoiningTeam] = useState(false);
     const [isOpeningSeatBilling, setIsOpeningSeatBilling] = useState(false);
+    const [isSeatDialogOpen, setIsSeatDialogOpen] = useState(false);
+    const [seatsToAdd, setSeatsToAdd] = useState(1);
 
     // --- Queries ---
     const { data: user } = useQuery({
@@ -317,6 +319,11 @@ export default function AdminTeam() {
 
     const teamToolsUnlocked = user?.is_owner || user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
     const paidSeatLimit = user?.is_owner || user?.subscription_paid_confirmed === true ? (user?.total_seats || 1) : 0;
+    const currentTier = String(user?.subscription_tier || '').toLowerCase();
+    const seatUnitPrice = currentTier === 'precision' || currentTier === 'pro' ? 99 : 19;
+    const seatsToAddSafe = Math.max(1, Math.min(100, Number(seatsToAdd) || 1));
+    const targetSeatCount = paidSeatLimit + seatsToAddSafe;
+    const addedSeatMonthlyTotal = seatsToAddSafe * seatUnitPrice;
 
     const handleJoinTeam = async () => {
         const code = joinTeamCode.trim().toUpperCase();
@@ -344,26 +351,37 @@ export default function AdminTeam() {
         }
     };
 
-    const handleAddSeat = async () => {
+    const handleAddSeat = () => {
         if (!teamToolsUnlocked || !user?.stripe_customer_id || user?.subscription_paid_confirmed !== true) {
             toast.info("Add seats after starting a paid plan.");
             navigate(createPageUrl('Billing'));
             return;
         }
+        setSeatsToAdd(1);
+        setIsSeatDialogOpen(true);
+    };
+
+    const handleConfirmAddSeats = async () => {
         if (window.self !== window.top) {
             toast.error("Open the app in a new tab to manage billing.");
             return;
         }
         setIsOpeningSeatBilling(true);
         try {
-            const res = await base44.functions.invoke('createPortalSession', {
-                returnUrl: window.location.origin + createPageUrl('AdminTeam')
+            const res = await base44.functions.invoke('updateSubscriptionSeats', {
+                quantity: targetSeatCount
             });
-            const url = res?.data?.url || res?.url;
-            if (url) window.location.href = url;
-            else toast.error("Failed to open billing portal");
+            const url = res?.data?.url || res?.data?.invoice_url || res?.url || res?.invoice_url;
+            if (url) {
+                window.location.href = url;
+                return;
+            }
+            toast.success("Seat update sent to Stripe. Seats activate after payment clears.");
+            setIsSeatDialogOpen(false);
+            queryClient.invalidateQueries({ queryKey: ['user'] });
         } catch (error) {
-            toast.error("Failed to open billing portal: " + (error?.message || "Unknown error"));
+            toast.error("Failed to update seats: " + (error?.response?.data?.error || error?.message || "Unknown error"));
+        } finally {
             setIsOpeningSeatBilling(false);
         }
     };
@@ -577,10 +595,50 @@ export default function AdminTeam() {
                         </Dialog>
 
                         <Button onClick={handleAddSeat} className="flex-1 md:flex-none h-10 md:h-9 bg-yellow-500 text-black font-bold hover:bg-yellow-400 text-xs md:text-sm">
-                            <UserPlus className="w-4 h-4 mr-2" /> {isOpeningSeatBilling ? 'Opening...' : 'Add Rep'}
+                            <UserPlus className="w-4 h-4 mr-2" /> Add Rep
                         </Button>
                     </div>
                 </div>
+
+                <Dialog open={isSeatDialogOpen} onOpenChange={setIsSeatDialogOpen}>
+                    <DialogContent className="bg-[#111] border-gray-800 text-white sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle>Add Paid Rep Seats</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-5 py-2">
+                            <p className="text-sm text-gray-400">How many rep seats do you want to add? Reps can use your team code after Stripe confirms payment.</p>
+                            <div className="flex items-center justify-center gap-3">
+                                <Button type="button" variant="outline" className="h-10 w-10 p-0" onClick={() => setSeatsToAdd(Math.max(1, seatsToAddSafe - 1))}>-</Button>
+                                <Input
+                                    type="number"
+                                    min="1"
+                                    max="100"
+                                    value={seatsToAdd}
+                                    onChange={(e) => setSeatsToAdd(Math.max(1, Math.min(100, Number(e.target.value) || 1)))}
+                                    className="h-12 w-24 bg-black border-gray-700 text-white text-center text-xl font-black"
+                                />
+                                <Button type="button" variant="outline" className="h-10 w-10 p-0" onClick={() => setSeatsToAdd(Math.min(100, seatsToAddSafe + 1))}>+</Button>
+                            </div>
+                            <div className="rounded-xl bg-black/50 border border-yellow-500/20 p-4 space-y-2">
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-gray-400">Seats to add</span>
+                                    <span className="font-bold text-white">{seatsToAddSafe}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-gray-400">New seat total</span>
+                                    <span className="font-bold text-white">{targetSeatCount}</span>
+                                </div>
+                                <div className="flex justify-between text-base border-t border-white/10 pt-2">
+                                    <span className="text-gray-300">Added monthly cost</span>
+                                    <span className="font-black text-yellow-500">${addedSeatMonthlyTotal}/mo</span>
+                                </div>
+                            </div>
+                            <Button onClick={handleConfirmAddSeats} disabled={isOpeningSeatBilling} className="w-full bg-yellow-500 text-black hover:bg-yellow-400 font-black">
+                                {isOpeningSeatBilling ? 'Opening Stripe...' : `Confirm ${seatsToAddSafe} Seat${seatsToAddSafe === 1 ? '' : 's'}`}
+                            </Button>
+                        </div>
+                    </DialogContent>
+                </Dialog>
 
                 {/* Streamlined Stats Bar */}
                 <div className="grid grid-cols-4 divide-x divide-gray-800 bg-[#111] border border-gray-800 rounded-lg md:rounded-xl overflow-hidden shadow-lg">

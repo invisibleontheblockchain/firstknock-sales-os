@@ -542,3 +542,15 @@ The 1,000-home Precision capacity now requires an active Precision/Pro subscript
 
 ### Review — Paid Seat Before Rep Activation
 “Add Rep” now opens seat billing instead of a manual team-member creation form, and the roster add-card now says “Add Paid Seat” and uses the same billing action. Invite redemption remains the backend activation gate: it rejects joins when the manager has no paid-confirmed rep seats, and the smoke test returned the expected missing-code validation response.
+
+---
+
+## Plan — Add Multiple Paid Rep Seats
+- [x] Replace the direct Add Rep action with a quantity confirmation dialog defaulted to 1 seat.
+- [x] Show the monthly cost estimate based on the manager’s current plan and selected quantity.
+- [x] Send the selected total seat quantity to Stripe so the manager pays for the new seats before reps activate.
+- [x] Stop updating available seats immediately before payment clears; rely on Stripe/payment confirmation before invite redemption sees capacity.
+- [x] Verify backend validation and static wiring, then document the result.
+
+### Review — Add Multiple Paid Rep Seats
+Add Rep now opens a seat quantity dialog with 1 selected by default, plus/minus controls, and an added monthly cost estimate. Confirm sends the new total seat quantity to Stripe, and the seat update function no longer increases Base44 seats immediately; `invoice.paid` now updates `total_seats` and invite code capacity after payment clears. Static wiring checks passed, and the backend smoke test deployed successfully and returned the expected “No active subscription found” response for the test account.
