@@ -198,6 +198,17 @@ export default function AdminTeam() {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['inviteCodes'] })
     });
 
+    const promoteMemberMutation = useMutation({
+        mutationFn: async (member) => base44.functions.invoke('promoteTeamMemberToManager', { teamMemberId: member.id }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['teamMembers'] });
+            toast.success("Rep upgraded to manager.");
+        },
+        onError: (error) => {
+            toast.error(error?.response?.data?.error || error?.message || "Failed to switch role");
+        }
+    });
+
     const deleteRepMutation = useMutation({
         mutationFn: async (member) => {
             // 1. Unassign all routes from this rep
@@ -832,6 +843,11 @@ export default function AdminTeam() {
                                                     onDelete={(m) => {
                                                         if(confirm(`Remove ${m.name} from your team? Their routes will be unassigned.`)) {
                                                             deleteRepMutation.mutate(m);
+                                                        }
+                                                    }}
+                                                    onPromote={(m) => {
+                                                        if(confirm(`Switch ${m.name} to manager status? They will regain the Map tab and manager tools.`)) {
+                                                            promoteMemberMutation.mutate(m);
                                                         }
                                                     }}
                                                     action={canManageTeam ? AssignZipsAction : null}

@@ -675,3 +675,16 @@ Route Registry rows now deep-link to the selected map route, reps only see Analy
 
 ### Review — Manager Role Access Correction
 The app now resolves manager access from app role, nested role data, owner status, and platform/admin role before deciding someone is rep-only. Verified the account shape with `appRole=rep` and `accountRole=admin` now resolves to manager access and manager bottom navigation.
+
+---
+
+## Plan — Promote Rep to Manager
+- [x] Add a secure manager-only role-switch backend action.
+- [x] Update the rep card with a Make Manager button for managers.
+- [x] Wire the button to upgrade the rep's user account to manager status and refresh the roster.
+- [x] Preserve existing paid-seat and team roster behavior.
+- [x] Verify the backend action deploys and returns a safe auth response.
+- [x] Record the review.
+
+### Review — Promote Rep to Manager
+Managers now get a Make Manager button on rep roster cards. Confirming it calls a backend role-switch action that verifies manager access, checks the rep belongs to the manager's team, updates the rep user account to `app_role: manager`, and updates the roster role so the promoted account regains Map and manager tools. The backend function deployed and returned a safe validation response.
