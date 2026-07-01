@@ -192,3 +192,4 @@
 - Rep bottom navigation should hide only manager-only Map access; reps still need direct tabs for Knock, Analytics, Appts, and Team.
 - When inserting JSX comments via replacement, always preserve the full `{/* ... */}` wrapper; a missing closing brace can turn the next sibling into an adjacent JSX parse failure.
 - Newly-created team codes must start with zero usable seats and only become redeemable from paid-confirmed Stripe webhook events; never show or set a default positive max use count before payment.
+- Role checks must resolve both flattened custom role fields and nested user data, and platform/admin roles must override stale `app_role: rep` values; otherwise manager/admin accounts can be shown rep-only navigation and Team tabs.

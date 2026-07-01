@@ -12,6 +12,7 @@ import AiAssistant from '@/components/help/AiAssistant';
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard';
 import MarketOnboarding from '@/components/onboarding/MarketOnboarding';
 import { ThemeProvider, useTheme, contrastText } from '@/components/theme/ThemeProvider';
+import { getAppRole, isManagerAccount, isRepAccount } from '@/lib/roles';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {super(props);this.state = { hasError: false, error: null };}
@@ -136,7 +137,10 @@ function LayoutInner({ children }) {
   const currentPath = window.location.pathname;
   const isPageActive = (pageName) => currentPath === createPageUrl(pageName) || currentPath === `/${pageName}`;
   const isRoleSelectPage = currentPath.includes('RoleSelect');
-  if (!user.app_role && !isRoleSelectPage) {window.location.href = createPageUrl('RoleSelect');return null;}
+  const appRole = getAppRole(user);
+  const isRepNav = isRepAccount(user);
+  const hasManagerAccess = isManagerAccount(user);
+  if (!appRole && !hasManagerAccess && !isRoleSelectPage) {window.location.href = createPageUrl('RoleSelect');return null;}
 
   return (
     <div className="fixed inset-0 flex flex-col font-sans overflow-hidden bg-[#000000] text-[#FFFFFF]">
@@ -258,7 +262,7 @@ function LayoutInner({ children }) {
             {/* Bottom Nav */}
             {!isRoleSelectPage &&
       <nav className="bg-black border-t border-slate-800 z-20 shrink-0">
-                {user.app_role === 'rep' ?
+                {isRepNav ?
         <div className="flex justify-around items-center h-16 max-w-full mx-auto">
                         <NavItem icon={Navigation} label="Knock" to={(() => {try {const id = localStorage.getItem('fk_selectedKnockRouteId');return createPageUrl('RepHome') + (id ? `?route=${encodeURIComponent(id)}` : '');} catch {return createPageUrl('RepHome');}})()} active={isPageActive('RepHome')} accent={accent} />
                         <NavItem icon={TrendingUp} label="Analytics" to={createPageUrl('List')} active={isPageActive('List')} accent={accent} />

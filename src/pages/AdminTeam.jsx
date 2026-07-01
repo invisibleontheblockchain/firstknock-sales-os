@@ -21,6 +21,7 @@ import TeamAnalyticsSummary from '@/components/analytics/team/TeamAnalyticsSumma
 import TeamActivityTrend from '@/components/analytics/team/TeamActivityTrend';
 import TeamOutcomeBreakdown from '@/components/analytics/team/TeamOutcomeBreakdown';
 import SalesEditor from '@/components/analytics/SalesEditor';
+import { getManagerIdForAccount, isManagerAccount, isRepAccount } from '@/lib/roles';
 
 
 const BRAND = {
@@ -58,9 +59,9 @@ export default function AdminTeam() {
         staleTime: 1000 * 60 * 5
     });
 
-    const isRepView = user?.app_role === 'rep';
-    const canManageTeam = !!user && !isRepView;
-    const managerId = isRepView ? user?.team_manager_id : user?.id;
+    const isRepView = isRepAccount(user);
+    const canManageTeam = isManagerAccount(user);
+    const managerId = getManagerIdForAccount(user);
 
     useEffect(() => {
         if (isRepView && (activeTab === 'logistics' || activeTab === 'access')) {

@@ -653,10 +653,25 @@ The analytics sales card is now a read-only live feed that only shows `SOLD` int
 ---
 
 ## Plan — Team Role Tabs, Route Links, Compact Cards, and Test Code
-- [ ] Make Route Registry rows open the selected route on the map.
-- [ ] Hide Routes and Codes tabs from reps; reps should only see Analytics and Roster.
-- [ ] Keep team creators/managers able to see Routes and Codes.
-- [ ] Make roster cards smaller and hide active assignments until a rep card is selected.
-- [ ] Add a limited 0000 test team code with exactly 2 seats and no payment requirement.
-- [ ] Verify the app builds and test-code records are present.
-- [ ] Document the review.
+- [x] Make Route Registry rows open the selected route on the map.
+- [x] Hide Routes and Codes tabs from reps; reps should only see Analytics and Roster.
+- [x] Keep team creators/managers able to see Routes and Codes.
+- [x] Make roster cards smaller and hide active assignments until a rep card is selected.
+- [x] Add a limited 0000 test team code with exactly 2 seats and no payment requirement.
+- [x] Verify the app builds and test-code records are present.
+- [x] Document the review.
+
+### Review — Team Role Tabs, Route Links, Compact Cards, and Test Code
+Route Registry rows now deep-link to the selected map route, reps only see Analytics/Roster, manager controls remain available to creators, roster cards are compact with active assignments in the selected-rep detail dropdown, and test code 0000 exists with a two-seat limit.
+
+---
+
+## Plan — Manager Role Access Correction
+- [x] Inspect current Team and app-shell role checks.
+- [x] Add a shared role resolver so manager/admin identity overrides stale rep app-role flags.
+- [x] Apply the resolver to bottom navigation and Team page manager controls.
+- [x] Verify the latest admin-with-rep-flag data shape is handled.
+- [x] Record the review.
+
+### Review — Manager Role Access Correction
+The app now resolves manager access from app role, nested role data, owner status, and platform/admin role before deciding someone is rep-only. Verified the account shape with `appRole=rep` and `accountRole=admin` now resolves to manager access and manager bottom navigation.
