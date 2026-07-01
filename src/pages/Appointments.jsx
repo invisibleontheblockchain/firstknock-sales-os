@@ -47,7 +47,6 @@ export default function Appointments() {
     const [timeFilter, setTimeFilter] = useState('all');
     const [sourceFilter, setSourceFilter] = useState('all');
     const [showFilters, setShowFilters] = useState(false);
-    const backfilledCallbackLogsRef = React.useRef(new Set());
     const deletedCallbackLogsRef = React.useRef(new Set());
 
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
@@ -112,52 +111,14 @@ export default function Appointments() {
         return map;
     }, [properties]);
 
-    React.useEffect(() => {
-        if (!user || !Array.isArray(logs) || logs.length === 0) return;
-
-        const existingKeys = new Set((Array.isArray(appointments) ? appointments : []).map(callbackKey));
-        const seenKeys = new Set(existingKeys);
-
-        const toCreate = logs
-            .filter((log) => log?.parsed_status === 'CALLBACK' && log.address_hash && !backfilledCallbackLogsRef.current.has(log.id) && !deletedCallbackLogsRef.current.has(log.id))
-            .map((log) => {
-                const scheduledDate = safeIsoDate(log.next_eligible_date, log.created_date);
-                const key = callbackKey({ ...log, scheduled_date: scheduledDate });
-                if (seenKeys.has(key) || (log.id && appointments.some((appointment) => (appointment.notes || '').includes(`callback_log:${log.id}`)))) return null;
-                seenKeys.add(key);
-                const property = propertyByHash.get(log.address_hash) || {};
-                return {
-                    address_hash: log.address_hash,
-                    manager_id: log.manager_id || tenantManagerId,
-                    full_address: property.full_address || property.address || `${property.house_number || ''} ${property.street_name || ''}`.trim() || 'Callback address',
-                    homeowner_name: null,
-                    phone: null,
-                    scheduled_date: scheduledDate,
-                    industry: 'other',
-                    status: 'scheduled',
-                    outcome: 'follow_up',
-                    route_id: log.route_id || null,
-                    zip_code: property.zip_code || property.zip || null,
-                    lat: property.lat || null,
-                    lng: property.lng || null,
-                    notes: `${log.raw_input_text || 'Callback scheduled from Knock Mode'}${log.id ? ` [callback_log:${log.id}]` : ''}`
-                };
-            })
-            .filter(Boolean);
-
-        if (!toCreate.length) return;
-        toCreate.forEach((appointment) => backfilledCallbackLogsRef.current.add(appointment.notes.match(/callback_log:([^\]]+)/)?.[1]));
-        base44.entities.Appointment.bulkCreate(toCreate).then(() => {
-            queryClient.invalidateQueries({ queryKey: ['appointments'] });
-        });
-    }, [user, logs, appointments, propertyByHash, tenantManagerId, queryClient]);
-
     const routeNameById = useMemo(() => new Map((Array.isArray(savedRoutes) ? savedRoutes : []).map(route => [route.id, route.name])), [savedRoutes]);
 
-    const persistedAppointmentRows = useMemo(() => (Array.isArray(appointments) ? appointments : []).map(appointment => ({
-        ...appointment,
-        route_name: appointment.route_name || (appointment.route_id ? routeNameById.get(appointment.route_id) : null)
-    })), [appointments, routeNameById]);
+    const persistedAppointmentRows = useMemo(() => (Array.isArray(appointments) ? appointments : [])
+        .filter((appointment) => !(appointment.notes || '').includes('callback_log:') && (appointment.full_address || '').trim().toLowerCase() !== 'callback address')
+        .map(appointment => ({
+            ...appointment,
+            route_name: appointment.route_name || (appointment.route_id ? routeNameById.get(appointment.route_id) : null)
+        })), [appointments, routeNameById]);
 
     const appointmentRows = useMemo(() => {
         const rows = [...persistedAppointmentRows];
@@ -174,12 +135,14 @@ export default function Appointments() {
                 if (existingKeys.has(key) || (log.id && existingLogIds.has(log.id))) return;
                 existingKeys.add(key);
                 const property = propertyByHash.get(log.address_hash) || {};
+                const fullAddress = property.full_address || property.address || `${property.house_number || ''} ${property.street_name || ''}`.trim();
+                if (!fullAddress) return;
                 rows.push({
                     id: `callback-log-${log.id || key}`,
                     _source: 'interaction_log',
                     address_hash: log.address_hash,
                     manager_id: log.manager_id || tenantManagerId,
-                    full_address: property.full_address || property.address || `${property.house_number || ''} ${property.street_name || ''}`.trim() || 'Callback address',
+                    full_address: fullAddress,
                     homeowner_name: null,
                     phone: null,
                     scheduled_date: scheduledDate,

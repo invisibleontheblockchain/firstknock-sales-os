@@ -133,7 +133,7 @@ export default function AppointmentDetail({ appointment, onClose, onUpdate, onVi
 
                         {isLogOnly && (
                             <div className="rounded-xl border border-[#2EEB57]/20 bg-[#2EEB57]/[0.06] p-3 text-[11px] font-medium text-[#39FF4A]/80">
-                                This callback came directly from interaction history and will become editable after it is saved as an appointment.
+                                This callback comes from interaction history and is not saved as an appointment unless you create one.
                             </div>
                         )}
 

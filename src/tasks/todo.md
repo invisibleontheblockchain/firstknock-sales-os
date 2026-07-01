@@ -1,3 +1,16 @@
+## Plan — Stop Random Callback Appointment Backfill
+- [x] Identify why appointments are being populated even though the user did not assign any.
+- [x] Remove the automatic callback-log-to-Appointment database backfill.
+- [x] Hide old auto-generated callback Appointment rows from the Appointments list.
+- [x] Only show callback log rows when they can resolve to a real property address.
+- [x] Clean up already-created auto callback appointments marked by `callback_log` notes or `Callback address`.
+- [x] Record the correction.
+
+### Review — Stop Random Callback Appointment Backfill
+Root cause: the Appointments page was automatically converting every CALLBACK interaction log into a saved Appointment record, and when a property address could not be hydrated it used the fallback text `Callback address`. That created hundreds of appointment rows the user never assigned. The page no longer saves callback logs as appointments, filters out old auto-generated callback appointment rows, only displays callback-log rows when a real address is available, and removes the previously generated false callback appointments.
+
+---
+
 ## Plan — Fix Appointment Delete Layout + Delete All
 - [x] Re-check the latest appointment delete UI changes against mobile width constraints.
 - [x] Move appointment card actions back into the full card width on mobile so Delete cannot run off-screen.
