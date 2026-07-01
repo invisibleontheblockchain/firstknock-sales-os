@@ -625,3 +625,15 @@ Rep accounts now see Knock, Analytics, Appts, and Team in the bottom navigation.
 
 ### Review — Reset Team Codes and Name Teams
 All existing InviteCode records were removed so previous team codes no longer work. The Create Team button now opens a naming dialog, requires a team name, then creates a new rep team code using that name as the label. The JSX syntax error was fixed and `npm run build -- --mode development` passed.
+
+---
+
+## Plan — Keep New Team Codes Locked Until Paid
+- [x] Make newly-created team codes start with zero usable seats.
+- [x] Update the Team Created dialog and access-card copy so it does not say a new code is valid for 5 users.
+- [x] Ensure Stripe webhook seat syncing only unlocks invite codes after paid confirmation.
+- [x] Verify the frontend build passes after the changes.
+- [x] Document the review and lesson.
+
+### Review — Keep New Team Codes Locked Until Paid
+New team codes now start with `max_uses: 0`, so redeeming a new code is blocked until paid seat capacity exists. The Team Created dialog no longer says the code is valid for 5 users; it tells managers the code unlocks after a paid rep seat is confirmed. Stripe webhook syncing now updates all of a manager's invite codes only after paid confirmation, and `npm run build -- --mode development` passed.

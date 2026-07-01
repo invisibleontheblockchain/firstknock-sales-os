@@ -170,7 +170,7 @@ export default function AdminTeam() {
     });
 
     const createCodeMutation = useMutation({
-        mutationFn: (data) => base44.entities.InviteCode.create({ ...data, linked_user_id: user.id, max_uses: data.max_uses || 50 }),
+        mutationFn: (data) => base44.entities.InviteCode.create({ ...data, linked_user_id: user.id, max_uses: data.max_uses ?? 0 }),
         onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: ['inviteCodes'] });
             setNewCode({ code: '', role: 'rep', label: '' });
@@ -373,7 +373,7 @@ export default function AdminTeam() {
             return;
         }
         const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
-        createCodeMutation.mutate({ code: randomCode, max_uses: 5, role: 'rep', label: teamName });
+        createCodeMutation.mutate({ code: randomCode, max_uses: 0, role: 'rep', label: teamName });
     };
 
     const handleConfirmAddSeats = async () => {
@@ -610,7 +610,7 @@ export default function AdminTeam() {
                                     </DialogTitle>
                                 </DialogHeader>
                                 <div className="py-6 text-center space-y-4">
-                                    <p className="text-gray-400">Share this code with your reps to join this team.</p>
+                                    <p className="text-gray-400">Share this code after a paid rep seat is active.</p>
                                     <div className="bg-gray-900 border-2 border-dashed border-yellow-500/30 rounded-xl p-6 relative group cursor-pointer hover:bg-gray-800 transition-colors"
                                          onClick={() => {
                                              navigator.clipboard.writeText(createdCode?.code);
@@ -623,7 +623,7 @@ export default function AdminTeam() {
                                         </div>
                                     </div>
                                     <p className="text-sm text-gray-500">
-                                        This code is valid for <strong>{createdCode?.max_uses}</strong> uses.
+                                        This code unlocks only after a paid rep seat is confirmed.
                                     </p>
                                 </div>
                                 <div className="flex justify-center">
@@ -973,7 +973,7 @@ export default function AdminTeam() {
                                             </div>
                                             <div className="text-2xl md:text-4xl font-mono font-bold text-white tracking-wider my-1 md:my-2">{code.code}</div>
                                             <p className="text-[10px] md:text-sm text-gray-400">
-                                                {teamMembers.length} reps (Max {code.max_uses})
+                                                {code.max_uses > 0 ? `${teamMembers.length} reps (Max ${code.max_uses})` : 'Locked until a rep seat is paid'}
                                             </p>
                                         </div>
                                         <Button 

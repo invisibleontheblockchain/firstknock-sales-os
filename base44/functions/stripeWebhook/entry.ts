@@ -7,21 +7,15 @@ const endpointSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
 // Helper to manage invite codes
 async function syncInviteCode(base44: any, userId: string, totalSeats: number) {
     try {
-        // Find existing code for this user
-        // Note: Filtering logic depends on SDK capabilities. 
-        // If filter returns array:
         const existingCodes = await base44.asServiceRole.entities.InviteCode.filter({ linked_user_id: userId });
         const items = Array.isArray(existingCodes) ? existingCodes : (existingCodes?.items || []);
         
         if (items.length > 0) {
-            // Update existing
-            const code = items[0];
-            await base44.asServiceRole.entities.InviteCode.update(code.id, {
+            await Promise.all(items.map((code: any) => base44.asServiceRole.entities.InviteCode.update(code.id, {
                 max_uses: totalSeats,
-                // Ensure it's active
                 is_active: true
-            });
-            console.log(`Updated invite code ${code.code} max_uses to ${totalSeats}`);
+            })));
+            console.log(`Updated ${items.length} invite code(s) max_uses to ${totalSeats}`);
         } else {
             // Create new
             const randomCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -105,7 +99,7 @@ Deno.serve(async (req: Request) => {
                             total_seats: quantity
                         });
 
-                        if (subscriptionStatus === 'active' || subscriptionStatus === 'trialing') {
+                        if (paidConfirmed) {
                             await syncInviteCode(base44, userId, quantity);
                         }
                         console.log(`Successfully processed checkout.session.completed for user ${userId}`);
@@ -151,7 +145,7 @@ Deno.serve(async (req: Request) => {
                            total_seats: quantity
                          });
 
-                        if (status === 'active' || status === 'trialing') {
+                        if (paidConfirmed) {
                             await syncInviteCode(base44, userId, quantity);
                         }
                         console.log(`Successfully updated subscription for user ${userId}. Status: ${status}`);
