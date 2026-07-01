@@ -1,3 +1,16 @@
+## Plan — BatchData Last-Week Escalation Packet
+- [x] Identify the exact latest failing last-week large-area FetchJob and its selected area/request settings.
+- [x] Extract the exact BatchData request payload shape from the live request-preview builder.
+- [x] Document the app-side files and filters that could affect returned/stored/routeable properties.
+- [x] Draft a clear escalation email to BatchData with exact parameters, expected behavior, and specific questions.
+- [x] Verify the packet against current code and recent job data.
+- [x] Record the result.
+
+### Review — BatchData Last-Week Escalation Packet
+Created `src/tasks/batchdata-escalation.md` with the exact latest failing job ID, area, FIPS, selected last-week date, no-write probe results, production payload, local app files/filters, and a ready-to-send BatchData email. Verification showed the latest 24,360.22 sq mi job returned `raw=0` before any app-side mapping/filtering; the same polygon without `intel.lastSoldDate.minDate` returned a stale 2024 record, proving the polygon can return inventory and the issue is specific to recent-sale/intel-date filtering or provider lag/coverage.
+
+---
+
 ## Plan — Loosen BatchData Local Guardrails
 - [x] Keep the BatchData request date/polygon targeting intact so paid pulls still ask for recent owner-change properties.
 - [x] Change ingestion so BatchData-returned polygon matches are saved as routeable unless they fail only hard safety checks: invalid address/coordinates, outside drawn area, or clearly non-residential land/commercial type.
