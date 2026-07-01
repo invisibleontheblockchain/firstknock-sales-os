@@ -1,3 +1,14 @@
+## Plan — Use Transparent Header Logo
+- [x] Keep the compact header height unchanged.
+- [x] Replace the temporary text wordmark with the uploaded transparent FirstKnock logo.
+- [x] Size the transparent logo to fit inside the existing header without affecting actions.
+- [x] Document the result.
+
+### Review — Use Transparent Header Logo
+The compact header remains the same height, and the header brand now uses the uploaded transparent FirstKnock logo image sized to fit within the bar without changing any header interactions.
+
+---
+
 ## Plan — Compact Header Logo Correction
 - [x] Remove the oversized logo treatment from the top header.
 - [x] Make the header height match the compact bottom-bar scale.
