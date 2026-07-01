@@ -1,3 +1,14 @@
+## Plan — Header Logo Seam Fix
+- [x] Inspect the page/header logo source responsible for the visible top-left seam.
+- [x] Replace the problematic wide logo image with a clean icon + text mark on the native black header background.
+- [x] Preserve the same FirstKnock branding without adding borders or new decorative containers.
+- [x] Document the result.
+
+### Review — Header Logo Seam Fix
+The top-left logo seam came from the wide image asset itself, which carried visible rectangular edges. The header now uses the clean app icon plus live text on the black header background, removing the cutoff/box edge while keeping the FirstKnock brand visible.
+
+---
+
 ## Plan — Checklist + New Route Generation Fixes
 - [x] Inspect the checklist overlay shell to find why the top header can be clipped on mobile.
 - [x] Add safe-area top spacing to the checklist view without changing checklist behavior.
