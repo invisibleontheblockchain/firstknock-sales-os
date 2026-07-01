@@ -48,6 +48,8 @@ export default function AdminTeam() {
     const [isOpeningSeatBilling, setIsOpeningSeatBilling] = useState(false);
     const [isSeatDialogOpen, setIsSeatDialogOpen] = useState(false);
     const [seatsToAdd, setSeatsToAdd] = useState(1);
+    const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
+    const [newTeamName, setNewTeamName] = useState('');
 
     // --- Queries ---
     const { data: user } = useQuery({
@@ -172,6 +174,8 @@ export default function AdminTeam() {
         onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: ['inviteCodes'] });
             setNewCode({ code: '', role: 'rep', label: '' });
+            setNewTeamName('');
+            setIsCreateTeamOpen(false);
             setCreatedCode(data); // Trigger popup
             toast.success("Team created successfully!");
         },
@@ -356,6 +360,20 @@ export default function AdminTeam() {
     const handleAddSeat = () => {
         setSeatsToAdd(1);
         setIsSeatDialogOpen(true);
+    };
+
+    const handleCreateTeam = () => {
+        const teamName = newTeamName.trim();
+        if (!teamName) {
+            toast.error("Enter a team name first.");
+            return;
+        }
+        if (!teamToolsUnlocked) {
+            navigate(createPageUrl('Billing'));
+            return;
+        }
+        const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
+        createCodeMutation.mutate({ code: randomCode, max_uses: 5, role: 'rep', label: teamName });
     };
 
     const handleConfirmAddSeats = async () => {
@@ -555,16 +573,32 @@ export default function AdminTeam() {
                         )}
                     </div>
                     <div className="flex w-full md:w-auto gap-2">
-                        <Button 
-                            onClick={() => {
-                                const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
-                                if (!teamToolsUnlocked) { navigate(createPageUrl('Billing')); return; }
-                                createCodeMutation.mutate({ code: randomCode, max_uses: 5, role: 'rep', label: `Team (${randomCode})` });
-                            }}
-                            className="flex-1 md:flex-none h-9 bg-gray-800 text-gray-300 font-bold hover:bg-gray-700 hover:text-white border border-gray-700 text-[10px] md:text-sm"
-                        >
-                            <Key className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" /> Create Team
-                        </Button>
+                        <Dialog open={isCreateTeamOpen} onOpenChange={setIsCreateTeamOpen}>
+                            <DialogTrigger asChild>
+                                <Button 
+                                    className="flex-1 md:flex-none h-9 bg-gray-800 text-gray-300 font-bold hover:bg-gray-700 hover:text-white border border-gray-700 text-[10px] md:text-sm"
+                                >
+                                    <Key className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" /> Create Team
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="bg-[#111] border-gray-800 text-white sm:max-w-md">
+                                <DialogHeader>
+                                    <DialogTitle>Name Your Team</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4 py-2">
+                                    <p className="text-sm text-gray-400">Enter the team name reps will see when they join.</p>
+                                    <Input
+                                        value={newTeamName}
+                                        onChange={(e) => setNewTeamName(e.target.value)}
+                                        placeholder="e.g. Charleston Sales Team"
+                                        className="bg-black border-gray-700 text-white"
+                                    />
+                                    <Button onClick={handleCreateTeam} disabled={!newTeamName.trim() || createCodeMutation.isPending} className="w-full bg-yellow-500 text-black hover:bg-yellow-400 font-black">
+                                        {createCodeMutation.isPending ? 'Creating...' : 'Create Team'}
+                                    </Button>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
 
                         {/* Code Created Success Dialog */}
                         <Dialog open={!!createdCode} onOpenChange={(open) => !open && setCreatedCode(null)}>

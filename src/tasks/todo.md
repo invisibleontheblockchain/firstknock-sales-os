@@ -613,3 +613,15 @@ The Appointments page was using broad list reads for appointments and callback i
 
 ### Review — Rep Bottom Navigation Tabs
 Rep accounts now see Knock, Analytics, Appts, and Team in the bottom navigation. The Map tab remains hidden for reps, and the production build passed after the layout update.
+
+---
+
+## Plan — Reset Team Codes and Name Teams
+- [x] Remove all existing invite/team codes across accounts.
+- [x] Change the Create Team button to open a team-name prompt instead of instantly creating a code.
+- [x] Create the new team code only after a team name is entered, using that name as the team label.
+- [x] Verify the Team page builds successfully.
+- [x] Document the review and lesson.
+
+### Review — Reset Team Codes and Name Teams
+All existing InviteCode records were removed so previous team codes no longer work. The Create Team button now opens a naming dialog, requires a team name, then creates a new rep team code using that name as the label. The JSX syntax error was fixed and `npm run build -- --mode development` passed.

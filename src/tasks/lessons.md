@@ -190,3 +190,4 @@
 - Add Rep confirmation must always redirect to a Stripe-hosted confirmation/payment page before a new seat can become available; seat activation remains webhook-driven from `invoice.paid`.
 - Appointment and callback views must apply an explicit current-account ownership filter after broad entity reads, because admin-readable/demo records can otherwise appear in normal account views despite RLS allowing access.
 - Rep bottom navigation should hide only manager-only Map access; reps still need direct tabs for Knock, Analytics, Appts, and Team.
+- When inserting JSX comments via replacement, always preserve the full `{/* ... */}` wrapper; a missing closing brace can turn the next sibling into an adjacent JSX parse failure.
