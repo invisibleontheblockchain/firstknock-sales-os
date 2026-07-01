@@ -1,3 +1,15 @@
+## Plan — Fix Installed iOS PWA Bottom Gap
+- [x] Confirm the startup HTML already includes iOS standalone viewport metadata.
+- [x] Stop the runtime layout from downgrading that viewport metadata after login.
+- [x] Use the real visual viewport height for the app shell instead of relying only on mobile viewport units.
+- [x] Add a one-time installed-app cache refresh so Safari/Brave home-screen installs stop holding the old shell.
+- [x] Preserve the same bottom navigation design and 64px button row.
+
+### Review — Fix Installed iOS PWA Bottom Gap
+The home-screen version can differ from the Base44 preview because Safari/Brave installed apps use standalone viewport sizing and can keep older cached shell assets. The app now sets a real viewport-height variable from `visualViewport`/`innerHeight`, keeps `viewport-fit=cover` intact after login, and clears stale PWA caches once for this release while keeping the nav design unchanged.
+
+---
+
 ## Plan — Fix iOS Bottom Nav Gap
 - [x] Keep the bottom navigation design and button layout unchanged.
 - [x] Pin the authenticated app shell to the real viewport so iOS WebView height quirks cannot leave blank space below the nav.

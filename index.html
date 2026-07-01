@@ -22,6 +22,20 @@
     
     <!-- Force PWA Updates on Home Screen Resume -->
     <script>
+      const FK_PWA_RELEASE = '2026-07-01-ios-nav-gap-v2';
+      const clearOldPwaCachesOnce = async () => {
+        try {
+          if (!('caches' in window)) return;
+          if (localStorage.getItem('fk_pwa_release') === FK_PWA_RELEASE) return;
+          const cacheNames = await caches.keys();
+          await Promise.all(cacheNames.map((name) => caches.delete(name)));
+          localStorage.setItem('fk_pwa_release', FK_PWA_RELEASE);
+        } catch (error) {
+          console.warn('PWA cache refresh skipped', error);
+        }
+      };
+      clearOldPwaCachesOnce();
+
       if ('serviceWorker' in navigator) {
         // 1. Reload when new SW takes control
         let refreshing = false;

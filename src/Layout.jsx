@@ -74,10 +74,10 @@ function LayoutInner({ children }) {
     updateLink('apple-touch-icon', LOGO_URL);
     updateLink('apple-touch-icon-precomposed', LOGO_URL);
 
-    // Prevent zoom on mobile inputs
+    // Keep installed iOS/PWA viewport rules aligned with the startup HTML.
     const viewportMeta = document.querySelector('meta[name="viewport"]');
     if (viewportMeta) {
-      viewportMeta.content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
+      viewportMeta.content = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content";
     }
 
     return () => {window.removeEventListener('online', on);window.removeEventListener('offline', off);};
@@ -139,7 +139,7 @@ function LayoutInner({ children }) {
   if (!user.app_role && !isRoleSelectPage) {window.location.href = createPageUrl('RoleSelect');return null;}
 
   return (
-    <div className="fixed inset-0 flex flex-col font-sans overflow-hidden bg-[#000000] text-[#FFFFFF]">
+    <div className="fixed top-0 left-0 right-0 flex flex-col font-sans overflow-hidden bg-[#000000] text-[#FFFFFF]" style={{ height: 'var(--fk-app-height, 100dvh)' }}>
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
                 
