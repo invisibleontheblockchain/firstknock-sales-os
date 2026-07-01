@@ -3,9 +3,13 @@
 ## Subject
 Urgent: Polygon + `intel.lastSoldDate.minDate` returns zero recent-sale records while same polygon without date returns records
 
-## Update — Cross-Reference With BatchData's June 23 Reply
+## Simple Email Draft
 
-BatchData's June 23 reply confirmed this example shape:
+Hi BatchData team,
+
+We are still trying to figure out why we are not getting properties sold in the last 7 days for a specific drawn polygon.
+
+You previously sent us this example using `intel.lastSoldDate.minDate` with city/state:
 
 ```json
 {
@@ -26,99 +30,17 @@ BatchData's June 23 reply confirmed this example shape:
 }
 ```
 
-### What matches our current request
-- We are using the same confirmed namespace/path: `searchCriteria.intel.lastSoldDate.minDate`.
-- We are using the same date-only format: `YYYY-MM-DD`.
-- We are using the same Search API endpoint style.
-- We are keeping the request broad in production: no dataset scoping, no listing-status gate, no local sale-confirmation gate before ingestion.
+We are using the same `intel.lastSoldDate.minDate` field, but instead of city/state we are using polygon coordinates.
 
-### What differs from their example
-- Their example scopes geography by `address.city.equals` + `address.state.equals`.
-- Our production request scopes geography by `address.geoLocationPolygon.geoPoints`.
-- Their example does not answer whether `intel.lastSoldDate.minDate` behaves identically when combined with polygon geometry.
-- Their example does not answer whether `intel.lastSoldDate` means deed transfer, MLS closed sale, owner change, or a composite field.
-- Their example does not answer how to require listing status/category `sold` at query time.
+Here are the exact payloads we are sending.
 
-### Current diagnosis after cross-reference
-This no longer looks like our app silently ignoring `intel.lastSoldDate.minDate` on the latest job. The latest no-write probe shows:
+## Payload 1 — Broad polygon + last 7 days
 
-- Same polygon + `intel.lastSoldDate.minDate = "2026-06-24"`: `0` raw records.
-- Same polygon with `intel.lastSoldDate` removed: `1` raw record returned, with `intel.lastSoldDate = 2024-05-24T00:00:00.000Z`.
+This is the main production-style request. It uses only the polygon and `intel.lastSoldDate.minDate`.
 
-That proves the polygon can return inventory and that the date filter is affecting the result. The unresolved question is now provider-side: whether BatchData has any records in that polygon with `intel.lastSoldDate >= 2026-06-24`, whether large polygon + intel filtering has limitations, and whether `intel.lastSoldDate` is the right field for confirmed recent sales versus historical owner-transfer data.
+Result: `0` properties returned.
 
-### Important product semantics
-A Redfin/Zillow page showing `Off Market` does not always disprove that a sale/transfer happened. After a property closes, consumer portals often show the listing as off-market. If our product needs only MLS-confirmed closed-sale listings, not deed/owner-transfer history, then `intel.lastSoldDate` may be too broad by itself and we need BatchData's exact listing-status filter path.
 
-## Revised Follow-Up Email Draft
-
-Hi BatchData team,
-
-Thank you for your June 23 reply confirming the `searchCriteria.intel.lastSoldDate.minDate` structure using a city/state example.
-
-We implemented the same `intel.lastSoldDate.minDate` path, but our production geography is a drawn polygon rather than city/state. We need help confirming whether this same field is fully supported with `address.geoLocationPolygon.geoPoints`, and whether it represents deed transfer, MLS closed sale, owner change, or a composite value.
-
-For the latest production test, we sent a large North Carolina polygon with `searchCriteria.intel.lastSoldDate.minDate = "2026-06-24"` for a selected last-week window. BatchData returned zero properties for both our broad exact-date request and a stricter residential/value version. When we send the same polygon request with the `intel.lastSoldDate` filter removed, BatchData returns properties, including a stale sample with `intel.lastSoldDate = "2024-05-24T00:00:00.000Z"`. That confirms the polygon can return inventory and the issue is specific to the recent-sale date constraint or provider coverage/lag.
-
-Can you verify whether `intel.lastSoldDate.minDate` is expected to return any homes sold/transferred since 2026-06-24 in this polygon, whether large polygon + intel filtering has limitations, and whether there is a more precise query path for MLS-confirmed closed sales?
-
-### What we expected
-At least some owner-change / last-sold property records inside a 24,360.22 sq mi North Carolina polygon for the last-week window.
-
-### What happened
-- Exact broad request with only polygon + `intel.lastSoldDate.minDate`: `0` raw records.
-- Exact strict request with polygon + `intel.lastSoldDate.minDate` + `general.standardizedLandUseCode = R2` + `valuation.estimatedValue.min = 100000`: `0` raw records.
-- Same broad polygon with date filter removed: returned a property, but stale: `intel.lastSoldDate = 2024-05-24T00:00:00.000Z`.
-
-This suggests the issue is specifically the recent-sale/intel date filter or BatchData's recent-sale coverage/lag for the selected area, not our local filtering.
-
-### Production job evidence
-- App job ID: `6a445e6609cfa702e8a6c980`
-- Created: `2026-07-01T00:25:10.103000Z`
-- User/account: `baysecurity@gmail.com`
-- Area: `24360.22` sq mi
-- Resolved FIPS from center: `37151` / Randolph County, North Carolina
-- Selected window: last week
-- App value filter: minimum `$100,000`, maximum `null`
-- Requested routeable properties: `2`
-- Production result: `raw=0`, `mapped=0`, `active=0`
-- Job status check: `total_fetched=0`, `total_inserted=0`, `active_count=0`, `total_batchdata_calls=1`
-- Exact-job route-candidate query returned `0`, because no properties were stored for this fetch job.
-
-### No-write probe results
-1. `strict_exact_date`
-   - `intel.lastSoldDate.minDate = "2026-06-24"`
-   - Polygon: yes
-   - Land-use filter: yes, `R2`
-   - Valuation filter: yes, `estimatedValue.min = 100000`
-   - Options: `{ "skip": 0, "take": 1 }`
-   - Raw returned: `0`
-   - Mapped active: `0`
-
-2. `broad_exact_date`
-   - `intel.lastSoldDate.minDate = "2026-06-24"`
-   - Polygon: yes
-   - Land-use filter: no
-   - Valuation filter: no
-   - Options: `{ "skip": 0, "take": 1 }`
-   - Raw returned: `0`
-   - Mapped active: `0`
-
-3. `broad_no_sold_date`
-   - Same polygon
-   - No `intel.lastSoldDate` filter
-   - Land-use filter: no
-   - Valuation filter: no
-   - Options: `{ "skip": 0, "take": 1 }`
-   - Raw returned: `1`
-   - Sample returned:
-     - Address: `121 Red Oak Ln`
-     - `intel.lastSoldDate`: `2024-05-24T00:00:00.000Z`
-     - `intel.lastSoldPrice`: `93712`
-     - `general.standardizedLandUseCode`: `R7`
-
-### Exact broad request payload used by production
-Production now uses the broad request shape below for recent Precision pulls. The strict version adds only `general.standardizedLandUseCode.equals = "R2"` and `valuation.estimatedValue.min = 100000`; production is no longer relying on strict mode.
 
 ```json
 {
@@ -190,47 +112,73 @@ Production now uses the broad request shape below for recent Precision pulls. Th
 }
 ```
 
-### App-side files and exact filters
+## Payload 2 — Same polygon + stricter residential/value filters
 
-1. `base44/functions/startBatchDataPull/entry.ts`
-   - Normalizes drawn polygon.
-   - Calculates area and center.
-   - Resolves FIPS using FCC from polygon center.
-   - For this job: FIPS `37151`, area `24360.22`, requested `2`, sold_months `0.25`, min_price `100000`.
-   - No square-mile rejection is currently applied.
+This is the stricter test request. It uses the same exact `geoPoints` from Payload 1 and the same `intel.lastSoldDate.minDate`, but adds residential land use and minimum value.
 
-2. `base44/functions/processFetchChunk/entry.ts`
-   - Builds BatchData request in `buildBatchDataRequest`.
-   - Last-week maps to `soldWindowDays(0.25) = 7`, anchored to job time, producing `minDate = "2026-06-24"`.
-   - Current production modes: `["broad_polygon"]` only.
-   - Current production request includes polygon + `intel.lastSoldDate.minDate` only.
-   - `options.take` is capped to `100`.
-   - Dataset scoping is omitted so BatchData can return all sale/intel fields.
-   - Mapping drops only:
-     - missing street / zip / coordinates,
-     - coordinates outside drawn polygon,
-     - clearly non-residential property type matching commercial/industrial/vacant/agricultural/land.
-   - In this failing job, there were `0` raw records, so no local mapping/filtering happened.
+Result: `0` properties returned.
 
-3. `base44/functions/getRouteCandidatesFromNeon/entry.ts`
-   - Exact-job query uses `wp.fetch_job_id = job_id`.
-   - For exact-job BatchData requests, it does not reapply rejected/confidence/sold-date filters.
-   - Latest job returned `0` candidates because no rows were stored for that job.
+```json
+{
+  "searchCriteria": {
+    "address": {
+      "geoLocationPolygon": {
+        "geoPoints": "same exact geoPoints as Payload 1"
+      }
+    },
+    "intel": {
+      "lastSoldDate": {
+        "minDate": "2026-06-24"
+      }
+    },
+    "general": {
+      "standardizedLandUseCode": {
+        "equals": "R2"
+      }
+    },
+    "valuation": {
+      "estimatedValue": {
+        "min": 100000
+      }
+    }
+  },
+  "options": {
+    "skip": 0,
+    "take": 100
+  }
+}
+```
 
-4. `src/components/logic/routeFilterPipeline.jsx`
-   - Final route filter lets BatchData candidates pass local sold-date, confidence, and hard single-family gates.
-   - This did not affect the latest failure because the provider returned `0` raw records.
+## Payload 3 — Same polygon with no sold-date filter
 
-### Questions for BatchData
-1. Is `searchCriteria.intel.lastSoldDate.minDate` the correct current API path for “properties sold/transferred since date X”?
-2. Are date-only values like `"2026-06-24"` valid for this field, or should this be an ISO timestamp?
-3. Does this endpoint support large multi-county polygons around 24,360 sq mi, or should we split by county/FIPS/tile?
-4. Does `address.geoLocationPolygon.geoPoints` work across multiple counties/states without adding county-level criteria?
-5. For recent sales, is `intel.lastSoldDate` populated from deed transfer, MLS sale, owner-change, or another source?
-6. What is the expected lag for `intel.lastSoldDate` in NC/SC/VA territories?
-7. Is there another recommended field for newly changed owners, e.g. a deed transfer date, recording date, sale date, owner transfer date, or add-on dataset field?
-8. Does the API return `totalRecordCount = null` when zero results are found, or does null indicate a request/index issue?
-9. Can BatchData reproduce the attached broad payload and confirm whether zero results are expected?
-10. If zero is expected, what query/payload do you recommend for “new property owners in the last 7 days inside this drawn territory”?
+This is the control test. It uses the same exact polygon but removes the `intel.lastSoldDate.minDate` filter.
 
-Thanks — this is blocking our production Precision workflow, and we need to know whether to change the request structure, split geometry, use a different date field, or set product expectations around provider lag.
+Result: `1` property returned, but it was stale: `intel.lastSoldDate = "2024-05-24T00:00:00.000Z"`.
+
+```json
+{
+  "searchCriteria": {
+    "address": {
+      "geoLocationPolygon": {
+        "geoPoints": "same exact geoPoints as Payload 1"
+      }
+    }
+  },
+  "options": {
+    "skip": 0,
+    "take": 100
+  }
+}
+```
+
+## Simple Question
+
+Can you confirm whether `searchCriteria.intel.lastSoldDate.minDate` works with `address.geoLocationPolygon.geoPoints` the same way it works with city/state?
+
+If yes, does BatchData simply have zero properties in this polygon with `intel.lastSoldDate >= "2026-06-24"`?
+
+If no, what exact payload should we use to get properties sold in the last 7 days inside a drawn polygon?
+
+Thanks,
+Nick
+firstknock.online

@@ -1,3 +1,14 @@
+## Plan — Simplify BatchData Email
+- [x] Remove the complicated explanation from the escalation draft.
+- [x] Keep only the exact payloads we are sending and the observed result for each.
+- [x] Ask BatchData one simple question: does `intel.lastSoldDate.minDate` work with polygon geography, and if not, what exact payload should we use?
+- [x] Record the correction.
+
+### Review — Simplify BatchData Email
+Simplified `src/tasks/batchdata-escalation.md` into a short support email. It now shows BatchData's city/state example, our broad polygon + 7-day payload, the stricter residential/value payload, the no-date control payload, and one simple question about whether `intel.lastSoldDate.minDate` works with `address.geoLocationPolygon.geoPoints`.
+
+---
+
 ## Plan — Cross-Reference BatchData June 23 Reply
 - [x] Compare BatchData's suggested `intel.lastSoldDate.minDate` payload against our current production polygon payload.
 - [x] Determine whether the current failure looks like ignored filtering, provider zero-results, stale/off-market semantics, or app-side filtering.
