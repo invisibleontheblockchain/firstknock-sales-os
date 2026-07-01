@@ -554,3 +554,15 @@ The 1,000-home Precision capacity now requires an active Precision/Pro subscript
 
 ### Review — Add Multiple Paid Rep Seats
 Add Rep now opens a seat quantity dialog with 1 selected by default, plus/minus controls, and an added monthly cost estimate. Confirm sends the new total seat quantity to Stripe, and the seat update function no longer increases Base44 seats immediately; `invoice.paid` now updates `total_seats` and invite code capacity after payment clears. Static wiring checks passed, and the backend smoke test deployed successfully and returned the expected “No active subscription found” response for the test account.
+
+---
+
+## Plan — Fix Add Rep Routing To Plans
+- [x] Remove the pre-dialog redirect that sends Add Rep to Plans before the manager can choose seat quantity.
+- [x] Keep the seat quantity dialog as the first interaction after clicking Add Rep.
+- [x] On confirmation, use subscription seat update for existing Stripe subscriptions and direct checkout for first-time seat purchases.
+- [x] Verify static wiring so Add Rep no longer calls Billing directly.
+- [x] Document the review and correction lesson.
+
+### Review — Fix Add Rep Routing To Plans
+The Add Rep click path now always opens the seat quantity dialog first. Confirmation updates an existing Stripe subscription when one exists, or starts a Stripe checkout session for first-time seat purchases, both returning to Team afterward. Static verification confirmed Add Rep no longer calls Plans directly, and the seat update backend still deploys with the expected no-active-subscription response in the test account.
