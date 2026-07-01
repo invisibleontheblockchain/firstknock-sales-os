@@ -1,3 +1,14 @@
+## Plan — Refine Team Invite Language
+- [x] Inspect the current manager team screen and role-selection join flow.
+- [x] Rename the quick invite action from demo language to team language.
+- [x] Rename the generated default invite label from “Demo Team” to “Team”.
+- [x] Keep the existing invite-code redemption and seat gate behavior unchanged.
+
+### Review — Refine Team Invite Language
+The manager team screen now says “Create Team” instead of “Create Demo,” and the default generated invite label is now “Team (code)” instead of “Demo Team (code).” The current flow remains: managers create/copy an invite code, reps enter it on onboarding, and redemption links the rep to the manager account.
+
+---
+
 ## Plan — Fix Command Center Mobile Top Cutoff
 - [x] Inspect the Command Center overlay shell that renders over the map.
 - [x] Identify that the overlay begins at raw viewport top without safe-area spacing.

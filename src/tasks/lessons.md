@@ -133,6 +133,7 @@
 - For mobile full-screen overlays inside the app shell, the overlay container itself needs top safe-area padding (`env(safe-area-inset-top)`) before the header row; starting at raw `inset-0` can clip titles/actions under the phone status area even with a high z-index.
 - For mobile full-screen overlays inside the app shell, close buttons should be fixed below the app's own top header plus safe-area spacing, with high z-index and high-contrast styling; placing them at the raw viewport top can hide them behind the app/header/status bar.
 - When the user asks to hide a selected UI label completely, remove the label and any adjacent divider that only existed for that label so the remaining row does not leave orphan separators.
+- Team onboarding copy should match the real production workflow; avoid “demo” labels for manager invite/team creation controls when the action creates real invite codes and team membership paths.
 - Messaging/privacy fixes must be enforced at both levels: stamp every message with a tenant/account key and participant list, then make the entity RLS use those fields instead of relying only on frontend channel filters.
 - When a user asks for a reset button in a named tab/panel, place the action inside that exact tab/panel, not only in related floating banners or secondary controls.
 - If a user still cannot see a control, check whether conditional rendering hides it in the default state; make essential actions visible by default when requested.

@@ -457,11 +457,11 @@ export default function AdminTeam() {
                             onClick={() => {
                                 const randomCode = Math.floor(1000 + Math.random() * 9000).toString();
                                 if (!teamToolsUnlocked) { navigate(createPageUrl('Billing')); return; }
-                                createCodeMutation.mutate({ code: randomCode, max_uses: 5, role: 'rep', label: `Demo Team (${randomCode})` });
+                                createCodeMutation.mutate({ code: randomCode, max_uses: 5, role: 'rep', label: `Team (${randomCode})` });
                             }}
                             className="flex-1 md:flex-none h-9 bg-gray-800 text-gray-300 font-bold hover:bg-gray-700 hover:text-white border border-gray-700 text-[10px] md:text-sm"
                         >
-                            <Key className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" /> Create Demo
+                            <Key className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" /> Create Team
                         </Button>
 
                         {/* Code Created Success Dialog */}
