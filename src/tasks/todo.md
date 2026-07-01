@@ -1,3 +1,16 @@
+## Plan — Fix Appointment Delete Layout + Delete All
+- [x] Re-check the latest appointment delete UI changes against mobile width constraints.
+- [x] Move appointment card actions back into the full card width on mobile so Delete cannot run off-screen.
+- [x] Make the header actions wrap into a mobile-safe grid so Delete All remains visible.
+- [x] Change Delete All to attempt every shown item instead of aborting on the first failed callback/appointment delete.
+- [x] Keep callback rows suppressed immediately after delete so backfill does not make them look undeleted.
+- [x] Record the correction.
+
+### Review — Fix Appointment Delete Layout + Delete All
+The appointment card actions now use the full card width on mobile and only indent on larger screens, so the Delete button no longer runs off the right edge. The header action buttons use a mobile grid with shorter labels. Delete All now processes all currently shown rows, refreshes the list when finished, and suppresses callback-log rows immediately so callback backfill cannot make deleted rows appear to remain.
+
+---
+
 ## Plan — Appointments Delete + Callback Filter
 - [x] Inspect the Appointments page, appointment cards, detail modal, and callback-log merge behavior.
 - [x] Add a callbacks-vs-appointments filter that separates callback-created rows from regular appointments.

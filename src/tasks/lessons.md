@@ -1,5 +1,8 @@
 # Lessons
 
+- When adding an extra action to compact mobile cards or headers, remove inherited left padding and make the action row/grid mobile-first; adding a third button to a two-button row can push controls off-screen.
+- Bulk delete flows should continue through all selected rows and report partial failures instead of aborting on the first problematic record, especially when the list merges records from multiple sources.
+
 - Previous-area/ghost territory overlays must be opt-in and Builder-only; never let them render in route analysis, completed-route views, or selected-route overlays.
 - Ghost Builder repulls must not expose normal new-area choices that imply a duplicate 12-month regeneration; use clear modes like Fill Gaps and Max Since Last, and show the exact prior-pull-to-today date window.
 - Mobile modal panels inside the app shell need safe-area top padding plus their own scrollable body and fixed footer; otherwise builder screens can be clipped under the header/status area.

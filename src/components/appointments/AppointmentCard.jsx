@@ -74,7 +74,7 @@ export default function AppointmentCard({ appointment, appointmentNumber, onClic
                 <ChevronRight className="w-4 h-4 sm:w-5 text-gray-700 group-hover:text-gray-400 transition-colors shrink-0 mt-1" />
             </button>
 
-            <div className="mt-3 grid grid-cols-3 gap-2 pl-14 sm:pl-16 md:pl-20">
+            <div className="mt-3 grid grid-cols-3 gap-1.5 sm:gap-2 pl-0 sm:pl-16 md:pl-20">
                 <button onClick={() => onViewMap?.(appointment)} className="h-9 rounded-xl border border-[#39FF4A]/30 bg-[#39FF4A]/10 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.1em] text-[#39FF4A] flex items-center justify-center gap-1 active:scale-95">
                     <MapPin className="w-3.5 h-3.5" /> Map
                 </button>

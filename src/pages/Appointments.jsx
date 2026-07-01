@@ -316,7 +316,10 @@ export default function Appointments() {
         const logId = callbackLogId(appointment);
         if (logId) deletedCallbackLogsRef.current.add(logId);
         if (appointment._source === 'interaction_log') {
-            if (logId) await base44.entities.InteractionLog.delete(logId);
+            if (logId) {
+                try { await base44.entities.InteractionLog.delete(logId); }
+                catch (error) { console.warn('Callback log could not be deleted', error); }
+            }
             return;
         }
         await base44.entities.Appointment.delete(appointment.id);
@@ -326,9 +329,20 @@ export default function Appointments() {
         }
     };
 
+    const removeAppointmentsFromCache = (items) => {
+        const ids = new Set(items.map((item) => item.id).filter((id) => id && !String(id).startsWith('callback-log-')));
+        if (!ids.size) return;
+        queryClient.setQueryData(['appointments', user?.id, user?.team_manager_id], (old) => {
+            const rows = Array.isArray(old) ? old : (old?.items || []);
+            const nextRows = rows.filter((row) => !ids.has(row.id));
+            return Array.isArray(old) ? nextRows : { ...old, items: nextRows };
+        });
+    };
+
     const deleteMutation = useMutation({
         mutationFn: deleteAppointmentRecord,
-        onSuccess: () => {
+        onSuccess: (_, appointment) => {
+            removeAppointmentsFromCache([appointment]);
             toast.success('Appointment deleted');
             setSelectedAppointment(null);
             handleRefresh();
@@ -338,10 +352,14 @@ export default function Appointments() {
 
     const deleteAllMutation = useMutation({
         mutationFn: async (items) => {
-            for (const appointment of items) await deleteAppointmentRecord(appointment);
+            const results = await Promise.allSettled(items.map((appointment) => deleteAppointmentRecord(appointment)));
+            const failed = results.filter((result) => result.status === 'rejected').length;
+            return { deleted: items.length - failed, failed };
         },
-        onSuccess: () => {
-            toast.success('Appointments deleted');
+        onSuccess: ({ deleted, failed }, items) => {
+            removeAppointmentsFromCache(items);
+            if (deleted > 0) toast.success(`${deleted} appointment${deleted === 1 ? '' : 's'} deleted`);
+            if (failed > 0) toast.error(`${failed} appointment${failed === 1 ? '' : 's'} could not be deleted`);
             setSelectedAppointment(null);
             handleRefresh();
         },
@@ -373,27 +391,27 @@ export default function Appointments() {
             <div className="px-4 md:px-8 lg:px-10 pt-4 md:pt-6 pb-2 md:pb-3 border-b border-white/[0.04] sticky top-0 z-20 backdrop-blur-xl bg-[#09090b]/90">
                 <div className="max-w-7xl mx-auto">
                     {/* Title row */}
-                    <div className="flex items-center justify-between mb-3 md:mb-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3 md:mb-4">
                         <h1 className="text-lg md:text-2xl lg:text-3xl font-black text-white tracking-tight">Appointments</h1>
-                        <div className="flex items-center gap-2">
+                        <div className="grid grid-cols-3 sm:flex items-center gap-2 w-full sm:w-auto">
                             <Button
                                 onClick={() => { setShowNewForm(!showNewForm); setShowAutoSchedule(false); }}
-                                className="h-8 md:h-10 px-3 md:px-5 text-[10px] md:text-xs font-bold rounded-lg bg-white text-black hover:bg-gray-200 gap-1.5"
+                                className="h-8 md:h-10 px-2 sm:px-3 md:px-5 text-[10px] md:text-xs font-bold rounded-lg bg-white text-black hover:bg-gray-200 gap-1.5"
                             >
                                 <Plus className="w-3 h-3 md:w-4 md:h-4" /> New
                             </Button>
                             <Button
                                 onClick={() => { setShowAutoSchedule(!showAutoSchedule); setShowNewForm(false); }}
-                                className="h-8 md:h-10 px-3 md:px-5 text-[10px] md:text-xs font-bold rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.08] gap-1.5"
+                                className="h-8 md:h-10 px-2 sm:px-3 md:px-5 text-[10px] md:text-xs font-bold rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white border border-white/[0.08] gap-1.5"
                             >
-                                <Zap className="w-3 h-3 md:w-4 md:h-4 text-yellow-400" /> Auto-Schedule
+                                <Zap className="w-3 h-3 md:w-4 md:h-4 text-yellow-400" /> <span className="md:hidden">Auto</span><span className="hidden md:inline">Auto-Schedule</span>
                             </Button>
                             <Button
                                 onClick={handleDeleteAllShown}
                                 disabled={deleteAllMutation.isPending || filteredAppointments.length === 0}
-                                className="h-8 md:h-10 px-3 md:px-5 text-[10px] md:text-xs font-bold rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/20 gap-1.5 disabled:opacity-35"
+                                className="h-8 md:h-10 px-2 sm:px-3 md:px-5 text-[10px] md:text-xs font-bold rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-300 border border-red-500/20 gap-1.5 disabled:opacity-35"
                             >
-                                <Trash2 className="w-3 h-3 md:w-4 md:h-4" /> Delete All
+                                <Trash2 className="w-3 h-3 md:w-4 md:h-4" /> <span className="md:hidden">Delete</span><span className="hidden md:inline">Delete All</span>
                             </Button>
                         </div>
                     </div>
