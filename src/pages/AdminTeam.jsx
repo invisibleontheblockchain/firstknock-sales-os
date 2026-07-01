@@ -722,16 +722,6 @@ export default function AdminTeam() {
                                         </div>
                                     );
                                 })}
-                                {/* Add New Card */}
-                                <button 
-                                    onClick={handleAddSeat}
-                                    className="flex flex-col items-center justify-center p-6 md:p-8 bg-[#111] border-2 border-dashed border-gray-800 rounded-xl hover:border-yellow-500/50 hover:bg-yellow-500/5 transition-all group h-full min-h-[140px] md:min-h-[200px]"
-                                >
-                                    <div className="w-12 h-12 bg-gray-800 rounded-full flex items-center justify-center mb-4 group-hover:bg-yellow-500 group-hover:text-black transition-colors">
-                                        <Plus className="w-6 h-6" />
-                                    </div>
-                                    <p className="font-bold text-gray-400 group-hover:text-white">Add Paid Seat</p>
-                                </button>
                             </div>
                         )}
                     </TabsContent>
