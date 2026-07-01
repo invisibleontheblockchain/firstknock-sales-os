@@ -319,9 +319,8 @@ export default function AdminTeam() {
 
     const teamToolsUnlocked = user?.is_owner || user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
     const paidSeatLimit = user?.is_owner || user?.subscription_paid_confirmed === true ? (user?.total_seats || 1) : 0;
-    const currentTier = String(user?.subscription_tier || '').toLowerCase();
-    const normalizedSeatPlan = currentTier === 'precision' || currentTier === 'pro' ? 'precision' : 'canvas';
-    const seatUnitPrice = normalizedSeatPlan === 'precision' ? 99 : 19;
+    const normalizedSeatPlan = 'precision';
+    const seatUnitPrice = 99;
     const seatsToAddSafe = Math.max(1, Math.min(100, Number(seatsToAdd) || 1));
     const hasExistingStripeSubscription = !!user?.subscription_id && !!user?.stripe_customer_id;
     const currentSeatCount = hasExistingStripeSubscription ? (user?.total_seats || 1) : 0;
@@ -370,7 +369,7 @@ export default function AdminTeam() {
                 ? await base44.functions.invoke('updateSubscriptionSeats', { quantity: targetSeatCount })
                 : await base44.functions.invoke('createCheckoutSession', {
                     planId: normalizedSeatPlan,
-                    productName: normalizedSeatPlan === 'precision' ? 'FirstKnock Precision Seats' : 'FirstKnock Canvas Seats',
+                    productName: 'FirstKnock Rep Seats',
                     quantity: seatsToAddSafe,
                     successUrl: window.location.origin + createPageUrl('AdminTeam'),
                     cancelUrl: window.location.origin + createPageUrl('AdminTeam')

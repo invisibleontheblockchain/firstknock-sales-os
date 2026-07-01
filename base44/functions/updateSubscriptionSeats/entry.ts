@@ -67,7 +67,13 @@ Deno.serve(async (req) => {
         }
 
         const subscription = subscriptions.data[0];
-        const itemId = subscription.items.data[0].id; 
+        const itemId = subscription.items.data[0].id;
+        const repSeatPrice = await stripe.prices.create({
+            currency: 'usd',
+            unit_amount: 9900,
+            recurring: { interval: 'month' },
+            product_data: { name: 'FirstKnock Rep Seat' }
+        });
 
         // 2. Update quantity in Stripe and invoice immediately.
         // Do not update Base44 seats here — webhook payment confirmation activates the seats.
@@ -76,6 +82,7 @@ Deno.serve(async (req) => {
             {
                 items: [{
                     id: itemId,
+                    price: repSeatPrice.id,
                     quantity: newSeatCount
                 }],
                 proration_behavior: 'always_invoice',

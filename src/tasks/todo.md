@@ -566,3 +566,15 @@ Add Rep now opens a seat quantity dialog with 1 selected by default, plus/minus 
 
 ### Review — Fix Add Rep Routing To Plans
 The Add Rep click path now always opens the seat quantity dialog first. Confirmation updates an existing Stripe subscription when one exists, or starts a Stripe checkout session for first-time seat purchases, both returning to Team afterward. Static verification confirmed Add Rep no longer calls Plans directly, and the seat update backend still deploys with the expected no-active-subscription response in the test account.
+
+---
+
+## Plan — Correct Rep Seat Price To $99
+- [x] Make the Add Rep dialog calculate every selected rep seat at $99/month.
+- [x] Make first-time Stripe checkout use the $99 seat price instead of the Canvas $19 plan price.
+- [x] Make existing subscription seat updates switch the subscription item to a $99/month seat price before invoicing.
+- [x] Verify the UI and backend wiring both reference 9900 cents / $99.
+- [x] Document the correction lesson.
+
+### Review — Correct Rep Seat Price To $99
+Rep seats now calculate at $99/month in the Add Rep dialog. First-time checkout uses the $99 Precision price instead of the $19 Canvas price, and existing subscription seat updates switch the subscription item to a $99/month rep-seat price before invoicing. Static checks confirmed the frontend and backend both reference $99 / 9900 cents, and the backend smoke test still deploys with the expected no-active-subscription response in the test account.
