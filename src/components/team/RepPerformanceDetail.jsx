@@ -146,7 +146,7 @@ export default function RepPerformanceDetail({ member, logs, teamAverage, onClos
                 <details className="group">
                     <summary className="flex cursor-pointer list-none items-center justify-between px-3 md:px-6 py-3 md:py-4">
                         <div>
-                            <CardTitle className="text-xs md:text-sm font-bold text-gray-400 uppercase">Active Assignments ({activeRoutes.length})</CardTitle>
+                            <CardTitle className="text-xs md:text-sm font-bold text-gray-400 uppercase">Active Routes ({activeRoutes.length})</CardTitle>
                             <p className="text-[10px] md:text-xs text-gray-500 mt-1">Click to view this rep's active routes.</p>
                         </div>
                         <ChevronDown className="w-4 h-4 text-gray-500 transition-transform group-open:rotate-180" />
