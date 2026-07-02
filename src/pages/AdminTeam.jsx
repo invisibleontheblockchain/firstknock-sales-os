@@ -263,11 +263,12 @@ export default function AdminTeam() {
         if (user && !members.some(m => m.email?.toLowerCase() === user.email?.toLowerCase())) {
             const manager = {
                 id: user.id,
-                name: `${user.full_name || 'Me'} (Manager)`,
+                name: user.full_name || 'Me',
                 email: user.email,
                 role: 'manager',
                 status: 'active',
                 assigned_zip_codes: user.territory_zip_codes || [],
+                profile_image_url: user.profile_image_url || user.data?.profile_image_url,
                 color: '#FFD700',
                 isManagerSelf: true,
                 auto_assign_enabled: false 

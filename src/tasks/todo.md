@@ -688,3 +688,15 @@ The app now resolves manager access from app role, nested role data, owner statu
 
 ### Review — Promote Rep to Manager
 Managers now get a Make Manager button on rep roster cards. Confirming it calls a backend role-switch action that verifies manager access, checks the rep belongs to the manager's team, updates the rep user account to `app_role: manager`, and updates the roster role so the promoted account regains Map and manager tools. The backend function deployed and returned a safe validation response.
+
+---
+
+## Plan — Manager Self Profile Card Polish
+- [x] Remove the duplicate “(Manager)” text from the manager's displayed name while keeping the manager role tag.
+- [x] Use the current account's saved profile photo for the manager self card.
+- [x] Let the manager self card upload and save a new profile photo to the current account.
+- [x] Verify the visible card logic still preserves rep photo editing and manager tags.
+- [x] Record the review.
+
+### Review — Manager Self Profile Card Polish
+The manager self card now displays only the account name while keeping the MANAGER badge below it. The card reads the saved account profile photo and the camera button now uploads a new photo to the signed-in manager account; manager-controlled rep photo editing remains unchanged.

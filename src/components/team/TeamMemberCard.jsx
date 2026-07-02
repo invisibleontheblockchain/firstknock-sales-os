@@ -35,10 +35,15 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
         mutationFn: async (file) => {
             const uploaded = await base44.integrations.Core.UploadFile({ file });
             const imageUrl = uploaded?.file_url || uploaded?.url;
-            await base44.entities.TeamMember.update(member.id, { profile_image_url: imageUrl });
+            if (member.isManagerSelf) {
+                await base44.auth.updateMe({ profile_image_url: imageUrl });
+            } else {
+                await base44.entities.TeamMember.update(member.id, { profile_image_url: imageUrl });
+            }
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['teamMembers'] });
+            queryClient.invalidateQueries({ queryKey: ['user'] });
             toast.success("Profile photo updated");
         }
     });
@@ -46,7 +51,7 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
     const handlePhotoChange = (event) => {
         event.stopPropagation();
         const file = event.target.files?.[0];
-        if (file && !member.isManagerSelf) uploadPhotoMutation.mutate(file);
+        if (file) uploadPhotoMutation.mutate(file);
         event.target.value = '';
     };
 
@@ -69,7 +74,7 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                                     member.name?.[0]?.toUpperCase() || '?'
                                 )}
                             </div>
-                            {!member.isManagerSelf && (
+                            {(canManage || member.isManagerSelf) && (
                                 <label
                                     onClick={(e) => e.stopPropagation()}
                                     className="absolute -bottom-1 -right-1 w-5 h-5 md:w-6 md:h-6 rounded-full bg-[#2EEB57] border-2 border-[#151515] flex items-center justify-center cursor-pointer shadow-lg active:scale-95"
