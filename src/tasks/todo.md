@@ -700,3 +700,16 @@ Managers now get a Make Manager button on rep roster cards. Confirming it calls 
 
 ### Review — Manager Self Profile Card Polish
 The manager self card now displays only the account name while keeping the MANAGER badge below it. The card reads the saved account profile photo and the camera button now uploads a new photo to the signed-in manager account; manager-controlled rep photo editing remains unchanged.
+
+---
+
+## Plan — Move Role Switch to Header
+- [x] Remove the Make Manager action from individual rep cards.
+- [x] Add a manager-only Switch Role button in the Team header.
+- [x] Let managers choose which rep to switch to manager status from the header control.
+- [x] Reuse the existing secure promotion backend action.
+- [x] Verify the card no longer renders Make Manager and the header flow is wired.
+- [x] Record the review.
+
+### Review — Move Role Switch to Header
+The rep card no longer renders the Make Manager button. The Team header now includes a manager-only Switch Role button that opens a rep picker and reuses the existing secure promotion action to switch the chosen rep to manager status.

@@ -51,6 +51,8 @@ export default function AdminTeam() {
     const [seatsToAdd, setSeatsToAdd] = useState(1);
     const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
     const [newTeamName, setNewTeamName] = useState('');
+    const [isRoleSwitchOpen, setIsRoleSwitchOpen] = useState(false);
+    const [roleSwitchMemberId, setRoleSwitchMemberId] = useState('');
 
     // --- Queries ---
     const { data: user } = useQuery({
@@ -202,6 +204,8 @@ export default function AdminTeam() {
         mutationFn: async (member) => base44.functions.invoke('promoteTeamMemberToManager', { teamMemberId: member.id }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['teamMembers'] });
+            setIsRoleSwitchOpen(false);
+            setRoleSwitchMemberId('');
             toast.success("Rep upgraded to manager.");
         },
         onError: (error) => {
@@ -340,6 +344,9 @@ export default function AdminTeam() {
         () => filteredTeamMembers.filter(member => !member.isManagerSelf),
         [filteredTeamMembers]
     );
+
+    const roleSwitchCandidates = filteredTeamMembers.filter(member => !member.isManagerSelf && member.role !== 'manager');
+    const selectedRoleSwitchMember = roleSwitchCandidates.find(member => member.id === roleSwitchMemberId);
 
     const teamToolsUnlocked = canManageTeam
         ? (user?.is_owner || user?.subscription_status === 'active' || user?.subscription_status === 'trialing')
@@ -604,6 +611,41 @@ export default function AdminTeam() {
                         )}
                     </div>
                     <div className={`${canManageTeam ? 'flex' : 'hidden'} w-full md:w-auto gap-2`}>
+                        <Dialog open={isRoleSwitchOpen} onOpenChange={(open) => { setIsRoleSwitchOpen(open); if (!open) setRoleSwitchMemberId(''); }}>
+                            <DialogTrigger asChild>
+                                <Button
+                                    variant="outline"
+                                    className="flex-1 md:flex-none h-9 border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/10 font-bold text-[10px] md:text-sm"
+                                >
+                                    <Shield className="w-3 h-3 md:w-4 md:h-4 mr-1 md:mr-2" /> Switch Role
+                                </Button>
+                            </DialogTrigger>
+                            <DialogContent className="bg-[#111] border-gray-800 text-white sm:max-w-md">
+                                <DialogHeader>
+                                    <DialogTitle>Switch Rep Role</DialogTitle>
+                                </DialogHeader>
+                                <div className="space-y-4 py-2">
+                                    <p className="text-sm text-gray-400">Choose a rep to upgrade to manager status.</p>
+                                    <Select value={roleSwitchMemberId} onValueChange={setRoleSwitchMemberId}>
+                                        <SelectTrigger className="bg-black border-gray-700 text-white">
+                                            <SelectValue placeholder="Select a rep" />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-[#1F1F1F] border-gray-800 text-white">
+                                            {roleSwitchCandidates.map(member => (
+                                                <SelectItem key={member.id} value={member.id}>{member.name} ({member.email})</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <Button
+                                        onClick={() => selectedRoleSwitchMember && promoteMemberMutation.mutate(selectedRoleSwitchMember)}
+                                        disabled={!selectedRoleSwitchMember || promoteMemberMutation.isPending}
+                                        className="w-full bg-yellow-500 text-black hover:bg-yellow-400 font-black"
+                                    >
+                                        {promoteMemberMutation.isPending ? 'Switching...' : 'Switch to Manager'}
+                                    </Button>
+                                </div>
+                            </DialogContent>
+                        </Dialog>
                         <Dialog open={isCreateTeamOpen} onOpenChange={setIsCreateTeamOpen}>
                             <DialogTrigger asChild>
                                 <Button 
@@ -844,11 +886,6 @@ export default function AdminTeam() {
                                                     onDelete={(m) => {
                                                         if(confirm(`Remove ${m.name} from your team? Their routes will be unassigned.`)) {
                                                             deleteRepMutation.mutate(m);
-                                                        }
-                                                    }}
-                                                    onPromote={(m) => {
-                                                        if(confirm(`Switch ${m.name} to manager status? They will regain the Map tab and manager tools.`)) {
-                                                            promoteMemberMutation.mutate(m);
                                                         }
                                                     }}
                                                     action={canManageTeam ? AssignZipsAction : null}

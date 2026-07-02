@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { TrendingUp, Trash2, Camera, Loader2, Shield } from 'lucide-react';
+import { TrendingUp, Trash2, Camera, Loader2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 
@@ -18,7 +18,7 @@ const BRAND = {
     blue: '#3b82f6'
 };
 
-export default function TeamMemberCard({ member, routes, metrics, allRoutes, onAssignRoute, onDelete, onPromote, action, canManage = true }) {
+export default function TeamMemberCard({ member, routes, metrics, allRoutes, onAssignRoute, onDelete, action, canManage = true }) {
     const queryClient = useQueryClient();
     const completedRoutes = routes.filter(r => r.status === 'COMPLETED');
     const activeRoutes = routes.filter(r => r.status === 'ACTIVE' || r.status === 'IN_PROGRESS');
@@ -153,17 +153,6 @@ export default function TeamMemberCard({ member, routes, metrics, allRoutes, onA
                         ) : <div />}
                         <div>{action}</div>
                     </div>
-                    {canManage && !member.isManagerSelf && member.role !== 'manager' && onPromote && (
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={(e) => { e.stopPropagation(); onPromote(member); }}
-                            className="mt-2 h-7 w-full border-yellow-500/40 text-yellow-500 hover:bg-yellow-500/10 text-[10px] font-bold"
-                        >
-                            <Shield className="w-3 h-3 mr-1" /> Make Manager
-                        </Button>
-                    )}
                     {activeRoutes.length === 0 && (
                         <div className="mt-2">
                             <Select onValueChange={(routeId) => onAssignRoute(routeId, member.id)}>
