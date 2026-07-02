@@ -32,7 +32,8 @@ export default function SalesEditor({ logs = [], members = [] }) {
     const repMap = useMemo(() => {
         const namesByEmail = {};
         members.forEach(member => {
-            if (member.email) namesByEmail[member.email.toLowerCase()] = member.name;
+            const email = member.email?.trim().toLowerCase();
+            if (email && member.name) namesByEmail[email] = member.name;
         });
         return namesByEmail;
     }, [members]);
@@ -62,8 +63,8 @@ export default function SalesEditor({ logs = [], members = [] }) {
                     {sales.length === 0 ? (
                         <div className="text-center py-8 text-gray-500 text-xs">No sales logged yet.</div>
                     ) : sales.map(log => {
-                        const repEmail = (log.created_by || '').toLowerCase();
-                        const repName = repMap[repEmail] || log.created_by || 'Unknown rep';
+                        const repEmail = (log.created_by || '').trim().toLowerCase();
+                        const repName = repMap[repEmail] || 'Unknown rep';
                         return (
                             <div key={log.id} className="flex items-center justify-between gap-3 px-3 md:px-5 py-3 hover:bg-white/5 transition-colors">
                                 <div className="min-w-0">

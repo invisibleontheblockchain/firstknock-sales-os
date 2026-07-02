@@ -797,7 +797,7 @@ export default function AdminTeam() {
                             <TeamOutcomeBreakdown logs={logs} />
                         </div>
                         <TeamLeaderboard members={analyticsMembers} logs={logs} routes={routes} />
-                        <SalesEditor logs={logs} members={analyticsMembers} />
+                        <SalesEditor logs={logs} members={filteredTeamMembers} />
                     </TabsContent>
 
                     {/* ROSTER TAB */}
