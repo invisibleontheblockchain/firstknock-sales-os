@@ -911,16 +911,6 @@ export default function RepHome() {
 
       }
 
-            {/* Analytics */}
-            {showAnalytics &&
-      <RepAnalytics
-        logs={allMyLogs}
-        routeProperties={routeProperties}
-        activeRoute={activeRoute}
-        onClose={() => setShowAnalytics(false)} />
-
-      }
-
             {/* Team Chat */}
             {showChat &&
       <TeamChat
@@ -937,6 +927,16 @@ export default function RepHome() {
         onClose={() => {setShowLimitSheet(false);setLimitDismissed(true);}} />
       
             </div>
+
+            {/* Analytics — outside the z-10 wrapper so it renders above the app header */}
+            {showAnalytics &&
+      <RepAnalytics
+        logs={allMyLogs}
+        routeProperties={routeProperties}
+        activeRoute={activeRoute}
+        onClose={() => setShowAnalytics(false)} />
+
+      }
         </div>);
 
 }
