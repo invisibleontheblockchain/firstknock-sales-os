@@ -67,13 +67,6 @@ export default function RepAnalytics({ logs, routeProperties, activeRoute, onClo
 
     return (
         <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex flex-col pt-[env(safe-area-inset-top)]" onClick={onClose}>
-            <button
-                onClick={onClose}
-                className="fixed right-4 top-[calc(env(safe-area-inset-top)+76px)] z-[80] w-12 h-12 rounded-full bg-[#2EEB57] flex items-center justify-center active:scale-90 transition-all shadow-[0_6px_24px_rgba(46,235,87,0.45)] hover:bg-[#39FF4A]"
-                aria-label="Close analytics"
-            >
-                <X className="w-6 h-6 text-black stroke-[3]" />
-            </button>
             <div className="flex-1 overflow-y-auto" onClick={e => e.stopPropagation()}>
                 {/* Header */}
                 <div className="sticky top-0 bg-black/95 backdrop-blur px-4 py-3 flex items-center justify-between border-b border-white/5 z-20">
