@@ -494,7 +494,7 @@ export default function Home() {
     const deriveRouteName = (route) => {
         if (route?.name && !isStockRouteName(route.name)) return route.name;
         const props = route?.allProperties || route?.properties || [];
-        const routeNumber = String(route?.name || '').match(/(\d+)$/)?.[1] || route?.route_number || 1;
+        const batchIndex = Number(String(route?.name || '').match(/(\d+)$/)?.[1] || route?.route_number || 1) || 1;
         const county = mostCommonRouteLabel(props, [
             p => p.county,
             p => p.county_name,
@@ -509,7 +509,17 @@ export default function Home() {
         const street = mostCommonRouteLabel(props, [p => p.street_name]);
         const area = county ? `${county} County` : city || (zip ? `ZIP ${zip}` : street || 'Territory');
         const type = route?.route_mode === 'canvas' ? 'Canvas' : 'Precision';
-        return `${area} ${type} Route ${routeNumber}`;
+        const base = `${area} ${type} Route`;
+        // Continue numbering from existing saved routes with the same base name
+        // (e.g. "Kannapolis Precision Route 1" exists → next is Route 2), instead of always defaulting to 1.
+        const escaped = base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const pattern = new RegExp(`^(?:New\\s*[—-]\\s*)?${escaped}\\s+(\\d+)`, 'i');
+        let maxExisting = 0;
+        savedRoutes.forEach(r => {
+            const m = String(r.name || '').match(pattern);
+            if (m) maxExisting = Math.max(maxExisting, Number(m[1]) || 0);
+        });
+        return `${base} ${maxExisting + batchIndex}`;
     };
 
     const handleSaveRoute = async (route, assignedRepId = null, assignedRepName = null, silent = false) => {
