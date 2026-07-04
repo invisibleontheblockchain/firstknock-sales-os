@@ -3,6 +3,7 @@ import Stripe from 'npm:stripe@14.14.0';
 
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
+const NO_CARD_LIFETIME_CAP = 25;
 
 function normalizePolygon(input) {
     if (!Array.isArray(input)) return [];
@@ -127,7 +128,29 @@ Deno.serve(async (req) => {
                 message: 'Precision pulls over 50 houses require the paid $99/month Precision plan after the first payment clears. Free trials and card-on-file accounts stay capped at 50 houses.'
             }, { status: 403 });
         }
-        const requestedProperties = Math.max(1, Math.min(requestedValue, maxProperties));
+        let requestedProperties = Math.max(1, Math.min(requestedValue, maxProperties));
+        let trialNote = null;
+        if (!hasPaidPrecisionCapacity) {
+            // No card on file = 25 lifetime homes. Card on file (trial/active) = 50 per pull. Paid confirmed = 1000.
+            const subStatus = String(user.subscription_status || '').toLowerCase();
+            const hasCardOnFile = !forceFreeForSelfTest && (['active', 'trialing'].includes(subStatus) || !!user.stripe_customer_id);
+            if (!hasCardOnFile) {
+                const jobsRes = await base44.entities.FetchJob.filter({ user_email: user.email, status: 'completed' }, '-created_date', 200);
+                const jobs = Array.isArray(jobsRes) ? jobsRes : (jobsRes?.items || []);
+                const totalPulled = jobs.reduce((sum, j) => sum + (Number(j.total_inserted) || 0), 0);
+                const remaining = NO_CARD_LIFETIME_CAP - totalPulled;
+                if (remaining <= 0) {
+                    return Response.json({
+                        error: 'trial_required',
+                        message: `You've used your ${NO_CARD_LIFETIME_CAP} free homes. Start a free trial (card on file) to unlock up to ${FREE_PROPERTY_CAP} homes, or the $99/month Precision plan for up to ${PAID_PROPERTY_CAP}.`
+                    }, { status: 403 });
+                }
+                if (requestedProperties > remaining) {
+                    requestedProperties = remaining;
+                    trialNote = `Capped at your ${remaining} remaining free homes. Start a free trial to unlock up to ${FREE_PROPERTY_CAP}.`;
+                }
+            }
+        }
         const minPriceRaw = Number(body.min_price);
         const maxPriceRaw = Number(body.max_price);
         const minPrice = Number.isFinite(minPriceRaw) && minPriceRaw > 0 ? minPriceRaw : 100000;
@@ -147,7 +170,8 @@ Deno.serve(async (req) => {
                 sold_months: requestedSoldMonths,
                 previous_pull_date: body.previous_pull_date || null,
                 include_unresolved_followups: body.include_unresolved_followups === true,
-                area_sq_mi: Number(areaSqMi.toFixed(2))
+                area_sq_mi: Number(areaSqMi.toFixed(2)),
+                trial_note: trialNote
             });
         }
 
@@ -212,6 +236,7 @@ Deno.serve(async (req) => {
             job_id: job.id,
             provider: 'batchdata',
             requested_properties: requestedProperties,
+            trial_note: trialNote,
             message: `Paid BatchData pull started for up to ${requestedProperties} properties.`
         });
     } catch (error) {
