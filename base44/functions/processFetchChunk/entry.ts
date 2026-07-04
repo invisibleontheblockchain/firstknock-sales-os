@@ -706,11 +706,36 @@ Deno.serve(async (req) => {
         const activeCount = mapped.filter(p => p.route_active !== false).length;
         const errorLog = [...(job.error_log || []), `[${completedAt}] BatchData-only Precision complete: mode=${batchFetch.mode_used}, attempts=${JSON.stringify(batchFetch.attempts)}, raw=${rawRecords.length}, mapped=${mapped.length}, active=${activeCount}, rejected=${rejected}, outside_or_invalid=${outsideOrInvalid}`];
 
+        // ── Post-write integrity verification ─────────────────────────────
+        // Guarantee: every mapped property from the BatchData response must be
+        // resolvable in Neon for this user. If any are missing, record it loudly
+        // on the job instead of completing silently with dropped records.
+        let integrityWarning = null;
+        if (mapped.length > 0) {
+            const mappedHashes = mapped.map(p => p.address_hash);
+            const verifyRows = await sql`
+                SELECT p.address_hash
+                FROM workspace_properties wp
+                JOIN properties p ON p.id = wp.property_id
+                WHERE wp.user_email = ${job.user_email || 'unknown'}
+                  AND p.address_hash = ANY(${mappedHashes})
+            `;
+            const persistedSet = new Set(verifyRows.map(r => r.address_hash));
+            const missingHashes = mappedHashes.filter(h => !persistedSet.has(h));
+            if (missingHashes.length > 0) {
+                integrityWarning = `DATA INTEGRITY WARNING: ${missingHashes.length} of ${mapped.length} properties from BatchData were NOT persisted to the database. Missing samples: ${missingHashes.slice(0, 5).join('; ')}`;
+                errorLog.push(`[${completedAt}] ${integrityWarning}`);
+            } else {
+                errorLog.push(`[${completedAt}] Integrity verified: ${mapped.length}/${mapped.length} BatchData properties persisted and resolvable.`);
+            }
+        }
+
         await base44.asServiceRole.entities.FetchJob.update(job.id, {
             status: 'completed',
             phase: 'complete',
             progress_pct: 100,
             completed_at: completedAt,
+            ...(integrityWarning ? { error_message: integrityWarning } : {}),
             total_fetched: rawRecords.length,
             total_inserted: result.inserted,
             total_existed: result.existed,
