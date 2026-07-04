@@ -53,11 +53,13 @@ export default function ActiveRoutesTab({
     }, [savedRoutes]);
 
     const rerunRoutes = useMemo(() => savedRoutes.filter(isRerunRoute), [savedRoutes]);
+    // Newest routes first so a freshly generated route always appears at the top of its section
+    const byNewestFirst = (a, b) => new Date(b.created_date || 0) - new Date(a.created_date || 0);
     const normalRoutesByStatus = useMemo(() => ({
-        IN_PROGRESS: (routesByStatus.IN_PROGRESS || []).filter(route => !isRerunRoute(route)),
-        ACTIVE: (routesByStatus.ACTIVE || []).filter(route => !isRerunRoute(route)),
-        PENDING: (routesByStatus.PENDING || []).filter(route => !isRerunRoute(route)),
-        COMPLETED: (routesByStatus.COMPLETED || []).filter(route => !isRerunRoute(route))
+        IN_PROGRESS: (routesByStatus.IN_PROGRESS || []).filter(route => !isRerunRoute(route)).sort(byNewestFirst),
+        ACTIVE: (routesByStatus.ACTIVE || []).filter(route => !isRerunRoute(route)).sort(byNewestFirst),
+        PENDING: (routesByStatus.PENDING || []).filter(route => !isRerunRoute(route)).sort(byNewestFirst),
+        COMPLETED: (routesByStatus.COMPLETED || []).filter(route => !isRerunRoute(route)).sort(byNewestFirst)
     }), [routesByStatus]);
 
     const toggleSelect = (routeId) => {
@@ -450,6 +452,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
     };
 
     const displayName = routeNumber && (!route.name || /^Route\s+\d+$/i.test(route.name)) ? `Route ${routeNumber}` : route.name;
+    const isNew = route.metadata?.newly_generated && route.created_date && (Date.now() - new Date(route.created_date).getTime()) < 24 * 60 * 60 * 1000;
 
     return (
         <div className={`relative group flex items-start gap-1.5 sm:gap-2 min-w-0 max-w-full overflow-hidden ${isSelected ? 'ring-2 ring-[#39FF4A] rounded-2xl' : ''}`}>
@@ -499,6 +502,9 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                                         </span>
                                     )}
                                     <span className="font-bold text-sm text-white truncate">{displayName}</span>
+                                    {isNew && (
+                                        <span className="shrink-0 rounded-full bg-[#2EEB57] px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-black">New</span>
+                                    )}
                                     {!isMultiSelect && (
                                         <button
                                             onClick={e => { e.stopPropagation(); setEditing(true); }}
