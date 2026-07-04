@@ -291,8 +291,11 @@ function mapBatchDataProperty(record, job) {
     const price = estimatedValue ?? saleAmount;
     const landUseCode = firstValue(general.standardizedLandUseCode, p.standardizedLandUseCode);
     const propertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType) || 'Single Family';
-    const nonResidential = /commercial|industrial|vacant|agricultural|land/i.test(String(propertyType));
-    const landUseRejected = landUseCode && landUseCode !== 'R2';
+    // Residential-only gate. BatchData standardized land use codes are letter-prefixed:
+    // R* = residential, A* = agricultural, C* = commercial, etc. Verified live: daycare/farm
+    // records come back with non-R codes. Reject any record whose code exists and is not R*.
+    const nonResidential = /commercial|industrial|vacant|agricultural|land|daycare|day ?care|child ?care|church|school|office|retail|store|warehouse|hotel|motel|restaurant|medical|hospital|parking|exempt|government/i.test(String(propertyType));
+    const landUseRejected = !!landUseCode && !/^R/i.test(String(landUseCode));
 
     // ── Loosened BatchData gate ──────────────────────────────────────────
     // The paid BatchData request already asks for owner-change / last-sold records.
@@ -305,7 +308,7 @@ function mapBatchDataProperty(record, job) {
     const filterMaxPrice = Number(jobFilters.max_price) > 0 ? Number(jobFilters.max_price) : null;
     const priceKnown = Number.isFinite(Number(price)) && Number(price) > 0;
     const priceRejected = priceKnown && ((filterMinPrice !== null && Number(price) < filterMinPrice) || (filterMaxPrice !== null && Number(price) > filterMaxPrice));
-    const rejected = nonResidential || priceRejected;
+    const rejected = nonResidential || landUseRejected || priceRejected;
 
     const match = address.street.match(/^(\d+)\s+(.*)$/);
     const houseNumber = match ? parseInt(match[1], 10) : 0;
