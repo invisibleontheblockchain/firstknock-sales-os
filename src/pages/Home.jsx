@@ -830,31 +830,12 @@ export default function Home() {
                 const allRouteProps = hydratedProps.length > 0 ? hydratedProps : routeHashes
                     .map(hash => propsByHash.get(hash))
                     .filter(Boolean);
-                let routeProps = allRouteProps;
-
-                // Apply soldDateFilter to active saved routes only.
-                // Completed routes must remain findable on the Completed map view even if their homes
-                // fall outside the current date window or have non-sale completion outcomes.
-                if (route.status !== 'COMPLETED' && soldDateFilter !== null && soldDateFilter !== 'all') {
-                    let cutoff;
-                    const now = new Date();
-                    if (soldDateFilter === 0.25 || soldDateFilter === '0.25') {
-                        cutoff = subDays(now, 7);
-                    } else {
-                        cutoff = subMonths(now, Number(soldDateFilter));
-                    }
-                    cutoff.setHours(0, 0, 0, 0);
-                    routeProps = routeProps.filter(p => {
-                        // Properties with rep interaction statuses always stay in routes
-                        const hasInteraction = ['CALLBACK', 'NO_ANSWER', 'QUALIFIED', 'SOLD'].includes(p.effective_status);
-                        if (!p.sold_date) return hasInteraction;
-                        try {
-                            const d = new Date(p.sold_date);
-                            if (isNaN(d.getTime())) return hasInteraction;
-                            return d >= cutoff;
-                        } catch (e) { return hasInteraction; }
-                    });
-                }
+                // Saved routes ALWAYS display their full door set — the global sold-date window
+                // must never silently trim or hide a saved route on the map/Route Command.
+                // (It once turned a 33-door route into 31 in Route Command, and a narrow window
+                // could empty a route's pins entirely so it vanished from the map on deselect.)
+                // Only the explicit per-route Dates/Price filters on a selected route narrow it.
+                const routeProps = allRouteProps;
 
                 // Route is completed if all properties have been knocked (non-ELIGIBLE status)
                 const isCompleted = routeProps.length > 0 && routeProps.every(p =>
@@ -874,7 +855,7 @@ export default function Home() {
                 };
             }).filter(r => r.houseCount > 0)
             .sort((a, b) => (b.competitivenessScore || 0) - (a.competitivenessScore || 0));
-    }, [savedRoutes, serverHydratedSavedRoutes, effectiveProperties, repFilter, soldDateFilter]);
+    }, [savedRoutes, serverHydratedSavedRoutes, effectiveProperties, repFilter]);
 
     // Extract unique reps from saved routes for filter
     const uniqueReps = useMemo(() => {

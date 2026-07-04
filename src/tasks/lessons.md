@@ -18,6 +18,7 @@
 - If a user asks to make a polished UI element simpler after an iteration, remove decorative layers first and keep one strong shape, one accent color, and minimal shadow.
 - Map status toggles must clear selected active-route overlays and force route pins/lines visible; otherwise the toggle state changes but the map still appears unchanged.
 - Completed saved routes should not be filtered by active sold-date windows, or finished routes can disappear from the map even though they still exist in Route Command.
+- Saved routes (any status) must always display their full property_hashes door set; applying the global map sold-date window to saved routes creates count mismatches (Route Command 31 vs map 33) and can empty a route's pins so it silently vanishes from the map when deselected. Only explicit per-route filters may narrow a selected route's display.
 - Rerun-created routes are their own workflow category, not just active/completed status rows; route lists should group them by rerun metadata before generic status sections.
 - In Knock mode, rerun routes must ignore pre-rerun visit history for current stop status; only logs created on/after the rerun or tied to that rerun route should count toward Done.
 - Completed-route reruns must preserve hydrated property objects after save, not just `property_hashes`; match selected hashes against `address_hash`, `legacy_hash`, and `id` or map-selected reruns can appear to click off/disappear.
