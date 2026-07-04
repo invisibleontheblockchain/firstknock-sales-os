@@ -57,13 +57,15 @@ export default function RouteCommandPanel({
         onSelectRoute(hydratedRoute);
     };
 
-    const [activeTab, setActiveTab] = useState(mode === 'generate' && generatedRoutes.length > 0 ? 'new' : 'active');
+    // NEW ROUTES tab is available whenever generated routes exist — routes now auto-activate
+    // on the map after generation, so this must not depend on builder mode or active route.
+    const [activeTab, setActiveTab] = useState(generatedRoutes.length > 0 ? 'new' : 'active');
     const [splitRoute, setSplitRoute] = useState(null);
     const queryClient = useQueryClient();
 
     useEffect(() => {
-        if (mode !== 'generate' && activeTab === 'new') setActiveTab('active');
-    }, [mode, activeTab]);
+        if (generatedRoutes.length === 0 && activeTab === 'new') setActiveTab('active');
+    }, [generatedRoutes.length, activeTab]);
 
     // Build a global route number map: route.id → #1, #2, #3...
     const routeNumberMap = useMemo(() => {
@@ -141,9 +143,9 @@ export default function RouteCommandPanel({
                 {/* Tab Navigation */}
                 <div className="grid grid-cols-3 border-b px-1 sm:px-4 shrink-0 overflow-hidden" style={{ borderColor: BRAND.charcoal }}>
                     <button
-                        onClick={() => !activeRouteId && mode === 'generate' && setActiveTab('new')}
-                        disabled={!!activeRouteId || mode !== 'generate'}
-                        className={`min-w-0 py-3 text-[9px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${(activeRouteId || mode !== 'generate') ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'new'
+                        onClick={() => generatedRoutes.length > 0 && setActiveTab('new')}
+                        disabled={generatedRoutes.length === 0}
+                        className={`min-w-0 py-3 text-[9px] sm:text-xs font-bold tracking-wide border-b-2 transition-all flex items-center justify-center gap-1 sm:gap-2 ${generatedRoutes.length === 0 ? 'opacity-50 cursor-not-allowed' : ''} ${activeTab === 'new'
                             ? 'border-yellow-500 text-yellow-500'
                             : 'border-transparent text-gray-500 hover:text-white'
                             }`}
