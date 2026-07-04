@@ -197,8 +197,12 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
 
     if (mode === 'strict_polygon') {
         searchCriteria.general = { standardizedLandUseCode: { equals: 'R2' } };
-        searchCriteria.valuation = { estimatedValue };
     }
+
+    // Home value range applies in ALL polygon modes. Previously it was only attached in
+    // strict_polygon — but the live pull uses broad_polygon, so user price filters were
+    // silently dropped and never reached BatchData.
+    searchCriteria.valuation = { estimatedValue };
 
     return { searchCriteria, options };
 }
@@ -294,7 +298,14 @@ function mapBatchDataProperty(record, job) {
     // The paid BatchData request already asks for owner-change / last-sold records.
     // Do not reject neutral or incomplete rows locally just because a secondary
     // listing/sale field is blank or stale. Keep only hard safety exclusions here.
-    const rejected = nonResidential;
+    // Price gate: enforce the user's home value range on records with a known price.
+    // Unknown-price records pass (provider may omit valuation on some rows).
+    const jobFilters = job.dry_run_metadata?.filters || {};
+    const filterMinPrice = Number(jobFilters.min_price) > 0 ? Number(jobFilters.min_price) : null;
+    const filterMaxPrice = Number(jobFilters.max_price) > 0 ? Number(jobFilters.max_price) : null;
+    const priceKnown = Number.isFinite(Number(price)) && Number(price) > 0;
+    const priceRejected = priceKnown && ((filterMinPrice !== null && Number(price) < filterMinPrice) || (filterMaxPrice !== null && Number(price) > filterMaxPrice));
+    const rejected = nonResidential || priceRejected;
 
     const match = address.street.match(/^(\d+)\s+(.*)$/);
     const houseNumber = match ? parseInt(match[1], 10) : 0;

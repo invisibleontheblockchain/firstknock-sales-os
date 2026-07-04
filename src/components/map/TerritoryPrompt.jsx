@@ -64,7 +64,7 @@ export default function TerritoryPrompt({
   const [includeUnresolvedFollowUps, setIncludeUnresolvedFollowUps] = useState(true);
   const [recoverableJob, setRecoverableJob] = useState(null);
   const [requestedPropertyCount, setRequestedPropertyCount] = useState(50);
-  const [propertyCountMode, setPropertyCountMode] = useState('fixed');
+  const [propertyCountMode, setPropertyCountMode] = useState('max_available');
   const [minHomeValue, setMinHomeValue] = useState(100000);
   const [maxHomeValue, setMaxHomeValue] = useState('');
   const [showPrecisionPullPanel, setShowPrecisionPullPanel] = useState(false);

@@ -93,6 +93,13 @@ export default function PrecisionPullPanel({
   const historyCriteria = selectedHistoryArea?.criteria || {};
   const historyDate = selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date;
 
+  // Max Available is the default — keep the count input synced to the plan max.
+  useEffect(() => {
+    if (propertyCountMode === 'max_available' && Number(requestedPropertyCount) !== Number(maxProperties)) {
+      setRequestedPropertyCount(maxProperties);
+    }
+  }, [propertyCountMode, maxProperties, requestedPropertyCount, setRequestedPropertyCount]);
+
   useEffect(() => {
     if (!isProPlan && PREMIUM_RECENT_RANGES.includes(Number(soldMonths))) {
       setSoldMonths(3);
@@ -188,13 +195,6 @@ export default function PrecisionPullPanel({
             <div className="grid grid-cols-2 gap-1.5 rounded-2xl border border-white/10 bg-white/[0.03] p-1.5">
               <button
                 type="button"
-                onClick={() => setPropertyCountMode?.('fixed')}
-                className={`rounded-xl px-3 py-2 text-[10px] font-black transition-all ${propertyCountMode === 'fixed' ? 'bg-white text-black' : 'text-gray-400 hover:text-white'}`}
-              >
-                Fixed Count
-              </button>
-              <button
-                type="button"
                 onClick={() => {
                   setPropertyCountMode?.('max_available');
                   setRequestedPropertyCount(maxProperties);
@@ -202,6 +202,13 @@ export default function PrecisionPullPanel({
                 className={`rounded-xl px-3 py-2 text-[10px] font-black transition-all ${propertyCountMode === 'max_available' ? 'bg-[#2EEB57] text-black' : 'text-[#39FF4A] hover:bg-[#2EEB57]/10'}`}
               >
                 Max Available
+              </button>
+              <button
+                type="button"
+                onClick={() => setPropertyCountMode?.('fixed')}
+                className={`rounded-xl px-3 py-2 text-[10px] font-black transition-all ${propertyCountMode === 'fixed' ? 'bg-white text-black' : 'text-gray-400 hover:text-white'}`}
+              >
+                Fixed Count
               </button>
             </div>
           </div>
