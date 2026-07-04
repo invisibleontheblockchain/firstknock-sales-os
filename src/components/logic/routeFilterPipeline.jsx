@@ -240,8 +240,15 @@ export function applyRouteFilters({
     track('previouslyKnocked');
 
     // --- Price & Year Filters ---
-    if (routeConfig.minPrice) workingSet = workingSet.filter(p => !p.price || p.price >= routeConfig.minPrice);
-    if (routeConfig.maxPrice) workingSet = workingSet.filter(p => !p.price || p.price <= routeConfig.maxPrice);
+    // Resolve price from every field it can live in (Neon returns `price`; imports use `sale_price`).
+    // When the user sets an explicit price bound, unknown-price properties are EXCLUDED —
+    // previously they passed through, making the filter appear broken.
+    const effectivePrice = (p) => {
+        const v = Number(p.price ?? p.sale_price ?? p.raw_metadata?.price);
+        return Number.isFinite(v) && v > 0 ? v : null;
+    };
+    if (routeConfig.minPrice) workingSet = workingSet.filter(p => { const v = effectivePrice(p); return v !== null && v >= routeConfig.minPrice; });
+    if (routeConfig.maxPrice) workingSet = workingSet.filter(p => { const v = effectivePrice(p); return v !== null && v <= routeConfig.maxPrice; });
     if (routeConfig.minYearBuilt) workingSet = workingSet.filter(p => !p.year_built || p.year_built >= routeConfig.minYearBuilt);
     if (routeConfig.maxYearBuilt) workingSet = workingSet.filter(p => !p.year_built || p.year_built <= routeConfig.maxYearBuilt);
     track('priceYear');

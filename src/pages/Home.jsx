@@ -90,7 +90,7 @@ export default function Home() {
         if (!hD && !hPr) return activeRoute;
         let fp = activeRoute.properties;
         if (hD) { let c; if (activeRouteSoldFilter === '0.25') c = subDays(new Date(), 7); else if (activeRouteSoldFilter === '0.5') c = subDays(new Date(), 14); else c = subMonths(new Date(), Number(activeRouteSoldFilter)); fp = fp.filter(p => { if (!p.sold_date) return false; try { const d = new Date(p.sold_date); return !isNaN(d.getTime()) && isAfter(d, c); } catch { return false; } }); }
-        if (hPr) { const min = Number(activeRoutePriceFilter); fp = fp.filter(p => p.price && p.price >= min); }
+        if (hPr) { const min = Number(activeRoutePriceFilter); fp = fp.filter(p => { const v = Number(p.price ?? p.sale_price); return Number.isFinite(v) && v > 0 && v >= min; }); }
         return { ...activeRoute, _originalId: activeRoute.id, properties: fp, houseCount: fp.length };
     }, [activeRoute, activeRouteSoldFilter, activeRoutePriceFilter]);
 
@@ -1257,18 +1257,24 @@ export default function Home() {
             setRoutes(generated);
             // AUTO-SAVE (skip routes >10K properties — payload too large)
             const saveable = generated.filter(r => r.houseCount <= 10000);
+            let savedRecords = [];
             if (saveable.length > 0) {
                 setGenerationStage(`Saving ${saveable.length} routes...`);
                 const bulkId = toast.loading(`Auto-saving ${saveable.length} routes...`);
                 try {
-                    await Promise.all(saveable.map(r => handleSaveRoute(r, null, null, true)));
+                    savedRecords = await Promise.all(saveable.map(r => handleSaveRoute(r, null, null, true)));
                     toast.success(`Saved ${saveable.length} routes`, { id: bulkId, duration: 3000 });
                     setModeRaw('analyze');
                 } catch (error) { console.error('[Home] Auto-save failed:', error); toast.error('Auto-save failed.', { id: bulkId }); }
             } else if (generated.length > 0) {
                 toast.info(`Route has ${generated[0].houseCount} properties — too large to auto-save. View on map.`, { id: 'build-routes', duration: 5000 });
             }
-            setShowRoutePanel(true); setShowCompare(false);
+            // Go straight to the map: activate the first generated route instead of opening the command panel
+            const firstRoute = generated[0];
+            const firstSaved = savedRecords[0];
+            setActiveRoute(firstSaved?.id ? { ...firstRoute, id: firstSaved.id, isSaved: true, status: firstSaved.status || 'ACTIVE' } : firstRoute);
+            setPreviewRoute(null);
+            setShowRoutePanel(false); setShowCompare(false);
             let skippedDueToAssigned = 0;
             if (routeConfig.excludeAssigned) {
                 skippedDueToAssigned = (effectiveProperties.length - availableProperties.length) +
@@ -1323,11 +1329,18 @@ export default function Home() {
                 })).data.routes
                 : generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: routeConfig.returnToStart, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights);
             setRoutes(generated);
+            let savedRecords = [];
             if (generated.length > 0) {
                 const bulkId = toast.loading(`Auto-saving ${generated.length} routes...`);
-                try { await Promise.all(generated.map(r => handleSaveRoute(r, null, null, true))); toast.success(`Reordered into ${generated.length} routes`, { id: bulkId, duration: 3000 }); setModeRaw('analyze'); } catch (e) { toast.error('Auto-save failed.', { id: bulkId }); }
+                try { savedRecords = await Promise.all(generated.map(r => handleSaveRoute(r, null, null, true))); toast.success(`Reordered into ${generated.length} routes`, { id: bulkId, duration: 3000 }); setModeRaw('analyze'); } catch (e) { toast.error('Auto-save failed.', { id: bulkId }); }
             }
-            setShowRoutePanel(true); setShowCompare(false);
+            // Go straight to the map: activate the first generated route instead of opening the command panel
+            if (generated.length > 0) {
+                const firstSaved = savedRecords[0];
+                setActiveRoute(firstSaved?.id ? { ...generated[0], id: firstSaved.id, isSaved: true, status: firstSaved.status || 'ACTIVE' } : generated[0]);
+                setPreviewRoute(null);
+            }
+            setShowRoutePanel(false); setShowCompare(false);
             toast.success(`Reordered! ${generated.length} route(s)`, { id: 'reorder-routes', duration: 5000 });
         } catch (e) { console.error('Reorder error:', e); toast.error('Reorder failed.', { id: 'reorder-routes' }); }
         finally { setRoutesGenerating(false); }
