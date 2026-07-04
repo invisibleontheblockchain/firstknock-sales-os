@@ -527,7 +527,8 @@ export default function Home() {
         const defaultAssigneeName = assignedRepName || user?.full_name || 'Me';
         const baseRouteName = deriveRouteName(route);
         const isGeneratedRoute = !route?.isSaved && Array.isArray(route?.properties) && route.properties.length > 0;
-        const routeName = isGeneratedRoute && !/^New\b/i.test(baseRouteName) ? `New — ${baseRouteName}` : baseRouteName;
+        // No "New —" name prefix — the NEW badge (from metadata.newly_generated) marks fresh routes instead.
+        const routeName = baseRouteName.replace(/^New\s*[—-]\s*/i, '');
 
         // @ts-ignore - 'mutateAsync' incorrectly expects 'void' instead of the data object
         return await createRouteMutation.mutateAsync({
@@ -1275,6 +1276,9 @@ export default function Home() {
                     savedRecords = await Promise.all(saveable.map(r => handleSaveRoute(r, null, null, true)));
                     toast.success(`Saved ${saveable.length} routes`, { id: bulkId, duration: 3000 });
                     setModeRaw('analyze');
+                    // Saved routes now live in Active (with NEW badge) — drop the in-memory copies so
+                    // Route Command doesn't show the same route twice. Keep only unsaveable >10K routes.
+                    setRoutes(generated.filter(r => r.houseCount > 10000));
                 } catch (error) { console.error('[Home] Auto-save failed:', error); toast.error('Auto-save failed.', { id: bulkId }); }
             } else if (generated.length > 0) {
                 toast.info(`Route has ${generated[0].houseCount} properties — too large to auto-save. View on map.`, { id: 'build-routes', duration: 5000 });
@@ -1342,7 +1346,7 @@ export default function Home() {
             let savedRecords = [];
             if (generated.length > 0) {
                 const bulkId = toast.loading(`Auto-saving ${generated.length} routes...`);
-                try { savedRecords = await Promise.all(generated.map(r => handleSaveRoute(r, null, null, true))); toast.success(`Reordered into ${generated.length} routes`, { id: bulkId, duration: 3000 }); setModeRaw('analyze'); } catch (e) { toast.error('Auto-save failed.', { id: bulkId }); }
+                try { savedRecords = await Promise.all(generated.map(r => handleSaveRoute(r, null, null, true))); toast.success(`Reordered into ${generated.length} routes`, { id: bulkId, duration: 3000 }); setModeRaw('analyze'); setRoutes([]); } catch (e) { toast.error('Auto-save failed.', { id: bulkId }); }
             }
             // Go straight to the map: activate the first generated route instead of opening the command panel
             if (generated.length > 0) {
