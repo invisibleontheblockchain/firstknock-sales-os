@@ -185,7 +185,7 @@ export default function RouteCommandPanel({
 
                 {/* Content */}
                 <div className="flex-1 min-h-0">
-                    <ScrollArea className="h-full w-full">
+                    <ScrollArea className="h-full w-full [&_[data-radix-scroll-area-viewport]>div]:!block [&_[data-radix-scroll-area-viewport]>div]:!w-full [&_[data-radix-scroll-area-viewport]>div]:!min-w-0">
                         <div className="p-2 sm:p-4 space-y-2 sm:space-y-4 w-full max-w-full overflow-x-hidden">
 
                         {/* NEW ROUTES TAB */}
