@@ -41,9 +41,14 @@ function indexProperties(properties = []) {
 
 export async function hydrateRouteForMap(route, userEmail = null) {
     if (!route) return route;
-    if (hasMapPoints(route)) return orderRouteProperties(route);
 
     const hashes = Array.isArray(route.property_hashes) ? route.property_hashes : [];
+    // Only short-circuit when the in-memory properties cover EVERY hash —
+    // partial coverage must fall through to backend hydration or doors get silently dropped.
+    if (hasMapPoints(route)) {
+        const ordered = orderRouteProperties(route);
+        if (hashes.length === 0 || (ordered.properties?.length || 0) >= hashes.length) return ordered;
+    }
     if (hashes.length === 0) return route;
 
     const cacheKey = `${route.id || 'route'}:${route.updated_date || ''}:${hashes.join('|')}`;
@@ -86,15 +91,21 @@ export async function hydrateRoutesForMap(routes = [], userEmail = null, existin
 
     const existingByHash = indexProperties(existingProperties);
     const hydrated = await Promise.all(routes.map(async route => {
-        if (hasMapPoints(route)) return orderRouteProperties(route);
         const hashes = Array.isArray(route.property_hashes) ? route.property_hashes : [];
+        // Local data may only be used when it covers EVERY hash in the route.
+        // Partial coverage (e.g. map cache holds 33 of 66 doors) must go to the backend,
+        // otherwise Route Command / map / checklist show fewer doors than Knock.
+        if (hasMapPoints(route)) {
+            const ordered = orderRouteProperties(route);
+            if (hashes.length === 0 || (ordered.properties?.length || 0) >= hashes.length) return ordered;
+        }
         const existingOrdered = hashes.map(hash => existingByHash.get(hash)).filter(Boolean);
-        if (existingOrdered.length > 0) {
+        if (existingOrdered.length >= hashes.length && existingOrdered.length > 0) {
             return {
                 ...route,
                 properties: existingOrdered,
                 allProperties: existingOrdered,
-                houseCount: existingOrdered.length || route.metrics?.house_count || hashes.length,
+                houseCount: existingOrdered.length,
             };
         }
         return hydrateRouteForMap(route, userEmail);
