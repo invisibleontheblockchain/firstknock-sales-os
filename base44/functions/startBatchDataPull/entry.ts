@@ -125,7 +125,7 @@ Deno.serve(async (req) => {
         if (!hasPaidPrecisionCapacity && requestedValue > FREE_PROPERTY_CAP) {
             return Response.json({
                 error: 'paid_precision_required',
-                message: 'Precision pulls over 50 houses require the paid $99/month Precision plan after the first payment clears. Free trials and card-on-file accounts stay capped at 50 houses.'
+                message: 'That route size is above what your current plan includes. Start or upgrade to Precision to generate larger routes.'
             }, { status: 403 });
         }
         let requestedProperties = Math.max(1, Math.min(requestedValue, maxProperties));
@@ -142,12 +142,12 @@ Deno.serve(async (req) => {
                 if (remaining <= 0) {
                     return Response.json({
                         error: 'trial_required',
-                        message: `You've used your ${NO_CARD_LIFETIME_CAP} free homes. Start a free trial (card on file) to unlock up to ${FREE_PROPERTY_CAP} homes, or the $99/month Precision plan for up to ${PAID_PROPERTY_CAP}.`
+                        message: 'Your current plan has used its included starter pulls. Start a free trial or upgrade to Precision to keep generating routes.'
                     }, { status: 403 });
                 }
                 if (requestedProperties > remaining) {
                     requestedProperties = remaining;
-                    trialNote = `Capped at your ${remaining} remaining free homes. Start a free trial to unlock up to ${FREE_PROPERTY_CAP}.`;
+                    trialNote = 'Your request was adjusted to what is currently available on this plan. Start a free trial or upgrade to Precision to generate larger routes.';
                 }
             }
         }
