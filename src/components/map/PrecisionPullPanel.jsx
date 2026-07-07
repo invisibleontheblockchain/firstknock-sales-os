@@ -177,7 +177,7 @@ export default function PrecisionPullPanel({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Property count</label>
-                <p className="text-[10px] text-gray-600">{hasPaidPrecisionCapacity ? 'Choose a fixed cap or pull every match up to your paid plan limit.' : 'No card: 25 free homes total. Free trial (card on file): up to 50 per pull. Full 1,000-home pulls unlock after the $99 payment clears.'}</p>
+                <p className="text-[10px] text-gray-600">Choose a fixed cap or pull every match available for your plan.</p>
               </div>
               <input
                 type="number"
