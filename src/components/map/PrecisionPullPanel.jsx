@@ -72,6 +72,8 @@ export default function PrecisionPullPanel({
   onClose,
   onGenerate,
   generating,
+  pullError,
+  onUpgrade,
   onClearArea,
   user,
   selectedHistoryArea,
@@ -310,6 +312,20 @@ export default function PrecisionPullPanel({
         </div>
 
         <div className="shrink-0 p-4 sm:p-5 border-t border-white/10 bg-black">
+          {pullError && (
+            <div className="mb-3 rounded-xl border border-red-500/40 bg-red-500/10 p-3">
+              <p className="text-xs font-bold text-red-300">Pull couldn't start</p>
+              <p className="mt-1 text-[11px] leading-snug text-red-200/90">{pullError.message}</p>
+              {pullError.upgrade && (
+                <button
+                  type="button"
+                  onClick={onUpgrade}
+                  className="mt-2 h-8 rounded-lg bg-[#2EEB57] px-4 text-xs font-extrabold text-black hover:bg-[#39FF4A]">
+                  View Plans
+                </button>
+              )}
+            </div>
+          )}
           <Button
             disabled={generating}
             onClick={onGenerate}

@@ -68,6 +68,7 @@ export default function TerritoryPrompt({
   const [minHomeValue, setMinHomeValue] = useState(100000);
   const [maxHomeValue, setMaxHomeValue] = useState('');
   const [showPrecisionPullPanel, setShowPrecisionPullPanel] = useState(false);
+  const [pullError, setPullError] = useState(null); // { message, upgrade } — persistent in-panel error, not a transient toast
   const [previewResult, setPreviewResult] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [paidPullStarting, setPaidPullStarting] = useState(false);
@@ -418,6 +419,11 @@ export default function TerritoryPrompt({
           setPullProgress('Data ready — building optimized routes...');
 
           const totalLoaded = (d.active_count || 0) || (d.total_inserted || 0) + (d.total_existed || 0);
+          const requestedCount = d.total_expected || 0;
+          if (requestedCount > 0 && totalLoaded > 0 && totalLoaded < requestedCount) {
+            // Fewer homes than requested is real market scarcity, not a bug — tell the user what to do.
+            toast.info(`Found ${totalLoaded.toLocaleString()} qualifying sold homes in this area — that's everything available for your date window (you requested ${requestedCount.toLocaleString()}). Draw a larger area or widen the sold-date range for more.`, { duration: 10000 });
+          }
           toast.success(`${totalLoaded.toLocaleString()} properties ready. Building routes now...`, { duration: 4000 });
 
           // Update user status
@@ -592,6 +598,7 @@ export default function TerritoryPrompt({
     }
 
     setPaidPullStarting(true);
+    setPullError(null);
     try {
       const res = await base44.functions.invoke('startBatchDataPull', {
         polygon: drawnPolygon,
@@ -607,7 +614,8 @@ export default function TerritoryPrompt({
       });
       const data = res.data || {};
       if (data.error) {
-        toast.error(data.message || data.error);
+        const isPlanGate = ['trial_required', 'paid_precision_required', 'upgrade_required'].includes(data.error);
+        setPullError({ message: data.message || data.error, upgrade: isPlanGate });
         return;
       }
       savePolygonToHistory(drawnPolygon, {
@@ -637,8 +645,11 @@ export default function TerritoryPrompt({
       setShowPrecisionPullPanel(false);
       toast.success('Property import started. Routes will build automatically.');
     } catch (e) {
-      const msg = e.response?.data?.message || e.response?.data?.error || e.message;
-      toast.error(`Property import failed: ${msg}`);
+      const errCode = e.response?.data?.error;
+      const msg = e.response?.data?.message || errCode || e.message;
+      const isPlanGate = e.response?.status === 403 || ['trial_required', 'paid_precision_required', 'upgrade_required'].includes(errCode);
+      // Persistent in-panel error — a transient toast made blocked pulls look like a silent failure.
+      setPullError({ message: msg, upgrade: isPlanGate });
     } finally {
       setPaidPullStarting(false);
     }
@@ -827,9 +838,11 @@ export default function TerritoryPrompt({
         setMaxHomeValue={setMaxHomeValue}
         soldMonths={fetchMonths}
         setSoldMonths={setFetchMonths}
-        onClose={() => setShowPrecisionPullPanel(false)}
+        onClose={() => {setShowPrecisionPullPanel(false);setPullError(null);}}
         onGenerate={handlePaidBatchDataPull}
         generating={paidPullStarting}
+        pullError={pullError}
+        onUpgrade={() => {setShowPrecisionPullPanel(false);setPullError(null);navigate(createPageUrl('Billing') + '?plan=precision');}}
         user={user}
         selectedHistoryArea={ghostAreasVisible ? selectedHistoryArea : null}
         repullMode={repullMode}
