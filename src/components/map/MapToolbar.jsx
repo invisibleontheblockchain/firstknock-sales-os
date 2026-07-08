@@ -121,11 +121,18 @@ export default function MapToolbar({
   };
 
   const toggleGhostAreas = () => {
-    const next = !showGhostAreas;
+    const needsBuilderFocus = mode !== 'generate' || !!activeRoute;
+    const next = needsBuilderFocus ? true : !showGhostAreas;
     setShowGhostAreas(next);
     try {localStorage.setItem('fk_showGhostAreas', String(next));} catch {}
+    if (next) {
+      setMode('generate');
+      setActiveRoute?.(null);
+      setShowCompare(false);
+      setShowRoutePanel(false);
+    }
     window.dispatchEvent(new CustomEvent('fk-ghost-areas-visibility', { detail: { visible: next } }));
-    toast.success(next ? 'Previous areas visible' : 'Previous areas hidden');
+    toast.success(next ? 'Previous Precision areas visible' : 'Previous areas hidden');
   };
 
   // Track whether data has been pulled for the current drawn territory
@@ -350,11 +357,12 @@ export default function MapToolbar({
                             {routeStatusView === 'completed' ? 'DONE' : 'ACTIVE'}
                           </Button>
                         )}
-                        {mode === 'generate' && routeMode === 'precision' && !activeRoute && (
+                        {routeMode === 'precision' && (
                           <Button
                             onClick={toggleGhostAreas}
                             size="icon"
-                            title="Show previous drawn areas"
+                            title={showGhostAreas ? 'Hide previous Precision areas' : 'Show previous Precision areas'}
+                            aria-label={showGhostAreas ? 'Hide previous Precision areas' : 'Show previous Precision areas'}
                             className={`inline-flex bg-black/80 hover:bg-black backdrop-blur-md border shadow-xl h-8 w-8 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl transition-all ${showGhostAreas ? 'border-[#2EEB57]/60 text-[#39FF4A]' : 'border-gray-800 text-white/55'}`}>
                             <Ghost className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
                           </Button>
