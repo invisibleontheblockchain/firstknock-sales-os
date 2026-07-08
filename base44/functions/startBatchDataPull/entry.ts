@@ -201,7 +201,7 @@ Deno.serve(async (req) => {
         if (!hasPaidPrecisionCapacity && freeHomesRemaining <= 0) {
             return Response.json({
                 error: 'paid_precision_required',
-                message: 'Your current plan has used its included Precision homes. Upgrade to Precision to generate larger routes.'
+                message: 'This account has already received its included 50 single-family Precision route homes. Upgrade to Precision for larger routes.'
             }, { status: 403 });
         }
 

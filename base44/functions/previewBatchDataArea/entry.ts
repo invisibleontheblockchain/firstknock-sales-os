@@ -205,7 +205,7 @@ Deno.serve(async (req) => {
             message: hardRejected
                 ? 'Sandbox preview only. Redraw a smaller area before any live BatchData pull.'
                 : requestedProperties <= 0
-                    ? 'This account has used its included free Precision homes. Upgrade to generate larger routes.'
+                    ? 'This account has already received its included 50 single-family Precision route homes. Upgrade to Precision for larger routes.'
                 : `This area is eligible to pull up to ${requestedProperties} BatchData properties from your drawn Precision territory.`
         });
     } catch (error) {

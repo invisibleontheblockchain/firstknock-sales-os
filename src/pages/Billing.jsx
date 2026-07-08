@@ -87,7 +87,7 @@ export default function Billing() {
     initialData: []
   });
 
-  const { data: savedRoutesRaw = [], isFetched: savedRoutesFetched } = useQuery({
+  const { data: savedRoutesRaw = [] } = useQuery({
     queryKey: ['billingPrecisionRoutes', user?.id],
     queryFn: () => user?.id ? base44.entities.SavedRoute.filter({ manager_id: user.id }, '-created_date', 500) : [],
     enabled: !!user?.id
@@ -159,8 +159,7 @@ export default function Billing() {
   const hasPaidPrecisionAccess = hasConfirmedPaidPrecisionAccess(user);
   const precisionLimit = user?.precision_property_limit || user?.monthly_property_limit || (hasPaidPrecisionAccess ? 1000 : 50);
   const precisionRouteHomes = React.useMemo(() => countUniquePrecisionRouteHomes(savedRoutes), [savedRoutes]);
-  const accountReportedPrecisionUsed = user?.precision_properties_used || 0;
-  const precisionUsed = Math.min(savedRoutesFetched ? precisionRouteHomes : accountReportedPrecisionUsed, precisionLimit);
+  const precisionUsed = Math.min(precisionRouteHomes, precisionLimit);
   const precisionUsage = {
     limit: precisionLimit,
     used: precisionUsed,
