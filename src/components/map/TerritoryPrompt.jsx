@@ -400,7 +400,7 @@ export default function TerritoryPrompt({
   const freePropertyLimit = 50;
   const hasPaidPrecisionCapacity = hasConfirmedPaidPrecisionAccess(user);
   const routeDeliveredPropertiesUsed = useMemo(() => countUniquePrecisionRouteHomes(savedRoutes), [savedRoutes]);
-  const accountReportedPropertiesUsed = Math.max(0, Number(user?.precision_properties_used ?? user?.territory_property_count ?? 0) || 0);
+  const accountReportedPropertiesUsed = Math.max(0, Number(user?.precision_properties_used ?? 0) || 0);
   const freePropertiesUsed = savedRoutesLoaded ? routeDeliveredPropertiesUsed : accountReportedPropertiesUsed;
   const freePropertiesRemaining = Math.max(0, freePropertyLimit - freePropertiesUsed);
   const maxRequestedProperties = hasPaidPrecisionCapacity ? 1000 : freePropertiesRemaining;

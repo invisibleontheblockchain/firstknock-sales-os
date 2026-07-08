@@ -78,10 +78,20 @@ export function applyRouteFilters({
 
     // --- Assigned Route Filter ---
     // Keep this inside the pipeline so a large drop is visible in diagnostics.
+    const beforeAssigned = workingSet.length;
     if (routeConfig.excludeAssigned && assignedHashes) {
         workingSet = workingSet.filter(p => !assignedHashes.has(p.address_hash || p.id));
     }
     track('assigned');
+    if (routeConfig.excludeAssigned && beforeAssigned > 0 && workingSet.length === 0) {
+        return {
+            workingSet: [],
+            stages,
+            frozenSet,
+            error: 'Every qualifying home found in this area is already in a saved route. Draw beyond the previous route area or widen the boundary to find new homes.',
+            diagnostic: { assignedBefore: beforeAssigned, assignedHashes: assignedHashes?.size || 0 }
+        };
+    }
 
     // --- Sold Date Filter (THE BIG ONE — often culls 99% of properties) ---
     const beforeSoldDate = workingSet.length;

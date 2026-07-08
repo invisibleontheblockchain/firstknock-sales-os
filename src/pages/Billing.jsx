@@ -159,7 +159,7 @@ export default function Billing() {
   const hasPaidPrecisionAccess = hasConfirmedPaidPrecisionAccess(user);
   const precisionLimit = user?.precision_property_limit || user?.monthly_property_limit || (hasPaidPrecisionAccess ? 1000 : 50);
   const precisionRouteHomes = React.useMemo(() => countUniquePrecisionRouteHomes(savedRoutes), [savedRoutes]);
-  const accountReportedPrecisionUsed = user?.precision_properties_used || user?.territory_property_count || 0;
+  const accountReportedPrecisionUsed = user?.precision_properties_used || 0;
   const precisionUsed = Math.min(savedRoutesFetched ? precisionRouteHomes : accountReportedPrecisionUsed, precisionLimit);
   const precisionUsage = {
     limit: precisionLimit,

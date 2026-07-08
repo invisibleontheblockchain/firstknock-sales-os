@@ -5,9 +5,26 @@ const BATCHDATA_API_KEY = Deno.env.get('BATCH_DATA_API_KEY');
 const DATABASE_URL = Deno.env.get('DATABASE_URL');
 const BATCHDATA_BASE = 'https://api.batchdata.com/api/v1/property/search';
 const BATCHDATA_MAX_TAKE = 100;
-const PIPELINE_LOCK_TTL_MS = 90 * 1000;
+const BATCHDATA_REQUEST_TIMEOUT_MS = 20 * 1000;
+const BATCHDATA_PROGRESS_UPDATE_MS = 1500;
+const PIPELINE_LOCK_TTL_MS = 8 * 60 * 1000;
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = BATCHDATA_REQUEST_TIMEOUT_MS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...options, signal: controller.signal });
+    } catch (error) {
+        if (error?.name === 'AbortError') {
+            throw new Error(`BatchData request timed out after ${Math.round(timeoutMs / 1000)}s`);
+        }
+        throw error;
+    } finally {
+        clearTimeout(timeout);
+    }
+}
 
 async function claimPipelineLock(base44, jobId, lockedBy) {
     const now = Date.now();
@@ -355,10 +372,11 @@ function toNullableDate(value) {
     return isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-async function writePropertiesToNeon(sql, properties, job) {
+async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes = new Set()) {
     let inserted = 0, existed = 0, updated = 0;
 
     for (const p of properties) {
+        const isInSavedRoute = excludedRouteHashes.has(p.address_hash);
         const existingRows = await sql`
             SELECT id, sold_date, sale_confidence, original_status, owner_full_name, beds, baths, sqft, lot_size, year_built, price
             FROM properties
@@ -386,7 +404,11 @@ async function writePropertiesToNeon(sql, properties, job) {
                 INSERT INTO workspace_properties (property_id, user_email, fetch_job_id, route_active, status, updated_at)
                 VALUES (${created[0].id}, ${job.user_email || 'unknown'}, ${job.id}, ${p.route_active !== false}, ${p.original_status}, NOW())
                 ON CONFLICT (property_id, user_email)
-                DO UPDATE SET fetch_job_id = EXCLUDED.fetch_job_id, route_active = EXCLUDED.route_active, status = EXCLUDED.status, updated_at = NOW()
+                DO UPDATE SET
+                    fetch_job_id = CASE WHEN ${isInSavedRoute} THEN workspace_properties.fetch_job_id ELSE EXCLUDED.fetch_job_id END,
+                    route_active = EXCLUDED.route_active,
+                    status = EXCLUDED.status,
+                    updated_at = NOW()
             `;
             inserted++;
             continue;
@@ -426,7 +448,11 @@ async function writePropertiesToNeon(sql, properties, job) {
             INSERT INTO workspace_properties (property_id, user_email, fetch_job_id, route_active, status, updated_at)
             VALUES (${existing.id}, ${job.user_email || 'unknown'}, ${job.id}, ${p.route_active !== false}, ${p.original_status}, NOW())
             ON CONFLICT (property_id, user_email)
-            DO UPDATE SET fetch_job_id = EXCLUDED.fetch_job_id, route_active = EXCLUDED.route_active, status = EXCLUDED.status, updated_at = NOW()
+            DO UPDATE SET
+                fetch_job_id = CASE WHEN ${isInSavedRoute} THEN workspace_properties.fetch_job_id ELSE EXCLUDED.fetch_job_id END,
+                route_active = EXCLUDED.route_active,
+                status = EXCLUDED.status,
+                updated_at = NOW()
         `;
     }
 
@@ -440,21 +466,6 @@ async function writePropertiesToNeon(sql, properties, job) {
     return { inserted, existed, updated };
 }
 
-async function countActiveWorkspaceHomes(sql, userEmail) {
-    if (!userEmail) return 0;
-    const rows = await sql`
-        SELECT COUNT(*)::int AS active_count
-        FROM workspace_properties wp
-        JOIN properties p ON p.id = wp.property_id
-        WHERE wp.user_email = ${userEmail}
-          AND wp.route_active = TRUE
-          AND COALESCE(wp.status, '') <> 'REJECTED'
-          AND COALESCE(p.original_status, '') <> 'REJECTED'
-          AND COALESCE(p.sale_confidence, '') <> 'REJECTED'
-    `;
-    return Number(rows?.[0]?.active_count || 0);
-}
-
 function getExcludedRouteHashes(job) {
     const hashes = job?.dry_run_metadata?.excluded_route_hashes;
     return new Set((Array.isArray(hashes) ? hashes : []).map(hash => String(hash)).filter(Boolean));
@@ -462,11 +473,20 @@ function getExcludedRouteHashes(job) {
 
 async function batchDataFetchWithRetry(requestBody) {
     for (let attempt = 1; attempt <= 4; attempt++) {
-        const response = await fetch(BATCHDATA_BASE, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BATCHDATA_API_KEY}` },
-            body: JSON.stringify(requestBody)
-        });
+        let response;
+        try {
+            response = await fetchWithTimeout(BATCHDATA_BASE, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${BATCHDATA_API_KEY}` },
+                body: JSON.stringify(requestBody)
+            });
+        } catch (error) {
+            if (attempt < 2) {
+                await sleep(1000);
+                continue;
+            }
+            throw new Error(`BatchData request failed before response: ${error.message}`);
+        }
         const text = await response.text();
         let payload = {};
         try { payload = text ? JSON.parse(text) : {}; } catch { payload = { raw_text: text.slice(0, 1000) }; }
@@ -487,11 +507,12 @@ async function batchDataFetchWithRetry(requestBody) {
     throw new Error('Rate limit exceeded after 3 retries.');
 }
 
-async function fetchBatchDataRecordsForMode(job, mode, requested) {
+async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = null) {
     const selected = [];
     const selectedHashes = new Set();
     const excludedRouteHashes = getExcludedRouteHashes(job);
     const rejectedSamples = [];
+    const pageTimings = [];
     let skip = 0;
     let reviewed = 0;
     let totalRecordCount = null;
@@ -502,8 +523,11 @@ async function fetchBatchDataRecordsForMode(job, mode, requested) {
     while (selected.length < requested && reviewed < maxReviewed) {
         const take = Math.min(BATCHDATA_MAX_TAKE, maxReviewed - reviewed);
         const requestBody = buildBatchDataRequest(job, skip, take, mode);
+        const pageStartedAt = Date.now();
         const payload = await batchDataFetchWithRetry(requestBody);
         const list = extractBatchDataRecords(payload);
+        const pageElapsedMs = Date.now() - pageStartedAt;
+        pageTimings.push({ skip, take, returned: list.length, elapsed_ms: pageElapsedMs });
         if (totalRecordCount === null) totalRecordCount = extractBatchDataTotal(payload);
         reviewed += list.length;
 
@@ -526,6 +550,20 @@ async function fetchBatchDataRecordsForMode(job, mode, requested) {
             }
         }
 
+        if (typeof onProgress === 'function') {
+            await onProgress({
+                mode,
+                requested,
+                reviewed,
+                selected: selected.length,
+                maxReviewed,
+                totalRecordCount,
+                skipped_existing_route: skippedExistingRoute,
+                skipped_duplicate: skippedDuplicate,
+                page_elapsed_ms: pageElapsedMs
+            }).catch(() => {});
+        }
+
         if (list.length < take) break;
         if (totalRecordCount !== null && reviewed >= totalRecordCount) break;
         skip += take;
@@ -538,11 +576,13 @@ async function fetchBatchDataRecordsForMode(job, mode, requested) {
         rejected_samples: rejectedSamples.length,
         skipped_existing_route: skippedExistingRoute,
         skipped_duplicate: skippedDuplicate,
+        max_reviewed: maxReviewed,
+        page_timings: pageTimings,
         totalRecordCount
     };
 }
 
-async function fetchBatchDataRecords(job) {
+async function fetchBatchDataRecords(job, onProgress = null) {
     const requested = Math.min(Math.max(Number(job.estimated_record_count || job.total_expected || 1000), 1), 1000);
     const modes = ['broad_polygon'];
     const attempts = [];
@@ -551,8 +591,8 @@ async function fetchBatchDataRecords(job) {
     let fallbackActive = 0;
 
     for (const mode of modes) {
-        const result = await fetchBatchDataRecordsForMode(job, mode, requested);
-        attempts.push({ mode, count: result.records.length, reviewed: result.reviewed, active: result.active, rejected_samples: result.rejected_samples, skipped_existing_route: result.skipped_existing_route, skipped_duplicate: result.skipped_duplicate, total: result.totalRecordCount });
+        const result = await fetchBatchDataRecordsForMode(job, mode, requested, onProgress);
+        attempts.push({ mode, count: result.records.length, reviewed: result.reviewed, active: result.active, rejected_samples: result.rejected_samples, skipped_existing_route: result.skipped_existing_route, skipped_duplicate: result.skipped_duplicate, max_reviewed: result.max_reviewed, page_timings: result.page_timings, total: result.totalRecordCount });
         if (result.active >= requested) return { records: result.records, attempts, mode_used: mode };
         if (result.active > fallbackActive || (fallback.length === 0 && result.records.length > 0)) {
             fallback = result.records;
@@ -727,9 +767,27 @@ Deno.serve(async (req) => {
         });
 
         const sql = neon(DATABASE_URL);
+        let lastProgressUpdateAt = 0;
+        let lastProgressPct = Math.max(job.progress_pct || 0, 5);
+        const requestedProgressCount = Math.max(Number(job.total_expected || job.estimated_record_count || 0) || 1, 1);
+        const updateScanProgress = async (progress) => {
+            const now = Date.now();
+            const foundRatio = Math.min(1, (Number(progress.selected) || 0) / requestedProgressCount);
+            const scanDenominator = Math.max(1, Number(progress.totalRecordCount || progress.maxReviewed || 1));
+            const scanRatio = Math.min(1, (Number(progress.reviewed) || 0) / scanDenominator);
+            const nextPct = Math.min(82, Math.max(lastProgressPct, 8 + Math.round(Math.max(foundRatio, scanRatio) * 72)));
+            if (now - lastProgressUpdateAt < BATCHDATA_PROGRESS_UPDATE_MS && nextPct === lastProgressPct) return;
+            lastProgressUpdateAt = now;
+            lastProgressPct = nextPct;
+            await base44.asServiceRole.entities.FetchJob.update(job.id, {
+                phase: 'batchdata_scanning',
+                progress_pct: nextPct,
+                total_fetched: Number(progress.reviewed) || 0
+            }).catch(() => {});
+        };
         const batchFetch = Array.isArray(body.synthetic_records)
             ? { records: body.synthetic_records, attempts: [{ mode: 'synthetic_records', count: body.synthetic_records.length }], mode_used: 'synthetic_records' }
-            : await fetchBatchDataRecords(job);
+            : await fetchBatchDataRecords(job, updateScanProgress);
         const rawRecords = batchFetch.records;
         const seen = new Set();
         const excludedRouteHashes = getExcludedRouteHashes(job);
@@ -753,7 +811,7 @@ Deno.serve(async (req) => {
             mapped.push(property);
         }
 
-        const result = await writePropertiesToNeon(sql, mapped, job);
+        const result = await writePropertiesToNeon(sql, mapped, job, excludedRouteHashes);
         const completedAt = new Date().toISOString();
         const activeCount = mapped.filter(p => p.route_active !== false).length;
         const requestedCount = Number(job.total_expected || job.estimated_record_count || 0) || 0;
@@ -817,7 +875,7 @@ Deno.serve(async (req) => {
             progress_pct: 100,
             completed_at: completedAt,
             ...(integrityWarning ? { error_message: integrityWarning } : {}),
-            total_fetched: rawRecords.length,
+            total_fetched: reviewedCount || rawRecords.length,
             total_inserted: result.inserted,
             total_existed: result.existed,
             total_updated: result.updated,

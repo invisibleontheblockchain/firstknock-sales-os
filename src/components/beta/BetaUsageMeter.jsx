@@ -33,7 +33,7 @@ export default function BetaUsageMeter({ className = '' }) {
 
                 {hasPulledData && (
                     <div className="text-[10px] text-gray-500">
-                        {user?.territory_property_count ? `${user.territory_property_count.toLocaleString()} properties loaded` : 'Data loaded'}
+                        Data loaded
                         {user?.last_data_pull && ` • Pulled ${new Date(user.last_data_pull).toLocaleDateString()}`}
                     </div>
                 )}
