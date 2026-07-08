@@ -3,6 +3,24 @@ import Stripe from 'npm:stripe@14.14.0';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
 const endpointSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
+const PRECISION_PRICE_CENTS = 9900;
+const CANVAS_PRICE_CENTS = 1900;
+
+function normalizeSubscriptionTier(value: any) {
+    return String(value || '').trim().toLowerCase();
+}
+
+function inferTierFromSubscription(subscription: any, fallback = 'custom') {
+    const metadataTier = normalizeSubscriptionTier(subscription?.metadata?.subscription_tier);
+    if (metadataTier && metadataTier !== 'custom') return metadataTier;
+
+    const price = subscription?.items?.data?.[0]?.price;
+    const amountCents = Number(price?.unit_amount || price?.unit_amount_decimal || 0);
+    if (amountCents >= PRECISION_PRICE_CENTS) return 'precision';
+    if (amountCents >= CANVAS_PRICE_CENTS) return 'canvas';
+
+    return normalizeSubscriptionTier(fallback) || metadataTier || 'custom';
+}
 
 // Helper to manage invite codes
 async function syncInviteCode(base44: any, userId: string, totalSeats: number) {
@@ -76,7 +94,7 @@ Deno.serve(async (req: Request) => {
                                 const sub = await stripe.subscriptions.retrieve(subscriptionId, { expand: ['latest_invoice'] });
                                 subscriptionStatus = sub.status;
                                 subscriptionId = sub.id;
-                                subscriptionTier = sub.metadata?.subscription_tier || subscriptionTier;
+                                subscriptionTier = inferTierFromSubscription(sub, subscriptionTier);
                                 if (sub.items && sub.items.data.length > 0) {
                                     quantity = sub.items.data[0].quantity || 1;
                                 }
@@ -140,7 +158,7 @@ Deno.serve(async (req: Request) => {
                            subscription_paid_confirmed: paidConfirmed,
                            ...(paidConfirmed ? { subscription_paid_confirmed_at: new Date().toISOString() } : {}),
                            subscription_plan_id: planId,
-                           subscription_tier: subscription.metadata?.subscription_tier || 'custom',
+                           subscription_tier: inferTierFromSubscription(subscription, 'custom'),
                            subscription_period_end: periodEnd,
                            total_seats: quantity
                          });
@@ -165,7 +183,7 @@ Deno.serve(async (req: Request) => {
                         await base44.asServiceRole.entities.User.update(userId, {
                             subscription_id: subscription.id,
                             subscription_status: subscription.status,
-                            subscription_tier: subscription.metadata?.subscription_tier || 'custom',
+                            subscription_tier: inferTierFromSubscription(subscription, 'custom'),
                             subscription_paid_confirmed: true,
                             subscription_paid_confirmed_at: new Date().toISOString(),
                             stripe_card_on_file_confirmed: true,

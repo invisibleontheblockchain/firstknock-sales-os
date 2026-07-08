@@ -5,6 +5,7 @@ import { X, Zap, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { createPageUrl } from '@/utils';
 import PrecisionProUpgradeSheet from '@/components/map/PrecisionProUpgradeSheet';
+import { isPrecisionProUser } from '@/lib/precisionAccess';
 
 const PREMIUM_RECENT_RANGES = [1 / 30, 2 / 30, 0.25, 0.5, 1];
 
@@ -18,20 +19,6 @@ const SOLD_OPTIONS = [
   { value: 6, label: '6 mo' },
   { value: 12, label: '12 mo' }
 ];
-
-function isPrecisionProUser(user) {
-  const tier = String(user?.subscription_tier || '').toLowerCase();
-  const status = String(user?.subscription_status || '').toLowerCase();
-  if (user?.is_owner || user?.role === 'admin') return true;
-  return ['active', 'trialing'].includes(status) && ['pro', 'precision'].includes(tier);
-}
-
-function hasConfirmedPaidPrecisionAccess(user) {
-  const tier = String(user?.subscription_tier || '').toLowerCase();
-  const status = String(user?.subscription_status || '').toLowerCase();
-  if (user?.is_owner || user?.role === 'admin') return true;
-  return status === 'active' && user?.subscription_paid_confirmed === true && ['pro', 'precision'].includes(tier);
-}
 
 function formatMoney(value) {
   if (!value) return '';
@@ -89,7 +76,6 @@ export default function PrecisionPullPanel({
   const [showUpgradeSheet, setShowUpgradeSheet] = useState(false);
   const hasShownFallbackToast = useRef(false);
   const isProPlan = isPrecisionProUser(user);
-  const hasPaidPrecisionCapacity = hasConfirmedPaidPrecisionAccess(user);
 
   const goToUpgrade = () => navigate(createPageUrl('Billing') + '?plan=precision');
   const historyCriteria = selectedHistoryArea?.criteria || {};
