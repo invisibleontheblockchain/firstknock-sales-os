@@ -5,6 +5,17 @@ import { BarChart3, Loader2, Navigation, Sparkles } from 'lucide-react';
 import { isAfter, startOfDay, subDays } from 'date-fns';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
 import { hydrateRoutesForMap } from '@/components/logic/routeHydration';
+import { isManagerAccount } from '@/lib/roles';
+import {
+    dedupeEntities,
+    getTenantManagerId,
+    getUserEmail,
+    normalizeEmail,
+    personalRecordBelongsToCurrentAccount,
+    recordBelongsToCurrentAccount,
+    recordCreatedByCurrentUser,
+    toEntityArray,
+} from '@/lib/accountScope';
 
 import TimeOfDayEffectiveness from '@/components/analytics/TimeOfDayEffectiveness';
 import RouteProgress from '@/components/analytics/RouteProgress';
@@ -19,89 +30,153 @@ import RevenueMetrics from '@/components/analytics/rep/RevenueMetrics';
 const SALES_STATUSES = ['SOLD', 'QUALIFIED'];
 const NON_CONTACT_STATUSES = ['NO_ANSWER', 'ELIGIBLE'];
 
+function isPersonalAppointmentForUser(appointment, user, repIds = []) {
+    if (!appointment || !user) return false;
+    const repIdSet = new Set(repIds.filter(Boolean));
+    const assignedToMe = appointment.assigned_rep && repIdSet.has(appointment.assigned_rep);
+    const createdByMe = recordCreatedByCurrentUser(appointment, user);
+    const legacyNameMatch = !appointment.manager_id &&
+        appointment.assigned_rep_name &&
+        appointment.assigned_rep_name === user?.full_name;
+
+    return recordBelongsToCurrentAccount(appointment, user) &&
+        (assignedToMe || createdByMe || legacyNameMatch);
+}
+
 export default function ListPage() {
     const [activeTab, setActiveTab] = useState('performance');
     const [dateDays, setDateDays] = useState(30);
 
-    const { data: user } = useQuery({
+    const { data: user, isLoading: userLoading, isFetching: userFetching } = useQuery({
         queryKey: ['user'],
         queryFn: () => base44.auth.me(),
-        staleTime: 1000 * 60 * 5,
+        staleTime: 0,
+        refetchOnMount: 'always',
         retry: false,
     });
 
-    const { data: currentTeamMember = null } = useQuery({
-        queryKey: ['currentTeamMember', user?.email],
+    const userReady = !!user && !userFetching;
+    const userEmail = getUserEmail(user);
+    const tenantManagerId = getTenantManagerId(user);
+
+    const { data: teamMemberData = { primary: null, allIds: [] } } = useQuery({
+        queryKey: ['currentTeamMember', 'analytics', user?.id, userEmail, tenantManagerId],
         queryFn: async () => {
-            if (!user?.email) return null;
-            const res = await base44.entities.TeamMember.filter({ email: user.email }, '-created_date', 1);
-            const items = Array.isArray(res) ? res : (res?.items || []);
-            return items[0] || null;
+            if (!userEmail) return { primary: null, allIds: [] };
+            const res = await base44.entities.TeamMember.filter({ email: userEmail }, '-created_date', 50);
+            const allMatches = toEntityArray(res).filter((member) => normalizeEmail(member.email) === userEmail);
+            const accountMatches = tenantManagerId
+                ? allMatches.filter((member) => member.manager_id === tenantManagerId)
+                : allMatches;
+            const primary = accountMatches.find((member) => member.user_id && member.user_id === user?.id) ||
+                accountMatches[0] ||
+                null;
+            return {
+                primary,
+                allIds: [...new Set(accountMatches.map((member) => member.id).filter(Boolean))],
+            };
         },
-        enabled: !!user?.email,
+        enabled: userReady && !!userEmail,
     });
+    const currentTeamMember = teamMemberData.primary;
+    const currentTeamMemberIds = teamMemberData.allIds || [];
+    const myRepIds = [...new Set([user?.id, ...currentTeamMemberIds].filter(Boolean))];
+    const myRepIdsKey = myRepIds.join(',');
+    const analyticsZipCodes = [...new Set(
+        (currentTeamMember?.assigned_zip_codes?.length
+            ? currentTeamMember.assigned_zip_codes
+            : (user?.territory_zip_codes || []))
+            .map((zip) => String(zip || '').trim())
+            .filter(Boolean)
+    )];
+    const analyticsZipCodesKey = analyticsZipCodes.join(',');
 
     const { data: properties = [], isLoading: propsLoading } = useQuery({
-        queryKey: ['masterProperties', user?.email, user?.territory_zip_codes, currentTeamMember?.assigned_zip_codes],
+        queryKey: ['masterProperties', 'analytics', userEmail, tenantManagerId, analyticsZipCodesKey],
         staleTime: 1000 * 60 * 3,
         queryFn: async () => {
-            if (!user) return [];
-            const zipCodes = currentTeamMember?.assigned_zip_codes?.length ? currentTeamMember.assigned_zip_codes : user.territory_zip_codes;
+            if (!userReady || !analyticsZipCodes.length) return [];
             const response = await base44.functions.invoke('getRouteCandidatesFromNeon', {
-                zip_codes: zipCodes || [],
+                zip_codes: analyticsZipCodes,
                 sold_months: 'all',
                 limit: 100000
             });
             return Array.isArray(response.data?.properties) ? response.data.properties : [];
         },
-        enabled: !!user,
+        enabled: userReady && analyticsZipCodes.length > 0,
     });
 
     const { data: savedRoutesRaw = [], isLoading: routesLoading } = useQuery({
-        queryKey: ['savedRoutes', user?.id, currentTeamMember?.id],
+        queryKey: ['savedRoutes', 'analytics', user?.id, userEmail, tenantManagerId, myRepIdsKey],
         queryFn: async () => {
-            if (currentTeamMember?.id) {
-                return await base44.entities.SavedRoute.filter({ assigned_to: currentTeamMember.id }, '-created_date', 500);
+            if (!userReady) return [];
+            const queries = [];
+            if (myRepIds.length > 0) {
+                queries.push(base44.entities.SavedRoute.filter({ assigned_to: myRepIds }, '-created_date', 500));
             }
-            if (user?.id) {
-                return await base44.entities.SavedRoute.filter({ manager_id: user.id }, '-created_date', 500);
+            if (isManagerAccount(user)) {
+                if (tenantManagerId) queries.push(base44.entities.SavedRoute.filter({ manager_id: tenantManagerId }, '-created_date', 500));
+                if (user?.email) queries.push(base44.entities.SavedRoute.filter({ created_by: user.email }, '-created_date', 500));
             }
-            return [];
+            const results = await Promise.all(queries);
+            return dedupeEntities(results.flatMap(toEntityArray)).filter((route) => {
+                const assignedToMe = route.assigned_to && myRepIds.includes(route.assigned_to);
+                if (assignedToMe && (!route.manager_id || recordBelongsToCurrentAccount(route, user))) return true;
+                return isManagerAccount(user) && recordBelongsToCurrentAccount(route, user);
+            });
         },
-        enabled: !!user,
+        enabled: userReady,
     });
-    const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
+    const savedRoutes = toEntityArray(savedRoutesRaw);
 
     const { data: hydratedRoutes = [], isLoading: hydratedRoutesLoading } = useQuery({
-        queryKey: ['analyticsHydratedRoutes', savedRoutes.map(route => route.id).join(','), user?.email],
+        queryKey: ['analyticsHydratedRoutes', savedRoutes.map(route => route.id).join(','), userEmail, tenantManagerId],
         queryFn: () => savedRoutes.length ? hydrateRoutesForMap(savedRoutes, user?.email, []) : [],
-        enabled: !!user?.email && savedRoutes.length > 0,
+        enabled: userReady && !!userEmail && savedRoutes.length > 0,
         staleTime: 1000 * 60 * 2,
     });
 
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
-        queryKey: ['interactionLogs', user?.email],
+        queryKey: ['interactionLogs', 'analytics', userEmail, tenantManagerId],
         staleTime: 1000 * 60 * 2,
-        queryFn: () => user?.email ? base44.entities.InteractionLog.filter({ created_by: user.email }, '-created_date', 5000) : [],
-        enabled: !!user?.email,
+        queryFn: async () => {
+            if (!userEmail) return [];
+            const creatorEmails = [...new Set([user?.email, userEmail].filter(Boolean))];
+            const results = await Promise.all(
+                creatorEmails.map((email) => base44.entities.InteractionLog.filter({ created_by: email }, '-created_date', 5000))
+            );
+            return dedupeEntities(results.flatMap(toEntityArray))
+                .filter((log) => personalRecordBelongsToCurrentAccount(log, user));
+        },
+        enabled: userReady && !!userEmail,
     });
-    const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
+    const logs = toEntityArray(logsRaw);
 
     const { data: appointmentsRaw = [], isLoading: apptsLoading } = useQuery({
-        queryKey: ['appointments', user?.email],
-        queryFn: () => user ? base44.entities.Appointment.list('-scheduled_date', 5000) : [],
-        enabled: !!user,
+        queryKey: ['appointments', 'analytics', userEmail, tenantManagerId, myRepIdsKey],
+        queryFn: async () => {
+            if (!userReady) return [];
+            const queries = [];
+            if (myRepIds.length > 0) {
+                queries.push(base44.entities.Appointment.filter({ assigned_rep: myRepIds }, '-scheduled_date', 5000));
+            }
+            if (user?.email) {
+                const creatorEmails = [...new Set([user.email, userEmail].filter(Boolean))];
+                creatorEmails.forEach((email) => {
+                    queries.push(base44.entities.Appointment.filter({ created_by: email }, '-scheduled_date', 5000));
+                });
+            }
+            const results = await Promise.all(queries);
+            return dedupeEntities(results.flatMap(toEntityArray))
+                .filter((appointment) => isPersonalAppointmentForUser(appointment, user, myRepIds));
+        },
+        enabled: userReady,
     });
-    const appointments = Array.isArray(appointmentsRaw) ? appointmentsRaw : (appointmentsRaw?.items || []);
+    const appointments = toEntityArray(appointmentsRaw);
 
     const personalAppointments = useMemo(() => {
-        return appointments.filter((appointment) => {
-            if (currentTeamMember?.id && appointment.assigned_rep === currentTeamMember.id) return true;
-            if (appointment.created_by === user?.email) return true;
-            if (!currentTeamMember?.id && appointment.assigned_rep_name && appointment.assigned_rep_name === user?.full_name) return true;
-            return false;
-        });
-    }, [appointments, currentTeamMember?.id, user?.email, user?.full_name]);
+        return appointments.filter((appointment) => isPersonalAppointmentForUser(appointment, user, myRepIds));
+    }, [appointments, myRepIdsKey, user]);
 
     const effectiveProperties = useMemo(() => {
         const propsArray = Array.isArray(properties) ? properties : (properties?.items || []);
@@ -161,7 +236,9 @@ export default function ListPage() {
         const workedDoors = new Set(logs.map((log) => log.address_hash).filter(hash => hash && (!analyticsHashes.size || analyticsHashes.has(hash)))).size;
         const totalDoors = analyticsProperties.length;
         const activeRoutes = savedRoutes.filter((route) => ['ACTIVE', 'IN_PROGRESS'].includes(route.status)).length;
-        const totalRevenue = filteredLogs.reduce((sum, log) => sum + (log.sale_amount || 0), 0);
+        const totalRevenue = filteredLogs
+            .filter((log) => SALES_STATUSES.includes(log.parsed_status))
+            .reduce((sum, log) => sum + (log.sale_amount || 0), 0);
 
         const hourBuckets = Array.from({ length: 13 }, (_, index) => index + 8).map((hour) => {
             const hourLogs = filteredLogs.filter((log) => new Date(log.created_date).getHours() === hour);
@@ -201,7 +278,7 @@ export default function ListPage() {
         };
     }, [logs, filteredLogs, filteredAppointments, analyticsProperties, savedRoutes]);
 
-    const isLoading = propsLoading || logsLoading || routesLoading || hydratedRoutesLoading || apptsLoading;
+    const isLoading = userLoading || userFetching || propsLoading || logsLoading || routesLoading || hydratedRoutesLoading || apptsLoading;
 
     const tabs = [
         { id: 'performance', label: 'Performance', icon: BarChart3 },

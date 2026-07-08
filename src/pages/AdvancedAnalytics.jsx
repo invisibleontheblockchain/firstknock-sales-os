@@ -18,42 +18,77 @@ import LeadScoringEffectiveness from '@/components/analytics/LeadScoringEffectiv
 import RouteEfficiency from '@/components/analytics/RouteEfficiency';
 import AppointmentForecast from '@/components/analytics/AppointmentForecast';
 import AppointmentTimeline from '@/components/analytics/AppointmentTimeline';
+import {
+    dedupeEntities,
+    getTenantManagerId,
+    getUserEmail,
+    normalizeEmail,
+    recordBelongsToCurrentAccount,
+    toEntityArray,
+} from '@/lib/accountScope';
 
 export default function AdvancedAnalytics() {
     const { accent } = useTheme();
     const [dateDays, setDateDays] = useState(30);
     const [industryFilter, setIndustryFilter] = useState('all');
 
-    const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me() });
+    const { data: user, isLoading: userLoading, isFetching: userFetching } = useQuery({
+        queryKey: ['user'],
+        queryFn: () => base44.auth.me(),
+        staleTime: 0,
+        refetchOnMount: 'always',
+        retry: false,
+    });
+    const userReady = !!user && !userFetching;
+    const userEmail = getUserEmail(user);
+    const tenantManagerId = getTenantManagerId(user);
+
+    const fetchCurrentAccountRows = async (entity, sort, limit) => {
+        if (!userReady) return [];
+        const queries = [];
+        if (tenantManagerId) queries.push(entity.filter({ manager_id: tenantManagerId }, sort, limit));
+        if (user?.email) {
+            const creatorEmails = [...new Set([user.email, userEmail].filter(Boolean))];
+            creatorEmails.forEach((email) => {
+                queries.push(entity.filter({ created_by: email }, sort, limit));
+            });
+        }
+        const results = await Promise.all(queries);
+        return dedupeEntities(results.flatMap(toEntityArray))
+            .filter((row) => recordBelongsToCurrentAccount(row, user));
+    };
 
     const { data: appointments = [], isLoading: apptsLoading } = useQuery({
-        queryKey: ['appointments'],
-        queryFn: () => base44.entities.Appointment.list('-scheduled_date', 5000),
-        enabled: !!user,
+        queryKey: ['appointments', 'advancedAnalytics', tenantManagerId, userEmail],
+        queryFn: () => fetchCurrentAccountRows(base44.entities.Appointment, '-scheduled_date', 5000),
+        enabled: userReady,
     });
 
     const { data: teamMembers = [] } = useQuery({
-        queryKey: ['teamMembers', user?.id],
-        queryFn: () => user?.id
-            ? base44.entities.TeamMember.filter({ manager_id: user.id }, '-created_date', 100)
-                .then(r => Array.isArray(r) ? r : (r?.items || []))
+        queryKey: ['teamMembers', 'advancedAnalytics', tenantManagerId, userEmail],
+        queryFn: () => tenantManagerId
+            ? base44.entities.TeamMember.filter({ manager_id: tenantManagerId }, '-created_date', 100)
+                .then(r => toEntityArray(r).filter((member) => member.manager_id === tenantManagerId))
+            : userEmail
+                ? base44.entities.TeamMember.filter({ email: userEmail }, '-created_date', 10)
+                    .then(r => toEntityArray(r).filter((member) => normalizeEmail(member.email) === userEmail))
             : [],
-        enabled: !!user?.id,
+        enabled: userReady && (!!tenantManagerId || !!userEmail),
     });
 
     const { data: savedRoutesRaw = [], isLoading: routesLoading } = useQuery({
-        queryKey: ['savedRoutes', user?.id],
-        queryFn: () => user?.id ? base44.entities.SavedRoute.filter({ manager_id: user.id }, '-created_date', 500) : [],
-        enabled: !!user?.id,
+        queryKey: ['savedRoutes', 'advancedAnalytics', tenantManagerId, userEmail],
+        queryFn: () => fetchCurrentAccountRows(base44.entities.SavedRoute, '-created_date', 500),
+        enabled: userReady,
     });
-    const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
+    const savedRoutes = toEntityArray(savedRoutesRaw);
 
     const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
-        queryKey: ['interactionLogs', user?.email],
-        queryFn: () => user ? base44.entities.InteractionLog.list('-created_date', 5000) : [],
-        enabled: !!user,
+        queryKey: ['interactionLogs', 'advancedAnalytics', tenantManagerId, userEmail],
+        queryFn: () => fetchCurrentAccountRows(base44.entities.InteractionLog, '-created_date', 5000),
+        enabled: userReady,
     });
-    const logs = Array.isArray(logsRaw) ? logsRaw : (logsRaw?.items || []);
+    const logs = toEntityArray(logsRaw);
 
     // Filter appointments by date range and industry
     const filtered = useMemo(() => {
@@ -82,7 +117,7 @@ export default function AdvancedAnalytics() {
         return INDUSTRIES.filter(i => set.has(i));
     }, [appointments]);
 
-    const isLoading = apptsLoading || routesLoading || logsLoading;
+    const isLoading = userLoading || userFetching || apptsLoading || routesLoading || logsLoading;
 
     return (
         <div className="h-full flex flex-col relative" style={{ background: '#050505' }}>
