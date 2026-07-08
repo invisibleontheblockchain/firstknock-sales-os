@@ -49,7 +49,7 @@ function buildPrecisionShortfallMessage({ loadedCount, requestedCount, intendedC
   const intended = Math.max(requested, Number(intendedCount) || 0);
 
   if (diagnostics?.limited_by_free_home_cap && requested > 0 && intended > requested) {
-    return `This pull was capped at ${formatWholeNumber(requested)} homes because that is all the included Precision homes left on this account. Upgrade to Precision for larger routes.`;
+    return `This pull was capped at ${formatWholeNumber(requested)} homes because that is how many included single-family Precision route homes remain on this account. Upgrade to Precision for larger routes.`;
   }
 
   if (requested <= 0 || loaded >= requested) return null;
@@ -113,7 +113,6 @@ export default function TerritoryPrompt({
   setDrawSizeMiles,
   user,
   savedRoutes = [],
-  savedRoutesLoaded = false,
   setZipCodeFilter,
   routeConfig = {},
   onPullComplete
@@ -405,8 +404,7 @@ export default function TerritoryPrompt({
   const freePropertyLimit = 50;
   const hasPaidPrecisionCapacity = hasConfirmedPaidPrecisionAccess(user);
   const routeDeliveredPropertiesUsed = useMemo(() => countUniquePrecisionRouteHomes(savedRoutes), [savedRoutes]);
-  const accountReportedPropertiesUsed = Math.max(0, Number(user?.precision_properties_used ?? 0) || 0);
-  const freePropertiesUsed = savedRoutesLoaded ? routeDeliveredPropertiesUsed : accountReportedPropertiesUsed;
+  const freePropertiesUsed = routeDeliveredPropertiesUsed;
   const freePropertiesRemaining = Math.max(0, freePropertyLimit - freePropertiesUsed);
   const maxRequestedProperties = hasPaidPrecisionCapacity ? 1000 : freePropertiesRemaining;
   const safeRequestedPropertyCount = maxRequestedProperties <= 0
@@ -685,7 +683,7 @@ export default function TerritoryPrompt({
 
     if (effectiveRequestedPropertyCount <= 0 && !hasPaidPrecision) {
       setPullError({
-        message: 'Your current plan has used its included Precision homes. Upgrade to Precision to generate larger routes.',
+        message: 'This account has already received its included 50 single-family Precision route homes. Upgrade to Precision for larger routes.',
         upgrade: true
       });
       return;
