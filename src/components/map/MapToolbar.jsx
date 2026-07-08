@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, Users, Rocket, RotateCcw, Download, MoreVertical, Scissors, Ghost } from 'lucide-react';
+import { Loader2, Navigation, Locate, List, X, Filter, MapPin, Zap, Eye, EyeOff, Save, Pencil, Check, Users, Rocket, RotateCcw, Download, MoreVertical, Scissors } from 'lucide-react';
 import { LayoutDashboard, Settings } from 'lucide-react';
 import { toast } from "sonner";
 import DataStatusIndicator from './DataStatusIndicator';
@@ -92,10 +92,6 @@ export default function MapToolbar({
   const [canvasFocusMode, setCanvasFocusMode] = useState(() => {
     try {return localStorage.getItem('fk_canvasFocusMode') === 'true';} catch {return false;}
   });
-  const [showGhostAreas, setShowGhostAreas] = useState(() => {
-    try {return localStorage.getItem('fk_showGhostAreas') === 'true';} catch {return false;}
-  });
-
   const updateRouteMode = (nextMode) => {
     setRouteMode(nextMode);
     try {localStorage.setItem('fk_routeMode', nextMode);} catch {}
@@ -119,36 +115,6 @@ export default function MapToolbar({
     window.dispatchEvent(new CustomEvent('fk-canvas-focus-mode-changed', { detail: { focusMode: next } }));
     toast.success(next ? 'Focus mode on' : 'Focus mode off');
   };
-
-  const toggleGhostAreas = () => {
-    const needsBuilderFocus = mode !== 'generate' || !!activeRoute;
-    const next = needsBuilderFocus ? true : !showGhostAreas;
-    setShowGhostAreas(next);
-    try {localStorage.setItem('fk_showGhostAreas', String(next));} catch {}
-    if (next) {
-      setMode('generate');
-      setActiveRoute?.(null);
-      setShowCompare(false);
-      setShowRoutePanel(false);
-    }
-    window.dispatchEvent(new CustomEvent('fk-ghost-areas-visibility', { detail: { visible: next } }));
-    toast.success(next ? 'Previous Precision areas visible' : 'Previous areas hidden');
-  };
-
-  // Track whether data has been pulled for the current drawn territory
-  const [territoryDataReady, setTerritoryDataReady] = useState(false);
-
-  // Reset when polygon changes (new territory drawn)
-  useEffect(() => {
-    setTerritoryDataReady(false);
-  }, [drawnPolygon]);
-
-  // Listen for pull-complete signal from TerritoryPrompt
-  useEffect(() => {
-    const handler = () => setTerritoryDataReady(true);
-    window.addEventListener('fk-territory-data-ready', handler);
-    return () => window.removeEventListener('fk-territory-data-ready', handler);
-  }, []);
 
   // Bottom Map tab should return to plain map view and close Builder/Route Command.
   useEffect(() => {
@@ -357,28 +323,8 @@ export default function MapToolbar({
                             {routeStatusView === 'completed' ? 'DONE' : 'ACTIVE'}
                           </Button>
                         )}
-                        {routeMode === 'precision' && (
-                          <Button
-                            onClick={toggleGhostAreas}
-                            size="icon"
-                            title={showGhostAreas ? 'Hide previous Precision areas' : 'Show previous Precision areas'}
-                            aria-label={showGhostAreas ? 'Hide previous Precision areas' : 'Show previous Precision areas'}
-                            className={`inline-flex bg-black/80 hover:bg-black backdrop-blur-md border shadow-xl h-8 w-8 sm:h-11 sm:w-11 rounded-lg sm:rounded-xl transition-all ${showGhostAreas ? 'border-[#2EEB57]/60 text-[#39FF4A]' : 'border-gray-800 text-white/55'}`}>
-                            <Ghost className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
-                          </Button>
-                        )}
                         <Button
-              onClick={() => {
-                if (mode === 'generate' && routeMode === 'precision' && !hasDrawnArea) {
-                  toast.info("Draw a custom area first.");
-                  return;
-                }
-                if (mode === 'generate' && routeMode === 'precision' && hasDrawnArea && !territoryDataReady) {
-                  window.dispatchEvent(new CustomEvent('fk-open-precision-pull'));
-                  return;
-                }
-                setShowCompare(true);
-              }}
+              onClick={() => setShowCompare(true)}
               size="icon"
               className="hidden sm:inline-flex bg-black/80 hover:bg-black backdrop-blur-md rounded-lg sm:rounded-xl h-8 w-8 sm:h-11 sm:w-11 font-bold shadow-xl border border-[#2EEB57]/40">
               

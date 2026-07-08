@@ -8,6 +8,7 @@ import PrecisionProUpgradeSheet from '@/components/map/PrecisionProUpgradeSheet'
 import { isPrecisionProUser } from '@/lib/precisionAccess';
 
 const PREMIUM_RECENT_RANGES = [1 / 30, 2 / 30, 0.25, 0.5, 1];
+const FREE_PRECISION_HOME_LIMIT = 50;
 
 const SOLD_OPTIONS = [
   { value: 1 / 30, label: '1 day', lockedOnFree: true },
@@ -164,13 +165,13 @@ export default function PrecisionPullPanel({
             </div>
           )}
 
-          {Number(savedRouteHomeCount) > 0 && (
+          {!isProPlan && (
             <div className="rounded-2xl border border-yellow-400/25 bg-yellow-400/[0.08] p-3">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-yellow-300">
-                Saved route overlap
+                Free Precision limit
               </p>
               <p className="mt-1 text-[11px] leading-snug text-yellow-100/90">
-                FirstKnock skips homes already saved in routes. If this area overlaps your existing {formatCount(savedRouteHomeCount)} routed homes, this pull may return fewer new homes or none. Widen the boundary beyond the old route to find new homes.
+                Free accounts can generate up to {FREE_PRECISION_HOME_LIMIT} total single-family Precision route homes. This account has {formatCount(Math.max(0, FREE_PRECISION_HOME_LIMIT - Number(savedRouteHomeCount || 0)))} remaining for included generation.
               </p>
             </div>
           )}

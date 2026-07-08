@@ -3,9 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import {
-    Navigation, Loader2, MapPin, RefreshCw, X, ChevronDown, ChevronUp,
+    Navigation, Loader2, RefreshCw, X, ChevronDown, ChevronUp,
     Zap, Route, Footprints, Clock, Shield, Target,
-    Shuffle, Compass, Pencil, Lock, ScanLine
+    Shuffle, Compass, Pencil, Lock, ScanLine, Ghost
 } from 'lucide-react';
 import { toast } from "sonner";
 import CanvasBuilderSettings from './CanvasBuilderSettings.jsx';
@@ -61,6 +61,9 @@ export default function RouteBuilderSettings({
     const [routeMode, setRouteMode] = useState(() => {
         try { return localStorage.getItem('fk_routeMode') || 'precision'; } catch { return 'precision'; }
     });
+    const [showGhostAreas, setShowGhostAreas] = useState(() => {
+        try { return localStorage.getItem('fk_showGhostAreas') === 'true'; } catch { return false; }
+    });
 
     // Auto-apply good defaults on initial load
     React.useEffect(() => {
@@ -79,8 +82,22 @@ export default function RouteBuilderSettings({
         return () => window.removeEventListener('fk-route-mode-changed', handler);
     }, []);
 
+    useEffect(() => {
+        const handler = (event) => setShowGhostAreas(!!event.detail?.visible);
+        window.addEventListener('fk-ghost-areas-visibility', handler);
+        return () => window.removeEventListener('fk-ghost-areas-visibility', handler);
+    }, []);
+
     const toggleSection = (id) => {
         setExpandedSection(expandedSection === id ? null : id);
+    };
+
+    const toggleGhostAreas = () => {
+        const next = !showGhostAreas;
+        setShowGhostAreas(next);
+        try { localStorage.setItem('fk_showGhostAreas', String(next)); } catch {}
+        window.dispatchEvent(new CustomEvent('fk-ghost-areas-visibility', { detail: { visible: next } }));
+        toast.success(next ? 'Previous Precision areas visible' : 'Previous areas hidden');
     };
 
     if (routeMode === 'canvas') {
@@ -130,10 +147,13 @@ export default function RouteBuilderSettings({
     };
 
     return (
-        <div className="fixed inset-0 z-[2000]">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+        <div className={`fixed inset-0 z-[2000] ${showGhostAreas ? 'pointer-events-none' : ''}`}>
             <div
-                className="absolute top-0 right-0 bottom-0 w-full max-w-md overflow-hidden pt-[env(safe-area-inset-top)] backdrop-blur-xl shadow-2xl animate-in slide-in-from-right duration-300"
+                className={`absolute inset-0 bg-black/60 backdrop-blur-sm ${showGhostAreas ? 'pointer-events-none' : 'pointer-events-auto'}`}
+                onClick={onClose}
+            />
+            <div
+                className="pointer-events-auto absolute top-0 right-0 bottom-0 w-full max-w-md overflow-hidden pt-[env(safe-area-inset-top)] backdrop-blur-xl shadow-2xl animate-in slide-in-from-right duration-300"
                 style={{ background: 'rgba(10, 10, 10, 0.97)', borderLeft: '1px solid rgba(255, 255, 255, 0.1)' }}
             >
                 {/* Header */}
@@ -168,14 +188,27 @@ export default function RouteBuilderSettings({
 
                         {/* ═══ 1. TARGET AREA ═══ */}
                         <div className="space-y-3">
-                            <div className="flex justify-between items-center">
+                            <div className="flex justify-between items-center gap-2 flex-wrap">
                                 <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">1. Target Area</label>
-                                <button
-                                    onClick={onDraw}
-                                    className="text-[10px] font-bold text-yellow-500 hover:text-yellow-400 flex items-center gap-1 bg-yellow-500/10 px-2 py-1 rounded border border-yellow-500/30"
-                                >
-                                    <Pencil className="w-3 h-3" /> {hasDrawnArea ? 'Redraw' : 'Draw on Map'}
-                                </button>
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                        type="button"
+                                        onClick={toggleGhostAreas}
+                                        className={`text-[10px] font-bold flex items-center gap-1 px-2 py-1 rounded border transition-colors ${
+                                            showGhostAreas
+                                                ? 'bg-white text-black border-white shadow-[0_0_14px_rgba(255,255,255,0.22)]'
+                                                : 'bg-white/5 text-white/60 border-white/10 hover:text-white hover:bg-white/10'
+                                        }`}
+                                    >
+                                        <Ghost className="w-3 h-3" /> {showGhostAreas ? 'Ghost On' : 'Ghost Off'}
+                                    </button>
+                                    <button
+                                        onClick={onDraw}
+                                        className="text-[10px] font-bold text-yellow-500 hover:text-yellow-400 flex items-center gap-1 bg-yellow-500/10 px-2 py-1 rounded border border-yellow-500/30"
+                                    >
+                                        <Pencil className="w-3 h-3" /> {hasDrawnArea ? 'Redraw' : 'Draw on Map'}
+                                    </button>
+                                </div>
                             </div>
                             {hasDrawnArea ? (
                                 <div className="w-full px-4 py-3 rounded-xl text-sm bg-yellow-500/10 text-yellow-500 border border-yellow-500/30 flex items-center justify-between">

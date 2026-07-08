@@ -113,11 +113,12 @@ export default function PolygonHistory({ currentPolygon, mode }) {
                         key={`${key || i}-shape`}
                         positions={entry.polygon}
                         pathOptions={{
-                            fillColor: selected ? '#FFD93D' : '#64748b',
-                            color: selected ? '#FFD93D' : '#94a3b8',
-                            fillOpacity: selected ? 0.16 : 0.07,
-                            weight: selected ? 3 : 1.5,
-                            dashArray: selected ? null : '5,5',
+                            fillColor: selected ? '#FFD93D' : '#FFFFFF',
+                            color: selected ? '#FFD93D' : '#FFFFFF',
+                            fillOpacity: selected ? 0.16 : 0.18,
+                            weight: selected ? 3 : 2.5,
+                            opacity: selected ? 1 : 0.95,
+                            dashArray: selected ? null : '6,5',
                             interactive: isBuilder
                         }}
                         eventHandlers={isBuilder ? {
