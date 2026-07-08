@@ -9,7 +9,7 @@ import { createPageUrl } from '@/utils';
 import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
 import { savePolygonToHistory } from '@/components/map/PolygonHistory';
 import PrecisionPullPanel from '@/components/map/PrecisionPullPanel';
-import { hasConfirmedPaidPrecisionAccess, isPrecisionProUser } from '@/lib/precisionAccess';
+import { hasPaidPrecisionGenerationCapacity, isPrecisionProUser } from '@/lib/precisionAccess';
 
 function formatWholeNumber(value) {
   const number = Math.max(0, Math.round(Number(value) || 0));
@@ -388,7 +388,7 @@ export default function TerritoryPrompt({
   const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
   const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing' || user?.is_owner || user?.role === 'admin';
   const freePropertyLimit = 50;
-  const hasPaidPrecisionCapacity = hasConfirmedPaidPrecisionAccess(user);
+  const hasPaidPrecisionCapacity = hasPaidPrecisionGenerationCapacity(user);
   const routeDeliveredPropertiesUsed = useMemo(() => countUniquePrecisionRouteHomes(savedRoutes), [savedRoutes]);
   const freePropertiesUsed = routeDeliveredPropertiesUsed;
   const freePropertiesRemaining = Math.max(0, freePropertyLimit - freePropertiesUsed);
@@ -664,7 +664,7 @@ export default function TerritoryPrompt({
     const effectiveMaxPrice = maxHomeValue ? Number(maxHomeValue) : null;
     const premiumRecentRange = effectiveSoldMonths <= 1;
     const latestUser = (effectiveRequestedPropertyCount > freePropertyLimit || premiumRecentRange) ? await base44.auth.me() : user;
-    const hasPaidPrecision = hasConfirmedPaidPrecisionAccess(latestUser);
+    const hasPaidPrecision = hasPaidPrecisionGenerationCapacity(latestUser);
     const hasPrecisionPro = isPrecisionProUser(latestUser);
 
     if (effectiveRequestedPropertyCount <= 0 && !hasPaidPrecision) {

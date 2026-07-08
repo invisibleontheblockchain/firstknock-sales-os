@@ -90,8 +90,12 @@ function isPrecisionTierOrUnknown(user) {
     const tier = String(user?.subscription_tier || '').toLowerCase();
     if (isPrecisionTier(user)) return true;
     if (isExplicitNonPrecisionTier(user)) return false;
-    if (Number(user?.precision_property_limit || user?.monthly_property_limit || 0) > FREE_PROPERTY_CAP) return true;
+    if (hasPaidPrecisionLimit(user)) return true;
     return !tier || tier === 'custom';
+}
+
+function hasPaidPrecisionLimit(user) {
+    return Number(user?.precision_property_limit || user?.monthly_property_limit || 0) > FREE_PROPERTY_CAP;
 }
 
 function stripeSubscriptionIsPaidPrecision(subscription) {
@@ -130,12 +134,13 @@ async function hasConfirmedPaidPrecisionAccess(user) {
     if (user?.is_owner || user?.role === 'admin') return true;
     if (status !== 'active') return false;
     if (isExplicitNonPrecisionTier(user)) return false;
-    if (user?.subscription_paid_confirmed !== true) return false;
-    if (isPrecisionTier(user) || Number(user?.precision_property_limit || user?.monthly_property_limit || 0) > FREE_PROPERTY_CAP) return true;
-    if (!isPrecisionTierOrUnknown(user)) return false;
+    const hasLocalPrecisionPlan = isPrecisionTier(user) || hasPaidPrecisionLimit(user);
+    if (hasLocalPrecisionPlan && user?.subscription_paid_confirmed === true) return true;
+    if (!hasLocalPrecisionPlan && !isPrecisionTierOrUnknown(user)) return false;
 
     const verified = await verifyStripePaidPrecisionAccess(user);
-    return verified === null ? true : verified;
+    if (verified !== null) return verified;
+    return hasLocalPrecisionPlan || (user?.subscription_paid_confirmed === true && isPrecisionTierOrUnknown(user));
 }
 
 function isPremiumRecentRange(soldMonths) {
