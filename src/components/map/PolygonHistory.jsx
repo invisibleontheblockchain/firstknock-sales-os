@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Marker, Polygon, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
@@ -56,7 +56,7 @@ function trashIcon(onDelete) {
     return L.divIcon({ html: container, className: '', iconSize: [32, 32], iconAnchor: [16, 16] });
 }
 
-export default function PolygonHistory({ currentPolygon, mode }) {
+export default function PolygonHistory({ currentPolygon, mode, serverHistory = [] }) {
     const [history, setHistory] = useState([]);
     const [selectedKey, setSelectedKey] = useState(null);
     const [ghostVisible, setGhostVisible] = useState(() => {
@@ -87,8 +87,20 @@ export default function PolygonHistory({ currentPolygon, mode }) {
         if (!isBuilder) setSelectedKey(null);
     }, [isBuilder]);
 
-    const currentKey = currentPolygon?.length > 2 ? polygonKey(currentPolygon) : null;
-    const visibleHistory = history.filter(entry => polygonKey(entry.polygon) !== currentKey);
+    const visibleHistory = useMemo(() => {
+        const byKey = new Map();
+        [...serverHistory, ...history].forEach((entry) => {
+            if (!entry?.polygon || entry.polygon.length < 3) return;
+            const key = polygonKey(entry.polygon);
+            if (!key) return;
+            byKey.set(key, {
+                ...byKey.get(key),
+                ...entry,
+                queried: true
+            });
+        });
+        return Array.from(byKey.values());
+    }, [history, serverHistory]);
 
     const deleteHistoryEntry = (keyToDelete) => {
         const nextHistory = history.filter(entry => polygonKey(entry.polygon) !== keyToDelete);
@@ -134,7 +146,7 @@ export default function PolygonHistory({ currentPolygon, mode }) {
                             {isBuilder && <div className="text-yellow-400 mt-0.5">Tap to select</div>}
                         </Tooltip>
                     </Polygon>
-                    {isBuilder && center && (
+                    {isBuilder && center && entry.source !== 'server' && (
                         <Marker
                             position={center}
                             icon={trashIcon(() => deleteHistoryEntry(key))}

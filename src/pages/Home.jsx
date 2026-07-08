@@ -77,6 +77,53 @@ import { BRAND, DEFAULT_STATUS_COLORS, COLOR_SCHEME_MAP, LINE_DASH_MAP, ROUTE_CO
 import { LocationMarker, MapRefHandler, MapController } from '../components/map/MapHelpers';
 import useViewportMapProperties from '../components/map/useViewportMapProperties';
 
+function normalizeHistoryPolygon(value) {
+    if (!Array.isArray(value)) return [];
+    let points = value;
+    if (Array.isArray(points[0]) && Array.isArray(points[0][0])) {
+        points = points[0];
+    }
+
+    return points.map((point) => {
+        if (Array.isArray(point)) {
+            const lng = Number(point[0]);
+            const lat = Number(point[1]);
+            return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+        }
+        const lat = Number(point?.lat ?? point?.latitude);
+        const lng = Number(point?.lng ?? point?.lon ?? point?.longitude);
+        return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+    }).filter(Boolean);
+}
+
+function polygonHistoryKey(polygon = []) {
+    const first = polygon[0] || {};
+    return `${Number(first.lat || 0).toFixed(5)}:${Number(first.lng || 0).toFixed(5)}:${polygon.length}`;
+}
+
+function getRouteHistoryPolygon(route) {
+    return normalizeHistoryPolygon(
+        route?.metadata?.precision_area?.polygon ||
+        route?.metadata?.drawn_polygon ||
+        route?.metadata?.polygon ||
+        route?.precision_area?.polygon ||
+        route?.polygon
+    );
+}
+
+function getFetchJobHistoryPolygon(job) {
+    return normalizeHistoryPolygon(
+        job?.polygon ||
+        job?.metadata?.polygon ||
+        job?.request?.polygon ||
+        job?.request_payload?.polygon ||
+        job?.input?.polygon ||
+        job?.searchCriteria?.address?.geoLocationPolygon?.geoPoints ||
+        job?.request?.searchCriteria?.address?.geoLocationPolygon?.geoPoints ||
+        job?.request_payload?.searchCriteria?.address?.geoLocationPolygon?.geoPoints
+    );
+}
+
 
 
 export default function Home() {
@@ -435,6 +482,65 @@ export default function Home() {
     });
     const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
     const [serverHydratedSavedRoutes, setServerHydratedSavedRoutes] = useState([]);
+    const { data: precisionFetchJobsRaw = [] } = useQuery({
+        queryKey: ['precisionFetchJobs', user?.email],
+        staleTime: 1000 * 60 * 2,
+        queryFn: () => user?.email ? base44.entities.FetchJob.filter({ user_email: user.email }, '-created_date', 50) : [],
+        enabled: !!user?.email
+    });
+    const precisionFetchJobs = Array.isArray(precisionFetchJobsRaw) ? precisionFetchJobsRaw : (precisionFetchJobsRaw?.items || []);
+
+    const precisionAreaHistory = useMemo(() => {
+        const byKey = new Map();
+        const addEntry = (polygon, entry = {}) => {
+            if (!polygon || polygon.length < 3) return;
+            const key = polygonHistoryKey(polygon);
+            byKey.set(key, {
+                ...byKey.get(key),
+                ...entry,
+                polygon,
+                queried: true,
+                source: 'server'
+            });
+        };
+
+        savedRoutes.forEach((route) => {
+            const polygon = getRouteHistoryPolygon(route);
+            const precisionArea = route?.metadata?.precision_area || {};
+            addEntry(polygon, {
+                id: `route_${route.id}`,
+                route_id: route.id,
+                route_name: route.name,
+                date: precisionArea.date || precisionArea.last_pull_date || route.metadata?.generated_at || route.created_date || route.updated_date,
+                last_pull_date: precisionArea.last_pull_date || route.metadata?.generated_at || route.created_date,
+                job_id: precisionArea.job_id,
+                criteria: precisionArea.criteria || {}
+            });
+        });
+
+        precisionFetchJobs.forEach((job) => {
+            const polygon = getFetchJobHistoryPolygon(job);
+            const completedOrUseful = job.status === 'completed' || Number(job.active_count || job.total_inserted || job.total_existed || 0) > 0;
+            if (!completedOrUseful) return;
+            addEntry(polygon, {
+                id: `job_${job.id}`,
+                job_id: job.id,
+                date: job.completed_at || job.updated_date || job.created_date,
+                last_pull_date: job.completed_at || job.updated_date || job.created_date,
+                criteria: {
+                    requested_properties: job.requested_properties || job.total_expected || job.active_count || null,
+                    sold_months: job.sold_months || job.fetch_months || null,
+                    min_price: job.min_price ?? job.filters?.min_price ?? null,
+                    max_price: job.max_price ?? job.filters?.max_price ?? null
+                }
+            });
+        });
+
+        return Array.from(byKey.values())
+            .filter((entry) => entry.polygon?.length >= 3)
+            .sort((a, b) => new Date(b.last_pull_date || b.date || 0) - new Date(a.last_pull_date || a.date || 0))
+            .slice(0, 20);
+    }, [savedRoutes, precisionFetchJobs]);
 
     // Identify properties already assigned to saved routes
     const assignedHashes = useMemo(() => {
@@ -531,13 +637,31 @@ export default function Home() {
         const defaultAssigneeName = assignedRepName || user?.full_name || 'Me';
         const baseRouteName = deriveRouteName(route);
         const isGeneratedRoute = !route?.isSaved && Array.isArray(route?.properties) && route.properties.length > 0;
+        const routeMode = route.route_mode || 'precision';
+        const currentPrecisionPolygon = routeMode === 'precision' ? normalizeHistoryPolygon(drawnPolygon) : [];
+        const generatedAt = new Date().toISOString();
+        const precisionAreaMetadata = isGeneratedRoute && currentPrecisionPolygon.length >= 3
+            ? {
+                precision_area: {
+                    polygon: currentPrecisionPolygon,
+                    job_id: currentBatchDataJobIdRef.current || currentBatchDataJobId || null,
+                    last_pull_date: generatedAt,
+                    date: generatedAt,
+                    criteria: {
+                        sold_months: currentBatchDataSoldMonthsRef.current || soldDateFilter || null,
+                        route_mode: routeMode,
+                        pull_mode: lastPullMode || null
+                    }
+                }
+            }
+            : {};
         // No "New —" name prefix — the NEW badge (from metadata.newly_generated) marks fresh routes instead.
         const routeName = baseRouteName.replace(/^New\s*[—-]\s*/i, '');
 
         // @ts-ignore - 'mutateAsync' incorrectly expects 'void' instead of the data object
         return await createRouteMutation.mutateAsync({
             name: routeName,
-            route_mode: route.route_mode || 'precision',
+            route_mode: routeMode,
             property_hashes: route.properties.map(p => p.address_hash),
             metrics: {
                 distance: route.totalDistance,
@@ -549,7 +673,7 @@ export default function Home() {
             assigned_to: defaultAssigneeId,
             assigned_to_name: defaultAssigneeName,
             manager_id: user.id,
-            metadata: isGeneratedRoute ? { ...(route.metadata || {}), newly_generated: true, generated_at: new Date().toISOString() } : route.metadata,
+            metadata: isGeneratedRoute ? { ...(route.metadata || {}), ...precisionAreaMetadata, newly_generated: true, generated_at: generatedAt } : route.metadata,
             silent // Pass silent flag to mutation
         });
     };
@@ -1725,7 +1849,13 @@ export default function Home() {
                 )}
 
                 {/* Previous drawn area history */}
-                {!drawingMode && !showRoutePanel && !filteredActiveRoute && <PolygonHistory currentPolygon={drawnPolygon} mode={mode} />}
+                {!drawingMode && !showRoutePanel && !filteredActiveRoute && (
+                    <PolygonHistory
+                        currentPolygon={drawnPolygon}
+                        mode={mode}
+                        serverHistory={precisionAreaHistory}
+                    />
+                )}
 
                 {/* GPS TRACKER LAYERS */}
                 <GpsTrackerMapLayers
