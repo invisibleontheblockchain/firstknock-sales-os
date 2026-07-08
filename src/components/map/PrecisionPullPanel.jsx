@@ -43,6 +43,10 @@ function formatMaxSinceRange(value) {
   return `${start} → ${end}`;
 }
 
+function formatCount(value) {
+  return Math.max(0, Number(value) || 0).toLocaleString();
+}
+
 export default function PrecisionPullPanel({
   areaLabel,
   maxProperties,
@@ -69,7 +73,8 @@ export default function PrecisionPullPanel({
   forceFullRefresh,
   setForceFullRefresh,
   includeUnresolvedFollowUps = true,
-  setIncludeUnresolvedFollowUps
+  setIncludeUnresolvedFollowUps,
+  savedRouteHomeCount = 0
 }) {
   const navigate = useNavigate();
   const [hoveredLockedOption, setHoveredLockedOption] = useState(null);
@@ -156,6 +161,17 @@ export default function PrecisionPullPanel({
                   <span>When routing this refreshed area, include unresolved follow-ups like Not Home, Callback, DM Not Home, or other non-final decisions.</span>
                 </label>
               )}
+            </div>
+          )}
+
+          {Number(savedRouteHomeCount) > 0 && (
+            <div className="rounded-2xl border border-yellow-400/25 bg-yellow-400/[0.08] p-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-yellow-300">
+                Saved route overlap
+              </p>
+              <p className="mt-1 text-[11px] leading-snug text-yellow-100/90">
+                FirstKnock skips homes already saved in routes. If this area overlaps your existing {formatCount(savedRouteHomeCount)} routed homes, this pull may return fewer new homes or none. Widen the boundary beyond the old route to find new homes.
+              </p>
             </div>
           )}
 

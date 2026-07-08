@@ -1009,16 +1009,15 @@ export default function Home() {
     const generateRoutes = useCallback(async () => {
         if (routesGeneratingRef.current) {
             toast.info('Route generation is already running.');
-            return;
+            return false;
         }
         routesGeneratingRef.current = true;
 
         // If frozen data exists, reorder instead of refetch (unless filter just changed, which clears frozen)
         if (frozenWorkingSet?.length > 0) {
             console.log(`[generateRoutes] Frozen data exists (${frozenWorkingSet.length} props). Using handleReorder.`);
-            try { await handleReorder(); }
+            try { return await handleReorder() === true; }
             finally { routesGeneratingRef.current = false; }
-            return;
         }
 
         // IMMEDIATE visual feedback — show overlay + toast BEFORE any heavy work.
@@ -1068,7 +1067,7 @@ export default function Home() {
                 if (isCurrentBatchDataRun && polygonProps.length === 0) {
                     toast.dismiss('build-routes');
                     setGenerationError('This pull returned no active routeable properties, so route generation was stopped to avoid using stale old data. Try broadening the area or relaxing the parameters.');
-                    return;
+                    return false;
                 }
 
                 if (polygonProps.length > 0) {
@@ -1228,7 +1227,7 @@ export default function Home() {
                 console.warn(`[generateRoutes] Filter error:`, filterResult.error, 'stages:', filterResult.stages);
                 toast.dismiss('build-routes');
                 setGenerationError(filterResult.error);
-                return; // Keep overlay visible to show the error — user dismisses manually
+                return false; // Keep overlay visible to show the error — user dismisses manually
             }
             let workingSet = filterResult.workingSet;
 
@@ -1260,7 +1259,7 @@ export default function Home() {
                 : await new Promise(resolve => setTimeout(() => resolve(generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: routeConfig.returnToStart, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights)), 50));
             const generatedDoorCount = Array.isArray(generated) ? generated.reduce((sum, route) => sum + (route.properties?.length || route.houseCount || 0), 0) : 0;
             console.log(`[RoutePipeline] after_route_command routes=${generated?.length || 0} doors=${generatedDoorCount} elapsed_ms=${Math.round(performance.now() - optStart)}`);
-            if (!generated || generated.length === 0) { toast.dismiss('build-routes'); setGenerationError(`Optimizer returned 0 routes from ${finalCount.toLocaleString()} properties. Try relaxing filters or pulling fresh data.`); return; }
+            if (!generated || generated.length === 0) { toast.dismiss('build-routes'); setGenerationError(`Optimizer returned 0 routes from ${finalCount.toLocaleString()} properties. Try relaxing filters or pulling fresh data.`); return false; }
             if (generated['_cooldownInfo']) setCooldownInfo(generated['_cooldownInfo']);
             setRoutes(generated);
             // AUTO-SAVE (skip routes >10K properties — payload too large)
@@ -1297,12 +1296,13 @@ export default function Home() {
             const toastMsg = `Built ${generated.length} ${routeWord} (${totalHouses.toLocaleString()} doors)` + (skippedDueToAssigned > 0 ? ` — ${skippedDueToAssigned} already assigned` : '');
 
             toast.success(toastMsg, { id: 'build-routes', duration: 5000 });
+            return true;
 
         } catch (e) {
             console.error(`[generateRoutes] Failed after ${Math.round((performance.now() - t0) / 1000)}s:`, e);
             toast.dismiss('build-routes');
             setGenerationError(`Route generation failed: ${e?.message || 'Unknown error'}. Check console for details.`);
-            return;
+            return false;
         } finally {
             // Hide overlay — but if an error was set, keep it visible until user dismisses
             // (we re-check generationError via a functional setState)
@@ -1313,7 +1313,7 @@ export default function Home() {
 
     // Reorder: re-run filtering + routing on frozen data without re-fetching
     const handleReorder = useCallback(async () => {
-        if (!frozenWorkingSet || frozenWorkingSet.length === 0) { toast.error('No data to reorder.'); return; }
+        if (!frozenWorkingSet || frozenWorkingSet.length === 0) { toast.error('No data to reorder.'); return false; }
         setGenerationError(null);
         setGenerationStage(`Reordering ${frozenWorkingSet.length.toLocaleString()} doors...`);
         setRoutesGenerating(true);
@@ -1328,7 +1328,7 @@ export default function Home() {
                 soldDateFilter, routeConfig, lastPullMode, logsByAddress: logsByAddr, assignedHashes,
             });
             console.log(`[handleReorder] Filter funnel: ${formatStageCounts(filterResult.stages)}`);
-            if (filterResult.error) { toast.dismiss('reorder-routes'); setGenerationError(filterResult.error); return; }
+            if (filterResult.error) { toast.dismiss('reorder-routes'); setGenerationError(filterResult.error); return false; }
             const workingSet = filterResult.workingSet;
             const effectiveUse2Opt = workingSet.length > 3000 ? false : routeConfig.use2Opt;
             const start = startLocation || (mapRef.current ? { lat: mapRef.current.getCenter().lat, lng: mapRef.current.getCenter().lng } : null);
@@ -1353,7 +1353,8 @@ export default function Home() {
             }
             setShowRoutePanel(false); setShowCompare(false);
             toast.success(`Reordered! ${generated.length} route(s)`, { id: 'reorder-routes', duration: 5000 });
-        } catch (e) { console.error('Reorder error:', e); toast.error('Reorder failed.', { id: 'reorder-routes' }); }
+            return true;
+        } catch (e) { console.error('Reorder error:', e); toast.error('Reorder failed.', { id: 'reorder-routes' }); return false; }
         finally { setRoutesGenerating(false); }
     }, [frozenWorkingSet, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, routeConfig, soldDateFilter, drawnPolygon, lastPullMode, learnedWeights, user?.territory_zip_codes, assignedHashes]);
 
@@ -1833,7 +1834,12 @@ export default function Home() {
                     setLastPullMode('batchdata_job');
                     setSoldDateFilterRaw(pm);
                     if ((jobStatus?.active_count || pulledProperties.length) > 0) {
-                        await generateRoutesRef.current?.();
+                        const routeBuilt = await generateRoutesRef.current?.();
+                        if (routeBuilt === true) {
+                            setDrawnPolygon(null);
+                            setDraftPolygon([]);
+                            try { localStorage.removeItem('fk_drawnPolygonQueried'); } catch { }
+                        }
                     } else {
                         const isUltraRecent = Number(pm) <= 0.25;
                         setGenerationError(isUltraRecent

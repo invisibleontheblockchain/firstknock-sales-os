@@ -919,6 +919,9 @@ export default function TerritoryPrompt({
                     </div>
                     <button
           onClick={() => {setDrawnPolygon(null);setDraftPolygon([]);setDrawingMode(false);setShowPrecisionPullPanel(false);}}
+          type="button"
+          aria-label="Clear selected area"
+          title="Clear selected area"
           className="absolute top-2 right-2 sm:static text-gray-400 hover:text-red-500 transition-colors p-2 sm:p-1 bg-white/5 rounded-full shrink-0 ml-auto sm:ml-0">
           
                         <Trash2 className="w-3 h-3" />
@@ -959,6 +962,7 @@ export default function TerritoryPrompt({
         setForceFullRefresh={setForceFullRefresh}
         includeUnresolvedFollowUps={includeUnresolvedFollowUps}
         setIncludeUnresolvedFollowUps={setIncludeUnresolvedFollowUps}
+        savedRouteHomeCount={routeDeliveredPropertiesUsed}
         onClearArea={() => {setDrawnPolygon(null);setDraftPolygon([]);setDrawingMode(false);setShowPrecisionPullPanel(false);setSelectedHistoryArea(null);}}
       />
       }
