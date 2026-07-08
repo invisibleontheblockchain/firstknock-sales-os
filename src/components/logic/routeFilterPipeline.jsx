@@ -5,6 +5,97 @@
 import { subDays } from 'date-fns';
 import { isPointInPolygon } from './territoryLogic';
 
+const PROPERTY_TYPE_ALIASES = {
+    'Single Family': ['single family', 'single family residential', 'single-family', 'sfr', 'sfh', 'detached', 'one family', '1 family'],
+    'Townhouse': ['townhouse', 'townhome', 'row house', 'rowhouse'],
+    'Condo': ['condo', 'condominium', 'co op', 'coop', 'cooperative'],
+    'Multi-Family': ['multi family', 'multi-family', 'multifamily', 'duplex', 'triplex', 'fourplex', '2 family', '3 family', '4 family', 'apartment'],
+    'Other': ['other', 'manufactured', 'mobile home', 'modular']
+};
+
+const COMMERCIAL_TYPE_KEYWORDS = ['commercial', 'industrial', 'retail', 'office', 'warehouse', 'business', 'shopping', 'hotel', 'motel', 'restaurant', 'medical', 'hospital'];
+const CONDO_MULTI_TYPE_KEYWORDS = ['condo', 'condominium', 'apartment', 'co op', 'coop', 'cooperative', 'multifamily', 'multi family', 'multi-family', 'duplex', 'triplex', 'fourplex'];
+const LAND_TYPE_KEYWORDS = ['land', 'lot', 'vacant', 'acreage', 'farm', 'agricultural'];
+
+function normalizePropertyType(value) {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/[\/_-]+/g, ' ')
+        .replace(/[^\w\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function includesAnyType(text, keywords) {
+    return keywords.some(keyword => text.includes(normalizePropertyType(keyword)));
+}
+
+function isVagueResidentialType(text) {
+    if (!text) return true;
+    if (/^r\d+[a-z]?$/.test(text)) return true;
+    return ['residential', 'residential property', 'residence', 'improved residential', 'residential improved'].includes(text);
+}
+
+function matchesSelectedPropertyType(propertyType, selectedType) {
+    const text = normalizePropertyType(propertyType);
+    if (!text) return true;
+
+    const aliases = PROPERTY_TYPE_ALIASES[selectedType] || [selectedType];
+    if (aliases.some(alias => text.includes(normalizePropertyType(alias)))) return true;
+
+    // BatchData sometimes returns only broad residential wording/codes. If the
+    // user asked for Single Family and no more specific condo/multifamily/townhome
+    // signal exists, keep the row instead of losing a valid sold home to wording.
+    if (
+        selectedType === 'Single Family' &&
+        isVagueResidentialType(text) &&
+        !includesAnyType(text, [...CONDO_MULTI_TYPE_KEYWORDS, ...LAND_TYPE_KEYWORDS, ...COMMERCIAL_TYPE_KEYWORDS, 'townhouse', 'townhome'])
+    ) {
+        return true;
+    }
+
+    if (selectedType === 'Other') {
+        const known = Object.entries(PROPERTY_TYPE_ALIASES)
+            .filter(([key]) => key !== 'Other')
+            .some(([, values]) => values.some(alias => text.includes(normalizePropertyType(alias))));
+        return !known && !includesAnyType(text, [...COMMERCIAL_TYPE_KEYWORDS, ...LAND_TYPE_KEYWORDS]);
+    }
+
+    return false;
+}
+
+function propertyTypeEligibility(property, routeConfig = {}) {
+    const text = normalizePropertyType(property?.property_type);
+    const selectedTypes = Array.isArray(routeConfig.propertyTypes) ? routeConfig.propertyTypes.filter(Boolean) : [];
+
+    if (selectedTypes.length > 0 && !selectedTypes.some(type => matchesSelectedPropertyType(text, type))) {
+        return { eligible: false, reason: 'includePropertyTypes' };
+    }
+    if (routeConfig.excludeCommercial && includesAnyType(text, COMMERCIAL_TYPE_KEYWORDS)) {
+        return { eligible: false, reason: 'excludeCommercial' };
+    }
+    if (routeConfig.excludeCondos && includesAnyType(text, CONDO_MULTI_TYPE_KEYWORDS)) {
+        return { eligible: false, reason: 'excludeCondosMultiFamily' };
+    }
+    if (routeConfig.excludeLand && includesAnyType(text, LAND_TYPE_KEYWORDS)) {
+        return { eligible: false, reason: 'excludeLand' };
+    }
+
+    return { eligible: true, reason: null };
+}
+
+function summarizePropertyTypes(properties = []) {
+    const counts = new Map();
+    for (const property of properties) {
+        const label = String(property?.property_type || 'Unknown').trim() || 'Unknown';
+        counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    return [...counts.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([label, count]) => `${label} (${count})`);
+}
+
 function requestedSoldWindowDays(soldMonths) {
     const months = Number(soldMonths || 1);
     if (Math.abs(months - (1 / 30)) < 0.0001) return 1;
@@ -132,28 +223,25 @@ export function applyRouteFilters({
     }
 
     // --- Property Type Filters ---
-    if (routeConfig.propertyTypes && routeConfig.propertyTypes.length > 0) {
-        workingSet = workingSet.filter(p => {
-            if (!p.property_type) return true;
-            const pt = p.property_type.toLowerCase();
-            return routeConfig.propertyTypes.some(t => pt.includes(t.toLowerCase()));
-        });
-    }
-    if (routeConfig.excludeCommercial) {
-        const kw = ['commercial', 'industrial', 'retail', 'office', 'warehouse', 'business', 'shopping'];
-        workingSet = workingSet.filter(p => !p.property_type || !kw.some(k => p.property_type.toLowerCase().includes(k)));
-    }
-    if (routeConfig.excludeCondos) {
-        const kw = ['condo', 'apartment', 'co-op', 'coop', 'multifamily', 'multi family', 'multi-family'];
-        workingSet = workingSet.filter(p => !p.property_type || !kw.some(k => p.property_type.toLowerCase().includes(k)));
-    }
-    if (routeConfig.excludeLand) {
-        const kw = ['land', 'lot', 'vacant', 'acreage', 'farm'];
-        workingSet = workingSet.filter(p => !p.property_type || !kw.some(k => p.property_type.toLowerCase().includes(k)));
-    }
+    const beforePropertyTypeSet = [...workingSet];
+    const propertyTypeDropReasons = {};
+    workingSet = workingSet.filter(p => {
+        const result = propertyTypeEligibility(p, routeConfig);
+        if (!result.eligible) propertyTypeDropReasons[result.reason] = (propertyTypeDropReasons[result.reason] || 0) + 1;
+        return result.eligible;
+    });
     // Keep only user-configured property-type exclusions here. BatchData pulls already
     // target owner-change properties; a hard single-family-only gate can hide valid homes.
     track('propertyType');
+
+    if (beforePropertyTypeSet.length > 0 && workingSet.length === 0) {
+        const examples = summarizePropertyTypes(beforePropertyTypeSet);
+        return {
+            workingSet: [], stages, frozenSet,
+            error: `All ${beforePropertyTypeSet.length.toLocaleString()} properties were excluded by property type filters. Found: ${examples.join(', ') || 'Unknown'}. Open Filters and include those property types, or draw a larger area.`,
+            diagnostic: { propertyTypeExamples: examples, propertyTypeDropReasons }
+        };
+    }
 
     // --- Confidence / Rejection Filters ---
     const isBatchDataCandidate = (p) => String(p.data_source || '').toLowerCase() === 'batchdata' || p.original_status === 'BATCHDATA_CONFIRMED';

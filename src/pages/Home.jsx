@@ -1799,6 +1799,7 @@ export default function Home() {
                 savedRoutes={savedRoutes}
                 savedRoutesLoaded={savedRoutesFetched}
                 setZipCodeFilter={setZipCodeFilter}
+                routeConfig={routeConfig}
                 onPullComplete={async (pullFetchMonths, pulledWithMls, jobStatus = {}) => {
                     setFrozenWorkingSet(null);
                     setFetchedProperties([]);

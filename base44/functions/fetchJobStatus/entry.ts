@@ -107,21 +107,9 @@ Deno.serve(async (req) => {
                 const rows = await sql`
                     SELECT COUNT(*)::int AS active_count
                     FROM workspace_properties wp
-                    JOIN properties p ON p.id = wp.property_id
                     WHERE wp.fetch_job_id = ${job.id}
                       AND wp.user_email = ${job.user_email}
-                      AND (
-                          wp.route_active = TRUE
-                          OR (
-                              p.data_source = 'batchdata'
-                              AND lower(coalesce(p.property_type, '')) NOT LIKE '%commercial%'
-                              AND lower(coalesce(p.property_type, '')) NOT LIKE '%industrial%'
-                              AND lower(coalesce(p.property_type, '')) NOT LIKE '%vacant%'
-                              AND lower(coalesce(p.property_type, '')) NOT LIKE '%agricultural%'
-                              AND lower(coalesce(p.property_type, '')) NOT LIKE '%land%'
-                              AND lower(coalesce(p.property_type, '')) NOT LIKE '%lot%'
-                          )
-                      )
+                      AND wp.route_active = TRUE
                 `;
                 active_count = Number(rows?.[0]?.active_count || 0);
             }
@@ -190,6 +178,7 @@ Deno.serve(async (req) => {
                 area_sq_mi: job.area_sq_mi || null,
                 count_mode: metadata.count_mode || null,
                 filters: metadata.filters || null,
+                route_filters: metadata.route_filters || null,
                 completion_reason: metadata.completion_reason || null,
                 batchdata_summary: metadata.batchdata_summary || null,
                 processor_rekick_at: processorKick?.at || metadata.processor_rekick_at || null,
