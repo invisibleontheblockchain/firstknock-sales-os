@@ -37,6 +37,12 @@ function includesAnyPropertyType(text, keywords) {
     return keywords.some(keyword => text.includes(normalizePropertyTypeText(keyword)));
 }
 
+function isExplicitSingleFamilyType(value) {
+    const text = normalizePropertyTypeText(value);
+    if (!text) return false;
+    return PROPERTY_TYPE_ALIASES['Single Family'].some(alias => text.includes(normalizePropertyTypeText(alias)));
+}
+
 function isVagueResidentialType(text) {
     if (!text) return true;
     if (/^r\d+[a-z]?$/.test(text)) return true;
@@ -263,7 +269,58 @@ function isoDateOnly(value) {
     return date.toISOString().slice(0, 10);
 }
 
-function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon') {
+function placeSearchLabel(job) {
+    const parts = batchDataPlaceParts(job);
+    return parts ? `${parts.place}, ${parts.state}` : null;
+}
+
+function batchDataPlaceParts(job) {
+    const countyResolution = job?.dry_run_metadata?.county_resolution || {};
+    const state = String(firstValue(
+        job?.dry_run_metadata?.batchdata_state,
+        job?.dry_run_metadata?.state_code,
+        job?.state,
+        countyResolution.state_code
+    ) || '').trim().toUpperCase();
+    const rawPlace = String(firstValue(
+        job?.dry_run_metadata?.batchdata_place,
+        job?.dry_run_metadata?.place_name,
+        job?.dry_run_metadata?.city,
+        job?.city,
+        countyResolution.city,
+        countyResolution.county_name
+    ) || '').trim();
+    const place = rawPlace
+        .replace(/\s+(county|parish|borough|census area|municipality)$/i, '')
+        .trim();
+    if (!place || !state) return null;
+    return { place, state };
+}
+
+function previewDryRunMetadata(body = {}) {
+    const existing = body.dry_run_metadata && typeof body.dry_run_metadata === 'object' ? body.dry_run_metadata : {};
+    const existingFilters = existing.filters && typeof existing.filters === 'object' ? existing.filters : {};
+    const countyResolution = existing.county_resolution && typeof existing.county_resolution === 'object'
+        ? existing.county_resolution
+        : {};
+    return {
+        ...existing,
+        county_resolution: {
+            ...countyResolution,
+            county_name: firstValue(countyResolution.county_name, body.county_name, body.place, body.city),
+            state_code: firstValue(countyResolution.state_code, body.state_code, body.state)
+        },
+        batchdata_place: firstValue(existing.batchdata_place, body.batchdata_place, body.place, body.city),
+        batchdata_state: firstValue(existing.batchdata_state, body.batchdata_state, body.state_code, body.state),
+        filters: {
+            ...existingFilters,
+            min_price: body.min_price ?? existingFilters.min_price ?? 100000,
+            max_price: body.max_price ?? existingFilters.max_price ?? null
+        }
+    };
+}
+
+function applyProviderNarrowingFilters(searchCriteria, job) {
     const filters = job.dry_run_metadata?.filters || {};
     const minPriceRaw = Number(filters.min_price);
     const maxPriceRaw = Number(filters.max_price);
@@ -272,7 +329,13 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
     const estimatedValue = { min: minPrice };
     if (maxPrice) estimatedValue.max = maxPrice;
 
-    // Always compute the sold window date filter — applied to ALL modes
+    searchCriteria.general = { standardizedLandUseCode: { equals: 'R2' } };
+    searchCriteria.valuation = { estimatedValue };
+    return searchCriteria;
+}
+
+function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'broad_polygon') {
+    // Always compute the sold window date filter for every BatchData mode.
     const soldMinDate = isoDateDaysAgo(soldWindowDays(job.sold_months || 12), jobReferenceTimeMs(job));
 
     const options = {
@@ -290,6 +353,33 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
         };
     }
 
+    if (mode === 'support_query_place') {
+        const query = placeSearchLabel(job);
+        if (!query) return null;
+        return {
+            searchCriteria: {
+                query,
+                intel: { lastSoldDate: { minDate: soldMinDate } }
+            },
+            options
+        };
+    }
+
+    if (mode === 'support_structured_place') {
+        const parts = batchDataPlaceParts(job);
+        if (!parts) return null;
+        return {
+            searchCriteria: {
+                address: {
+                    city: { equals: parts.place },
+                    state: { equals: parts.state }
+                },
+                intel: { lastSoldDate: { minDate: soldMinDate } }
+            },
+            options
+        };
+    }
+
     const searchCriteria = {
         address: {
             geoLocationPolygon: {
@@ -299,15 +389,9 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
         intel: { lastSoldDate: { minDate: soldMinDate } }
     };
 
-    // Precision routes should only contain residential single-family homes.
-    // BatchData's R2 code is the single-family residential land-use bucket used
-    // by the prior strict request path; apply it to the live broad request too.
-    searchCriteria.general = { standardizedLandUseCode: { equals: 'R2' } };
-
-    // Home value range applies in ALL polygon modes. Previously it was only attached in
-    // strict_polygon — but the live pull uses broad_polygon, so user price filters were
-    // silently dropped and never reached BatchData.
-    searchCriteria.valuation = { estimatedValue };
+    if (mode === 'strict_polygon') {
+        applyProviderNarrowingFilters(searchCriteria, job);
+    }
 
     return { searchCriteria, options };
 }
@@ -354,11 +438,11 @@ function mapBatchDataProperty(record, job) {
     const listingStatus = firstValue(listing.status, listing.statusCategory);
     const listingStatusLower = String(listingStatus || '').toLowerCase();
     const saleDate = dateValue(
-        p.listing?.soldDate,
-        p.deedHistory?.[0]?.saleDate,
         intel.lastSoldDate,
         intel.lastSaleDate,
         intel.lastTransferDate,
+        p.listing?.soldDate,
+        p.deedHistory?.[0]?.saleDate,
         sale?.lastSaleDate,
         sale?.recordingDate,
         sale?.saleDate,
@@ -395,16 +479,18 @@ function mapBatchDataProperty(record, job) {
     );
     const price = estimatedValue ?? saleAmount;
     const landUseCode = firstValue(general.standardizedLandUseCode, p.standardizedLandUseCode);
-    const propertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType) || 'Single Family';
-    // Single-family-only gate. BatchData's standardized R2 code is the
-    // single-family residential bucket used by Precision route pulls.
-    const nonResidential = /commercial|industrial|vacant|agricultural|land|daycare|day ?care|child ?care|church|school|office|retail|store|warehouse|hotel|motel|restaurant|medical|hospital|parking|exempt|government|condo|condominium|apartment|multi[- ]?family|multifamily|duplex|triplex|fourplex|townhouse|townhome|row ?house/i.test(String(propertyType));
-    const landUseRejected = !!landUseCode && String(landUseCode).toUpperCase() !== 'R2';
+    const rawPropertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType);
+    const propertyType = rawPropertyType || (String(landUseCode || '').toUpperCase() === 'R2' ? 'Single Family' : (landUseCode ? `BatchData ${landUseCode}` : 'Single Family'));
+    const propertyTypeText = normalizePropertyTypeText(propertyType);
+    const landUseText = normalizePropertyTypeText(landUseCode);
+    const combinedTypeText = normalizePropertyTypeText(`${propertyType} ${landUseCode || ''}`);
+    // Keep route quality high without depending entirely on BatchData's R2 code.
+    const explicitlySingleFamily = isExplicitSingleFamilyType(propertyTypeText);
+    const disallowedTypeKeywords = [...COMMERCIAL_TYPE_KEYWORDS, ...CONDO_MULTI_TYPE_KEYWORDS, ...LAND_TYPE_KEYWORDS, 'daycare', 'child care', 'church', 'school', 'parking', 'exempt', 'government'];
+    const nonResidential = includesAnyPropertyType(combinedTypeText, disallowedTypeKeywords);
+    const nonR2WithoutSingleFamilyEvidence = !!landUseCode && String(landUseCode).toUpperCase() !== 'R2' && !explicitlySingleFamily;
+    const landUseRejected = includesAnyPropertyType(landUseText, disallowedTypeKeywords) || nonR2WithoutSingleFamilyEvidence;
 
-    // ── Loosened BatchData gate ──────────────────────────────────────────
-    // The paid BatchData request already asks for owner-change / last-sold records.
-    // Do not reject neutral or incomplete rows locally just because a secondary
-    // listing/sale field is blank or stale. Keep only hard safety exclusions here.
     // Price gate: enforce the user's home value range on records with a known price.
     // Unknown-price records pass (provider may omit valuation on some rows).
     const jobFilters = job.dry_run_metadata?.filters || {};
@@ -412,7 +498,8 @@ function mapBatchDataProperty(record, job) {
     const filterMaxPrice = Number(jobFilters.max_price) > 0 ? Number(jobFilters.max_price) : null;
     const priceKnown = Number.isFinite(Number(price)) && Number(price) > 0;
     const priceRejected = priceKnown && ((filterMinPrice !== null && Number(price) < filterMinPrice) || (filterMaxPrice !== null && Number(price) > filterMaxPrice));
-    const rejected = nonResidential || landUseRejected || priceRejected;
+    const staleKnownSaleDate = hasValidSaleDate && !isSoldInWindow;
+    const rejected = nonResidential || landUseRejected || priceRejected || staleKnownSaleDate;
 
     const match = address.street.match(/^(\d+)\s+(.*)$/);
     const houseNumber = match ? parseInt(match[1], 10) : 0;
@@ -613,6 +700,7 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
     while (selected.length < requested && reviewed < maxReviewed) {
         const take = Math.min(BATCHDATA_MAX_TAKE, maxReviewed - reviewed);
         const requestBody = buildBatchDataRequest(job, skip, take, mode);
+        if (!requestBody) break;
         if (typeof onProgress === 'function') {
             await onProgress({
                 event: 'page_start',
@@ -744,13 +832,15 @@ Deno.serve(async (req) => {
                 latitude: body.latitude || 33.37,
                 longitude: body.longitude || -112.08,
                 sold_months: body.sold_months || 12,
-                dry_run_metadata: { filters: { min_price: body.min_price ?? 100000, max_price: body.max_price ?? null } }
+                dry_run_metadata: previewDryRunMetadata(body)
             };
             return Response.json({
                 success: true,
                 requests: {
+                    broad_polygon: buildBatchDataRequest(previewJob, 0, BATCHDATA_MAX_TAKE, 'broad_polygon'),
                     strict_polygon: buildBatchDataRequest(previewJob, 0, BATCHDATA_MAX_TAKE, 'strict_polygon'),
-                    broad_polygon: buildBatchDataRequest(previewJob, 0, BATCHDATA_MAX_TAKE, 'broad_polygon')
+                    support_query_place: buildBatchDataRequest(previewJob, 0, BATCHDATA_MAX_TAKE, 'support_query_place'),
+                    support_structured_place: buildBatchDataRequest(previewJob, 0, BATCHDATA_MAX_TAKE, 'support_structured_place')
                 }
             });
         }
@@ -759,7 +849,7 @@ Deno.serve(async (req) => {
             const previewJob = body.job || {
                 polygon: body.polygon || [],
                 sold_months: body.sold_months || 12,
-                dry_run_metadata: { filters: { min_price: body.min_price ?? 100000, max_price: body.max_price ?? null } }
+                dry_run_metadata: previewDryRunMetadata(body)
             };
             const records = Array.isArray(body.synthetic_records) ? body.synthetic_records : [];
             const mapped = records.map(record => mapBatchDataProperty(record, previewJob)).filter(Boolean);
@@ -775,7 +865,7 @@ Deno.serve(async (req) => {
                 sold_months: body.sold_months || 12,
                 estimated_record_count: body.requested_properties || 2,
                 total_expected: body.requested_properties || 2,
-                dry_run_metadata: { filters: { min_price: body.min_price ?? 100000, max_price: body.max_price ?? null } }
+                dry_run_metadata: previewDryRunMetadata(body)
             };
             const batchFetch = await fetchBatchDataRecords(previewJob);
             const mapped = batchFetch.records.map(record => mapBatchDataProperty(record, previewJob)).filter(Boolean);
@@ -794,18 +884,28 @@ Deno.serve(async (req) => {
                     latitude: body.latitude || 33.37,
                     longitude: body.longitude || -112.08,
                     sold_months: body.sold_months || 12,
-                    dry_run_metadata: { filters: { min_price: body.min_price ?? 100000, max_price: body.max_price ?? null } }
+                    dry_run_metadata: previewDryRunMetadata(body)
                 };
             }
             const take = Math.min(Math.max(Number(body.take) || 10, 1), 10);
             const probes = [
-                { label: 'strict_exact_date', mode: 'strict_polygon', omitSoldDate: false },
                 { label: 'broad_exact_date', mode: 'broad_polygon', omitSoldDate: false },
+                { label: 'strict_exact_date', mode: 'strict_polygon', omitSoldDate: false },
+                { label: 'support_query_exact_date', mode: 'support_query_place', omitSoldDate: false },
+                { label: 'support_structured_exact_date', mode: 'support_structured_place', omitSoldDate: false },
                 { label: 'broad_no_sold_date', mode: 'broad_polygon', omitSoldDate: true }
             ];
             const results = [];
             for (const probe of probes) {
                 const requestBody = buildBatchDataRequest(previewJob, 0, take, probe.mode);
+                if (!requestBody) {
+                    results.push({
+                        label: probe.label,
+                        skipped: true,
+                        reason: 'missing_place_metadata_for_support_payload'
+                    });
+                    continue;
+                }
                 if (probe.omitSoldDate) delete requestBody.searchCriteria.intel;
                 const payload = await batchDataFetchWithRetry(requestBody);
                 const records = extractBatchDataRecords(payload);
@@ -822,8 +922,10 @@ Deno.serve(async (req) => {
                         sale_last_sale_date: firstValue(p.sale?.lastSaleDate, p.sale?.saleDate, p.lastSaleDate),
                         sale_amount: firstValue(p.sale?.amount, p.sale?.price, p.sale?.salePrice, p.intel?.lastSoldPrice),
                         land_use: firstValue(p.general?.standardizedLandUseCode, p.standardizedLandUseCode),
+                        property_type: firstValue(p.general?.propertyTypeDetail, p.general?.propertyType, p.propertyType, p.landUse, p.building?.propertyType),
                         mapped_active: mappedProperty?.route_active === true,
                         mapped_status: mappedProperty?.original_status || null,
+                        mapped_property_type: mappedProperty?.property_type || null,
                         mapped_sold_date: mappedProperty?.sold_date || null
                     };
                 });
