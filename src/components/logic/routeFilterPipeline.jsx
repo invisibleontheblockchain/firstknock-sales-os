@@ -6,15 +6,12 @@ import { subDays } from 'date-fns';
 import { isPointInPolygon } from './territoryLogic';
 
 const PROPERTY_TYPE_ALIASES = {
-    'Single Family': ['single family', 'single family residential', 'single-family', 'sfr', 'sfh', 'detached', 'one family', '1 family'],
-    'Townhouse': ['townhouse', 'townhome', 'row house', 'rowhouse'],
-    'Condo': ['condo', 'condominium', 'co op', 'coop', 'cooperative'],
-    'Multi-Family': ['multi family', 'multi-family', 'multifamily', 'duplex', 'triplex', 'fourplex', '2 family', '3 family', '4 family', 'apartment'],
-    'Other': ['other', 'manufactured', 'mobile home', 'modular']
+    'Single Family': ['single family', 'single family residential', 'single-family', 'sfr', 'sfh', 'detached', 'one family', '1 family']
 };
+const ALLOWED_ROUTE_PROPERTY_TYPES = new Set(['Single Family']);
 
 const COMMERCIAL_TYPE_KEYWORDS = ['commercial', 'industrial', 'retail', 'office', 'warehouse', 'business', 'shopping', 'hotel', 'motel', 'restaurant', 'medical', 'hospital'];
-const CONDO_MULTI_TYPE_KEYWORDS = ['condo', 'condominium', 'apartment', 'co op', 'coop', 'cooperative', 'multifamily', 'multi family', 'multi-family', 'duplex', 'triplex', 'fourplex'];
+const CONDO_MULTI_TYPE_KEYWORDS = ['condo', 'condominium', 'apartment', 'co op', 'coop', 'cooperative', 'multifamily', 'multi family', 'multi-family', 'duplex', 'triplex', 'fourplex', 'townhouse', 'townhome', 'row house', 'rowhouse'];
 const LAND_TYPE_KEYWORDS = ['land', 'lot', 'vacant', 'acreage', 'farm', 'agricultural'];
 
 function normalizePropertyType(value) {
@@ -54,30 +51,25 @@ function matchesSelectedPropertyType(propertyType, selectedType) {
         return true;
     }
 
-    if (selectedType === 'Other') {
-        const known = Object.entries(PROPERTY_TYPE_ALIASES)
-            .filter(([key]) => key !== 'Other')
-            .some(([, values]) => values.some(alias => text.includes(normalizePropertyType(alias))));
-        return !known && !includesAnyType(text, [...COMMERCIAL_TYPE_KEYWORDS, ...LAND_TYPE_KEYWORDS]);
-    }
-
     return false;
 }
 
 function propertyTypeEligibility(property, routeConfig = {}) {
     const text = normalizePropertyType(property?.property_type);
-    const selectedTypes = Array.isArray(routeConfig.propertyTypes) ? routeConfig.propertyTypes.filter(Boolean) : [];
+    const requestedTypes = Array.isArray(routeConfig.propertyTypes) ? routeConfig.propertyTypes.filter(Boolean) : [];
+    const selectedTypes = requestedTypes.filter(type => ALLOWED_ROUTE_PROPERTY_TYPES.has(type));
+    const effectiveSelectedTypes = selectedTypes.length > 0 ? selectedTypes : ['Single Family'];
 
-    if (selectedTypes.length > 0 && !selectedTypes.some(type => matchesSelectedPropertyType(text, type))) {
+    if (!effectiveSelectedTypes.some(type => matchesSelectedPropertyType(text, type))) {
         return { eligible: false, reason: 'includePropertyTypes' };
     }
-    if (routeConfig.excludeCommercial && includesAnyType(text, COMMERCIAL_TYPE_KEYWORDS)) {
+    if (includesAnyType(text, COMMERCIAL_TYPE_KEYWORDS)) {
         return { eligible: false, reason: 'excludeCommercial' };
     }
-    if (routeConfig.excludeCondos && includesAnyType(text, CONDO_MULTI_TYPE_KEYWORDS)) {
+    if (includesAnyType(text, CONDO_MULTI_TYPE_KEYWORDS)) {
         return { eligible: false, reason: 'excludeCondosMultiFamily' };
     }
-    if (routeConfig.excludeLand && includesAnyType(text, LAND_TYPE_KEYWORDS)) {
+    if (includesAnyType(text, LAND_TYPE_KEYWORDS)) {
         return { eligible: false, reason: 'excludeLand' };
     }
 
@@ -238,7 +230,7 @@ export function applyRouteFilters({
         const examples = summarizePropertyTypes(beforePropertyTypeSet);
         return {
             workingSet: [], stages, frozenSet,
-            error: `All ${beforePropertyTypeSet.length.toLocaleString()} properties were excluded by property type filters. Found: ${examples.join(', ') || 'Unknown'}. Open Filters and include those property types, or draw a larger area.`,
+            error: `All ${beforePropertyTypeSet.length.toLocaleString()} properties were excluded because Precision routes only use single-family residential homes. Found: ${examples.join(', ') || 'Unknown'}. Draw a larger residential area to find eligible homes.`,
             diagnostic: { propertyTypeExamples: examples, propertyTypeDropReasons }
         };
     }

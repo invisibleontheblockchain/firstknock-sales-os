@@ -71,9 +71,9 @@ function buildPrecisionShortfallMessage({ loadedCount, requestedCount, intendedC
   const skippedRouteType = Number(summary.skipped_route_type || 0);
   const reviewedText = reviewed > 0 ? ` We checked ${formatWholeNumber(reviewed)} provider records.` : '';
   const skippedText = skippedExisting > 0 ? ` We skipped ${formatWholeNumber(skippedExisting)} homes already in saved routes.` : '';
-  const routeTypeText = skippedRouteType > 0 ? ` ${formatWholeNumber(skippedRouteType)} provider records did not match your property-type filters.` : '';
+  const routeTypeText = skippedRouteType > 0 ? ` ${formatWholeNumber(skippedRouteType)} provider records were not single-family residential homes.` : '';
   const nextStep = skippedRouteType > 0
-    ? 'Open Filters and include those property types, or draw a larger area to find more matching homes.'
+    ? 'Precision routes only use single-family residential homes, so draw a larger residential area to find more eligible homes.'
     : skippedExisting > 0
     ? 'Draw beyond the previous route area or widen the boundary to reach new homes.'
     : 'Draw a larger area, widen the sold-date range, or loosen the value range, then generate again to keep filling the route.';
@@ -715,10 +715,10 @@ export default function TerritoryPrompt({
         min_price: effectiveMinPrice,
         max_price: effectiveMaxPrice,
         route_filters: {
-          propertyTypes: Array.isArray(routeConfig.propertyTypes) ? routeConfig.propertyTypes : [],
-          excludeCommercial: routeConfig.excludeCommercial !== false,
-          excludeCondos: routeConfig.excludeCondos !== false,
-          excludeLand: routeConfig.excludeLand !== false
+          propertyTypes: ['Single Family'],
+          excludeCommercial: true,
+          excludeCondos: true,
+          excludeLand: true
         },
         force_full_refresh: isPreviousAreaPull ? repullMode === 'fill_gaps' || forceFullRefresh : false,
         include_unresolved_followups: isPreviousAreaPull ? includeUnresolvedFollowUps : false,

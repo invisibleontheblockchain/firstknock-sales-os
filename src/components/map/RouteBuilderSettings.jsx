@@ -111,7 +111,7 @@ export default function RouteBuilderSettings({
             excludeCondos: true,
             excludePreviouslyKnocked: true,
             excludeLand: true,
-            propertyTypes: [],
+            propertyTypes: ['Single Family'],
             minPrice: null,
             maxPrice: null,
             minYearBuilt: null,
@@ -290,30 +290,14 @@ export default function RouteBuilderSettings({
                             {/* Property Type — pick what to include */}
                             <div className="space-y-2">
                                 <label className="text-[10px] font-bold text-gray-500 uppercase">Include Property Types</label>
-                                <div className="grid grid-cols-3 gap-1.5">
+                                <div className="grid grid-cols-1 gap-1.5">
                                     {[
-                                        { label: 'All', key: 'all' },
                                         { label: 'Single Family', key: 'Single Family' },
-                                        { label: 'Townhouse', key: 'Townhouse' },
-                                        { label: 'Condo', key: 'Condo' },
-                                        { label: 'Multi-Family', key: 'Multi-Family' },
-                                        { label: 'Other', key: 'Other' },
                                     ].map(type => {
-                                        const isAll = type.key === 'all';
-                                        const isActive = isAll
-                                            ? routeConfig.propertyTypes.length === 0
-                                            : routeConfig.propertyTypes.includes(type.key);
+                                        const isActive = true;
                                         return (
                                             <button key={type.key} onClick={() => {
-                                                if (isAll) {
-                                                    setRouteConfig(prev => ({ ...prev, propertyTypes: [], excludeCommercial: false, excludeCondos: false, excludeLand: false }));
-                                                } else {
-                                                    setRouteConfig(prev => {
-                                                        const current = prev.propertyTypes;
-                                                        const updated = current.includes(type.key) ? current.filter(t => t !== type.key) : [...current, type.key];
-                                                        return { ...prev, propertyTypes: updated };
-                                                    });
-                                                }
+                                                setRouteConfig(prev => ({ ...prev, propertyTypes: ['Single Family'], excludeCommercial: true, excludeCondos: true, excludeLand: true }));
                                             }}
                                                 className={`py-2.5 rounded-lg text-[9px] font-bold transition-all ${isActive ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/50' : 'bg-[#1A1A1A] text-gray-500 border border-gray-800'
                                                     }`}

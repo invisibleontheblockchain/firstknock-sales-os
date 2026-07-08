@@ -5,11 +5,12 @@ const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
 const PROCESSOR_START_WAIT_MS = 900;
 const DEFAULT_ROUTE_TYPE_FILTERS = {
-    propertyTypes: [],
+    propertyTypes: ['Single Family'],
     excludeCommercial: true,
     excludeCondos: true,
     excludeLand: true
 };
+const ALLOWED_ROUTE_PROPERTY_TYPES = new Set(['Single Family']);
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -17,11 +18,13 @@ function sleep(ms) {
 
 function normalizeRouteTypeFilters(input = {}) {
     const source = input && typeof input === 'object' ? input : {};
+    const requestedTypes = Array.isArray(source.propertyTypes) ? source.propertyTypes.map(String).filter(Boolean) : [];
+    const propertyTypes = requestedTypes.filter(type => ALLOWED_ROUTE_PROPERTY_TYPES.has(type));
     return {
-        propertyTypes: Array.isArray(source.propertyTypes) ? source.propertyTypes.map(String).filter(Boolean) : [],
-        excludeCommercial: source.excludeCommercial !== false,
-        excludeCondos: source.excludeCondos !== false,
-        excludeLand: source.excludeLand !== false
+        propertyTypes: propertyTypes.length > 0 ? propertyTypes : DEFAULT_ROUTE_TYPE_FILTERS.propertyTypes,
+        excludeCommercial: true,
+        excludeCondos: true,
+        excludeLand: true
     };
 }
 

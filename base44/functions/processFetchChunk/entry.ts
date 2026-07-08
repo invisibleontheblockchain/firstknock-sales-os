@@ -9,20 +9,17 @@ const BATCHDATA_REQUEST_TIMEOUT_MS = 20 * 1000;
 const BATCHDATA_PROGRESS_UPDATE_MS = 1500;
 const PIPELINE_LOCK_TTL_MS = 8 * 60 * 1000;
 const DEFAULT_ROUTE_TYPE_FILTERS = {
-    propertyTypes: [],
+    propertyTypes: ['Single Family'],
     excludeCommercial: true,
     excludeCondos: true,
     excludeLand: true
 };
+const ALLOWED_ROUTE_PROPERTY_TYPES = new Set(['Single Family']);
 const PROPERTY_TYPE_ALIASES = {
-    'Single Family': ['single family', 'single family residential', 'single-family', 'sfr', 'sfh', 'detached', 'one family', '1 family'],
-    'Townhouse': ['townhouse', 'townhome', 'row house', 'rowhouse'],
-    'Condo': ['condo', 'condominium', 'co op', 'coop', 'cooperative'],
-    'Multi-Family': ['multi family', 'multi-family', 'multifamily', 'duplex', 'triplex', 'fourplex', '2 family', '3 family', '4 family', 'apartment'],
-    'Other': ['other', 'manufactured', 'mobile home', 'modular']
+    'Single Family': ['single family', 'single family residential', 'single-family', 'sfr', 'sfh', 'detached', 'one family', '1 family']
 };
 const COMMERCIAL_TYPE_KEYWORDS = ['commercial', 'industrial', 'retail', 'office', 'warehouse', 'business', 'shopping', 'hotel', 'motel', 'restaurant', 'medical', 'hospital'];
-const CONDO_MULTI_TYPE_KEYWORDS = ['condo', 'condominium', 'apartment', 'co op', 'coop', 'cooperative', 'multifamily', 'multi family', 'multi-family', 'duplex', 'triplex', 'fourplex'];
+const CONDO_MULTI_TYPE_KEYWORDS = ['condo', 'condominium', 'apartment', 'co op', 'coop', 'cooperative', 'multifamily', 'multi family', 'multi-family', 'duplex', 'triplex', 'fourplex', 'townhouse', 'townhome', 'row house', 'rowhouse'];
 const LAND_TYPE_KEYWORDS = ['land', 'lot', 'vacant', 'acreage', 'farm', 'agricultural'];
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
@@ -61,23 +58,18 @@ function matchesSelectedPropertyType(propertyType, selectedType) {
         return true;
     }
 
-    if (selectedType === 'Other') {
-        const known = Object.entries(PROPERTY_TYPE_ALIASES)
-            .filter(([key]) => key !== 'Other')
-            .some(([, values]) => values.some(alias => text.includes(normalizePropertyTypeText(alias))));
-        return !known && !includesAnyPropertyType(text, [...COMMERCIAL_TYPE_KEYWORDS, ...LAND_TYPE_KEYWORDS]);
-    }
-
     return false;
 }
 
 function normalizeRouteTypeFilters(input = {}) {
     const source = input && typeof input === 'object' ? input : {};
+    const requestedTypes = Array.isArray(source.propertyTypes) ? source.propertyTypes.map(String).filter(Boolean) : [];
+    const propertyTypes = requestedTypes.filter(type => ALLOWED_ROUTE_PROPERTY_TYPES.has(type));
     return {
-        propertyTypes: Array.isArray(source.propertyTypes) ? source.propertyTypes.map(String).filter(Boolean) : [],
-        excludeCommercial: source.excludeCommercial !== false,
-        excludeCondos: source.excludeCondos !== false,
-        excludeLand: source.excludeLand !== false
+        propertyTypes: propertyTypes.length > 0 ? propertyTypes : DEFAULT_ROUTE_TYPE_FILTERS.propertyTypes,
+        excludeCommercial: true,
+        excludeCondos: true,
+        excludeLand: true
     };
 }
 
@@ -307,9 +299,10 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
         intel: { lastSoldDate: { minDate: soldMinDate } }
     };
 
-    if (mode === 'strict_polygon') {
-        searchCriteria.general = { standardizedLandUseCode: { equals: 'R2' } };
-    }
+    // Precision routes should only contain residential single-family homes.
+    // BatchData's R2 code is the single-family residential land-use bucket used
+    // by the prior strict request path; apply it to the live broad request too.
+    searchCriteria.general = { standardizedLandUseCode: { equals: 'R2' } };
 
     // Home value range applies in ALL polygon modes. Previously it was only attached in
     // strict_polygon — but the live pull uses broad_polygon, so user price filters were
@@ -403,11 +396,10 @@ function mapBatchDataProperty(record, job) {
     const price = estimatedValue ?? saleAmount;
     const landUseCode = firstValue(general.standardizedLandUseCode, p.standardizedLandUseCode);
     const propertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType) || 'Single Family';
-    // Residential-only gate. BatchData standardized land use codes are letter-prefixed:
-    // R* = residential, A* = agricultural, C* = commercial, etc. Verified live: daycare/farm
-    // records come back with non-R codes. Reject any record whose code exists and is not R*.
-    const nonResidential = /commercial|industrial|vacant|agricultural|land|daycare|day ?care|child ?care|church|school|office|retail|store|warehouse|hotel|motel|restaurant|medical|hospital|parking|exempt|government/i.test(String(propertyType));
-    const landUseRejected = !!landUseCode && !/^R/i.test(String(landUseCode));
+    // Single-family-only gate. BatchData's standardized R2 code is the
+    // single-family residential bucket used by Precision route pulls.
+    const nonResidential = /commercial|industrial|vacant|agricultural|land|daycare|day ?care|child ?care|church|school|office|retail|store|warehouse|hotel|motel|restaurant|medical|hospital|parking|exempt|government|condo|condominium|apartment|multi[- ]?family|multifamily|duplex|triplex|fourplex|townhouse|townhome|row ?house/i.test(String(propertyType));
+    const landUseRejected = !!landUseCode && String(landUseCode).toUpperCase() !== 'R2';
 
     // ── Loosened BatchData gate ──────────────────────────────────────────
     // The paid BatchData request already asks for owner-change / last-sold records.
