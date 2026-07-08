@@ -34,6 +34,16 @@ export function isPrecisionProUser(user) {
   return isPrecisionTier(user) || hasPaidPrecisionLimit(user) || (user?.subscription_paid_confirmed === true && isPrecisionTierOrUnknown(user));
 }
 
+export function hasPaidPrecisionGenerationCapacity(user) {
+  const status = String(user?.subscription_status || '').toLowerCase();
+  if (user?.is_owner || user?.role === 'admin') return true;
+  if (status !== 'active') return false;
+  if (isExplicitNonPrecisionTier(user)) return false;
+  if (isPrecisionTier(user) || hasPaidPrecisionLimit(user)) return true;
+  if (user?.subscription_paid_confirmed === true && isPrecisionTierOrUnknown(user)) return true;
+  return isPrecisionTierOrUnknown(user) && !!(user?.subscription_id || user?.stripe_customer_id);
+}
+
 export function hasConfirmedPaidPrecisionAccess(user) {
   const status = String(user?.subscription_status || '').toLowerCase();
   if (user?.is_owner || user?.role === 'admin') return true;

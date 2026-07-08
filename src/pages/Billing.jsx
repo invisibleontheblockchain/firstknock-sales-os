@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Check, Star } from 'lucide-react';
 import { toast } from "sonner";
 import BetaUsageMeter from '../components/beta/BetaUsageMeter';
-import { hasConfirmedPaidPrecisionAccess } from '@/lib/precisionAccess';
+import { hasPaidPrecisionGenerationCapacity } from '@/lib/precisionAccess';
 
 function countUniquePrecisionRouteHomes(routes = []) {
   const hashes = new Set();
@@ -147,7 +147,7 @@ export default function Billing() {
   }, []);
 
   const isSubscribed = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
-  const hasPaidPrecisionAccess = hasConfirmedPaidPrecisionAccess(user);
+  const hasPaidPrecisionAccess = hasPaidPrecisionGenerationCapacity(user);
   const precisionLimit = user?.precision_property_limit || user?.monthly_property_limit || (hasPaidPrecisionAccess ? 1000 : 50);
   const precisionRouteHomes = React.useMemo(() => countUniquePrecisionRouteHomes(savedRoutes), [savedRoutes]);
   const precisionUsed = Math.min(precisionRouteHomes, precisionLimit);
