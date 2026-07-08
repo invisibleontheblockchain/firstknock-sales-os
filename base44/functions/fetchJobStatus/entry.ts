@@ -1,6 +1,70 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
+const PROCESSOR_REKICK_PENDING_MS = 12 * 1000;
+const PROCESSOR_REKICK_RUNNING_IDLE_MS = 30 * 1000;
+const PROCESSOR_REKICK_COOLDOWN_MS = 20 * 1000;
+const PROCESSOR_REKICK_WAIT_MS = 900;
+const INITIAL_STALE_LOCK_MS = 90 * 1000;
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function parseTimeMs(value) {
+    const parsed = value ? new Date(value).getTime() : 0;
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getProcessorRekickReason(job, metadata, now) {
+    if (!['pending', 'running'].includes(job.status)) return null;
+
+    const lastKickAt = parseTimeMs(metadata.processor_rekick_at);
+    if (lastKickAt && now - lastKickAt < PROCESSOR_REKICK_COOLDOWN_MS) return null;
+
+    const createdAt = parseTimeMs(job.created_date) || now;
+    const updatedAt = parseTimeMs(job.updated_date || job.started_at || job.created_date) || createdAt;
+    const progressPct = Number(job.progress_pct || 0);
+    const totalFetched = Number(job.total_fetched || 0);
+
+    if (job.status === 'pending' && now - createdAt >= PROCESSOR_REKICK_PENDING_MS) {
+        return 'pending_processor_not_started';
+    }
+
+    if (
+        job.status === 'running' &&
+        totalFetched === 0 &&
+        progressPct <= 8 &&
+        now - updatedAt >= PROCESSOR_REKICK_RUNNING_IDLE_MS
+    ) {
+        return 'running_without_provider_progress';
+    }
+
+    return null;
+}
+
+async function clearInitialStaleLocks(base44, job, now) {
+    if (!['pending', 'running'].includes(job.status)) return 0;
+    if (Number(job.total_fetched || 0) > 0 || Number(job.progress_pct || 0) > 8) return 0;
+
+    const updatedAt = parseTimeMs(job.updated_date || job.started_at || job.created_date) || now;
+    if (now - updatedAt < INITIAL_STALE_LOCK_MS) return 0;
+
+    const rawLocks = await base44.asServiceRole.entities.PipelineLock.filter({ job_id: job.id }, '-created_date', 10).catch(() => []);
+    const locks = Array.isArray(rawLocks) ? rawLocks : (rawLocks?.items || []);
+    let cleared = 0;
+
+    for (const lock of locks) {
+        const lockedAt = parseTimeMs(lock.locked_at || lock.created_date);
+        if (!lockedAt || now - lockedAt >= INITIAL_STALE_LOCK_MS) {
+            await base44.asServiceRole.entities.PipelineLock.delete(lock.id).catch(() => {});
+            cleared++;
+        }
+    }
+
+    return cleared;
+}
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -32,6 +96,8 @@ Deno.serve(async (req) => {
         }
 
         const metadata = job.dry_run_metadata || {};
+        const now = Date.now();
+        let processorKick = null;
 
         let active_count = 0;
         try {
@@ -61,6 +127,35 @@ Deno.serve(async (req) => {
             }
         } catch (e) {
             console.warn('[fetchJobStatus] active count diagnostic failed:', e.message);
+        }
+
+        const rekickReason = getProcessorRekickReason(job, metadata, now);
+        if (rekickReason) {
+            const rekickAt = new Date(now).toISOString();
+            const rekickCount = Number(metadata.processor_rekick_count || 0) + 1;
+            const staleLocksCleared = await clearInitialStaleLocks(base44, job, now);
+            processorKick = { requested: true, reason: rekickReason, at: rekickAt, count: rekickCount, stale_locks_cleared: staleLocksCleared };
+
+            await base44.asServiceRole.entities.FetchJob.update(job.id, {
+                dry_run_metadata: {
+                    ...metadata,
+                    processor_rekick_at: rekickAt,
+                    processor_rekick_reason: rekickReason,
+                    processor_rekick_count: rekickCount
+                }
+            }).catch(error => {
+                processorKick = { ...processorKick, metadata_error: error.message };
+            });
+
+            const invokePromise = base44.asServiceRole.functions.invoke('processFetchChunk', {
+                job_id: job.id,
+                expected_chunk: job.chunk_number || 0
+            }).catch(error => {
+                processorKick = { ...processorKick, invoke_error: error.message };
+                console.warn(`[fetchJobStatus] processor re-kick failed for ${job.id}: ${error.message}`);
+            });
+
+            await Promise.race([invokePromise, sleep(PROCESSOR_REKICK_WAIT_MS)]);
         }
 
         return Response.json({
@@ -96,7 +191,13 @@ Deno.serve(async (req) => {
                 count_mode: metadata.count_mode || null,
                 filters: metadata.filters || null,
                 completion_reason: metadata.completion_reason || null,
-                batchdata_summary: metadata.batchdata_summary || null
+                batchdata_summary: metadata.batchdata_summary || null,
+                processor_rekick_at: processorKick?.at || metadata.processor_rekick_at || null,
+                processor_rekick_reason: processorKick?.reason || metadata.processor_rekick_reason || null,
+                processor_rekick_count: processorKick?.count || metadata.processor_rekick_count || 0,
+                processor_rekick_requested: processorKick?.requested === true,
+                processor_rekick_error: processorKick?.invoke_error || processorKick?.metadata_error || null,
+                processor_stale_locks_cleared: processorKick?.stale_locks_cleared || 0
             }
         });
 

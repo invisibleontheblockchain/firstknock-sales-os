@@ -4,6 +4,21 @@ const FREE_AREA_LIMIT_SQ_MI = 40;
 const PAID_AREA_LIMIT_SQ_MI = 300;
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
+const PROCESSOR_START_WAIT_MS = 900;
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function startProcessor(base44, jobId, expectedChunk = 0) {
+    const invokePromise = base44.asServiceRole.functions.invoke('processFetchChunk', {
+        job_id: jobId,
+        expected_chunk: expectedChunk
+    }).catch(error => {
+        console.warn(`[fetchAreaProperties] BatchData processor invoke failed: ${error.message}`);
+    });
+    await Promise.race([invokePromise, sleep(PROCESSOR_START_WAIT_MS)]);
+}
 
 function normalizePolygon(input) {
     if (!Array.isArray(input)) return [];
@@ -137,9 +152,7 @@ Deno.serve(async (req) => {
             chunk_timings: []
         });
 
-        base44.asServiceRole.functions.invoke('processFetchChunk', { job_id: job.id, expected_chunk: 0 }).catch(error => {
-            console.warn(`[fetchAreaProperties] BatchData processor invoke failed: ${error.message}`);
-        });
+        await startProcessor(base44, job.id, 0);
 
         return Response.json({
             status: 'started',
