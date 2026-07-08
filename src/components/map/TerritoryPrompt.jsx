@@ -1,29 +1,15 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { base44 } from '@/api/base44Client';
-import { Map as MapIcon, Pencil, X, Trash2, Loader2, List, Zap, Lock, ArrowRight, Check } from 'lucide-react';
+import { Pencil, X, Trash2, Loader2, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
 import { savePolygonToHistory } from '@/components/map/PolygonHistory';
 import PrecisionPullPanel from '@/components/map/PrecisionPullPanel';
-
-function isPrecisionProUser(user) {
-  const tier = String(user?.subscription_tier || '').toLowerCase();
-  const status = String(user?.subscription_status || '').toLowerCase();
-  if (user?.is_owner || user?.role === 'admin') return true;
-  return ['active', 'trialing'].includes(status) && ['pro', 'precision'].includes(tier);
-}
-
-function hasConfirmedPaidPrecisionAccess(user) {
-  const tier = String(user?.subscription_tier || '').toLowerCase();
-  const status = String(user?.subscription_status || '').toLowerCase();
-  if (user?.is_owner || user?.role === 'admin') return true;
-  return status === 'active' && user?.subscription_paid_confirmed === true && ['pro', 'precision'].includes(tier);
-}
+import { hasConfirmedPaidPrecisionAccess, isPrecisionProUser } from '@/lib/precisionAccess';
 
 function formatWholeNumber(value) {
   const number = Math.max(0, Math.round(Number(value) || 0));

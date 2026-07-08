@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import Stripe from 'npm:stripe@14.14.0';
 
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
@@ -92,11 +93,66 @@ async function polygonHash(points) {
     return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
 }
 
-function hasConfirmedPaidPrecisionAccess(user) {
+function isPrecisionTier(user) {
     const tier = String(user?.subscription_tier || '').toLowerCase();
+    return ['pro', 'precision', 'growth', 'enterprise'].includes(tier);
+}
+
+function isExplicitNonPrecisionTier(user) {
+    const tier = String(user?.subscription_tier || '').toLowerCase();
+    return ['canvas', 'hustler'].includes(tier);
+}
+
+function isPrecisionTierOrUnknown(user) {
+    const tier = String(user?.subscription_tier || '').toLowerCase();
+    if (isPrecisionTier(user)) return true;
+    if (isExplicitNonPrecisionTier(user)) return false;
+    if (Number(user?.precision_property_limit || user?.monthly_property_limit || 0) > FREE_PROPERTY_CAP) return true;
+    return !tier || tier === 'custom';
+}
+
+function stripeSubscriptionIsPaidPrecision(subscription) {
+    const amountCents = subscription.items?.data?.[0]?.price?.unit_amount || 0;
+    const latestInvoice = subscription.latest_invoice;
+    const invoicePaid = latestInvoice && typeof latestInvoice !== 'string' && latestInvoice.status === 'paid';
+    const trialEnded = !subscription.trial_end || subscription.trial_end * 1000 <= Date.now();
+    return subscription.status === 'active' && trialEnded && invoicePaid && amountCents >= 9900;
+}
+
+async function verifyStripePaidPrecisionAccess(user) {
+    const secret = Deno.env.get('STRIPE_SECRET_KEY');
+    if (!secret) return null;
+
+    const stripe = new Stripe(secret);
+    if (user?.subscription_id) {
+        const subscription = await stripe.subscriptions.retrieve(user.subscription_id, { expand: ['latest_invoice'] }).catch(() => null);
+        if (subscription && stripeSubscriptionIsPaidPrecision(subscription)) return true;
+        if (subscription) return false;
+    }
+
+    if (!user?.stripe_customer_id) return null;
+    const subscriptions = await stripe.subscriptions.list({
+        customer: user.stripe_customer_id,
+        status: 'all',
+        limit: 10,
+        expand: ['data.latest_invoice']
+    }).catch(() => null);
+
+    if (!subscriptions) return null;
+    return subscriptions.data.some(stripeSubscriptionIsPaidPrecision);
+}
+
+async function hasConfirmedPaidPrecisionAccess(user) {
     const status = String(user?.subscription_status || '').toLowerCase();
     if (user?.is_owner || user?.role === 'admin') return true;
-    return status === 'active' && user?.subscription_paid_confirmed === true && ['pro', 'precision'].includes(tier);
+    if (status !== 'active') return false;
+    if (isExplicitNonPrecisionTier(user)) return false;
+    if (user?.subscription_paid_confirmed !== true) return false;
+    if (isPrecisionTier(user) || Number(user?.precision_property_limit || user?.monthly_property_limit || 0) > FREE_PROPERTY_CAP) return true;
+    if (!isPrecisionTierOrUnknown(user)) return false;
+
+    const verified = await verifyStripePaidPrecisionAccess(user);
+    return verified === null ? true : verified;
 }
 
 function asArray(value) {
@@ -148,7 +204,7 @@ Deno.serve(async (req) => {
         const isAdminTestOverride = user.role === 'admin' && body.test_account_type;
         const isPaid = isAdminTestOverride
             ? body.test_account_type === 'paid'
-            : hasConfirmedPaidPrecisionAccess(user);
+            : await hasConfirmedPaidPrecisionAccess(user);
         const routeHomeStats = await getPrecisionRouteHomeStats(base44, user);
         const existingRouteHomes = routeHomeStats.count;
         const existingFreeHomes = isPaid ? 0 : existingRouteHomes;
