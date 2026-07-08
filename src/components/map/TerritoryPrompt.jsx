@@ -521,11 +521,17 @@ export default function TerritoryPrompt({
           // Signal to MapToolbar that data is now available for this territory
           window.dispatchEvent(new CustomEvent('fk-territory-data-ready'));
 
+          const completedJobStatus = {
+            ...d,
+            job_id: d.job_id || d.fetch_job_id || d.id || jobId,
+            requested_properties: intendedCount || requestedCount
+          };
+
           if (onPullComplete) {
             setMode('generate');
             setShowRoutePanel(false);
             setShowCompare(false);
-            await onPullComplete(fetchMonths, isPaid, d);
+            await onPullComplete(fetchMonths, isPaid, completedJobStatus);
           } else {
             queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
             queryClient.invalidateQueries({ queryKey: ['user'] });
