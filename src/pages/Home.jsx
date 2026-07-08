@@ -124,6 +124,36 @@ function getFetchJobHistoryPolygon(job) {
     );
 }
 
+function getPrecisionJobId(jobStatus = {}) {
+    return jobStatus?.job_id || jobStatus?.fetch_job_id || jobStatus?.id || jobStatus?.jobId || null;
+}
+
+function getRequestedPrecisionCount(jobStatus = {}) {
+    const diagnostics = jobStatus?.diagnostics || {};
+    const value =
+        diagnostics.requested_properties_before_cap ||
+        diagnostics.requested_properties ||
+        jobStatus?.requested_properties ||
+        jobStatus?.total_expected ||
+        jobStatus?.active_count;
+    const count = Number(value);
+    return Number.isFinite(count) && count > 0 ? Math.round(count) : null;
+}
+
+function precisionCandidateRank(property) {
+    const score = Number(property?.score ?? property?.competitivenessScore ?? 0) || 0;
+    const price = Number(property?.price ?? property?.sale_price ?? 0) || 0;
+    const soldTime = property?.sold_date ? new Date(property.sold_date).getTime() : 0;
+    return (score * 1000000000000) + (Number.isFinite(soldTime) ? soldTime : 0) + Math.min(price, 10000000);
+}
+
+function buildPrecisionRouteShortfallMessage({ requested, routed, filtered }) {
+    if (!requested || routed >= requested) return '';
+    const missing = requested - routed;
+    const filterText = filtered > 0 ? ` ${filtered.toLocaleString()} were removed by saved-route or route filters.` : '';
+    return `Built ${routed.toLocaleString()} of ${requested.toLocaleString()} requested homes from this exact area. FirstKnock only routes unique single-family homes that survive the current filters.${filterText} Draw a wider nearby area or loosen value/date filters to fill the remaining ${missing.toLocaleString()}.`;
+}
+
 
 
 export default function Home() {
@@ -165,6 +195,8 @@ export default function Home() {
     const [currentBatchDataJobId, setCurrentBatchDataJobId] = useState(null);
     const currentBatchDataJobIdRef = useRef(null);
     const currentBatchDataSoldMonthsRef = useRef(null);
+    const currentBatchDataRequestedCountRef = useRef(null);
+    const currentBatchDataPolygonRef = useRef(null);
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
@@ -1169,17 +1201,30 @@ export default function Home() {
                 const savedPolygon = localStorage.getItem('fk_drawnPolygon');
                 storedPolygon = savedPolygon ? JSON.parse(savedPolygon) : null;
             } catch { }
-            const activeGenerationPolygon = Array.isArray(drawnPolygon) && drawnPolygon.length > 2
+            const rawActiveGenerationPolygon = Array.isArray(drawnPolygon) && drawnPolygon.length > 2
                 ? drawnPolygon
                 : Array.isArray(draftPolygon) && draftPolygon.length > 2
                     ? draftPolygon
                     : Array.isArray(storedPolygon) && storedPolygon.length > 2
                         ? storedPolygon
                         : null;
+            const normalizedActivePolygon = normalizeHistoryPolygon(rawActiveGenerationPolygon);
+            const activeGenerationPolygon = normalizedActivePolygon.length > 2 ? normalizedActivePolygon : null;
             console.log(`[generateRoutes] Polygon source: state=${Array.isArray(drawnPolygon) ? drawnPolygon.length : 0}, draft=${Array.isArray(draftPolygon) ? draftPolygon.length : 0}, stored=${Array.isArray(storedPolygon) ? storedPolygon.length : 0}`);
             const activeFetchJobId = currentBatchDataJobIdRef.current || currentBatchDataJobId;
-            const effectiveGenerationSoldFilter = activeFetchJobId ? (currentBatchDataSoldMonthsRef.current || soldDateFilter) : soldDateFilter;
-            const isCurrentBatchDataRun = !!activeFetchJobId && !!activeGenerationPolygon;
+            const activePolygonKey = activeGenerationPolygon ? polygonHistoryKey(activeGenerationPolygon) : null;
+            const currentJobPolygon = normalizeHistoryPolygon(currentBatchDataPolygonRef.current);
+            const currentJobPolygonKey = currentJobPolygon.length > 2 ? polygonHistoryKey(currentJobPolygon) : null;
+            const requestedPrecisionCount = activeFetchJobId ? currentBatchDataRequestedCountRef.current : null;
+            const isCurrentBatchDataRun = !!activeFetchJobId && !!activeGenerationPolygon && !!activePolygonKey && activePolygonKey === currentJobPolygonKey;
+            const effectiveGenerationSoldFilter = isCurrentBatchDataRun ? (currentBatchDataSoldMonthsRef.current || soldDateFilter) : soldDateFilter;
+            if (activeFetchJobId && activeGenerationPolygon && !isCurrentBatchDataRun) {
+                console.warn('[generateRoutes] Ignoring stale BatchData job context for a different polygon', {
+                    activeFetchJobId,
+                    activePolygonKey,
+                    currentJobPolygonKey
+                });
+            }
             if (activeGenerationPolygon) {
                 const polygonProps = await fetchRouteCandidatesFromNeon({
                     polygon: activeGenerationPolygon,
@@ -1354,6 +1399,13 @@ export default function Home() {
                 return false; // Keep overlay visible to show the error — user dismisses manually
             }
             let workingSet = filterResult.workingSet;
+            const beforePrecisionRequestedCap = workingSet.length;
+            if (isCurrentBatchDataRun && requestedPrecisionCount && workingSet.length > requestedPrecisionCount) {
+                workingSet = [...workingSet]
+                    .sort((a, b) => precisionCandidateRank(b) - precisionCandidateRank(a))
+                    .slice(0, requestedPrecisionCount);
+                console.log(`[generateRoutes] Precision fixed-count cap: requested=${requestedPrecisionCount} beforeCap=${beforePrecisionRequestedCap} routed=${workingSet.length}`);
+            }
 
             // 4. UI UPDATES (Keep Builder available & Move Map)
             setShowCompare(true);
@@ -1417,9 +1469,24 @@ export default function Home() {
 
             const routeWord = generated.length === 1 ? 'route' : 'routes';
             const totalHouses = generated.reduce((s, r) => s + r.houseCount, 0);
+            const precisionShortfallMessage = buildPrecisionRouteShortfallMessage({
+                requested: isCurrentBatchDataRun ? requestedPrecisionCount : null,
+                routed: generatedDoorCount,
+                filtered: Math.max(0, initialCount - finalCount)
+            });
+            if (precisionShortfallMessage) {
+                toast.info(precisionShortfallMessage, { duration: 14000 });
+            }
             const toastMsg = `Built ${generated.length} ${routeWord} (${totalHouses.toLocaleString()} doors)` + (skippedDueToAssigned > 0 ? ` — ${skippedDueToAssigned} already assigned` : '');
 
-            toast.success(toastMsg, { id: 'build-routes', duration: 5000 });
+            const requestedText = isCurrentBatchDataRun && requestedPrecisionCount
+                ? `, ${Math.min(totalHouses, requestedPrecisionCount).toLocaleString()} of ${requestedPrecisionCount.toLocaleString()} requested`
+                : '';
+            const finalToastMsg = isCurrentBatchDataRun && requestedPrecisionCount
+                ? `Built ${generated.length} ${routeWord} (${totalHouses.toLocaleString()} doors${requestedText})` + (skippedDueToAssigned > 0 ? ` — ${skippedDueToAssigned} already assigned` : '')
+                : toastMsg;
+
+            toast.success(finalToastMsg, { id: 'build-routes', duration: 5000 });
             return true;
 
         } catch (e) {
@@ -1933,9 +2000,29 @@ export default function Home() {
                 onPullComplete={async (pullFetchMonths, pulledWithMls, jobStatus = {}) => {
                     setFrozenWorkingSet(null);
                     setFetchedProperties([]);
-                    const completedJobId = jobStatus?.job_id || null;
+                    const completedJobId = getPrecisionJobId(jobStatus);
+                    if (!completedJobId) {
+                        setCurrentBatchDataJobId(null);
+                        currentBatchDataJobIdRef.current = null;
+                        currentBatchDataRequestedCountRef.current = null;
+                        currentBatchDataPolygonRef.current = null;
+                        setGenerationError('This Precision pull completed, but the completed job id was missing. Route generation was stopped so old account data cannot be mixed into this new area. Please generate the area again.');
+                        return;
+                    }
+                    const drawnPullPolygon = normalizeHistoryPolygon(drawnPolygon);
+                    const normalizedPullPolygon = drawnPullPolygon.length > 2 ? drawnPullPolygon : getFetchJobHistoryPolygon(jobStatus);
+                    if (normalizedPullPolygon.length < 3) {
+                        setCurrentBatchDataJobId(null);
+                        currentBatchDataJobIdRef.current = null;
+                        currentBatchDataRequestedCountRef.current = null;
+                        currentBatchDataPolygonRef.current = null;
+                        setGenerationError('This Precision pull completed, but the selected area was missing before routes could be built. Route generation was stopped so old account data cannot be mixed into this new area. Please generate the area again.');
+                        return;
+                    }
                     setCurrentBatchDataJobId(completedJobId);
                     currentBatchDataJobIdRef.current = completedJobId;
+                    currentBatchDataRequestedCountRef.current = getRequestedPrecisionCount(jobStatus);
+                    currentBatchDataPolygonRef.current = normalizedPullPolygon;
                     setRoutes([]);
                     setShowCompare(false);
                     setShowRoutePanel(false);
@@ -1950,12 +2037,12 @@ export default function Home() {
                     try { localStorage.setItem('fk_hasMlsData', pulledWithMls ? 'true' : 'false'); } catch { }
 
                     let pulledProperties = [];
-                    if (drawnPolygon && drawnPolygon.length > 2 && jobStatus?.job_id) {
+                    if (normalizedPullPolygon.length > 2) {
                         pulledProperties = await fetchRouteCandidatesFromNeon({
-                            polygon: drawnPolygon,
+                            polygon: normalizedPullPolygon,
                             soldMonths: pm,
                             limit: 50000,
-                            fetchJobId: jobStatus.job_id
+                            fetchJobId: completedJobId
                         });
                         setFetchedProperties(pulledProperties);
                     }
