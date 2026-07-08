@@ -16,6 +16,17 @@ function hasConfirmedPaidPrecisionAccess(user) {
   return status === 'active' && user?.subscription_paid_confirmed === true && ['pro', 'precision'].includes(tier);
 }
 
+function countUniquePrecisionRouteHomes(routes = []) {
+  const hashes = new Set();
+  routes.forEach((route) => {
+    if (!route || route.route_mode === 'canvas' || route.status === 'ARCHIVED') return;
+    (route.property_hashes || []).forEach((hash) => {
+      if (hash) hashes.add(hash);
+    });
+  });
+  return hashes.size;
+}
+
 const PLANS = [
   {
     id: 'precision',
@@ -75,6 +86,13 @@ export default function Billing() {
     queryFn: () => base44.entities.TeamMember.list(),
     initialData: []
   });
+
+  const { data: savedRoutesRaw = [], isFetched: savedRoutesFetched } = useQuery({
+    queryKey: ['billingPrecisionRoutes', user?.id],
+    queryFn: () => user?.id ? base44.entities.SavedRoute.filter({ manager_id: user.id }, '-created_date', 500) : [],
+    enabled: !!user?.id
+  });
+  const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
 
   const activeRepCount = Math.max(
     1,
@@ -140,7 +158,9 @@ export default function Billing() {
   const isSubscribed = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
   const hasPaidPrecisionAccess = hasConfirmedPaidPrecisionAccess(user);
   const precisionLimit = user?.precision_property_limit || user?.monthly_property_limit || (hasPaidPrecisionAccess ? 1000 : 50);
-  const precisionUsed = Math.min(user?.precision_properties_used || user?.territory_property_count || 0, precisionLimit);
+  const precisionRouteHomes = React.useMemo(() => countUniquePrecisionRouteHomes(savedRoutes), [savedRoutes]);
+  const accountReportedPrecisionUsed = user?.precision_properties_used || user?.territory_property_count || 0;
+  const precisionUsed = Math.min(savedRoutesFetched ? precisionRouteHomes : accountReportedPrecisionUsed, precisionLimit);
   const precisionUsage = {
     limit: precisionLimit,
     used: precisionUsed,

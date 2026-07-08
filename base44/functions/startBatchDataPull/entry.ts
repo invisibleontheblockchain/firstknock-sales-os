@@ -1,6 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.14.0';
-import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
@@ -94,27 +93,34 @@ async function polygonHash(points) {
     return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
 }
 
-async function countActiveWorkspaceHomes(userEmail) {
-    const databaseUrl = Deno.env.get('DATABASE_URL');
-    if (!databaseUrl || !userEmail) return 0;
+function asArray(value) {
+    return Array.isArray(value) ? value : (value?.items || []);
+}
 
-    try {
-        const sql = neon(databaseUrl);
-        const rows = await sql`
-            SELECT COUNT(*)::int AS active_count
-            FROM workspace_properties wp
-            JOIN properties p ON p.id = wp.property_id
-            WHERE wp.user_email = ${userEmail}
-              AND wp.route_active = TRUE
-              AND COALESCE(wp.status, '') <> 'REJECTED'
-              AND COALESCE(p.original_status, '') <> 'REJECTED'
-              AND COALESCE(p.sale_confidence, '') <> 'REJECTED'
-        `;
-        return Number(rows?.[0]?.active_count || 0);
-    } catch (error) {
-        console.warn(`[startBatchDataPull] Failed to count active workspace homes: ${error.message}`);
-        return 0;
+function countUniquePrecisionRouteHomes(routes) {
+    const hashes = new Set();
+    for (const route of routes) {
+        if (!route || route.route_mode === 'canvas' || route.status === 'ARCHIVED') continue;
+        for (const hash of route.property_hashes || []) {
+            if (hash) hashes.add(hash);
+        }
     }
+    return hashes.size;
+}
+
+async function countPrecisionRouteHomes(base44, user) {
+    const routesById = new Map();
+    const routeQueries = [];
+    if (user?.id) routeQueries.push(base44.asServiceRole.entities.SavedRoute.filter({ manager_id: user.id }, '-updated_date', 1000));
+    if (user?.email) routeQueries.push(base44.asServiceRole.entities.SavedRoute.filter({ created_by: user.email }, '-updated_date', 1000));
+
+    const results = await Promise.all(routeQueries.map(query => query.catch(() => [])));
+    for (const result of results) {
+        for (const route of asArray(result)) {
+            routesById.set(route.id || `${route.created_by || ''}:${route.name || ''}:${route.created_date || ''}`, route);
+        }
+    }
+    return countUniquePrecisionRouteHomes([...routesById.values()]);
 }
 
 Deno.serve(async (req) => {
@@ -151,7 +157,7 @@ Deno.serve(async (req) => {
             }, { status: 403 });
         }
         const existingFreeHomes = !hasPaidPrecisionCapacity && !forceFreeForSelfTest
-            ? await countActiveWorkspaceHomes(user.email)
+            ? await countPrecisionRouteHomes(base44, user)
             : 0;
         const freeHomesRemaining = hasPaidPrecisionCapacity
             ? null
@@ -168,6 +174,7 @@ Deno.serve(async (req) => {
             ? maxProperties
             : Math.min(maxProperties, freeHomesRemaining);
         const requestedProperties = Math.max(1, Math.min(requestedValue, effectiveMaxProperties));
+        const limitedByFreeHomeCap = !hasPaidPrecisionCapacity && requestedProperties < requestedValue;
         const minPriceRaw = Number(body.min_price);
         const maxPriceRaw = Number(body.max_price);
         const minPrice = Number.isFinite(minPriceRaw) && minPriceRaw > 0 ? minPriceRaw : 100000;
@@ -184,7 +191,10 @@ Deno.serve(async (req) => {
                 provider: 'batchdata',
                 fips_code: fips.fips_code,
                 requested_properties: requestedProperties,
+                requested_properties_before_cap: requestedValue,
+                limited_by_free_home_cap: limitedByFreeHomeCap,
                 existing_active_properties: existingFreeHomes,
+                existing_route_homes: existingFreeHomes,
                 free_properties_remaining: freeHomesRemaining,
                 sold_months: requestedSoldMonths,
                 previous_pull_date: body.previous_pull_date || null,
@@ -220,8 +230,12 @@ Deno.serve(async (req) => {
             dry_run_metadata: {
                 county_resolution: fips,
                 requested_properties: requestedProperties,
+                requested_properties_before_cap: requestedValue,
+                limited_by_free_home_cap: limitedByFreeHomeCap,
                 existing_active_properties: existingFreeHomes,
+                existing_route_homes: existingFreeHomes,
                 free_properties_remaining: freeHomesRemaining,
+                free_property_cap: FREE_PROPERTY_CAP,
                 count_mode: body.count_mode === 'max_available' ? 'max_available' : 'fixed',
                 repull_mode: body.repull_mode || 'new_area',
                 previous_pull_date: body.previous_pull_date || null,
@@ -246,7 +260,7 @@ Deno.serve(async (req) => {
             total_batchdata_calls: 0
         });
 
-        base44.asServiceRole.functions.invoke('processFetchChunk', { expected_chunk: 0 }).catch(error => {
+        base44.asServiceRole.functions.invoke('processFetchChunk', { job_id: job.id, expected_chunk: 0 }).catch(error => {
             console.warn(`[startBatchDataPull] Background processor invoke failed: ${error.message}`);
         });
 
@@ -256,6 +270,9 @@ Deno.serve(async (req) => {
             job_id: job.id,
             provider: 'batchdata',
             requested_properties: requestedProperties,
+            requested_properties_before_cap: requestedValue,
+            limited_by_free_home_cap: limitedByFreeHomeCap,
+            free_properties_remaining: freeHomesRemaining,
             message: `Precision pull started for up to ${requestedProperties} properties.`
         });
     } catch (error) {

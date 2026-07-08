@@ -1,5 +1,4 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
-import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
@@ -100,27 +99,34 @@ function hasConfirmedPaidPrecisionAccess(user) {
     return status === 'active' && user?.subscription_paid_confirmed === true && ['pro', 'precision'].includes(tier);
 }
 
-async function countActiveWorkspaceHomes(userEmail) {
-    const databaseUrl = Deno.env.get('DATABASE_URL');
-    if (!databaseUrl || !userEmail) return 0;
+function asArray(value) {
+    return Array.isArray(value) ? value : (value?.items || []);
+}
 
-    try {
-        const sql = neon(databaseUrl);
-        const rows = await sql`
-            SELECT COUNT(*)::int AS active_count
-            FROM workspace_properties wp
-            JOIN properties p ON p.id = wp.property_id
-            WHERE wp.user_email = ${userEmail}
-              AND wp.route_active = TRUE
-              AND COALESCE(wp.status, '') <> 'REJECTED'
-              AND COALESCE(p.original_status, '') <> 'REJECTED'
-              AND COALESCE(p.sale_confidence, '') <> 'REJECTED'
-        `;
-        return Number(rows?.[0]?.active_count || 0);
-    } catch (error) {
-        console.warn(`[previewBatchDataArea] Failed to count active workspace homes: ${error.message}`);
-        return 0;
+function countUniquePrecisionRouteHomes(routes) {
+    const hashes = new Set();
+    for (const route of routes) {
+        if (!route || route.route_mode === 'canvas' || route.status === 'ARCHIVED') continue;
+        for (const hash of route.property_hashes || []) {
+            if (hash) hashes.add(hash);
+        }
     }
+    return hashes.size;
+}
+
+async function countPrecisionRouteHomes(base44, user) {
+    const routesById = new Map();
+    const routeQueries = [];
+    if (user?.id) routeQueries.push(base44.asServiceRole.entities.SavedRoute.filter({ manager_id: user.id }, '-updated_date', 1000));
+    if (user?.email) routeQueries.push(base44.asServiceRole.entities.SavedRoute.filter({ created_by: user.email }, '-updated_date', 1000));
+
+    const results = await Promise.all(routeQueries.map(query => query.catch(() => [])));
+    for (const result of results) {
+        for (const route of asArray(result)) {
+            routesById.set(route.id || `${route.created_by || ''}:${route.name || ''}:${route.created_date || ''}`, route);
+        }
+    }
+    return countUniquePrecisionRouteHomes([...routesById.values()]);
 }
 
 Deno.serve(async (req) => {
@@ -142,7 +148,7 @@ Deno.serve(async (req) => {
         const isPaid = isAdminTestOverride
             ? body.test_account_type === 'paid'
             : hasConfirmedPaidPrecisionAccess(user);
-        const existingFreeHomes = isPaid ? 0 : await countActiveWorkspaceHomes(user.email);
+        const existingFreeHomes = isPaid ? 0 : await countPrecisionRouteHomes(base44, user);
         const freeHomesRemaining = isPaid ? null : Math.max(0, FREE_PROPERTY_CAP - existingFreeHomes);
         const maxProperties = isPaid ? PAID_PROPERTY_CAP : freeHomesRemaining;
         const requestedRaw = Number(body.requested_properties || body.record_cap || maxProperties);
@@ -176,6 +182,7 @@ Deno.serve(async (req) => {
             max_allowed_properties: maxProperties,
             requested_properties: requestedProperties,
             existing_active_properties: existingFreeHomes,
+            existing_route_homes: existingFreeHomes,
             free_properties_remaining: freeHomesRemaining,
             returned_property_count: hardRejected ? 0 : requestedProperties,
             hard_rejected: hardRejected,

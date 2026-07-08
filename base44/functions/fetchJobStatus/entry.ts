@@ -31,6 +31,8 @@ Deno.serve(async (req) => {
             return Response.json({ error: 'Not your job' }, { status: 403 });
         }
 
+        const metadata = job.dry_run_metadata || {};
+
         let active_count = 0;
         try {
             const databaseUrl = Deno.env.get('DATABASE_URL');
@@ -78,7 +80,20 @@ Deno.serve(async (req) => {
             completed_sub_circles: job.completed_sub_circles || 0,
             total_sub_circles: job.total_sub_circles || 1,
             is_delta_pull: job.is_delta_pull || false,
-            delta_savings: job.delta_savings || null
+            delta_savings: job.delta_savings || null,
+            diagnostics: {
+                requested_properties: metadata.requested_properties ?? job.total_expected ?? 0,
+                requested_properties_before_cap: metadata.requested_properties_before_cap ?? metadata.requested_properties ?? job.total_expected ?? 0,
+                limited_by_free_home_cap: metadata.limited_by_free_home_cap === true,
+                free_properties_remaining: metadata.free_properties_remaining ?? null,
+                free_property_cap: metadata.free_property_cap ?? null,
+                sold_months: job.sold_months || null,
+                area_sq_mi: job.area_sq_mi || null,
+                count_mode: metadata.count_mode || null,
+                filters: metadata.filters || null,
+                completion_reason: metadata.completion_reason || null,
+                batchdata_summary: metadata.batchdata_summary || null
+            }
         });
 
     } catch (error) {

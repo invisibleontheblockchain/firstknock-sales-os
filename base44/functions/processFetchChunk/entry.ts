@@ -547,9 +547,11 @@ async function fetchBatchDataRecords(job) {
 Deno.serve(async (req) => {
     let base44 = null;
     let lockId = null;
+    let targetJobId = null;
     try {
         base44 = createClientFromRequest(req);
         const body = await req.json().catch(() => ({}));
+        targetJobId = body.job_id ? String(body.job_id) : null;
 
         if (body.self_test === true) {
             return Response.json({ success: true, active_provider: 'batchdata', rentcast_active: false, batchdata_polygon_search: true, dataset_scope: 'omitted_for_sale_evidence', has_batchdata_key: !!BATCHDATA_API_KEY, has_database_url: !!DATABASE_URL });
@@ -665,16 +667,25 @@ Deno.serve(async (req) => {
         if (!BATCHDATA_API_KEY) throw new Error('BATCH_DATA_API_KEY is not configured');
         if (!DATABASE_URL) throw new Error('DATABASE_URL is not configured');
 
-        const running = await base44.asServiceRole.entities.FetchJob.filter({ status: 'running' }, '-updated_date', 1);
-        const runningArr = Array.isArray(running) ? running : (running?.items || []);
-        let job = runningArr[0];
-        if (!job) {
-            const pending = await base44.asServiceRole.entities.FetchJob.filter({ status: 'pending' }, 'created_date', 1);
-            const pendingArr = Array.isArray(pending) ? pending : (pending?.items || []);
-            job = pendingArr[0];
+        let job = null;
+        if (targetJobId) {
+            job = await base44.asServiceRole.entities.FetchJob.get(targetJobId).catch(() => null);
+            if (!job) return Response.json({ error: 'Job not found', job_id: targetJobId }, { status: 404 });
+        } else {
+            const running = await base44.asServiceRole.entities.FetchJob.filter({ status: 'running' }, '-updated_date', 1);
+            const runningArr = Array.isArray(running) ? running : (running?.items || []);
+            job = runningArr[0];
+            if (!job) {
+                const pending = await base44.asServiceRole.entities.FetchJob.filter({ status: 'pending' }, 'created_date', 1);
+                const pendingArr = Array.isArray(pending) ? pending : (pending?.items || []);
+                job = pendingArr[0];
+            }
         }
         if (!job) return Response.json({ idle: true, active_provider: 'batchdata' });
         if (job.status === 'cancelled') return Response.json({ status: 'cancelled', job_id: job.id });
+        if (targetJobId && !['pending', 'running'].includes(job.status)) {
+            return Response.json({ skipped: true, reason: `job_${job.status || 'inactive'}`, job_id: job.id, status: job.status });
+        }
 
         const expectedChunk = body.expected_chunk ?? null;
         if (expectedChunk !== null && (job.chunk_number || 0) !== expectedChunk) {
@@ -719,6 +730,28 @@ Deno.serve(async (req) => {
         const result = await writePropertiesToNeon(sql, mapped, job);
         const completedAt = new Date().toISOString();
         const activeCount = mapped.filter(p => p.route_active !== false).length;
+        const requestedCount = Number(job.total_expected || job.estimated_record_count || 0) || 0;
+        const reviewedCount = (batchFetch.attempts || []).reduce((sum, attempt) => sum + (Number(attempt.reviewed) || 0), 0);
+        const providerTotal = (batchFetch.attempts || [])
+            .map(attempt => attempt.total)
+            .find(total => total !== null && total !== undefined && Number.isFinite(Number(total)));
+        const completionReason = activeCount >= requestedCount
+            ? 'target_met'
+            : rawRecords.length === 0
+                ? 'no_provider_matches'
+                : 'insufficient_qualifying_homes';
+        const batchdataSummary = {
+            mode_used: batchFetch.mode_used,
+            attempts: batchFetch.attempts,
+            requested: requestedCount,
+            reviewed: reviewedCount || rawRecords.length,
+            provider_total: providerTotal !== undefined ? Number(providerTotal) : null,
+            raw: rawRecords.length,
+            mapped: mapped.length,
+            active: activeCount,
+            rejected,
+            outside_or_invalid: outsideOrInvalid
+        };
         const errorLog = [...(job.error_log || []), `[${completedAt}] BatchData-only Precision complete: mode=${batchFetch.mode_used}, attempts=${JSON.stringify(batchFetch.attempts)}, raw=${rawRecords.length}, mapped=${mapped.length}, active=${activeCount}, rejected=${rejected}, outside_or_invalid=${outsideOrInvalid}`];
 
         // ── Post-write integrity verification ─────────────────────────────
@@ -745,11 +778,6 @@ Deno.serve(async (req) => {
             }
         }
 
-        const accountActiveHomes = await countActiveWorkspaceHomes(sql, job.user_email || 'unknown').catch((error) => {
-            errorLog.push(`[${completedAt}] Active account home count failed: ${error.message}`);
-            return result.inserted + result.existed;
-        });
-
         await base44.asServiceRole.entities.FetchJob.update(job.id, {
             status: 'completed',
             phase: 'complete',
@@ -767,6 +795,11 @@ Deno.serve(async (req) => {
             zip_codes_found: zipCodes,
             chunk_number: (job.chunk_number || 0) + 1,
             chunk_timings: [...(job.chunk_timings || []), Math.round((Date.now() - new Date(startedAt).getTime()) / 1000)],
+            dry_run_metadata: {
+                ...(job.dry_run_metadata || {}),
+                completion_reason: completionReason,
+                batchdata_summary: batchdataSummary
+            },
             error_log: errorLog
         });
 
@@ -775,8 +808,7 @@ Deno.serve(async (req) => {
         if (userArr[0]) {
             await base44.asServiceRole.entities.User.update(userArr[0].id, {
                 has_pulled_data: true,
-                last_data_pull: completedAt,
-                territory_property_count: accountActiveHomes
+                last_data_pull: completedAt
             }).catch(() => {});
         }
 
@@ -789,13 +821,19 @@ Deno.serve(async (req) => {
         console.error('[processFetchChunk batchdata-only] Fatal:', error.message);
         try {
             const recovery = base44 || createClientFromRequest(req);
-            const running = await recovery.asServiceRole.entities.FetchJob.filter({ status: 'running' }, '-updated_date', 1);
-            const arr = Array.isArray(running) ? running : (running?.items || []);
-            if (arr[0]) {
-                await recovery.asServiceRole.entities.FetchJob.update(arr[0].id, {
+            let failedJob = null;
+            if (targetJobId) {
+                failedJob = await recovery.asServiceRole.entities.FetchJob.get(targetJobId).catch(() => null);
+            } else {
+                const running = await recovery.asServiceRole.entities.FetchJob.filter({ status: 'running' }, '-updated_date', 1);
+                const arr = Array.isArray(running) ? running : (running?.items || []);
+                failedJob = arr[0];
+            }
+            if (failedJob && ['pending', 'running'].includes(failedJob.status)) {
+                await recovery.asServiceRole.entities.FetchJob.update(failedJob.id, {
                     status: 'failed',
                     error_message: `BatchData processing failed: ${error.message}`,
-                    error_log: [...(arr[0].error_log || []), `[${new Date().toISOString()}] FATAL: ${error.message}`]
+                    error_log: [...(failedJob.error_log || []), `[${new Date().toISOString()}] FATAL: ${error.message}`]
                 });
             }
         } catch {}

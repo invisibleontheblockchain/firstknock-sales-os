@@ -424,7 +424,7 @@ export default function Home() {
         });
     }, [userProperties, viewportProperties, localProperties, darkRoomProperties, fetchedProperties]);
 
-    const { data: savedRoutesRaw = [] } = useQuery({
+    const { data: savedRoutesRaw = [], isFetched: savedRoutesFetched } = useQuery({
         queryKey: ['savedRoutes', user?.id],
         staleTime: 1000 * 60 * 2,
         queryFn: () => {
@@ -1793,6 +1793,8 @@ export default function Home() {
                 drawSizeMiles={drawSizeMiles}
                 setDrawSizeMiles={setDrawSizeMiles}
                 user={user}
+                savedRoutes={savedRoutes}
+                savedRoutesLoaded={savedRoutesFetched}
                 setZipCodeFilter={setZipCodeFilter}
                 onPullComplete={async (pullFetchMonths, pulledWithMls, jobStatus = {}) => {
                     setFrozenWorkingSet(null);

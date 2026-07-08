@@ -25,6 +25,63 @@ function hasConfirmedPaidPrecisionAccess(user) {
   return status === 'active' && user?.subscription_paid_confirmed === true && ['pro', 'precision'].includes(tier);
 }
 
+function formatWholeNumber(value) {
+  const number = Math.max(0, Math.round(Number(value) || 0));
+  return number.toLocaleString();
+}
+
+function formatSoldWindow(months) {
+  const value = Number(months);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  if (value < 1) {
+    const days = Math.max(1, Math.round(value * 30));
+    if (days <= 2) return `${days} day${days === 1 ? '' : 's'} sold window`;
+    const weeks = Math.max(1, Math.round(days / 7));
+    return `${weeks} week${weeks === 1 ? '' : 's'} sold window`;
+  }
+  const label = Number.isInteger(value) ? String(value) : value.toFixed(1);
+  return `${label} month${value === 1 ? '' : 's'} sold window`;
+}
+
+function buildPrecisionShortfallMessage({ loadedCount, requestedCount, intendedCount, diagnostics, soldMonths, minHomeValue, maxHomeValue }) {
+  const loaded = Math.max(0, Number(loadedCount) || 0);
+  const requested = Math.max(0, Number(requestedCount) || 0);
+  const intended = Math.max(requested, Number(intendedCount) || 0);
+
+  if (diagnostics?.limited_by_free_home_cap && requested > 0 && intended > requested) {
+    return `This pull was capped at ${formatWholeNumber(requested)} homes because that is all the included Precision homes left on this account. Upgrade to Precision for larger routes.`;
+  }
+
+  if (requested <= 0 || loaded >= requested) return null;
+
+  const filters = [];
+  const soldWindow = formatSoldWindow(soldMonths ?? diagnostics?.sold_months);
+  if (soldWindow) filters.push(soldWindow);
+
+  const minValue = Number(minHomeValue ?? diagnostics?.filters?.min_price);
+  if (Number.isFinite(minValue) && minValue > 0) filters.push(`minimum value $${formatWholeNumber(minValue)}`);
+
+  const maxValue = Number(maxHomeValue ?? diagnostics?.filters?.max_price);
+  if (Number.isFinite(maxValue) && maxValue > 0) filters.push(`maximum value $${formatWholeNumber(maxValue)}`);
+
+  const filterText = filters.length ? ` with your ${filters.join(', ')}` : '';
+  const reviewed = Number(diagnostics?.batchdata_summary?.reviewed || 0);
+  const reviewedText = reviewed > 0 ? ` We checked ${formatWholeNumber(reviewed)} provider records.` : '';
+
+  return `Found ${formatWholeNumber(loaded)} qualifying sold homes in this area${filterText}; you requested ${formatWholeNumber(requested)}.${reviewedText} Draw a larger area, widen the sold-date range, or loosen the value range, then generate again to keep filling the route.`;
+}
+
+function countUniquePrecisionRouteHomes(routes = []) {
+  const hashes = new Set();
+  routes.forEach((route) => {
+    if (!route || route.route_mode === 'canvas' || route.status === 'ARCHIVED') return;
+    (route.property_hashes || []).forEach((hash) => {
+      if (hash) hashes.add(hash);
+    });
+  });
+  return hashes.size;
+}
+
 export default function TerritoryPrompt({
   mode,
   setMode,
@@ -45,6 +102,8 @@ export default function TerritoryPrompt({
   drawSizeMiles,
   setDrawSizeMiles,
   user,
+  savedRoutes = [],
+  savedRoutesLoaded = false,
   setZipCodeFilter,
   onPullComplete
 }) {
@@ -85,6 +144,7 @@ export default function TerritoryPrompt({
   const pctHistoryRef = useRef([]);
   const targetPctRef = useRef(0);
   const restoredCompletedJobRef = useRef(false);
+  const pullIntentRef = useRef({});
 
   // Smooth progress animation — ticks display forward toward real target
   useEffect(() => {
@@ -333,7 +393,9 @@ export default function TerritoryPrompt({
   const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing' || user?.is_owner || user?.role === 'admin';
   const freePropertyLimit = 50;
   const hasPaidPrecisionCapacity = hasConfirmedPaidPrecisionAccess(user);
-  const freePropertiesUsed = Math.max(0, Number(user?.precision_properties_used ?? user?.territory_property_count ?? 0) || 0);
+  const routeDeliveredPropertiesUsed = useMemo(() => countUniquePrecisionRouteHomes(savedRoutes), [savedRoutes]);
+  const accountReportedPropertiesUsed = Math.max(0, Number(user?.precision_properties_used ?? user?.territory_property_count ?? 0) || 0);
+  const freePropertiesUsed = savedRoutesLoaded ? routeDeliveredPropertiesUsed : accountReportedPropertiesUsed;
   const freePropertiesRemaining = Math.max(0, freePropertyLimit - freePropertiesUsed);
   const maxRequestedProperties = hasPaidPrecisionCapacity ? 1000 : freePropertiesRemaining;
   const safeRequestedPropertyCount = maxRequestedProperties <= 0
@@ -423,10 +485,21 @@ export default function TerritoryPrompt({
           setPullProgress('Data ready — building optimized routes...');
 
           const totalLoaded = (d.active_count || 0) || (d.total_inserted || 0) + (d.total_existed || 0);
-          const requestedCount = d.total_expected || 0;
-          if (requestedCount > 0 && totalLoaded > 0 && totalLoaded < requestedCount) {
-            // Fewer homes than requested is real market scarcity, not a bug — tell the user what to do.
-            toast.info(`Found ${totalLoaded.toLocaleString()} qualifying sold homes in this area — that's everything available for your date window (you requested ${requestedCount.toLocaleString()}). Draw a larger area or widen the sold-date range for more.`, { duration: 10000 });
+          const diagnostics = d.diagnostics || {};
+          const intent = pullIntentRef.current[jobId] || {};
+          const requestedCount = d.total_expected || diagnostics.requested_properties || 0;
+          const intendedCount = intent.requestedCount || diagnostics.requested_properties_before_cap || requestedCount;
+          const shortfallMessage = buildPrecisionShortfallMessage({
+            loadedCount: totalLoaded,
+            requestedCount,
+            intendedCount,
+            diagnostics,
+            soldMonths: intent.soldMonths ?? diagnostics.sold_months ?? fetchMonths,
+            minHomeValue: intent.minHomeValue ?? diagnostics.filters?.min_price,
+            maxHomeValue: intent.maxHomeValue ?? diagnostics.filters?.max_price
+          });
+          if (shortfallMessage) {
+            toast.info(shortfallMessage, { duration: 14000 });
           }
           toast.success(`${totalLoaded.toLocaleString()} properties ready. Building routes now...`, { duration: 4000 });
 
@@ -558,7 +631,7 @@ export default function TerritoryPrompt({
       localStorage.setItem('fk_drawnPolygonQueried', 'true');
       setDrawnPolygon(drawnPolygon, true);
       window.dispatchEvent(new CustomEvent('fk-polygon-history-updated'));
-      toast.success(`Preview ready: ${d.returned_property_count ?? safeRequestedPropertyCount} properties allowed.`);
+      toast.success(`Preview ready: up to ${(d.returned_property_count ?? safeRequestedPropertyCount).toLocaleString()} homes can be requested. Final count depends on sold homes in the area.`);
     } catch (e) {
       const msg = e.response?.data?.message || e.message;
       toast.error(`Sandbox preview failed: ${msg}`);
@@ -629,6 +702,17 @@ export default function TerritoryPrompt({
         setPullError({ message: data.message || data.error, upgrade: isPlanGate });
         return;
       }
+      const startedRequestedCount = Number(data.requested_properties ?? effectiveRequestedPropertyCount) || effectiveRequestedPropertyCount;
+      if (data.job_id) {
+        pullIntentRef.current[data.job_id] = {
+          requestedCount: effectiveRequestedPropertyCount,
+          serverRequestedCount: startedRequestedCount,
+          soldMonths: effectiveSoldMonths,
+          minHomeValue: effectiveMinPrice,
+          maxHomeValue: effectiveMaxPrice,
+          limitedByFreeHomeCap: data.limited_by_free_home_cap === true
+        };
+      }
       savePolygonToHistory(drawnPolygon, {
         last_pull_date: new Date().toISOString(),
         job_id: data.job_id,
@@ -654,7 +738,7 @@ export default function TerritoryPrompt({
       setEtaText('Starting import...');
       startPolling(data.job_id);
       setShowPrecisionPullPanel(false);
-      toast.success('Property import started. Routes will build automatically.');
+      toast.success(`Property import started for up to ${startedRequestedCount.toLocaleString()} homes. Routes will build automatically.`);
     } catch (e) {
       const errCode = e.response?.data?.error;
       const msg = e.response?.data?.message || errCode || e.message;

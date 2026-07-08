@@ -137,7 +137,7 @@ Deno.serve(async (req) => {
             chunk_timings: []
         });
 
-        base44.asServiceRole.functions.invoke('processFetchChunk', { expected_chunk: 0 }).catch(error => {
+        base44.asServiceRole.functions.invoke('processFetchChunk', { job_id: job.id, expected_chunk: 0 }).catch(error => {
             console.warn(`[fetchAreaProperties] BatchData processor invoke failed: ${error.message}`);
         });
 
