@@ -248,6 +248,8 @@
         "deed_records",
         "listings_records",
         "batchdata_precision",
+        "batchdata_requesting",
+        "batchdata_scanning",
         "canvas_session",
         "complete"
       ],

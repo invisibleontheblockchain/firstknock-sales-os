@@ -447,6 +447,8 @@ export default function TerritoryPrompt({
         setPullPct(pct);
         targetPctRef.current = pct;
         const phase = d.phase || '';
+        const diagnostics = d.diagnostics || {};
+        const processorRekickRequested = diagnostics.processor_rekick_requested === true;
         const fetched = d.total_fetched || 0;
         const expected = d.total_expected || 0;
         const inserted = d.total_inserted || 0;
@@ -464,7 +466,9 @@ export default function TerritoryPrompt({
 
         const elapsedSec = Math.max(1, Math.round((Date.now() - pollStartTime) / 1000));
         if (pct < 100) {
-          if (phase === 'batchdata_requesting') {
+          if (processorRekickRequested && fetched === 0) {
+            setEtaText('Restarting import...');
+          } else if (phase === 'batchdata_requesting') {
             setEtaText('Contacting property provider...');
           } else if (pct < 8 || elapsedSec < 10) {
             setEtaText('Starting import...');
@@ -476,7 +480,9 @@ export default function TerritoryPrompt({
         }
 
         const readyCount = Math.max(d.active_count || 0, inserted + (d.total_existed || 0), inserted + (d.total_updated || 0));
-        if (phase === 'batchdata_requesting' && fetched === 0) {
+        if (processorRekickRequested && fetched === 0) {
+          setPullProgress('Restarting data processor...');
+        } else if (phase === 'batchdata_requesting' && fetched === 0) {
           setPullProgress(expected > 0
             ? `Contacting property provider for up to ${expected.toLocaleString()} homes...`
             : 'Contacting property provider...');
@@ -498,7 +504,6 @@ export default function TerritoryPrompt({
           setPullProgress('Data ready — building optimized routes...');
 
           const totalLoaded = (d.active_count || 0) || (d.total_inserted || 0) + (d.total_existed || 0);
-          const diagnostics = d.diagnostics || {};
           const intent = pullIntentRef.current[jobId] || {};
           const requestedCount = d.total_expected || diagnostics.requested_properties || 0;
           const intendedCount = intent.requestedCount || diagnostics.requested_properties_before_cap || requestedCount;
