@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { createPageUrl } from '@/utils';
 import { Lock } from 'lucide-react';
 
-// Mobile bottom sheet shown when a free user hits the 25-card or 50-outcome Knock Mode gate.
+// Mobile bottom sheet shown when a free user needs a card or plan upgrade to keep logging.
 export default function KnockLimitSheet({ open, onClose, mode = 'limit' }) {
   const navigate = useNavigate();
   if (!open) return null;
@@ -35,8 +35,8 @@ export default function KnockLimitSheet({ open, onClose, mode = 'limit' }) {
         </h2>
         <p className="text-[#9CA3AF] text-sm text-center mb-6 leading-relaxed max-w-sm mx-auto">
           {isCardGate
-            ? "You've logged 25 stops. Add a card on file with Stripe to continue toward your 50 free stops."
-            : "You've logged 50 stops — upgrade to keep knocking and unlock unlimited routes, CSV imports, and rep management."}
+            ? "Add a card on file with Stripe to continue logging field outcomes. You will not be charged unless you choose a paid plan."
+            : "Upgrade to keep knocking and unlock unlimited routes, CSV imports, and rep management."}
         </p>
 
         <button

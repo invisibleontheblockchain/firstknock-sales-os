@@ -68,6 +68,8 @@ import ManagerMapLayers from '../components/map/ManagerMapLayers';
 import MapToolbar from '../components/map/MapToolbar';
 import ZipCodeOverlay from '../components/map/ZipCodeOverlay';
 import PolygonHistory, { savePolygonToHistory } from '../components/map/PolygonHistory';
+import KnockLimitSheet from '@/components/upgrade/KnockLimitSheet';
+import { getOutcomesLogged, isOutcomeBlocked, isProUser, needsCardOnFile } from '@/components/upgrade/knockGate';
 
 
 import { BRAND, DEFAULT_STATUS_COLORS, COLOR_SCHEME_MAP, LINE_DASH_MAP, ROUTE_COLORS } from '../components/map/homeMapConstants';
@@ -228,6 +230,8 @@ export default function Home() {
     const mapRef = useRef(null);
     const appointmentMapFocusHandledRef = useRef(false);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
+    const [showKnockLimitSheet, setShowKnockLimitSheet] = useState(false);
+    const [knockGateMode, setKnockGateMode] = useState('limit');
 
     const fetchRouteCandidatesFromNeon = useCallback(async ({ zipCodes = [], zipCodeFilterValue = '', soldMonths = null, polygon = null, limit = 100000, fetchJobId = null } = {}) => {
         const res = await base44.functions.invoke('getRouteCandidatesFromNeon', {
@@ -695,9 +699,18 @@ export default function Home() {
             route_id: activeRoute?.id || null,
             manager_id: user?.id || null,
         }),
-        onSuccess: () => {
+        onSuccess: async () => {
             queryClient.invalidateQueries({ queryKey: ['interactionLogs'] });
             queryClient.invalidateQueries({ queryKey: ['selectedPropertyHistory'] });
+            if (!isProUser(user)) {
+                try {
+                    const freshUser = await base44.auth.me().catch(() => user);
+                    await base44.auth.updateMe({ outcomes_logged: getOutcomesLogged(freshUser) + 1 });
+                    queryClient.invalidateQueries({ queryKey: ['user'] });
+                } catch (error) {
+                    console.error('Failed to increment outcomes_logged', error);
+                }
+            }
         },
     });
 
@@ -1498,7 +1511,31 @@ export default function Home() {
         enabled: !!selectedProperty?.address_hash
     });
 
-    const handleLogResult = useCallback((property, statusOrLogData, note = null) => {
+    const checkAndHandleOutcomeGate = useCallback(async () => {
+        let freshUser = user;
+        try {
+            freshUser = await base44.auth.me();
+            if (freshUser) queryClient.setQueryData(['user'], freshUser);
+        } catch { /* keep cached user */ }
+
+        if (isProUser(freshUser)) return false;
+        if (needsCardOnFile(freshUser)) {
+            setKnockGateMode('card');
+            setShowKnockLimitSheet(true);
+            return true;
+        }
+        if (isOutcomeBlocked(freshUser)) {
+            setKnockGateMode('limit');
+            setShowKnockLimitSheet(true);
+            return true;
+        }
+        return false;
+    }, [queryClient, user]);
+
+    const handleLogResult = useCallback(async (property, statusOrLogData, note = null) => {
+        const blocked = await checkAndHandleOutcomeGate();
+        if (blocked) return false;
+
         const logData = typeof statusOrLogData === 'object'
             ? statusOrLogData
             : {
@@ -1513,7 +1550,8 @@ export default function Home() {
             gps_proof_lng: property.lng,
             route_id: logData.route_id || activeRoute?.id || null
         });
-    }, [createLogMutation, activeRoute]);
+        return true;
+    }, [activeRoute, checkAndHandleOutcomeGate, createLogMutation]);
 
     const handleDeleteInteraction = useCallback(async (log) => {
         if (!log?.id) return;
@@ -2120,6 +2158,11 @@ export default function Home() {
 
 
             <ManagerPropertyDetailSheet selectedProperty={selectedProperty} setSelectedProperty={setSelectedProperty} STATUS_COLORS={STATUS_COLORS} navigationApp={navigationApp} selectedPropertyLogs={selectedPropertyLogs} handleLogResult={handleLogResult} onClearInteraction={handleDeleteInteraction} toast={toast} />
+            <KnockLimitSheet
+                open={showKnockLimitSheet}
+                mode={knockGateMode}
+                onClose={() => setShowKnockLimitSheet(false)}
+            />
         </div>
     );
 }

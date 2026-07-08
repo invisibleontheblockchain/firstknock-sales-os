@@ -546,7 +546,7 @@ export default function TerritoryPrompt({
       savePolygonToHistory(drawnPolygon, {
         previewed_at: new Date().toISOString(),
         criteria: {
-          requested_properties: safeRequestedPropertyCount,
+          requested_properties: d.requested_properties ?? safeRequestedPropertyCount,
           sold_months: fetchMonths,
           min_price: minHomeValue ? Number(minHomeValue) : null,
           max_price: maxHomeValue ? Number(maxHomeValue) : null
@@ -555,7 +555,7 @@ export default function TerritoryPrompt({
       localStorage.setItem('fk_drawnPolygonQueried', 'true');
       setDrawnPolygon(drawnPolygon, true);
       window.dispatchEvent(new CustomEvent('fk-polygon-history-updated'));
-      toast.success(`Preview ready: ${d.returned_property_count || safeRequestedPropertyCount} properties allowed.`);
+      toast.success(`Preview ready: ${d.returned_property_count ?? safeRequestedPropertyCount} properties allowed.`);
     } catch (e) {
       const msg = e.response?.data?.message || e.message;
       toast.error(`Sandbox preview failed: ${msg}`);
@@ -623,7 +623,7 @@ export default function TerritoryPrompt({
         job_id: data.job_id,
         repull_mode: isPreviousAreaPull ? repullMode : 'new_area',
         criteria: {
-          requested_properties: effectiveRequestedPropertyCount,
+          requested_properties: data.requested_properties ?? effectiveRequestedPropertyCount,
           count_mode: usingMaxAvailable ? 'max_available' : 'fixed',
           sold_months: effectiveSoldMonths,
           min_price: effectiveMinPrice,

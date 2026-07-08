@@ -1,4 +1,5 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
@@ -92,6 +93,36 @@ async function polygonHash(points) {
     return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
 }
 
+function hasConfirmedPaidPrecisionAccess(user) {
+    const tier = String(user?.subscription_tier || '').toLowerCase();
+    const status = String(user?.subscription_status || '').toLowerCase();
+    if (user?.is_owner || user?.role === 'admin') return true;
+    return status === 'active' && user?.subscription_paid_confirmed === true && ['pro', 'precision'].includes(tier);
+}
+
+async function countActiveWorkspaceHomes(userEmail) {
+    const databaseUrl = Deno.env.get('DATABASE_URL');
+    if (!databaseUrl || !userEmail) return 0;
+
+    try {
+        const sql = neon(databaseUrl);
+        const rows = await sql`
+            SELECT COUNT(*)::int AS active_count
+            FROM workspace_properties wp
+            JOIN properties p ON p.id = wp.property_id
+            WHERE wp.user_email = ${userEmail}
+              AND wp.route_active = TRUE
+              AND COALESCE(wp.status, '') <> 'REJECTED'
+              AND COALESCE(p.original_status, '') <> 'REJECTED'
+              AND COALESCE(p.sale_confidence, '') <> 'REJECTED'
+        `;
+        return Number(rows?.[0]?.active_count || 0);
+    } catch (error) {
+        console.warn(`[previewBatchDataArea] Failed to count active workspace homes: ${error.message}`);
+        return 0;
+    }
+}
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -110,10 +141,14 @@ Deno.serve(async (req) => {
         const isAdminTestOverride = user.role === 'admin' && body.test_account_type;
         const isPaid = isAdminTestOverride
             ? body.test_account_type === 'paid'
-            : (user.subscription_status === 'active' || user.subscription_status === 'trialing' || user.is_owner || user.role === 'admin');
-        const maxProperties = isPaid ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
+            : hasConfirmedPaidPrecisionAccess(user);
+        const existingFreeHomes = isPaid ? 0 : await countActiveWorkspaceHomes(user.email);
+        const freeHomesRemaining = isPaid ? null : Math.max(0, FREE_PROPERTY_CAP - existingFreeHomes);
+        const maxProperties = isPaid ? PAID_PROPERTY_CAP : freeHomesRemaining;
         const requestedRaw = Number(body.requested_properties || body.record_cap || maxProperties);
-        const requestedProperties = Math.max(1, Math.min(Number.isFinite(requestedRaw) ? requestedRaw : maxProperties, maxProperties));
+        const requestedProperties = maxProperties <= 0
+            ? 0
+            : Math.max(1, Math.min(Number.isFinite(requestedRaw) ? requestedRaw : maxProperties, maxProperties));
         const box = boundsMiles(polygon);
         const hardRejected = false; // Square mileage limits removed entirely for all accounts
         const rejectionReason = null;
@@ -140,6 +175,8 @@ Deno.serve(async (req) => {
             max_area_sq_mi: null,
             max_allowed_properties: maxProperties,
             requested_properties: requestedProperties,
+            existing_active_properties: existingFreeHomes,
+            free_properties_remaining: freeHomesRemaining,
             returned_property_count: hardRejected ? 0 : requestedProperties,
             hard_rejected: hardRejected,
             rejection_reason: rejectionReason,
@@ -156,6 +193,8 @@ Deno.serve(async (req) => {
             },
             message: hardRejected
                 ? 'Sandbox preview only. Redraw a smaller area before any live BatchData pull.'
+                : requestedProperties <= 0
+                    ? 'This account has used its included free Precision homes. Upgrade to generate larger routes.'
                 : `This area is eligible to pull up to ${requestedProperties} BatchData properties from your drawn Precision territory.`
         });
     } catch (error) {

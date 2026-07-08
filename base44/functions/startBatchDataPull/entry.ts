@@ -1,9 +1,9 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.14.0';
+import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
-const NO_CARD_LIFETIME_CAP = 25;
 
 function normalizePolygon(input) {
     if (!Array.isArray(input)) return [];
@@ -94,6 +94,29 @@ async function polygonHash(points) {
     return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
 }
 
+async function countActiveWorkspaceHomes(userEmail) {
+    const databaseUrl = Deno.env.get('DATABASE_URL');
+    if (!databaseUrl || !userEmail) return 0;
+
+    try {
+        const sql = neon(databaseUrl);
+        const rows = await sql`
+            SELECT COUNT(*)::int AS active_count
+            FROM workspace_properties wp
+            JOIN properties p ON p.id = wp.property_id
+            WHERE wp.user_email = ${userEmail}
+              AND wp.route_active = TRUE
+              AND COALESCE(wp.status, '') <> 'REJECTED'
+              AND COALESCE(p.original_status, '') <> 'REJECTED'
+              AND COALESCE(p.sale_confidence, '') <> 'REJECTED'
+        `;
+        return Number(rows?.[0]?.active_count || 0);
+    } catch (error) {
+        console.warn(`[startBatchDataPull] Failed to count active workspace homes: ${error.message}`);
+        return 0;
+    }
+}
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -109,7 +132,6 @@ Deno.serve(async (req) => {
         const areaSqMi = polygonAreaSqMi(polygon);
         const center = centroid(polygon);
         const forceFreeForSelfTest = body.self_test_force_free === true && body.dry_run === true;
-        const isPaid = !forceFreeForSelfTest && (user.subscription_status === 'active' || user.subscription_status === 'trialing' || user.is_owner || user.role === 'admin');
         const hasPaidPrecisionCapacity = !forceFreeForSelfTest && await hasConfirmedPaidPrecisionAccess(user);
         const hasPrecisionPro = !forceFreeForSelfTest && isPrecisionProUser(user);
         const requestedSoldMonths = Number(body.sold_months || 12);
@@ -128,29 +150,24 @@ Deno.serve(async (req) => {
                 message: 'That route size is above what your current plan includes. Start or upgrade to Precision to generate larger routes.'
             }, { status: 403 });
         }
-        let requestedProperties = Math.max(1, Math.min(requestedValue, maxProperties));
-        let trialNote = null;
-        if (!hasPaidPrecisionCapacity) {
-            // No card on file = 25 lifetime homes. Card on file (trial/active) = 50 per pull. Paid confirmed = 1000.
-            const subStatus = String(user.subscription_status || '').toLowerCase();
-            const hasCardOnFile = !forceFreeForSelfTest && (['active', 'trialing'].includes(subStatus) || !!user.stripe_customer_id);
-            if (!hasCardOnFile) {
-                const jobsRes = await base44.entities.FetchJob.filter({ user_email: user.email, status: 'completed' }, '-created_date', 200);
-                const jobs = Array.isArray(jobsRes) ? jobsRes : (jobsRes?.items || []);
-                const totalPulled = jobs.reduce((sum, j) => sum + (Number(j.total_inserted) || 0), 0);
-                const remaining = NO_CARD_LIFETIME_CAP - totalPulled;
-                if (remaining <= 0) {
-                    return Response.json({
-                        error: 'trial_required',
-                        message: 'Your current plan has used its included starter pulls. Start a free trial or upgrade to Precision to keep generating routes.'
-                    }, { status: 403 });
-                }
-                if (requestedProperties > remaining) {
-                    requestedProperties = remaining;
-                    trialNote = 'Your request was adjusted to what is currently available on this plan. Start a free trial or upgrade to Precision to generate larger routes.';
-                }
-            }
+        const existingFreeHomes = !hasPaidPrecisionCapacity && !forceFreeForSelfTest
+            ? await countActiveWorkspaceHomes(user.email)
+            : 0;
+        const freeHomesRemaining = hasPaidPrecisionCapacity
+            ? null
+            : Math.max(0, FREE_PROPERTY_CAP - existingFreeHomes);
+
+        if (!hasPaidPrecisionCapacity && freeHomesRemaining <= 0) {
+            return Response.json({
+                error: 'paid_precision_required',
+                message: 'Your current plan has used its included Precision homes. Upgrade to Precision to generate larger routes.'
+            }, { status: 403 });
         }
+
+        const effectiveMaxProperties = hasPaidPrecisionCapacity
+            ? maxProperties
+            : Math.min(maxProperties, freeHomesRemaining);
+        const requestedProperties = Math.max(1, Math.min(requestedValue, effectiveMaxProperties));
         const minPriceRaw = Number(body.min_price);
         const maxPriceRaw = Number(body.max_price);
         const minPrice = Number.isFinite(minPriceRaw) && minPriceRaw > 0 ? minPriceRaw : 100000;
@@ -167,11 +184,12 @@ Deno.serve(async (req) => {
                 provider: 'batchdata',
                 fips_code: fips.fips_code,
                 requested_properties: requestedProperties,
+                existing_active_properties: existingFreeHomes,
+                free_properties_remaining: freeHomesRemaining,
                 sold_months: requestedSoldMonths,
                 previous_pull_date: body.previous_pull_date || null,
                 include_unresolved_followups: body.include_unresolved_followups === true,
-                area_sq_mi: Number(areaSqMi.toFixed(2)),
-                trial_note: trialNote
+                area_sq_mi: Number(areaSqMi.toFixed(2))
             });
         }
 
@@ -202,6 +220,8 @@ Deno.serve(async (req) => {
             dry_run_metadata: {
                 county_resolution: fips,
                 requested_properties: requestedProperties,
+                existing_active_properties: existingFreeHomes,
+                free_properties_remaining: freeHomesRemaining,
                 count_mode: body.count_mode === 'max_available' ? 'max_available' : 'fixed',
                 repull_mode: body.repull_mode || 'new_area',
                 previous_pull_date: body.previous_pull_date || null,
@@ -236,8 +256,7 @@ Deno.serve(async (req) => {
             job_id: job.id,
             provider: 'batchdata',
             requested_properties: requestedProperties,
-            trial_note: trialNote,
-            message: `Paid BatchData pull started for up to ${requestedProperties} properties.`
+            message: `Precision pull started for up to ${requestedProperties} properties.`
         });
     } catch (error) {
         return Response.json({ error: error.message }, { status: 500 });

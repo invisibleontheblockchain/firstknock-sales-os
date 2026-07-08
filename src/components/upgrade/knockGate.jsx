@@ -1,6 +1,7 @@
 // Knock Mode freemium gate logic — single source of truth.
 //
-// Free plan: up to 50 lifetime logged outcomes. The 51st attempt is blocked.
+// Free plan: logged outcomes require a card after the threshold below, then
+// stop at the lifetime outcome limit unless the account upgrades.
 // Pro / upgraded / owner / exempt users bypass the gate entirely.
 //
 // outcomes_logged is the persisted lifetime counter on the User record. It is
@@ -48,7 +49,7 @@ export function needsCardOnFile(user) {
 }
 
 // Returns true when a free user attempting another outcome must be blocked.
-// Gate fires on the 51st attempt: outcomes_logged >= 50 at tap time.
+// Gate fires when the persisted counter has reached the free outcome limit.
 export function isOutcomeBlocked(user) {
   if (isProUser(user)) return false;
   return getOutcomesLogged(user) >= FREE_OUTCOME_LIMIT;

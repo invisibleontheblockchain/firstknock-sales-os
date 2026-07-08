@@ -440,6 +440,21 @@ async function writePropertiesToNeon(sql, properties, job) {
     return { inserted, existed, updated };
 }
 
+async function countActiveWorkspaceHomes(sql, userEmail) {
+    if (!userEmail) return 0;
+    const rows = await sql`
+        SELECT COUNT(*)::int AS active_count
+        FROM workspace_properties wp
+        JOIN properties p ON p.id = wp.property_id
+        WHERE wp.user_email = ${userEmail}
+          AND wp.route_active = TRUE
+          AND COALESCE(wp.status, '') <> 'REJECTED'
+          AND COALESCE(p.original_status, '') <> 'REJECTED'
+          AND COALESCE(p.sale_confidence, '') <> 'REJECTED'
+    `;
+    return Number(rows?.[0]?.active_count || 0);
+}
+
 async function batchDataFetchWithRetry(requestBody) {
     for (let attempt = 1; attempt <= 4; attempt++) {
         const response = await fetch(BATCHDATA_BASE, {
@@ -730,6 +745,11 @@ Deno.serve(async (req) => {
             }
         }
 
+        const accountActiveHomes = await countActiveWorkspaceHomes(sql, job.user_email || 'unknown').catch((error) => {
+            errorLog.push(`[${completedAt}] Active account home count failed: ${error.message}`);
+            return result.inserted + result.existed;
+        });
+
         await base44.asServiceRole.entities.FetchJob.update(job.id, {
             status: 'completed',
             phase: 'complete',
@@ -756,7 +776,7 @@ Deno.serve(async (req) => {
             await base44.asServiceRole.entities.User.update(userArr[0].id, {
                 has_pulled_data: true,
                 last_data_pull: completedAt,
-                territory_property_count: result.inserted + result.existed
+                territory_property_count: accountActiveHomes
             }).catch(() => {});
         }
 

@@ -72,7 +72,7 @@ export default function ManagerPropertyDetailSheet({
         setCallbackError('');
     };
 
-    const handleQuickMark = (status) => {
+    const handleQuickMark = async (status) => {
         if (status === 'CALLBACK') {
             setShowCallbackPrompt(true);
             if (!callbackName.trim() || !callbackPhone.trim() || !callbackTime) {
@@ -80,7 +80,7 @@ export default function ManagerPropertyDetailSheet({
                 return;
             }
             const nextDate = new Date(callbackTime).toISOString();
-            handleLogResult(selectedProperty, {
+            const saved = await handleLogResult(selectedProperty, {
                 address_hash: selectedProperty.address_hash,
                 raw_input_text: `Marked as CALLBACK | Contact: ${callbackName.trim()} | Phone: ${callbackPhone.trim()} | Callback: ${callbackTime}`,
                 parsed_status: 'CALLBACK',
@@ -89,13 +89,15 @@ export default function ManagerPropertyDetailSheet({
                 callback_contact_phone: callbackPhone.trim(),
                 callback_time: callbackTime
             });
+            if (saved === false) return;
             resetCallbackForm();
             setSelectedProperty(null);
             toast.success('Callback saved');
             return;
         }
 
-        handleLogResult(selectedProperty, status);
+        const saved = await handleLogResult(selectedProperty, status);
+        if (saved === false) return;
         setSelectedProperty(null);
         toast.success(`Logged as ${status}`);
     };
