@@ -4,9 +4,25 @@ import Stripe from 'npm:stripe@14.14.0';
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
 const PROCESSOR_START_WAIT_MS = 900;
+const DEFAULT_ROUTE_TYPE_FILTERS = {
+    propertyTypes: [],
+    excludeCommercial: true,
+    excludeCondos: true,
+    excludeLand: true
+};
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function normalizeRouteTypeFilters(input = {}) {
+    const source = input && typeof input === 'object' ? input : {};
+    return {
+        propertyTypes: Array.isArray(source.propertyTypes) ? source.propertyTypes.map(String).filter(Boolean) : [],
+        excludeCommercial: source.excludeCommercial !== false,
+        excludeCondos: source.excludeCondos !== false,
+        excludeLand: source.excludeLand !== false
+    };
 }
 
 async function startProcessor(base44, jobId, expectedChunk = 0) {
@@ -195,6 +211,7 @@ Deno.serve(async (req) => {
         const maxPriceRaw = Number(body.max_price);
         const minPrice = Number.isFinite(minPriceRaw) && minPriceRaw > 0 ? minPriceRaw : 100000;
         const maxPrice = Number.isFinite(maxPriceRaw) && maxPriceRaw > 0 ? maxPriceRaw : null;
+        const routeFilters = normalizeRouteTypeFilters(body.route_filters || DEFAULT_ROUTE_TYPE_FILTERS);
         const fips = await resolveFips(center);
         if (!fips?.fips_code) {
             return Response.json({ error: 'Could not resolve county/FIPS for this area. Please redraw inside a supported US county.' }, { status: 400 });
@@ -216,7 +233,8 @@ Deno.serve(async (req) => {
                 sold_months: requestedSoldMonths,
                 previous_pull_date: body.previous_pull_date || null,
                 include_unresolved_followups: body.include_unresolved_followups === true,
-                area_sq_mi: Number(areaSqMi.toFixed(2))
+                area_sq_mi: Number(areaSqMi.toFixed(2)),
+                route_filters: routeFilters
             });
         }
 
@@ -264,6 +282,7 @@ Deno.serve(async (req) => {
                     min_price: minPrice,
                     max_price: maxPrice
                 },
+                route_filters: routeFilters,
                 paid_pull_started_at: new Date().toISOString()
             },
             sold_months: requestedSoldMonths,
@@ -292,6 +311,7 @@ Deno.serve(async (req) => {
             existing_route_homes: existingRouteHomes,
             excluded_route_home_count: existingRouteHomes,
             free_properties_remaining: freeHomesRemaining,
+            route_filters: routeFilters,
             message: `Precision pull started for up to ${requestedProperties} properties.`
         });
     } catch (error) {

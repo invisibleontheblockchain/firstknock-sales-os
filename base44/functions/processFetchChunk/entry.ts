@@ -8,8 +8,103 @@ const BATCHDATA_MAX_TAKE = 100;
 const BATCHDATA_REQUEST_TIMEOUT_MS = 20 * 1000;
 const BATCHDATA_PROGRESS_UPDATE_MS = 1500;
 const PIPELINE_LOCK_TTL_MS = 8 * 60 * 1000;
+const DEFAULT_ROUTE_TYPE_FILTERS = {
+    propertyTypes: [],
+    excludeCommercial: true,
+    excludeCondos: true,
+    excludeLand: true
+};
+const PROPERTY_TYPE_ALIASES = {
+    'Single Family': ['single family', 'single family residential', 'single-family', 'sfr', 'sfh', 'detached', 'one family', '1 family'],
+    'Townhouse': ['townhouse', 'townhome', 'row house', 'rowhouse'],
+    'Condo': ['condo', 'condominium', 'co op', 'coop', 'cooperative'],
+    'Multi-Family': ['multi family', 'multi-family', 'multifamily', 'duplex', 'triplex', 'fourplex', '2 family', '3 family', '4 family', 'apartment'],
+    'Other': ['other', 'manufactured', 'mobile home', 'modular']
+};
+const COMMERCIAL_TYPE_KEYWORDS = ['commercial', 'industrial', 'retail', 'office', 'warehouse', 'business', 'shopping', 'hotel', 'motel', 'restaurant', 'medical', 'hospital'];
+const CONDO_MULTI_TYPE_KEYWORDS = ['condo', 'condominium', 'apartment', 'co op', 'coop', 'cooperative', 'multifamily', 'multi family', 'multi-family', 'duplex', 'triplex', 'fourplex'];
+const LAND_TYPE_KEYWORDS = ['land', 'lot', 'vacant', 'acreage', 'farm', 'agricultural'];
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+function normalizePropertyTypeText(value) {
+    return String(value || '')
+        .toLowerCase()
+        .replace(/[\/_-]+/g, ' ')
+        .replace(/[^\w\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function includesAnyPropertyType(text, keywords) {
+    return keywords.some(keyword => text.includes(normalizePropertyTypeText(keyword)));
+}
+
+function isVagueResidentialType(text) {
+    if (!text) return true;
+    if (/^r\d+[a-z]?$/.test(text)) return true;
+    return ['residential', 'residential property', 'residence', 'improved residential', 'residential improved'].includes(text);
+}
+
+function matchesSelectedPropertyType(propertyType, selectedType) {
+    const text = normalizePropertyTypeText(propertyType);
+    if (!text) return true;
+
+    const aliases = PROPERTY_TYPE_ALIASES[selectedType] || [selectedType];
+    if (aliases.some(alias => text.includes(normalizePropertyTypeText(alias)))) return true;
+
+    if (
+        selectedType === 'Single Family' &&
+        isVagueResidentialType(text) &&
+        !includesAnyPropertyType(text, [...CONDO_MULTI_TYPE_KEYWORDS, ...LAND_TYPE_KEYWORDS, ...COMMERCIAL_TYPE_KEYWORDS, 'townhouse', 'townhome'])
+    ) {
+        return true;
+    }
+
+    if (selectedType === 'Other') {
+        const known = Object.entries(PROPERTY_TYPE_ALIASES)
+            .filter(([key]) => key !== 'Other')
+            .some(([, values]) => values.some(alias => text.includes(normalizePropertyTypeText(alias))));
+        return !known && !includesAnyPropertyType(text, [...COMMERCIAL_TYPE_KEYWORDS, ...LAND_TYPE_KEYWORDS]);
+    }
+
+    return false;
+}
+
+function normalizeRouteTypeFilters(input = {}) {
+    const source = input && typeof input === 'object' ? input : {};
+    return {
+        propertyTypes: Array.isArray(source.propertyTypes) ? source.propertyTypes.map(String).filter(Boolean) : [],
+        excludeCommercial: source.excludeCommercial !== false,
+        excludeCondos: source.excludeCondos !== false,
+        excludeLand: source.excludeLand !== false
+    };
+}
+
+function getRouteTypeFilters(job) {
+    return normalizeRouteTypeFilters(job?.dry_run_metadata?.route_filters || DEFAULT_ROUTE_TYPE_FILTERS);
+}
+
+function routeTypeEligibility(property, filters = DEFAULT_ROUTE_TYPE_FILTERS) {
+    const normalizedFilters = normalizeRouteTypeFilters(filters);
+    const text = normalizePropertyTypeText(property?.property_type);
+    const selectedTypes = normalizedFilters.propertyTypes;
+
+    if (selectedTypes.length > 0 && !selectedTypes.some(type => matchesSelectedPropertyType(text, type))) {
+        return { eligible: false, reason: 'includePropertyTypes' };
+    }
+    if (normalizedFilters.excludeCommercial && includesAnyPropertyType(text, COMMERCIAL_TYPE_KEYWORDS)) {
+        return { eligible: false, reason: 'excludeCommercial' };
+    }
+    if (normalizedFilters.excludeCondos && includesAnyPropertyType(text, CONDO_MULTI_TYPE_KEYWORDS)) {
+        return { eligible: false, reason: 'excludeCondosMultiFamily' };
+    }
+    if (normalizedFilters.excludeLand && includesAnyPropertyType(text, LAND_TYPE_KEYWORDS)) {
+        return { eligible: false, reason: 'excludeLand' };
+    }
+
+    return { eligible: true, reason: null };
+}
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = BATCHDATA_REQUEST_TIMEOUT_MS) {
     const controller = new AbortController();
@@ -511,6 +606,7 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
     const selected = [];
     const selectedHashes = new Set();
     const excludedRouteHashes = getExcludedRouteHashes(job);
+    const routeTypeFilters = getRouteTypeFilters(job);
     const rejectedSamples = [];
     const pageTimings = [];
     let skip = 0;
@@ -518,6 +614,8 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
     let totalRecordCount = null;
     let skippedExistingRoute = 0;
     let skippedDuplicate = 0;
+    let skippedRouteType = 0;
+    const skippedRouteTypeBreakdown = {};
     const maxReviewed = Math.min(1000, Math.max(BATCHDATA_MAX_TAKE, requested * 50));
 
     while (selected.length < requested && reviewed < maxReviewed) {
@@ -557,6 +655,12 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
                     skippedDuplicate++;
                     continue;
                 }
+                const typeEligibility = routeTypeEligibility(mapped, routeTypeFilters);
+                if (!typeEligibility.eligible) {
+                    skippedRouteType++;
+                    skippedRouteTypeBreakdown[typeEligibility.reason] = (skippedRouteTypeBreakdown[typeEligibility.reason] || 0) + 1;
+                    continue;
+                }
                 selectedHashes.add(mapped.address_hash);
                 selected.push(raw);
                 if (selected.length >= requested) break;
@@ -576,6 +680,7 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
                 totalRecordCount,
                 skipped_existing_route: skippedExistingRoute,
                 skipped_duplicate: skippedDuplicate,
+                skipped_route_type: skippedRouteType,
                 skip,
                 take,
                 page_elapsed_ms: pageElapsedMs
@@ -594,6 +699,8 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
         rejected_samples: rejectedSamples.length,
         skipped_existing_route: skippedExistingRoute,
         skipped_duplicate: skippedDuplicate,
+        skipped_route_type: skippedRouteType,
+        skipped_route_type_breakdown: skippedRouteTypeBreakdown,
         max_reviewed: maxReviewed,
         page_timings: pageTimings,
         totalRecordCount
@@ -610,7 +717,7 @@ async function fetchBatchDataRecords(job, onProgress = null) {
 
     for (const mode of modes) {
         const result = await fetchBatchDataRecordsForMode(job, mode, requested, onProgress);
-        attempts.push({ mode, count: result.records.length, reviewed: result.reviewed, active: result.active, rejected_samples: result.rejected_samples, skipped_existing_route: result.skipped_existing_route, skipped_duplicate: result.skipped_duplicate, max_reviewed: result.max_reviewed, page_timings: result.page_timings, total: result.totalRecordCount });
+        attempts.push({ mode, count: result.records.length, reviewed: result.reviewed, active: result.active, rejected_samples: result.rejected_samples, skipped_existing_route: result.skipped_existing_route, skipped_duplicate: result.skipped_duplicate, skipped_route_type: result.skipped_route_type, skipped_route_type_breakdown: result.skipped_route_type_breakdown, max_reviewed: result.max_reviewed, page_timings: result.page_timings, total: result.totalRecordCount });
         if (result.active >= requested) return { records: result.records, attempts, mode_used: mode };
         if (result.active > fallbackActive || (fallback.length === 0 && result.records.length > 0)) {
             fallback = result.records;
@@ -815,10 +922,13 @@ Deno.serve(async (req) => {
         const rawRecords = batchFetch.records;
         const seen = new Set();
         const excludedRouteHashes = getExcludedRouteHashes(job);
+        const routeTypeFilters = getRouteTypeFilters(job);
         const mapped = [];
         let rejected = 0;
         let outsideOrInvalid = 0;
         let skippedExistingRoute = 0;
+        let skippedRouteType = 0;
+        const skippedRouteTypeBreakdown = {};
         const zipCodes = [...(job.zip_codes_found || [])];
 
         for (const raw of rawRecords) {
@@ -828,6 +938,12 @@ Deno.serve(async (req) => {
             seen.add(property.address_hash);
             if (excludedRouteHashes.has(property.address_hash)) {
                 skippedExistingRoute++;
+                continue;
+            }
+            const typeEligibility = routeTypeEligibility(property, routeTypeFilters);
+            if (!typeEligibility.eligible) {
+                skippedRouteType++;
+                skippedRouteTypeBreakdown[typeEligibility.reason] = (skippedRouteTypeBreakdown[typeEligibility.reason] || 0) + 1;
                 continue;
             }
             if (property.zip_code && !zipCodes.includes(property.zip_code)) zipCodes.push(property.zip_code);
@@ -842,7 +958,19 @@ Deno.serve(async (req) => {
         const reviewedCount = (batchFetch.attempts || []).reduce((sum, attempt) => sum + (Number(attempt.reviewed) || 0), 0);
         const skippedExistingRouteFromFetch = (batchFetch.attempts || []).reduce((sum, attempt) => sum + (Number(attempt.skipped_existing_route) || 0), 0);
         const skippedDuplicateFromFetch = (batchFetch.attempts || []).reduce((sum, attempt) => sum + (Number(attempt.skipped_duplicate) || 0), 0);
+        const skippedRouteTypeFromFetch = (batchFetch.attempts || []).reduce((sum, attempt) => sum + (Number(attempt.skipped_route_type) || 0), 0);
         const totalSkippedExistingRoute = skippedExistingRouteFromFetch + skippedExistingRoute;
+        const totalSkippedRouteType = skippedRouteTypeFromFetch + skippedRouteType;
+        const skippedRouteTypeBreakdownTotal = (batchFetch.attempts || []).reduce((acc, attempt) => {
+            const breakdown = attempt.skipped_route_type_breakdown || {};
+            for (const [reason, count] of Object.entries(breakdown)) {
+                acc[reason] = (acc[reason] || 0) + (Number(count) || 0);
+            }
+            return acc;
+        }, {});
+        for (const [reason, count] of Object.entries(skippedRouteTypeBreakdown)) {
+            skippedRouteTypeBreakdownTotal[reason] = (skippedRouteTypeBreakdownTotal[reason] || 0) + count;
+        }
         const providerTotal = (batchFetch.attempts || [])
             .map(attempt => attempt.total)
             .find(total => total !== null && total !== undefined && Number.isFinite(Number(total)));
@@ -850,6 +978,8 @@ Deno.serve(async (req) => {
             ? 'target_met'
             : totalSkippedExistingRoute > 0
                 ? 'insufficient_new_homes_after_existing_routes'
+                : totalSkippedRouteType > 0
+                    ? 'insufficient_homes_after_property_type_filters'
             : rawRecords.length === 0
                 ? 'no_provider_matches'
                 : 'insufficient_qualifying_homes';
@@ -865,9 +995,11 @@ Deno.serve(async (req) => {
             rejected,
             outside_or_invalid: outsideOrInvalid,
             skipped_existing_route: totalSkippedExistingRoute,
-            skipped_duplicate: skippedDuplicateFromFetch
+            skipped_duplicate: skippedDuplicateFromFetch,
+            skipped_route_type: totalSkippedRouteType,
+            skipped_route_type_breakdown: skippedRouteTypeBreakdownTotal
         };
-        const errorLog = [...(job.error_log || []), `[${completedAt}] BatchData-only Precision complete: mode=${batchFetch.mode_used}, attempts=${JSON.stringify(batchFetch.attempts)}, raw=${rawRecords.length}, mapped=${mapped.length}, active=${activeCount}, rejected=${rejected}, outside_or_invalid=${outsideOrInvalid}, skipped_existing_route=${totalSkippedExistingRoute}, skipped_duplicate=${skippedDuplicateFromFetch}`];
+        const errorLog = [...(job.error_log || []), `[${completedAt}] BatchData-only Precision complete: mode=${batchFetch.mode_used}, attempts=${JSON.stringify(batchFetch.attempts)}, raw=${rawRecords.length}, mapped=${mapped.length}, active=${activeCount}, rejected=${rejected}, outside_or_invalid=${outsideOrInvalid}, skipped_existing_route=${totalSkippedExistingRoute}, skipped_duplicate=${skippedDuplicateFromFetch}, skipped_route_type=${totalSkippedRouteType}`];
 
         // ── Post-write integrity verification ─────────────────────────────
         // Guarantee: every mapped property from the BatchData response must be

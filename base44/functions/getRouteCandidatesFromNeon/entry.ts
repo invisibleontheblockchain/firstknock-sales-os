@@ -162,12 +162,12 @@ Deno.serve(async (req) => {
             JOIN properties p ON p.id = wp.property_id
             WHERE wp.user_email = ${targetEmail}
               AND (${fetchJobId === null} OR wp.fetch_job_id = ${fetchJobId})
-              AND (${fetchJobId !== null} OR wp.route_active = TRUE)
+              AND wp.route_active = TRUE
               AND p.lat IS NOT NULL
               AND p.lng IS NOT NULL
-              AND (${fetchJobId !== null} OR COALESCE(wp.status, '') <> 'REJECTED')
-              AND (${fetchJobId !== null} OR COALESCE(p.original_status, '') <> 'REJECTED')
-              AND (${fetchJobId !== null} OR COALESCE(p.sale_confidence, '') <> 'REJECTED')
+              AND COALESCE(wp.status, '') <> 'REJECTED'
+              AND COALESCE(p.original_status, '') <> 'REJECTED'
+              AND COALESCE(p.sale_confidence, '') <> 'REJECTED'
               AND (${zipCodes.length === 0} OR p.zip_code = ANY(${zipCodes}))
               AND (${fetchJobId !== null || soldAfter === null} OR p.sold_date IS NULL OR p.sold_date >= ${soldAfter})
               AND (${!bounds?.minLat} OR p.lat >= ${bounds?.minLat || 0})
