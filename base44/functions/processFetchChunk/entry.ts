@@ -455,6 +455,11 @@ async function countActiveWorkspaceHomes(sql, userEmail) {
     return Number(rows?.[0]?.active_count || 0);
 }
 
+function getExcludedRouteHashes(job) {
+    const hashes = job?.dry_run_metadata?.excluded_route_hashes;
+    return new Set((Array.isArray(hashes) ? hashes : []).map(hash => String(hash)).filter(Boolean));
+}
+
 async function batchDataFetchWithRetry(requestBody) {
     for (let attempt = 1; attempt <= 4; attempt++) {
         const response = await fetch(BATCHDATA_BASE, {
@@ -484,10 +489,14 @@ async function batchDataFetchWithRetry(requestBody) {
 
 async function fetchBatchDataRecordsForMode(job, mode, requested) {
     const selected = [];
+    const selectedHashes = new Set();
+    const excludedRouteHashes = getExcludedRouteHashes(job);
     const rejectedSamples = [];
     let skip = 0;
     let reviewed = 0;
     let totalRecordCount = null;
+    let skippedExistingRoute = 0;
+    let skippedDuplicate = 0;
     const maxReviewed = Math.min(1000, Math.max(BATCHDATA_MAX_TAKE, requested * 50));
 
     while (selected.length < requested && reviewed < maxReviewed) {
@@ -501,6 +510,15 @@ async function fetchBatchDataRecordsForMode(job, mode, requested) {
         for (const raw of list) {
             const mapped = mapBatchDataProperty(raw, job);
             if (mapped && mapped.route_active !== false) {
+                if (excludedRouteHashes.has(mapped.address_hash)) {
+                    skippedExistingRoute++;
+                    continue;
+                }
+                if (selectedHashes.has(mapped.address_hash)) {
+                    skippedDuplicate++;
+                    continue;
+                }
+                selectedHashes.add(mapped.address_hash);
                 selected.push(raw);
                 if (selected.length >= requested) break;
             } else if (rejectedSamples.length < Math.min(10, Math.max(requested, 2))) {
@@ -518,6 +536,8 @@ async function fetchBatchDataRecordsForMode(job, mode, requested) {
         reviewed,
         active: selected.length,
         rejected_samples: rejectedSamples.length,
+        skipped_existing_route: skippedExistingRoute,
+        skipped_duplicate: skippedDuplicate,
         totalRecordCount
     };
 }
@@ -532,7 +552,7 @@ async function fetchBatchDataRecords(job) {
 
     for (const mode of modes) {
         const result = await fetchBatchDataRecordsForMode(job, mode, requested);
-        attempts.push({ mode, count: result.records.length, reviewed: result.reviewed, active: result.active, rejected_samples: result.rejected_samples, total: result.totalRecordCount });
+        attempts.push({ mode, count: result.records.length, reviewed: result.reviewed, active: result.active, rejected_samples: result.rejected_samples, skipped_existing_route: result.skipped_existing_route, skipped_duplicate: result.skipped_duplicate, total: result.totalRecordCount });
         if (result.active >= requested) return { records: result.records, attempts, mode_used: mode };
         if (result.active > fallbackActive || (fallback.length === 0 && result.records.length > 0)) {
             fallback = result.records;
@@ -712,9 +732,11 @@ Deno.serve(async (req) => {
             : await fetchBatchDataRecords(job);
         const rawRecords = batchFetch.records;
         const seen = new Set();
+        const excludedRouteHashes = getExcludedRouteHashes(job);
         const mapped = [];
         let rejected = 0;
         let outsideOrInvalid = 0;
+        let skippedExistingRoute = 0;
         const zipCodes = [...(job.zip_codes_found || [])];
 
         for (const raw of rawRecords) {
@@ -722,6 +744,10 @@ Deno.serve(async (req) => {
             if (!property) { outsideOrInvalid++; continue; }
             if (seen.has(property.address_hash)) continue;
             seen.add(property.address_hash);
+            if (excludedRouteHashes.has(property.address_hash)) {
+                skippedExistingRoute++;
+                continue;
+            }
             if (property.zip_code && !zipCodes.includes(property.zip_code)) zipCodes.push(property.zip_code);
             if (property.route_active === false) rejected++;
             mapped.push(property);
@@ -732,11 +758,16 @@ Deno.serve(async (req) => {
         const activeCount = mapped.filter(p => p.route_active !== false).length;
         const requestedCount = Number(job.total_expected || job.estimated_record_count || 0) || 0;
         const reviewedCount = (batchFetch.attempts || []).reduce((sum, attempt) => sum + (Number(attempt.reviewed) || 0), 0);
+        const skippedExistingRouteFromFetch = (batchFetch.attempts || []).reduce((sum, attempt) => sum + (Number(attempt.skipped_existing_route) || 0), 0);
+        const skippedDuplicateFromFetch = (batchFetch.attempts || []).reduce((sum, attempt) => sum + (Number(attempt.skipped_duplicate) || 0), 0);
+        const totalSkippedExistingRoute = skippedExistingRouteFromFetch + skippedExistingRoute;
         const providerTotal = (batchFetch.attempts || [])
             .map(attempt => attempt.total)
             .find(total => total !== null && total !== undefined && Number.isFinite(Number(total)));
         const completionReason = activeCount >= requestedCount
             ? 'target_met'
+            : totalSkippedExistingRoute > 0
+                ? 'insufficient_new_homes_after_existing_routes'
             : rawRecords.length === 0
                 ? 'no_provider_matches'
                 : 'insufficient_qualifying_homes';
@@ -750,9 +781,11 @@ Deno.serve(async (req) => {
             mapped: mapped.length,
             active: activeCount,
             rejected,
-            outside_or_invalid: outsideOrInvalid
+            outside_or_invalid: outsideOrInvalid,
+            skipped_existing_route: totalSkippedExistingRoute,
+            skipped_duplicate: skippedDuplicateFromFetch
         };
-        const errorLog = [...(job.error_log || []), `[${completedAt}] BatchData-only Precision complete: mode=${batchFetch.mode_used}, attempts=${JSON.stringify(batchFetch.attempts)}, raw=${rawRecords.length}, mapped=${mapped.length}, active=${activeCount}, rejected=${rejected}, outside_or_invalid=${outsideOrInvalid}`];
+        const errorLog = [...(job.error_log || []), `[${completedAt}] BatchData-only Precision complete: mode=${batchFetch.mode_used}, attempts=${JSON.stringify(batchFetch.attempts)}, raw=${rawRecords.length}, mapped=${mapped.length}, active=${activeCount}, rejected=${rejected}, outside_or_invalid=${outsideOrInvalid}, skipped_existing_route=${totalSkippedExistingRoute}, skipped_duplicate=${skippedDuplicateFromFetch}`];
 
         // ── Post-write integrity verification ─────────────────────────────
         // Guarantee: every mapped property from the BatchData response must be

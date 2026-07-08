@@ -215,7 +215,7 @@ export default function Home() {
         returnToStart: false,
         excludeTerminal: true,
         includeCallbacks: true,
-        excludeAssigned: false,
+        excludeAssigned: true,
         excludeCommercial: true,
         excludeCondos: true,
         excludePreviouslyKnocked: true,
@@ -1213,10 +1213,13 @@ export default function Home() {
             await new Promise(r => setTimeout(r, 30));
 
             // 3. FILTERING — delegated to routeFilterPipeline for clarity + diagnostics
+            const effectiveRouteConfig = isCurrentBatchDataRun
+                ? { ...routeConfig, excludeAssigned: true }
+                : routeConfig;
             const filterResult = applyRouteFilters({
                 initialSet, drawnPolygon: activeGenerationPolygon, zipCodeFilter,
                 territoryZipCodes: user?.territory_zip_codes,
-                soldDateFilter: effectiveGenerationSoldFilter, routeConfig, lastPullMode, logsByAddress, assignedHashes,
+                soldDateFilter: effectiveGenerationSoldFilter, routeConfig: effectiveRouteConfig, lastPullMode, logsByAddress, assignedHashes,
             });
             console.log(`[generateRoutes] Filter funnel: ${formatStageCounts(filterResult.stages)}`);
             if (filterResult.frozenSet) setFrozenWorkingSet(filterResult.frozenSet);
@@ -1284,7 +1287,7 @@ export default function Home() {
             setPreviewRoute(null);
             setShowRoutePanel(false); setShowCompare(false);
             let skippedDueToAssigned = 0;
-            if (routeConfig.excludeAssigned) {
+            if (effectiveRouteConfig.excludeAssigned) {
                 skippedDueToAssigned = (effectiveProperties.length - availableProperties.length) +
                     (dynamicProps ? dynamicProps.filter(p => assignedHashes.has(p.address_hash || p.id)).length : 0);
             }

@@ -103,7 +103,7 @@ function asArray(value) {
     return Array.isArray(value) ? value : (value?.items || []);
 }
 
-function countUniquePrecisionRouteHomes(routes) {
+function uniquePrecisionRouteHashes(routes) {
     const hashes = new Set();
     for (const route of routes) {
         if (!route || route.route_mode === 'canvas' || route.status === 'ARCHIVED') continue;
@@ -111,10 +111,10 @@ function countUniquePrecisionRouteHomes(routes) {
             if (hash) hashes.add(hash);
         }
     }
-    return hashes.size;
+    return [...hashes];
 }
 
-async function countPrecisionRouteHomes(base44, user) {
+async function getPrecisionRouteHomeStats(base44, user) {
     const routesById = new Map();
     const routeQueries = [];
     if (user?.id) routeQueries.push(base44.asServiceRole.entities.SavedRoute.filter({ manager_id: user.id }, '-updated_date', 1000));
@@ -126,7 +126,8 @@ async function countPrecisionRouteHomes(base44, user) {
             routesById.set(route.id || `${route.created_by || ''}:${route.name || ''}:${route.created_date || ''}`, route);
         }
     }
-    return countUniquePrecisionRouteHomes([...routesById.values()]);
+    const hashes = uniquePrecisionRouteHashes([...routesById.values()]);
+    return { count: hashes.length, hashes };
 }
 
 Deno.serve(async (req) => {
@@ -148,7 +149,9 @@ Deno.serve(async (req) => {
         const isPaid = isAdminTestOverride
             ? body.test_account_type === 'paid'
             : hasConfirmedPaidPrecisionAccess(user);
-        const existingFreeHomes = isPaid ? 0 : await countPrecisionRouteHomes(base44, user);
+        const routeHomeStats = await getPrecisionRouteHomeStats(base44, user);
+        const existingRouteHomes = routeHomeStats.count;
+        const existingFreeHomes = isPaid ? 0 : existingRouteHomes;
         const freeHomesRemaining = isPaid ? null : Math.max(0, FREE_PROPERTY_CAP - existingFreeHomes);
         const maxProperties = isPaid ? PAID_PROPERTY_CAP : freeHomesRemaining;
         const requestedRaw = Number(body.requested_properties || body.record_cap || maxProperties);
@@ -181,8 +184,9 @@ Deno.serve(async (req) => {
             max_area_sq_mi: null,
             max_allowed_properties: maxProperties,
             requested_properties: requestedProperties,
-            existing_active_properties: existingFreeHomes,
-            existing_route_homes: existingFreeHomes,
+            existing_active_properties: existingRouteHomes,
+            existing_route_homes: existingRouteHomes,
+            excluded_route_home_count: existingRouteHomes,
             free_properties_remaining: freeHomesRemaining,
             returned_property_count: hardRejected ? 0 : requestedProperties,
             hard_rejected: hardRejected,

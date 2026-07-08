@@ -106,7 +106,7 @@ export default function RouteBuilderSettings({
             returnToStart: false,
             excludeTerminal: true,
             includeCallbacks: true,
-            excludeAssigned: false,
+            excludeAssigned: true,
             excludeCommercial: true,
             excludeCondos: true,
             excludePreviouslyKnocked: true,

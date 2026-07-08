@@ -65,10 +65,16 @@ function buildPrecisionShortfallMessage({ loadedCount, requestedCount, intendedC
   if (Number.isFinite(maxValue) && maxValue > 0) filters.push(`maximum value $${formatWholeNumber(maxValue)}`);
 
   const filterText = filters.length ? ` with your ${filters.join(', ')}` : '';
-  const reviewed = Number(diagnostics?.batchdata_summary?.reviewed || 0);
+  const summary = diagnostics?.batchdata_summary || {};
+  const reviewed = Number(summary.reviewed || 0);
+  const skippedExisting = Number(summary.skipped_existing_route || 0);
   const reviewedText = reviewed > 0 ? ` We checked ${formatWholeNumber(reviewed)} provider records.` : '';
+  const skippedText = skippedExisting > 0 ? ` We skipped ${formatWholeNumber(skippedExisting)} homes already in saved routes.` : '';
+  const nextStep = skippedExisting > 0
+    ? 'Draw beyond the previous route area or widen the boundary to reach new homes.'
+    : 'Draw a larger area, widen the sold-date range, or loosen the value range, then generate again to keep filling the route.';
 
-  return `Found ${formatWholeNumber(loaded)} qualifying sold homes in this area${filterText}; you requested ${formatWholeNumber(requested)}.${reviewedText} Draw a larger area, widen the sold-date range, or loosen the value range, then generate again to keep filling the route.`;
+  return `Found ${formatWholeNumber(loaded)} new qualifying sold homes in this area${filterText}; you requested ${formatWholeNumber(requested)}.${reviewedText}${skippedText} ${nextStep}`;
 }
 
 function countUniquePrecisionRouteHomes(routes = []) {

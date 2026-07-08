@@ -97,7 +97,7 @@ function asArray(value) {
     return Array.isArray(value) ? value : (value?.items || []);
 }
 
-function countUniquePrecisionRouteHomes(routes) {
+function uniquePrecisionRouteHashes(routes) {
     const hashes = new Set();
     for (const route of routes) {
         if (!route || route.route_mode === 'canvas' || route.status === 'ARCHIVED') continue;
@@ -105,10 +105,10 @@ function countUniquePrecisionRouteHomes(routes) {
             if (hash) hashes.add(hash);
         }
     }
-    return hashes.size;
+    return [...hashes];
 }
 
-async function countPrecisionRouteHomes(base44, user) {
+async function getPrecisionRouteHomeStats(base44, user) {
     const routesById = new Map();
     const routeQueries = [];
     if (user?.id) routeQueries.push(base44.asServiceRole.entities.SavedRoute.filter({ manager_id: user.id }, '-updated_date', 1000));
@@ -120,7 +120,8 @@ async function countPrecisionRouteHomes(base44, user) {
             routesById.set(route.id || `${route.created_by || ''}:${route.name || ''}:${route.created_date || ''}`, route);
         }
     }
-    return countUniquePrecisionRouteHomes([...routesById.values()]);
+    const hashes = uniquePrecisionRouteHashes([...routesById.values()]);
+    return { count: hashes.length, hashes };
 }
 
 Deno.serve(async (req) => {
@@ -156,9 +157,9 @@ Deno.serve(async (req) => {
                 message: 'That route size is above what your current plan includes. Start or upgrade to Precision to generate larger routes.'
             }, { status: 403 });
         }
-        const existingFreeHomes = !hasPaidPrecisionCapacity && !forceFreeForSelfTest
-            ? await countPrecisionRouteHomes(base44, user)
-            : 0;
+        const routeHomeStats = forceFreeForSelfTest ? { count: 0, hashes: [] } : await getPrecisionRouteHomeStats(base44, user);
+        const existingRouteHomes = routeHomeStats.count;
+        const existingFreeHomes = hasPaidPrecisionCapacity ? 0 : existingRouteHomes;
         const freeHomesRemaining = hasPaidPrecisionCapacity
             ? null
             : Math.max(0, FREE_PROPERTY_CAP - existingFreeHomes);
@@ -193,8 +194,9 @@ Deno.serve(async (req) => {
                 requested_properties: requestedProperties,
                 requested_properties_before_cap: requestedValue,
                 limited_by_free_home_cap: limitedByFreeHomeCap,
-                existing_active_properties: existingFreeHomes,
-                existing_route_homes: existingFreeHomes,
+                existing_active_properties: existingRouteHomes,
+                existing_route_homes: existingRouteHomes,
+                excluded_route_home_count: existingRouteHomes,
                 free_properties_remaining: freeHomesRemaining,
                 sold_months: requestedSoldMonths,
                 previous_pull_date: body.previous_pull_date || null,
@@ -232,8 +234,10 @@ Deno.serve(async (req) => {
                 requested_properties: requestedProperties,
                 requested_properties_before_cap: requestedValue,
                 limited_by_free_home_cap: limitedByFreeHomeCap,
-                existing_active_properties: existingFreeHomes,
-                existing_route_homes: existingFreeHomes,
+                existing_active_properties: existingRouteHomes,
+                existing_route_homes: existingRouteHomes,
+                excluded_route_home_count: existingRouteHomes,
+                excluded_route_hashes: routeHomeStats.hashes,
                 free_properties_remaining: freeHomesRemaining,
                 free_property_cap: FREE_PROPERTY_CAP,
                 count_mode: body.count_mode === 'max_available' ? 'max_available' : 'fixed',
@@ -272,6 +276,8 @@ Deno.serve(async (req) => {
             requested_properties: requestedProperties,
             requested_properties_before_cap: requestedValue,
             limited_by_free_home_cap: limitedByFreeHomeCap,
+            existing_route_homes: existingRouteHomes,
+            excluded_route_home_count: existingRouteHomes,
             free_properties_remaining: freeHomesRemaining,
             message: `Precision pull started for up to ${requestedProperties} properties.`
         });
