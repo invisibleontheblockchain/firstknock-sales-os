@@ -333,8 +333,12 @@ export default function TerritoryPrompt({
   const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing' || user?.is_owner || user?.role === 'admin';
   const freePropertyLimit = 50;
   const hasPaidPrecisionCapacity = hasConfirmedPaidPrecisionAccess(user);
-  const maxRequestedProperties = hasPaidPrecisionCapacity ? 1000 : freePropertyLimit;
-  const safeRequestedPropertyCount = Math.max(1, Math.min(Number(requestedPropertyCount) || 1, maxRequestedProperties));
+  const freePropertiesUsed = Math.max(0, Number(user?.precision_properties_used ?? user?.territory_property_count ?? 0) || 0);
+  const freePropertiesRemaining = Math.max(0, freePropertyLimit - freePropertiesUsed);
+  const maxRequestedProperties = hasPaidPrecisionCapacity ? 1000 : freePropertiesRemaining;
+  const safeRequestedPropertyCount = maxRequestedProperties <= 0
+    ? 0
+    : Math.max(1, Math.min(Number(requestedPropertyCount) || 1, maxRequestedProperties));
   const pullCount = user?.area_pulls_count || 0;
   const maxPulls = 9999; // unlimited for testing
   const canPullAgain = pullCount < maxPulls;
@@ -430,7 +434,6 @@ export default function TerritoryPrompt({
           try {
             await base44.auth.updateMe({
               has_pulled_data: true,
-              territory_property_count: totalLoaded,
               last_data_pull: new Date().toISOString()
             });
           } catch (e) {console.warn('Failed to update pull status', e);}
@@ -583,6 +586,14 @@ export default function TerritoryPrompt({
     const latestUser = (effectiveRequestedPropertyCount > freePropertyLimit || premiumRecentRange) ? await base44.auth.me() : user;
     const hasPaidPrecision = hasConfirmedPaidPrecisionAccess(latestUser);
     const hasPrecisionPro = isPrecisionProUser(latestUser);
+
+    if (effectiveRequestedPropertyCount <= 0 && !hasPaidPrecision) {
+      setPullError({
+        message: 'Your current plan has used its included Precision homes. Upgrade to Precision to generate larger routes.',
+        upgrade: true
+      });
+      return;
+    }
 
     if (effectiveRequestedPropertyCount > freePropertyLimit && !hasPaidPrecision) {
       toast.info('Precision pulls over 50 houses require the paid $99/month Precision plan after the first payment clears.');
