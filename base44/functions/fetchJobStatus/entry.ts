@@ -66,6 +66,9 @@ Deno.serve(async (req) => {
         return Response.json({
             job_id: job.id,
             status: job.status,
+            phase: job.phase || null,
+            provider: job.provider || null,
+            mode_tag: job.mode_tag || null,
             progress_pct: job.progress_pct || 0,
             total_expected: job.total_expected || 0,
             total_fetched: job.total_fetched || 0,
@@ -79,6 +82,7 @@ Deno.serve(async (req) => {
             pull_mode: job.pull_mode || (job.is_delta_pull ? 'delta_refresh' : 'full_refresh'),
             completed_sub_circles: job.completed_sub_circles || 0,
             total_sub_circles: job.total_sub_circles || 1,
+            current_offset: job.current_offset || 0,
             is_delta_pull: job.is_delta_pull || false,
             delta_savings: job.delta_savings || null,
             diagnostics: {
