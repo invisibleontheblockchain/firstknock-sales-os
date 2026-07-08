@@ -523,6 +523,21 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
     while (selected.length < requested && reviewed < maxReviewed) {
         const take = Math.min(BATCHDATA_MAX_TAKE, maxReviewed - reviewed);
         const requestBody = buildBatchDataRequest(job, skip, take, mode);
+        if (typeof onProgress === 'function') {
+            await onProgress({
+                event: 'page_start',
+                mode,
+                requested,
+                reviewed,
+                selected: selected.length,
+                maxReviewed,
+                totalRecordCount,
+                skipped_existing_route: skippedExistingRoute,
+                skipped_duplicate: skippedDuplicate,
+                skip,
+                take
+            }).catch(() => {});
+        }
         const pageStartedAt = Date.now();
         const payload = await batchDataFetchWithRetry(requestBody);
         const list = extractBatchDataRecords(payload);
@@ -552,6 +567,7 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
 
         if (typeof onProgress === 'function') {
             await onProgress({
+                event: 'page_complete',
                 mode,
                 requested,
                 reviewed,
@@ -560,6 +576,8 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
                 totalRecordCount,
                 skipped_existing_route: skippedExistingRoute,
                 skipped_duplicate: skippedDuplicate,
+                skip,
+                take,
                 page_elapsed_ms: pageElapsedMs
             }).catch(() => {});
         }
@@ -772,18 +790,24 @@ Deno.serve(async (req) => {
         const requestedProgressCount = Math.max(Number(job.total_expected || job.estimated_record_count || 0) || 1, 1);
         const updateScanProgress = async (progress) => {
             const now = Date.now();
+            const isPageStart = progress.event === 'page_start';
+            const reviewed = Number(progress.reviewed) || 0;
             const foundRatio = Math.min(1, (Number(progress.selected) || 0) / requestedProgressCount);
             const scanDenominator = Math.max(1, Number(progress.totalRecordCount || progress.maxReviewed || 1));
-            const scanRatio = Math.min(1, (Number(progress.reviewed) || 0) / scanDenominator);
-            const nextPct = Math.min(82, Math.max(lastProgressPct, 8 + Math.round(Math.max(foundRatio, scanRatio) * 72)));
-            if (now - lastProgressUpdateAt < BATCHDATA_PROGRESS_UPDATE_MS && nextPct === lastProgressPct) return;
+            const scanRatio = Math.min(1, reviewed / scanDenominator);
+            const nextPct = isPageStart
+                ? Math.min(82, Math.max(lastProgressPct, 8))
+                : Math.min(82, Math.max(lastProgressPct, 8 + Math.round(Math.max(foundRatio, scanRatio) * 72)));
+            if (!isPageStart && now - lastProgressUpdateAt < BATCHDATA_PROGRESS_UPDATE_MS && nextPct === lastProgressPct) return;
             lastProgressUpdateAt = now;
             lastProgressPct = nextPct;
-            await base44.asServiceRole.entities.FetchJob.update(job.id, {
-                phase: 'batchdata_scanning',
+            const update = {
+                phase: isPageStart ? 'batchdata_requesting' : 'batchdata_scanning',
                 progress_pct: nextPct,
-                total_fetched: Number(progress.reviewed) || 0
-            }).catch(() => {});
+                total_fetched: reviewed,
+                ...(Number.isFinite(Number(progress.skip)) ? { current_offset: Number(progress.skip) } : {})
+            };
+            await base44.asServiceRole.entities.FetchJob.update(job.id, update).catch(() => {});
         };
         const batchFetch = Array.isArray(body.synthetic_records)
             ? { records: body.synthetic_records, attempts: [{ mode: 'synthetic_records', count: body.synthetic_records.length }], mode_used: 'synthetic_records' }

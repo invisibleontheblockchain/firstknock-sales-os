@@ -446,6 +446,7 @@ export default function TerritoryPrompt({
         const pct = d.progress_pct || 0;
         setPullPct(pct);
         targetPctRef.current = pct;
+        const phase = d.phase || '';
         const fetched = d.total_fetched || 0;
         const expected = d.total_expected || 0;
         const inserted = d.total_inserted || 0;
@@ -463,7 +464,9 @@ export default function TerritoryPrompt({
 
         const elapsedSec = Math.max(1, Math.round((Date.now() - pollStartTime) / 1000));
         if (pct < 100) {
-          if (pct < 8 || elapsedSec < 10) {
+          if (phase === 'batchdata_requesting') {
+            setEtaText('Contacting property provider...');
+          } else if (pct < 8 || elapsedSec < 10) {
             setEtaText('Starting import...');
           } else if (pct < 85) {
             setEtaText('Usually under 2 minutes');
@@ -473,7 +476,11 @@ export default function TerritoryPrompt({
         }
 
         const readyCount = Math.max(d.active_count || 0, inserted + (d.total_existed || 0), inserted + (d.total_updated || 0));
-        if (expected > 0) {
+        if (phase === 'batchdata_requesting' && fetched === 0) {
+          setPullProgress(expected > 0
+            ? `Contacting property provider for up to ${expected.toLocaleString()} homes...`
+            : 'Contacting property provider...');
+        } else if (expected > 0) {
           setPullProgress(`${fetched.toLocaleString()} of ${expected.toLocaleString()} records checked • ${readyCount.toLocaleString()} ready for routes`);
         } else {
           setPullProgress(`${fetched.toLocaleString()} records checked • ${readyCount.toLocaleString()} ready for routes`);
