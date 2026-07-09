@@ -34,6 +34,10 @@ function normalizePropertyTypeText(value) {
         .trim();
 }
 
+function hasAddressUnitMarker(value) {
+    return /(?:^|[\s,])(?:apt|apartment|unit|ste|suite|#)\s*[a-z0-9-]+(?:$|[\s,])/i.test(String(value || ''));
+}
+
 function includesAnyPropertyType(text, keywords) {
     return keywords.some(keyword => text.includes(normalizePropertyTypeText(keyword)));
 }
@@ -206,6 +210,21 @@ function dateValue(...values) {
     return null;
 }
 
+function latestDateValue(...values) {
+    let latest = null;
+    let latestMs = 0;
+    for (const value of values) {
+        const candidate = dateValue(value);
+        if (!candidate) continue;
+        const time = new Date(candidate).getTime();
+        if (Number.isFinite(time) && time > latestMs) {
+            latestMs = time;
+            latest = candidate;
+        }
+    }
+    return latest;
+}
+
 function isPointInPolygon(point, polygon) {
     if (!Array.isArray(polygon) || polygon.length < 3) return true;
     let inside = false;
@@ -301,8 +320,16 @@ function batchDataTypeFields(record) {
     const p = batchDataRecordProperty(record);
     const general = p.general || p.property || p.propertyInfo || {};
     const building = p.building || p.structure || p.propertyInfo || p.assessment?.building || p.assessor?.building || {};
+    const address = normalizeBatchDataAddress(p);
+    const quickLists = p.quickLists || {};
+    const addressHasUnit = hasAddressUnitMarker(address.street);
+    const inferredDisallowedType = quickLists.vacantLot
+        ? 'Vacant Land'
+        : addressHasUnit
+            ? 'Condo/Multi-Family'
+            : null;
     const landUse = firstValue(general.standardizedLandUseCode, p.standardizedLandUseCode, general.landUseCode, p.landUseCode);
-    const propertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType);
+    const propertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType, inferredDisallowedType);
     return {
         land_use: landUse || 'missing',
         property_type: propertyType || 'missing',
@@ -346,20 +373,58 @@ function intelLastSoldDate(record) {
     return isoDateOnly(batchDataRecordProperty(record).intel?.lastSoldDate);
 }
 
+function batchDataLatestSaleDateFromProperty(p) {
+    const sale = p.sale || p.lastSale || p.deed?.sale || p.transaction || {};
+    const lastSale = sale.lastSale || sale.lastTransfer || sale;
+    const latestSaleMortgage = Array.isArray(lastSale?.mortgages) ? lastSale.mortgages[0] : null;
+    const latestMortgageHistory = Array.isArray(p.mortgageHistory) ? p.mortgageHistory[0] : null;
+    return isoDateOnly(latestDateValue(
+        p.intel?.lastSoldDate,
+        p.intel?.lastSaleDate,
+        p.intel?.lastTransferDate,
+        p.listing?.soldDate,
+        p.deedHistory?.[0]?.saleDate,
+        sale?.lastSaleDate,
+        sale?.recordingDate,
+        sale?.saleDate,
+        sale?.date,
+        lastSale?.recordingDate,
+        lastSale?.saleDate,
+        lastSale?.date,
+        latestSaleMortgage?.recordingDate,
+        latestSaleMortgage?.saleDate,
+        p.openLien?.firstLoanRecordingDate,
+        p.openLien?.lastLoanRecordingDate,
+        latestMortgageHistory?.saleDate,
+        latestMortgageHistory?.recordingDate,
+        p.lastSaleDate
+    ));
+}
+
+function batchDataProviderSaleDate(record) {
+    return batchDataLatestSaleDateFromProperty(batchDataRecordProperty(record));
+}
+
 function summarizeIntelLastSoldDates(records, soldMinDate) {
     const dates = [];
-    let datesPresent = 0;
-    let datesAbsent = 0;
+    let intelDatesPresent = 0;
+    let intelDatesAbsent = 0;
+    let providerDatesPresent = 0;
+    let providerDatesAbsent = 0;
     let inWindow = 0;
     let outsideWindow = 0;
 
     for (const record of records) {
-        const date = intelLastSoldDate(record);
+        const intelDate = intelLastSoldDate(record);
+        const providerDate = batchDataProviderSaleDate(record);
+        const date = intelDate || providerDate;
+        if (intelDate) intelDatesPresent++;
+        else intelDatesAbsent++;
+        if (providerDate) providerDatesPresent++;
+        else providerDatesAbsent++;
         if (!date) {
-            datesAbsent++;
             continue;
         }
-        datesPresent++;
         dates.push(date);
         if (soldMinDate && date < soldMinDate) outsideWindow++;
         else inWindow++;
@@ -367,8 +432,10 @@ function summarizeIntelLastSoldDates(records, soldMinDate) {
 
     const sortedDates = dates.slice().sort();
     return {
-        intel_last_sold_date_present: datesPresent,
-        intel_last_sold_date_absent: datesAbsent,
+        intel_last_sold_date_present: intelDatesPresent,
+        intel_last_sold_date_absent: intelDatesAbsent,
+        provider_sale_date_present: providerDatesPresent,
+        provider_sale_date_absent: providerDatesAbsent,
         in_window: inWindow,
         outside_window: outsideWindow,
         date_range_observed: {
@@ -376,8 +443,13 @@ function summarizeIntelLastSoldDates(records, soldMinDate) {
             newest: sortedDates[sortedDates.length - 1] || null
         },
         silent_ignore_indicator: outsideWindow > 0
-            ? 'WARNING: BatchData returned intel.lastSoldDate values outside the requested minDate window.'
-            : null
+            ? 'WARNING: BatchData returned sale evidence outside the requested minDate window.'
+            : null,
+        date_source_note: intelDatesPresent > 0
+            ? 'intel.lastSoldDate present in sampled records.'
+            : providerDatesPresent > 0
+                ? 'intel.lastSoldDate absent; using returned sale/open-lien recording fields to validate date window.'
+                : 'No returned sale date field was present in sampled records.'
     };
 }
 
@@ -393,7 +465,14 @@ function rawDiscoverySample(record) {
             'property.landUse': p.landUse ?? null,
             'property.intel.lastSoldDate': p.intel?.lastSoldDate ?? null,
             'property.intel.lastSoldPrice': p.intel?.lastSoldPrice ?? null,
-            'property.sale.lastSaleDate': firstValue(p.sale?.lastSaleDate, p.sale?.saleDate, p.lastSaleDate) ?? null
+            'property.quickLists.recentlySold': p.quickLists?.recentlySold ?? null,
+            'property.quickLists.vacantLot': p.quickLists?.vacantLot ?? null,
+            'property.openLien.firstLoanRecordingDate': p.openLien?.firstLoanRecordingDate ?? null,
+            'property.openLien.lastLoanRecordingDate': p.openLien?.lastLoanRecordingDate ?? null,
+            'property.sale.lastSaleDate': firstValue(p.sale?.lastSaleDate, p.sale?.saleDate, p.lastSaleDate) ?? null,
+            'property.sale.lastSale.mortgages[0].recordingDate': p.sale?.lastSale?.mortgages?.[0]?.recordingDate ?? null,
+            'property.mortgageHistory[0].saleDate': p.mortgageHistory?.[0]?.saleDate ?? null,
+            'property.mortgageHistory[0].recordingDate': p.mortgageHistory?.[0]?.recordingDate ?? null
         },
         full_raw_payload: record
     };
@@ -610,21 +689,7 @@ function mapBatchDataProperty(record, job) {
     const ids = p.ids || p.identifiers || {};
     const listingStatus = firstValue(listing.status, listing.statusCategory);
     const listingStatusLower = String(listingStatus || '').toLowerCase();
-    const saleDate = dateValue(
-        intel.lastSoldDate,
-        intel.lastSaleDate,
-        intel.lastTransferDate,
-        p.listing?.soldDate,
-        p.deedHistory?.[0]?.saleDate,
-        sale?.lastSaleDate,
-        sale?.recordingDate,
-        sale?.saleDate,
-        sale?.date,
-        lastSale?.recordingDate,
-        lastSale?.saleDate,
-        lastSale?.date,
-        p.lastSaleDate
-    );
+    const saleDate = batchDataLatestSaleDateFromProperty(p);
     const saleDateMs = saleDate ? new Date(saleDate).getTime() : 0;
     const hasValidSaleDate = saleDateMs > 0 && !Number.isNaN(saleDateMs);
     const saleDateOnly = isoDateOnly(saleDate);
@@ -652,7 +717,13 @@ function mapBatchDataProperty(record, job) {
     );
     const price = estimatedValue ?? saleAmount;
     const landUseCode = firstValue(general.standardizedLandUseCode, p.standardizedLandUseCode);
-    const rawPropertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType);
+    const addressHasUnit = hasAddressUnitMarker(address.street);
+    const inferredDisallowedPropertyType = p.quickLists?.vacantLot
+        ? 'Vacant Land'
+        : addressHasUnit
+            ? 'Condo/Multi-Family'
+            : null;
+    const rawPropertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType, inferredDisallowedPropertyType);
     const propertyType = rawPropertyType || (String(landUseCode || '').toUpperCase() === 'R2' ? 'Single Family' : (landUseCode ? `BatchData ${landUseCode}` : 'Single Family'));
     const propertyTypeText = normalizePropertyTypeText(propertyType);
     const landUseText = normalizePropertyTypeText(landUseCode);
@@ -671,8 +742,9 @@ function mapBatchDataProperty(record, job) {
     const filterMaxPrice = Number(jobFilters.max_price) > 0 ? Number(jobFilters.max_price) : null;
     const priceKnown = Number.isFinite(Number(price)) && Number(price) > 0;
     const priceRejected = priceKnown && ((filterMinPrice !== null && Number(price) < filterMinPrice) || (filterMaxPrice !== null && Number(price) > filterMaxPrice));
+    const missingSaleDateRejected = !hasValidSaleDate;
     const staleKnownSaleDate = hasValidSaleDate && !isSoldInWindow;
-    const rejected = nonResidential || landUseRejected || priceRejected || staleKnownSaleDate;
+    const rejected = nonResidential || landUseRejected || priceRejected || missingSaleDateRejected || staleKnownSaleDate;
 
     const match = address.street.match(/^(\d+)\s+(.*)$/);
     const houseNumber = match ? parseInt(match[1], 10) : 0;
@@ -930,7 +1002,7 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
         const take = Math.min(
             pageCap,
             remainingReviewBudget,
-            isMaxAvailableMode ? remainingReviewBudget : Math.ceil(remainingRequested * 2)
+            isMaxAvailableMode ? remainingReviewBudget : Math.ceil(remainingRequested * 4)
         );
         const requestBody = buildBatchDataRequest(job, skip, take, mode);
         if (!requestBody) break;
@@ -1130,10 +1202,14 @@ Deno.serve(async (req) => {
             const probeB = await runProbe('B_city_state_plus_intel_lastSoldDate', buildBatchDataAreaPayload({ city: body.city, state: body.state, soldMinDate, take }));
             const probeC = await runProbe('C_polygon_no_date_filter', buildBatchDataAreaPayload({ polygon: body.polygon, take }));
             const probeCount = (probe) => Number(probe.total ?? probe.raw ?? 0);
+            const probeADatePresent = Number(probeA.date_distribution.provider_sale_date_present || probeA.date_distribution.intel_last_sold_date_present || 0) > 0;
 
             let verdict = 'POLYGON_INVALID_OR_NO_DATA';
             let action = 'Check the polygon coordinates and whether BatchData has any property inventory in this boundary.';
-            if (probeCount(probeA) > 0 && probeA.date_distribution.outside_window === 0 && probeCount(probeB) > 0) {
+            if (probeCount(probeA) > 0 && !probeADatePresent) {
+                verdict = 'DATE_FIELD_ABSENT_UNVERIFIABLE';
+                action = 'Records returned, but no sale date field was present to verify whether intel.lastSoldDate was applied.';
+            } else if (probeCount(probeA) > 0 && probeA.date_distribution.outside_window === 0 && probeCount(probeB) > 0) {
                 verdict = 'INTEL_WORKS_WITH_POLYGON';
                 action = 'Proceed with PR validation after TEST-09 and TEST-11 pass against live data.';
             } else if (probeCount(probeA) > 0 && probeA.date_distribution.outside_window > 0) {
@@ -1196,8 +1272,15 @@ Deno.serve(async (req) => {
             }
 
             const r2CoveragePct = broadRecords.length > 0 ? Number(((r2Count / broadRecords.length) * 100).toFixed(1)) : null;
+            const missingLandUseCount = broadRecords.reduce((count, record) => {
+                const fields = batchDataTypeFields(record);
+                return count + (fields.land_use === 'missing' ? 1 : 0);
+            }, 0);
+            const missingLandUsePct = broadRecords.length > 0 ? Number(((missingLandUseCount / broadRecords.length) * 100).toFixed(1)) : null;
             let recommendation = 'INCONCLUSIVE_NO_BROAD_RECORDS';
-            if (r2CoveragePct !== null && r2CoveragePct >= 95) {
+            if (broadRecords.length > 0 && missingLandUsePct !== null && missingLandUsePct >= 80) {
+                recommendation = 'BATCHDATA_R2_METADATA_UNAVAILABLE_USE_BROAD_PLUS_LOCAL_FILTERS';
+            } else if (r2CoveragePct !== null && r2CoveragePct >= 95) {
                 recommendation = 'R2_FILTER_SAFE_FOR_THIS_MARKET';
             } else if (r2CoveragePct !== null && r2CoveragePct >= 85) {
                 recommendation = 'PR15_IMPORTANT_NON_R2_SFR_EXISTS_REVIEW_SAMPLES';
@@ -1225,6 +1308,8 @@ Deno.serve(async (req) => {
                     nonR2ExplicitSFR,
                     nonR2NoSFREvidence,
                     r2CoveragePct,
+                    missingLandUseCount,
+                    missingLandUsePct,
                     nonR2ExplicitSFRSamples,
                     nonR2NoSFREvidenceSamples
                 }
