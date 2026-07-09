@@ -210,21 +210,6 @@ function dateValue(...values) {
     return null;
 }
 
-function latestDateValue(...values) {
-    let latest = null;
-    let latestMs = 0;
-    for (const value of values) {
-        const candidate = dateValue(value);
-        if (!candidate) continue;
-        const time = new Date(candidate).getTime();
-        if (Number.isFinite(time) && time > latestMs) {
-            latestMs = time;
-            latest = candidate;
-        }
-    }
-    return latest;
-}
-
 function isPointInPolygon(point, polygon) {
     if (!Array.isArray(polygon) || polygon.length < 3) return true;
     let inside = false;
@@ -373,32 +358,53 @@ function intelLastSoldDate(record) {
     return isoDateOnly(batchDataRecordProperty(record).intel?.lastSoldDate);
 }
 
-function batchDataLatestSaleDateFromProperty(p) {
+function batchDataSaleDateCandidatesFromProperty(p) {
     const sale = p.sale || p.lastSale || p.deed?.sale || p.transaction || {};
     const lastSale = sale.lastSale || sale.lastTransfer || sale;
     const latestSaleMortgage = Array.isArray(lastSale?.mortgages) ? lastSale.mortgages[0] : null;
     const latestMortgageHistory = Array.isArray(p.mortgageHistory) ? p.mortgageHistory[0] : null;
-    return isoDateOnly(latestDateValue(
-        p.intel?.lastSoldDate,
-        p.intel?.lastSaleDate,
-        p.intel?.lastTransferDate,
-        p.listing?.soldDate,
-        p.deedHistory?.[0]?.saleDate,
-        sale?.lastSaleDate,
-        sale?.recordingDate,
-        sale?.saleDate,
-        sale?.date,
-        lastSale?.recordingDate,
-        lastSale?.saleDate,
-        lastSale?.date,
-        latestSaleMortgage?.recordingDate,
-        latestSaleMortgage?.saleDate,
-        p.openLien?.firstLoanRecordingDate,
-        p.openLien?.lastLoanRecordingDate,
-        latestMortgageHistory?.saleDate,
-        latestMortgageHistory?.recordingDate,
-        p.lastSaleDate
-    ));
+    return [
+        { source: 'intel.lastSoldDate', value: p.intel?.lastSoldDate },
+        { source: 'intel.lastSaleDate', value: p.intel?.lastSaleDate },
+        { source: 'intel.lastTransferDate', value: p.intel?.lastTransferDate },
+        { source: 'listing.soldDate', value: p.listing?.soldDate },
+        { source: 'deedHistory[0].saleDate', value: p.deedHistory?.[0]?.saleDate },
+        { source: 'sale.lastSaleDate', value: sale?.lastSaleDate },
+        { source: 'sale.recordingDate', value: sale?.recordingDate },
+        { source: 'sale.saleDate', value: sale?.saleDate },
+        { source: 'sale.date', value: sale?.date },
+        { source: 'lastSale.recordingDate', value: lastSale?.recordingDate },
+        { source: 'lastSale.saleDate', value: lastSale?.saleDate },
+        { source: 'lastSale.date', value: lastSale?.date },
+        { source: 'sale.lastSale.mortgages[0].recordingDate', value: latestSaleMortgage?.recordingDate },
+        { source: 'sale.lastSale.mortgages[0].saleDate', value: latestSaleMortgage?.saleDate },
+        { source: 'openLien.firstLoanRecordingDate', value: p.openLien?.firstLoanRecordingDate },
+        { source: 'openLien.lastLoanRecordingDate', value: p.openLien?.lastLoanRecordingDate },
+        { source: 'mortgageHistory[0].saleDate', value: latestMortgageHistory?.saleDate },
+        { source: 'mortgageHistory[0].recordingDate', value: latestMortgageHistory?.recordingDate },
+        { source: 'lastSaleDate', value: p.lastSaleDate }
+    ];
+}
+
+function batchDataLatestSaleDateDetailFromProperty(p) {
+    let saleDate = null;
+    let saleDateSource = 'none';
+    let latestMs = 0;
+    for (const candidate of batchDataSaleDateCandidatesFromProperty(p)) {
+        const value = dateValue(candidate.value);
+        if (!value) continue;
+        const time = new Date(value).getTime();
+        if (Number.isFinite(time) && time > latestMs) {
+            latestMs = time;
+            saleDate = value;
+            saleDateSource = candidate.source;
+        }
+    }
+    return { saleDate: saleDate ? isoDateOnly(saleDate) : null, saleDateSource };
+}
+
+function batchDataLatestSaleDateFromProperty(p) {
+    return batchDataLatestSaleDateDetailFromProperty(p).saleDate;
 }
 
 function batchDataProviderSaleDate(record) {
@@ -417,7 +423,7 @@ function summarizeIntelLastSoldDates(records, soldMinDate) {
     for (const record of records) {
         const intelDate = intelLastSoldDate(record);
         const providerDate = batchDataProviderSaleDate(record);
-        const date = intelDate || providerDate;
+        const date = providerDate || intelDate;
         if (intelDate) intelDatesPresent++;
         else intelDatesAbsent++;
         if (providerDate) providerDatesPresent++;
@@ -689,7 +695,9 @@ function mapBatchDataProperty(record, job) {
     const ids = p.ids || p.identifiers || {};
     const listingStatus = firstValue(listing.status, listing.statusCategory);
     const listingStatusLower = String(listingStatus || '').toLowerCase();
-    const saleDate = batchDataLatestSaleDateFromProperty(p);
+    const saleDateDetail = batchDataLatestSaleDateDetailFromProperty(p);
+    const saleDate = saleDateDetail.saleDate;
+    const saleDateSource = saleDateDetail.saleDateSource;
     const saleDateMs = saleDate ? new Date(saleDate).getTime() : 0;
     const hasValidSaleDate = saleDateMs > 0 && !Number.isNaN(saleDateMs);
     const saleDateOnly = isoDateOnly(saleDate);
@@ -723,6 +731,10 @@ function mapBatchDataProperty(record, job) {
         : addressHasUnit
             ? 'Condo/Multi-Family'
             : null;
+    // Property type fallback design decision:
+    // BatchData broad polygon mode may omit property type and land use metadata.
+    // In that unknown case we default to Single Family and rely on date/noise gates.
+    // Metadata completeness below keeps low-confidence records observable.
     const rawPropertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType, inferredDisallowedPropertyType);
     const propertyType = rawPropertyType || (String(landUseCode || '').toUpperCase() === 'R2' ? 'Single Family' : (landUseCode ? `BatchData ${landUseCode}` : 'Single Family'));
     const propertyTypeText = normalizePropertyTypeText(propertyType);
@@ -745,6 +757,14 @@ function mapBatchDataProperty(record, job) {
     const missingSaleDateRejected = !hasValidSaleDate;
     const staleKnownSaleDate = hasValidSaleDate && !isSoldInWindow;
     const rejected = nonResidential || landUseRejected || priceRejected || missingSaleDateRejected || staleKnownSaleDate;
+    const rejectionReason = !rejected ? null : (
+        nonResidential ? 'non_residential' :
+            landUseRejected ? 'land_use' :
+                priceRejected ? 'price' :
+                    missingSaleDateRejected ? 'no_date_evidence' :
+                        staleKnownSaleDate ? 'stale_date' :
+                            'unknown'
+    );
 
     const match = address.street.match(/^(\d+)\s+(.*)$/);
     const houseNumber = match ? parseInt(match[1], 10) : 0;
@@ -775,12 +795,21 @@ function mapBatchDataProperty(record, job) {
         year_built: numberValue(intel.yearBuilt, intel.effectiveYearBuilt, intel.buildYear, intel.year_built, building.yearBuilt, building.effectiveYearBuilt, p.yearBuilt, p.year_built),
         price: price ?? null,
         sold_date: saleDate || null,
+        sale_date_source: saleDateSource,
         sale_type: 'BatchData',
         property_type: propertyType,
         data_source: 'batchdata',
         sale_confidence: rejected ? 'REJECTED' : 'verified',
         original_status: rejected ? 'REJECTED' : 'BATCHDATA_CONFIRMED',
         route_active: !rejected,
+        rejection_reason: rejectionReason,
+        metadata_completeness: {
+            has_property_type: !!rawPropertyType,
+            has_land_use_code: !!landUseCode,
+            has_sale_date: hasValidSaleDate,
+            sale_date_in_window: isSoldInWindow,
+            sale_date_source: saleDateSource
+        },
         raw_payload: JSON.stringify(p)
     };
 }
@@ -926,6 +955,47 @@ async function batchDataFetchWithRetry(requestBody) {
     throw new Error('Rate limit exceeded after 3 retries.');
 }
 
+function batchDataPreMapDropReason(raw, job) {
+    const p = raw?.property || raw || {};
+    const address = normalizeBatchDataAddress(p);
+    if (!address.street || !address.zip || !Number.isFinite(address.lat) || !Number.isFinite(address.lng)) {
+        return 'address_invalid';
+    }
+    if (!isPointInPolygon({ lat: address.lat, lng: address.lng }, job.polygon || [])) {
+        return 'outside_polygon';
+    }
+    return 'unknown';
+}
+
+function incrementRejectionReason(rejectionReasons, reason) {
+    const key = rejectionReasons[reason] !== undefined ? reason : 'unknown';
+    rejectionReasons[key] = (rejectionReasons[key] || 0) + 1;
+}
+
+function creditEfficiencyReport({
+    reviewed,
+    selectedCount,
+    skippedExistingRoute,
+    skippedDuplicate,
+    skippedRouteType,
+    rejectionReasons
+}) {
+    const recordsRejectedLocalFilter = Math.max(0, reviewed - selectedCount - skippedExistingRoute - skippedDuplicate - skippedRouteType);
+    const filterPassRate = selectedCount / Math.max(1, reviewed);
+    return {
+        total_credits_burned: reviewed,
+        records_passed_local_filter: selectedCount,
+        records_rejected_local_filter: recordsRejectedLocalFilter,
+        filter_pass_rate: Number(filterPassRate.toFixed(4)),
+        rejection_breakdown: rejectionReasons,
+        recommendation: filterPassRate < 0.1
+            ? 'CRITICAL: Less than 10% of credits are producing usable route homes. Escalate to BatchData.'
+            : filterPassRate < 0.3
+                ? 'WARNING: Less than 30% of credits are producing usable route homes. Review date window.'
+                : 'OK'
+    };
+}
+
 async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = null) {
     requested = Math.min(Math.max(clampInteger(requested, 1, 1, 1000), 1), 1000);
     const selected = [];
@@ -941,6 +1011,16 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
     let skippedDuplicate = 0;
     let skippedRouteType = 0;
     const skippedRouteTypeBreakdown = {};
+    const rejectionReasons = {
+        no_date_evidence: 0,
+        stale_date: 0,
+        non_residential: 0,
+        land_use: 0,
+        price: 0,
+        outside_polygon: 0,
+        address_invalid: 0,
+        unknown: 0
+    };
     const fetchMode = String(job?.dry_run_metadata?.fetch_mode || job?.dry_run_metadata?.count_mode || '').toLowerCase();
     const isMaxAvailableMode = fetchMode === 'max_available';
     const originalRequested = requested;
@@ -991,7 +1071,15 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
             skipped_route_type_breakdown: skippedRouteTypeBreakdown,
             max_reviewed: maxReviewed,
             page_timings: pageTimings,
-            totalRecordCount
+            totalRecordCount,
+            credit_efficiency_report: creditEfficiencyReport({
+                reviewed,
+                selectedCount: selected.length,
+                skippedExistingRoute,
+                skippedDuplicate,
+                skippedRouteType,
+                rejectionReasons
+            })
         };
     }
 
@@ -1033,7 +1121,14 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
 
         for (const raw of list) {
             const mapped = mapBatchDataProperty(raw, job);
-            if (mapped && mapped.route_active !== false) {
+            if (!mapped) {
+                incrementRejectionReason(rejectionReasons, batchDataPreMapDropReason(raw, job));
+                if (rejectedSamples.length < Math.min(10, Math.max(requested, 2))) {
+                    rejectedSamples.push(raw);
+                }
+                continue;
+            }
+            if (mapped.route_active !== false) {
                 if (excludedRouteHashes.has(mapped.address_hash)) {
                     skippedExistingRoute++;
                     continue;
@@ -1051,8 +1146,11 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
                 selectedHashes.add(mapped.address_hash);
                 selected.push(raw);
                 if (selected.length >= requested) break;
-            } else if (rejectedSamples.length < Math.min(10, Math.max(requested, 2))) {
-                rejectedSamples.push(raw);
+            } else {
+                incrementRejectionReason(rejectionReasons, mapped.rejection_reason || 'unknown');
+                if (rejectedSamples.length < Math.min(10, Math.max(requested, 2))) {
+                    rejectedSamples.push(raw);
+                }
             }
         }
 
@@ -1104,7 +1202,15 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
         skipped_route_type_breakdown: skippedRouteTypeBreakdown,
         max_reviewed: maxReviewed,
         page_timings: pageTimings,
-        totalRecordCount
+        totalRecordCount,
+        credit_efficiency_report: creditEfficiencyReport({
+            reviewed,
+            selectedCount: selected.length,
+            skippedExistingRoute,
+            skippedDuplicate,
+            skippedRouteType,
+            rejectionReasons
+        })
     };
 }
 
@@ -1118,7 +1224,7 @@ async function fetchBatchDataRecords(job, onProgress = null) {
 
     for (const mode of modes) {
         const result = await fetchBatchDataRecordsForMode(job, mode, requested, onProgress);
-        attempts.push({ mode, count: result.records.length, reviewed: result.reviewed, active: result.active, rejected_samples: result.rejected_samples, skipped_existing_route: result.skipped_existing_route, skipped_duplicate: result.skipped_duplicate, skipped_route_type: result.skipped_route_type, skipped_route_type_breakdown: result.skipped_route_type_breakdown, max_reviewed: result.max_reviewed, page_timings: result.page_timings, total: result.totalRecordCount });
+        attempts.push({ mode, count: result.records.length, reviewed: result.reviewed, active: result.active, rejected_samples: result.rejected_samples, skipped_existing_route: result.skipped_existing_route, skipped_duplicate: result.skipped_duplicate, skipped_route_type: result.skipped_route_type, skipped_route_type_breakdown: result.skipped_route_type_breakdown, max_reviewed: result.max_reviewed, page_timings: result.page_timings, total: result.totalRecordCount, credit_efficiency_report: result.credit_efficiency_report });
         if (result.active >= requested) return { records: result.records, attempts, mode_used: mode };
         if (result.active > fallbackActive || (fallback.length === 0 && result.records.length > 0)) {
             fallback = result.records;
@@ -1462,7 +1568,10 @@ Deno.serve(async (req) => {
                         mapped_active: mappedProperty?.route_active === true,
                         mapped_status: mappedProperty?.original_status || null,
                         mapped_property_type: mappedProperty?.property_type || null,
-                        mapped_sold_date: mappedProperty?.sold_date || null
+                        mapped_sold_date: mappedProperty?.sold_date || null,
+                        mapped_sale_date_source: mappedProperty?.sale_date_source || null,
+                        mapped_rejection_reason: mappedProperty?.rejection_reason || null,
+                        mapped_metadata_completeness: mappedProperty?.metadata_completeness || null
                     };
                 });
                 results.push({
@@ -1604,6 +1713,16 @@ Deno.serve(async (req) => {
         const providerTotal = (batchFetch.attempts || [])
             .map(attempt => attempt.total)
             .find(total => total !== null && total !== undefined && Number.isFinite(Number(total)));
+        const firstAttempt = (batchFetch.attempts || [])[0] || {};
+        const marketShortfallReason = activeCount >= requestedCount
+            ? 'target_met'
+            : reviewedCount > 0 && activeCount === 0 && (Number(firstAttempt.reviewed) || 0) > 0
+                ? 'local_filter_rejection'
+                : (Number(firstAttempt.total || providerTotal) || 0) > 0 && activeCount < requestedCount
+                    ? 'date_window_too_narrow'
+                    : rawRecords.length === 0
+                        ? 'market_data_gap'
+                        : 'polygon_too_small';
         const completionReason = activeCount >= requestedCount
             ? 'target_met'
             : totalSkippedExistingRoute > 0
@@ -1619,6 +1738,8 @@ Deno.serve(async (req) => {
             requested: requestedCount,
             reviewed: reviewedCount || rawRecords.length,
             provider_total: providerTotal !== undefined ? Number(providerTotal) : null,
+            market_shortfall_reason: marketShortfallReason,
+            credit_efficiency_report: firstAttempt.credit_efficiency_report || null,
             raw: rawRecords.length,
             mapped: mapped.length,
             active: activeCount,
