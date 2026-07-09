@@ -5,6 +5,7 @@ const BATCHDATA_API_KEY = Deno.env.get('BATCH_DATA_API_KEY');
 const DATABASE_URL = Deno.env.get('DATABASE_URL');
 const BATCHDATA_BASE = 'https://api.batchdata.com/api/v1/property/search';
 const BATCHDATA_MAX_TAKE = 100;
+const MAX_AVAILABLE_TAKE = 500;
 const BATCHDATA_REQUEST_TIMEOUT_MS = 20 * 1000;
 const BATCHDATA_PROGRESS_UPDATE_MS = 1500;
 const PIPELINE_LOCK_TTL_MS = 8 * 60 * 1000;
@@ -269,6 +270,176 @@ function isoDateOnly(value) {
     return date.toISOString().slice(0, 10);
 }
 
+function clampInteger(value, fallback, min, max) {
+    const parsed = Number(value);
+    const safe = Number.isFinite(parsed) ? Math.floor(parsed) : fallback;
+    return Math.min(Math.max(safe, min), max);
+}
+
+function hasUsablePolygon(points) {
+    if (!Array.isArray(points)) return false;
+    const distinct = new Set();
+    for (const point of points) {
+        const lat = Number(point?.lat ?? point?.latitude);
+        const lng = Number(point?.lng ?? point?.longitude);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            distinct.add(`${lat.toFixed(7)},${lng.toFixed(7)}`);
+        }
+    }
+    return distinct.size >= 3;
+}
+
+function closePolygonLatLng(points) {
+    return closePolygon(points).map(point => ({ lat: point.latitude, lng: point.longitude }));
+}
+
+function batchDataRecordProperty(record) {
+    return record?.property || record || {};
+}
+
+function batchDataTypeFields(record) {
+    const p = batchDataRecordProperty(record);
+    const general = p.general || p.property || p.propertyInfo || {};
+    const building = p.building || p.structure || p.propertyInfo || p.assessment?.building || p.assessor?.building || {};
+    const landUse = firstValue(general.standardizedLandUseCode, p.standardizedLandUseCode, general.landUseCode, p.landUseCode);
+    const propertyType = firstValue(general.propertyTypeDetail, general.propertyType, p.propertyType, p.landUse, building.propertyType);
+    return {
+        land_use: landUse || 'missing',
+        property_type: propertyType || 'missing',
+        combined: `${landUse || 'missing'} | ${propertyType || 'missing'}`
+    };
+}
+
+function addFrequency(map, value) {
+    const key = String(value || 'missing');
+    map[key] = (map[key] || 0) + 1;
+}
+
+function frequencyTable(map, total, fieldName) {
+    return Object.entries(map)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([value, count]) => ({
+            [fieldName]: value,
+            count,
+            pct: total > 0 ? Number(((count / total) * 100).toFixed(1)) : 0
+        }));
+}
+
+function summarizeTypeFrequencies(records) {
+    const landUse = {};
+    const propertyType = {};
+    const combined = {};
+    for (const record of records) {
+        const fields = batchDataTypeFields(record);
+        addFrequency(landUse, fields.land_use);
+        addFrequency(propertyType, fields.property_type);
+        addFrequency(combined, fields.combined);
+    }
+    return {
+        land_use_frequency: frequencyTable(landUse, records.length, 'land_use'),
+        property_type_frequency: frequencyTable(propertyType, records.length, 'property_type'),
+        combined_frequency: frequencyTable(combined, records.length, 'combined')
+    };
+}
+
+function intelLastSoldDate(record) {
+    return isoDateOnly(batchDataRecordProperty(record).intel?.lastSoldDate);
+}
+
+function summarizeIntelLastSoldDates(records, soldMinDate) {
+    const dates = [];
+    let datesPresent = 0;
+    let datesAbsent = 0;
+    let inWindow = 0;
+    let outsideWindow = 0;
+
+    for (const record of records) {
+        const date = intelLastSoldDate(record);
+        if (!date) {
+            datesAbsent++;
+            continue;
+        }
+        datesPresent++;
+        dates.push(date);
+        if (soldMinDate && date < soldMinDate) outsideWindow++;
+        else inWindow++;
+    }
+
+    const sortedDates = dates.slice().sort();
+    return {
+        intel_last_sold_date_present: datesPresent,
+        intel_last_sold_date_absent: datesAbsent,
+        in_window: inWindow,
+        outside_window: outsideWindow,
+        date_range_observed: {
+            earliest: sortedDates[0] || null,
+            newest: sortedDates[sortedDates.length - 1] || null
+        },
+        silent_ignore_indicator: outsideWindow > 0
+            ? 'WARNING: BatchData returned intel.lastSoldDate values outside the requested minDate window.'
+            : null
+    };
+}
+
+function rawDiscoverySample(record) {
+    const p = batchDataRecordProperty(record);
+    return {
+        address: firstValue(p.formattedAddress, p.address?.street, p.address?.streetAddress, p.addressLine1),
+        field_paths: {
+            'property.general.standardizedLandUseCode': p.general?.standardizedLandUseCode ?? null,
+            'property.general.propertyTypeDetail': p.general?.propertyTypeDetail ?? null,
+            'property.general.propertyType': p.general?.propertyType ?? null,
+            'property.propertyType': p.propertyType ?? null,
+            'property.landUse': p.landUse ?? null,
+            'property.intel.lastSoldDate': p.intel?.lastSoldDate ?? null,
+            'property.intel.lastSoldPrice': p.intel?.lastSoldPrice ?? null,
+            'property.sale.lastSaleDate': firstValue(p.sale?.lastSaleDate, p.sale?.saleDate, p.lastSaleDate) ?? null
+        },
+        full_raw_payload: record
+    };
+}
+
+function buildBatchDataAreaPayload({
+    polygon,
+    city,
+    state,
+    soldMinDate = null,
+    take = 25,
+    skip = 0,
+    includeR2 = false,
+    coordinateFormat = 'latitude_longitude'
+}) {
+    const searchCriteria = {};
+    if (hasUsablePolygon(polygon)) {
+        searchCriteria.address = {
+            geoLocationPolygon: {
+                geoPoints: coordinateFormat === 'lat_lng' ? closePolygonLatLng(polygon) : closePolygon(polygon)
+            }
+        };
+    } else {
+        const place = String(city || '').trim();
+        const stateCode = String(state || '').trim().toUpperCase();
+        if (!place || !stateCode) {
+            throw new Error('A polygon or city/state is required for BatchData diagnostics.');
+        }
+        searchCriteria.address = {
+            city: { equals: place },
+            state: { equals: stateCode }
+        };
+    }
+
+    if (soldMinDate) searchCriteria.intel = { lastSoldDate: { minDate: soldMinDate } };
+    if (includeR2) searchCriteria.general = { standardizedLandUseCode: { equals: 'R2' } };
+
+    return {
+        searchCriteria,
+        options: {
+            skip: clampInteger(skip, 0, 0, 1000000),
+            take: clampInteger(take, 25, 0, MAX_AVAILABLE_TAKE)
+        }
+    };
+}
+
 function placeSearchLabel(job) {
     const parts = batchDataPlaceParts(job);
     return parts ? `${parts.place}, ${parts.state}` : null;
@@ -334,13 +505,13 @@ function applyProviderNarrowingFilters(searchCriteria, job) {
     return searchCriteria;
 }
 
-function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'broad_polygon') {
+function buildBatchDataRequest(job, skip = 0, take = BATCHDATA_MAX_TAKE, mode = 'broad_polygon') {
     // Always compute the sold window date filter for every BatchData mode.
     const soldMinDate = isoDateDaysAgo(soldWindowDays(job.sold_months || 12), jobReferenceTimeMs(job));
 
     const options = {
-        skip,
-        take: Math.min(Math.max(Number(take) || BATCHDATA_MAX_TAKE, 1), BATCHDATA_MAX_TAKE)
+        skip: clampInteger(skip, 0, 0, 1000000),
+        take: clampInteger(take, BATCHDATA_MAX_TAKE, 0, MAX_AVAILABLE_TAKE)
     };
 
     if (mode === 'centroid_fallback') {
@@ -402,7 +573,9 @@ function extractBatchDataRecords(payload) {
 }
 
 function extractBatchDataTotal(payload) {
-    return Number(payload?.results?.totalRecordCount ?? payload?.totalRecordCount ?? payload?.meta?.totalRecordCount ?? 0) || null;
+    const rawTotal = payload?.results?.totalRecordCount ?? payload?.totalRecordCount ?? payload?.meta?.totalRecordCount;
+    const total = Number(rawTotal);
+    return Number.isFinite(total) ? total : null;
 }
 
 function normalizeBatchDataAddress(record) {
@@ -682,6 +855,7 @@ async function batchDataFetchWithRetry(requestBody) {
 }
 
 async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = null) {
+    requested = Math.min(Math.max(clampInteger(requested, 1, 1, 1000), 1), 1000);
     const selected = [];
     const selectedHashes = new Set();
     const excludedRouteHashes = getExcludedRouteHashes(job);
@@ -695,10 +869,69 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
     let skippedDuplicate = 0;
     let skippedRouteType = 0;
     const skippedRouteTypeBreakdown = {};
-    const maxReviewed = Math.min(1000, Math.max(BATCHDATA_MAX_TAKE, requested * 50));
+    const fetchMode = String(job?.dry_run_metadata?.fetch_mode || job?.dry_run_metadata?.count_mode || '').toLowerCase();
+    const isMaxAvailableMode = fetchMode === 'max_available';
+    const originalRequested = requested;
+
+    if (requested > BATCHDATA_MAX_TAKE) {
+        const countRequest = buildBatchDataRequest(job, 0, 0, mode);
+        if (countRequest) {
+            const countPayload = await batchDataFetchWithRetry(countRequest);
+            totalRecordCount = extractBatchDataTotal(countPayload);
+            if (totalRecordCount !== null && totalRecordCount < requested) {
+                requested = Math.max(0, totalRecordCount);
+            }
+            console.log(JSON.stringify({
+                event: 'batchdata_count_first',
+                mode,
+                original_requested: originalRequested,
+                adjusted_requested: requested,
+                provider_total: totalRecordCount,
+                estimated_credits_burned: 1
+            }));
+            if (typeof onProgress === 'function') {
+                await onProgress({
+                    event: 'count_probe_complete',
+                    mode,
+                    original_requested: originalRequested,
+                    requested,
+                    totalRecordCount,
+                    reviewed,
+                    selected: selected.length
+                }).catch(() => {});
+            }
+        }
+    }
+
+    let maxReviewed = isMaxAvailableMode
+        ? Math.min(1000, Math.max(MAX_AVAILABLE_TAKE, requested * 2))
+        : Math.min(1000, Math.max(BATCHDATA_MAX_TAKE, requested * 50));
+
+    if (requested <= 0 || totalRecordCount === 0) {
+        return {
+            records: [],
+            reviewed,
+            active: 0,
+            rejected_samples: 0,
+            skipped_existing_route: skippedExistingRoute,
+            skipped_duplicate: skippedDuplicate,
+            skipped_route_type: skippedRouteType,
+            skipped_route_type_breakdown: skippedRouteTypeBreakdown,
+            max_reviewed: maxReviewed,
+            page_timings: pageTimings,
+            totalRecordCount
+        };
+    }
 
     while (selected.length < requested && reviewed < maxReviewed) {
-        const take = Math.min(BATCHDATA_MAX_TAKE, maxReviewed - reviewed);
+        const remainingRequested = Math.max(1, requested - selected.length);
+        const remainingReviewBudget = Math.max(1, maxReviewed - reviewed);
+        const pageCap = isMaxAvailableMode ? MAX_AVAILABLE_TAKE : BATCHDATA_MAX_TAKE;
+        const take = Math.min(
+            pageCap,
+            remainingReviewBudget,
+            isMaxAvailableMode ? remainingReviewBudget : Math.ceil(remainingRequested * 2)
+        );
         const requestBody = buildBatchDataRequest(job, skip, take, mode);
         if (!requestBody) break;
         if (typeof onProgress === 'function') {
@@ -722,7 +955,9 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
         const pageElapsedMs = Date.now() - pageStartedAt;
         pageTimings.push({ skip, take, returned: list.length, elapsed_ms: pageElapsedMs });
         if (totalRecordCount === null) totalRecordCount = extractBatchDataTotal(payload);
+        if (totalRecordCount === 0) break;
         reviewed += list.length;
+        const selectedBeforePage = selected.length;
 
         for (const raw of list) {
             const mapped = mapBatchDataProperty(raw, job);
@@ -749,6 +984,19 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
             }
         }
 
+        const addedToRoute = selected.length - selectedBeforePage;
+        console.log(JSON.stringify({
+            event: 'batchdata_page_credit_log',
+            mode,
+            requested_take: take,
+            returned: list.length,
+            added_to_route: addedToRoute,
+            estimated_credits_burned: list.length,
+            filter_efficiency: list.length > 0 ? Number((addedToRoute / list.length).toFixed(4)) : 0,
+            cumulative_selected: selected.length,
+            cumulative_reviewed: reviewed
+        }));
+
         if (typeof onProgress === 'function') {
             await onProgress({
                 event: 'page_complete',
@@ -767,6 +1015,7 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
             }).catch(() => {});
         }
 
+        if (selected.length >= requested) break;
         if (list.length < take) break;
         if (totalRecordCount !== null && reviewed >= totalRecordCount) break;
         skip += take;
@@ -820,6 +1069,208 @@ Deno.serve(async (req) => {
 
         if (body.self_test === true) {
             return Response.json({ success: true, active_provider: 'batchdata', rentcast_active: false, batchdata_polygon_search: true, dataset_scope: 'omitted_for_sale_evidence', has_batchdata_key: !!BATCHDATA_API_KEY, has_database_url: !!DATABASE_URL });
+        }
+
+        if (body.raw_discovery === true) {
+            if (!BATCHDATA_API_KEY) throw new Error('BATCH_DATA_API_KEY is not configured');
+            const soldMonths = Number(body.sold_months || 3);
+            const soldMinDate = isoDateDaysAgo(soldWindowDays(soldMonths));
+            const take = clampInteger(body.take, 25, 1, 50);
+            const area = { polygon: body.polygon || [], city: body.city, state: body.state };
+            const countRequest = buildBatchDataAreaPayload({ ...area, take: 0 });
+            const probeRequest = buildBatchDataAreaPayload({ ...area, soldMinDate, take });
+            const countPayload = await batchDataFetchWithRetry(countRequest);
+            const probePayload = await batchDataFetchWithRetry(probeRequest);
+            const records = extractBatchDataRecords(probePayload);
+
+            return Response.json({
+                success: true,
+                diagnostic: 'raw_discovery',
+                location_mode: hasUsablePolygon(area.polygon) ? 'polygon' : 'city_state',
+                sold_months: soldMonths,
+                sold_min_date: soldMinDate,
+                estimated_credits_used: 1 + records.length,
+                count_request: countRequest,
+                count_total_no_date_filter: extractBatchDataTotal(countPayload),
+                probe_request: probeRequest,
+                probe_total_with_sold_filter: extractBatchDataTotal(probePayload),
+                raw_returned: records.length,
+                ...summarizeTypeFrequencies(records),
+                date_distribution: summarizeIntelLastSoldDates(records, soldMinDate),
+                raw_samples: records.slice(0, 5).map(rawDiscoverySample)
+            });
+        }
+
+        if (body.polygon_intel_verify === true) {
+            if (!BATCHDATA_API_KEY) throw new Error('BATCH_DATA_API_KEY is not configured');
+            if (!hasUsablePolygon(body.polygon)) {
+                return Response.json({ success: false, error: 'polygon_intel_verify requires a polygon with at least 3 distinct points.' }, { status: 400 });
+            }
+            if (!body.city || !body.state) {
+                return Response.json({ success: false, error: 'polygon_intel_verify requires city and state for the support comparison probe.' }, { status: 400 });
+            }
+
+            const soldMonths = Number(body.sold_months || 3);
+            const soldMinDate = isoDateDaysAgo(soldWindowDays(soldMonths));
+            const take = clampInteger(body.take, 25, 1, 25);
+            const runProbe = async (label, request) => {
+                const payload = await batchDataFetchWithRetry(request);
+                const records = extractBatchDataRecords(payload);
+                return {
+                    label,
+                    request,
+                    raw: records.length,
+                    total: extractBatchDataTotal(payload),
+                    estimated_credits_used: records.length,
+                    date_distribution: summarizeIntelLastSoldDates(records, soldMinDate),
+                    samples: records.slice(0, 3).map(rawDiscoverySample)
+                };
+            };
+            const probeA = await runProbe('A_polygon_plus_intel_lastSoldDate', buildBatchDataAreaPayload({ polygon: body.polygon, soldMinDate, take }));
+            const probeB = await runProbe('B_city_state_plus_intel_lastSoldDate', buildBatchDataAreaPayload({ city: body.city, state: body.state, soldMinDate, take }));
+            const probeC = await runProbe('C_polygon_no_date_filter', buildBatchDataAreaPayload({ polygon: body.polygon, take }));
+            const probeCount = (probe) => Number(probe.total ?? probe.raw ?? 0);
+
+            let verdict = 'POLYGON_INVALID_OR_NO_DATA';
+            let action = 'Check the polygon coordinates and whether BatchData has any property inventory in this boundary.';
+            if (probeCount(probeA) > 0 && probeA.date_distribution.outside_window === 0 && probeCount(probeB) > 0) {
+                verdict = 'INTEL_WORKS_WITH_POLYGON';
+                action = 'Proceed with PR validation after TEST-09 and TEST-11 pass against live data.';
+            } else if (probeCount(probeA) > 0 && probeA.date_distribution.outside_window > 0) {
+                verdict = 'SILENT_IGNORE_DETECTED';
+                action = 'Do not merge. Escalate to BatchData because polygon + intel returned records outside the requested sold window.';
+            } else if (probeCount(probeA) === 0 && probeCount(probeB) > 0 && probeCount(probeC) > 0) {
+                verdict = 'INTEL_INCOMPATIBLE_WITH_POLYGON';
+                action = 'Escalate to BatchData support. City/state + intel works while polygon + intel does not.';
+            } else if (probeCount(probeA) === 0 && probeCount(probeB) === 0 && probeCount(probeC) > 0) {
+                verdict = 'DATA_FRESHNESS_GAP';
+                action = 'Widen the sold-date window and show market-health messaging for this area.';
+            }
+
+            return Response.json({
+                success: true,
+                diagnostic: 'polygon_intel_verify',
+                sold_months: soldMonths,
+                sold_min_date: soldMinDate,
+                estimated_credits_used: probeA.estimated_credits_used + probeB.estimated_credits_used + probeC.estimated_credits_used,
+                verdict,
+                action,
+                probes: [probeA, probeB, probeC]
+            });
+        }
+
+        if (body.r2_coverage_audit === true) {
+            if (!BATCHDATA_API_KEY) throw new Error('BATCH_DATA_API_KEY is not configured');
+            if (!hasUsablePolygon(body.polygon)) {
+                return Response.json({ success: false, error: 'r2_coverage_audit requires a polygon with at least 3 distinct points.' }, { status: 400 });
+            }
+
+            const soldMonths = Number(body.sold_months || 3);
+            const soldMinDate = isoDateDaysAgo(soldWindowDays(soldMonths));
+            const auditTake = 50;
+            const r2Request = buildBatchDataAreaPayload({ polygon: body.polygon, soldMinDate, take: auditTake, includeR2: true });
+            const broadRequest = buildBatchDataAreaPayload({ polygon: body.polygon, soldMinDate, take: auditTake });
+            const r2Payload = await batchDataFetchWithRetry(r2Request);
+            const broadPayload = await batchDataFetchWithRetry(broadRequest);
+            const r2Records = extractBatchDataRecords(r2Payload);
+            const broadRecords = extractBatchDataRecords(broadPayload);
+            let r2Count = 0;
+            let nonR2ExplicitSFR = 0;
+            let nonR2NoSFREvidence = 0;
+            const nonR2ExplicitSFRSamples = [];
+            const nonR2NoSFREvidenceSamples = [];
+
+            for (const record of broadRecords) {
+                const fields = batchDataTypeFields(record);
+                const isR2 = String(fields.land_use || '').toUpperCase() === 'R2';
+                const explicitSFR = isExplicitSingleFamilyType(fields.property_type);
+                if (isR2) {
+                    r2Count++;
+                } else if (explicitSFR) {
+                    nonR2ExplicitSFR++;
+                    if (nonR2ExplicitSFRSamples.length < 5) nonR2ExplicitSFRSamples.push(rawDiscoverySample(record));
+                } else {
+                    nonR2NoSFREvidence++;
+                    if (nonR2NoSFREvidenceSamples.length < 5) nonR2NoSFREvidenceSamples.push(rawDiscoverySample(record));
+                }
+            }
+
+            const r2CoveragePct = broadRecords.length > 0 ? Number(((r2Count / broadRecords.length) * 100).toFixed(1)) : null;
+            let recommendation = 'INCONCLUSIVE_NO_BROAD_RECORDS';
+            if (r2CoveragePct !== null && r2CoveragePct >= 95) {
+                recommendation = 'R2_FILTER_SAFE_FOR_THIS_MARKET';
+            } else if (r2CoveragePct !== null && r2CoveragePct >= 85) {
+                recommendation = 'PR15_IMPORTANT_NON_R2_SFR_EXISTS_REVIEW_SAMPLES';
+            } else if (r2CoveragePct !== null) {
+                recommendation = 'PR15_CRITICAL_R2_FILTER_DROPS_TOO_MANY_RECORDS';
+            }
+
+            return Response.json({
+                success: true,
+                diagnostic: 'r2_coverage_audit',
+                sold_months: soldMonths,
+                sold_min_date: soldMinDate,
+                estimated_credits_used: r2Records.length + broadRecords.length,
+                recommendation,
+                r2_request: r2Request,
+                broad_request: broadRequest,
+                r2_pull: {
+                    raw: r2Records.length,
+                    total: extractBatchDataTotal(r2Payload)
+                },
+                broad_pull: {
+                    raw: broadRecords.length,
+                    total: extractBatchDataTotal(broadPayload),
+                    r2Count,
+                    nonR2ExplicitSFR,
+                    nonR2NoSFREvidence,
+                    r2CoveragePct,
+                    nonR2ExplicitSFRSamples,
+                    nonR2NoSFREvidenceSamples
+                }
+            });
+        }
+
+        if (body.market_health_check === true) {
+            if (!BATCHDATA_API_KEY) throw new Error('BATCH_DATA_API_KEY is not configured');
+            const soldMinDate = isoDateDaysAgo(90);
+            const area = { polygon: body.polygon || [], city: body.city, state: body.state };
+            const totalRequest = buildBatchDataAreaPayload({ ...area, take: 0 });
+            const recentRequest = buildBatchDataAreaPayload({ ...area, soldMinDate, take: 10 });
+            const totalPayload = await batchDataFetchWithRetry(totalRequest);
+            const recentPayload = await batchDataFetchWithRetry(recentRequest);
+            const recentRecords = extractBatchDataRecords(recentPayload);
+            const dates = recentRecords.map(intelLastSoldDate).filter(Boolean).sort();
+            const newestSaleDateObserved = dates[dates.length - 1] || null;
+            const estimatedLagDays = newestSaleDateObserved
+                ? Math.max(0, Math.round((Date.now() - new Date(`${newestSaleDateObserved}T00:00:00Z`).getTime()) / (24 * 60 * 60 * 1000)))
+                : null;
+            const recommendedWindowDays = estimatedLagDays === null
+                ? 90
+                : estimatedLagDays <= 14
+                    ? 30
+                    : estimatedLagDays <= 30
+                        ? 60
+                        : estimatedLagDays <= 60
+                            ? 90
+                            : 180;
+
+            return Response.json({
+                success: true,
+                diagnostic: 'market_health_check',
+                estimated_credits_used: 1 + recentRecords.length,
+                location_mode: hasUsablePolygon(area.polygon) ? 'polygon' : 'city_state',
+                total_request: totalRequest,
+                recent_request: recentRequest,
+                total_properties: extractBatchDataTotal(totalPayload),
+                properties_sold_last_90_days: extractBatchDataTotal(recentPayload),
+                recent_records_returned: recentRecords.length,
+                newest_sale_date_observed: newestSaleDateObserved,
+                estimated_lag_days: estimatedLagDays,
+                recommended_window_days: recommendedWindowDays,
+                date_distribution: summarizeIntelLastSoldDates(recentRecords, soldMinDate),
+                samples: recentRecords.slice(0, 3).map(rawDiscoverySample)
+            });
         }
 
         if (body.request_preview === true) {
