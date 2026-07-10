@@ -1,0 +1,267 @@
+{
+  "schema_version": 1,
+  "test_name": "BatchData corrected Search and Lookup contract capability probe",
+  "as_of_date": "2026-07-09",
+  "yesterday_date": "2026-07-08",
+  "timezone": "America/Phoenix",
+  "execution_intervals_utc": [
+    {
+      "name": "four_city_primary",
+      "started_at": "2026-07-10T03:24:00.197Z",
+      "completed_at": "2026-07-10T03:24:21.290Z"
+    },
+    {
+      "name": "corrected_lookup_supplement",
+      "completed_at": "2026-07-10T03:25:36.487Z"
+    },
+    {
+      "name": "seattle_individual_filter_controls",
+      "completed_at": "2026-07-10T03:27:17.266Z"
+    },
+    {
+      "name": "qualified_basic_mapper_evidence_supplement",
+      "completed_at": "2026-07-10T03:32:56.727Z"
+    },
+    {
+      "name": "qualified_seattle_intel_cursor_round_trip",
+      "completed_at": "2026-07-10T03:42:45.078Z"
+    }
+  ],
+  "privacy": {
+    "credentials_included": false,
+    "property_addresses_persisted": false,
+    "property_ids_or_hashes_persisted": false,
+    "raw_provider_payloads_persisted": false
+  },
+  "contracts_tested": {
+    "search_endpoint": "https://api.batchdata.com/api/v1/property/search",
+    "search_datasets_location": "options.datasets",
+    "count_dataset": ["basic"],
+    "lookup_endpoint": "https://api.batchdata.com/api/v1/property/lookup/all-attributes",
+    "lookup_request_shape": "requests[].address as structured street/city/state/zip plus requestId",
+    "lookup_datasets_location": "options.datasets",
+    "rich_valid_dataset_enums": ["core", "listing", "deed", "valuation"]
+  },
+  "criteria_tested": {
+    "intel": "searchCriteria.intel.lastSoldDate",
+    "sale": "searchCriteria.sale.lastSaleDate",
+    "sfr": "searchCriteria.general.standardizedLandUseCode.equals = R2",
+    "minimum_home_value": "searchCriteria.valuation.estimatedValue.min = 100000",
+    "avoid_for_sale": "searchCriteria.listing.statusCategory.notInList = [Active, Pending]"
+  },
+  "request_exposure": {
+    "http_attempts": 48,
+    "retries": 0,
+    "search_take_0_attempts": 33,
+    "search_take_1_attempts": 11,
+    "lookup_attempts": 4,
+    "http_200": 43,
+    "http_400": 4,
+    "http_500": 1,
+    "search_records_actually_returned": 7,
+    "basic_lookup_properties_actually_returned": 3,
+    "rich_dataset_responses_returned": 0,
+    "billing_status": "unverified",
+    "billing_note": "take:0 may carry a minimum record charge; failed entitlement requests and multi-dataset pricing must be confirmed in the provider dashboard"
+  },
+  "geography": {
+    "type": "center-city square polygon",
+    "nominal_area_sq_mi_each": 25,
+    "cities": ["Phoenix, AZ", "Charlotte, NC", "Dallas, TX", "Seattle, WA"]
+  },
+  "counts": {
+    "yesterday_only_2026_07_08": {
+      "Phoenix, AZ": {"intel": 0, "sale": 0},
+      "Charlotte, NC": {"intel": 0, "sale": 0},
+      "Dallas, TX": {"intel": 0, "sale": 0},
+      "Seattle, WA": {"intel": 0, "sale": 0},
+      "four_city_sum": {"intel": 0, "sale": 0}
+    },
+    "fourteen_days_2026_06_25_through_2026_07_08": {
+      "Phoenix, AZ": {"intel": 5, "sale": 5},
+      "Charlotte, NC": {"intel": 1, "sale": 1},
+      "Dallas, TX": {"intel": 1, "sale": 1},
+      "Seattle, WA": {"intel": 31, "sale": 25},
+      "four_city_sum": {"intel": 38, "sale": 32}
+    },
+    "qualified_fourteen_days_r2_value_and_listing_filters": {
+      "Phoenix, AZ": {"intel": 5, "sale": 5},
+      "Charlotte, NC": {"intel": 1, "sale": 1},
+      "Dallas, TX": {"intel": 1, "sale": 1},
+      "Seattle, WA": {"intel": 11, "sale": 7},
+      "four_city_sum": {"intel": 18, "sale": 14}
+    }
+  },
+  "individual_filter_controls": {
+    "Phoenix, AZ sale fourteen_days": {
+      "baseline": 5,
+      "r2_only": 5,
+      "valuation_min_100000_only": 5,
+      "listing_not_active_or_pending_only": 5,
+      "all_three": 5
+    },
+    "Seattle, WA intel fourteen_days": {
+      "baseline": 31,
+      "r2_only": 11,
+      "valuation_min_100000_only": 31,
+      "listing_not_active_or_pending_only": 31,
+      "all_three": 11
+    },
+    "Seattle, WA sale fourteen_days": {
+      "baseline": 25,
+      "r2_only": 7,
+      "valuation_min_100000_only": 25,
+      "listing_not_active_or_pending_only": 25,
+      "all_three": 7
+    }
+  },
+  "dataset_entitlement": {
+    "rich_search_attempts": 3,
+    "rich_search_http_status": 400,
+    "rich_lookup_attempts": 1,
+    "rich_lookup_http_status": 400,
+    "warning_code": "dataset_not_allowed",
+    "unavailable_for_token": ["core", "listing", "deed", "valuation"],
+    "basic_search_and_lookup_available": true
+  },
+  "corrected_lookup_results": {
+    "basic_lookup_attempts": 3,
+    "http_200": 3,
+    "extractable_rows": 3,
+    "normalized_address_identity_matches": 3,
+    "normalized_address_identity_mismatches": 0,
+    "rich_sfr_type_value_listing_or_deed_fields_present": 0,
+    "interpretation": "The corrected Lookup endpoint and structured request work with basic, but the token cannot request the rich datasets needed for enrichment."
+  },
+  "qualified_basic_mapper_evidence_supplement": {
+    "cities": ["Phoenix, AZ", "Charlotte, NC", "Dallas, TX"],
+    "window": {"min_date": "2026-06-25", "max_date": "2026-07-08"},
+    "request_exposure": {
+      "search_take_1_attempts": 3,
+      "lookup_attempts": 0,
+      "retries": 0,
+      "http_200": 3,
+      "returned_records": 3
+    },
+    "aggregate": {
+      "complete_structured_address": 3,
+      "latitude_present": 3,
+      "longitude_present": 3,
+      "coordinate_pair_present": 3,
+      "quickLists_recentlySold_present": 0,
+      "quickLists_recentlySold_true": 0,
+      "selectRecentSaleEvidence_exact_date_present": 0,
+      "selectRecentSaleEvidence_exact_date_in_window": 0,
+      "selectRecentSaleEvidence_exact_date_outside_window": 0,
+      "selectRecentSaleEvidence_no_date": 3,
+      "selectRecentSaleEvidence_purchase_mortgage_evidence": 0,
+      "selector_source_counts": {"none": 3},
+      "selector_confidence_counts": {"none": 3}
+    },
+    "accepted_mapper_date_path_records_present": {
+      "intel.lastSoldDate": 0,
+      "intel.lastSaleDate": 0,
+      "sale.lastSaleDate": 0,
+      "sale.saleDate": 0,
+      "lastSale.saleDate": 0,
+      "sale.lastSale.saleDate": 0,
+      "sale.lastTransfer.saleDate": 0,
+      "deed.sale.saleDate": 0,
+      "lastSaleDate": 0,
+      "sale.recordingDate": 0,
+      "lastSale.recordingDate": 0,
+      "sale.lastSale.recordingDate": 0,
+      "sale.lastTransfer.recordingDate": 0,
+      "deed.sale.recordingDate": 0,
+      "listing.soldDate": 0,
+      "transaction.saleDate": 0,
+      "transaction.recordingDate": 0,
+      "deedHistory[].saleDate": 0,
+      "deedHistory[].recordingDate": 0,
+      "sale.lastSale.mortgages[].saleDate": 0,
+      "sale.lastSale.mortgages[].recordingDate": 0,
+      "sale.lastTransfer.mortgages[].saleDate": 0,
+      "sale.lastTransfer.mortgages[].recordingDate": 0,
+      "sale.mortgages[].saleDate": 0,
+      "sale.mortgages[].recordingDate": 0,
+      "lastSale.mortgages[].saleDate": 0,
+      "lastSale.mortgages[].recordingDate": 0,
+      "deed.sale.mortgages[].saleDate": 0,
+      "deed.sale.mortgages[].recordingDate": 0,
+      "transaction.mortgages[].saleDate": 0,
+      "transaction.mortgages[].recordingDate": 0,
+      "openLien.mortgages[].saleDate": 0,
+      "openLien.mortgages[].recordingDate": 0,
+      "mortgageHistory[].saleDate": 0,
+      "mortgageHistory[].recordingDate": 0
+    },
+    "safe_key_name_unions": {
+      "property": ["_id", "address", "ids", "owner"],
+      "address": ["addressValidity", "city", "county", "countyFipsCode", "hash", "houseNumber", "latitude", "longitude", "state", "street", "zip", "zipPlus4"],
+      "address.location": [],
+      "intel": [],
+      "sale": [],
+      "sale.lastSale": [],
+      "sale.lastTransfer": [],
+      "lastSale": [],
+      "deed": [],
+      "deed.sale": [],
+      "listing": [],
+      "transaction": [],
+      "quickLists": [],
+      "openLien": [],
+      "deedHistory[]": [],
+      "openLien.mortgages[]": [],
+      "mortgageHistory[]": []
+    },
+    "route_date_gate_interpretation": "The pure selectRecentSaleEvidence function returned no date for all three records. Therefore the pre-provenance mapper's missing-sale-date gate would reject all three, even though Search was qualified by the provider-side Intel date predicate. Production now preserves exact job-scoped predicate evidence; this statement covers returned date fields only."
+  },
+  "qualified_seattle_intel_cursor_round_trip": {
+    "criteria": "Same 14-day Intel, R2, minimum $100k estimated value, and not Active/Pending Seattle polygon criteria on both calls",
+    "options_page_1": "take=1, datasets=[basic], useCursorPagination=true",
+    "options_page_2": "identical plus pageCursor set to the verbatim opaque nextPageCursor from page 1",
+    "privacy": {
+      "cursor_value_persisted": false,
+      "property_identity_persisted": false,
+      "raw_payload_persisted": false
+    },
+    "exposure": {
+      "http_attempts": 2,
+      "retries": 0,
+      "lookup_attempts": 0,
+      "records_returned": 1
+    },
+    "page_1": {
+      "http_status": 200,
+      "cursor_present": true,
+      "returned_records": 1,
+      "reported_total_count": 11
+    },
+    "page_2": {
+      "http_status": 500,
+      "cursor_present": false,
+      "returned_records": 0,
+      "reported_total_count": null
+    },
+    "normalized_identities_differ": null,
+    "interpretation": "Cursor initialization worked, but one verbatim round-trip failed. Cursor pagination is not production-reliable for this token without a bounded offset fallback. A single HTTP 500 does not distinguish a persistent account contract failure from a transient provider failure."
+  },
+  "findings": [
+    "All provider-side R2, valuation-floor, and listing-exclusion count requests were accepted with HTTP 200 using options.datasets=[basic].",
+    "No yesterday-only candidates were reported by Intel or Sale in any of the four polygons.",
+    "Intel produced six more fourteen-day candidates than Sale in Seattle and tied Sale in the other three polygons; count data cannot prove whether Sale is a subset.",
+    "In Seattle, R2 was the sole observed count-reducing gate; the $100k floor and Active/Pending exclusion did not remove additional candidates in this sample.",
+    "Corrected basic Lookup succeeded and matched the Search identity in all three samples.",
+    "Rich Lookup enrichment is blocked by dataset entitlement, not disproven by endpoint behavior.",
+    "Qualified basic Search returned complete addresses and coordinate pairs in three of three records, but none of the mapper's accepted returned-date paths; selectRecentSaleEvidence returned none for all three, so the pre-provenance strict date gate would reject all three.",
+    "Cursor page 1 returned HTTP 200, one of 11 candidates, and nextPageCursor; the identical page-2 request with that opaque cursor returned HTTP 500 and no record, so cursor pagination needs a bounded offset fallback."
+  ],
+  "limitations": [
+    "This is a provider capability and relative-count test, not a penetration measurement against recorder or MLS ground truth.",
+    "Count equality does not prove record-set equality; maximum recall requires separately paginating and de-duplicating Intel and Sale results.",
+    "Provider acceptance of a filter is not an independent proof that every match is classified correctly.",
+    "Only three property identities and three supplemental mapper-evidence records were checked, and no PII or raw payload was retained.",
+    "The rich response shape could not be observed with this token because all requested rich datasets are disabled.",
+    "The cursor result is one no-retry round-trip; the HTTP 500 may be persistent or transient, so it proves fallback necessity rather than permanent cursor impossibility."
+  ]
+}
