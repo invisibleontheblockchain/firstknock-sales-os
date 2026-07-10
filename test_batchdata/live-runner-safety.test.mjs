@@ -53,12 +53,20 @@ test('house-level pipeline comparison is plan-only unless live execution is expl
     const plan = runPlanOnly('run-pipeline-house-comparison.mjs', [
         '--as-of=2026-07-10',
         '--days=14',
-        '--budget=6',
+        '--center=phoenix',
+        '--area-sq-mi=250',
+        '--requested=1000',
+        '--http-budget=80',
+        '--record-budget=5000',
         '--sensitive-output'
     ]);
     assert.equal(plan.mode, 'plan_only_no_network');
     assert.equal(plan.network_requests_made, 0);
-    assert.equal(plan.planned_requests, 6);
+    assert.equal(plan.planned_count_requests, 6);
+    assert.equal(plan.nominal_area_sq_mi, 250);
+    assert.equal(plan.requested_route_stops, 1000);
+    assert.equal(plan.http_budget, 80);
+    assert.equal(plan.record_budget, 5000);
     assert.equal(plan.privacy.addresses_persisted_only_when_sensitive_output_is_explicit, true);
     assert.equal(plan.privacy.provider_payloads_persisted, false);
 });
