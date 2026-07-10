@@ -48,3 +48,17 @@ test('corrected-contract runner is plan-only unless live execution is explicit',
     assert.equal(plan.privacy.property_addresses_persisted, false);
     assert.equal(plan.privacy.property_ids_or_hashes_persisted, false);
 });
+
+test('house-level pipeline comparison is plan-only unless live execution is explicit', () => {
+    const plan = runPlanOnly('run-pipeline-house-comparison.mjs', [
+        '--as-of=2026-07-10',
+        '--days=14',
+        '--budget=6',
+        '--sensitive-output'
+    ]);
+    assert.equal(plan.mode, 'plan_only_no_network');
+    assert.equal(plan.network_requests_made, 0);
+    assert.equal(plan.planned_requests, 6);
+    assert.equal(plan.privacy.addresses_persisted_only_when_sensitive_output_is_explicit, true);
+    assert.equal(plan.privacy.provider_payloads_persisted, false);
+});
