@@ -44,6 +44,7 @@ const PROVIDER_MARKET_TIME_ZONE = 'America/Phoenix';
 const BATCHDATA_CURSOR_PAGINATION_ENABLED = Deno.env.get('BATCHDATA_CURSOR_PAGINATION_ENABLED') === 'true';
 const BATCHDATA_REQUEST_TIMEOUT_MS = 20 * 1000;
 const JOB_MEMBERSHIP_CONTRACT = 'property_sources_v1';
+const PRECISION_PIPELINE_CONTRACT = 'precision_generate_v2';
 const BATCHDATA_PROGRESS_UPDATE_MS = 1500;
 const PIPELINE_LOCK_TTL_MS = 8 * 60 * 1000;
 const PIPELINE_LOCK_ELECTION_SETTLE_MS = 50;
@@ -1622,6 +1623,7 @@ function mapBatchDataProperty(record, job) {
                 },
                 mapped_values: {
                     ...(p?._firstknock?.mapped_values || {}),
+                    listing_status: listingStatus || null,
                     owner_full_name: ownerName || null
                 }
             }
@@ -2658,6 +2660,15 @@ Deno.serve(async (req) => {
         const body = await req.json().catch(() => ({}));
         targetJobId = body.job_id ? String(body.job_id) : null;
 
+        if (body.contract_probe === true) {
+            return Response.json({
+                success: true,
+                precision_pipeline_contract: PRECISION_PIPELINE_CONTRACT,
+                component: 'processFetchChunk',
+                paid_provider_requests: 0
+            });
+        }
+
         const diagnosticRequested = DIAGNOSTIC_FLAGS.some(flag => body[flag] === true) || Array.isArray(body.synthetic_records);
         if (diagnosticRequested) {
             const diagnosticUser = await base44.auth.me().catch(() => null);
@@ -2675,6 +2686,7 @@ Deno.serve(async (req) => {
         if (body.self_test === true) {
             return Response.json({
                 success: true,
+                precision_pipeline_contract: PRECISION_PIPELINE_CONTRACT,
                 active_provider: 'batchdata',
                 rentcast_active: false,
                 batchdata_polygon_search: true,
@@ -3608,6 +3620,7 @@ Deno.serve(async (req) => {
             dry_run_metadata: {
                 ...(job.dry_run_metadata || {}),
                 job_membership_contract: JOB_MEMBERSHIP_CONTRACT,
+                precision_pipeline_contract: PRECISION_PIPELINE_CONTRACT,
                 completion_reason: completionReason,
                 batchdata_summary: batchdataSummary
             },
@@ -3626,7 +3639,7 @@ Deno.serve(async (req) => {
         await releasePipelineLock(base44, lockId);
         lockId = null;
         await sleep(10);
-        return Response.json({ success: true, status: 'completed', job_id: job.id, active_provider: 'batchdata', mode_used: batchFetch.mode_used, attempts: batchFetch.attempts, raw: rawRecords.length, mapped: mapped.length, active: activeCount });
+        return Response.json({ success: true, status: 'completed', job_id: job.id, precision_pipeline_contract: PRECISION_PIPELINE_CONTRACT, active_provider: 'batchdata', mode_used: batchFetch.mode_used, attempts: batchFetch.attempts, raw: rawRecords.length, mapped: mapped.length, active: activeCount });
     } catch (error) {
         if (base44 && lockId) await releasePipelineLock(base44, lockId);
         console.error('[processFetchChunk batchdata-only] Fatal:', error.message);

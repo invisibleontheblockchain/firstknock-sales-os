@@ -13,6 +13,13 @@ import { hasPaidPrecisionGenerationCapacity, isPrecisionProUser } from '@/lib/pr
 import { getRequestedPrecisionCount } from '@/lib/precisionRouteCounts';
 import { getPrecisionPreviewAvailability } from '@/lib/precisionPreviewAvailability';
 import { createPrecisionPollingGuard } from '@/lib/precisionPollingGuard';
+import { precisionFetchJobPolygon } from '@/lib/precisionAreaContext';
+import {
+  PrecisionPipelineReleaseMismatchError,
+  requirePrecisionPipelineReady,
+  startPrecisionPullWithPreflight
+} from '@/lib/precisionPipelineContract';
+import { polygonIdentity } from '@/components/map/polygonIdentity';
 
 const DEFAULT_PRECISION_MIN_HOME_VALUE = 100000;
 
@@ -234,11 +241,49 @@ export default function TerritoryPrompt({
         }
 
         if (!job) {
+          const drawnPolygonKey = polygonIdentity(drawnPolygon || []);
+          const routedJobIds = new Set((savedRoutes || [])
+            .map(route => route?.metadata?.precision_area?.job_id)
+            .filter(Boolean)
+            .map(String));
+          if (drawnPolygonKey) {
+            const completedJobs = await base44.entities.FetchJob.filter(
+              { user_email: user.email, status: 'completed' },
+              '-updated_date',
+              5
+            );
+            if (cancelled) return;
+            const completedList = Array.isArray(completedJobs) ? completedJobs : completedJobs?.items || [];
+            const completedJob = completedList.find(candidate => {
+              const candidateId = String(candidate?.id || '');
+              return candidateId
+                && !routedJobIds.has(candidateId)
+                && polygonIdentity(precisionFetchJobPolygon(candidate)) === drawnPolygonKey;
+            });
+            if (completedJob) {
+              const dismissedKey = `fk_dismissedRecoverableJob_${completedJob.id}`;
+              if (localStorage.getItem(dismissedKey) !== '1') {
+                if (restoredCompletedJobRef.current !== completedJob.id) {
+                  restoredCompletedJobRef.current = completedJob.id;
+                  setRecoverableJob({ ...completedJob, recovery_kind: 'completed' });
+                }
+                return;
+              }
+            }
+          }
+
+          if (cancelled) return;
+          restoredCompletedJobRef.current = null;
+          // A completed retry belongs to one exact polygon. Remove it as soon
+          // as the user selects a different area or no matching job exists.
+          setRecoverableJob(current => current?.recovery_kind === 'completed' ? null : current);
+
           const failedJobs = await base44.entities.FetchJob.filter(
             { user_email: user.email, status: 'failed' },
             '-updated_date',
             1
           );
+          if (cancelled) return;
           const failedList = Array.isArray(failedJobs) ? failedJobs : failedJobs?.items || [];
           const failedJob = failedList[0];
           if (failedJob && !cancelled) {
@@ -250,6 +295,7 @@ export default function TerritoryPrompt({
           return;
         }
 
+        if (cancelled) return;
         setRecoverableJob(null);
         if (job && !cancelled && !pulling) {
           console.log('[TerritoryPrompt] Resuming running job:', job.id);
@@ -270,7 +316,7 @@ export default function TerritoryPrompt({
 
     checkRunningJobs();
     return () => {cancelled = true;};
-  }, [user?.email, drawnPolygon]);
+  }, [user?.email, drawnPolygon, savedRoutes]);
 
   // Clear unqueried restored areas so draft polygons do not come back as ghost map areas.
   useEffect(() => {
@@ -471,6 +517,7 @@ export default function TerritoryPrompt({
 
     const doPoll = async () => {
       if (activeJobIdRef.current !== jobKey || !pollingGuardRef.current.begin(jobKey)) return;
+      let latestJobStatus = null;
       pollCount++;
       if (pollCount > MAX_POLLS) {
         clearInterval(pollRef.current);
@@ -494,6 +541,7 @@ export default function TerritoryPrompt({
         // it is in flight. Never act on the stale response.
         if (activeJobIdRef.current !== jobKey) return;
         const d = res.data;
+        latestJobStatus = d;
 
         if (!d) return;
         const returnedJobId = d.job_id || d.fetch_job_id || d.id || null;
@@ -573,6 +621,7 @@ export default function TerritoryPrompt({
 
           const totalLoaded = (d.active_count || 0) || (d.total_inserted || 0) + (d.total_existed || 0);
           const intent = pullIntentRef.current[jobId] || {};
+          const routeOnlyRetry = intent.routeOnlyRetry === true;
           const requestedCount = getRequestedPrecisionCount(d) || 0;
           const intendedCount = intent.requestedCount || diagnostics.requested_properties_before_cap || requestedCount;
           const shortfallMessage = buildPrecisionShortfallMessage({
@@ -584,25 +633,34 @@ export default function TerritoryPrompt({
             minHomeValue: intent.minHomeValue ?? diagnostics.filters?.min_price,
             maxHomeValue: intent.maxHomeValue ?? diagnostics.filters?.max_price
           });
-          if (shortfallMessage) {
+          if (!routeOnlyRetry && shortfallMessage) {
             toast.info(shortfallMessage, { duration: 14000 });
           }
-          toast.success(`${totalLoaded.toLocaleString()} properties ready. Building routes now...`, { duration: 4000 });
+          if (!routeOnlyRetry) {
+            toast.success(`${totalLoaded.toLocaleString()} properties ready. Building routes now...`, { duration: 4000 });
+          }
 
-          // Update user status
-          try {
-            await base44.auth.updateMe({
-              has_pulled_data: true,
-              last_data_pull: new Date().toISOString()
-            });
-          } catch (e) {console.warn('Failed to update pull status', e);}
+          if (!routeOnlyRetry) {
+            // A route-only retry must not rewrite the historical provider-pull
+            // timestamp or repeat data-ingestion side effects.
+            try {
+              await base44.auth.updateMe({
+                has_pulled_data: true,
+                last_data_pull: new Date().toISOString()
+              });
+            } catch (e) {console.warn('Failed to update pull status', e);}
 
-          // Signal to MapToolbar that data is now available for this territory
-          window.dispatchEvent(new CustomEvent('fk-territory-data-ready'));
+            // Signal to MapToolbar that new provider data is available.
+            window.dispatchEvent(new CustomEvent('fk-territory-data-ready'));
+          }
 
           const completedJobStatus = {
             ...d,
             job_id: d.job_id || d.fetch_job_id || d.id || jobId,
+            polygon: Array.isArray(d.polygon) && d.polygon.length >= 3
+              ? d.polygon
+              : (Array.isArray(intent.submittedPolygon) ? intent.submittedPolygon : []),
+            polygon_hash: d.polygon_hash || intent.polygonHash || null,
             // Keep the capped server target as the route target. The original
             // pre-cap intent remains in diagnostics for plan messaging only.
             requested_properties: requestedCount
@@ -613,7 +671,15 @@ export default function TerritoryPrompt({
             setShowRoutePanel(false);
             setShowCompare(false);
             const completedSoldMonths = diagnostics.sold_months ?? intent.soldMonths ?? fetchMonths;
-            await onPullComplete(completedSoldMonths, false, completedJobStatus);
+            const routeBuildSucceeded = await onPullComplete(completedSoldMonths, false, completedJobStatus);
+            if (routeBuildSucceeded !== true) {
+              pollingGuardRef.current.releaseCompletion(jobKey);
+              setRecoverableJob({ ...completedJobStatus, id: jobId, recovery_kind: 'completed' });
+              setPulling(false);
+              setEtaText('');
+              setPullProgress('Data ready; route build needs retry');
+              return;
+            }
           } else {
             queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
             queryClient.invalidateQueries({ queryKey: ['user'] });
@@ -621,6 +687,7 @@ export default function TerritoryPrompt({
             setShowRoutePanel(false);
             setShowCompare(false);
           }
+          delete pullIntentRef.current[jobId];
           setPulling(false);
         } else if (d.status === 'cancelled') {
           clearInterval(pollRef.current);
@@ -640,12 +707,19 @@ export default function TerritoryPrompt({
       } catch (e) {
         // Silent — network hiccup, keep polling
         if (pollingGuardRef.current.hasCompleted(jobKey)) {
+          pollingGuardRef.current.releaseCompletion(jobKey);
           clearInterval(pollRef.current);
           pollRef.current = null;
           activeJobIdRef.current = null;
           setPulling(false);
           setEtaText('');
           setPullProgress('Data ready; automatic route build needs retry');
+          setRecoverableJob({
+            ...(latestJobStatus || {}),
+            id: jobId,
+            job_id: jobId,
+            recovery_kind: 'completed'
+          });
           toast.error(`The exact import completed, but automatic route generation did not finish: ${e?.message || 'unknown error'}. The job data is safe; use the current area to build again.`);
         } else {
           console.warn('Poll error:', e.message);
@@ -684,6 +758,35 @@ export default function TerritoryPrompt({
     if (!recoverableJobId) {
       toast.error('This previous import is missing its job id and cannot be resumed safely.');
       return;
+    }
+    const isCompletedRetry = recoverableJob?.recovery_kind === 'completed';
+    if (isCompletedRetry) {
+      const currentPolygonKey = polygonIdentity(drawnPolygon || []);
+      const recoverablePolygon = precisionFetchJobPolygon(recoverableJob);
+      const recoverablePolygonKey = polygonIdentity(recoverablePolygon);
+      if (!currentPolygonKey || !recoverablePolygonKey || currentPolygonKey !== recoverablePolygonKey) {
+        setRecoverableJob(null);
+        toast.error('That completed pull belongs to a different area. Reopen its exact polygon before retrying routes.');
+        return;
+      }
+      try {
+        await requirePrecisionPipelineReady(base44.functions.invoke.bind(base44.functions));
+      } catch {
+        const message = 'This completed pull is safe, but route retry is temporarily blocked because the app and property backend are on different releases. Refresh after the coordinated deployment finishes; no new paid pull is needed.';
+        setPullError({
+          message,
+          upgrade: false
+        });
+        setPullProgress('Route retry waiting for backend deployment');
+        toast.error(message, { duration: 12000 });
+        return;
+      }
+      pullIntentRef.current[recoverableJobId] = {
+        ...(pullIntentRef.current[recoverableJobId] || {}),
+        routeOnlyRetry: true,
+        submittedPolygon: recoverablePolygon.map(point => ({ ...point })),
+        polygonHash: recoverableJob?.polygon_hash || null
+      };
     }
     setPulling(true);
     setPullProgress('Verifying the exact previous import...');
@@ -887,25 +990,38 @@ export default function TerritoryPrompt({
     setPaidPullStarting(true);
     setPullError(null);
     try {
-      const res = await base44.functions.invoke('startBatchDataPull', {
-        polygon: drawnPolygon,
-        requested_properties: effectiveRequestedPropertyCount,
-        count_mode: usingMaxAvailable ? 'max_available' : 'fixed',
-        sold_months: effectiveSoldMonths,
-        min_price: effectiveMinPrice,
-        max_price: effectiveMaxPrice,
-        route_filters: {
-          propertyTypes: ['Single Family'],
-          excludeCommercial: true,
-          excludeCondos: true,
-          excludeLand: true,
-          excludeAssigned: routeConfig.excludeAssigned !== false
-        },
-        force_full_refresh: isPreviousAreaPull ? repullMode === 'fill_gaps' || forceFullRefresh : false,
-        include_unresolved_followups: isPreviousAreaPull ? includeUnresolvedFollowUps : false,
-        repull_mode: isPreviousAreaPull ? repullMode : 'new_area',
-        previous_pull_date: isPreviousAreaPull ? selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date || null : null
-      });
+      let res;
+      try {
+        res = await startPrecisionPullWithPreflight(
+          base44.functions.invoke.bind(base44.functions),
+          {
+            polygon: drawnPolygon,
+            requested_properties: effectiveRequestedPropertyCount,
+            count_mode: usingMaxAvailable ? 'max_available' : 'fixed',
+            sold_months: effectiveSoldMonths,
+            min_price: effectiveMinPrice,
+            max_price: effectiveMaxPrice,
+            route_filters: {
+              propertyTypes: ['Single Family'],
+              excludeCommercial: true,
+              excludeCondos: true,
+              excludeLand: true,
+              excludeAssigned: routeConfig.excludeAssigned !== false
+            },
+            force_full_refresh: isPreviousAreaPull ? repullMode === 'fill_gaps' || forceFullRefresh : false,
+            include_unresolved_followups: isPreviousAreaPull ? includeUnresolvedFollowUps : false,
+            repull_mode: isPreviousAreaPull ? repullMode : 'new_area',
+            previous_pull_date: isPreviousAreaPull ? selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date || null : null
+          }
+        );
+      } catch (error) {
+        if (!(error instanceof PrecisionPipelineReleaseMismatchError)) throw error;
+        setPullError({
+          message: 'Precision Generate is temporarily blocked because the app and property backend are on different releases. No paid BatchData pull was started. Refresh after the coordinated backend deployment finishes, then try again.',
+          upgrade: false
+        });
+        return;
+      }
       const data = res.data || {};
       if (data.error) {
         const isPlanGate = ['trial_required', 'paid_precision_required', 'upgrade_required'].includes(data.error);
@@ -920,6 +1036,11 @@ export default function TerritoryPrompt({
           soldMonths: effectiveSoldMonths,
           minHomeValue: effectiveMinPrice,
           maxHomeValue: effectiveMaxPrice,
+          submittedPolygon: Array.isArray(data.polygon) && data.polygon.length >= 3
+            ? data.polygon.map(point => ({ ...point }))
+            : drawnPolygon.map(point => ({ ...point })),
+          polygonHash: data.polygon_hash || null,
+          precisionPipelineContract: data.precision_pipeline_contract || null,
           limitedByFreeHomeCap: data.limited_by_free_home_cap === true
         };
       }
@@ -1018,10 +1139,12 @@ export default function TerritoryPrompt({
             {!pulling && recoverableJob && mode === 'generate' &&
       <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[2000] w-11/12 max-w-sm animate-in fade-in">
                     <div className="bg-black/90 backdrop-blur-md border border-[#2EEB57]/50 rounded-xl p-4 shadow-2xl">
-                        <p className="text-xs font-bold text-white mb-1">Incomplete data pull found</p>
-                        <p className="text-[10px] text-gray-400 mb-3">Your last import stopped at {Math.round(recoverableJob.progress_pct || 0)}%. FirstKnock will verify that exact job. If it cannot resume, its submitted area will reopen for a new confirmed pull.</p>
+                        <p className="text-xs font-bold text-white mb-1">{recoverableJob.recovery_kind === 'completed' ? 'Completed pull ready to retry' : 'Incomplete data pull found'}</p>
+                        <p className="text-[10px] text-gray-400 mb-3">{recoverableJob.recovery_kind === 'completed'
+                          ? 'The provider pull completed, but automatic route construction did not finish. FirstKnock will retry routes from that exact job without starting another paid provider pull.'
+                          : `Your last import stopped at ${Math.round(recoverableJob.progress_pct || 0)}%. FirstKnock will verify that exact job. If it cannot resume, its submitted area will reopen for a new confirmed pull.`}</p>
                         <div className="flex gap-2">
-                            <Button onClick={retryRecoverableJob} className="h-8 flex-1 text-xs bg-[#2EEB57] text-black hover:bg-[#39FF4A]">Verify / Retry</Button>
+                            <Button onClick={retryRecoverableJob} className="h-8 flex-1 text-xs bg-[#2EEB57] text-black hover:bg-[#39FF4A]">{recoverableJob.recovery_kind === 'completed' ? 'Retry Routes' : 'Verify / Retry'}</Button>
                             <Button
               onClick={() => {
                 if (recoverableJob?.id) {

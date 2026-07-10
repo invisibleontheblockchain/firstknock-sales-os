@@ -2,11 +2,14 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 import {
     applyJobScopedOwnerObservation,
-    exactFetchJobBelongsToTarget
+    candidateQualificationEvidence,
+    exactFetchJobBelongsToTarget,
+    jobScopedListingEvidence
 } from './jobEvidenceLogic.js';
 
 const POLYGON_BOUNDARY_TOLERANCE_DEGREES = 5e-6;
 const JOB_MEMBERSHIP_CONTRACT = 'property_sources_v1';
+const PRECISION_PIPELINE_CONTRACT = 'precision_generate_v2';
 
 function parseRawPayload(value) {
     if (value && typeof value === 'object') return value;
@@ -14,7 +17,7 @@ function parseRawPayload(value) {
     try { return JSON.parse(value); } catch { return {}; }
 }
 
-function providerSearchFilterEvidence(rawPayload) {
+function providerSearchFilterEvidence(rawPayload, exactFetchJob = null) {
     const evidence = rawPayload?._firstknock?.search_evidence || {};
     const mappedEvidence = rawPayload?._firstknock?.mapped_evidence || {};
     const minimum = Number(evidence.valuation_estimated_value_min);
@@ -28,27 +31,13 @@ function providerSearchFilterEvidence(rawPayload) {
         provider_recent_sale_min_date: evidence.recent_sale_min_date || null,
         provider_recent_sale_max_date: evidence.recent_sale_max_date || null,
         provider_recent_sale_sources: recentSaleSources,
-        provider_listing_status_categories_excluded: Array.isArray(evidence.listing_status_categories_excluded)
-            ? evidence.listing_status_categories_excluded
-            : [],
+        ...jobScopedListingEvidence(rawPayload, exactFetchJob),
         provider_estimated_value_observed: mappedEvidence.estimated_home_value_observed === true
             ? true
             : (mappedEvidence.estimated_home_value_observed === false ? false : null),
         provider_exact_sale_date_observed: mappedEvidence.exact_sale_date_observed === true
             ? true
             : (mappedEvidence.exact_sale_date_observed === false ? false : null),
-        provider_listing_status_observed: mappedEvidence.listing_status_observed === true
-            ? true
-            : (mappedEvidence.listing_status_observed === false ? false : null)
-    };
-}
-
-function mergeJobScopedEvidence(propertyRawPayload, jobEvidencePayload) {
-    const propertyRaw = parseRawPayload(propertyRawPayload);
-    const jobEvidence = parseRawPayload(jobEvidencePayload);
-    return {
-        ...propertyRaw,
-        _firstknock: jobEvidence?._firstknock || propertyRaw?._firstknock || {}
     };
 }
 
@@ -97,13 +86,21 @@ function isoDateDaysAgo(days, referenceMs = Date.now()) {
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
+        const body = await req.json().catch(() => ({}));
+        if (body.contract_probe === true) {
+            return Response.json({
+                success: true,
+                precision_pipeline_contract: PRECISION_PIPELINE_CONTRACT,
+                component: 'getRouteCandidatesFromNeon',
+                paid_provider_requests: 0
+            });
+        }
         const user = await base44.auth.me();
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
         const databaseUrl = Deno.env.get('DATABASE_URL');
         if (!databaseUrl) return Response.json({ error: 'DATABASE_URL is not configured' }, { status: 500 });
 
-        const body = await req.json().catch(() => ({}));
         const sql = neon(databaseUrl);
         const targetEmail = user.role === 'admin' && body.user_email ? body.user_email : user.email;
         const zipCodes = normalizeZipList(body);
@@ -179,7 +176,10 @@ Deno.serve(async (req) => {
                 LIMIT ${limit}
             `;
             const properties = debugRows.map(row => {
-                const raw = mergeJobScopedEvidence(row.raw_payload, row.job_evidence_payload);
+                // Keep exact-job diagnostics on the same immutable evidence
+                // boundary as the route-candidate response. A mutable canonical
+                // payload may have been replaced by a later provider/job.
+                const raw = candidateQualificationEvidence(row.raw_payload, row.job_evidence_payload, true);
                 const listingStatus = String(raw?.listing?.status || raw?.listing?.statusCategory || '').toLowerCase();
                 const landUseCode = raw?.general?.standardizedLandUseCode || raw?.standardizedLandUseCode || null;
                 const reason = row.route_active === true && row.status !== 'REJECTED'
@@ -207,7 +207,7 @@ Deno.serve(async (req) => {
                 acc[key] = (acc[key] || 0) + 1;
                 return acc;
             }, {});
-            return Response.json({ success: true, user_email: targetEmail, fetch_job_id: fetchJobId, count: properties.length, breakdown, properties });
+            return Response.json({ success: true, precision_pipeline_contract: PRECISION_PIPELINE_CONTRACT, user_email: targetEmail, fetch_job_id: fetchJobId, count: properties.length, breakdown, properties });
         }
 
         const rows = await sql`
@@ -288,15 +288,31 @@ Deno.serve(async (req) => {
         `;
 
         let properties = rows.map(row => {
-            const rawPayload = mergeJobScopedEvidence(row.raw_payload, row.job_evidence_payload);
+            const rawPayload = candidateQualificationEvidence(
+                row.raw_payload,
+                row.job_evidence_payload,
+                fetchJobId !== null
+            );
+            const qualificationEvidence = providerSearchFilterEvidence(rawPayload, exactFetchJob);
             const ownerObservation = applyJobScopedOwnerObservation(row.owner_full_name, row.job_evidence_payload);
             const safeRow = { ...row };
             delete safeRow.raw_payload;
             delete safeRow.job_evidence_payload;
             return {
                 ...safeRow,
-                ...providerSearchFilterEvidence(rawPayload),
+                ...qualificationEvidence,
                 ...ownerObservation,
+                // Canonical listing_status is mutable across imports. For an
+                // exact job expose only the value actually observed by that
+                // job, and mark the scope so the client also fails closed.
+                ...(fetchJobId !== null ? {
+                    listing_status: qualificationEvidence.provider_listing_status_observed === true
+                        ? qualificationEvidence.provider_listing_status_value
+                        : null,
+                    provider_listing_evidence_scope: 'exact_job'
+                } : {
+                    provider_listing_evidence_scope: 'canonical'
+                }),
                 id: String(row.id),
                 address_hash: row.address_hash || String(row.id),
                 created_date: row.created_at,
@@ -318,7 +334,9 @@ Deno.serve(async (req) => {
                 'provider_recent_sale_max_date', 'provider_recent_sale_sources',
                 'provider_exact_sale_date_observed', 'listing_status',
                 'provider_owner_name_observed', 'owner_full_name_source',
-                'provider_listing_status_observed', 'provider_listing_status_categories_excluded'
+                'provider_listing_status_observed', 'provider_listing_status_value',
+                'provider_listing_status_categories_excluded', 'provider_listing_safety_source',
+                'provider_listing_evidence_scope'
             ];
             properties = properties.map(p => {
                 const slim = {};
@@ -331,6 +349,7 @@ Deno.serve(async (req) => {
 
         return Response.json({
             success: true,
+            precision_pipeline_contract: PRECISION_PIPELINE_CONTRACT,
             user_email: targetEmail,
             count: properties.length,
             capped: properties.length >= limit,

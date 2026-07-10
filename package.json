@@ -9,7 +9,7 @@
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
-    "test:batchdata": "node --test test_batchdata/recent-sale-logic.test.mjs test_batchdata/property-merge-logic.test.mjs test_batchdata/job-evidence-logic.test.mjs test_batchdata/precision-value-policy.test.mjs test_batchdata/precision-route-counts.test.mjs test_batchdata/precision-area-context.test.mjs test_batchdata/fetch-job-election.test.mjs test_batchdata/pipeline-lock-election.test.mjs test_batchdata/route-filter-pipeline.test.mjs test_batchdata/route-optimizer.test.mjs test_batchdata/polygon-identity.test.mjs test_batchdata/precision-preview-and-polling.test.mjs test_batchdata/live-runner-safety.test.mjs",
+    "test:batchdata": "node --test test_batchdata/recent-sale-logic.test.mjs test_batchdata/property-merge-logic.test.mjs test_batchdata/job-evidence-logic.test.mjs test_batchdata/precision-value-policy.test.mjs test_batchdata/precision-route-counts.test.mjs test_batchdata/precision-area-context.test.mjs test_batchdata/precision-pipeline-contract.test.mjs test_batchdata/functions-version.test.mjs test_batchdata/fetch-job-election.test.mjs test_batchdata/pipeline-lock-election.test.mjs test_batchdata/route-filter-pipeline.test.mjs test_batchdata/route-optimizer.test.mjs test_batchdata/polygon-identity.test.mjs test_batchdata/precision-preview-and-polling.test.mjs test_batchdata/live-runner-safety.test.mjs",
     "preview": "vite preview",
     "mobile:build": "vite build && cap sync"
   },

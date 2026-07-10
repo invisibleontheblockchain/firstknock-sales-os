@@ -18,6 +18,7 @@ const DEFAULT_PRECISION_MIN_HOME_VALUE = 100000;
 const liveCountCache = new Map();
 const liveCountRequestsByUser = new Map();
 const liveCountInflight = new Map();
+const PRECISION_PIPELINE_CONTRACT = 'precision_generate_v2';
 
 function normalizePolygon(input) {
     if (!Array.isArray(input)) return [];
@@ -478,10 +479,18 @@ async function getPrecisionRouteHomeStats(base44, user) {
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
+        const body = await req.json().catch(() => ({}));
+        if (body.contract_probe === true) {
+            return Response.json({
+                success: true,
+                precision_pipeline_contract: PRECISION_PIPELINE_CONTRACT,
+                component: 'previewBatchDataArea',
+                paid_provider_requests: 0
+            });
+        }
         const user = await base44.auth.me();
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const body = await req.json().catch(() => ({}));
         const polygon = normalizePolygon(body.polygon);
         const polygonError = polygonValidationError(polygon);
         if (polygonError) {
@@ -548,6 +557,7 @@ Deno.serve(async (req) => {
 
         return Response.json({
             success: true,
+            precision_pipeline_contract: PRECISION_PIPELINE_CONTRACT,
             mode: liveCountProbe ? 'live_count_preview' : 'sandbox_preview_no_paid_batchdata_charge',
             provider: 'batchdata',
             sandbox: !liveCountProbe,

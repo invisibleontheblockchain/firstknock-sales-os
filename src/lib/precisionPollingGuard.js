@@ -19,6 +19,9 @@ export function createPrecisionPollingGuard() {
       completed.add(key);
       return true;
     },
+    releaseCompletion(jobId) {
+      completed.delete(String(jobId || ''));
+    },
     hasCompleted(jobId) {
       return completed.has(String(jobId || ''));
     }

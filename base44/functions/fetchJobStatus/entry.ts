@@ -7,6 +7,7 @@ const PROCESSOR_REKICK_COOLDOWN_MS = 20 * 1000;
 const PROCESSOR_REKICK_WAIT_MS = 900;
 const INITIAL_STALE_LOCK_MS = 90 * 1000;
 const JOB_MEMBERSHIP_CONTRACT = 'property_sources_v1';
+const PRECISION_PIPELINE_CONTRACT = 'precision_generate_v2';
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -69,12 +70,20 @@ async function clearInitialStaleLocks(base44, job, now) {
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
+        const body = await req.json();
+        if (body.contract_probe === true) {
+            return Response.json({
+                success: true,
+                precision_pipeline_contract: PRECISION_PIPELINE_CONTRACT,
+                component: 'fetchJobStatus',
+                paid_provider_requests: 0
+            });
+        }
         const user = await base44.auth.me();
         if (!user) {
             return Response.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const body = await req.json();
         const { job_id } = body;
 
         if (!job_id) {
@@ -97,6 +106,9 @@ Deno.serve(async (req) => {
         }
 
         const metadata = job.dry_run_metadata || {};
+        const submittedPolygon = Array.isArray(job.polygon) && job.polygon.length >= 3
+            ? job.polygon
+            : (Array.isArray(metadata.submitted_polygon) ? metadata.submitted_polygon : []);
         const allowLegacyPointerMembership = metadata.job_membership_contract !== JOB_MEMBERSHIP_CONTRACT;
         const excludeAssigned = metadata.route_filters?.excludeAssigned !== false;
         const explicitlyReopenedHashes = [
@@ -172,10 +184,11 @@ Deno.serve(async (req) => {
 
         return Response.json({
             job_id: job.id,
+            precision_pipeline_contract: PRECISION_PIPELINE_CONTRACT,
             // Return the immutable geometry captured by this FetchJob. The UI must
             // not rebuild an exact-job route against whatever polygon happens to
             // be on the canvas when asynchronous processing finishes.
-            polygon: Array.isArray(job.polygon) ? job.polygon : [],
+            polygon: submittedPolygon,
             polygon_hash: job.polygon_hash || null,
             status: job.status,
             phase: job.phase || null,
@@ -198,6 +211,7 @@ Deno.serve(async (req) => {
             is_delta_pull: job.is_delta_pull || false,
             delta_savings: job.delta_savings || null,
             diagnostics: {
+                precision_pipeline_contract: metadata.precision_pipeline_contract || null,
                 requested_properties: metadata.requested_properties ?? job.total_expected ?? 0,
                 requested_properties_before_cap: metadata.requested_properties_before_cap ?? metadata.requested_properties ?? job.total_expected ?? 0,
                 limited_by_free_home_cap: metadata.limited_by_free_home_cap === true,

@@ -337,19 +337,35 @@ export function applyRouteFilters({
             && String(p.sale_confidence || '').trim().toUpperCase() !== 'REJECTED';
     });
     workingSet = workingSet.filter(p => p.route_active !== false);
+    track('workspaceEligibility');
 
     // A newly sold home can already be relisted. Explicit on-market statuses
     // always lose; lean BatchData rows must carry the accepted provider
     // Active/Pending exclusion predicate so missing response fields do not
     // silently become an automatic pass.
+    const listingSafetyDropReasons = { explicitlyBlocked: 0, missingProof: 0 };
     workingSet = workingSet.filter(p => {
-        const currentListingStatus = p.provider_listing_status_observed === false
-            ? ''
-            : (p.listing_status || p.listing?.statusCategory || p.listing?.status);
-        if (isBlockedListingStatus(currentListingStatus)) return false;
+        const exactJobListingScope = p.provider_listing_evidence_scope === 'exact_job';
+        const hasJobScopedObservation = exactJobListingScope || typeof p.provider_listing_status_observed === 'boolean';
+        const currentListingStatus = exactJobListingScope
+            ? (p.provider_listing_status_observed === true ? (p.provider_listing_status_value || '') : '')
+            : (p.provider_listing_status_observed === true
+                ? (p.provider_listing_status_value || '')
+                : (p.provider_listing_status_observed === false
+                    ? ''
+                    : (p.listing_status || p.listing?.statusCategory || p.listing?.status)));
+        if (isBlockedListingStatus(currentListingStatus)) {
+            listingSafetyDropReasons.explicitlyBlocked += 1;
+            return false;
+        }
         if (!isBatchDataCandidate(p)) return true;
         const hasExplicitStatus = !!String(currentListingStatus || '').trim();
-        return hasExplicitStatus || providerListingExclusionProves(p);
+        const predicateProven = providerListingExclusionProves(p);
+        if (hasExplicitStatus || predicateProven) return true;
+        // A scoped observation flag without its scoped value is not permission
+        // to reuse a mutable global listing status from another provider/job.
+        if (hasJobScopedObservation || !hasExplicitStatus) listingSafetyDropReasons.missingProof += 1;
+        return false;
     });
     track('listingSafety');
 
@@ -476,11 +492,17 @@ export function applyRouteFilters({
             const dropped = stages[i - 1].count - stages[i].count;
             if (dropped > biggestDrop.dropped) biggestDrop = { stage: stages[i].name, dropped };
         }
+        const listingSafetyError = biggestDrop.stage === 'listingSafety' && listingSafetyDropReasons.missingProof > 0
+            ? `No routes were built because ${listingSafetyDropReasons.missingProof.toLocaleString()} BatchData candidate${listingSafetyDropReasons.missingProof === 1 ? '' : 's'} arrived without exact-job proof that Active and Pending listings were excluded. This is a pipeline release/evidence mismatch, not a filter you should loosen. Refresh after the coordinated backend deployment and retry this same completed pull.`
+            : biggestDrop.stage === 'listingSafety' && listingSafetyDropReasons.explicitlyBlocked > 0
+                ? `No routes were built because ${listingSafetyDropReasons.explicitlyBlocked.toLocaleString()} candidate${listingSafetyDropReasons.explicitlyBlocked === 1 ? '' : 's'} had an explicit on-market listing status. Listing safety is working; broaden the area or date window instead of loosening this protection.`
+                : null;
         return {
             workingSet: [], stages, frozenSet,
-            error: biggestDrop.dropped > 0
+            error: listingSafetyError || (biggestDrop.dropped > 0
                 ? `All properties filtered out — biggest drop was "${biggestDrop.stage}" (removed ${biggestDrop.dropped}). Try loosening that filter.`
-                : 'No properties match current filters. Try loosening filters or pulling fresh data.',
+                : 'No properties match current filters. Try loosening filters or pulling fresh data.'),
+            diagnostic: { listingSafetyDropReasons }
         };
     }
 

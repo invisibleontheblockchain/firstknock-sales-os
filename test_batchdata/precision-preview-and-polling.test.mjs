@@ -71,3 +71,16 @@ test('poll guard is single-flight and completion-once for an exact job', () => {
   assert.equal(guard.begin('job-1'), false);
   assert.equal(guard.hasCompleted('job-1'), true);
 });
+
+test('a failed route build releases only that exact completion for retry', () => {
+  const guard = createPrecisionPollingGuard();
+  assert.equal(guard.begin('job-1'), true);
+  assert.equal(guard.claimCompletion('job-1'), true);
+  assert.equal(guard.claimCompletion('job-1'), false);
+  guard.end('job-1');
+  guard.releaseCompletion('job-1');
+  assert.equal(guard.hasCompleted('job-1'), false);
+  assert.equal(guard.begin('job-1'), true);
+  assert.equal(guard.claimCompletion('job-1'), true);
+  assert.equal(guard.hasCompleted('job-2'), false);
+});

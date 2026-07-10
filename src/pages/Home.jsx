@@ -59,6 +59,7 @@ const TerritorySetupWizard = React.lazy(() => import('../components/manager/Terr
 import { LayoutDashboard, Settings, Crosshair } from 'lucide-react';
 import { openInMaps } from '../components/logic/navigation';
 import { hydrateRoutesForMap } from '@/components/logic/routeHydration';
+import { precisionCandidateProperties } from '@/lib/precisionPipelineContract';
 import GpsTracker, { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../components/map/GpsTracker';
 import QuickMarkButtons from '../components/rep/QuickMarkButtons';
 import PropertyHistory from '../components/rep/PropertyHistory';
@@ -70,7 +71,11 @@ import ZipCodeOverlay from '../components/map/ZipCodeOverlay';
 import PolygonHistory, { savePolygonToHistory } from '../components/map/PolygonHistory';
 import { polygonIdentity } from '../components/map/polygonIdentity';
 import { getRequestedPrecisionCount } from '@/lib/precisionRouteCounts';
-import { newestPrecisionAreaEntry, resolvePrecisionGenerationArea } from '@/lib/precisionAreaContext';
+import {
+    newestPrecisionAreaEntry,
+    resolveCompletedPrecisionPullContext,
+    resolvePrecisionGenerationArea
+} from '@/lib/precisionAreaContext';
 import KnockLimitSheet from '@/components/upgrade/KnockLimitSheet';
 import { getOutcomesLogged, isOutcomeBlocked, isProUser, needsCardOnFile } from '@/components/upgrade/knockGate';
 
@@ -79,6 +84,7 @@ import { BRAND, DEFAULT_STATUS_COLORS, COLOR_SCHEME_MAP, LINE_DASH_MAP, ROUTE_CO
 
 import { LocationMarker, MapRefHandler, MapController } from '../components/map/MapHelpers';
 import useViewportMapProperties from '../components/map/useViewportMapProperties';
+
 
 function normalizeHistoryPolygon(value) {
     if (!Array.isArray(value)) return [];
@@ -325,7 +331,7 @@ export default function Home() {
             limit,
             fetch_job_id: fetchJobId
         });
-        return Array.isArray(res.data?.properties) ? res.data.properties : [];
+        return precisionCandidateProperties(res, { exactJob: !!fetchJobId });
     }, []);
 
     // Load navigation preference from user settings on load
@@ -2163,24 +2169,35 @@ export default function Home() {
                         currentBatchDataMaxPriceRef.current = null;
                         currentBatchDataReincludedHashesRef.current = new Set();
                         setGenerationError('This Precision pull completed, but the completed job id was missing. Route generation was stopped so old account data cannot be mixed into this new area. Please generate the area again.');
-                        return;
+                        return false;
                     }
                     // The completed job owns the route boundary. Require its immutable
                     // submitted polygon so a user edit made while polling cannot route
                     // job records against a different, mutable UI polygon.
-                    const completedJobPolygon = getFetchJobHistoryPolygon(jobStatus);
-                    const normalizedPullPolygon = completedJobPolygon;
-                    if (normalizedPullPolygon.length < 3) {
-                        setCurrentBatchDataJobId(null);
-                        currentBatchDataJobIdRef.current = null;
-                        currentBatchDataRequestedCountRef.current = null;
+                    let completedContext = resolveCompletedPrecisionPullContext({
+                        status: jobStatus,
+                        expectedUserEmail: user?.email
+                    });
+                    if (completedContext.error === 'missing_job_polygon') {
+                        const exactJobResponse = await base44.entities.FetchJob.get(completedJobId).catch(() => null);
+                        const exactJob = exactJobResponse?.data || exactJobResponse;
+                        completedContext = resolveCompletedPrecisionPullContext({
+                            status: jobStatus,
+                            exactJob,
+                            expectedUserEmail: user?.email
+                        });
+                    }
+                    const normalizedPullPolygon = completedContext.polygon;
+                    if (completedContext.error || normalizedPullPolygon.length < 3) {
+                        // Preserve the exact completed job id for a safe retry after a
+                        // coordinated backend deployment. Never downgrade to an
+                        // account-wide candidate query because geometry was omitted.
+                        setCurrentBatchDataJobId(completedJobId);
+                        currentBatchDataJobIdRef.current = completedJobId;
+                        currentBatchDataRequestedCountRef.current = getRequestedPrecisionCount(jobStatus);
                         currentBatchDataPolygonRef.current = null;
-                        currentBatchDataSoldMinDateRef.current = null;
-                        currentBatchDataMinPriceRef.current = null;
-                        currentBatchDataMaxPriceRef.current = null;
-                        currentBatchDataReincludedHashesRef.current = new Set();
-                        setGenerationError('This Precision pull completed, but the selected area was missing before routes could be built. Route generation was stopped so old account data cannot be mixed into this new area. Please generate the area again.');
-                        return;
+                        setGenerationError('This Precision pull completed, but its exact submitted area could not be recovered from the status response or FetchJob record. Route generation stayed scoped to this job and stopped safely. Refresh after the backend deployment finishes and retry this completed pull; do not start another paid pull yet.');
+                        return false;
                     }
                     setCurrentBatchDataJobId(completedJobId);
                     currentBatchDataJobIdRef.current = completedJobId;
@@ -2231,11 +2248,13 @@ export default function Home() {
                             setDraftPolygon([]);
                             try { localStorage.removeItem('fk_drawnPolygonQueried'); } catch { }
                         }
+                        return routeBuilt === true;
                     } else {
                         const isUltraRecent = Number(pm) <= 0.25;
                         setGenerationError(isUltraRecent
                             ? 'No BatchData-confirmed sales were returned inside this exact area for the selected last-week window. Route generation was stopped so stale old data is not reused. Provider sale/intel records can lag — try 2 weeks or 1 month for this territory.'
                             : 'This pull produced no active routeable properties. Route generation was stopped so stale old data is not reused. Try a larger area or looser parameters.');
+                        return false;
                     }
                 }}
             />

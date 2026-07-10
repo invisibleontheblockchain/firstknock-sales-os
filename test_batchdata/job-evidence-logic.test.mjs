@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 
 import {
     applyJobScopedOwnerObservation,
+    candidateQualificationEvidence,
     exactFetchJobBelongsToTarget,
+    jobScopedListingEvidence,
     jobScopedOwnerObservation
 } from '../base44/functions/getRouteCandidatesFromNeon/jobEvidenceLogic.js';
 
@@ -55,4 +57,73 @@ test('exact FetchJob evidence is readable only for its target workspace owner', 
     assert.equal(exactFetchJobBelongsToTarget(job, 'other@example.com'), false);
     assert.equal(exactFetchJobBelongsToTarget(null, 'manager@example.com'), false);
     assert.equal(exactFetchJobBelongsToTarget({ id: 'job-1' }, 'manager@example.com'), false);
+});
+
+test('job-scoped listing evidence carries its observed value instead of a global status', () => {
+    const evidence = jobScopedListingEvidence({
+        _firstknock: {
+            search_evidence: { listing_status_categories_excluded: ['Active', 'Pending'] },
+            mapped_evidence: { listing_status_observed: true },
+            mapped_values: { listing_status: 'Sold' }
+        }
+    });
+    assert.equal(evidence.provider_listing_status_observed, true);
+    assert.equal(evidence.provider_listing_status_value, 'Sold');
+    assert.equal(evidence.provider_listing_safety_source, 'job_scoped_observation');
+});
+
+test('a completed exact job may restore missing row-level listing predicate proof', () => {
+    const evidence = jobScopedListingEvidence({ _firstknock: {} }, {
+        status: 'completed',
+        provider: 'batchdata',
+        dry_run_metadata: {
+            job_membership_contract: 'property_sources_v1',
+            batchdata_summary: {
+                filters: { listing_status_categories_excluded: ['Active', 'Pending'] }
+            }
+        }
+    });
+    assert.deepEqual(evidence.provider_listing_status_categories_excluded, ['Active', 'Pending']);
+    assert.equal(evidence.provider_listing_safety_source, 'completed_job_predicate');
+});
+
+test('legacy or incomplete job metadata cannot manufacture listing proof', () => {
+    const legacy = jobScopedListingEvidence({ _firstknock: {} }, {
+        status: 'completed',
+        provider: 'batchdata',
+        dry_run_metadata: {
+            batchdata_summary: {
+                filters: { listing_status_categories_excluded: ['Active', 'Pending'] }
+            }
+        }
+    });
+    const incomplete = jobScopedListingEvidence({ _firstknock: {} }, {
+        status: 'completed',
+        provider: 'batchdata',
+        dry_run_metadata: {
+            job_membership_contract: 'property_sources_v1',
+            batchdata_summary: {
+                filters: { listing_status_categories_excluded: ['Active'] }
+            }
+        }
+    });
+    assert.deepEqual(legacy.provider_listing_status_categories_excluded, []);
+    assert.deepEqual(incomplete.provider_listing_status_categories_excluded, []);
+    assert.equal(legacy.provider_listing_safety_source, 'missing');
+    assert.equal(incomplete.provider_listing_safety_source, 'missing');
+});
+
+test('exact-job qualification ignores mutable global evidence when its source row is absent', () => {
+    const globalPayload = {
+        _firstknock: {
+            search_evidence: { listing_status_categories_excluded: ['Active', 'Pending'] },
+            mapped_evidence: { listing_status_observed: true },
+            mapped_values: { listing_status: 'Sold' }
+        }
+    };
+    const exactEvidence = candidateQualificationEvidence(globalPayload, null, true);
+    const accountEvidence = candidateQualificationEvidence(globalPayload, null, false);
+    assert.deepEqual(exactEvidence, {});
+    assert.deepEqual(accountEvidence, globalPayload);
+    assert.equal(jobScopedListingEvidence(exactEvidence).provider_listing_safety_source, 'missing');
 });

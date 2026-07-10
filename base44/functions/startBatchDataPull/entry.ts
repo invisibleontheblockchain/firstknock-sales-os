@@ -19,6 +19,7 @@ const PAID_PROPERTY_CAP = 1000;
 const PROCESSOR_START_WAIT_MS = 900;
 const FETCH_JOB_ELECTION_SETTLE_MS = 50;
 const JOB_MEMBERSHIP_CONTRACT = 'property_sources_v1';
+const PRECISION_PIPELINE_CONTRACT = 'precision_generate_v2';
 const DEFAULT_ROUTE_TYPE_FILTERS = {
     propertyTypes: ['Single Family'],
     excludeCommercial: true,
@@ -375,10 +376,18 @@ async function getPrecisionRouteHomeStats(base44, user, { includeUnresolvedFollo
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
+        const body = await req.json().catch(() => ({}));
+        if (body.contract_probe === true) {
+            return Response.json({
+                success: true,
+                precision_pipeline_contract: PRECISION_PIPELINE_CONTRACT,
+                component: 'startBatchDataPull',
+                paid_provider_requests: 0
+            });
+        }
         const user = await base44.auth.me();
         if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-        const body = await req.json().catch(() => ({}));
         const polygon = normalizePolygon(body.polygon);
         const polygonError = polygonValidationError(polygon);
         if (polygonError) {
@@ -450,6 +459,7 @@ Deno.serve(async (req) => {
             return Response.json({
                 success: true,
                 dry_run: true,
+                precision_pipeline_contract: PRECISION_PIPELINE_CONTRACT,
                 provider: 'batchdata',
                 fips_code: fips?.fips_code || null,
                 county_resolution: fips || { status: 'unavailable_non_blocking' },
@@ -534,6 +544,8 @@ Deno.serve(async (req) => {
             return Response.json({
                 status: 'already_running',
                 job_id: existingJob.id,
+                precision_pipeline_contract: PRECISION_PIPELINE_CONTRACT,
+                polygon: existingPolygon,
                 polygon_hash: existingHash,
                 requested_properties: existingJob.total_expected || existingJob.estimated_record_count || requestedProperties,
                 message: 'This exact property pull is already running; reattached to its progress.'
@@ -557,6 +569,8 @@ Deno.serve(async (req) => {
             estimated_cost: Number((searchExposure.totalRecordCeiling * 0.01).toFixed(2)),
             dry_run_metadata: {
                 job_membership_contract: JOB_MEMBERSHIP_CONTRACT,
+                precision_pipeline_contract: PRECISION_PIPELINE_CONTRACT,
+                submitted_polygon: polygon,
                 pull_election_key: pullElectionKey,
                 pull_election_requested_at: pullElectionRequestedAt,
                 county_resolution: fips || { status: 'unavailable_non_blocking' },
@@ -662,6 +676,8 @@ Deno.serve(async (req) => {
             return Response.json({
                 status: 'already_running',
                 job_id: canonicalJob.id,
+                precision_pipeline_contract: PRECISION_PIPELINE_CONTRACT,
+                polygon: normalizePolygon(canonicalJob.polygon),
                 polygon_hash: canonicalJob.polygon_hash || hash,
                 requested_properties: canonicalJob.total_expected || canonicalJob.estimated_record_count || requestedProperties,
                 coalesced_from_job_id: job.id,
@@ -675,6 +691,8 @@ Deno.serve(async (req) => {
             success: true,
             status: 'started',
             job_id: job.id,
+            precision_pipeline_contract: PRECISION_PIPELINE_CONTRACT,
+            polygon,
             polygon_hash: hash,
             provider: 'batchdata',
             requested_properties: requestedProperties,

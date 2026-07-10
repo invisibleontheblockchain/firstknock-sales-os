@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { jobScopedListingEvidence } from '../base44/functions/getRouteCandidatesFromNeon/jobEvidenceLogic.js';
 import { build } from 'esbuild';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -232,6 +233,12 @@ test('does not let a BatchData source label bypass rejection or workspace deacti
     ]);
     assert.equal(rejected.workingSet.length, 0);
     assert.equal(deactivated.workingSet.length, 0);
+    assert.equal(rejected.stages.find(stage => stage.name === 'workspaceEligibility')?.count, 0);
+    assert.equal(deactivated.stages.find(stage => stage.name === 'workspaceEligibility')?.count, 0);
+    assert.match(rejected.error, /workspaceEligibility/);
+    assert.match(deactivated.error, /workspaceEligibility/);
+    assert.doesNotMatch(rejected.error, /listing proof|listing safety/i);
+    assert.doesNotMatch(deactivated.error, /listing proof|listing safety/i);
 });
 
 
@@ -287,11 +294,78 @@ test('ignores stale global listing status only when the current Basic payload om
             data_source: 'batchdata',
             original_status: 'BATCHDATA_CONFIRMED',
             listing_status: 'Active',
-            provider_listing_status_observed: true
+            provider_listing_status_observed: true,
+            provider_listing_status_value: 'Active'
+        })
+    ]);
+    const scopedSoldOverridesStaleGlobal = run([
+        property({
+            data_source: 'batchdata',
+            original_status: 'BATCHDATA_CONFIRMED',
+            listing_status: 'Active',
+            provider_listing_status_observed: true,
+            provider_listing_status_value: 'Sold'
         })
     ]);
     assert.equal(currentPredicateProof.workingSet.length, 1);
     assert.equal(currentActiveStatus.workingSet.length, 0);
+    assert.equal(scopedSoldOverridesStaleGlobal.workingSet.length, 1);
+});
+
+test('missing listing proof reports a release mismatch instead of suggesting a looser safety filter', () => {
+    const candidates = Array.from({ length: 10 }, (_, index) => property({
+        id: `missing-listing-${index}`,
+        address_hash: `missing-listing-${index}`,
+        data_source: 'batchdata',
+        original_status: 'BATCHDATA_CONFIRMED',
+        provider_listing_status_categories_excluded: [],
+        provider_listing_status_observed: false
+    }));
+    const result = run(candidates);
+    assert.equal(result.workingSet.length, 0);
+    assert.match(result.error, /10 BatchData candidates/);
+    assert.match(result.error, /not a filter you should loosen/);
+    assert.equal(result.diagnostic.listingSafetyDropReasons.missingProof, 10);
+});
+
+test('an exact job cannot borrow a mutable global Sold status when scoped proof is missing', () => {
+    const result = run([
+        property({
+            data_source: 'batchdata',
+            original_status: 'BATCHDATA_CONFIRMED',
+            listing_status: 'Sold',
+            provider_listing_evidence_scope: 'exact_job',
+            provider_listing_status_observed: null,
+            provider_listing_status_categories_excluded: [],
+            provider_listing_safety_source: 'missing'
+        })
+    ]);
+    assert.equal(result.workingSet.length, 0);
+    assert.equal(result.diagnostic.listingSafetyDropReasons.missingProof, 1);
+});
+
+test('completed exact-job predicate fallback survives the backend-to-route safety handoff', () => {
+    const evidence = jobScopedListingEvidence({ _firstknock: {} }, {
+        status: 'completed',
+        provider: 'batchdata',
+        dry_run_metadata: {
+            job_membership_contract: 'property_sources_v1',
+            batchdata_summary: {
+                filters: { listing_status_categories_excluded: ['Active', 'Pending'] }
+            }
+        }
+    });
+    const result = run([
+        property({
+            data_source: 'batchdata',
+            original_status: 'BATCHDATA_CONFIRMED',
+            listing_status: 'Active',
+            provider_listing_evidence_scope: 'exact_job',
+            ...evidence
+        })
+    ]);
+    assert.equal(evidence.provider_listing_safety_source, 'completed_job_predicate');
+    assert.equal(result.workingSet.length, 1);
 });
 
 
