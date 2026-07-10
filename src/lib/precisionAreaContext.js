@@ -70,3 +70,22 @@ export function newestPrecisionAreaEntry(existing, candidate) {
   if (!candidate) return existing;
   return entryTimestamp(candidate) > entryTimestamp(existing) ? candidate : existing;
 }
+
+/**
+ * Return the history identity to render, unless the active draw layer already
+ * owns the exact same canonical polygon.
+ */
+export function visiblePrecisionHistoryKey(historyPolygon, currentPolygon = null) {
+  const historyKey = polygonIdentity(historyPolygon);
+  if (!historyKey) return null;
+
+  const currentKey = polygonIdentity(currentPolygon);
+  return currentKey && currentKey === historyKey ? null : historyKey;
+}
+
+/** Clear a history selection after that polygon becomes the active draw layer. */
+export function reconcilePrecisionHistorySelection(selectedKey, currentPolygon = null) {
+  if (!selectedKey) return null;
+  const currentKey = polygonIdentity(currentPolygon);
+  return currentKey && currentKey === selectedKey ? null : selectedKey;
+}
