@@ -2,20 +2,23 @@
 // Separates filter logic from Home.jsx for clarity and testability.
 // Returns { workingSet, stageCounts, error } so the UI can show exactly where properties are dropping out.
 
-import { subDays } from 'date-fns';
-import { isPointInPolygon } from './territoryLogic';
+import { interactionPredatesCurrentSaleEvidence, isPointInPolygon } from './territoryLogic';
 
 const PROPERTY_TYPE_ALIASES = {
-    'Single Family': ['single family', 'single family residential', 'single-family', 'sfr', 'sfh', 'detached', 'one family', '1 family']
+    'Single Family': ['single family', 'single family residential', 'single-family', 'sfr', 'sfh', 'one family', '1 family']
 };
 const ALLOWED_ROUTE_PROPERTY_TYPES = new Set(['Single Family']);
+export const DEFAULT_PRECISION_MIN_HOME_VALUE = 100000;
 
-const COMMERCIAL_TYPE_KEYWORDS = ['commercial', 'industrial', 'retail', 'office', 'warehouse', 'business', 'shopping', 'hotel', 'motel', 'restaurant', 'medical', 'hospital'];
-const CONDO_MULTI_TYPE_KEYWORDS = ['condo', 'condominium', 'apartment', 'co op', 'coop', 'cooperative', 'multifamily', 'multi family', 'multi-family', 'duplex', 'triplex', 'fourplex', 'townhouse', 'townhome', 'row house', 'rowhouse'];
+const COMMERCIAL_TYPE_KEYWORDS = ['commercial', 'industrial', 'retail', 'office', 'warehouse', 'business', 'shopping', 'hotel', 'motel', 'restaurant', 'medical', 'hospital', 'mixed use'];
+const CONDO_MULTI_TYPE_KEYWORDS = ['condo', 'condominium', 'apartment', 'co op', 'coop', 'cooperative', 'multifamily', 'multi family', 'multi-family', 'duplex', 'triplex', 'fourplex', 'townhouse', 'townhome', 'row house', 'rowhouse', 'mobile home', 'manufactured home', 'manufactured housing'];
 const LAND_TYPE_KEYWORDS = ['land', 'lot', 'vacant', 'acreage', 'farm', 'agricultural'];
 
 function normalizePropertyType(value) {
     return String(value || '')
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/\bsinglefamily\b/gi, 'single family')
+        .replace(/\bdetachedresidential\b/gi, 'detached residential')
         .toLowerCase()
         .replace(/[\/_-]+/g, ' ')
         .replace(/[^\w\s]/g, ' ')
@@ -27,29 +30,18 @@ function includesAnyType(text, keywords) {
     return keywords.some(keyword => text.includes(normalizePropertyType(keyword)));
 }
 
-function isVagueResidentialType(text) {
-    if (!text) return true;
-    if (/^r\d+[a-z]?$/.test(text)) return true;
-    return ['residential', 'residential property', 'residence', 'improved residential', 'residential improved'].includes(text);
-}
-
 function matchesSelectedPropertyType(propertyType, selectedType) {
     const text = normalizePropertyType(propertyType);
-    if (!text) return true;
+    if (!text || /\bunverified\b|\bunknown\b/.test(text)) return false;
+
+    if (includesAnyType(text, [...COMMERCIAL_TYPE_KEYWORDS, ...CONDO_MULTI_TYPE_KEYWORDS, ...LAND_TYPE_KEYWORDS, 'semi detached']) || /\battached\b/.test(text)) {
+        return false;
+    }
 
     const aliases = PROPERTY_TYPE_ALIASES[selectedType] || [selectedType];
     if (aliases.some(alias => text.includes(normalizePropertyType(alias)))) return true;
 
-    // BatchData sometimes returns only broad residential wording/codes. If the
-    // user asked for Single Family and no more specific condo/multifamily/townhome
-    // signal exists, keep the row instead of losing a valid sold home to wording.
-    if (
-        selectedType === 'Single Family' &&
-        isVagueResidentialType(text) &&
-        !includesAnyType(text, [...CONDO_MULTI_TYPE_KEYWORDS, ...LAND_TYPE_KEYWORDS, ...COMMERCIAL_TYPE_KEYWORDS, 'townhouse', 'townhome'])
-    ) {
-        return true;
-    }
+    if (selectedType === 'Single Family' && (text === 'detached' || (/\bdetached\b/.test(text) && /\bresidential\b|\bresidence\b|\bdwelling\b|\bhome\b|\bhouse\b/.test(text)))) return true;
 
     return false;
 }
@@ -102,6 +94,92 @@ function requestedSoldWindowDays(soldMonths) {
     return Math.max(1, Math.round(months * 30));
 }
 
+function positiveNumber(value) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+export function estimatedHomeValueEvidence(property) {
+    const batchDataStatus = ['BATCHDATA_CONFIRMED', 'BATCHDATA_CANDIDATE'].includes(
+        String(property?.workspace_status || property?.original_status || '').toUpperCase()
+    );
+    const isBatchDataRow = String(property?.data_source || '').toLowerCase() === 'batchdata' || batchDataStatus;
+    const providerEstimateNotCanonical = property?.provider_estimated_value_observed === false
+        || (isBatchDataRow && property?.provider_estimated_value_observed == null);
+    const candidates = [
+        property?.estimated_home_value,
+        property?.estimated_value,
+        property?.estimatedValue,
+        property?.valuation?.estimatedValue,
+        property?.valuation?.value,
+        // `price` is the canonical Neon estimated-home-value column. Provider
+        // sale consideration and listing price must not be stored here. When a
+        // newly mapped Basic response explicitly says no estimate was observed,
+        // ignore a legacy `price` value that may predate this semantic split.
+        providerEstimateNotCanonical ? null : property?.price
+    ];
+    const estimatedHomeValue = candidates
+        .map(positiveNumber)
+        .find(value => value !== null) ?? null;
+
+    return {
+        estimatedHomeValue,
+        providerMinimum: positiveNumber(property?.provider_estimated_value_min),
+        providerMaximum: positiveNumber(property?.provider_estimated_value_max)
+    };
+}
+
+export function routeCalendarDate(value) {
+    if (!value) return null;
+    if (typeof value === 'string') {
+        const match = value.trim().match(/^(\d{4}-\d{2}-\d{2})/);
+        if (match) return match[1];
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function calendarDateDaysAgo(days, referenceDate = new Date()) {
+    const date = new Date(referenceDate);
+    if (Number.isNaN(date.getTime())) return null;
+    date.setHours(12, 0, 0, 0);
+    date.setDate(date.getDate() - days);
+    return routeCalendarDate(date);
+}
+
+function providerRecentSaleWindowProves(property, cutoffDate) {
+    const sources = Array.isArray(property?.provider_recent_sale_sources)
+        ? property.provider_recent_sale_sources.filter(source => source === 'intel' || source === 'sale')
+        : [];
+    const minimum = routeCalendarDate(property?.provider_recent_sale_min_date);
+    const maximum = routeCalendarDate(property?.provider_recent_sale_max_date);
+    const today = routeCalendarDate(new Date());
+    return sources.length > 0
+        && !!minimum
+        && !!maximum
+        && minimum >= cutoffDate
+        && maximum >= minimum
+        && maximum <= today;
+}
+
+function isBlockedListingStatus(value) {
+    const status = String(value || '').trim().toLowerCase();
+    if (/\bnot(?:\s+currently)?(?:\s+listed)?\s+for\s+sale\b/.test(status)) return false;
+    return /(^|[^a-z])(active|for\s+sale|coming\s+soon|contingent|pending|under\s+contract|on\s+market|fsbo)($|[^a-z])/.test(status);
+}
+
+function providerListingExclusionProves(property) {
+    const excluded = Array.isArray(property?.provider_listing_status_categories_excluded)
+        ? property.provider_listing_status_categories_excluded.map(value => String(value).trim().toLowerCase())
+        : [];
+    return excluded.includes('active') && excluded.includes('pending');
+}
+
 function soldDateFilterLabel(soldMonths) {
     const days = requestedSoldWindowDays(soldMonths);
     if (days === 1) return 'last 1 day';
@@ -131,6 +209,13 @@ export function applyRouteFilters({
     let workingSet = [...initialSet];
     const stages = [{ name: 'initial', count: workingSet.length }];
     const track = (name) => stages.push({ name, count: workingSet.length });
+    const reincludedHashes = routeConfig?.reincludedHashes instanceof Set
+        ? routeConfig.reincludedHashes
+        : new Set(Array.isArray(routeConfig?.reincludedHashes) ? routeConfig.reincludedHashes : []);
+    const isExplicitlyReincluded = (property) => {
+        const hash = property?.address_hash || property?.id;
+        return !!hash && reincludedHashes.has(hash);
+    };
 
     // --- Geographic Filters ---
     const hasActivePolygon = drawnPolygon && drawnPolygon.length > 2;
@@ -163,7 +248,7 @@ export function applyRouteFilters({
     // Keep this inside the pipeline so a large drop is visible in diagnostics.
     const beforeAssigned = workingSet.length;
     if (routeConfig.excludeAssigned && assignedHashes) {
-        workingSet = workingSet.filter(p => !assignedHashes.has(p.address_hash || p.id));
+        workingSet = workingSet.filter(p => isExplicitlyReincluded(p) || !assignedHashes.has(p.address_hash || p.id));
     }
     track('assigned');
     if (routeConfig.excludeAssigned && beforeAssigned > 0 && workingSet.length === 0) {
@@ -182,22 +267,19 @@ export function applyRouteFilters({
         // User-facing route filters stay strict to the selected range.
         // The backend may pull a wider provider-safe window, but older buffer records
         // should not appear when the user selected “last week.”
-        const cutoff = subDays(new Date(), requestedSoldWindowDays(soldDateFilter));
-        cutoff.setHours(0, 0, 0, 0);
+        const explicitCutoff = routeCalendarDate(routeConfig?.soldMinDateOverride);
+        const cutoffDate = explicitCutoff || calendarDateDaysAgo(requestedSoldWindowDays(soldDateFilter));
 
         workingSet = workingSet.filter(p => {
             if (p.original_status === 'PENDING') return true;
             if (p.original_status === 'RECENT_OFF_MARKET' && p.sale_confidence !== 'low') return true;
             const hasInteraction = ['CALLBACK', 'NO_ANSWER', 'QUALIFIED'].includes(p.effective_status);
-            const isBatchDataCandidate = String(p.data_source || '').toLowerCase() === 'batchdata' || p.original_status === 'BATCHDATA_CONFIRMED';
-            if (isBatchDataCandidate) return true;
             const isImportedCandidate = ['csv_import', 'manual'].includes(String(p.data_source || '').toLowerCase()) || p.original_status === 'UNVERIFIED';
-            if (!p.sold_date) return hasInteraction || isImportedCandidate;
-            try {
-                const date = new Date(p.sold_date);
-                if (isNaN(date.getTime())) return hasInteraction;
-                return date >= cutoff;
-            } catch { return hasInteraction; }
+            if (!p.sold_date || p.provider_exact_sale_date_observed === false) {
+                return providerRecentSaleWindowProves(p, cutoffDate) || hasInteraction || isImportedCandidate;
+            }
+            const saleDate = routeCalendarDate(p.sold_date);
+            return saleDate ? saleDate >= cutoffDate : hasInteraction;
         });
     }
     track('soldDate');
@@ -236,12 +318,40 @@ export function applyRouteFilters({
     }
 
     // --- Confidence / Rejection Filters ---
-    const isBatchDataCandidate = (p) => String(p.data_source || '').toLowerCase() === 'batchdata' || p.original_status === 'BATCHDATA_CONFIRMED';
-    workingSet = workingSet.filter(p => isBatchDataCandidate(p) || p.original_status !== 'REJECTED');
+    const isBatchDataCandidate = (p) => {
+        const statuses = new Set([
+            String(p.original_status || '').toUpperCase(),
+            String(p.workspace_status || '').toUpperCase()
+        ]);
+        return String(p.data_source || '').toLowerCase() === 'batchdata'
+            || statuses.has('BATCHDATA_CONFIRMED')
+            || statuses.has('BATCHDATA_CANDIDATE');
+    };
+    // Workspace activation and explicit rejection are hard boundaries for every
+    // provider. BatchData records are no longer allowed to bypass them merely by
+    // carrying a BatchData source label.
+    workingSet = workingSet.filter(p => {
+        const workspaceStatus = String(p.workspace_status || '').trim().toUpperCase();
+        if (workspaceStatus) return workspaceStatus !== 'REJECTED';
+        return String(p.original_status || '').trim().toUpperCase() !== 'REJECTED'
+            && String(p.sale_confidence || '').trim().toUpperCase() !== 'REJECTED';
+    });
+    workingSet = workingSet.filter(p => p.route_active !== false);
 
-    // Exclude records explicitly deactivated by cleanup or delta sync, but do not let
-    // older strict BatchData parsing hide exact-job rows during this verification pass.
-    workingSet = workingSet.filter(p => isBatchDataCandidate(p) || p.route_active !== false);
+    // A newly sold home can already be relisted. Explicit on-market statuses
+    // always lose; lean BatchData rows must carry the accepted provider
+    // Active/Pending exclusion predicate so missing response fields do not
+    // silently become an automatic pass.
+    workingSet = workingSet.filter(p => {
+        const currentListingStatus = p.provider_listing_status_observed === false
+            ? ''
+            : (p.listing_status || p.listing?.statusCategory || p.listing?.status);
+        if (isBlockedListingStatus(currentListingStatus)) return false;
+        if (!isBatchDataCandidate(p)) return true;
+        const hasExplicitStatus = !!String(currentListingStatus || '').trim();
+        return hasExplicitStatus || providerListingExclusionProves(p);
+    });
+    track('listingSafety');
 
     // Match MLS_CLERK_GAP_DAYS in processFetchChunk.
     const MLS_WINDOW_DAYS = 30;
@@ -253,14 +363,31 @@ export function applyRouteFilters({
 
         if (!p.sold_date) return false;
 
-        const soldDate = new Date(p.sold_date);
-        if (Number.isNaN(soldDate.getTime())) return false;
-
-        const cutoff = new Date();
-        cutoff.setDate(cutoff.getDate() - MLS_WINDOW_DAYS);
-
-        return soldDate >= cutoff;
+        const soldDate = routeCalendarDate(p.sold_date);
+        const cutoffDate = calendarDateDaysAgo(MLS_WINDOW_DAYS);
+        return !!soldDate && soldDate >= cutoffDate;
     });
+
+    // Promote deed-matched MLS candidates before the hard MLS gate. Performing this
+    // after the gate makes the promotion unreachable for HEURISTIC_SOLD rows.
+    const deedHashes = new Set();
+    for (const p of initialSet) {
+        if (!p.address_hash) continue;
+        const isDeedConfirmed =
+            p.sale_confidence === 'high' ||
+            p.sale_confidence === 'verified' ||
+            (p.original_status === 'SOLD' && String(p.sale_type || '').toLowerCase() === 'deed');
+        if (isDeedConfirmed) deedHashes.add(p.address_hash);
+    }
+    let crossRefPromoted = 0;
+    workingSet = workingSet.map(p => {
+        if (p.original_status === 'HEURISTIC_SOLD' && p.sale_confidence !== 'verified' && deedHashes.has(p.address_hash)) {
+            crossRefPromoted++;
+            return { ...p, sale_confidence: 'verified', original_status: 'DEED_CONFIRMED' };
+        }
+        return p;
+    });
+    if (crossRefPromoted > 0) console.log(`[routeFilter] Cross-ref promoted ${crossRefPromoted} MLS listings to verified (deed match found)`);
 
     // v15 HARD GATE: Block ALL unverified MLS data from routes.
     // Only deed-sourced properties OR MLS properties that have been verified
@@ -287,30 +414,6 @@ export function applyRouteFilters({
     const mlsGateDropped = beforeMlsGate - workingSet.length;
     if (mlsGateDropped > 0) console.log(`[routeFilter] v15 MLS gate: blocked ${mlsGateDropped} unverified MLS properties`);
 
-    // GLOBAL DEED CROSS-REF: If an MLS listing (HEURISTIC_SOLD) shares an address_hash
-    // with a deed-confirmed record (sale_confidence='high' / 'verified' / status='SOLD'),
-    // auto-promote the MLS record to 'verified'. This fixes the bug where cross-ref only
-    // happened within a single chunk during fetch — deeds landing in a later sub-circle
-    // never got cross-referenced to the listings from an earlier sub-circle.
-    const deedHashes = new Set();
-    for (const p of initialSet) {
-        if (!p.address_hash) continue;
-        const isDeedConfirmed =
-            p.sale_confidence === 'high' ||
-            p.sale_confidence === 'verified' ||
-            (p.original_status === 'SOLD' && p.sale_type === 'Deed');
-        if (isDeedConfirmed) deedHashes.add(p.address_hash);
-    }
-    let crossRefPromoted = 0;
-    workingSet = workingSet.map(p => {
-        if (p.original_status === 'HEURISTIC_SOLD' && p.sale_confidence !== 'verified' && deedHashes.has(p.address_hash)) {
-            crossRefPromoted++;
-            return { ...p, sale_confidence: 'verified', original_status: 'DEED_CONFIRMED' };
-        }
-        return p;
-    });
-    if (crossRefPromoted > 0) console.log(`[routeFilter] Cross-ref promoted ${crossRefPromoted} MLS listings to verified (deed match found)`);
-
     // Skip low-confidence properties unless the user explicitly opts in.
     // (Previously 40mi and 300mi branched differently here — now unified.)
     if (!routeConfig.includeUnverifiedSales) {
@@ -321,31 +424,48 @@ export function applyRouteFilters({
     // --- Previously-Knocked Filter ---
     if (routeConfig.excludePreviouslyKnocked && logsByAddress) {
         workingSet = workingSet.filter(p => {
+            if (isExplicitlyReincluded(p)) return true;
             const hash = p.address_hash || p.id;
             const propLogs = logsByAddress.get(hash);
-            if (p.effective_status === 'CALLBACK') return true;
-            return !propLogs || propLogs.length === 0;
+            const currentEventLogs = (propLogs || []).filter(log => !interactionPredatesCurrentSaleEvidence(log, p));
+            if (p.effective_status === 'CALLBACK' && currentEventLogs.length > 0) return true;
+            return currentEventLogs.length === 0;
         });
     }
     track('previouslyKnocked');
 
-    // --- Price & Year Filters ---
-    // Resolve price from every field it can live in (Neon returns `price`; imports use `sale_price`).
-    // When the user sets an explicit price bound, unknown-price properties are EXCLUDED —
-    // previously they passed through, making the filter appear broken.
-    const effectivePrice = (p) => {
-        const v = Number(p.price ?? p.sale_price ?? p.raw_metadata?.price);
-        return Number.isFinite(v) && v > 0 ? v : null;
-    };
-    if (routeConfig.minPrice) workingSet = workingSet.filter(p => { const v = effectivePrice(p); return v !== null && v >= routeConfig.minPrice; });
-    if (routeConfig.maxPrice) workingSet = workingSet.filter(p => { const v = effectivePrice(p); return v !== null && v <= routeConfig.maxPrice; });
+    // --- Estimated Home Value & Year Filters ---
+    // The $100k Precision floor is an invariant, not an optional UI filter. A
+    // provider-side valuation predicate is acceptable evidence only when the
+    // exact value was omitted and the recorded predicate proves this route's
+    // effective bound. Sale consideration and listing price are not home value.
+    const configuredMinimum = positiveNumber(routeConfig?.minPrice);
+    const effectiveMinimum = Math.max(
+        DEFAULT_PRECISION_MIN_HOME_VALUE,
+        configuredMinimum ?? DEFAULT_PRECISION_MIN_HOME_VALUE
+    );
+    const configuredMaximum = positiveNumber(routeConfig?.maxPrice);
+    workingSet = workingSet.filter(property => {
+        const evidence = estimatedHomeValueEvidence(property);
+        if (evidence.estimatedHomeValue !== null) {
+            if (evidence.estimatedHomeValue < effectiveMinimum) return false;
+            if (configuredMaximum !== null && evidence.estimatedHomeValue > configuredMaximum) return false;
+            return true;
+        }
+
+        const providerProvesMinimum = evidence.providerMinimum !== null && evidence.providerMinimum >= effectiveMinimum;
+        const providerProvesMaximum = configuredMaximum === null || (
+            evidence.providerMaximum !== null && evidence.providerMaximum <= configuredMaximum
+        );
+        return providerProvesMinimum && providerProvesMaximum;
+    });
     if (routeConfig.minYearBuilt) workingSet = workingSet.filter(p => !p.year_built || p.year_built >= routeConfig.minYearBuilt);
     if (routeConfig.maxYearBuilt) workingSet = workingSet.filter(p => !p.year_built || p.year_built <= routeConfig.maxYearBuilt);
     track('priceYear');
 
     // --- Callback Filter ---
     if (!routeConfig.includeCallbacks) {
-        workingSet = workingSet.filter(p => p.effective_status !== 'CALLBACK');
+        workingSet = workingSet.filter(p => isExplicitlyReincluded(p) || p.effective_status !== 'CALLBACK');
     }
     track('callbacks');
 

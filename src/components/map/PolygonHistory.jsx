@@ -2,13 +2,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Marker, Polygon, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
+import { polygonIdentity } from './polygonIdentity';
+import { newestPrecisionAreaEntry } from '@/lib/precisionAreaContext';
 
 const STORAGE_KEY = 'fk_polygonHistory';
 const MAX_HISTORY = 20;
 
 function polygonKey(polygon = []) {
-    const first = polygon[0] || {};
-    return `${Number(first.lat || 0).toFixed(5)}:${Number(first.lng || 0).toFixed(5)}:${polygon.length}`;
+    return polygonIdentity(polygon);
 }
 
 export function savePolygonToHistory(polygon, metadata = {}) {
@@ -93,11 +94,11 @@ export default function PolygonHistory({ currentPolygon, mode, serverHistory = [
             if (!entry?.polygon || entry.polygon.length < 3) return;
             const key = polygonKey(entry.polygon);
             if (!key) return;
-            byKey.set(key, {
-                ...byKey.get(key),
+            const candidate = {
                 ...entry,
                 queried: true
-            });
+            };
+            byKey.set(key, newestPrecisionAreaEntry(byKey.get(key), candidate));
         });
         return Array.from(byKey.values());
     }, [history, serverHistory]);

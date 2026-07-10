@@ -15,6 +15,10 @@ node_modules
 dist
 dist-ssr
 *.local
+batchdata_validation_artifacts/
+batchdata_results/
+__pycache__/
+*.py[cod]
 
 # Editor directories and files
 .vscode/*

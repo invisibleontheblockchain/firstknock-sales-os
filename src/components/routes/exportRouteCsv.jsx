@@ -33,6 +33,9 @@ export function exportRouteToCsv(route) {
     ['State', (p) => getValue(p, ['state'])],
     ['Zip', (p) => getValue(p, ['zip_code', 'zip'])],
     ['Owner', (p) => getValue(p, ['owner_full_name', 'owner_name', 'ownerFullName'])],
+    ['Owner Source', (p) => p?.owner_full_name_source === 'batchdata_job_observation'
+      ? 'BatchData current observation - not sale-deed verified'
+      : getValue(p, ['owner_full_name_source'])],
     ['Value', (p) => getValue(p, ['price', 'estimated_value', 'estimatedValue'])],
     ['Beds', (p) => getValue(p, ['beds', 'bedrooms'])],
     ['Baths', (p) => getValue(p, ['baths', 'bathrooms'])],
