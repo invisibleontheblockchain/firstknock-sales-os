@@ -24,6 +24,11 @@ const LAND_TYPE_KEYWORDS = ['land', 'lot', 'vacant', 'acreage', 'farm', 'agricul
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
+async function isDiagnosticAdmin(base44) {
+    const user = await base44.auth.me().catch(() => null);
+    return !!user && (user.is_owner === true || user.role === 'admin');
+}
+
 function normalizePropertyTypeText(value) {
     return String(value || '')
         .toLowerCase()
@@ -263,6 +268,76 @@ function isoDateOnly(value) {
     return date.toISOString().slice(0, 10);
 }
 
+function getCustomOwnershipRange(job) {
+    const metadata = job?.dry_run_metadata || {};
+    if (metadata.ownership_range_mode !== 'custom') return null;
+    const min = Number(metadata.ownership_range_days?.min);
+    const max = Number(metadata.ownership_range_days?.max);
+    if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 365 || min >= max) {
+        throw new Error('FetchJob has invalid custom ownership range metadata.');
+    }
+    return { min, max };
+}
+
+function ownershipDateBounds(job) {
+    const range = getCustomOwnershipRange(job);
+    if (!range) return null;
+    const referenceMs = jobReferenceTimeMs(job);
+    return {
+        ...range,
+        oldestDate: isoDateDaysAgo(range.max, referenceMs),
+        newestDate: isoDateDaysAgo(range.min, referenceMs)
+    };
+}
+
+function ownershipLookbackDays(job) {
+    return getCustomOwnershipRange(job)?.max ?? soldWindowDays(job.sold_months || 12);
+}
+
+function ownershipResponseFields(job) {
+    const range = getCustomOwnershipRange(job);
+    return {
+        ownership_range_mode: range ? 'custom' : 'quick',
+        ownership_min_days: range?.min ?? null,
+        ownership_max_days: range?.max ?? null,
+        ownership_range_days: range
+    };
+}
+
+function preparePreviewJobOwnership(job = {}, source = {}) {
+    const metadata = job.dry_run_metadata || {};
+    const mode = source.ownership_range_mode ?? job.ownership_range_mode ?? metadata.ownership_range_mode ?? 'quick';
+    if (!['quick', 'custom'].includes(mode)) {
+        throw new Error('ownership_range_mode must be either quick or custom.');
+    }
+    if (mode === 'quick') {
+        return {
+            ...job,
+            dry_run_metadata: {
+                ...metadata,
+                ownership_range_mode: 'quick',
+                ownership_range_days: null
+            }
+        };
+    }
+
+    const existingRange = metadata.ownership_range_days || {};
+    const min = Number(source.ownership_min_days ?? job.ownership_min_days ?? existingRange.min);
+    const max = Number(source.ownership_max_days ?? job.ownership_max_days ?? existingRange.max);
+    if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 365 || min >= max) {
+        throw new Error('Custom ownership range requires whole-day minimum and maximum values from 1 to 365, with minimum less than maximum.');
+    }
+    return {
+        ...job,
+        sold_months: max === 365 ? 12 : max / 30,
+        dry_run_metadata: {
+            ...metadata,
+            ownership_range_mode: 'custom',
+            ownership_range_days: { min, max }
+        }
+    };
+}
+
 function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon') {
     const filters = job.dry_run_metadata?.filters || {};
     const minPriceRaw = Number(filters.min_price);
@@ -272,8 +347,15 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
     const estimatedValue = { min: minPrice };
     if (maxPrice) estimatedValue.max = maxPrice;
 
-    // Always compute the sold window date filter — applied to ALL modes
-    const soldMinDate = isoDateDaysAgo(soldWindowDays(job.sold_months || 12), jobReferenceTimeMs(job));
+    // Always compute the oldest allowed sold date. For custom ranges, BatchData
+    // receives both date bounds. Local mapping and candidate SQL enforce the
+    // same bounds again so correctness does not depend on provider behavior.
+    const soldMinDate = isoDateDaysAgo(ownershipLookbackDays(job), jobReferenceTimeMs(job));
+    const customOwnershipBounds = ownershipDateBounds(job);
+    const soldDateRange = {
+        minDate: soldMinDate,
+        ...(customOwnershipBounds ? { maxDate: customOwnershipBounds.newestDate } : {})
+    };
 
     const options = {
         skip,
@@ -284,7 +366,7 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
         return {
             searchCriteria: {
                 query: `${job.latitude},${job.longitude}`,
-                intel: { lastSoldDate: { minDate: soldMinDate } }
+                intel: { lastSoldDate: soldDateRange }
             },
             options
         };
@@ -296,7 +378,7 @@ function buildBatchDataRequest(job, skip = 0, take = 500, mode = 'strict_polygon
                 geoPoints: closePolygon(job.polygon || [])
             }
         },
-        intel: { lastSoldDate: { minDate: soldMinDate } }
+        intel: { lastSoldDate: soldDateRange }
     };
 
     // Precision routes should only contain residential single-family homes.
@@ -353,7 +435,9 @@ function mapBatchDataProperty(record, job) {
     const ids = p.ids || p.identifiers || {};
     const listingStatus = firstValue(listing.status, listing.statusCategory);
     const listingStatusLower = String(listingStatus || '').toLowerCase();
-    const saleDate = dateValue(
+    const customOwnershipRange = getCustomOwnershipRange(job);
+    const providerOwnershipDate = dateValue(intel.lastSoldDate);
+    const defaultSaleDate = dateValue(
         p.listing?.soldDate,
         p.deedHistory?.[0]?.saleDate,
         intel.lastSoldDate,
@@ -368,11 +452,22 @@ function mapBatchDataProperty(record, job) {
         lastSale?.date,
         p.lastSaleDate
     );
+    // BatchData applies the custom acquisition filter to intel.lastSoldDate.
+    // Use that same field for inclusion, persistence, and downstream SQL so a
+    // stale listing date cannot change the requested ownership-age window.
+    const saleDate = customOwnershipRange ? providerOwnershipDate : defaultSaleDate;
     const saleDateMs = saleDate ? new Date(saleDate).getTime() : 0;
     const hasValidSaleDate = saleDateMs > 0 && !Number.isNaN(saleDateMs);
     const saleDateOnly = isoDateOnly(saleDate);
-    const cutoffDate = isoDateDaysAgo(soldWindowDays(job.sold_months || 12), jobReferenceTimeMs(job));
+    const cutoffDate = isoDateDaysAgo(ownershipLookbackDays(job), jobReferenceTimeMs(job));
     const isSoldInWindow = !!saleDateOnly && saleDateOnly >= cutoffDate;
+    const customOwnershipBounds = customOwnershipRange ? ownershipDateBounds(job) : null;
+    const isInCustomOwnershipRange = !customOwnershipBounds || (
+        hasValidSaleDate &&
+        !!saleDateOnly &&
+        saleDateOnly >= customOwnershipBounds.oldestDate &&
+        saleDateOnly <= customOwnershipBounds.newestDate
+    );
     const ownerName = firstValue(owner.fullName, owner.name, owner.ownerName, owner.names?.[0]?.full, owner.names?.[0]?.name, owner.names?.[0]);
     const saleAmount = numberValue(
         intel.lastSoldPrice,
@@ -413,6 +508,7 @@ function mapBatchDataProperty(record, job) {
     const priceKnown = Number.isFinite(Number(price)) && Number(price) > 0;
     const priceRejected = priceKnown && ((filterMinPrice !== null && Number(price) < filterMinPrice) || (filterMaxPrice !== null && Number(price) > filterMaxPrice));
     const rejected = nonResidential || landUseRejected || priceRejected;
+    const routeActive = !rejected && isInCustomOwnershipRange;
 
     const match = address.street.match(/^(\d+)\s+(.*)$/);
     const houseNumber = match ? parseInt(match[1], 10) : 0;
@@ -448,7 +544,7 @@ function mapBatchDataProperty(record, job) {
         data_source: 'batchdata',
         sale_confidence: rejected ? 'REJECTED' : 'verified',
         original_status: rejected ? 'REJECTED' : 'BATCHDATA_CONFIRMED',
-        route_active: !rejected,
+        route_active: routeActive,
         raw_payload: JSON.stringify(p)
     };
 }
@@ -461,6 +557,7 @@ function toNullableDate(value) {
 
 async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes = new Set()) {
     let inserted = 0, existed = 0, updated = 0;
+    const customOwnershipRange = getCustomOwnershipRange(job);
 
     for (const p of properties) {
         const isInSavedRoute = excludedRouteHashes.has(p.address_hash);
@@ -505,6 +602,7 @@ async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes =
         existed++;
         const existingDate = existing.sold_date ? new Date(existing.sold_date).getTime() : 0;
         const incomingDate = soldDate ? new Date(soldDate).getTime() : 0;
+        const mustPersistCustomSoldDate = !!customOwnershipRange && incomingDate > 0 && incomingDate !== existingDate;
         const hasNewMetadata =
             (!existing.owner_full_name && p.owner_full_name) ||
             (!existing.beds && p.beds) ||
@@ -513,7 +611,7 @@ async function writePropertiesToNeon(sql, properties, job, excludedRouteHashes =
             (!existing.lot_size && p.lot_size) ||
             (!existing.year_built && p.year_built) ||
             (!existing.price && p.price);
-        const shouldUpdate = incomingDate > existingDate || hasNewMetadata || p.sale_confidence !== existing.sale_confidence || p.original_status !== existing.original_status;
+        const shouldUpdate = mustPersistCustomSoldDate || incomingDate > existingDate || hasNewMetadata || p.sale_confidence !== existing.sale_confidence || p.original_status !== existing.original_status;
 
         if (shouldUpdate) {
             await sql`
@@ -684,8 +782,17 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
         skip += take;
     }
 
+    const scanLimitReached = selected.length < requested
+        && reviewed >= maxReviewed
+        && (totalRecordCount === null || reviewed < totalRecordCount);
+
     return {
-        records: selected.length > 0 ? selected.slice(0, requested) : rejectedSamples,
+        // Custom date mismatches are job-scoped, not a reason to deactivate an
+        // otherwise valid workspace property. Keep samples for diagnostics, but
+        // do not persist them when the exact custom window found no matches.
+        records: selected.length > 0
+            ? selected.slice(0, requested)
+            : (getCustomOwnershipRange(job) ? [] : rejectedSamples),
         reviewed,
         active: selected.length,
         rejected_samples: rejectedSamples.length,
@@ -694,6 +801,7 @@ async function fetchBatchDataRecordsForMode(job, mode, requested, onProgress = n
         skipped_route_type: skippedRouteType,
         skipped_route_type_breakdown: skippedRouteTypeBreakdown,
         max_reviewed: maxReviewed,
+        scan_limit_reached: scanLimitReached,
         page_timings: pageTimings,
         totalRecordCount
     };
@@ -709,7 +817,7 @@ async function fetchBatchDataRecords(job, onProgress = null) {
 
     for (const mode of modes) {
         const result = await fetchBatchDataRecordsForMode(job, mode, requested, onProgress);
-        attempts.push({ mode, count: result.records.length, reviewed: result.reviewed, active: result.active, rejected_samples: result.rejected_samples, skipped_existing_route: result.skipped_existing_route, skipped_duplicate: result.skipped_duplicate, skipped_route_type: result.skipped_route_type, skipped_route_type_breakdown: result.skipped_route_type_breakdown, max_reviewed: result.max_reviewed, page_timings: result.page_timings, total: result.totalRecordCount });
+        attempts.push({ mode, count: result.records.length, reviewed: result.reviewed, active: result.active, rejected_samples: result.rejected_samples, skipped_existing_route: result.skipped_existing_route, skipped_duplicate: result.skipped_duplicate, skipped_route_type: result.skipped_route_type, skipped_route_type_breakdown: result.skipped_route_type_breakdown, max_reviewed: result.max_reviewed, scan_limit_reached: result.scan_limit_reached, page_timings: result.page_timings, total: result.totalRecordCount });
         if (result.active >= requested) return { records: result.records, attempts, mode_used: mode };
         if (result.active > fallbackActive || (fallback.length === 0 && result.records.length > 0)) {
             fallback = result.records;
@@ -725,6 +833,7 @@ Deno.serve(async (req) => {
     let base44 = null;
     let lockId = null;
     let targetJobId = null;
+    let liveJobClaimed = false;
     try {
         base44 = createClientFromRequest(req);
         const body = await req.json().catch(() => ({}));
@@ -735,7 +844,7 @@ Deno.serve(async (req) => {
         }
 
         if (body.request_preview === true) {
-            const previewJob = body.job || {
+            const previewJob = preparePreviewJobOwnership(body.job || {
                 polygon: body.polygon || [
                     { lat: 33.4622, lng: -112.1866 },
                     { lat: 33.3493, lng: -112.1915 },
@@ -745,9 +854,11 @@ Deno.serve(async (req) => {
                 longitude: body.longitude || -112.08,
                 sold_months: body.sold_months || 12,
                 dry_run_metadata: { filters: { min_price: body.min_price ?? 100000, max_price: body.max_price ?? null } }
-            };
+            }, body);
             return Response.json({
                 success: true,
+                sold_months: previewJob.sold_months,
+                ...ownershipResponseFields(previewJob),
                 requests: {
                     strict_polygon: buildBatchDataRequest(previewJob, 0, BATCHDATA_MAX_TAKE, 'strict_polygon'),
                     broad_polygon: buildBatchDataRequest(previewJob, 0, BATCHDATA_MAX_TAKE, 'broad_polygon')
@@ -756,19 +867,22 @@ Deno.serve(async (req) => {
         }
 
         if (body.map_preview === true) {
-            const previewJob = body.job || {
+            const previewJob = preparePreviewJobOwnership(body.job || {
                 polygon: body.polygon || [],
                 sold_months: body.sold_months || 12,
                 dry_run_metadata: { filters: { min_price: body.min_price ?? 100000, max_price: body.max_price ?? null } }
-            };
+            }, body);
             const records = Array.isArray(body.synthetic_records) ? body.synthetic_records : [];
             const mapped = records.map(record => mapBatchDataProperty(record, previewJob)).filter(Boolean);
-            return Response.json({ success: true, raw: records.length, mapped: mapped.length, active: mapped.filter(p => p.route_active !== false).length, properties: mapped });
+            return Response.json({ success: true, sold_months: previewJob.sold_months, ...ownershipResponseFields(previewJob), raw: records.length, mapped: mapped.length, active: mapped.filter(p => p.route_active !== false).length, properties: mapped });
         }
 
         if (body.fetch_preview === true) {
+            if (!(await isDiagnosticAdmin(base44))) {
+                return Response.json({ error: 'Admin access is required for live provider previews.' }, { status: 403 });
+            }
             if (!BATCHDATA_API_KEY) throw new Error('BATCH_DATA_API_KEY is not configured');
-            const previewJob = body.job || {
+            const previewJob = preparePreviewJobOwnership(body.job || {
                 polygon: body.polygon || [],
                 latitude: body.latitude || 33.37,
                 longitude: body.longitude || -112.08,
@@ -776,13 +890,16 @@ Deno.serve(async (req) => {
                 estimated_record_count: body.requested_properties || 2,
                 total_expected: body.requested_properties || 2,
                 dry_run_metadata: { filters: { min_price: body.min_price ?? 100000, max_price: body.max_price ?? null } }
-            };
+            }, body);
             const batchFetch = await fetchBatchDataRecords(previewJob);
             const mapped = batchFetch.records.map(record => mapBatchDataProperty(record, previewJob)).filter(Boolean);
-            return Response.json({ success: true, mode_used: batchFetch.mode_used, attempts: batchFetch.attempts, raw: batchFetch.records.length, mapped: mapped.length, active: mapped.filter(p => p.route_active !== false).length });
+            return Response.json({ success: true, sold_months: previewJob.sold_months, ...ownershipResponseFields(previewJob), mode_used: batchFetch.mode_used, attempts: batchFetch.attempts, raw: batchFetch.records.length, mapped: mapped.length, active: mapped.filter(p => p.route_active !== false).length });
         }
 
         if (body.raw_probe === true) {
+            if (!(await isDiagnosticAdmin(base44))) {
+                return Response.json({ error: 'Admin access is required for raw provider probes.' }, { status: 403 });
+            }
             if (!BATCHDATA_API_KEY) throw new Error('BATCH_DATA_API_KEY is not configured');
             let previewJob = body.job || null;
             if (!previewJob && body.job_id) {
@@ -797,6 +914,7 @@ Deno.serve(async (req) => {
                     dry_run_metadata: { filters: { min_price: body.min_price ?? 100000, max_price: body.max_price ?? null } }
                 };
             }
+            previewJob = preparePreviewJobOwnership(previewJob, body);
             const take = Math.min(Math.max(Number(body.take) || 10, 1), 10);
             const probes = [
                 { label: 'strict_exact_date', mode: 'strict_polygon', omitSoldDate: false },
@@ -837,28 +955,26 @@ Deno.serve(async (req) => {
                     samples
                 });
             }
-            return Response.json({ success: true, job_id: previewJob.id || null, sold_months: previewJob.sold_months, results });
+            return Response.json({ success: true, job_id: previewJob.id || null, sold_months: previewJob.sold_months, ...ownershipResponseFields(previewJob), results });
         }
 
 
         if (!BATCHDATA_API_KEY) throw new Error('BATCH_DATA_API_KEY is not configured');
         if (!DATABASE_URL) throw new Error('DATABASE_URL is not configured');
 
-        let job = null;
-        if (targetJobId) {
-            job = await base44.asServiceRole.entities.FetchJob.get(targetJobId).catch(() => null);
-            if (!job) return Response.json({ error: 'Job not found', job_id: targetJobId }, { status: 404 });
-        } else {
-            const running = await base44.asServiceRole.entities.FetchJob.filter({ status: 'running' }, '-updated_date', 1);
-            const runningArr = Array.isArray(running) ? running : (running?.items || []);
-            job = runningArr[0];
-            if (!job) {
-                const pending = await base44.asServiceRole.entities.FetchJob.filter({ status: 'pending' }, 'created_date', 1);
-                const pendingArr = Array.isArray(pending) ? pending : (pending?.items || []);
-                job = pendingArr[0];
-            }
+        if (!targetJobId) {
+            return Response.json({ error: 'job_id is required for live processing.' }, { status: 400 });
         }
-        if (!job) return Response.json({ idle: true, active_provider: 'batchdata' });
+        const job = await base44.asServiceRole.entities.FetchJob.get(targetJobId).catch(() => null);
+        if (!job) return Response.json({ error: 'Job not found', job_id: targetJobId }, { status: 404 });
+        const expectedProcessorToken = String(job.dry_run_metadata?.processor_token || '');
+        const receivedProcessorToken = String(body.processor_token || '');
+        if (!expectedProcessorToken || receivedProcessorToken !== expectedProcessorToken) {
+            return Response.json({ error: 'Not authorized to process this job.' }, { status: 403 });
+        }
+        if (Array.isArray(body.synthetic_records) && !(await isDiagnosticAdmin(base44))) {
+            return Response.json({ error: 'Admin access is required for synthetic ingestion.' }, { status: 403 });
+        }
         if (job.status === 'cancelled') return Response.json({ status: 'cancelled', job_id: job.id });
         if (targetJobId && !['pending', 'running'].includes(job.status)) {
             return Response.json({ skipped: true, reason: `job_${job.status || 'inactive'}`, job_id: job.id, status: job.status });
@@ -872,6 +988,7 @@ Deno.serve(async (req) => {
         const claim = await claimPipelineLock(base44, job.id, crypto.randomUUID());
         if (!claim.claimed) return Response.json({ skipped: true, reason: claim.reason, job_id: job.id });
         lockId = claim.lockId;
+        liveJobClaimed = true;
 
         const startedAt = job.started_at || new Date().toISOString();
         await base44.asServiceRole.entities.FetchJob.update(job.id, {
@@ -966,13 +1083,22 @@ Deno.serve(async (req) => {
         const providerTotal = (batchFetch.attempts || [])
             .map(attempt => attempt.total)
             .find(total => total !== null && total !== undefined && Number.isFinite(Number(total)));
+        const batchDataApiCalls = Array.isArray(body.synthetic_records)
+            ? 0
+            : (batchFetch.attempts || []).reduce(
+                (sum, attempt) => sum + (Array.isArray(attempt.page_timings) ? attempt.page_timings.length : 0),
+                0
+            );
+        const scanLimitReached = (batchFetch.attempts || []).some(attempt => attempt.scan_limit_reached === true);
         const completionReason = activeCount >= requestedCount
             ? 'target_met'
+            : scanLimitReached
+                ? 'custom_range_scan_limit_reached'
             : totalSkippedExistingRoute > 0
                 ? 'insufficient_new_homes_after_existing_routes'
                 : totalSkippedRouteType > 0
                     ? 'insufficient_homes_after_property_type_filters'
-            : rawRecords.length === 0
+            : rawRecords.length === 0 && reviewedCount === 0
                 ? 'no_provider_matches'
                 : 'insufficient_qualifying_homes';
         const batchdataSummary = {
@@ -989,9 +1115,11 @@ Deno.serve(async (req) => {
             skipped_existing_route: totalSkippedExistingRoute,
             skipped_duplicate: skippedDuplicateFromFetch,
             skipped_route_type: totalSkippedRouteType,
-            skipped_route_type_breakdown: skippedRouteTypeBreakdownTotal
+            skipped_route_type_breakdown: skippedRouteTypeBreakdownTotal,
+            api_calls: batchDataApiCalls,
+            scan_limit_reached: scanLimitReached
         };
-        const errorLog = [...(job.error_log || []), `[${completedAt}] BatchData-only Precision complete: mode=${batchFetch.mode_used}, attempts=${JSON.stringify(batchFetch.attempts)}, raw=${rawRecords.length}, mapped=${mapped.length}, active=${activeCount}, rejected=${rejected}, outside_or_invalid=${outsideOrInvalid}, skipped_existing_route=${totalSkippedExistingRoute}, skipped_duplicate=${skippedDuplicateFromFetch}, skipped_route_type=${totalSkippedRouteType}`];
+        const errorLog = [...(job.error_log || []), `[${completedAt}] BatchData-only Precision complete: mode=${batchFetch.mode_used}, attempts=${JSON.stringify(batchFetch.attempts)}, raw=${rawRecords.length}, mapped=${mapped.length}, active=${activeCount}, rejected=${rejected}, outside_or_invalid=${outsideOrInvalid}, skipped_existing_route=${totalSkippedExistingRoute}, skipped_duplicate=${skippedDuplicateFromFetch}, skipped_route_type=${totalSkippedRouteType}, scan_limit_reached=${scanLimitReached}`];
 
         // ── Post-write integrity verification ─────────────────────────────
         // Guarantee: every mapped property from the BatchData response must be
@@ -1027,8 +1155,8 @@ Deno.serve(async (req) => {
             total_inserted: result.inserted,
             total_existed: result.existed,
             total_updated: result.updated,
-            total_api_calls: (job.total_api_calls || 0) + (Array.isArray(body.synthetic_records) ? 0 : batchFetch.attempts.length),
-            total_batchdata_calls: (job.total_batchdata_calls || 0) + (Array.isArray(body.synthetic_records) ? 0 : batchFetch.attempts.length),
+            total_api_calls: (job.total_api_calls || 0) + batchDataApiCalls,
+            total_batchdata_calls: (job.total_batchdata_calls || 0) + batchDataApiCalls,
             completed_sub_circles: 1,
             total_sub_circles: 1,
             zip_codes_found: zipCodes,
@@ -1059,15 +1187,12 @@ Deno.serve(async (req) => {
         if (base44 && lockId) await releasePipelineLock(base44, lockId);
         console.error('[processFetchChunk batchdata-only] Fatal:', error.message);
         try {
-            const recovery = base44 || createClientFromRequest(req);
-            let failedJob = null;
-            if (targetJobId) {
-                failedJob = await recovery.asServiceRole.entities.FetchJob.get(targetJobId).catch(() => null);
-            } else {
-                const running = await recovery.asServiceRole.entities.FetchJob.filter({ status: 'running' }, '-updated_date', 1);
-                const arr = Array.isArray(running) ? running : (running?.items || []);
-                failedJob = arr[0];
-            }
+            const recovery = liveJobClaimed && targetJobId
+                ? (base44 || createClientFromRequest(req))
+                : null;
+            const failedJob = recovery
+                ? await recovery.asServiceRole.entities.FetchJob.get(targetJobId).catch(() => null)
+                : null;
             if (failedJob && ['pending', 'running'].includes(failedJob.status)) {
                 await recovery.asServiceRole.entities.FetchJob.update(failedJob.id, {
                     status: 'failed',

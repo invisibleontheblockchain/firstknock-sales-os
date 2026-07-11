@@ -28,10 +28,11 @@ function normalizeRouteTypeFilters(input = {}) {
     };
 }
 
-async function startProcessor(base44, jobId, expectedChunk = 0) {
+async function startProcessor(base44, jobId, expectedChunk = 0, processorToken = null) {
     const invokePromise = base44.asServiceRole.functions.invoke('processFetchChunk', {
         job_id: jobId,
-        expected_chunk: expectedChunk
+        expected_chunk: expectedChunk,
+        processor_token: processorToken
     }).catch(error => {
         console.warn(`[startBatchDataPull] Background processor invoke failed: ${error.message}`);
     });
@@ -148,6 +149,51 @@ function isPremiumRecentRange(soldMonths) {
     return Number.isFinite(months) && months <= 1;
 }
 
+function parseOwnershipRange(body = {}) {
+    const rawMode = body.ownership_range_mode;
+    const mode = rawMode === undefined || rawMode === null || rawMode === '' ? 'quick' : String(rawMode);
+    if (!['quick', 'custom'].includes(mode)) {
+        return { error: 'ownership_range_mode must be either quick or custom.' };
+    }
+    if (mode === 'quick') {
+        return { mode, range: null };
+    }
+
+    const min = Number(body.ownership_min_days);
+    const max = Number(body.ownership_max_days);
+    if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 365 || min >= max) {
+        return { error: 'Custom ownership range requires whole-day minimum and maximum values from 1 to 365, with minimum less than maximum.' };
+    }
+    return { mode, range: { min, max } };
+}
+
+function legacySoldMonthsForOwnershipRange(ownership, fallbackSoldMonths) {
+    if (ownership.mode === 'custom') {
+        return ownership.range.max === 365 ? 12 : ownership.range.max / 30;
+    }
+    return Number(fallbackSoldMonths || 12);
+}
+
+function ownershipResponseFields(ownership) {
+    return {
+        ownership_range_mode: ownership.mode,
+        ownership_min_days: ownership.range?.min ?? null,
+        ownership_max_days: ownership.range?.max ?? null,
+        ownership_range_days: ownership.range || null
+    };
+}
+
+function ownershipFromJob(job) {
+    const metadata = job?.dry_run_metadata || {};
+    if (metadata.ownership_range_mode !== 'custom') return { mode: 'quick', range: null };
+    const min = Number(metadata.ownership_range_days?.min);
+    const max = Number(metadata.ownership_range_days?.max);
+    if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 365 || min >= max) {
+        throw new Error('The active FetchJob has invalid custom ownership range metadata.');
+    }
+    return { mode: 'custom', range: { min, max } };
+}
+
 async function resolveFips(center) {
     const url = `https://geo.fcc.gov/api/census/block/find?latitude=${encodeURIComponent(center.lat)}&longitude=${encodeURIComponent(center.lng)}&format=json`;
     const response = await fetch(url);
@@ -216,8 +262,18 @@ Deno.serve(async (req) => {
         const forceFreeForSelfTest = body.self_test_force_free === true && body.dry_run === true;
         const hasPaidPrecisionCapacity = !forceFreeForSelfTest && await hasConfirmedPaidPrecisionAccess(user);
         const hasPrecisionPro = !forceFreeForSelfTest && isPrecisionProUser(user);
-        const requestedSoldMonths = Number(body.sold_months || 12);
-        if (isPremiumRecentRange(requestedSoldMonths) && !hasPrecisionPro) {
+        const ownership = parseOwnershipRange(body);
+        if (ownership.error) {
+            return Response.json({ error: 'invalid_ownership_range', message: ownership.error }, { status: 400 });
+        }
+        const requestedSoldMonths = legacySoldMonthsForOwnershipRange(ownership, body.sold_months);
+        if (ownership.mode === 'custom' && !hasPrecisionPro) {
+            return Response.json({
+                error: 'upgrade_required',
+                message: 'Custom ownership ranges require a Pro plan.'
+            }, { status: 403 });
+        }
+        if (ownership.mode === 'quick' && isPremiumRecentRange(requestedSoldMonths) && !hasPrecisionPro) {
             return Response.json({
                 error: 'upgrade_required',
                 message: '1 day, 2 day, 1 week, 2 week, and 1 month Precision pulls require a Pro plan.'
@@ -275,6 +331,7 @@ Deno.serve(async (req) => {
                 excluded_route_home_count: existingRouteHomes,
                 free_properties_remaining: freeHomesRemaining,
                 sold_months: requestedSoldMonths,
+                ...ownershipResponseFields(ownership),
                 previous_pull_date: body.previous_pull_date || null,
                 include_unresolved_followups: body.include_unresolved_followups === true,
                 area_sq_mi: Number(areaSqMi.toFixed(2)),
@@ -288,11 +345,24 @@ Deno.serve(async (req) => {
         const pendingList = Array.isArray(pendingJobs) ? pendingJobs : (pendingJobs?.items || []);
         const existingJob = runningList[0] || pendingList[0];
         if (existingJob) {
-            return Response.json({ status: 'already_running', job_id: existingJob.id, message: 'A data pull is already running.' });
+            const existingMetadata = existingJob.dry_run_metadata || {};
+            const existingOwnership = ownershipFromJob(existingJob);
+            return Response.json({
+                status: 'already_running',
+                job_id: existingJob.id,
+                message: 'A data pull is already running. Resuming that pull with its original criteria.',
+                polygon: existingJob.polygon || [],
+                requested_properties: existingMetadata.requested_properties ?? existingJob.total_expected ?? null,
+                sold_months: Number(existingJob.sold_months || 12),
+                min_price: existingMetadata.filters?.min_price ?? null,
+                max_price: existingMetadata.filters?.max_price ?? null,
+                ...ownershipResponseFields(existingOwnership)
+            });
         }
 
         const hash = await polygonHash(polygon);
-        const job = await base44.entities.FetchJob.create({
+        const processorToken = crypto.randomUUID();
+        const job = await base44.asServiceRole.entities.FetchJob.create({
             status: 'pending',
             provider: 'batchdata',
             mode_tag: 'PRECISION_TARGET',
@@ -327,6 +397,9 @@ Deno.serve(async (req) => {
                     max_price: maxPrice
                 },
                 route_filters: routeFilters,
+                ownership_range_mode: ownership.mode,
+                ownership_range_days: ownership.range,
+                processor_token: processorToken,
                 paid_pull_started_at: new Date().toISOString()
             },
             sold_months: requestedSoldMonths,
@@ -342,7 +415,7 @@ Deno.serve(async (req) => {
             total_batchdata_calls: 0
         });
 
-        await startProcessor(base44, job.id, 0);
+        await startProcessor(base44, job.id, 0, processorToken);
 
         return Response.json({
             success: true,
@@ -356,6 +429,8 @@ Deno.serve(async (req) => {
             excluded_route_home_count: existingRouteHomes,
             free_properties_remaining: freeHomesRemaining,
             route_filters: routeFilters,
+            sold_months: requestedSoldMonths,
+            ...ownershipResponseFields(ownership),
             message: `Precision pull started for up to ${requestedProperties} properties.`
         });
     } catch (error) {

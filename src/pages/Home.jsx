@@ -140,6 +140,15 @@ function getRequestedPrecisionCount(jobStatus = {}) {
     return Number.isFinite(count) && count > 0 ? Math.round(count) : null;
 }
 
+function normalizeOwnershipRangeDays(value) {
+    const min = Number(Array.isArray(value) ? value[0] : value?.min);
+    const max = Number(Array.isArray(value) ? value[1] : value?.max);
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+    const normalizedMin = Math.max(1, Math.min(365, Math.round(min)));
+    const normalizedMax = Math.max(1, Math.min(365, Math.round(max)));
+    return normalizedMin < normalizedMax ? [normalizedMin, normalizedMax] : null;
+}
+
 function precisionCandidateRank(property) {
     const score = Number(property?.score ?? property?.competitivenessScore ?? 0) || 0;
     const price = Number(property?.price ?? property?.sale_price ?? 0) || 0;
@@ -195,6 +204,8 @@ export default function Home() {
     const [currentBatchDataJobId, setCurrentBatchDataJobId] = useState(null);
     const currentBatchDataJobIdRef = useRef(null);
     const currentBatchDataSoldMonthsRef = useRef(null);
+    const [currentBatchDataOwnershipRangeDays, setCurrentBatchDataOwnershipRangeDays] = useState(null);
+    const currentBatchDataOwnershipRangeDaysRef = useRef(null);
     const currentBatchDataRequestedCountRef = useRef(null);
     const currentBatchDataPolygonRef = useRef(null);
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
@@ -527,8 +538,14 @@ export default function Home() {
         const addEntry = (polygon, entry = {}) => {
             if (!polygon || polygon.length < 3) return;
             const key = polygonHistoryKey(polygon);
+            const existing = byKey.get(key);
+            const existingTime = new Date(existing?.last_pull_date || existing?.date || 0).getTime();
+            const incomingTime = new Date(entry.last_pull_date || entry.date || 0).getTime();
+            if (existing && Number.isFinite(existingTime) && (!Number.isFinite(incomingTime) || existingTime > incomingTime)) {
+                return;
+            }
             byKey.set(key, {
-                ...byKey.get(key),
+                ...existing,
                 ...entry,
                 polygon,
                 queried: true,
@@ -554,16 +571,28 @@ export default function Home() {
             const polygon = getFetchJobHistoryPolygon(job);
             const completedOrUseful = job.status === 'completed' || Number(job.active_count || job.total_inserted || job.total_existed || 0) > 0;
             if (!completedOrUseful) return;
+            const jobMetadata = job.dry_run_metadata || {};
+            const jobOwnershipRangeDays = normalizeOwnershipRangeDays(
+                job.ownership_range_days ?? jobMetadata.ownership_range_days
+            );
+            const jobOwnershipRangeMode = (
+                job.ownership_range_mode ?? jobMetadata.ownership_range_mode
+            ) === 'custom' && jobOwnershipRangeDays ? 'custom' : 'quick';
             addEntry(polygon, {
                 id: `job_${job.id}`,
                 job_id: job.id,
                 date: job.completed_at || job.updated_date || job.created_date,
                 last_pull_date: job.completed_at || job.updated_date || job.created_date,
                 criteria: {
-                    requested_properties: job.requested_properties || job.total_expected || job.active_count || null,
+                    requested_properties: jobMetadata.requested_properties || job.requested_properties || job.total_expected || job.active_count || null,
+                    count_mode: jobMetadata.count_mode || null,
                     sold_months: job.sold_months || job.fetch_months || null,
-                    min_price: job.min_price ?? job.filters?.min_price ?? null,
-                    max_price: job.max_price ?? job.filters?.max_price ?? null
+                    ownership_range_mode: jobOwnershipRangeMode,
+                    ownership_range_days: jobOwnershipRangeDays
+                        ? { min: jobOwnershipRangeDays[0], max: jobOwnershipRangeDays[1] }
+                        : null,
+                    min_price: job.min_price ?? job.filters?.min_price ?? jobMetadata.filters?.min_price ?? null,
+                    max_price: job.max_price ?? job.filters?.max_price ?? jobMetadata.filters?.max_price ?? null
                 }
             });
         });
@@ -670,7 +699,12 @@ export default function Home() {
         const baseRouteName = deriveRouteName(route);
         const isGeneratedRoute = !route?.isSaved && Array.isArray(route?.properties) && route.properties.length > 0;
         const routeMode = route.route_mode || 'precision';
-        const currentPrecisionPolygon = routeMode === 'precision' ? normalizeHistoryPolygon(drawnPolygon) : [];
+        const jobPrecisionPolygon = normalizeHistoryPolygon(currentBatchDataPolygonRef.current);
+        const drawnPrecisionPolygon = normalizeHistoryPolygon(drawnPolygon);
+        const currentPrecisionPolygon = routeMode === 'precision'
+            ? (jobPrecisionPolygon.length >= 3 ? jobPrecisionPolygon : drawnPrecisionPolygon)
+            : [];
+        const currentOwnershipRangeDays = normalizeOwnershipRangeDays(currentBatchDataOwnershipRangeDaysRef.current);
         const generatedAt = new Date().toISOString();
         const precisionAreaMetadata = isGeneratedRoute && currentPrecisionPolygon.length >= 3
             ? {
@@ -680,7 +714,12 @@ export default function Home() {
                     last_pull_date: generatedAt,
                     date: generatedAt,
                     criteria: {
+                        requested_properties: currentBatchDataRequestedCountRef.current || null,
                         sold_months: currentBatchDataSoldMonthsRef.current || soldDateFilter || null,
+                        ownership_range_mode: currentOwnershipRangeDays ? 'custom' : 'quick',
+                        ownership_range_days: currentOwnershipRangeDays
+                            ? { min: currentOwnershipRangeDays[0], max: currentOwnershipRangeDays[1] }
+                            : null,
                         route_mode: routeMode,
                         pull_mode: lastPullMode || null
                     }
@@ -1201,19 +1240,21 @@ export default function Home() {
                 const savedPolygon = localStorage.getItem('fk_drawnPolygon');
                 storedPolygon = savedPolygon ? JSON.parse(savedPolygon) : null;
             } catch { }
-            const rawActiveGenerationPolygon = Array.isArray(drawnPolygon) && drawnPolygon.length > 2
+            const rawUiGenerationPolygon = Array.isArray(drawnPolygon) && drawnPolygon.length > 2
                 ? drawnPolygon
                 : Array.isArray(draftPolygon) && draftPolygon.length > 2
                     ? draftPolygon
                     : Array.isArray(storedPolygon) && storedPolygon.length > 2
                         ? storedPolygon
                         : null;
-            const normalizedActivePolygon = normalizeHistoryPolygon(rawActiveGenerationPolygon);
-            const activeGenerationPolygon = normalizedActivePolygon.length > 2 ? normalizedActivePolygon : null;
-            console.log(`[generateRoutes] Polygon source: state=${Array.isArray(drawnPolygon) ? drawnPolygon.length : 0}, draft=${Array.isArray(draftPolygon) ? draftPolygon.length : 0}, stored=${Array.isArray(storedPolygon) ? storedPolygon.length : 0}`);
             const activeFetchJobId = currentBatchDataJobIdRef.current || currentBatchDataJobId;
-            const activePolygonKey = activeGenerationPolygon ? polygonHistoryKey(activeGenerationPolygon) : null;
             const currentJobPolygon = normalizeHistoryPolygon(currentBatchDataPolygonRef.current);
+            const normalizedUiPolygon = normalizeHistoryPolygon(rawUiGenerationPolygon);
+            const activeGenerationPolygon = normalizedUiPolygon.length > 2
+                ? normalizedUiPolygon
+                : (activeFetchJobId && currentJobPolygon.length > 2 ? currentJobPolygon : null);
+            console.log(`[generateRoutes] Polygon source: job=${currentJobPolygon.length}, state=${Array.isArray(drawnPolygon) ? drawnPolygon.length : 0}, draft=${Array.isArray(draftPolygon) ? draftPolygon.length : 0}, stored=${Array.isArray(storedPolygon) ? storedPolygon.length : 0}`);
+            const activePolygonKey = activeGenerationPolygon ? polygonHistoryKey(activeGenerationPolygon) : null;
             const currentJobPolygonKey = currentJobPolygon.length > 2 ? polygonHistoryKey(currentJobPolygon) : null;
             const requestedPrecisionCount = activeFetchJobId ? currentBatchDataRequestedCountRef.current : null;
             const isCurrentBatchDataRun = !!activeFetchJobId && !!activeGenerationPolygon && !!activePolygonKey && activePolygonKey === currentJobPolygonKey;
@@ -2004,16 +2045,21 @@ export default function Home() {
                     if (!completedJobId) {
                         setCurrentBatchDataJobId(null);
                         currentBatchDataJobIdRef.current = null;
+                        setCurrentBatchDataOwnershipRangeDays(null);
+                        currentBatchDataOwnershipRangeDaysRef.current = null;
                         currentBatchDataRequestedCountRef.current = null;
                         currentBatchDataPolygonRef.current = null;
                         setGenerationError('This Precision pull completed, but the completed job id was missing. Route generation was stopped so old account data cannot be mixed into this new area. Please generate the area again.');
                         return;
                     }
+                    const statusPolygon = getFetchJobHistoryPolygon(jobStatus);
                     const drawnPullPolygon = normalizeHistoryPolygon(drawnPolygon);
-                    const normalizedPullPolygon = drawnPullPolygon.length > 2 ? drawnPullPolygon : getFetchJobHistoryPolygon(jobStatus);
+                    const normalizedPullPolygon = statusPolygon.length > 2 ? statusPolygon : drawnPullPolygon;
                     if (normalizedPullPolygon.length < 3) {
                         setCurrentBatchDataJobId(null);
                         currentBatchDataJobIdRef.current = null;
+                        setCurrentBatchDataOwnershipRangeDays(null);
+                        currentBatchDataOwnershipRangeDaysRef.current = null;
                         currentBatchDataRequestedCountRef.current = null;
                         currentBatchDataPolygonRef.current = null;
                         setGenerationError('This Precision pull completed, but the selected area was missing before routes could be built. Route generation was stopped so old account data cannot be mixed into this new area. Please generate the area again.');
@@ -2021,8 +2067,13 @@ export default function Home() {
                     }
                     setCurrentBatchDataJobId(completedJobId);
                     currentBatchDataJobIdRef.current = completedJobId;
+                    const completedOwnershipRangeDays = normalizeOwnershipRangeDays(jobStatus?.diagnostics?.ownership_range_days);
+                    setCurrentBatchDataOwnershipRangeDays(completedOwnershipRangeDays);
+                    currentBatchDataOwnershipRangeDaysRef.current = completedOwnershipRangeDays;
                     currentBatchDataRequestedCountRef.current = getRequestedPrecisionCount(jobStatus);
                     currentBatchDataPolygonRef.current = normalizedPullPolygon;
+                    try { localStorage.setItem('fk_drawnPolygonQueried', 'true'); } catch { }
+                    setDrawnPolygon(normalizedPullPolygon, true);
                     setRoutes([]);
                     setShowCompare(false);
                     setShowRoutePanel(false);
@@ -2227,6 +2278,7 @@ export default function Home() {
                     startAddressInput={startAddressInput} setStartAddressInput={setStartAddressInput}
                     sortBy={sortBy} setSortBy={setSortBy}
                     soldDateFilter={soldDateFilter} setSoldDateFilter={setSoldDateFilter}
+                    ownershipRangeDays={currentBatchDataOwnershipRangeDays}
                     lastPullMode={lastPullMode}
                     routeConfig={routeConfig} setRouteConfig={setRouteConfig}
                     onGenerate={generateRoutes} routesGenerating={routesGenerating}

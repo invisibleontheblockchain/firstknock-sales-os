@@ -29,7 +29,38 @@ function formatSoldWindow(months) {
   return `${label} month${value === 1 ? '' : 's'} sold window`;
 }
 
-function buildPrecisionShortfallMessage({ loadedCount, requestedCount, intendedCount, diagnostics, soldMonths, minHomeValue, maxHomeValue }) {
+function normalizeOwnershipRangeDays(value) {
+  const min = Number(Array.isArray(value) ? value[0] : value?.min);
+  const max = Number(Array.isArray(value) ? value[1] : value?.max);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  const normalizedMin = Math.max(1, Math.min(365, Math.round(min)));
+  const normalizedMax = Math.max(1, Math.min(365, Math.round(max)));
+  if (normalizedMin >= normalizedMax) return null;
+  return [normalizedMin, normalizedMax];
+}
+
+function ownershipRangeMaxToMonths(range) {
+  const normalized = normalizeOwnershipRangeDays(range);
+  if (!normalized) return null;
+  return normalized[1] === 365 ? 12 : normalized[1] / 30;
+}
+
+function ownershipRangeCriteria(range) {
+  const normalized = normalizeOwnershipRangeDays(range);
+  return normalized ? { min: normalized[0], max: normalized[1] } : null;
+}
+
+function buildPrecisionShortfallMessage({
+  loadedCount,
+  requestedCount,
+  intendedCount,
+  diagnostics,
+  soldMonths,
+  ownershipRangeMode,
+  ownershipRangeDays,
+  minHomeValue,
+  maxHomeValue
+}) {
   const loaded = Math.max(0, Number(loadedCount) || 0);
   const requested = Math.max(0, Number(requestedCount) || 0);
   const intended = Math.max(requested, Number(intendedCount) || 0);
@@ -41,7 +72,11 @@ function buildPrecisionShortfallMessage({ loadedCount, requestedCount, intendedC
   if (requested <= 0 || loaded >= requested) return null;
 
   const filters = [];
-  const soldWindow = formatSoldWindow(soldMonths ?? diagnostics?.sold_months);
+  const customRange = normalizeOwnershipRangeDays(ownershipRangeDays ?? diagnostics?.ownership_range_days);
+  const usesCustomRange = (ownershipRangeMode ?? diagnostics?.ownership_range_mode) === 'custom' && customRange;
+  const soldWindow = usesCustomRange
+    ? `${customRange[0]}\u2013${customRange[1]} day ownership window`
+    : formatSoldWindow(soldMonths ?? diagnostics?.sold_months);
   if (soldWindow) filters.push(soldWindow);
 
   const minValue = Number(minHomeValue ?? diagnostics?.filters?.min_price);
@@ -58,7 +93,9 @@ function buildPrecisionShortfallMessage({ loadedCount, requestedCount, intendedC
   const reviewedText = reviewed > 0 ? ` We checked ${formatWholeNumber(reviewed)} provider records.` : '';
   const skippedText = skippedExisting > 0 ? ` We skipped ${formatWholeNumber(skippedExisting)} homes already in saved routes.` : '';
   const routeTypeText = skippedRouteType > 0 ? ` ${formatWholeNumber(skippedRouteType)} provider records were not single-family residential homes.` : '';
-  const nextStep = skippedRouteType > 0
+  const nextStep = summary.scan_limit_reached === true
+    ? 'We reached the provider scan safety limit before filling the request. Try a fixed count, a smaller area, or a wider ownership window.'
+    : skippedRouteType > 0
     ? 'Precision routes only use single-family residential homes, so draw a larger residential area to find more eligible homes.'
     : skippedExisting > 0
     ? 'Draw beyond the previous route area or widen the boundary to reach new homes.'
@@ -108,6 +145,8 @@ export default function TerritoryPrompt({
   const [pulling, setPulling] = useState(false);
   const [pullProgress, setPullProgress] = useState('');
   const [fetchMonths, setFetchMonths] = useState(() => user?.pull_months_back || 12);
+  const [ownershipRangeMode, setOwnershipRangeMode] = useState('quick');
+  const [ownershipRangeDays, setOwnershipRangeDays] = useState([30, 180]);
   const [pullPct, setPullPct] = useState(0);
   const [displayPct, setDisplayPct] = useState(0);
   const [etaText, setEtaText] = useState('');
@@ -213,6 +252,29 @@ export default function TerritoryPrompt({
         setRecoverableJob(null);
         if (job && !cancelled && !pulling) {
           console.log('[TerritoryPrompt] Resuming running job:', job.id);
+          const jobMetadata = job.dry_run_metadata || {};
+          const resumedOwnershipRangeDays = normalizeOwnershipRangeDays(
+            job.ownership_range_days ?? jobMetadata.ownership_range_days
+          );
+          const resumedOwnershipRangeMode = (
+            job.ownership_range_mode ?? jobMetadata.ownership_range_mode
+          ) === 'custom' && resumedOwnershipRangeDays ? 'custom' : 'quick';
+          pullIntentRef.current[job.id] = {
+            polygon: job.polygon || [],
+            requestedCount: Number(jobMetadata.requested_properties ?? job.total_expected ?? 0) || null,
+            soldMonths: Number(job.sold_months || 12),
+            ownershipRangeMode: resumedOwnershipRangeMode,
+            ownershipRangeDays: resumedOwnershipRangeDays,
+            minHomeValue: jobMetadata.filters?.min_price ?? null,
+            maxHomeValue: jobMetadata.filters?.max_price ?? null
+          };
+          if (Array.isArray(job.polygon) && job.polygon.length >= 3) {
+            try { localStorage.setItem('fk_drawnPolygonQueried', 'true'); } catch {}
+            setDrawnPolygon(job.polygon, true);
+          }
+          setFetchMonths(Number(job.sold_months || 12));
+          setOwnershipRangeMode(resumedOwnershipRangeMode);
+          if (resumedOwnershipRangeDays) setOwnershipRangeDays(resumedOwnershipRangeDays);
           setPulling(true);
           setPullProgress('Resuming data import...');
           const pct = job.progress_pct || 0;
@@ -295,6 +357,7 @@ export default function TerritoryPrompt({
       setDrawnPolygon(null);
       setDraftPolygon([]);
       setSelectedHistoryArea(null);
+      setOwnershipRangeMode('quick');
       setRepullMode('fill_gaps');
       setForceFullRefresh(false);
       setIncludeUnresolvedFollowUps(true);
@@ -334,6 +397,13 @@ export default function TerritoryPrompt({
       setIncludeUnresolvedFollowUps(true);
       if (criteria.requested_properties) setRequestedPropertyCount(criteria.requested_properties);
       if (criteria.sold_months) setFetchMonths(criteria.sold_months);
+      const historyOwnershipRange = normalizeOwnershipRangeDays(criteria.ownership_range_days);
+      if (criteria.ownership_range_mode === 'custom' && historyOwnershipRange) {
+        setOwnershipRangeMode('custom');
+        setOwnershipRangeDays(historyOwnershipRange);
+      } else {
+        setOwnershipRangeMode('quick');
+      }
       if (criteria.min_price !== undefined && criteria.min_price !== null) setMinHomeValue(criteria.min_price);
       if (criteria.max_price !== undefined && criteria.max_price !== null) setMaxHomeValue(criteria.max_price || '');
       setShowPrecisionPullPanel(true);
@@ -496,12 +566,19 @@ export default function TerritoryPrompt({
           const intent = pullIntentRef.current[jobId] || {};
           const requestedCount = d.total_expected || diagnostics.requested_properties || 0;
           const intendedCount = intent.requestedCount || diagnostics.requested_properties_before_cap || requestedCount;
+          const completedSoldMonths = intent.soldMonths ?? diagnostics.sold_months ?? fetchMonths;
+          const completedOwnershipRangeMode = intent.ownershipRangeMode ?? diagnostics.ownership_range_mode ?? 'quick';
+          const completedOwnershipRangeDays = completedOwnershipRangeMode === 'custom'
+            ? normalizeOwnershipRangeDays(intent.ownershipRangeDays ?? diagnostics.ownership_range_days)
+            : null;
           const shortfallMessage = buildPrecisionShortfallMessage({
             loadedCount: totalLoaded,
             requestedCount,
             intendedCount,
             diagnostics,
-            soldMonths: intent.soldMonths ?? diagnostics.sold_months ?? fetchMonths,
+            soldMonths: completedSoldMonths,
+            ownershipRangeMode: completedOwnershipRangeMode,
+            ownershipRangeDays: completedOwnershipRangeDays,
             minHomeValue: intent.minHomeValue ?? diagnostics.filters?.min_price,
             maxHomeValue: intent.maxHomeValue ?? diagnostics.filters?.max_price
           });
@@ -524,14 +601,20 @@ export default function TerritoryPrompt({
           const completedJobStatus = {
             ...d,
             job_id: d.job_id || d.fetch_job_id || d.id || jobId,
-            requested_properties: intendedCount || requestedCount
+            requested_properties: intendedCount || requestedCount,
+            polygon: intent.polygon || d.polygon || [],
+            diagnostics: {
+              ...diagnostics,
+              ownership_range_mode: completedOwnershipRangeMode,
+              ownership_range_days: ownershipRangeCriteria(completedOwnershipRangeDays)
+            }
           };
 
           if (onPullComplete) {
             setMode('generate');
             setShowRoutePanel(false);
             setShowCompare(false);
-            await onPullComplete(fetchMonths, isPaid, completedJobStatus);
+            await onPullComplete(completedSoldMonths, isPaid, completedJobStatus);
           } else {
             queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
             queryClient.invalidateQueries({ queryKey: ['user'] });
@@ -587,24 +670,86 @@ export default function TerritoryPrompt({
 
   const retryRecoverableJob = async () => {
     if (!recoverableJob) return;
+    const jobToRecover = recoverableJob;
+    const recoveryMetadata = jobToRecover.dry_run_metadata || {};
+    const recoveryOwnershipRangeDays = normalizeOwnershipRangeDays(
+      jobToRecover.ownership_range_days ?? recoveryMetadata.ownership_range_days
+    );
+    const recoveryOwnershipRangeMode = (
+      jobToRecover.ownership_range_mode ?? recoveryMetadata.ownership_range_mode
+    ) === 'custom' && recoveryOwnershipRangeDays ? 'custom' : 'quick';
+    const recoverySoldMonths = jobToRecover.sold_months || fetchMonths;
     setRecoverableJob(null);
     setPulling(true);
     setPullProgress('Retrying incomplete import from last checkpoint...');
-    setPullPct(recoverableJob.progress_pct || 0);
-    setDisplayPct(Math.max((recoverableJob.progress_pct || 0) - 5, 0));
-    targetPctRef.current = recoverableJob.progress_pct || 0;
+    setPullPct(jobToRecover.progress_pct || 0);
+    setDisplayPct(Math.max((jobToRecover.progress_pct || 0) - 5, 0));
+    targetPctRef.current = jobToRecover.progress_pct || 0;
     setEtaText('Retrying...');
-    const res = await base44.functions.invoke('fetchAreaProperties', {
-      latitude: recoverableJob.latitude,
-      longitude: recoverableJob.longitude,
-      radius: recoverableJob.radius,
-      polygon: recoverableJob.polygon || [],
-      sold_months: recoverableJob.sold_months || fetchMonths,
-      include_mls: recoverableJob.include_mls !== false,
-      force_full_refresh: recoverableJob.force_full_refresh || false
-    });
-    const data = res.data || {};
-    startPolling(data.job_id || recoverableJob.id);
+    try {
+      const res = await base44.functions.invoke('fetchAreaProperties', {
+        latitude: jobToRecover.latitude,
+        longitude: jobToRecover.longitude,
+        radius: jobToRecover.radius,
+        polygon: jobToRecover.polygon || [],
+        sold_months: recoverySoldMonths,
+        ownership_range_mode: recoveryOwnershipRangeMode,
+        ...(recoveryOwnershipRangeMode === 'custom' ? {
+          ownership_min_days: recoveryOwnershipRangeDays[0],
+          ownership_max_days: recoveryOwnershipRangeDays[1]
+        } : {}),
+        requested_properties: recoveryMetadata.requested_properties ?? jobToRecover.total_expected,
+        count_mode: recoveryMetadata.count_mode || 'fixed',
+        min_price: recoveryMetadata.filters?.min_price ?? null,
+        max_price: recoveryMetadata.filters?.max_price ?? null,
+        route_filters: recoveryMetadata.route_filters,
+        include_mls: jobToRecover.include_mls !== false,
+        force_full_refresh: jobToRecover.force_full_refresh || false
+      });
+      const data = res.data || {};
+      if (data.error) {
+        const error = new Error(data.message || data.error);
+        error.name = data.error;
+        throw error;
+      }
+      if (!data.job_id) throw new Error('The retry did not return a new job id.');
+      const resumedExistingJob = data.status === 'already_running';
+      const responseOwnershipRangeDays = normalizeOwnershipRangeDays(data.ownership_range_days);
+      const pollingOwnershipRangeMode = resumedExistingJob
+        ? (data.ownership_range_mode === 'custom' && responseOwnershipRangeDays ? 'custom' : 'quick')
+        : recoveryOwnershipRangeMode;
+      const pollingOwnershipRangeDays = resumedExistingJob ? responseOwnershipRangeDays : recoveryOwnershipRangeDays;
+      pullIntentRef.current[data.job_id] = {
+        polygon: resumedExistingJob ? (data.polygon || []) : (jobToRecover.polygon || []),
+        requestedCount: Number(
+          resumedExistingJob
+            ? (data.requested_properties ?? data.total_expected ?? 0)
+            : (recoveryMetadata.requested_properties ?? jobToRecover.total_expected ?? 0)
+        ) || null,
+        soldMonths: resumedExistingJob ? Number(data.sold_months || 12) : recoverySoldMonths,
+        ownershipRangeMode: pollingOwnershipRangeMode,
+        ownershipRangeDays: pollingOwnershipRangeDays,
+        minHomeValue: resumedExistingJob ? (data.min_price ?? null) : (recoveryMetadata.filters?.min_price ?? null),
+        maxHomeValue: resumedExistingJob ? (data.max_price ?? null) : (recoveryMetadata.filters?.max_price ?? null)
+      };
+      if (resumedExistingJob && Array.isArray(data.polygon) && data.polygon.length >= 3) {
+        try { localStorage.setItem('fk_drawnPolygonQueried', 'true'); } catch {}
+        setDrawnPolygon(data.polygon, true);
+      }
+      startPolling(data.job_id);
+    } catch (error) {
+      const errCode = error.response?.data?.error || error.name;
+      const message = error.response?.data?.message || error.message || 'Could not retry this import.';
+      setPulling(false);
+      setEtaText('');
+      setPullProgress('Retry failed');
+      setRecoverableJob(jobToRecover);
+      setPullError({
+        message,
+        upgrade: error.response?.status === 403 || ['paid_precision_required', 'upgrade_required'].includes(errCode)
+      });
+      toast.error(message);
+    }
   };
 
   const handleFetchData = async () => {
@@ -613,6 +758,13 @@ export default function TerritoryPrompt({
       toast.error('Draw a freehand area first.');
       return;
     }
+    const previewOwnershipRangeDays = ownershipRangeMode === 'custom'
+      ? normalizeOwnershipRangeDays(ownershipRangeDays)
+      : null;
+    const previewOwnershipRangeMode = previewOwnershipRangeDays ? 'custom' : 'quick';
+    const previewSoldMonths = previewOwnershipRangeDays
+      ? ownershipRangeMaxToMonths(previewOwnershipRangeDays)
+      : fetchMonths;
 
     setPreviewLoading(true);
     setPreviewResult(null);
@@ -636,7 +788,9 @@ export default function TerritoryPrompt({
         previewed_at: new Date().toISOString(),
         criteria: {
           requested_properties: d.requested_properties ?? safeRequestedPropertyCount,
-          sold_months: fetchMonths,
+          sold_months: previewSoldMonths,
+          ownership_range_mode: previewOwnershipRangeMode,
+          ownership_range_days: ownershipRangeCriteria(previewOwnershipRangeDays),
           min_price: minHomeValue ? Number(minHomeValue) : null,
           max_price: maxHomeValue ? Number(maxHomeValue) : null
         }
@@ -661,15 +815,35 @@ export default function TerritoryPrompt({
     }
 
     const isPreviousAreaPull = ghostAreasVisible && !!selectedHistoryArea;
-    const historyCriteria = isPreviousAreaPull ? selectedHistoryArea?.criteria || {} : {};
     const historyDate = isPreviousAreaPull ? selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date : null;
-    const effectiveSoldMonths = isPreviousAreaPull && repullMode === 'max_since_last' ? monthsSinceHistoryPull(historyDate) : Number(historyCriteria.sold_months || fetchMonths || 12);
+    const isMaxSinceLast = isPreviousAreaPull && repullMode === 'max_since_last';
+    const effectiveOwnershipRangeDays = !isMaxSinceLast && ownershipRangeMode === 'custom'
+      ? normalizeOwnershipRangeDays(ownershipRangeDays)
+      : null;
+    const effectiveOwnershipRangeMode = effectiveOwnershipRangeDays ? 'custom' : 'quick';
+    if (!isMaxSinceLast && ownershipRangeMode === 'custom' && !effectiveOwnershipRangeDays) {
+      setPullError({ message: 'Choose a valid ownership window between 1 and 365 days.', upgrade: false });
+      return;
+    }
+    const effectiveSoldMonths = isMaxSinceLast
+      ? monthsSinceHistoryPull(historyDate)
+      : effectiveOwnershipRangeDays
+        ? ownershipRangeMaxToMonths(effectiveOwnershipRangeDays)
+        : Number(fetchMonths || 12);
     const usingMaxAvailable = (isPreviousAreaPull && repullMode === 'max_since_last') || propertyCountMode === 'max_available';
     const effectiveRequestedPropertyCount = usingMaxAvailable ? maxRequestedProperties : safeRequestedPropertyCount;
     const effectiveMinPrice = minHomeValue ? Number(minHomeValue) : null;
     const effectiveMaxPrice = maxHomeValue ? Number(maxHomeValue) : null;
     const premiumRecentRange = effectiveSoldMonths <= 1;
-    const latestUser = (effectiveRequestedPropertyCount > freePropertyLimit || premiumRecentRange) ? await base44.auth.me() : user;
+    let latestUser = user;
+    if (effectiveRequestedPropertyCount > freePropertyLimit || premiumRecentRange || effectiveOwnershipRangeMode === 'custom') {
+      try {
+        latestUser = await base44.auth.me();
+      } catch (error) {
+        setPullError({ message: error.message || 'Could not refresh your plan access. Please try again.', upgrade: false });
+        return;
+      }
+    }
     const hasPaidPrecision = hasPaidPrecisionGenerationCapacity(latestUser);
     const hasPrecisionPro = isPrecisionProUser(latestUser);
 
@@ -688,6 +862,13 @@ export default function TerritoryPrompt({
       return;
     }
 
+    if (effectiveOwnershipRangeMode === 'custom' && !hasPrecisionPro) {
+      const message = 'Custom ownership ranges require a Precision Pro plan. Upgrade to target an exact ownership window.';
+      toast.info(message);
+      setPullError({ message, upgrade: true });
+      return;
+    }
+
     if (premiumRecentRange && !hasPrecisionPro) {
       toast.info('Your date range has been updated to 3 months. Upgrade to Pro for shorter ranges.');
       setFetchMonths(3);
@@ -702,6 +883,11 @@ export default function TerritoryPrompt({
         requested_properties: effectiveRequestedPropertyCount,
         count_mode: usingMaxAvailable ? 'max_available' : 'fixed',
         sold_months: effectiveSoldMonths,
+        ownership_range_mode: effectiveOwnershipRangeMode,
+        ...(effectiveOwnershipRangeMode === 'custom' ? {
+          ownership_min_days: effectiveOwnershipRangeDays[0],
+          ownership_max_days: effectiveOwnershipRangeDays[1]
+        } : {}),
         min_price: effectiveMinPrice,
         max_price: effectiveMaxPrice,
         route_filters: {
@@ -721,12 +907,47 @@ export default function TerritoryPrompt({
         setPullError({ message: data.message || data.error, upgrade: isPlanGate });
         return;
       }
+      if (data.status === 'already_running') {
+        if (!data.job_id) {
+          setPullError({ message: data.message || 'An import is already running, but its job id is missing.', upgrade: false });
+          return;
+        }
+        const serverOwnershipRangeDays = normalizeOwnershipRangeDays(data.ownership_range_days);
+        const serverOwnershipRangeMode = data.ownership_range_mode === 'custom' && serverOwnershipRangeDays ? 'custom' : 'quick';
+        const serverSoldMonths = Number(data.sold_months || 12);
+        pullIntentRef.current[data.job_id] = {
+          polygon: data.polygon || [],
+          requestedCount: Number(data.requested_properties || data.total_expected || 0) || null,
+          soldMonths: serverSoldMonths,
+          ownershipRangeMode: serverOwnershipRangeMode,
+          ownershipRangeDays: serverOwnershipRangeDays,
+          minHomeValue: data.min_price ?? null,
+          maxHomeValue: data.max_price ?? null
+        };
+        if (Array.isArray(data.polygon) && data.polygon.length >= 3) {
+          try { localStorage.setItem('fk_drawnPolygonQueried', 'true'); } catch {}
+          setDrawnPolygon(data.polygon, true);
+        }
+        setPulling(true);
+        setPullPct(0);
+        setDisplayPct(0);
+        targetPctRef.current = 0;
+        setPullProgress('Resuming the active property import...');
+        setEtaText('Checking active import...');
+        startPolling(data.job_id);
+        setShowPrecisionPullPanel(false);
+        toast.info(data.message || 'A property import is already running. Resuming its progress.');
+        return;
+      }
       const startedRequestedCount = Number(data.requested_properties ?? effectiveRequestedPropertyCount) || effectiveRequestedPropertyCount;
       if (data.job_id) {
         pullIntentRef.current[data.job_id] = {
+          polygon: drawnPolygon,
           requestedCount: effectiveRequestedPropertyCount,
           serverRequestedCount: startedRequestedCount,
           soldMonths: effectiveSoldMonths,
+          ownershipRangeMode: effectiveOwnershipRangeMode,
+          ownershipRangeDays: effectiveOwnershipRangeDays,
           minHomeValue: effectiveMinPrice,
           maxHomeValue: effectiveMaxPrice,
           limitedByFreeHomeCap: data.limited_by_free_home_cap === true
@@ -740,6 +961,8 @@ export default function TerritoryPrompt({
           requested_properties: data.requested_properties ?? effectiveRequestedPropertyCount,
           count_mode: usingMaxAvailable ? 'max_available' : 'fixed',
           sold_months: effectiveSoldMonths,
+          ownership_range_mode: effectiveOwnershipRangeMode,
+          ownership_range_days: ownershipRangeCriteria(effectiveOwnershipRangeDays),
           min_price: effectiveMinPrice,
           max_price: effectiveMaxPrice,
           force_full_refresh: isPreviousAreaPull ? repullMode === 'fill_gaps' || forceFullRefresh : false,
@@ -955,6 +1178,10 @@ export default function TerritoryPrompt({
         setMaxHomeValue={setMaxHomeValue}
         soldMonths={fetchMonths}
         setSoldMonths={setFetchMonths}
+        ownershipRangeMode={ownershipRangeMode}
+        setOwnershipRangeMode={setOwnershipRangeMode}
+        ownershipRangeDays={ownershipRangeDays}
+        setOwnershipRangeDays={setOwnershipRangeDays}
         onClose={() => {setShowPrecisionPullPanel(false);setPullError(null);}}
         onGenerate={handlePaidBatchDataPull}
         generating={paidPullStarting}

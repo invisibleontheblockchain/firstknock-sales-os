@@ -93,8 +93,12 @@ export default function PolygonHistory({ currentPolygon, mode, serverHistory = [
             if (!entry?.polygon || entry.polygon.length < 3) return;
             const key = polygonKey(entry.polygon);
             if (!key) return;
+            const existing = byKey.get(key);
+            const existingTime = new Date(existing?.last_pull_date || existing?.updated_at || existing?.date || 0).getTime();
+            const incomingTime = new Date(entry.last_pull_date || entry.updated_at || entry.date || 0).getTime();
+            if (existing && Number.isFinite(existingTime) && (!Number.isFinite(incomingTime) || existingTime > incomingTime)) return;
             byKey.set(key, {
-                ...byKey.get(key),
+                ...existing,
                 ...entry,
                 queried: true
             });

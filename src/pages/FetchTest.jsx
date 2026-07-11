@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { base44 } from '@/api/base44Client';
-import { Button } from '@/components/ui/button';
-import { Loader2, MapPin, Zap, AlertTriangle, CheckCircle2, Info, List, Clock, Activity, BarChart3, Trash2 } from 'lucide-react';
+import { Loader2, MapPin, Zap, Info } from 'lucide-react';
 import TestMetricsPanel from '@/components/test/TestMetricsPanel';
 import TestPropertyTable from '@/components/test/TestPropertyTable';
 
@@ -267,7 +266,7 @@ export default function FetchTest() {
   const cancelJob = async () => {
     if (!activeJobId) return;
     try {
-      await base44.entities.FetchJob.update(activeJobId, { status: 'failed', error_message: 'Cancelled by user' });
+      await base44.functions.invoke('cancelFetchJob', { job_id: activeJobId });
       log('Job cancelled', 'warn');
     } catch (e) { log(`Cancel failed: ${e.message}`, 'error'); }
     if (pollRef.current) clearTimeout(pollRef.current);
