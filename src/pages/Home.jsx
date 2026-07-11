@@ -59,6 +59,7 @@ const TerritorySetupWizard = React.lazy(() => import('../components/manager/Terr
 import { LayoutDashboard, Settings, Crosshair } from 'lucide-react';
 import { openInMaps } from '../components/logic/navigation';
 import { hydrateRoutesForMap } from '@/components/logic/routeHydration';
+import { precisionCandidateProperties } from '@/lib/precisionPipelineContract';
 import GpsTracker, { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../components/map/GpsTracker';
 import QuickMarkButtons from '../components/rep/QuickMarkButtons';
 import PropertyHistory from '../components/rep/PropertyHistory';
@@ -68,6 +69,13 @@ import ManagerMapLayers from '../components/map/ManagerMapLayers';
 import MapToolbar from '../components/map/MapToolbar';
 import ZipCodeOverlay from '../components/map/ZipCodeOverlay';
 import PolygonHistory, { savePolygonToHistory } from '../components/map/PolygonHistory';
+import { polygonIdentity } from '../components/map/polygonIdentity';
+import { getRequestedPrecisionCount } from '@/lib/precisionRouteCounts';
+import {
+    newestPrecisionAreaEntry,
+    resolveCompletedPrecisionPullContext,
+    resolvePrecisionGenerationArea
+} from '@/lib/precisionAreaContext';
 import KnockLimitSheet from '@/components/upgrade/KnockLimitSheet';
 import { getOutcomesLogged, isOutcomeBlocked, isProUser, needsCardOnFile } from '@/components/upgrade/knockGate';
 
@@ -76,6 +84,7 @@ import { BRAND, DEFAULT_STATUS_COLORS, COLOR_SCHEME_MAP, LINE_DASH_MAP, ROUTE_CO
 
 import { LocationMarker, MapRefHandler, MapController } from '../components/map/MapHelpers';
 import useViewportMapProperties from '../components/map/useViewportMapProperties';
+
 
 function normalizeHistoryPolygon(value) {
     if (!Array.isArray(value)) return [];
@@ -97,8 +106,7 @@ function normalizeHistoryPolygon(value) {
 }
 
 function polygonHistoryKey(polygon = []) {
-    const first = polygon[0] || {};
-    return `${Number(first.lat || 0).toFixed(5)}:${Number(first.lng || 0).toFixed(5)}:${polygon.length}`;
+    return polygonIdentity(polygon);
 }
 
 function getRouteHistoryPolygon(route) {
@@ -126,18 +134,6 @@ function getFetchJobHistoryPolygon(job) {
 
 function getPrecisionJobId(jobStatus = {}) {
     return jobStatus?.job_id || jobStatus?.fetch_job_id || jobStatus?.id || jobStatus?.jobId || null;
-}
-
-function getRequestedPrecisionCount(jobStatus = {}) {
-    const diagnostics = jobStatus?.diagnostics || {};
-    const value =
-        diagnostics.requested_properties_before_cap ||
-        diagnostics.requested_properties ||
-        jobStatus?.requested_properties ||
-        jobStatus?.total_expected ||
-        jobStatus?.active_count;
-    const count = Number(value);
-    return Number.isFinite(count) && count > 0 ? Math.round(count) : null;
 }
 
 function precisionCandidateRank(property) {
@@ -195,8 +191,14 @@ export default function Home() {
     const [currentBatchDataJobId, setCurrentBatchDataJobId] = useState(null);
     const currentBatchDataJobIdRef = useRef(null);
     const currentBatchDataSoldMonthsRef = useRef(null);
+    const currentBatchDataSoldMinDateRef = useRef(null);
+    const currentBatchDataMinPriceRef = useRef(null);
+    const currentBatchDataMaxPriceRef = useRef(null);
     const currentBatchDataRequestedCountRef = useRef(null);
     const currentBatchDataPolygonRef = useRef(null);
+    const currentBatchDataReincludedHashesRef = useRef(new Set());
+    const frozenPolygonKeyRef = useRef(null);
+    const frozenBatchDataJobIdRef = useRef(null);
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
     const [showAllProperties, setShowAllProperties] = useState(false);
     const [viewMode, setViewMode] = useState('pins'); // 'pins' or 'heatmap'
@@ -214,6 +216,14 @@ export default function Home() {
         } catch { return null; }
     });
     const setDrawnPolygon = (val, persist = false) => {
+        if (Array.isArray(val) && val.length > 2) {
+            const nextPolygonKey = polygonHistoryKey(normalizeHistoryPolygon(val));
+            if (frozenPolygonKeyRef.current && nextPolygonKey && nextPolygonKey !== frozenPolygonKeyRef.current) {
+                setFrozenWorkingSet(null);
+                frozenPolygonKeyRef.current = null;
+                frozenBatchDataJobIdRef.current = null;
+            }
+        }
         setDrawnPolygonRaw(val);
         try {
             if (persist && val && val.length > 2) {
@@ -321,7 +331,7 @@ export default function Home() {
             limit,
             fetch_job_id: fetchJobId
         });
-        return Array.isArray(res.data?.properties) ? res.data.properties : [];
+        return precisionCandidateProperties(res, { exactJob: !!fetchJobId });
     }, []);
 
     // Load navigation preference from user settings on load
@@ -527,13 +537,13 @@ export default function Home() {
         const addEntry = (polygon, entry = {}) => {
             if (!polygon || polygon.length < 3) return;
             const key = polygonHistoryKey(polygon);
-            byKey.set(key, {
-                ...byKey.get(key),
+            const candidate = {
                 ...entry,
                 polygon,
                 queried: true,
                 source: 'server'
-            });
+            };
+            byKey.set(key, newestPrecisionAreaEntry(byKey.get(key), candidate));
         };
 
         savedRoutes.forEach((route) => {
@@ -560,7 +570,10 @@ export default function Home() {
                 date: job.completed_at || job.updated_date || job.created_date,
                 last_pull_date: job.completed_at || job.updated_date || job.created_date,
                 criteria: {
-                    requested_properties: job.requested_properties || job.total_expected || job.active_count || null,
+                    requested_properties: getRequestedPrecisionCount({
+                        ...job,
+                        diagnostics: job.diagnostics || job.dry_run_metadata || {}
+                    }),
                     sold_months: job.sold_months || job.fetch_months || null,
                     min_price: job.min_price ?? job.filters?.min_price ?? null,
                     max_price: job.max_price ?? job.filters?.max_price ?? null
@@ -577,8 +590,10 @@ export default function Home() {
     // Identify properties already assigned to saved routes
     const assignedHashes = useMemo(() => {
         const hashes = new Set();
-        // Look at ALL saved routes to exclude assigned properties, regardless of filter
+        // Archived routes no longer own their doors. Active/completed route membership
+        // remains available to the user-controlled excludeAssigned gate.
         savedRoutes.forEach(r => {
+            if (r?.status === 'ARCHIVED') return;
             if (r.property_hashes && Array.isArray(r.property_hashes)) {
                 r.property_hashes.forEach(h => hashes.add(h));
             }
@@ -664,25 +679,50 @@ export default function Home() {
         return `${base} ${maxExisting + batchIndex}`;
     };
 
-    const handleSaveRoute = async (route, assignedRepId = null, assignedRepName = null, silent = false) => {
+    const handleSaveRoute = async (route, assignedRepId = null, assignedRepName = null, silent = false, precisionAreaContext = null) => {
         const defaultAssigneeId = assignedRepId || user?.id;
         const defaultAssigneeName = assignedRepName || user?.full_name || 'Me';
         const baseRouteName = deriveRouteName(route);
         const isGeneratedRoute = !route?.isSaved && Array.isArray(route?.properties) && route.properties.length > 0;
-        const routeMode = route.route_mode || 'precision';
-        const currentPrecisionPolygon = routeMode === 'precision' ? normalizeHistoryPolygon(drawnPolygon) : [];
+        const hasExplicitAreaContext = precisionAreaContext && typeof precisionAreaContext === 'object';
+        const precisionJobId = hasExplicitAreaContext
+            ? (precisionAreaContext.jobId || null)
+            : (currentBatchDataJobIdRef.current || currentBatchDataJobId || null);
+        // An exact paid job is Precision by contract. A mutable UI/localStorage
+        // mode change while the job polls must not relabel it as Canvas and drop
+        // its job/polygon provenance or entitlement accounting.
+        const routeMode = hasExplicitAreaContext && precisionJobId
+            ? 'precision'
+            : (route.route_mode || 'precision');
+        const precisionPolygonSource = hasExplicitAreaContext
+            ? precisionAreaContext.polygon
+            : (precisionJobId ? currentBatchDataPolygonRef.current : drawnPolygon);
+        const currentPrecisionPolygon = routeMode === 'precision'
+            ? normalizeHistoryPolygon(precisionPolygonSource)
+            : [];
+        if (isGeneratedRoute && routeMode === 'precision' && precisionJobId && currentPrecisionPolygon.length < 3) {
+            throw new Error('Cannot save an exact-job Precision route without its submitted polygon.');
+        }
         const generatedAt = new Date().toISOString();
         const precisionAreaMetadata = isGeneratedRoute && currentPrecisionPolygon.length >= 3
             ? {
                 precision_area: {
                     polygon: currentPrecisionPolygon,
-                    job_id: currentBatchDataJobIdRef.current || currentBatchDataJobId || null,
+                    job_id: precisionJobId,
                     last_pull_date: generatedAt,
                     date: generatedAt,
                     criteria: {
-                        sold_months: currentBatchDataSoldMonthsRef.current || soldDateFilter || null,
+                        requested_properties: precisionAreaContext?.requestedProperties
+                            ?? (precisionJobId ? currentBatchDataRequestedCountRef.current : null),
+                        sold_months: precisionAreaContext?.soldMonths || currentBatchDataSoldMonthsRef.current || soldDateFilter || null,
+                        min_price: precisionAreaContext?.minPrice
+                            ?? (precisionJobId ? currentBatchDataMinPriceRef.current : routeConfig.minPrice)
+                            ?? null,
+                        max_price: precisionAreaContext?.maxPrice
+                            ?? (precisionJobId ? currentBatchDataMaxPriceRef.current : routeConfig.maxPrice)
+                            ?? null,
                         route_mode: routeMode,
-                        pull_mode: lastPullMode || null
+                        pull_mode: precisionAreaContext?.pullMode || lastPullMode || null
                     }
                 }
             }
@@ -924,11 +964,16 @@ export default function Home() {
 
         // Deduplicate by normalized address (catches Phase1/Phase2 hash mismatch duplicates)
         const dedupMap = new Map();
-        mapped.forEach(p => {
+        mapped.forEach((p, index) => {
             const street = (p.street_name || '').toUpperCase().trim();
             const num = p.house_number || 0;
             const zip = String(p.zip_code || '').trim().slice(0, 5);
-            const dedupKey = `${num}|${street}|${zip}`;
+            const hasCompleteAddressKey = Number(num) > 0 && !!street && zip.length === 5;
+            const fallbackIdentity = p.address_hash || p.id || String(p.full_address || '').toUpperCase().trim();
+            // Never collapse unrelated incomplete rows into a shared `0||ZIP` bucket.
+            const dedupKey = hasCompleteAddressKey
+                ? `address:${num}|${street}|${zip}`
+                : `record:${fallbackIdentity || `row-${index}`}`;
             const existing = dedupMap.get(dedupKey);
             if (!existing) {
                 dedupMap.set(dedupKey, p);
@@ -1201,30 +1246,35 @@ export default function Home() {
                 const savedPolygon = localStorage.getItem('fk_drawnPolygon');
                 storedPolygon = savedPolygon ? JSON.parse(savedPolygon) : null;
             } catch { }
-            const rawActiveGenerationPolygon = Array.isArray(drawnPolygon) && drawnPolygon.length > 2
+            const rawUiGenerationPolygon = Array.isArray(drawnPolygon) && drawnPolygon.length > 2
                 ? drawnPolygon
                 : Array.isArray(draftPolygon) && draftPolygon.length > 2
                     ? draftPolygon
                     : Array.isArray(storedPolygon) && storedPolygon.length > 2
                         ? storedPolygon
                         : null;
-            const normalizedActivePolygon = normalizeHistoryPolygon(rawActiveGenerationPolygon);
-            const activeGenerationPolygon = normalizedActivePolygon.length > 2 ? normalizedActivePolygon : null;
             console.log(`[generateRoutes] Polygon source: state=${Array.isArray(drawnPolygon) ? drawnPolygon.length : 0}, draft=${Array.isArray(draftPolygon) ? draftPolygon.length : 0}, stored=${Array.isArray(storedPolygon) ? storedPolygon.length : 0}`);
             const activeFetchJobId = currentBatchDataJobIdRef.current || currentBatchDataJobId;
-            const activePolygonKey = activeGenerationPolygon ? polygonHistoryKey(activeGenerationPolygon) : null;
+            const normalizedUiPolygon = normalizeHistoryPolygon(rawUiGenerationPolygon);
             const currentJobPolygon = normalizeHistoryPolygon(currentBatchDataPolygonRef.current);
-            const currentJobPolygonKey = currentJobPolygon.length > 2 ? polygonHistoryKey(currentJobPolygon) : null;
-            const requestedPrecisionCount = activeFetchJobId ? currentBatchDataRequestedCountRef.current : null;
-            const isCurrentBatchDataRun = !!activeFetchJobId && !!activeGenerationPolygon && !!activePolygonKey && activePolygonKey === currentJobPolygonKey;
-            const effectiveGenerationSoldFilter = isCurrentBatchDataRun ? (currentBatchDataSoldMonthsRef.current || soldDateFilter) : soldDateFilter;
-            if (activeFetchJobId && activeGenerationPolygon && !isCurrentBatchDataRun) {
-                console.warn('[generateRoutes] Ignoring stale BatchData job context for a different polygon', {
-                    activeFetchJobId,
-                    activePolygonKey,
-                    currentJobPolygonKey
-                });
+            const generationArea = resolvePrecisionGenerationArea({
+                jobId: activeFetchJobId,
+                jobPolygon: currentJobPolygon,
+                uiPolygon: normalizedUiPolygon
+            });
+            if (generationArea.error) {
+                toast.dismiss('build-routes');
+                const mismatch = generationArea.error === 'job_polygon_mismatch';
+                setGenerationError(mismatch
+                    ? 'The completed BatchData pull belongs to a different polygon than the area currently on the canvas. Route generation stopped before any unscoped properties could be used. Clear the current drawing and reopen the completed area, or run a new pull for this drawing.'
+                    : 'The completed BatchData pull is missing its submitted polygon. Route generation stopped before any unscoped properties could be used. Please run this area again.');
+                return false;
             }
+            const activeGenerationPolygon = generationArea.polygon;
+            const activePolygonKey = generationArea.polygonKey;
+            const requestedPrecisionCount = activeFetchJobId ? currentBatchDataRequestedCountRef.current : null;
+            const isCurrentBatchDataRun = generationArea.exactJob === true;
+            const effectiveGenerationSoldFilter = isCurrentBatchDataRun ? (currentBatchDataSoldMonthsRef.current || soldDateFilter) : soldDateFilter;
             if (activeGenerationPolygon) {
                 const polygonProps = await fetchRouteCandidatesFromNeon({
                     polygon: activeGenerationPolygon,
@@ -1382,15 +1432,31 @@ export default function Home() {
 
             // 3. FILTERING — delegated to routeFilterPipeline for clarity + diagnostics
             const effectiveRouteConfig = isCurrentBatchDataRun
-                ? { ...routeConfig, excludeAssigned: true }
-                : routeConfig;
+                ? {
+                    ...routeConfig,
+                    soldMinDateOverride: currentBatchDataSoldMinDateRef.current,
+                    minPrice: Math.max(Number(currentBatchDataMinPriceRef.current) || 0, Number(routeConfig.minPrice) || 0) || null,
+                    maxPrice: [currentBatchDataMaxPriceRef.current, routeConfig.maxPrice]
+                        .map(Number).filter(value => Number.isFinite(value) && value > 0)
+                        .reduce((minimum, value) => Math.min(minimum, value), Infinity) === Infinity
+                        ? null
+                        : [currentBatchDataMaxPriceRef.current, routeConfig.maxPrice]
+                            .map(Number).filter(value => Number.isFinite(value) && value > 0)
+                            .reduce((minimum, value) => Math.min(minimum, value), Infinity),
+                    reincludedHashes: currentBatchDataReincludedHashesRef.current
+                }
+                : { ...routeConfig, reincludedHashes: null };
             const filterResult = applyRouteFilters({
                 initialSet, drawnPolygon: activeGenerationPolygon, zipCodeFilter,
                 territoryZipCodes: user?.territory_zip_codes,
                 soldDateFilter: effectiveGenerationSoldFilter, routeConfig: effectiveRouteConfig, lastPullMode, logsByAddress, assignedHashes,
             });
             console.log(`[generateRoutes] Filter funnel: ${formatStageCounts(filterResult.stages)}`);
-            if (filterResult.frozenSet) setFrozenWorkingSet(filterResult.frozenSet);
+            if (filterResult.frozenSet) {
+                setFrozenWorkingSet(filterResult.frozenSet);
+                frozenPolygonKeyRef.current = activePolygonKey;
+                frozenBatchDataJobIdRef.current = isCurrentBatchDataRun ? activeFetchJobId : null;
+            }
             if (filterResult.diagnostic) console.warn(`[generateRoutes] Sold-date diagnostic:`, filterResult.diagnostic);
             if (filterResult.error) {
                 console.warn(`[generateRoutes] Filter error:`, filterResult.error, 'stages:', filterResult.stages);
@@ -1420,8 +1486,8 @@ export default function Home() {
             // 5. GENERATE ROUTES — yield to UI before heavy computation
             const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
             const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
-            const finalCount = workingSet.length; const filteredOut = initialCount - finalCount; const effectiveUse2Opt = finalCount > 3000 ? false : routeConfig.use2Opt;
-            if (finalCount > 3000 && routeConfig.use2Opt) console.warn(`[generateRoutes] Auto-disabled 2-Opt (n=${finalCount} > 3K)`);
+            const finalCount = workingSet.length; const filteredOut = initialCount - finalCount; const effectiveUse2Opt = finalCount > 3000 ? false : effectiveRouteConfig.use2Opt;
+            if (finalCount > 3000 && effectiveRouteConfig.use2Opt) console.warn(`[generateRoutes] Auto-disabled 2-Opt (n=${finalCount} > 3K)`);
             const optStart = performance.now();
             setGenerationStage(`Optimizing ${finalCount.toLocaleString()} doors — ~${Math.max(2, Math.round(finalCount / 1500))}s`);
             toast.loading(`Optimizing ${finalCount.toLocaleString()} properties${filteredOut > 0 ? ` (${filteredOut.toLocaleString()} filtered)` : ''}... ~${Math.max(2, Math.round(finalCount / 1500))}s`, { id: 'build-routes' });
@@ -1432,20 +1498,40 @@ export default function Home() {
                     houses_per_route: housesPerRoute,
                     start_location: start
                 })).data.routes
-                : await new Promise(resolve => setTimeout(() => resolve(generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: routeConfig.returnToStart, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights)), 50));
+                : await new Promise(resolve => setTimeout(() => resolve(generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: effectiveRouteConfig.walkingPattern === 'street_sweep', minimizeTurns: effectiveRouteConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: effectiveRouteConfig.walkingPattern, returnToStart: effectiveRouteConfig.returnToStart, excludeTerminal: effectiveRouteConfig.excludeTerminal, cooldownBypassHashes: effectiveRouteConfig.reincludedHashes, routeMode: isCurrentBatchDataRun ? 'precision' : null }, learnedWeights)), 50));
             const generatedDoorCount = Array.isArray(generated) ? generated.reduce((sum, route) => sum + (route.properties?.length || route.houseCount || 0), 0) : 0;
             console.log(`[RoutePipeline] after_route_command routes=${generated?.length || 0} doors=${generatedDoorCount} elapsed_ms=${Math.round(performance.now() - optStart)}`);
-            if (!generated || generated.length === 0) { toast.dismiss('build-routes'); setGenerationError(`Optimizer returned 0 routes from ${finalCount.toLocaleString()} properties. Try relaxing filters or pulling fresh data.`); return false; }
-            if (generated['_cooldownInfo']) setCooldownInfo(generated['_cooldownInfo']);
+            const optimizerCooldownInfo = generated?.['_cooldownInfo'] || null;
+            if (optimizerCooldownInfo) {
+                setCooldownInfo(optimizerCooldownInfo);
+                console.info('[RoutePipeline] cooldown decision', optimizerCooldownInfo);
+            }
+            if (!generated || generated.length === 0) {
+                toast.dismiss('build-routes');
+                const cooldownExcluded = Number(optimizerCooldownInfo?.propertiesExcluded) || 0;
+                setGenerationError(cooldownExcluded > 0
+                    ? `Optimizer returned 0 routes. Street cooldown excluded ${cooldownExcluded.toLocaleString()} candidate${cooldownExcluded === 1 ? '' : 's'}; any remainder was removed by coordinate, duplicate, or terminal-status safety checks. Timestamped interactions before a proven new sale are already reopened; same-day, newer, undated, and CSV cooldowns remain in force.`
+                    : `Optimizer returned 0 routes from ${finalCount.toLocaleString()} properties. Try relaxing filters or pulling fresh data.`);
+                return false;
+            }
             setRoutes(generated);
             // AUTO-SAVE (skip routes >10K properties — payload too large)
             const saveable = generated.filter(r => r.houseCount <= 10000);
+            const precisionAreaContext = {
+                jobId: isCurrentBatchDataRun ? activeFetchJobId : null,
+                polygon: activeGenerationPolygon,
+                requestedProperties: isCurrentBatchDataRun ? requestedPrecisionCount : null,
+                soldMonths: isCurrentBatchDataRun ? effectiveGenerationSoldFilter : soldDateFilter,
+                minPrice: isCurrentBatchDataRun ? currentBatchDataMinPriceRef.current : effectiveRouteConfig.minPrice,
+                maxPrice: isCurrentBatchDataRun ? currentBatchDataMaxPriceRef.current : effectiveRouteConfig.maxPrice,
+                pullMode: isCurrentBatchDataRun ? 'batchdata_job' : lastPullMode
+            };
             let savedRecords = [];
             if (saveable.length > 0) {
                 setGenerationStage(`Saving ${saveable.length} routes...`);
                 const bulkId = toast.loading(`Auto-saving ${saveable.length} routes...`);
                 try {
-                    savedRecords = await Promise.all(saveable.map(r => handleSaveRoute(r, null, null, true)));
+                    savedRecords = await Promise.all(saveable.map(r => handleSaveRoute(r, null, null, true, precisionAreaContext)));
                     toast.success(`Saved ${saveable.length} routes`, { id: bulkId, duration: 3000 });
                     setModeRaw('analyze');
                     // Saved routes now live in Active (with NEW badge) — drop the in-memory copies so
@@ -1458,7 +1544,15 @@ export default function Home() {
             // Go straight to the map: activate the first generated route instead of opening the command panel
             const firstRoute = generated[0];
             const firstSaved = savedRecords[0];
-            setActiveRoute(firstSaved?.id ? { ...firstRoute, id: firstSaved.id, isSaved: true, status: firstSaved.status || 'ACTIVE' } : firstRoute);
+            setActiveRoute(firstSaved?.id ? {
+                ...firstRoute,
+                id: firstSaved.id,
+                isSaved: true,
+                status: firstSaved.status || 'ACTIVE',
+                route_mode: firstSaved.route_mode || firstRoute.route_mode,
+                property_hashes: firstSaved.property_hashes || firstRoute.properties?.map(property => property.address_hash).filter(Boolean),
+                metadata: firstSaved.metadata || firstRoute.metadata
+            } : firstRoute);
             setPreviewRoute(null);
             setShowRoutePanel(false); setShowCompare(false);
             let skippedDueToAssigned = 0;
@@ -1513,15 +1607,50 @@ export default function Home() {
         try {
             const logsByAddr = new Map();
             logs.forEach(l => { if (!l.address_hash) return; if (!logsByAddr.has(l.address_hash)) logsByAddr.set(l.address_hash, []); logsByAddr.get(l.address_hash).push(l); });
+            const reorderUsesCurrentBatchJob = !!frozenBatchDataJobIdRef.current
+                && frozenBatchDataJobIdRef.current === currentBatchDataJobIdRef.current;
+            if (frozenBatchDataJobIdRef.current && !reorderUsesCurrentBatchJob) {
+                toast.dismiss('reorder-routes');
+                setGenerationError('These frozen candidates belong to a different completed BatchData job. Reorder stopped before mixing job data. Reopen the completed area and build again.');
+                return false;
+            }
+            const reorderArea = resolvePrecisionGenerationArea({
+                jobId: reorderUsesCurrentBatchJob ? currentBatchDataJobIdRef.current : null,
+                jobPolygon: reorderUsesCurrentBatchJob ? normalizeHistoryPolygon(currentBatchDataPolygonRef.current) : null,
+                uiPolygon: normalizeHistoryPolygon(drawnPolygon)
+            });
+            if (reorderArea.error) {
+                toast.dismiss('reorder-routes');
+                setGenerationError(reorderArea.error === 'job_polygon_mismatch'
+                    ? 'The completed BatchData pull belongs to a different polygon than the current drawing. Reorder stopped before mixing areas.'
+                    : 'The completed BatchData pull is missing its submitted polygon. Reorder stopped before mixing areas.');
+                return false;
+            }
+            const reorderRouteConfig = reorderUsesCurrentBatchJob
+                ? {
+                    ...routeConfig,
+                    soldMinDateOverride: currentBatchDataSoldMinDateRef.current,
+                    minPrice: Math.max(Number(currentBatchDataMinPriceRef.current) || 0, Number(routeConfig.minPrice) || 0) || null,
+                    maxPrice: [currentBatchDataMaxPriceRef.current, routeConfig.maxPrice]
+                        .map(Number).filter(value => Number.isFinite(value) && value > 0)
+                        .reduce((minimum, value) => Math.min(minimum, value), Infinity) === Infinity
+                        ? null
+                        : [currentBatchDataMaxPriceRef.current, routeConfig.maxPrice]
+                            .map(Number).filter(value => Number.isFinite(value) && value > 0)
+                            .reduce((minimum, value) => Math.min(minimum, value), Infinity),
+                    reincludedHashes: currentBatchDataReincludedHashesRef.current
+                }
+                : { ...routeConfig, reincludedHashes: null };
             const filterResult = applyRouteFilters({
-                initialSet: frozenWorkingSet, drawnPolygon, zipCodeFilter,
+                initialSet: frozenWorkingSet, drawnPolygon: reorderArea.polygon, zipCodeFilter,
                 territoryZipCodes: user?.territory_zip_codes,
-                soldDateFilter, routeConfig, lastPullMode, logsByAddress: logsByAddr, assignedHashes,
+                soldDateFilter: reorderUsesCurrentBatchJob ? (currentBatchDataSoldMonthsRef.current || soldDateFilter) : soldDateFilter,
+                routeConfig: reorderRouteConfig, lastPullMode, logsByAddress: logsByAddr, assignedHashes,
             });
             console.log(`[handleReorder] Filter funnel: ${formatStageCounts(filterResult.stages)}`);
             if (filterResult.error) { toast.dismiss('reorder-routes'); setGenerationError(filterResult.error); return false; }
             const workingSet = filterResult.workingSet;
-            const effectiveUse2Opt = workingSet.length > 3000 ? false : routeConfig.use2Opt;
+            const effectiveUse2Opt = workingSet.length > 3000 ? false : reorderRouteConfig.use2Opt;
             const start = startLocation || (mapRef.current ? { lat: mapRef.current.getCenter().lat, lng: mapRef.current.getCenter().lng } : null);
             const generated = workingSet.length > 5000
                 ? (await base44.functions.invoke('generateRoutesBackend', {
@@ -1529,17 +1658,42 @@ export default function Home() {
                     houses_per_route: housesPerRoute,
                     start_location: start
                 })).data.routes
-                : generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: routeConfig.returnToStart, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights);
+                : generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: reorderRouteConfig.walkingPattern === 'street_sweep', minimizeTurns: reorderRouteConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: reorderRouteConfig.walkingPattern, returnToStart: reorderRouteConfig.returnToStart, excludeTerminal: reorderRouteConfig.excludeTerminal, cooldownBypassHashes: reorderRouteConfig.reincludedHashes, routeMode: reorderUsesCurrentBatchJob ? 'precision' : null }, learnedWeights);
+            const optimizerCooldownInfo = generated?.['_cooldownInfo'] || null;
+            if (optimizerCooldownInfo) setCooldownInfo(optimizerCooldownInfo);
+            if (!generated || generated.length === 0) {
+                toast.dismiss('reorder-routes');
+                const cooldownExcluded = Number(optimizerCooldownInfo?.propertiesExcluded) || 0;
+                setGenerationError(cooldownExcluded > 0
+                    ? `Optimizer returned 0 routes. Street cooldown excluded ${cooldownExcluded.toLocaleString()} candidate${cooldownExcluded === 1 ? '' : 's'}; any remainder was removed by coordinate, duplicate, or terminal-status safety checks. Timestamped interactions before a proven new sale are already reopened; same-day, newer, undated, and CSV cooldowns remain in force.`
+                    : `Optimizer returned 0 routes from ${workingSet.length.toLocaleString()} properties.`);
+                return false;
+            }
             setRoutes(generated);
             let savedRecords = [];
-            if (generated.length > 0) {
-                const bulkId = toast.loading(`Auto-saving ${generated.length} routes...`);
-                try { savedRecords = await Promise.all(generated.map(r => handleSaveRoute(r, null, null, true))); toast.success(`Reordered into ${generated.length} routes`, { id: bulkId, duration: 3000 }); setModeRaw('analyze'); setRoutes([]); } catch (e) { toast.error('Auto-save failed.', { id: bulkId }); }
-            }
+            const bulkId = toast.loading(`Auto-saving ${generated.length} routes...`);
+            const precisionAreaContext = {
+                jobId: reorderUsesCurrentBatchJob ? currentBatchDataJobIdRef.current : null,
+                polygon: reorderArea.polygon,
+                requestedProperties: reorderUsesCurrentBatchJob ? currentBatchDataRequestedCountRef.current : null,
+                soldMonths: reorderUsesCurrentBatchJob ? (currentBatchDataSoldMonthsRef.current || soldDateFilter) : soldDateFilter,
+                minPrice: reorderUsesCurrentBatchJob ? currentBatchDataMinPriceRef.current : reorderRouteConfig.minPrice,
+                maxPrice: reorderUsesCurrentBatchJob ? currentBatchDataMaxPriceRef.current : reorderRouteConfig.maxPrice,
+                pullMode: reorderUsesCurrentBatchJob ? 'batchdata_job' : lastPullMode
+            };
+            try { savedRecords = await Promise.all(generated.map(r => handleSaveRoute(r, null, null, true, precisionAreaContext))); toast.success(`Reordered into ${generated.length} routes`, { id: bulkId, duration: 3000 }); setModeRaw('analyze'); setRoutes([]); } catch (e) { toast.error('Auto-save failed.', { id: bulkId }); }
             // Go straight to the map: activate the first generated route instead of opening the command panel
             if (generated.length > 0) {
                 const firstSaved = savedRecords[0];
-                setActiveRoute(firstSaved?.id ? { ...generated[0], id: firstSaved.id, isSaved: true, status: firstSaved.status || 'ACTIVE' } : generated[0]);
+                setActiveRoute(firstSaved?.id ? {
+                    ...generated[0],
+                    id: firstSaved.id,
+                    isSaved: true,
+                    status: firstSaved.status || 'ACTIVE',
+                    route_mode: firstSaved.route_mode || generated[0].route_mode,
+                    property_hashes: firstSaved.property_hashes || generated[0].properties?.map(property => property.address_hash).filter(Boolean),
+                    metadata: firstSaved.metadata || generated[0].metadata
+                } : generated[0]);
                 setPreviewRoute(null);
             }
             setShowRoutePanel(false); setShowCompare(false);
@@ -1625,10 +1779,12 @@ export default function Home() {
         const highPotentialCount = routes.filter(r => r.competitivenessScore >= 100).length;
 
         // Count excluded if available from generation metadata
-        const excludedCount = routes['_cooldownInfo'] ? routes['_cooldownInfo'].propertiesExcluded : 0;
+        const resolvedCooldownInfo = routes['_cooldownInfo'] || cooldownInfo;
+        const excludedCount = resolvedCooldownInfo?.propertiesExcluded || 0;
+        const newSaleReincludedCount = resolvedCooldownInfo?.propertiesReincludedForNewSale || 0;
 
-        return { totalHouses, totalDist, avgScore, routeCount: routes.length, highPotentialCount, excludedCount };
-    }, [routes]);
+        return { totalHouses, totalDist, avgScore, routeCount: routes.length, highPotentialCount, excludedCount, newSaleReincludedCount };
+    }, [routes, cooldownInfo]);
 
     // Only update fitBounds when the active route ID actually changes — NOT on every filter/state update.
     // Previously, any change to availableProperties or filteredActiveRoute (e.g. toggling a filter) would
@@ -1999,6 +2155,8 @@ export default function Home() {
                 routeConfig={routeConfig}
                 onPullComplete={async (pullFetchMonths, pulledWithMls, jobStatus = {}) => {
                     setFrozenWorkingSet(null);
+                    frozenPolygonKeyRef.current = null;
+                    frozenBatchDataJobIdRef.current = null;
                     setFetchedProperties([]);
                     const completedJobId = getPrecisionJobId(jobStatus);
                     if (!completedJobId) {
@@ -2006,23 +2164,56 @@ export default function Home() {
                         currentBatchDataJobIdRef.current = null;
                         currentBatchDataRequestedCountRef.current = null;
                         currentBatchDataPolygonRef.current = null;
+                        currentBatchDataSoldMinDateRef.current = null;
+                        currentBatchDataMinPriceRef.current = null;
+                        currentBatchDataMaxPriceRef.current = null;
+                        currentBatchDataReincludedHashesRef.current = new Set();
                         setGenerationError('This Precision pull completed, but the completed job id was missing. Route generation was stopped so old account data cannot be mixed into this new area. Please generate the area again.');
-                        return;
+                        return false;
                     }
-                    const drawnPullPolygon = normalizeHistoryPolygon(drawnPolygon);
-                    const normalizedPullPolygon = drawnPullPolygon.length > 2 ? drawnPullPolygon : getFetchJobHistoryPolygon(jobStatus);
-                    if (normalizedPullPolygon.length < 3) {
-                        setCurrentBatchDataJobId(null);
-                        currentBatchDataJobIdRef.current = null;
-                        currentBatchDataRequestedCountRef.current = null;
+                    // The completed job owns the route boundary. Require its immutable
+                    // submitted polygon so a user edit made while polling cannot route
+                    // job records against a different, mutable UI polygon.
+                    let completedContext = resolveCompletedPrecisionPullContext({
+                        status: jobStatus,
+                        expectedUserEmail: user?.email
+                    });
+                    if (completedContext.error === 'missing_job_polygon') {
+                        const exactJobResponse = await base44.entities.FetchJob.get(completedJobId).catch(() => null);
+                        const exactJob = exactJobResponse?.data || exactJobResponse;
+                        completedContext = resolveCompletedPrecisionPullContext({
+                            status: jobStatus,
+                            exactJob,
+                            expectedUserEmail: user?.email
+                        });
+                    }
+                    const normalizedPullPolygon = completedContext.polygon;
+                    if (completedContext.error || normalizedPullPolygon.length < 3) {
+                        // Preserve the exact completed job id for a safe retry after a
+                        // coordinated backend deployment. Never downgrade to an
+                        // account-wide candidate query because geometry was omitted.
+                        setCurrentBatchDataJobId(completedJobId);
+                        currentBatchDataJobIdRef.current = completedJobId;
+                        currentBatchDataRequestedCountRef.current = getRequestedPrecisionCount(jobStatus);
                         currentBatchDataPolygonRef.current = null;
-                        setGenerationError('This Precision pull completed, but the selected area was missing before routes could be built. Route generation was stopped so old account data cannot be mixed into this new area. Please generate the area again.');
-                        return;
+                        setGenerationError('This Precision pull completed, but its exact submitted area could not be recovered from the status response or FetchJob record. Route generation stayed scoped to this job and stopped safely. Refresh after the backend deployment finishes and retry this completed pull; do not start another paid pull yet.');
+                        return false;
                     }
                     setCurrentBatchDataJobId(completedJobId);
                     currentBatchDataJobIdRef.current = completedJobId;
                     currentBatchDataRequestedCountRef.current = getRequestedPrecisionCount(jobStatus);
                     currentBatchDataPolygonRef.current = normalizedPullPolygon;
+                    currentBatchDataSoldMinDateRef.current = jobStatus?.diagnostics?.sold_min_date || jobStatus?.diagnostics?.batchdata_summary?.sold_min_date || null;
+                    currentBatchDataMinPriceRef.current = jobStatus?.diagnostics?.filters?.min_price ?? null;
+                    currentBatchDataMaxPriceRef.current = jobStatus?.diagnostics?.filters?.max_price ?? null;
+                    currentBatchDataReincludedHashesRef.current = new Set([
+                        ...(Array.isArray(jobStatus?.diagnostics?.unresolved_followup_hashes_included)
+                            ? jobStatus.diagnostics.unresolved_followup_hashes_included
+                            : []),
+                        ...(Array.isArray(jobStatus?.diagnostics?.event_released_prior_route_hashes)
+                            ? jobStatus.diagnostics.event_released_prior_route_hashes
+                            : [])
+                    ]);
                     setRoutes([]);
                     setShowCompare(false);
                     setShowRoutePanel(false);
@@ -2057,11 +2248,13 @@ export default function Home() {
                             setDraftPolygon([]);
                             try { localStorage.removeItem('fk_drawnPolygonQueried'); } catch { }
                         }
+                        return routeBuilt === true;
                     } else {
                         const isUltraRecent = Number(pm) <= 0.25;
                         setGenerationError(isUltraRecent
                             ? 'No BatchData-confirmed sales were returned inside this exact area for the selected last-week window. Route generation was stopped so stale old data is not reused. Provider sale/intel records can lag — try 2 weeks or 1 month for this territory.'
                             : 'This pull produced no active routeable properties. Route generation was stopped so stale old data is not reused. Try a larger area or looser parameters.');
+                        return false;
                     }
                 }}
             />

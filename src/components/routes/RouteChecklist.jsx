@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Check, X, Phone, Ban, Home, Navigation, Mic, MapPin, UserX, Clock, User, DollarSign, Ruler } from 'lucide-react';
 import { getPropertyResultSummary } from '../logic/territoryLogic';
@@ -303,6 +302,7 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                         const isExpanded = expandedId === prop.address_hash;
                         const isDone = currentStatus && currentStatus !== 'ELIGIBLE';
                         const ownerName = prop.owner_full_name || prop.owner_name || prop.ownerFullName;
+                        const ownerIsProviderObservation = prop.owner_full_name_source === 'batchdata_job_observation';
                         const valueLabel = formatMoney(prop.price || prop.estimated_value || prop.estimatedValue);
                         const sqftLabel = formatNumber(prop.sqft || prop.squareFootage);
                         const yearBuilt = Number(prop.year_built || prop.yearBuilt) || null;
@@ -351,9 +351,12 @@ export default function RouteChecklist({ route, logs, onLogResult, onClose, navi
                                         {(ownerName || valueLabel || sqftLabel || yearBuilt) && (
                                             <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[9px] font-bold text-white/45">
                                                 {ownerName && (
-                                                    <span className="inline-flex max-w-[140px] items-center gap-1 truncate rounded-full bg-white/5 px-1.5 py-0.5">
+                                                    <span
+                                                        className="inline-flex max-w-[180px] items-center gap-1 truncate rounded-full bg-white/5 px-1.5 py-0.5"
+                                                        title={ownerIsProviderObservation ? 'Current BatchData owner observation; not verified as the buyer on the sale deed.' : undefined}
+                                                    >
                                                         <User className="h-2.5 w-2.5 shrink-0 text-[#39FF4A]" />
-                                                        <span className="truncate">{ownerName}</span>
+                                                        <span className="truncate">{ownerName}{ownerIsProviderObservation ? ' (provider)' : ''}</span>
                                                     </span>
                                                 )}
                                                 {valueLabel && (

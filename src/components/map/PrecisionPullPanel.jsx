@@ -1,11 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { X, Zap, Lock } from 'lucide-react';
+import { X, Zap, Lock, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { createPageUrl } from '@/utils';
 import PrecisionProUpgradeSheet from '@/components/map/PrecisionProUpgradeSheet';
 import { isPrecisionProUser } from '@/lib/precisionAccess';
+import {
+  getPrecisionPreviewAvailability,
+  precisionGenerationBlockedByPreview
+} from '@/lib/precisionPreviewAvailability';
 
 const PREMIUM_RECENT_RANGES = [1 / 30, 2 / 30, 0.25, 0.5, 1];
 const FREE_PRECISION_HOME_LIMIT = 50;
@@ -57,11 +61,15 @@ export default function PrecisionPullPanel({
   setPropertyCountMode,
   minHomeValue,
   setMinHomeValue,
+  minimumHomeValueFloor = 100000,
   maxHomeValue,
   setMaxHomeValue,
   soldMonths,
   setSoldMonths,
   onClose,
+  onPreview,
+  previewing,
+  previewResult,
   onGenerate,
   generating,
   pullError,
@@ -82,6 +90,16 @@ export default function PrecisionPullPanel({
   const [showUpgradeSheet, setShowUpgradeSheet] = useState(false);
   const hasShownFallbackToast = useRef(false);
   const isProPlan = isPrecisionProUser(user);
+  const selectedSoldMonths = Number(soldMonths || 12);
+  const previewAvailability = getPrecisionPreviewAvailability(previewResult);
+  const providerCandidateCount = previewAvailability.count;
+  const hasProviderCount = previewAvailability.hasCount;
+  const requiresShortWindowPreflight = !selectedHistoryArea && selectedSoldMonths < 0.5;
+  const zeroCandidatePreview = !selectedHistoryArea && previewAvailability.definitiveZero;
+  const generationBlockedByAvailability = precisionGenerationBlockedByPreview(previewResult, {
+    selectedHistoryArea: !!selectedHistoryArea,
+    requiresShortWindowPreflight
+  });
 
   const goToUpgrade = () => navigate(createPageUrl('Billing') + '?plan=precision');
   const historyCriteria = selectedHistoryArea?.criteria || {};
@@ -228,6 +246,10 @@ export default function PrecisionPullPanel({
                   placeholder="Min"
                   value={formatMoney(minHomeValue)}
                   onChange={(e) => setMinHomeValue(moneyInputToNumber(e.target.value))}
+                  onBlur={() => {
+                    const parsed = Number(minHomeValue);
+                    setMinHomeValue(Number.isFinite(parsed) && parsed > minimumHomeValueFloor ? parsed : minimumHomeValueFloor);
+                  }}
                   className="w-full h-12 rounded-xl bg-white/5 border border-white/10 pl-7 pr-3 text-white text-base outline-none focus:border-[#2EEB57]"
                 />
               </div>
@@ -243,6 +265,9 @@ export default function PrecisionPullPanel({
                 />
               </div>
             </div>
+            <p className="text-[10px] leading-relaxed text-gray-500">
+              Precision routes require a returned estimated home value of at least ${formatMoney(minimumHomeValueFloor)}. You can raise this minimum, but it cannot be disabled.
+            </p>
           </div>
 
           <div className="space-y-2">
@@ -310,6 +335,21 @@ export default function PrecisionPullPanel({
                 1 day, 2 day, 1 week, 2 week, and 1 month are available on Pro. Your current free range starts at 3 months.
               </p>
             )}
+            {isProPlan && !selectedHistoryArea && selectedSoldMonths <= 0.5 && (
+              <div className={`rounded-xl border px-3 py-2 text-[10px] leading-snug ${
+                zeroCandidatePreview
+                  ? 'border-amber-400/35 bg-amber-400/[0.08] text-amber-100'
+                  : 'border-white/10 bg-white/[0.03] text-gray-400'
+              }`}>
+                {zeroCandidatePreview
+                  ? 'No provider candidates were found for this date range. Broaden the window before generating.'
+                  : previewAvailability.partial
+                    ? 'One provider date-predicate count is unavailable. The displayed count is only a partial lower bound, so Generate remains available for the full Intel/Sale union.'
+                  : requiresShortWindowPreflight && !previewAvailability.hasSuccessfulPredicate
+                    ? 'Short-window inventory is often sparse. Check Count is required before generating a 1-day, 2-day, or 1-week route.'
+                    : 'Short-window availability varies by market. This is a lower-bound count after BatchData applied the recent-sale, R2, $100k value, and not-Active/Pending predicates; the paid pull computes the de-duplicated Intel/Sale union.'}
+              </div>
+            )}
           </div>
 
         </div>
@@ -329,13 +369,52 @@ export default function PrecisionPullPanel({
               )}
             </div>
           )}
-          <Button
-            disabled={generating}
-            onClick={onGenerate}
-            className="w-full h-12 rounded-xl bg-[#2EEB57] hover:bg-[#39FF4A] text-black font-extrabold tracking-wide"
-          >
-            {generating ? 'GENERATING...' : <><Zap className="w-4 h-4 mr-2" /> {selectedHistoryArea ? 'REFRESH AREA' : 'GENERATE'}</>}
-          </Button>
+          {previewResult && (
+            <div className={`mb-3 rounded-xl border p-3 ${previewResult.count_probe?.ok === false || previewAvailability.partial ? 'border-amber-500/40 bg-amber-500/10' : 'border-[#2EEB57]/30 bg-[#2EEB57]/[0.07]'}`}>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#39FF4A]">Live area availability</p>
+              {previewAvailability.partial ? (
+                <p className="mt-1 text-xs text-amber-200">
+                  BatchData returned a partial lower bound{hasProviderCount ? ` of ${formatCount(providerCandidateCount)}` : ''}. One of Intel/Sale is still unknown, so this is not an authoritative zero and Generate remains available.
+                </p>
+              ) : previewResult.provider_candidate_count !== null && previewResult.provider_candidate_count !== undefined && previewResult.provider_candidate_count !== '' && Number.isFinite(Number(previewResult.provider_candidate_count)) ? (
+                <p className="mt-1 text-xs text-white">
+                  At least <span className="font-extrabold">{formatCount(previewResult.provider_candidate_count)}</span> qualified provider candidates are in this exact polygon after the R2, value, and listing predicates. Up to <span className="font-extrabold">{formatCount(previewResult.returned_property_count)}</span> can be requested under the account cap; the paid pull computes the exact de-duplicated Intel/Sale union.
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-amber-200">{previewResult.count_probe?.error || previewResult.message || 'Provider count unavailable.'}</p>
+              )}
+              <p className="mt-1 text-[10px] text-gray-400">
+                {previewResult.count_probe?.cache_hit
+                  ? 'Count served from the five-minute cache; no new BatchData request.'
+                  : previewResult.count_probe?.coalesced_request
+                    ? 'Count shared an in-flight BatchData request; no duplicate request was sent from this server instance.'
+                  : `Count-only check made ${formatCount(previewResult.count_probe_requests)} BatchData API request.`}
+                {' '}Credit billing for count-only requests is unverified; confirm it in the BatchData dashboard. Duplicate, saved-route, contradiction, and cooldown gates can reduce the route after the exact union is pulled.
+              </p>
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={previewing || generating}
+              onClick={onPreview}
+              className="h-12 rounded-xl border-[#2EEB57]/40 bg-transparent text-[#39FF4A] hover:bg-[#2EEB57]/10 hover:text-[#39FF4A] font-extrabold tracking-wide"
+            >
+              <Search className="w-4 h-4 mr-2" /> {previewing ? 'CHECKING...' : 'CHECK COUNT'}
+            </Button>
+            <Button
+              disabled={generating || previewing || generationBlockedByAvailability}
+              onClick={onGenerate}
+              className="h-12 rounded-xl bg-[#2EEB57] hover:bg-[#39FF4A] text-black font-extrabold tracking-wide"
+            >
+              {generating
+                ? 'GENERATING...'
+                : generationBlockedByAvailability
+                  ? <><Search className="w-4 h-4 mr-2" /> {zeroCandidatePreview ? 'BROADEN DATE RANGE' : 'CHECK COUNT FIRST'}</>
+                  : <><Zap className="w-4 h-4 mr-2" /> {selectedHistoryArea ? 'REFRESH AREA' : 'GENERATE'}</>}
+            </Button>
+          </div>
           <p className="text-[10px] text-gray-500 text-center mt-2">Pulls newly sold homes in your selected range, then prepares them for optimized routing.</p>
         </div>
       </div>

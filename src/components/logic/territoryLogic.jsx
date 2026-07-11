@@ -8,6 +8,41 @@ export const COOLDOWN_CONFIG = {
     CALLBACK_DEFAULT_DAYS: 30,     // Default callback period
 };
 
+const calendarDateKey = (value) => {
+    if (!value) return null;
+    if (typeof value === 'string') {
+        const match = value.trim().match(/^(\d{4}-\d{2}-\d{2})/);
+        if (match) return match[1];
+    }
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toISOString().slice(0, 10);
+};
+
+/**
+ * Earliest defensible boundary for the property's current ownership event.
+ * An exact observed sale date is strongest. Lean BatchData Search rows instead
+ * carry the accepted provider predicate's minimum date, which still proves an
+ * interaction before that date belongs to an older ownership event.
+ */
+export const getCurrentSaleEventBoundary = (property) => {
+    if (property?.provider_exact_sale_date_observed !== false) {
+        const exactSaleDate = calendarDateKey(property?.sold_date);
+        if (exactSaleDate) return exactSaleDate;
+    }
+    const recentSaleSources = Array.isArray(property?.provider_recent_sale_sources)
+        ? property.provider_recent_sale_sources.filter(source => source === 'intel' || source === 'sale')
+        : [];
+    if (recentSaleSources.length === 0) return null;
+    return calendarDateKey(property?.provider_recent_sale_min_date);
+};
+
+export const interactionPredatesCurrentSaleEvidence = (log, property) => {
+    const saleBoundary = getCurrentSaleEventBoundary(property);
+    const interactionDate = calendarDateKey(log?.created_date || log?.updated_date);
+    return !!saleBoundary && !!interactionDate && interactionDate < saleBoundary;
+};
+
 /**
  * Determine the effective status of a property based on its logs
  * Master data stays ELIGIBLE - this determines routing/display priority
@@ -21,8 +56,15 @@ export const determineEffectiveStatus = (masterProp, logs) => {
         }
     }
 
-    // If no interaction logs, check master status first
-    if (!logs || logs.length === 0) {
+    // A provider-confirmed new ownership event reopens only interactions that
+    // can be proven to predate it. Same-day or undated interactions remain in
+    // force because their ordering cannot be established safely.
+    const currentOwnershipLogs = Array.isArray(logs)
+        ? logs.filter(log => !interactionPredatesCurrentSaleEvidence(log, masterProp))
+        : [];
+
+    // If no current-ownership interaction logs, check master status first
+    if (currentOwnershipLogs.length === 0) {
         // Only exclude if it's a hard rejection. 'SOLD' in master data usually means MLS sold (Owner Occupied), 
         // which is a valid target, not "We sold it".
         if (['HARD_NO', 'DO_NOT_KNOCK'].includes(masterProp.original_status)) {
@@ -36,10 +78,11 @@ export const determineEffectiveStatus = (masterProp, logs) => {
     }
 
     // Sort logs by timestamp desc
-    const sortedLogs = [...logs].sort((a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime());
+    const sortedLogs = [...currentOwnershipLogs].sort((a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime());
     const latestLog = sortedLogs[0];
 
-    // HARD_NO and SOLD are permanent exclusions from routing
+    // HARD_NO and SOLD exclude the current ownership event; proven pre-sale
+    // interactions were removed above before this latest-status decision.
     if (latestLog.parsed_status === 'HARD_NO' || latestLog.parsed_status === 'SOLD') {
         return latestLog.parsed_status;
     }
@@ -100,76 +143,152 @@ export const getStreetCooldownStatus = (streetName, streetLogs, cooldownDays = C
  * Filter properties by street cooldown status
  * Returns only properties on streets that are NOT on cooldown
  */
-export const filterByStreetCooldown = (properties, allLogs, cooldownDays = COOLDOWN_CONFIG.STREET_COOLDOWN_DAYS) => {
-    // Build a map of street -> last no-answer date
-    const streetLastNoAnswer = {};
-    const streetCsvCooldowns = {};
+export const filterByStreetCooldown = (properties, allLogs, cooldownDays = COOLDOWN_CONFIG.STREET_COOLDOWN_DAYS, options = {}) => {
+    const safeProperties = Array.isArray(properties) ? properties : [];
+    const safeLogs = Array.isArray(allLogs) ? allLogs : [];
+    const safeCooldownDays = Number(cooldownDays);
+    const bypassHashes = options?.bypassHashes instanceof Set
+        ? options.bypassHashes
+        : new Set(Array.isArray(options?.bypassHashes) ? options.bypassHashes : []);
+
+    // "Off" means off for both interaction-based and CSV-provided cooldowns.
+    if (!Number.isFinite(safeCooldownDays) || safeCooldownDays <= 0) {
+        return {
+            eligible: [...safeProperties],
+            onCooldown: [],
+            eventBoundaryBypasses: [],
+            cooldownStreets: [],
+            streetCooldownInfo: []
+        };
+    }
+
+    const normalizePart = (value) => String(value || '')
+        .toUpperCase()
+        .trim()
+        .replace(/[^A-Z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ');
+    const suffixAliases = {
+        STREET: 'ST', AVENUE: 'AVE', BOULEVARD: 'BLVD', DRIVE: 'DR', ROAD: 'RD',
+        LANE: 'LN', COURT: 'CT', PLACE: 'PL', CIRCLE: 'CIR', TRAIL: 'TRL',
+        PARKWAY: 'PKWY', HIGHWAY: 'HWY'
+    };
+    const normalizeStreet = (value) => {
+        const tokens = normalizePart(value).split(' ').filter(Boolean);
+        if (tokens.length > 0 && suffixAliases[tokens[tokens.length - 1]]) {
+            tokens[tokens.length - 1] = suffixAliases[tokens[tokens.length - 1]];
+        }
+        return tokens.join(' ');
+    };
+    const streetParts = (property) => [
+        normalizeStreet(property?.street_name),
+        normalizePart(property?.city),
+        normalizePart(property?.state),
+        String(property?.zip_code || property?.zip || '').trim().slice(0, 5)
+    ];
+    const streetKey = (property) => streetParts(property).join('|');
+    const streetLabel = (property) => streetParts(property).filter(Boolean).join(', ');
+
+    const propertyByHash = new Map();
+    const labelByStreetKey = new Map();
+    const streetLastNoAnswer = new Map();
+    const streetCsvCooldowns = new Map();
     const now = new Date();
 
-    properties.forEach(prop => {
+    safeProperties.forEach(prop => {
         if (!prop.street_name) return;
+        const key = streetKey(prop);
+        labelByStreetKey.set(key, streetLabel(prop));
+        [prop.address_hash, prop.legacy_hash, prop.id]
+            .filter(Boolean)
+            .forEach(hash => propertyByHash.set(hash, prop));
 
         // Check CSV-based Street Cooldown
         if (prop.street_next_eligible_date) {
             const csvEligibleDate = new Date(prop.street_next_eligible_date);
-            if (csvEligibleDate > now) {
-                streetCsvCooldowns[prop.street_name] = csvEligibleDate;
-            }
-        }
-
-        // Find logs for properties on this street
-        const streetLogs = allLogs.filter(log => {
-            const logProp = properties.find(p => p.address_hash === log.address_hash);
-            // Fallback to matching logs by street name if prop link missing, or use linked prop
-            if (logProp) return logProp.street_name === prop.street_name;
-            return false;
-        });
-
-        const noAnswerLogs = streetLogs.filter(l => l.parsed_status === 'NO_ANSWER');
-        if (noAnswerLogs.length > 0) {
-            const sorted = noAnswerLogs.sort((a, b) => new Date(b.created_date).getTime() - new Date(a.created_date).getTime());
-            const existingDate = streetLastNoAnswer[prop.street_name];
-            const newDate = new Date(sorted[0].created_date);
-            if (!existingDate || newDate > existingDate) {
-                streetLastNoAnswer[prop.street_name] = newDate;
+            if (!Number.isNaN(csvEligibleDate.getTime()) && csvEligibleDate > now) {
+                const existingDate = streetCsvCooldowns.get(key);
+                if (!existingDate || csvEligibleDate > existingDate) streetCsvCooldowns.set(key, csvEligibleDate);
             }
         }
     });
 
+    // Hash indexing makes this O(properties + logs), rather than repeatedly scanning
+    // every property for every log and every street.
+    safeLogs.forEach(log => {
+        if (log?.parsed_status !== 'NO_ANSWER') return;
+        const linkedProperty = propertyByHash.get(log.address_hash);
+        if (!linkedProperty) return;
+        const logDate = new Date(log.created_date);
+        if (Number.isNaN(logDate.getTime())) return;
+        const key = streetKey(linkedProperty);
+        const existingDate = streetLastNoAnswer.get(key);
+        if (!existingDate || logDate > existingDate) streetLastNoAnswer.set(key, logDate);
+    });
+
     const cooldownStreets = new Set();
+    const activeLogCooldownStreets = new Set();
 
     // Log-based cooldowns
-    Object.entries(streetLastNoAnswer).forEach(([street, lastDate]) => {
+    streetLastNoAnswer.forEach((lastDate, key) => {
         const daysSince = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
-        if (daysSince < cooldownDays) {
-            cooldownStreets.add(street);
+        if (daysSince < safeCooldownDays) {
+            cooldownStreets.add(key);
+            activeLogCooldownStreets.add(key);
         }
     });
 
     // CSV-based cooldowns
-    Object.entries(streetCsvCooldowns).forEach(([street, eligibleDate]) => {
-        cooldownStreets.add(street);
+    streetCsvCooldowns.forEach((_eligibleDate, key) => cooldownStreets.add(key));
+
+    const bypassesStreetCooldown = (property) => {
+        const hash = property?.address_hash || property?.id;
+        if (hash && bypassHashes.has(hash)) return true;
+        return ['CALLBACK', 'QUALIFIED'].includes(String(property?.effective_status || '').toUpperCase());
+    };
+    const logCooldownPredatesSale = (property) => {
+        const key = streetKey(property);
+        const lastNoAnswer = activeLogCooldownStreets.has(key) ? streetLastNoAnswer.get(key) : null;
+        const saleBoundary = getCurrentSaleEventBoundary(property);
+        const logDate = calendarDateKey(lastNoAnswer);
+        return !!saleBoundary && !!logDate && logDate < saleBoundary;
+    };
+    const isOnCooldown = (property) => {
+        if (bypassesStreetCooldown(property)) return false;
+        const key = streetKey(property);
+        const csvCooldownApplies = streetCsvCooldowns.has(key);
+        const logCooldownApplies = activeLogCooldownStreets.has(key) && !logCooldownPredatesSale(property);
+        return csvCooldownApplies || logCooldownApplies;
+    };
+    const eventBoundaryBypasses = safeProperties.filter(property => {
+        if (bypassesStreetCooldown(property)) return false;
+        const key = streetKey(property);
+        return activeLogCooldownStreets.has(key)
+            && !streetCsvCooldowns.has(key)
+            && logCooldownPredatesSale(property);
     });
 
     return {
-        eligible: properties.filter(p => !cooldownStreets.has(p.street_name)),
-        onCooldown: properties.filter(p => cooldownStreets.has(p.street_name)),
-        cooldownStreets: Array.from(cooldownStreets),
+        eligible: safeProperties.filter(p => !isOnCooldown(p)),
+        onCooldown: safeProperties.filter(isOnCooldown),
+        eventBoundaryBypasses,
+        cooldownStreets: Array.from(cooldownStreets).map(key => labelByStreetKey.get(key) || key),
         streetCooldownInfo: [
-            ...Object.entries(streetLastNoAnswer).map(([street, date]) => {
+            ...Array.from(streetLastNoAnswer.entries()).map(([key, date]) => {
                 const daysSince = (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24);
                 return {
-                    street,
+                    street: labelByStreetKey.get(key) || key,
+                    streetKey: key,
                     lastVisit: date,
-                    daysRemaining: Math.max(0, Math.ceil(cooldownDays - daysSince)),
-                    onCooldown: daysSince < cooldownDays,
+                    daysRemaining: Math.max(0, Math.ceil(safeCooldownDays - daysSince)),
+                    onCooldown: daysSince < safeCooldownDays,
                     source: 'LOGS'
                 };
             }),
-            ...Object.entries(streetCsvCooldowns).map(([street, date]) => {
+            ...Array.from(streetCsvCooldowns.entries()).map(([key, date]) => {
                 const daysRemaining = Math.max(0, Math.ceil((date.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
                 return {
-                    street,
+                    street: labelByStreetKey.get(key) || key,
+                    streetKey: key,
                     lastVisit: null,
                     daysRemaining: daysRemaining,
                     onCooldown: true,
@@ -371,19 +490,27 @@ export const orderForStreetSweep = (properties) => {
  */
 export const isPointInPolygon = (point, vs) => {
     if (!vs || vs.length < 3) return true;
-    let x = point.lng, y = point.lat;
-    const epsilon = 1e-9;
-    
+    const x = Number(point?.lng), y = Number(point?.lat);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    const boundaryToleranceDegrees = 5e-6;
     let inside = false;
     for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
-        let xi = vs[i].lng, yi = vs[i].lat;
-        let xj = vs[j].lng, yj = vs[j].lat;
-        
-        let intersect = ((yi > y) !== (yj > y))
-            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi + epsilon);
+        const xi = Number(vs[i].lng), yi = Number(vs[i].lat);
+        const xj = Number(vs[j].lng), yj = Number(vs[j].lat);
+        if (![xi, yi, xj, yj].every(Number.isFinite)) continue;
+        const dx = xj - xi;
+        const dy = yj - yi;
+        const lengthSquared = (dx * dx) + (dy * dy);
+        if (lengthSquared > 0) {
+            const projection = Math.max(0, Math.min(1, (((x - xi) * dx) + ((y - yi) * dy)) / lengthSquared));
+            const projectedLng = xi + (projection * dx);
+            const projectedLat = yi + (projection * dy);
+            if (Math.hypot(x - projectedLng, y - projectedLat) <= boundaryToleranceDegrees) return true;
+        }
+        const intersect = ((yi > y) !== (yj > y))
+            && (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-12) + xi);
         if (intersect) inside = !inside;
     }
-    
     return inside;
 };
 

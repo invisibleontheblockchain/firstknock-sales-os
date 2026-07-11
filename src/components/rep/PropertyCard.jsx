@@ -31,6 +31,7 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
   const statusColor = STATUS_COLORS[property.effective_status] || '#555';
   const age = formatPropertyAge(property.sold_date);
   const ownerName = property.owner_full_name || property.owner_name || property.ownerFullName;
+  const ownerIsProviderObservation = property.owner_full_name_source === 'batchdata_job_observation';
   const valueLabel = formatMoney(property.price || property.estimated_value || property.estimatedValue);
   const sqftLabel = formatNumber(property.sqft || property.squareFootage);
   const yearBuilt = Number(property.year_built || property.yearBuilt) || null;
@@ -76,9 +77,12 @@ export default function PropertyCard({ property, index, onSelect, navigationApp 
                             {(ownerName || valueLabel || sqftLabel || yearBuilt) &&
               <div className="mt-1 flex flex-wrap items-center gap-1 text-[8.5px] font-bold leading-tight text-white/45">
                                     {ownerName &&
-                <span className="inline-flex max-w-full items-start gap-1 rounded-full bg-white/5 px-1.5 py-0.5">
+                <span
+                  className="inline-flex max-w-full items-start gap-1 rounded-full bg-white/5 px-1.5 py-0.5"
+                  title={ownerIsProviderObservation ? 'Current BatchData owner observation; not verified as the buyer on the sale deed.' : undefined}
+                >
                                             <User className="mt-px h-2.5 w-2.5 shrink-0 text-[#39FF4A]" />
-                                            <span className="break-words leading-tight">{ownerName}</span>
+                                            <span className="break-words leading-tight">{ownerName}{ownerIsProviderObservation ? ' (provider)' : ''}</span>
                                         </span>
                 }
                                     {valueLabel &&
