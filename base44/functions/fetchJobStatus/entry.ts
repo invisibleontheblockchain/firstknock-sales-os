@@ -6,6 +6,7 @@ const PROCESSOR_REKICK_RUNNING_IDLE_MS = 30 * 1000;
 const PROCESSOR_REKICK_COOLDOWN_MS = 20 * 1000;
 const PROCESSOR_REKICK_WAIT_MS = 900;
 const INITIAL_STALE_LOCK_MS = 90 * 1000;
+const JOB_MEMBERSHIP_CONTRACT = 'property_sources_v1';
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -96,6 +97,12 @@ Deno.serve(async (req) => {
         }
 
         const metadata = job.dry_run_metadata || {};
+        const allowLegacyPointerMembership = metadata.job_membership_contract !== JOB_MEMBERSHIP_CONTRACT;
+        const excludeAssigned = metadata.route_filters?.excludeAssigned !== false;
+        const explicitlyReopenedHashes = [
+            ...(Array.isArray(metadata.unresolved_followup_hashes_included) ? metadata.unresolved_followup_hashes_included : []),
+            ...(Array.isArray(metadata.event_released_prior_route_hashes) ? metadata.event_released_prior_route_hashes : [])
+        ].map(String);
         const now = Date.now();
         let processorKick = null;
 
@@ -105,11 +112,28 @@ Deno.serve(async (req) => {
             if (databaseUrl) {
                 const sql = neon(databaseUrl);
                 const rows = await sql`
-                    SELECT COUNT(*)::int AS active_count
+                    SELECT COUNT(DISTINCT wp.property_id)::int AS active_count
                     FROM workspace_properties wp
-                    WHERE wp.fetch_job_id = ${job.id}
-                      AND wp.user_email = ${job.user_email}
+                    JOIN properties p ON p.id = wp.property_id
+                    LEFT JOIN property_sources ps
+                      ON ps.property_id = wp.property_id
+                     AND ps.provider = 'batchdata_job'
+                     AND ps.provider_record_id = ${job.id}
+                    WHERE wp.user_email = ${job.user_email}
                       AND wp.route_active = TRUE
+                      AND (
+                          ${!excludeAssigned}
+                          OR wp.assigned_route_id IS NULL
+                          OR p.address_hash = ANY(${explicitlyReopenedHashes})
+                      )
+                      AND (
+                          ps.property_id IS NOT NULL
+                          OR (
+                              ${allowLegacyPointerMembership}
+                              AND
+                              wp.fetch_job_id = ${job.id}
+                          )
+                      )
                 `;
                 active_count = Number(rows?.[0]?.active_count || 0);
             }
@@ -148,6 +172,11 @@ Deno.serve(async (req) => {
 
         return Response.json({
             job_id: job.id,
+            // Return the immutable geometry captured by this FetchJob. The UI must
+            // not rebuild an exact-job route against whatever polygon happens to
+            // be on the canvas when asynchronous processing finishes.
+            polygon: Array.isArray(job.polygon) ? job.polygon : [],
+            polygon_hash: job.polygon_hash || null,
             status: job.status,
             phase: job.phase || null,
             provider: job.provider || null,
@@ -179,6 +208,11 @@ Deno.serve(async (req) => {
                 count_mode: metadata.count_mode || null,
                 filters: metadata.filters || null,
                 route_filters: metadata.route_filters || null,
+                include_unresolved_followups: metadata.include_unresolved_followups === true,
+                unresolved_followup_hashes_included: Array.isArray(metadata.unresolved_followup_hashes_included) ? metadata.unresolved_followup_hashes_included : [],
+                event_released_prior_route_hashes: Array.isArray(metadata.event_released_prior_route_hashes) ? metadata.event_released_prior_route_hashes : [],
+                prior_route_event_window_min_date: metadata.prior_route_event_window_min_date || null,
+                sold_min_date: metadata.sold_min_date || metadata.batchdata_summary?.sold_min_date || null,
                 completion_reason: metadata.completion_reason || null,
                 batchdata_summary: metadata.batchdata_summary || null,
                 processor_rekick_at: processorKick?.at || metadata.processor_rekick_at || null,
