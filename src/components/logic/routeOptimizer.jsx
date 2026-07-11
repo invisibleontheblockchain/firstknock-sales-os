@@ -14,7 +14,7 @@
 
 import { filterByStreetCooldown, COOLDOWN_CONFIG } from './territoryLogic';
 import { latLngToCell, gridDisk } from 'h3-js';
-import { batchScoreProperties, ownershipDurationScore, SCORING_CONSTANTS } from './leadScoring';
+import { batchScoreProperties } from './leadScoring';
 
 function cleanAreaLabel(value) {
     if (value === undefined || value === null) return '';
@@ -96,6 +96,12 @@ export function scoreProperty(property, logs = [], neighborhoodStats = {}, learn
     if (property.effective_status === 'DM_NOT_HOME') score += 50; // Decision maker absent — high re-visit value
     if (property.effective_status === 'QUALIFIED') score += 80;
     if (property.effective_status === 'HARD_NO') return 0;
+    if (String(property.data_source || '').toLowerCase() === 'batchdata') {
+        if (property.sale_confidence === 'verified' || property.sale_confidence === 'high') score += 50;
+        else if (property.sale_confidence === 'medium') score += 10;
+        else score -= 50;
+        if (String(property.property_type || '').toLowerCase().includes('unverified')) score -= 20;
+    }
     // 'SOLD' = recently sold home from MLS (new homeowner = prime lead), score based on recency
     if (property.effective_status === 'SOLD') {
         if (property.sold_date) {
@@ -472,7 +478,17 @@ function fatigueAwareFrontLoad(route) {
     const baselineDist = routeDist(route);
 
     // Find top propensity stops
-    const scored = route.map((p, idx) => ({ idx, propensity: p.propensity || p.score || 0 }));
+    const scored = route.map((p, idx) => {
+        const confidenceBonus = p.sale_confidence === 'verified' || p.sale_confidence === 'high'
+            ? 100
+            : p.sale_confidence === 'medium'
+                ? 20
+                : 0;
+        return {
+            idx,
+            propensity: ((Number(p.propensity) || 0.5) * 100) + (Number(p.score) || 0) + confidenceBonus
+        };
+    });
     scored.sort((a, b) => b.propensity - a.propensity);
     const topCount = Math.ceil(route.length * FRONT_LOAD_PROPENSITY_PERCENTILE);
     const topIndices = new Set(scored.slice(0, topCount).map(s => s.idx));
@@ -604,23 +620,34 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         use2Opt = true,
         returnToStart = false,
         maxRouteDistance = null,
-        excludeTerminal = true
+        excludeTerminal = true,
+        cooldownBypassHashes = [],
+        routeMode: requestedRouteMode = null
     } = options;
 
     // Filter out properties on streets that are on cooldown
     // Also filter out invalid coordinates (Null Island 0,0)
-    let eligible = properties.filter(p =>
-        p && p.lat && p.lng &&
-        !(Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001)
-    );
+    let eligible = properties
+        .map(p => p ? ({ ...p, lat: Number(p.lat), lng: Number(p.lng) }) : null)
+        .filter(p =>
+            p && Number.isFinite(p.lat) && Number.isFinite(p.lng) &&
+            !(Math.abs(p.lat) < 0.0001 && Math.abs(p.lng) < 0.0001)
+        );
 
     // Deduplicate by normalized address (safety net for Phase1/Phase2 hash mismatch)
     const addrMap = new Map();
-    eligible.forEach(p => {
+    eligible.forEach((p, index) => {
         const street = (p.street_name || '').toUpperCase().trim();
-        const num = p.house_number || 0;
+        const num = String(p.house_number ?? '').trim();
         const zip = String(p.zip_code || '').trim().slice(0, 5);
-        const key = `${num}|${street}|${zip}`;
+        const hasCompleteAddress = !!num && num !== '0' && !!street && !!zip;
+        const fallbackIdentity = p.address_hash || p.id || String(p.full_address || '').toUpperCase().trim().replace(/\s+/g, ' ');
+        // Never collapse unrelated incomplete rows into a shared key such as 0||85001.
+        const key = hasCompleteAddress
+            ? `address:${num}|${street}|${zip}`
+            : fallbackIdentity
+                ? `identity:${fallbackIdentity}`
+                : `row:${index}`;
         const existing = addrMap.get(key);
         if (!existing) {
             addrMap.set(key, p);
@@ -637,12 +664,14 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 
     // Apply street cooldown filter if logs are provided
     let cooldownInfo = null;
-    if (allLogs && allLogs.length > 0) {
-        const filtered = filterByStreetCooldown(eligible, allLogs, streetCooldownDays);
+    const hasStreetCooldownInput = (allLogs && allLogs.length > 0) || eligible.some(p => p.street_next_eligible_date);
+    if (streetCooldownDays > 0 && hasStreetCooldownInput) {
+        const filtered = filterByStreetCooldown(eligible, allLogs, streetCooldownDays, { bypassHashes: cooldownBypassHashes });
         eligible = filtered.eligible;
         cooldownInfo = {
             streetsOnCooldown: filtered.cooldownStreets,
-            propertiesExcluded: filtered.onCooldown.length
+            propertiesExcluded: filtered.onCooldown.length,
+            propertiesReincludedForNewSale: filtered.eventBoundaryBypasses?.length || 0
         };
     }
 
@@ -655,7 +684,17 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         eligible = eligible.filter(p => !terminalStatuses.includes(p.effective_status));
     }
 
-    if (eligible.length === 0) return [];
+    if (eligible.length === 0) {
+        const emptyRoutes = [];
+        if (cooldownInfo) {
+            Object.defineProperty(emptyRoutes, '_cooldownInfo', {
+                value: cooldownInfo,
+                enumerable: false,
+                writable: true
+            });
+        }
+        return emptyRoutes;
+    }
 
     console.log(`[routeOptimizer] Scoring ${eligible.length} properties...`);
     const t0 = Date.now();
@@ -681,6 +720,12 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
                 else score += 20;
             }
             if (p.price > 1000000) score += 30;
+            if (String(p.data_source || '').toLowerCase() === 'batchdata') {
+                if (p.sale_confidence === 'verified' || p.sale_confidence === 'high') score += 50;
+                else if (p.sale_confidence === 'medium') score += 10;
+                else score -= 50;
+                if (String(p.property_type || '').toLowerCase().includes('unverified')) score -= 20;
+            }
             return { ...p, score: Math.max(0, score), propensity: 0.5 };
         });
     } else {
@@ -714,27 +759,57 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
 
     console.log(`[routeOptimizer] Scoring done in ${Date.now() - t0}ms`);
 
-    // MAIL CARRIER: Geographic cluster pre-separation happens inside mailCarrierOrder.
-    let clustered = scored.map(p => ({ ...p, cluster: 0 }));
+    const routeSize = Math.max(1, Math.min(10000, Math.trunc(Number(housesPerRoute) || 50)));
+    const orderProperties = (items, routeStart = startLocation) => {
+        if (useStreetSweep) return mailCarrierOrder(items, routeStart, { use2Opt });
+        let ordered = optimizeRouteOrder(items, routeStart?.lat ?? null, routeStart?.lng ?? null, minimizeTurns);
+        if (use2Opt) ordered = apply2Opt(ordered);
+        return ordered;
+    };
+    // Build one spatially coherent sequence first, then split it into rep-sized routes.
+    // The previous implementation assigned every property to cluster 0 and silently ignored housesPerRoute.
+    const preordered = scored.length > routeSize
+        ? (useStreetSweep
+            ? mailCarrierOrder(scored, startLocation, { use2Opt: false })
+            : optimizeRouteOrder(scored, startLocation?.lat ?? null, startLocation?.lng ?? null, false))
+        : scored;
+    const routeGroups = [];
+    for (let offset = 0; offset < preordered.length; offset += routeSize) {
+        const orderedChunk = orderProperties(preordered.slice(offset, offset + routeSize));
+        if (!maxRouteDistance || maxRouteDistance <= 0) {
+            routeGroups.push(orderedChunk);
+            continue;
+        }
+
+        let currentGroup = [];
+        let currentDistance = 0;
+        for (const property of orderedChunk) {
+            const previous = currentGroup[currentGroup.length - 1];
+            const nextLeg = previous
+                ? calculateDistance(previous.lat, previous.lng, property.lat, property.lng)
+                : 0;
+            if (currentGroup.length > 0 && currentDistance + nextLeg > maxRouteDistance) {
+                routeGroups.push(currentGroup);
+                currentGroup = [property];
+                currentDistance = 0;
+            } else {
+                currentGroup.push(property);
+                currentDistance += nextLeg;
+            }
+        }
+        if (currentGroup.length > 0) routeGroups.push(currentGroup);
+    }
 
     // Generate routes
     const routes = [];
 
-    // We iterate through all unique cluster IDs found
-    const clusterIds = [...new Set(clustered.map(p => p.cluster))];
-
-    for (const i of clusterIds) {
-        const clusterProps = clustered.filter(p => p.cluster === i);
-        if (clusterProps.length === 0) continue;
-
-        // MAIL CARRIER ORDERING
-        console.log(`[routeOptimizer] Mail carrier ordering ${clusterProps.length} properties...`);
-        const t1 = Date.now();
-        let orderedProps = mailCarrierOrder(clusterProps, startLocation);
-        console.log(`[routeOptimizer] Mail carrier done in ${Date.now() - t1}ms (${orderedProps.length} ordered)`);
+    for (let i = 0; i < routeGroups.length; i++) {
+        let orderedProps = routeGroups[i];
+        if (orderedProps.length === 0) continue;
+        console.log(`[routeOptimizer] Prepared route ${i + 1} with ${orderedProps.length} properties`);
 
         // Fatigue-aware front-loading (skip for very large routes)
-        if (orderedProps.length <= 5000) {
+        if (orderedProps.length <= 5000 && !maxRouteDistance) {
             orderedProps = fatigueAwareFrontLoad(orderedProps);
         }
 
@@ -753,12 +828,6 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
                 orderedProps[j].lat, orderedProps[j].lng,
                 orderedProps[j + 1].lat, orderedProps[j + 1].lng
             );
-
-            // Basic Max Distance Check - Stop adding if we exceed limit
-            if (maxRouteDistance && (totalDistance + legDist) > maxRouteDistance) {
-                orderedProps.splice(j + 1);
-                break;
-            }
 
             totalDistance += legDist;
             totalScore += orderedProps[j].score;
@@ -811,8 +880,12 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         // Get unique streets in this route
         const routeStreets = [...new Set(orderedProps.map(p => p.street_name).filter(Boolean))];
 
-        let routeMode = 'precision';
-        try { if (typeof localStorage !== 'undefined') routeMode = localStorage.getItem('fk_routeMode') || 'precision'; } catch (e) {}
+        let routeMode = requestedRouteMode === 'canvas' || requestedRouteMode === 'precision'
+            ? requestedRouteMode
+            : 'precision';
+        if (!requestedRouteMode) {
+            try { if (typeof localStorage !== 'undefined') routeMode = localStorage.getItem('fk_routeMode') || 'precision'; } catch (e) {}
+        }
         routes.push({
             id: `route_${i + 1}`,
             name: buildRouteName(orderedProps, routeMode, i + 1),
@@ -1138,7 +1211,7 @@ function orderClustersByNN(centroids, startLat, startLng) {
 }
 
 /** Internal single-cluster mail-carrier ordering: group by street, order streets, boustrophedon walk. */
-function mailCarrierOrderSingleCluster(properties, startLocation) {
+function mailCarrierOrderSingleCluster(properties, startLocation, options = {}) {
     if (!properties || properties.length === 0) return [];
 
     // Filter out properties with missing/NaN coordinates
@@ -1161,7 +1234,7 @@ function mailCarrierOrderSingleCluster(properties, startLocation) {
 
         // Boustrophedon walk within the street
         streetProps = boustrophedonStreet(streetProps, reverseNext);
-        streetProps = applyIntraStreet2Opt(streetProps);
+        if (options.use2Opt !== false) streetProps = applyIntraStreet2Opt(streetProps);
 
         // If we have an exit point, check if we should reverse this street
         if (exitPoint && streetProps.length >= 2) {
@@ -1181,7 +1254,7 @@ function mailCarrierOrderSingleCluster(properties, startLocation) {
 }
 
 /** Full mail-carrier ordering: cluster geographically, then route each cluster by street. */
-export function mailCarrierOrder(properties, startLocation) {
+export function mailCarrierOrder(properties, startLocation, options = {}) {
     if (!properties || properties.length === 0) return [];
     if (properties.length === 1) return [...properties];
 
@@ -1198,7 +1271,7 @@ export function mailCarrierOrder(properties, startLocation) {
     const numClusters = Math.max(...clusterAssignments) + 1;
 
     if (numClusters === 1) {
-        return mailCarrierOrderSingleCluster(validProperties, startLocation);
+        return mailCarrierOrderSingleCluster(validProperties, startLocation, options);
     }
 
     // Multi-cluster path: route within each cluster, connect clusters via NN
@@ -1223,6 +1296,7 @@ export function mailCarrierOrder(properties, startLocation) {
         const clusterResult = mailCarrierOrderSingleCluster(
             clusters[ci],
             { lat: arrivalLat, lng: arrivalLng },
+            options,
         );
         result.push(...clusterResult);
         if (clusterResult.length > 0) {

@@ -1,0 +1,3573 @@
+{
+  "schema_version": 2,
+  "test_name": "BatchData 25-city 1/2/7/14-day freshness cross-reference",
+  "executed_on": "2026-07-09",
+  "timezone": "America/Phoenix",
+  "as_of_date": "2026-07-09",
+  "yesterday_date": "2026-07-08",
+  "execution_intervals": {
+    "polygon_matrix": {
+      "started_at": "2026-07-09T22:50:18.519Z",
+      "completed_at": "2026-07-09T22:52:27.768Z"
+    },
+    "city_state_control": {
+      "started_at": "2026-07-09T22:54:08.112Z",
+      "completed_at": "2026-07-09T22:55:36.864Z"
+    },
+    "targeted_city_state_cross_reference": {
+      "started_at": "2026-07-09T22:56:42.792Z",
+      "completed_at": "2026-07-09T22:57:08.146Z"
+    },
+    "max_date_semantic_control": {
+      "started_at": "2026-07-09T23:08:03.508Z",
+      "completed_at": "2026-07-09T23:08:55.377Z"
+    }
+  },
+  "git_head": "3073b45523083deff1188182ce312772f8683463",
+  "worktree_state": "dirty_uncommitted_validation_changes",
+  "runner": {
+    "path": "test_batchdata/run-freshness-matrix.mjs",
+    "generated_with_sha256": "7e43aa2e175102f1912d55c7267557e097c96c5f7146786094e4c5a4bd9df9fa",
+    "current_hardened_sha256": "57447bc7cc117e2de574e4f40382de3cacec75d5ecf94bf449c31013eeb2dbf7",
+    "post_run_changes": "The historical run used a top-level datasets field. The retained runner now uses the validated options.datasets contract and was additionally hardened for plan-only defaults, a bounded explicit live budget, failure handling, and persisted-error privacy. The historical aggregate was not rerun, so the generated_with hash remains the provenance for those counts."
+  },
+  "credentials_included": false,
+  "property_addresses_persisted": false,
+  "raw_provider_payloads_persisted": false,
+  "test_design": {
+    "predicates": {
+      "intel": "searchCriteria.intel.lastSoldDate",
+      "sale": "searchCriteria.sale.lastSaleDate"
+    },
+    "windows": {
+      "1d": {
+        "min_date": "2026-07-08",
+        "max_date": "2026-07-08",
+        "meaning": "provider predicate request for yesterday only"
+      },
+      "2d": {
+        "min_date": "2026-07-07",
+        "max_date": "2026-07-08"
+      },
+      "7d": {
+        "min_date": "2026-07-02",
+        "max_date": "2026-07-08"
+      },
+      "14d": {
+        "min_date": "2026-06-25",
+        "max_date": "2026-07-08"
+      }
+    },
+    "maxDate_accepted_http_200_by_both_predicates": true,
+    "maxDate_semantic_effect_observed": true,
+    "maxDate_semantic_effect_scope": "Denver city/state control for both predicates; not independently proven for every match or geography",
+    "maxDate_enforcement_verified_for_every_returned_match": false,
+    "polygon_geography": "Equal nominal 5mi x 5mi center square (25 sq mi)",
+    "city_state_control": "BatchData city/state equals filters",
+    "count_datasets": [
+      "basic"
+    ],
+    "sample_datasets": [
+      "basic",
+      "intel",
+      "general",
+      "listing",
+      "owner"
+    ],
+    "lookup_endpoint": "https://api.batchdata.com/api/v1/property/lookup/all-attributes",
+    "sample_take_per_predicate_per_city": 5,
+    "lookup_cap_per_sampled_city": 2,
+    "predicate_relationship": "Intel and Sale are alternative filters on the same Property Search endpoint; Lookup is a separate targeted enrichment endpoint.",
+    "lookup_metric_definitions": {
+      "matched": "Historical runner field meaning: an HTTP-successful Lookup response yielded an extractable first row; record identity was not independently verified.",
+      "positive_field_delta": "Historical runner field meaning: the Lookup populated-value count exceeded Search in an 11-field monitored vector; this was not a full field-by-field payload comparison."
+    }
+  },
+  "max_date_semantic_control": {
+    "design": "Held minDate at 2026-06-25 and compared maxDate 2026-07-01 with maxDate 2026-07-08.",
+    "cities": [
+      "Houston, TX",
+      "Seattle, WA",
+      "Denver, CO"
+    ],
+    "results": {
+      "city_state": {
+        "Houston, TX": { "july_1": { "intel": 492, "sale": 490 }, "july_8": { "intel": 492, "sale": 490 } },
+        "Seattle, WA": { "july_1": { "intel": 134, "sale": 118 }, "july_8": { "intel": 134, "sale": 118 } },
+        "Denver, CO": { "july_1": { "intel": 177, "sale": 176 }, "july_8": { "intel": 178, "sale": 177 } }
+      },
+      "polygon": {
+        "Houston, TX": { "july_1": { "intel": 31, "sale": 31 }, "july_8": { "intel": 31, "sale": 31 } },
+        "Seattle, WA": { "july_1": { "intel": 31, "sale": 25 }, "july_8": { "intel": 31, "sale": 25 } },
+        "Denver, CO": { "july_1": { "intel": 28, "sale": 28 }, "july_8": { "intel": 28, "sale": 28 } }
+      }
+    },
+    "interpretation": "Both Denver city/state predicates lost exactly one candidate when maxDate moved before the returned 2026-07-02 sample date. This demonstrates a semantic upper-bound effect in that control, not universal enforcement.",
+    "telemetry": {
+      "http_attempts": 62,
+      "successful_http_responses": 62,
+      "failed_http_responses": 0,
+      "search_http_attempts": 62,
+      "lookup_http_attempts": 0,
+      "retry_attempts": 0
+    }
+  },
+  "request_telemetry": {
+    "polygon_matrix": {
+      "http_attempts": 292,
+      "successful_http_responses": 291,
+      "failed_http_responses": 1,
+      "search_http_attempts": 261,
+      "lookup_http_attempts": 31,
+      "retry_attempts": 0,
+      "status_counts": {
+        "200": 291,
+        "404": 1
+      }
+    },
+    "city_state_control": {
+      "http_attempts": 227,
+      "successful_http_responses": 227,
+      "failed_http_responses": 0,
+      "search_http_attempts": 227,
+      "lookup_http_attempts": 0,
+      "retry_attempts": 0,
+      "status_counts": {
+        "200": 227
+      }
+    },
+    "targeted_city_state_cross_reference": {
+      "http_attempts": 52,
+      "successful_http_responses": 51,
+      "failed_http_responses": 1,
+      "search_http_attempts": 45,
+      "lookup_http_attempts": 7,
+      "retry_attempts": 0,
+      "status_counts": {
+        "200": 51,
+        "404": 1
+      }
+    },
+    "max_date_semantic_control": {
+      "http_attempts": 62,
+      "successful_http_responses": 62,
+      "failed_http_responses": 0,
+      "search_http_attempts": 62,
+      "lookup_http_attempts": 0,
+      "retry_attempts": 0,
+      "status_counts": {
+        "200": 62
+      }
+    },
+    "combined": {
+      "http_attempts": 633,
+      "successful_http_responses": 631,
+      "failed_http_responses": 2,
+      "search_http_attempts": 595,
+      "lookup_http_attempts": 38,
+      "retry_attempts": 0
+    }
+  },
+  "summary": {
+    "polygon_windows": {
+      "1d": {
+        "min_date": "2026-07-08",
+        "max_date": "2026-07-08",
+        "intel_total": 0,
+        "sale_total": 0,
+        "intel_cities_nonzero": 0,
+        "sale_cities_nonzero": 0,
+        "equal_count_cities": 25,
+        "intel_higher_cities": 0,
+        "sale_higher_cities": 0,
+        "failed_intel_calls": 0,
+        "failed_sale_calls": 0
+      },
+      "2d": {
+        "min_date": "2026-07-07",
+        "max_date": "2026-07-08",
+        "intel_total": 0,
+        "sale_total": 0,
+        "intel_cities_nonzero": 0,
+        "sale_cities_nonzero": 0,
+        "equal_count_cities": 25,
+        "intel_higher_cities": 0,
+        "sale_higher_cities": 0,
+        "failed_intel_calls": 0,
+        "failed_sale_calls": 0
+      },
+      "7d": {
+        "min_date": "2026-07-02",
+        "max_date": "2026-07-08",
+        "intel_total": 0,
+        "sale_total": 0,
+        "intel_cities_nonzero": 0,
+        "sale_cities_nonzero": 0,
+        "equal_count_cities": 25,
+        "intel_higher_cities": 0,
+        "sale_higher_cities": 0,
+        "failed_intel_calls": 0,
+        "failed_sale_calls": 0
+      },
+      "14d": {
+        "min_date": "2026-06-25",
+        "max_date": "2026-07-08",
+        "intel_total": 145,
+        "sale_total": 139,
+        "intel_cities_nonzero": 17,
+        "sale_cities_nonzero": 17,
+        "equal_count_cities": 24,
+        "intel_higher_cities": 1,
+        "sale_higher_cities": 0,
+        "failed_intel_calls": 0,
+        "failed_sale_calls": 0
+      }
+    },
+    "polygon_density_per_nominal_sq_mile": {
+      "total_nominal_area_sq_mi": 625,
+      "1d": { "intel": 0, "sale": 0 },
+      "2d": { "intel": 0, "sale": 0 },
+      "7d": { "intel": 0, "sale": 0 },
+      "14d": { "intel": 0.232, "sale": 0.2224 },
+      "meaning": "BatchData provider-side candidate count divided by nominal polygon area; not external sales recall."
+    },
+    "city_state_windows": {
+      "1d": {
+        "min_date": "2026-07-08",
+        "max_date": "2026-07-08",
+        "intel_total": 0,
+        "sale_total": 0,
+        "intel_cities_nonzero": 0,
+        "sale_cities_nonzero": 0,
+        "equal_count_cities": 25,
+        "intel_higher_cities": 0,
+        "sale_higher_cities": 0,
+        "failed_intel_calls": 0,
+        "failed_sale_calls": 0
+      },
+      "2d": {
+        "min_date": "2026-07-07",
+        "max_date": "2026-07-08",
+        "intel_total": 1,
+        "sale_total": 0,
+        "intel_cities_nonzero": 1,
+        "sale_cities_nonzero": 0,
+        "equal_count_cities": 24,
+        "intel_higher_cities": 1,
+        "sale_higher_cities": 0,
+        "failed_intel_calls": 0,
+        "failed_sale_calls": 0
+      },
+      "7d": {
+        "min_date": "2026-07-02",
+        "max_date": "2026-07-08",
+        "intel_total": 2,
+        "sale_total": 1,
+        "intel_cities_nonzero": 2,
+        "sale_cities_nonzero": 1,
+        "equal_count_cities": 24,
+        "intel_higher_cities": 1,
+        "sale_higher_cities": 0,
+        "failed_intel_calls": 0,
+        "failed_sale_calls": 0
+      },
+      "14d": {
+        "min_date": "2026-06-25",
+        "max_date": "2026-07-08",
+        "intel_total": 1621,
+        "sale_total": 1601,
+        "intel_cities_nonzero": 20,
+        "sale_cities_nonzero": 20,
+        "equal_count_cities": 21,
+        "intel_higher_cities": 4,
+        "sale_higher_cities": 0,
+        "failed_intel_calls": 0,
+        "failed_sale_calls": 0
+      }
+    },
+    "polygon_lookup": {
+      "requested": 30,
+      "successful_http": 30,
+      "extractable_rows": 30,
+      "increased_monitored_population": 0,
+      "intel_lastSoldDate_present": 0,
+      "explicit_type_present": 0,
+      "deed_history_present": 0,
+      "best_sale_date_present": 8,
+      "exact_yesterday_evidence": 0
+    },
+    "targeted_city_state_lookup": {
+      "requested": 6,
+      "successful_http": 6,
+      "extractable_rows": 6,
+      "increased_monitored_population": 0,
+      "intel_lastSoldDate_present": 0,
+      "explicit_type_present": 0,
+      "deed_history_present": 0,
+      "best_sale_date_present": 3,
+      "exact_yesterday_evidence": 0
+    },
+    "returned_date_validation": {
+      "polygon_search": {
+        "intel_candidate_dates_present": 17,
+        "intel_dates_within_requested_window": 16,
+        "intel_dates_outside_requested_window": 1,
+        "sale_candidate_dates_present": 17,
+        "sale_dates_within_requested_window": 16,
+        "sale_dates_outside_requested_window": 1
+      },
+      "polygon_lookup": {
+        "candidate_dates_present": 8,
+        "dates_within_requested_window": 8,
+        "dates_outside_requested_window": 0
+      },
+      "targeted_city_state_search": {
+        "candidate_dates_present_across_both_predicate_samples": 12,
+        "dates_within_requested_window": 12,
+        "dates_outside_requested_window": 0
+      },
+      "targeted_city_state_lookup": {
+        "candidate_dates_present": 3,
+        "dates_within_requested_window": 3,
+        "dates_outside_requested_window": 0
+      },
+      "known_stale_sample": "One Sacramento Search sample exposed 2012-09-20 while passing the provider 14-day predicate."
+    },
+    "cities_with_yesterday_data": {
+      "polygon": [],
+      "city_state": []
+    },
+    "polygon_zero_through_14d": [
+      "Anderson, SC",
+      "Atlanta, GA",
+      "Tampa, FL",
+      "Nashville, TN",
+      "Raleigh, NC",
+      "Charleston, SC",
+      "Columbus, OH",
+      "Pittsburgh, PA"
+    ],
+    "city_state_zero_through_14d": [
+      "Anderson, SC",
+      "Atlanta, GA",
+      "Tampa, FL",
+      "Columbus, OH",
+      "Pittsburgh, PA"
+    ],
+    "monotonicity_violations": {
+      "polygon": [],
+      "city_state": []
+    },
+    "endpoint_contract": {
+      "legacy_lookup_status": 404,
+      "lookup_all_attributes_http_successes_with_extractable_rows": 36,
+      "lookup_all_attributes_increased_monitored_population": 0,
+      "identity_match_independently_verified": false,
+      "full_payload_field_by_field_diff_performed": false
+    },
+    "conclusion": {
+      "yesterday": "Neither Search predicate returned a candidate for the one-day request in any of 25 polygon or city/state tests; hidden qualifying dates mean this is not an external deed-ground-truth statement.",
+      "two_day": "Intel returned one city/state candidate in Orlando; Sale returned zero. Search exposed no sale date, and its Lookup row exposed no monitored Intel date, type, or deed history and no increase in monitored populated-field count.",
+      "seven_day": "Intel returned two city/state candidates across Orlando and Denver; Sale returned the Denver candidate only. Polygon counts were zero for both.",
+      "fourteen_day": "Intel was equal to or more inclusive than Sale, but returned fields still did not expose intel.lastSoldDate or explicit SFR metadata.",
+      "policy_corrected_after_contract_probe": true,
+      "production_recommendation": "Independently paginate the qualified intel.lastSoldDate and sale.lastSaleDate streams, de-duplicate their record-level union, and retain exact job-scoped R2, estimated-value, listing-exclusion, polygon, and date provenance. Neither predicate is an external truth set; any contradictory returned field still rejects the record."
+    }
+  },
+  "cities": [
+    {
+      "city": "Anderson",
+      "state": "SC",
+      "region": "Southeast",
+      "center": {
+        "lat": 34.5034,
+        "lng": -82.6501
+      },
+      "polygon": [
+        {
+          "latitude": 34.539632,
+          "longitude": -82.694066
+        },
+        {
+          "latitude": 34.539632,
+          "longitude": -82.606134
+        },
+        {
+          "latitude": 34.467168,
+          "longitude": -82.606134
+        },
+        {
+          "latitude": 34.467168,
+          "longitude": -82.694066
+        },
+        {
+          "latitude": 34.539632,
+          "longitude": -82.694066
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 17530,
+        "city_state": 51080
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        }
+      },
+      "polygon_sample_cross_reference": null,
+      "polygon_lookup_cross_reference": null
+    },
+    {
+      "city": "Austin",
+      "state": "TX",
+      "region": "Texas",
+      "center": {
+        "lat": 30.2672,
+        "lng": -97.7431
+      },
+      "polygon": [
+        {
+          "latitude": 30.303432,
+          "longitude": -97.78505
+        },
+        {
+          "latitude": 30.303432,
+          "longitude": -97.70115
+        },
+        {
+          "latitude": 30.230968,
+          "longitude": -97.70115
+        },
+        {
+          "latitude": 30.230968,
+          "longitude": -97.78505
+        },
+        {
+          "latitude": 30.303432,
+          "longitude": -97.78505
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 52584,
+        "city_state": 353460
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 2,
+            "sale": 2
+          },
+          "city_state": {
+            "intel": 21,
+            "sale": 21
+          }
+        }
+      },
+      "polygon_sample_cross_reference": {
+        "window": "14d",
+        "intel_sample_records": 2,
+        "sale_sample_records": 2,
+        "overlap": 2,
+        "intel_only": 0,
+        "sale_only": 0,
+        "intel_fields": {
+          "records": 2,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 2,
+          "best_date_histogram": {}
+        },
+        "sale_fields": {
+          "records": 2,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 2,
+          "best_date_histogram": {}
+        },
+        "intel_status": 200,
+        "sale_status": 200
+      },
+      "polygon_lookup_cross_reference": {
+        "requested": 2,
+        "successful_http": 2,
+        "matched": 2,
+        "positive_field_delta": 0,
+        "intel_lastSoldDate_present": 0,
+        "explicit_type_present": 0,
+        "deed_history_present": 0,
+        "best_sale_date_present": 0,
+        "exact_yesterday_evidence": 0,
+        "best_date_histogram": {},
+        "source_categories": {
+          "both": 2
+        }
+      }
+    },
+    {
+      "city": "Phoenix",
+      "state": "AZ",
+      "region": "Southwest",
+      "center": {
+        "lat": 33.4484,
+        "lng": -112.074
+      },
+      "polygon": [
+        {
+          "latitude": 33.484632,
+          "longitude": -112.117424
+        },
+        {
+          "latitude": 33.484632,
+          "longitude": -112.030576
+        },
+        {
+          "latitude": 33.412168,
+          "longitude": -112.030576
+        },
+        {
+          "latitude": 33.412168,
+          "longitude": -112.117424
+        },
+        {
+          "latitude": 33.484632,
+          "longitude": -112.117424
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 26669,
+        "city_state": 438371
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 5,
+            "sale": 5
+          },
+          "city_state": {
+            "intel": 200,
+            "sale": 200
+          }
+        }
+      },
+      "polygon_sample_cross_reference": {
+        "window": "14d",
+        "intel_sample_records": 5,
+        "sale_sample_records": 5,
+        "overlap": 5,
+        "intel_only": 0,
+        "sale_only": 0,
+        "intel_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 3,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {
+            "2026-06-30": 2,
+            "2026-07-01": 1
+          }
+        },
+        "sale_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 3,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {
+            "2026-06-30": 2,
+            "2026-07-01": 1
+          }
+        },
+        "intel_status": 200,
+        "sale_status": 200
+      },
+      "polygon_lookup_cross_reference": {
+        "requested": 2,
+        "successful_http": 2,
+        "matched": 2,
+        "positive_field_delta": 0,
+        "intel_lastSoldDate_present": 0,
+        "explicit_type_present": 0,
+        "deed_history_present": 0,
+        "best_sale_date_present": 0,
+        "exact_yesterday_evidence": 0,
+        "best_date_histogram": {},
+        "source_categories": {
+          "both": 2
+        }
+      }
+    },
+    {
+      "city": "Charlotte",
+      "state": "NC",
+      "region": "Southeast",
+      "center": {
+        "lat": 35.2271,
+        "lng": -80.8431
+      },
+      "polygon": [
+        {
+          "latitude": 35.263332,
+          "longitude": -80.887454
+        },
+        {
+          "latitude": 35.263332,
+          "longitude": -80.798746
+        },
+        {
+          "latitude": 35.190868,
+          "longitude": -80.798746
+        },
+        {
+          "latitude": 35.190868,
+          "longitude": -80.887454
+        },
+        {
+          "latitude": 35.263332,
+          "longitude": -80.887454
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 41210,
+        "city_state": 345488
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 1,
+            "sale": 1
+          },
+          "city_state": {
+            "intel": 19,
+            "sale": 19
+          }
+        }
+      },
+      "polygon_sample_cross_reference": {
+        "window": "14d",
+        "intel_sample_records": 1,
+        "sale_sample_records": 1,
+        "overlap": 1,
+        "intel_only": 0,
+        "sale_only": 0,
+        "intel_fields": {
+          "records": 1,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 1,
+          "best_date_histogram": {}
+        },
+        "sale_fields": {
+          "records": 1,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 1,
+          "best_date_histogram": {}
+        },
+        "intel_status": 200,
+        "sale_status": 200
+      },
+      "polygon_lookup_cross_reference": {
+        "requested": 1,
+        "successful_http": 1,
+        "matched": 1,
+        "positive_field_delta": 0,
+        "intel_lastSoldDate_present": 0,
+        "explicit_type_present": 0,
+        "deed_history_present": 0,
+        "best_sale_date_present": 0,
+        "exact_yesterday_evidence": 0,
+        "best_date_histogram": {},
+        "source_categories": {
+          "both": 1
+        }
+      }
+    },
+    {
+      "city": "Indianapolis",
+      "state": "IN",
+      "region": "Midwest",
+      "center": {
+        "lat": 39.7684,
+        "lng": -86.1581
+      },
+      "polygon": [
+        {
+          "latitude": 39.804632,
+          "longitude": -86.205238
+        },
+        {
+          "latitude": 39.804632,
+          "longitude": -86.110962
+        },
+        {
+          "latitude": 39.732168,
+          "longitude": -86.110962
+        },
+        {
+          "latitude": 39.732168,
+          "longitude": -86.205238
+        },
+        {
+          "latitude": 39.804632,
+          "longitude": -86.205238
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 40142,
+        "city_state": 338924
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 1,
+            "sale": 1
+          },
+          "city_state": {
+            "intel": 7,
+            "sale": 7
+          }
+        }
+      },
+      "polygon_sample_cross_reference": {
+        "window": "14d",
+        "intel_sample_records": 1,
+        "sale_sample_records": 1,
+        "overlap": 1,
+        "intel_only": 0,
+        "sale_only": 0,
+        "intel_fields": {
+          "records": 1,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 1,
+          "best_date_histogram": {}
+        },
+        "sale_fields": {
+          "records": 1,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 1,
+          "best_date_histogram": {}
+        },
+        "intel_status": 200,
+        "sale_status": 200
+      },
+      "polygon_lookup_cross_reference": {
+        "requested": 1,
+        "successful_http": 1,
+        "matched": 1,
+        "positive_field_delta": 0,
+        "intel_lastSoldDate_present": 0,
+        "explicit_type_present": 0,
+        "deed_history_present": 0,
+        "best_sale_date_present": 0,
+        "exact_yesterday_evidence": 0,
+        "best_date_histogram": {},
+        "source_categories": {
+          "both": 1
+        }
+      }
+    },
+    {
+      "city": "Atlanta",
+      "state": "GA",
+      "region": "Southeast",
+      "center": {
+        "lat": 33.749,
+        "lng": -84.388
+      },
+      "polygon": [
+        {
+          "latitude": 33.785232,
+          "longitude": -84.431575
+        },
+        {
+          "latitude": 33.785232,
+          "longitude": -84.344425
+        },
+        {
+          "latitude": 33.712768,
+          "longitude": -84.344425
+        },
+        {
+          "latitude": 33.712768,
+          "longitude": -84.431575
+        },
+        {
+          "latitude": 33.785232,
+          "longitude": -84.431575
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 49757,
+        "city_state": 316339
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        }
+      },
+      "polygon_sample_cross_reference": null,
+      "polygon_lookup_cross_reference": null
+    },
+    {
+      "city": "Dallas",
+      "state": "TX",
+      "region": "Texas",
+      "center": {
+        "lat": 32.7767,
+        "lng": -96.797
+      },
+      "polygon": [
+        {
+          "latitude": 32.812932,
+          "longitude": -96.840093
+        },
+        {
+          "latitude": 32.812932,
+          "longitude": -96.753907
+        },
+        {
+          "latitude": 32.740468,
+          "longitude": -96.753907
+        },
+        {
+          "latitude": 32.740468,
+          "longitude": -96.840093
+        },
+        {
+          "latitude": 32.812932,
+          "longitude": -96.840093
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 42105,
+        "city_state": 394490
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 1,
+            "sale": 1
+          },
+          "city_state": {
+            "intel": 30,
+            "sale": 30
+          }
+        }
+      },
+      "polygon_sample_cross_reference": {
+        "window": "14d",
+        "intel_sample_records": 1,
+        "sale_sample_records": 1,
+        "overlap": 1,
+        "intel_only": 0,
+        "sale_only": 0,
+        "intel_fields": {
+          "records": 1,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 1,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 1,
+          "best_date_histogram": {
+            "2026-06-29": 1
+          }
+        },
+        "sale_fields": {
+          "records": 1,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 1,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 1,
+          "best_date_histogram": {
+            "2026-06-29": 1
+          }
+        },
+        "intel_status": 200,
+        "sale_status": 200
+      },
+      "polygon_lookup_cross_reference": {
+        "requested": 1,
+        "successful_http": 1,
+        "matched": 1,
+        "positive_field_delta": 0,
+        "intel_lastSoldDate_present": 0,
+        "explicit_type_present": 0,
+        "deed_history_present": 0,
+        "best_sale_date_present": 1,
+        "exact_yesterday_evidence": 0,
+        "best_date_histogram": {
+          "2026-06-29": 1
+        },
+        "source_categories": {
+          "both": 1
+        }
+      }
+    },
+    {
+      "city": "Houston",
+      "state": "TX",
+      "region": "Texas",
+      "center": {
+        "lat": 29.7604,
+        "lng": -95.3698
+      },
+      "polygon": [
+        {
+          "latitude": 29.796632,
+          "longitude": -95.411537
+        },
+        {
+          "latitude": 29.796632,
+          "longitude": -95.328063
+        },
+        {
+          "latitude": 29.724168,
+          "longitude": -95.328063
+        },
+        {
+          "latitude": 29.724168,
+          "longitude": -95.411537
+        },
+        {
+          "latitude": 29.796632,
+          "longitude": -95.411537
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 60644,
+        "city_state": 916466
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 31,
+            "sale": 31
+          },
+          "city_state": {
+            "intel": 492,
+            "sale": 490
+          }
+        }
+      },
+      "polygon_sample_cross_reference": {
+        "window": "14d",
+        "intel_sample_records": 5,
+        "sale_sample_records": 5,
+        "overlap": 5,
+        "intel_only": 0,
+        "sale_only": 0,
+        "intel_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 3,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {
+            "2026-06-29": 2,
+            "2026-06-30": 1
+          }
+        },
+        "sale_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 3,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {
+            "2026-06-29": 2,
+            "2026-06-30": 1
+          }
+        },
+        "intel_status": 200,
+        "sale_status": 200
+      },
+      "polygon_lookup_cross_reference": {
+        "requested": 2,
+        "successful_http": 2,
+        "matched": 2,
+        "positive_field_delta": 0,
+        "intel_lastSoldDate_present": 0,
+        "explicit_type_present": 0,
+        "deed_history_present": 0,
+        "best_sale_date_present": 1,
+        "exact_yesterday_evidence": 0,
+        "best_date_histogram": {
+          "2026-06-29": 1
+        },
+        "source_categories": {
+          "both": 2
+        }
+      },
+      "targeted_city_state_cross_reference": {
+        "freshest_nonzero_window": "14d",
+        "sample": {
+          "window": "14d",
+          "intel_sample_records": 5,
+          "sale_sample_records": 5,
+          "overlap": 5,
+          "intel_only": 0,
+          "sale_only": 0,
+          "intel_fields": {
+            "records": 5,
+            "intel_lastSoldDate_present": 0,
+            "explicit_type_present": 0,
+            "deed_history_present": 0,
+            "best_sale_date_present": 4,
+            "exact_yesterday_evidence": 0,
+            "quickLists_recentlySold_true": 5,
+            "best_date_histogram": {
+              "2026-06-30": 2,
+              "2026-06-26": 1,
+              "2026-07-01": 1
+            }
+          },
+          "sale_fields": {
+            "records": 5,
+            "intel_lastSoldDate_present": 0,
+            "explicit_type_present": 0,
+            "deed_history_present": 0,
+            "best_sale_date_present": 4,
+            "exact_yesterday_evidence": 0,
+            "quickLists_recentlySold_true": 5,
+            "best_date_histogram": {
+              "2026-06-30": 2,
+              "2026-06-26": 1,
+              "2026-07-01": 1
+            }
+          },
+          "intel_status": 200,
+          "sale_status": 200
+        },
+        "lookup": {
+          "requested": 2,
+          "successful_http": 2,
+          "matched": 2,
+          "positive_field_delta": 0,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 2,
+          "exact_yesterday_evidence": 0,
+          "best_date_histogram": {
+            "2026-06-30": 1,
+            "2026-06-26": 1
+          },
+          "source_categories": {
+            "both": 2
+          }
+        }
+      }
+    },
+    {
+      "city": "San Antonio",
+      "state": "TX",
+      "region": "Texas",
+      "center": {
+        "lat": 29.4241,
+        "lng": -98.4936
+      },
+      "polygon": [
+        {
+          "latitude": 29.460332,
+          "longitude": -98.535198
+        },
+        {
+          "latitude": 29.460332,
+          "longitude": -98.452002
+        },
+        {
+          "latitude": 29.387868,
+          "longitude": -98.452002
+        },
+        {
+          "latitude": 29.387868,
+          "longitude": -98.535198
+        },
+        {
+          "latitude": 29.460332,
+          "longitude": -98.535198
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 44596,
+        "city_state": 615033
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 1,
+            "sale": 1
+          },
+          "city_state": {
+            "intel": 20,
+            "sale": 20
+          }
+        }
+      },
+      "polygon_sample_cross_reference": {
+        "window": "14d",
+        "intel_sample_records": 1,
+        "sale_sample_records": 1,
+        "overlap": 1,
+        "intel_only": 0,
+        "sale_only": 0,
+        "intel_fields": {
+          "records": 1,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 1,
+          "best_date_histogram": {}
+        },
+        "sale_fields": {
+          "records": 1,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 1,
+          "best_date_histogram": {}
+        },
+        "intel_status": 200,
+        "sale_status": 200
+      },
+      "polygon_lookup_cross_reference": {
+        "requested": 1,
+        "successful_http": 1,
+        "matched": 1,
+        "positive_field_delta": 0,
+        "intel_lastSoldDate_present": 0,
+        "explicit_type_present": 0,
+        "deed_history_present": 0,
+        "best_sale_date_present": 0,
+        "exact_yesterday_evidence": 0,
+        "best_date_histogram": {},
+        "source_categories": {
+          "both": 1
+        }
+      }
+    },
+    {
+      "city": "Tampa",
+      "state": "FL",
+      "region": "Florida",
+      "center": {
+        "lat": 27.9506,
+        "lng": -82.4572
+      },
+      "polygon": [
+        {
+          "latitude": 27.986832,
+          "longitude": -82.498216
+        },
+        {
+          "latitude": 27.986832,
+          "longitude": -82.416184
+        },
+        {
+          "latitude": 27.914368,
+          "longitude": -82.416184
+        },
+        {
+          "latitude": 27.914368,
+          "longitude": -82.498216
+        },
+        {
+          "latitude": 27.986832,
+          "longitude": -82.498216
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 41642,
+        "city_state": 262707
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        }
+      },
+      "polygon_sample_cross_reference": null,
+      "polygon_lookup_cross_reference": null
+    },
+    {
+      "city": "Orlando",
+      "state": "FL",
+      "region": "Florida",
+      "center": {
+        "lat": 28.5383,
+        "lng": -81.3792
+      },
+      "polygon": [
+        {
+          "latitude": 28.574532,
+          "longitude": -81.420443
+        },
+        {
+          "latitude": 28.574532,
+          "longitude": -81.337957
+        },
+        {
+          "latitude": 28.502068,
+          "longitude": -81.337957
+        },
+        {
+          "latitude": 28.502068,
+          "longitude": -81.420443
+        },
+        {
+          "latitude": 28.574532,
+          "longitude": -81.420443
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 36500,
+        "city_state": 325900
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 1,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 1,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 6,
+            "sale": 6
+          },
+          "city_state": {
+            "intel": 29,
+            "sale": 28
+          }
+        }
+      },
+      "polygon_sample_cross_reference": {
+        "window": "14d",
+        "intel_sample_records": 5,
+        "sale_sample_records": 5,
+        "overlap": 5,
+        "intel_only": 0,
+        "sale_only": 0,
+        "intel_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {}
+        },
+        "sale_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {}
+        },
+        "intel_status": 200,
+        "sale_status": 200
+      },
+      "polygon_lookup_cross_reference": {
+        "requested": 2,
+        "successful_http": 2,
+        "matched": 2,
+        "positive_field_delta": 0,
+        "intel_lastSoldDate_present": 0,
+        "explicit_type_present": 0,
+        "deed_history_present": 0,
+        "best_sale_date_present": 0,
+        "exact_yesterday_evidence": 0,
+        "best_date_histogram": {},
+        "source_categories": {
+          "both": 2
+        }
+      },
+      "targeted_city_state_cross_reference": {
+        "freshest_nonzero_window": "2d",
+        "sample": {
+          "window": "2d",
+          "intel_sample_records": 1,
+          "sale_sample_records": 0,
+          "overlap": 0,
+          "intel_only": 1,
+          "sale_only": 0,
+          "intel_fields": {
+            "records": 1,
+            "intel_lastSoldDate_present": 0,
+            "explicit_type_present": 0,
+            "deed_history_present": 0,
+            "best_sale_date_present": 0,
+            "exact_yesterday_evidence": 0,
+            "quickLists_recentlySold_true": 1,
+            "best_date_histogram": {}
+          },
+          "sale_fields": {
+            "records": 0,
+            "intel_lastSoldDate_present": 0,
+            "explicit_type_present": 0,
+            "deed_history_present": 0,
+            "best_sale_date_present": 0,
+            "exact_yesterday_evidence": 0,
+            "quickLists_recentlySold_true": 0,
+            "best_date_histogram": {}
+          },
+          "intel_status": 200,
+          "sale_status": null
+        },
+        "lookup": {
+          "requested": 1,
+          "successful_http": 1,
+          "matched": 1,
+          "positive_field_delta": 0,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "best_date_histogram": {},
+          "source_categories": {
+            "intel": 1
+          }
+        }
+      }
+    },
+    {
+      "city": "Jacksonville",
+      "state": "FL",
+      "region": "Florida",
+      "center": {
+        "lat": 30.3322,
+        "lng": -81.6557
+      },
+      "polygon": [
+        {
+          "latitude": 30.368432,
+          "longitude": -81.697678
+        },
+        {
+          "latitude": 30.368432,
+          "longitude": -81.613722
+        },
+        {
+          "latitude": 30.295968,
+          "longitude": -81.613722
+        },
+        {
+          "latitude": 30.295968,
+          "longitude": -81.697678
+        },
+        {
+          "latitude": 30.368432,
+          "longitude": -81.697678
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 29887,
+        "city_state": 359787
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 11,
+            "sale": 11
+          },
+          "city_state": {
+            "intel": 80,
+            "sale": 80
+          }
+        }
+      },
+      "polygon_sample_cross_reference": {
+        "window": "14d",
+        "intel_sample_records": 5,
+        "sale_sample_records": 5,
+        "overlap": 5,
+        "intel_only": 0,
+        "sale_only": 0,
+        "intel_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {}
+        },
+        "sale_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {}
+        },
+        "intel_status": 200,
+        "sale_status": 200
+      },
+      "polygon_lookup_cross_reference": {
+        "requested": 2,
+        "successful_http": 2,
+        "matched": 2,
+        "positive_field_delta": 0,
+        "intel_lastSoldDate_present": 0,
+        "explicit_type_present": 0,
+        "deed_history_present": 0,
+        "best_sale_date_present": 0,
+        "exact_yesterday_evidence": 0,
+        "best_date_histogram": {},
+        "source_categories": {
+          "both": 2
+        }
+      }
+    },
+    {
+      "city": "Nashville",
+      "state": "TN",
+      "region": "Southeast",
+      "center": {
+        "lat": 36.1627,
+        "lng": -86.7816
+      },
+      "polygon": [
+        {
+          "latitude": 36.198932,
+          "longitude": -86.826478
+        },
+        {
+          "latitude": 36.198932,
+          "longitude": -86.736722
+        },
+        {
+          "latitude": 36.126468,
+          "longitude": -86.736722
+        },
+        {
+          "latitude": 36.126468,
+          "longitude": -86.826478
+        },
+        {
+          "latitude": 36.198932,
+          "longitude": -86.826478
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 46655,
+        "city_state": 198901
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 2,
+            "sale": 2
+          }
+        }
+      },
+      "polygon_sample_cross_reference": null,
+      "polygon_lookup_cross_reference": null
+    },
+    {
+      "city": "Raleigh",
+      "state": "NC",
+      "region": "Southeast",
+      "center": {
+        "lat": 35.7796,
+        "lng": -78.6382
+      },
+      "polygon": [
+        {
+          "latitude": 35.815832,
+          "longitude": -78.682861
+        },
+        {
+          "latitude": 35.815832,
+          "longitude": -78.593539
+        },
+        {
+          "latitude": 35.743368,
+          "longitude": -78.593539
+        },
+        {
+          "latitude": 35.743368,
+          "longitude": -78.682861
+        },
+        {
+          "latitude": 35.815832,
+          "longitude": -78.682861
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 28801,
+        "city_state": 198168
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 1,
+            "sale": 1
+          }
+        }
+      },
+      "polygon_sample_cross_reference": null,
+      "polygon_lookup_cross_reference": null
+    },
+    {
+      "city": "Charleston",
+      "state": "SC",
+      "region": "Southeast",
+      "center": {
+        "lat": 32.7765,
+        "lng": -79.9311
+      },
+      "polygon": [
+        {
+          "latitude": 32.812732,
+          "longitude": -79.974193
+        },
+        {
+          "latitude": 32.812732,
+          "longitude": -79.888007
+        },
+        {
+          "latitude": 32.740268,
+          "longitude": -79.888007
+        },
+        {
+          "latitude": 32.740268,
+          "longitude": -79.974193
+        },
+        {
+          "latitude": 32.812732,
+          "longitude": -79.974193
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 18521,
+        "city_state": 79424
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 3,
+            "sale": 3
+          }
+        }
+      },
+      "polygon_sample_cross_reference": null,
+      "polygon_lookup_cross_reference": null
+    },
+    {
+      "city": "Denver",
+      "state": "CO",
+      "region": "Mountain",
+      "center": {
+        "lat": 39.7392,
+        "lng": -104.9903
+      },
+      "polygon": [
+        {
+          "latitude": 39.775432,
+          "longitude": -105.037418
+        },
+        {
+          "latitude": 39.775432,
+          "longitude": -104.943182
+        },
+        {
+          "latitude": 39.702968,
+          "longitude": -104.943182
+        },
+        {
+          "latitude": 39.702968,
+          "longitude": -105.037418
+        },
+        {
+          "latitude": 39.775432,
+          "longitude": -105.037418
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 75475,
+        "city_state": 358545
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 1,
+            "sale": 1
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 28,
+            "sale": 28
+          },
+          "city_state": {
+            "intel": 178,
+            "sale": 177
+          }
+        }
+      },
+      "polygon_sample_cross_reference": {
+        "window": "14d",
+        "intel_sample_records": 5,
+        "sale_sample_records": 5,
+        "overlap": 5,
+        "intel_only": 0,
+        "sale_only": 0,
+        "intel_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 2,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {
+            "2026-06-26": 1,
+            "2026-06-30": 1
+          }
+        },
+        "sale_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 2,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {
+            "2026-06-26": 1,
+            "2026-06-30": 1
+          }
+        },
+        "intel_status": 200,
+        "sale_status": 200
+      },
+      "polygon_lookup_cross_reference": {
+        "requested": 2,
+        "successful_http": 2,
+        "matched": 2,
+        "positive_field_delta": 0,
+        "intel_lastSoldDate_present": 0,
+        "explicit_type_present": 0,
+        "deed_history_present": 0,
+        "best_sale_date_present": 0,
+        "exact_yesterday_evidence": 0,
+        "best_date_histogram": {},
+        "source_categories": {
+          "both": 2
+        }
+      },
+      "targeted_city_state_cross_reference": {
+        "freshest_nonzero_window": "7d",
+        "sample": {
+          "window": "7d",
+          "intel_sample_records": 1,
+          "sale_sample_records": 1,
+          "overlap": 1,
+          "intel_only": 0,
+          "sale_only": 0,
+          "intel_fields": {
+            "records": 1,
+            "intel_lastSoldDate_present": 0,
+            "explicit_type_present": 0,
+            "deed_history_present": 0,
+            "best_sale_date_present": 1,
+            "exact_yesterday_evidence": 0,
+            "quickLists_recentlySold_true": 1,
+            "best_date_histogram": {
+              "2026-07-02": 1
+            }
+          },
+          "sale_fields": {
+            "records": 1,
+            "intel_lastSoldDate_present": 0,
+            "explicit_type_present": 0,
+            "deed_history_present": 0,
+            "best_sale_date_present": 1,
+            "exact_yesterday_evidence": 0,
+            "quickLists_recentlySold_true": 1,
+            "best_date_histogram": {
+              "2026-07-02": 1
+            }
+          },
+          "intel_status": 200,
+          "sale_status": 200
+        },
+        "lookup": {
+          "requested": 1,
+          "successful_http": 1,
+          "matched": 1,
+          "positive_field_delta": 0,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 1,
+          "exact_yesterday_evidence": 0,
+          "best_date_histogram": {
+            "2026-07-02": 1
+          },
+          "source_categories": {
+            "both": 1
+          }
+        }
+      }
+    },
+    {
+      "city": "Las Vegas",
+      "state": "NV",
+      "region": "Southwest",
+      "center": {
+        "lat": 36.1699,
+        "lng": -115.1398
+      },
+      "polygon": [
+        {
+          "latitude": 36.206132,
+          "longitude": -115.184682
+        },
+        {
+          "latitude": 36.206132,
+          "longitude": -115.094918
+        },
+        {
+          "latitude": 36.133668,
+          "longitude": -115.094918
+        },
+        {
+          "latitude": 36.133668,
+          "longitude": -115.184682
+        },
+        {
+          "latitude": 36.206132,
+          "longitude": -115.184682
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 42585,
+        "city_state": 561963
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 3,
+            "sale": 3
+          },
+          "city_state": {
+            "intel": 133,
+            "sale": 133
+          }
+        }
+      },
+      "polygon_sample_cross_reference": {
+        "window": "14d",
+        "intel_sample_records": 3,
+        "sale_sample_records": 3,
+        "overlap": 3,
+        "intel_only": 0,
+        "sale_only": 0,
+        "intel_fields": {
+          "records": 3,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 1,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 3,
+          "best_date_histogram": {
+            "2026-06-26": 1
+          }
+        },
+        "sale_fields": {
+          "records": 3,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 1,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 3,
+          "best_date_histogram": {
+            "2026-06-26": 1
+          }
+        },
+        "intel_status": 200,
+        "sale_status": 200
+      },
+      "polygon_lookup_cross_reference": {
+        "requested": 2,
+        "successful_http": 2,
+        "matched": 2,
+        "positive_field_delta": 0,
+        "intel_lastSoldDate_present": 0,
+        "explicit_type_present": 0,
+        "deed_history_present": 0,
+        "best_sale_date_present": 1,
+        "exact_yesterday_evidence": 0,
+        "best_date_histogram": {
+          "2026-06-26": 1
+        },
+        "source_categories": {
+          "both": 2
+        }
+      }
+    },
+    {
+      "city": "Albuquerque",
+      "state": "NM",
+      "region": "Southwest",
+      "center": {
+        "lat": 35.0844,
+        "lng": -106.6504
+      },
+      "polygon": [
+        {
+          "latitude": 35.120632,
+          "longitude": -106.694677
+        },
+        {
+          "latitude": 35.120632,
+          "longitude": -106.606123
+        },
+        {
+          "latitude": 35.048168,
+          "longitude": -106.606123
+        },
+        {
+          "latitude": 35.048168,
+          "longitude": -106.694677
+        },
+        {
+          "latitude": 35.120632,
+          "longitude": -106.694677
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 28498,
+        "city_state": 231610
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 5,
+            "sale": 5
+          },
+          "city_state": {
+            "intel": 70,
+            "sale": 70
+          }
+        }
+      },
+      "polygon_sample_cross_reference": {
+        "window": "14d",
+        "intel_sample_records": 5,
+        "sale_sample_records": 5,
+        "overlap": 5,
+        "intel_only": 0,
+        "sale_only": 0,
+        "intel_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 2,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {
+            "2026-06-25": 1,
+            "2026-06-26": 1
+          }
+        },
+        "sale_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 2,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {
+            "2026-06-25": 1,
+            "2026-06-26": 1
+          }
+        },
+        "intel_status": 200,
+        "sale_status": 200
+      },
+      "polygon_lookup_cross_reference": {
+        "requested": 2,
+        "successful_http": 2,
+        "matched": 2,
+        "positive_field_delta": 0,
+        "intel_lastSoldDate_present": 0,
+        "explicit_type_present": 0,
+        "deed_history_present": 0,
+        "best_sale_date_present": 1,
+        "exact_yesterday_evidence": 0,
+        "best_date_histogram": {
+          "2026-06-25": 1
+        },
+        "source_categories": {
+          "both": 2
+        }
+      }
+    },
+    {
+      "city": "Los Angeles",
+      "state": "CA",
+      "region": "West",
+      "center": {
+        "lat": 34.0522,
+        "lng": -118.2437
+      },
+      "polygon": [
+        {
+          "latitude": 34.088432,
+          "longitude": -118.28743
+        },
+        {
+          "latitude": 34.088432,
+          "longitude": -118.19997
+        },
+        {
+          "latitude": 34.015968,
+          "longitude": -118.19997
+        },
+        {
+          "latitude": 34.015968,
+          "longitude": -118.28743
+        },
+        {
+          "latitude": 34.088432,
+          "longitude": -118.28743
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 47940,
+        "city_state": 416059
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 7,
+            "sale": 7
+          },
+          "city_state": {
+            "intel": 42,
+            "sale": 42
+          }
+        }
+      },
+      "polygon_sample_cross_reference": {
+        "window": "14d",
+        "intel_sample_records": 5,
+        "sale_sample_records": 5,
+        "overlap": 5,
+        "intel_only": 0,
+        "sale_only": 0,
+        "intel_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 2,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {
+            "2026-07-01": 1,
+            "2026-07-02": 1
+          }
+        },
+        "sale_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 2,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {
+            "2026-07-01": 1,
+            "2026-07-02": 1
+          }
+        },
+        "intel_status": 200,
+        "sale_status": 200
+      },
+      "polygon_lookup_cross_reference": {
+        "requested": 2,
+        "successful_http": 2,
+        "matched": 2,
+        "positive_field_delta": 0,
+        "intel_lastSoldDate_present": 0,
+        "explicit_type_present": 0,
+        "deed_history_present": 0,
+        "best_sale_date_present": 2,
+        "exact_yesterday_evidence": 0,
+        "best_date_histogram": {
+          "2026-07-01": 1,
+          "2026-07-02": 1
+        },
+        "source_categories": {
+          "both": 2
+        }
+      }
+    },
+    {
+      "city": "Sacramento",
+      "state": "CA",
+      "region": "West",
+      "center": {
+        "lat": 38.5816,
+        "lng": -121.4944
+      },
+      "polygon": [
+        {
+          "latitude": 38.617832,
+          "longitude": -121.540749
+        },
+        {
+          "latitude": 38.617832,
+          "longitude": -121.448051
+        },
+        {
+          "latitude": 38.545368,
+          "longitude": -121.448051
+        },
+        {
+          "latitude": 38.545368,
+          "longitude": -121.540749
+        },
+        {
+          "latitude": 38.617832,
+          "longitude": -121.540749
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 38991,
+        "city_state": 245184
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 7,
+            "sale": 7
+          },
+          "city_state": {
+            "intel": 50,
+            "sale": 50
+          }
+        }
+      },
+      "polygon_sample_cross_reference": {
+        "window": "14d",
+        "intel_sample_records": 5,
+        "sale_sample_records": 5,
+        "overlap": 5,
+        "intel_only": 0,
+        "sale_only": 0,
+        "intel_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 1,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {
+            "2012-09-20": 1
+          }
+        },
+        "sale_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 1,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {
+            "2012-09-20": 1
+          }
+        },
+        "intel_status": 200,
+        "sale_status": 200
+      },
+      "polygon_lookup_cross_reference": {
+        "requested": 2,
+        "successful_http": 2,
+        "matched": 2,
+        "positive_field_delta": 0,
+        "intel_lastSoldDate_present": 0,
+        "explicit_type_present": 0,
+        "deed_history_present": 0,
+        "best_sale_date_present": 0,
+        "exact_yesterday_evidence": 0,
+        "best_date_histogram": {},
+        "source_categories": {
+          "both": 2
+        }
+      }
+    },
+    {
+      "city": "Seattle",
+      "state": "WA",
+      "region": "West",
+      "center": {
+        "lat": 47.6062,
+        "lng": -122.3321
+      },
+      "polygon": [
+        {
+          "latitude": 47.642432,
+          "longitude": -122.385839
+        },
+        {
+          "latitude": 47.642432,
+          "longitude": -122.278361
+        },
+        {
+          "latitude": 47.569968,
+          "longitude": -122.278361
+        },
+        {
+          "latitude": 47.569968,
+          "longitude": -122.385839
+        },
+        {
+          "latitude": 47.642432,
+          "longitude": -122.385839
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 61554,
+        "city_state": 298410
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 31,
+            "sale": 25
+          },
+          "city_state": {
+            "intel": 134,
+            "sale": 118
+          }
+        }
+      },
+      "polygon_sample_cross_reference": {
+        "window": "14d",
+        "intel_sample_records": 5,
+        "sale_sample_records": 5,
+        "overlap": 4,
+        "intel_only": 1,
+        "sale_only": 1,
+        "intel_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {}
+        },
+        "sale_fields": {
+          "records": 5,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 5,
+          "best_date_histogram": {}
+        },
+        "intel_status": 200,
+        "sale_status": 200
+      },
+      "polygon_lookup_cross_reference": {
+        "requested": 2,
+        "successful_http": 2,
+        "matched": 2,
+        "positive_field_delta": 0,
+        "intel_lastSoldDate_present": 0,
+        "explicit_type_present": 0,
+        "deed_history_present": 0,
+        "best_sale_date_present": 0,
+        "exact_yesterday_evidence": 0,
+        "best_date_histogram": {},
+        "source_categories": {
+          "both": 2
+        }
+      },
+      "targeted_city_state_cross_reference": {
+        "freshest_nonzero_window": "14d",
+        "sample": {
+          "window": "14d",
+          "intel_sample_records": 5,
+          "sale_sample_records": 5,
+          "overlap": 5,
+          "intel_only": 0,
+          "sale_only": 0,
+          "intel_fields": {
+            "records": 5,
+            "intel_lastSoldDate_present": 0,
+            "explicit_type_present": 0,
+            "deed_history_present": 0,
+            "best_sale_date_present": 1,
+            "exact_yesterday_evidence": 0,
+            "quickLists_recentlySold_true": 5,
+            "best_date_histogram": {
+              "2026-06-26": 1
+            }
+          },
+          "sale_fields": {
+            "records": 5,
+            "intel_lastSoldDate_present": 0,
+            "explicit_type_present": 0,
+            "deed_history_present": 0,
+            "best_sale_date_present": 1,
+            "exact_yesterday_evidence": 0,
+            "quickLists_recentlySold_true": 5,
+            "best_date_histogram": {
+              "2026-06-26": 1
+            }
+          },
+          "intel_status": 200,
+          "sale_status": 200
+        },
+        "lookup": {
+          "requested": 2,
+          "successful_http": 2,
+          "matched": 2,
+          "positive_field_delta": 0,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "best_date_histogram": {},
+          "source_categories": {
+            "both": 2
+          }
+        }
+      }
+    },
+    {
+      "city": "Columbus",
+      "state": "OH",
+      "region": "Midwest",
+      "center": {
+        "lat": 39.9612,
+        "lng": -82.9988
+      },
+      "polygon": [
+        {
+          "latitude": 39.997432,
+          "longitude": -83.046071
+        },
+        {
+          "latitude": 39.997432,
+          "longitude": -82.951529
+        },
+        {
+          "latitude": 39.924968,
+          "longitude": -82.951529
+        },
+        {
+          "latitude": 39.924968,
+          "longitude": -83.046071
+        },
+        {
+          "latitude": 39.997432,
+          "longitude": -83.046071
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 45000,
+        "city_state": 288153
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        }
+      },
+      "polygon_sample_cross_reference": null,
+      "polygon_lookup_cross_reference": null
+    },
+    {
+      "city": "Kansas City",
+      "state": "MO",
+      "region": "Midwest",
+      "center": {
+        "lat": 39.0997,
+        "lng": -94.5786
+      },
+      "polygon": [
+        {
+          "latitude": 39.135932,
+          "longitude": -94.625288
+        },
+        {
+          "latitude": 39.135932,
+          "longitude": -94.531912
+        },
+        {
+          "latitude": 39.063468,
+          "longitude": -94.531912
+        },
+        {
+          "latitude": 39.063468,
+          "longitude": -94.625288
+        },
+        {
+          "latitude": 39.135932,
+          "longitude": -94.625288
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 29301,
+        "city_state": 233308
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 2,
+            "sale": 2
+          },
+          "city_state": {
+            "intel": 107,
+            "sale": 107
+          }
+        }
+      },
+      "polygon_sample_cross_reference": {
+        "window": "14d",
+        "intel_sample_records": 2,
+        "sale_sample_records": 2,
+        "overlap": 2,
+        "intel_only": 0,
+        "sale_only": 0,
+        "intel_fields": {
+          "records": 2,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 2,
+          "best_date_histogram": {}
+        },
+        "sale_fields": {
+          "records": 2,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 0,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 2,
+          "best_date_histogram": {}
+        },
+        "intel_status": 200,
+        "sale_status": 200
+      },
+      "polygon_lookup_cross_reference": {
+        "requested": 2,
+        "successful_http": 2,
+        "matched": 2,
+        "positive_field_delta": 0,
+        "intel_lastSoldDate_present": 0,
+        "explicit_type_present": 0,
+        "deed_history_present": 0,
+        "best_sale_date_present": 0,
+        "exact_yesterday_evidence": 0,
+        "best_date_histogram": {},
+        "source_categories": {
+          "both": 2
+        }
+      }
+    },
+    {
+      "city": "Philadelphia",
+      "state": "PA",
+      "region": "Northeast",
+      "center": {
+        "lat": 39.9526,
+        "lng": -75.1652
+      },
+      "polygon": [
+        {
+          "latitude": 39.988832,
+          "longitude": -75.212465
+        },
+        {
+          "latitude": 39.988832,
+          "longitude": -75.117935
+        },
+        {
+          "latitude": 39.916368,
+          "longitude": -75.117935
+        },
+        {
+          "latitude": 39.916368,
+          "longitude": -75.212465
+        },
+        {
+          "latitude": 39.988832,
+          "longitude": -75.212465
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 185058,
+        "city_state": 606157
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 3,
+            "sale": 3
+          },
+          "city_state": {
+            "intel": 3,
+            "sale": 3
+          }
+        }
+      },
+      "polygon_sample_cross_reference": {
+        "window": "14d",
+        "intel_sample_records": 3,
+        "sale_sample_records": 3,
+        "overlap": 3,
+        "intel_only": 0,
+        "sale_only": 0,
+        "intel_fields": {
+          "records": 3,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 2,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 3,
+          "best_date_histogram": {
+            "2026-06-25": 2
+          }
+        },
+        "sale_fields": {
+          "records": 3,
+          "intel_lastSoldDate_present": 0,
+          "explicit_type_present": 0,
+          "deed_history_present": 0,
+          "best_sale_date_present": 2,
+          "exact_yesterday_evidence": 0,
+          "quickLists_recentlySold_true": 3,
+          "best_date_histogram": {
+            "2026-06-25": 2
+          }
+        },
+        "intel_status": 200,
+        "sale_status": 200
+      },
+      "polygon_lookup_cross_reference": {
+        "requested": 2,
+        "successful_http": 2,
+        "matched": 2,
+        "positive_field_delta": 0,
+        "intel_lastSoldDate_present": 0,
+        "explicit_type_present": 0,
+        "deed_history_present": 0,
+        "best_sale_date_present": 2,
+        "exact_yesterday_evidence": 0,
+        "best_date_histogram": {
+          "2026-06-25": 2
+        },
+        "source_categories": {
+          "both": 2
+        }
+      }
+    },
+    {
+      "city": "Pittsburgh",
+      "state": "PA",
+      "region": "Northeast",
+      "center": {
+        "lat": 40.4406,
+        "lng": -79.9959
+      },
+      "polygon": [
+        {
+          "latitude": 40.476832,
+          "longitude": -80.043506
+        },
+        {
+          "latitude": 40.476832,
+          "longitude": -79.948294
+        },
+        {
+          "latitude": 40.404368,
+          "longitude": -79.948294
+        },
+        {
+          "latitude": 40.404368,
+          "longitude": -80.043506
+        },
+        {
+          "latitude": 40.476832,
+          "longitude": -80.043506
+        }
+      ],
+      "no_date_candidates": {
+        "polygon": 57528,
+        "city_state": 286060
+      },
+      "windows": {
+        "1d": {
+          "min_date": "2026-07-08",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "2d": {
+          "min_date": "2026-07-07",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "7d": {
+          "min_date": "2026-07-02",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        },
+        "14d": {
+          "min_date": "2026-06-25",
+          "max_date": "2026-07-08",
+          "polygon": {
+            "intel": 0,
+            "sale": 0
+          },
+          "city_state": {
+            "intel": 0,
+            "sale": 0
+          }
+        }
+      },
+      "polygon_sample_cross_reference": null,
+      "polygon_lookup_cross_reference": null
+    }
+  ],
+  "billing": {
+    "status": "unverified_confirm_in_batchdata_dashboard",
+    "note": "HTTP requests are counted, but provider credit charges are not inferred."
+  },
+  "limitations": [
+    "This measures two filters on BatchData Property Search plus targeted Lookup enrichment; it does not measure external MLS/deed penetration.",
+    "The polygon universe uses nominal 25-square-mile center-city rectangles; city/state controls use provider-defined municipal matching.",
+    "Results are a snapshot for one API key/account contract on 2026-07-09, not a permanent availability guarantee.",
+    "Address-level Search comparison is capped at five records per predicate per sampled city and is not a full-universe join.",
+    "Count requests used the basic dataset while field-audit samples used expanded datasets, so sample eligibility/order is not assumed to reproduce the count universe.",
+    "Lookup comparison is capped at two union records per sampled city; extractable first rows were not independently identity-matched.",
+    "The monitored Lookup population metric covers 11 fields and is not a full field-by-field diff.",
+    "No property addresses, owner data, API keys, provider error bodies, or raw provider payloads are retained.",
+    "The Denver semantic control demonstrated an upper-bound effect for both predicates, but hidden date fields prevent proof for every provider match and geography.",
+    "Because raw responses were not retained, the audit validates this derived JSON and runner logic rather than the underlying provider payloads."
+  ]
+}
