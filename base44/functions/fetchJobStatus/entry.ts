@@ -16,6 +16,22 @@ function parseTimeMs(value) {
     return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function isoDateDaysAgo(days, referenceMs = Date.now()) {
+    const date = new Date(referenceMs - days * 24 * 60 * 60 * 1000);
+    return date.toISOString().slice(0, 10);
+}
+
+function getCustomOwnershipRange(job) {
+    const metadata = job?.dry_run_metadata || {};
+    if (metadata.ownership_range_mode !== 'custom') return null;
+    const min = Number(metadata.ownership_range_days?.min);
+    const max = Number(metadata.ownership_range_days?.max);
+    if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 365 || min >= max) {
+        throw new Error('FetchJob has invalid custom ownership range metadata.');
+    }
+    return { min, max };
+}
+
 function getProcessorRekickReason(job, metadata, now) {
     if (!['pending', 'running'].includes(job.status)) return null;
 
@@ -98,18 +114,42 @@ Deno.serve(async (req) => {
         const metadata = job.dry_run_metadata || {};
         const now = Date.now();
         let processorKick = null;
+        let customOwnershipRange = null;
+        let ownershipRangeError = null;
+        try {
+            customOwnershipRange = getCustomOwnershipRange(job);
+        } catch (error) {
+            ownershipRangeError = error.message;
+            job.status = 'failed';
+            job.error_message = ownershipRangeError;
+            await base44.asServiceRole.entities.FetchJob.update(job.id, {
+                status: 'failed',
+                error_message: ownershipRangeError
+            }).catch(() => {});
+        }
+        const ownershipRangeMode = metadata.ownership_range_mode === 'custom' ? 'custom' : 'quick';
+        const referenceMs = parseTimeMs(job.created_date || job.started_at) || now;
+        const customSoldAtOrAfter = customOwnershipRange
+            ? `${isoDateDaysAgo(customOwnershipRange.max, referenceMs)}T00:00:00.000Z`
+            : null;
+        const customSoldBefore = customOwnershipRange
+            ? `${isoDateDaysAgo(customOwnershipRange.min - 1, referenceMs)}T00:00:00.000Z`
+            : null;
 
         let active_count = 0;
         try {
+            if (ownershipRangeError) throw new Error(ownershipRangeError);
             const databaseUrl = Deno.env.get('DATABASE_URL');
             if (databaseUrl) {
                 const sql = neon(databaseUrl);
                 const rows = await sql`
                     SELECT COUNT(*)::int AS active_count
                     FROM workspace_properties wp
+                    JOIN properties p ON p.id = wp.property_id
                     WHERE wp.fetch_job_id = ${job.id}
                       AND wp.user_email = ${job.user_email}
                       AND wp.route_active = TRUE
+                      AND (${customOwnershipRange === null} OR (p.sold_date IS NOT NULL AND p.sold_date >= ${customSoldAtOrAfter} AND p.sold_date < ${customSoldBefore}))
                 `;
                 active_count = Number(rows?.[0]?.active_count || 0);
             }
@@ -118,9 +158,27 @@ Deno.serve(async (req) => {
         }
 
         const rekickReason = getProcessorRekickReason(job, metadata, now);
-        if (rekickReason) {
+        if (rekickReason && !metadata.processor_token) {
+            const legacyMessage = 'This import predates the secured processor handoff. Retry the import to continue with the original criteria.';
+            job.status = 'failed';
+            job.error_message = legacyMessage;
+            processorKick = {
+                requested: false,
+                reason: 'missing_processor_token',
+                at: new Date(now).toISOString(),
+                count: Number(metadata.processor_rekick_count || 0)
+            };
+            await base44.asServiceRole.entities.FetchJob.update(job.id, {
+                status: 'failed',
+                error_message: legacyMessage,
+                error_log: [...(job.error_log || []), `[${new Date(now).toISOString()}] ${legacyMessage}`]
+            }).catch(error => {
+                processorKick = { ...processorKick, metadata_error: error.message };
+            });
+        } else if (rekickReason) {
             const rekickAt = new Date(now).toISOString();
             const rekickCount = Number(metadata.processor_rekick_count || 0) + 1;
+            const processorToken = metadata.processor_token;
             const staleLocksCleared = await clearInitialStaleLocks(base44, job, now);
             processorKick = { requested: true, reason: rekickReason, at: rekickAt, count: rekickCount, stale_locks_cleared: staleLocksCleared };
 
@@ -137,7 +195,8 @@ Deno.serve(async (req) => {
 
             const invokePromise = base44.asServiceRole.functions.invoke('processFetchChunk', {
                 job_id: job.id,
-                expected_chunk: job.chunk_number || 0
+                expected_chunk: job.chunk_number || 0,
+                processor_token: processorToken
             }).catch(error => {
                 processorKick = { ...processorKick, invoke_error: error.message };
                 console.warn(`[fetchJobStatus] processor re-kick failed for ${job.id}: ${error.message}`);
@@ -148,7 +207,7 @@ Deno.serve(async (req) => {
 
         return Response.json({
             job_id: job.id,
-            status: job.status,
+            status: ownershipRangeError ? 'failed' : job.status,
             phase: job.phase || null,
             provider: job.provider || null,
             mode_tag: job.mode_tag || null,
@@ -161,13 +220,18 @@ Deno.serve(async (req) => {
             total_batchdata_calls: job.total_batchdata_calls || 0,
             active_count,
             zip_codes_found: job.zip_codes_found || [],
-            error_message: job.error_message || null,
+            error_message: ownershipRangeError || job.error_message || null,
             pull_mode: job.pull_mode || (job.is_delta_pull ? 'delta_refresh' : 'full_refresh'),
             completed_sub_circles: job.completed_sub_circles || 0,
             total_sub_circles: job.total_sub_circles || 1,
             current_offset: job.current_offset || 0,
             is_delta_pull: job.is_delta_pull || false,
             delta_savings: job.delta_savings || null,
+            ownership_range_mode: ownershipRangeMode,
+            ownership_min_days: customOwnershipRange?.min ?? null,
+            ownership_max_days: customOwnershipRange?.max ?? null,
+            ownership_range_days: customOwnershipRange,
+            polygon: job.polygon || [],
             diagnostics: {
                 requested_properties: metadata.requested_properties ?? job.total_expected ?? 0,
                 requested_properties_before_cap: metadata.requested_properties_before_cap ?? metadata.requested_properties ?? job.total_expected ?? 0,
@@ -175,6 +239,10 @@ Deno.serve(async (req) => {
                 free_properties_remaining: metadata.free_properties_remaining ?? null,
                 free_property_cap: metadata.free_property_cap ?? null,
                 sold_months: job.sold_months || null,
+                ownership_range_mode: ownershipRangeMode,
+                ownership_min_days: customOwnershipRange?.min ?? null,
+                ownership_max_days: customOwnershipRange?.max ?? null,
+                ownership_range_days: customOwnershipRange,
                 area_sq_mi: job.area_sq_mi || null,
                 count_mode: metadata.count_mode || null,
                 filters: metadata.filters || null,

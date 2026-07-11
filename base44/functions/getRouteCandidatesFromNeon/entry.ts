@@ -43,6 +43,17 @@ function isoDateDaysAgo(days, referenceMs = Date.now()) {
     return date.toISOString().slice(0, 10);
 }
 
+function getCustomOwnershipRange(fetchJob) {
+    const metadata = fetchJob?.dry_run_metadata || {};
+    if (metadata.ownership_range_mode !== 'custom') return null;
+    const min = Number(metadata.ownership_range_days?.min);
+    const max = Number(metadata.ownership_range_days?.max);
+    if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 365 || min >= max) {
+        throw new Error('FetchJob has invalid custom ownership range metadata.');
+    }
+    return { min, max };
+}
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -62,12 +73,20 @@ Deno.serve(async (req) => {
         const soldMonths = body.sold_months === 'all' || body.sold_months === null ? null : Number(body.sold_months || 12);
         const fetchJobId = body.fetch_job_id ? String(body.fetch_job_id) : null;
         let referenceMs = Date.now();
+        let fetchJob = null;
         if (fetchJobId) {
-            const fetchJob = await base44.asServiceRole.entities.FetchJob.get(fetchJobId).catch(() => null);
+            fetchJob = await base44.asServiceRole.entities.FetchJob.get(fetchJobId).catch(() => null);
             const fetchJobTime = fetchJob?.created_date || fetchJob?.started_at;
             const parsed = fetchJobTime ? new Date(fetchJobTime).getTime() : NaN;
             if (Number.isFinite(parsed)) referenceMs = parsed;
         }
+        const customOwnershipRange = getCustomOwnershipRange(fetchJob);
+        const customSoldAtOrAfter = customOwnershipRange
+            ? `${isoDateDaysAgo(customOwnershipRange.max, referenceMs)}T00:00:00.000Z`
+            : null;
+        const customSoldBefore = customOwnershipRange
+            ? `${isoDateDaysAgo(customOwnershipRange.min - 1, referenceMs)}T00:00:00.000Z`
+            : null;
         const soldAfter = soldMonths ? `${isoDateDaysAgo(routeCandidateSoldWindowDays(soldMonths), referenceMs)}T00:00:00.000Z` : null;
 
         if (body.debug_job === true && fetchJobId) {
@@ -170,6 +189,7 @@ Deno.serve(async (req) => {
               AND COALESCE(p.sale_confidence, '') <> 'REJECTED'
               AND (${zipCodes.length === 0} OR p.zip_code = ANY(${zipCodes}))
               AND (${fetchJobId !== null || soldAfter === null} OR p.sold_date IS NULL OR p.sold_date >= ${soldAfter})
+              AND (${customOwnershipRange === null} OR (p.sold_date IS NOT NULL AND p.sold_date >= ${customSoldAtOrAfter} AND p.sold_date < ${customSoldBefore}))
               AND (${!bounds?.minLat} OR p.lat >= ${bounds?.minLat || 0})
               AND (${!bounds?.maxLat} OR p.lat <= ${bounds?.maxLat || 0})
               AND (${!bounds?.minLng} OR p.lng >= ${bounds?.minLng || 0})
@@ -211,6 +231,10 @@ Deno.serve(async (req) => {
             count: properties.length,
             capped: properties.length >= limit,
             limit,
+            ownership_range_mode: customOwnershipRange ? 'custom' : 'quick',
+            ownership_min_days: customOwnershipRange?.min ?? null,
+            ownership_max_days: customOwnershipRange?.max ?? null,
+            ownership_range_days: customOwnershipRange,
             properties
         });
     } catch (error) {

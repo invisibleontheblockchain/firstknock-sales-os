@@ -19,6 +19,15 @@ const BRAND = {
 
 const ROUTE_SIZE_OPTIONS = [25, 50, 75, 100, 150, 200];
 
+function normalizeOwnershipRangeDays(value) {
+    const min = Number(Array.isArray(value) ? value[0] : value?.min);
+    const max = Number(Array.isArray(value) ? value[1] : value?.max);
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+    const normalizedMin = Math.max(1, Math.min(365, Math.round(min)));
+    const normalizedMax = Math.max(1, Math.min(365, Math.round(max)));
+    return normalizedMin < normalizedMax ? [normalizedMin, normalizedMax] : null;
+}
+
 export default function RouteBuilderSettings({
     // State values
     housesPerRoute, setHousesPerRoute,
@@ -29,6 +38,7 @@ export default function RouteBuilderSettings({
     startAddressInput, setStartAddressInput,
     sortBy, setSortBy,
     soldDateFilter, setSoldDateFilter,
+    ownershipRangeDays,
     lastPullMode,
     // New advanced options
     routeConfig, setRouteConfig,
@@ -64,6 +74,7 @@ export default function RouteBuilderSettings({
     const [showGhostAreas, setShowGhostAreas] = useState(() => {
         try { return localStorage.getItem('fk_showGhostAreas') === 'true'; } catch { return false; }
     });
+    const fixedOwnershipRangeDays = normalizeOwnershipRangeDays(ownershipRangeDays);
 
     // Auto-apply good defaults on initial load
     React.useEffect(() => {
@@ -223,8 +234,20 @@ export default function RouteBuilderSettings({
 
                         {/* ═══ 2. RECENTLY SOLD ═══ */}
                         <div className="space-y-3">
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">2. Recently Sold</label>
-                            {lastPullMode === '300mi' ? (
+                            <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                                2. {fixedOwnershipRangeDays ? 'Ownership Window' : 'Recently Sold'}
+                            </label>
+                            {fixedOwnershipRangeDays ? (
+                                <>
+                                    <div className="w-full rounded-lg border border-yellow-500/30 bg-yellow-500/10 px-3 py-3 text-center text-xs font-bold text-yellow-400">
+                                        Custom: {fixedOwnershipRangeDays[0]}–{fixedOwnershipRangeDays[1]} days
+                                    </div>
+                                    <div className="flex items-center gap-1.5 rounded-lg border border-cyan-500/20 bg-cyan-500/10 px-2 py-1.5 text-[9px] text-cyan-400">
+                                        <Lock className="w-3 h-3 shrink-0" />
+                                        <span>Fixed to the ownership window used for this Precision pull</span>
+                                    </div>
+                                </>
+                            ) : lastPullMode === '300mi' ? (
                                 <>
                                     <div className="flex gap-1.5">
                                         <div className="flex-1 py-3 rounded-lg text-xs font-bold bg-yellow-500 text-black shadow-lg text-center">
