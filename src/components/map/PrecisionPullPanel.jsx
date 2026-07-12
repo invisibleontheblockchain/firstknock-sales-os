@@ -449,7 +449,9 @@ export default function PrecisionPullPanel({
         <div className="shrink-0 p-4 sm:p-5 border-t border-white/10 bg-black">
           {pullError && (
             <div className="mb-3 rounded-xl border border-red-500/40 bg-red-500/10 p-3">
-              <p className="text-xs font-bold text-red-300">Route size needs an upgrade</p>
+              <p className="text-xs font-bold text-red-300">
+                {pullError.upgrade ? 'Route size needs an upgrade' : 'Could not start property import'}
+              </p>
               <p className="mt-1 text-[11px] leading-snug text-red-200/90">{pullError.message}</p>
               {pullError.upgrade && (
                 <button
