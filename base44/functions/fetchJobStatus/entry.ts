@@ -231,6 +231,7 @@ Deno.serve(async (req) => {
             ownership_min_days: customOwnershipRange?.min ?? null,
             ownership_max_days: customOwnershipRange?.max ?? null,
             ownership_range_days: customOwnershipRange,
+            ownership_reference_date: job.created_date || job.started_at || null,
             polygon: job.polygon || [],
             diagnostics: {
                 requested_properties: metadata.requested_properties ?? job.total_expected ?? 0,
@@ -243,6 +244,7 @@ Deno.serve(async (req) => {
                 ownership_min_days: customOwnershipRange?.min ?? null,
                 ownership_max_days: customOwnershipRange?.max ?? null,
                 ownership_range_days: customOwnershipRange,
+                ownership_reference_date: job.created_date || job.started_at || null,
                 area_sq_mi: job.area_sq_mi || null,
                 count_mode: metadata.count_mode || null,
                 filters: metadata.filters || null,

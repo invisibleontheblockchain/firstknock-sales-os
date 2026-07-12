@@ -228,6 +228,11 @@ function ownershipFromJob(job) {
     return { mode: 'custom', range: { min, max } };
 }
 
+function sameCustomOwnershipRange(left, right) {
+    return left?.mode === 'custom' && right?.mode === 'custom' &&
+        left.range?.min === right.range?.min && left.range?.max === right.range?.max;
+}
+
 function asArray(value) {
     return Array.isArray(value) ? value : (value?.items || []);
 }
@@ -351,9 +356,28 @@ Deno.serve(async (req) => {
         const runningJobs = await base44.entities.FetchJob.filter({ user_email: user.email, status: 'running' }, null, 5);
         const pendingJobs = await base44.entities.FetchJob.filter({ user_email: user.email, status: 'pending' }, null, 5);
         const activeJob = (Array.isArray(runningJobs) ? runningJobs : runningJobs?.items || [])[0] || (Array.isArray(pendingJobs) ? pendingJobs : pendingJobs?.items || [])[0];
+        const requestedCustomPolygonHash = ownership.mode === 'custom' ? await polygonHash(polygon) : null;
         if (activeJob) {
             const activeMetadata = activeJob.dry_run_metadata || {};
             const activeOwnership = ownershipFromJob(activeJob);
+            const activePolygonHash = activeJob.polygon_hash || (
+                Array.isArray(activeJob.polygon) && activeJob.polygon.length >= 3
+                    ? await polygonHash(activeJob.polygon)
+                    : null
+            );
+            if (ownership.mode === 'custom' && (
+                !sameCustomOwnershipRange(ownership, activeOwnership) ||
+                !requestedCustomPolygonHash ||
+                requestedCustomPolygonHash !== activePolygonHash
+            )) {
+                return Response.json({
+                    error: 'active_job_criteria_conflict',
+                    message: 'A different property import is already running. Your custom ownership-range request was not started or replaced. Wait for the current import to finish or cancel it, then submit this custom range again.',
+                    requested_ownership_range_days: ownership.range,
+                    active_ownership_range_days: activeOwnership.range,
+                    active_job_id: activeJob.id
+                }, { status: 409 });
+            }
             return Response.json({
                 status: 'already_running',
                 job_id: activeJob.id,
@@ -369,7 +393,7 @@ Deno.serve(async (req) => {
             });
         }
 
-        const hash = await polygonHash(polygon);
+        const hash = requestedCustomPolygonHash || await polygonHash(polygon);
         const processorToken = crypto.randomUUID();
         const job = await base44.asServiceRole.entities.FetchJob.create({
             status: 'pending',

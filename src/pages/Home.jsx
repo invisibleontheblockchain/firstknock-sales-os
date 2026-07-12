@@ -44,6 +44,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from "@/components/ui/input";
 import { generateOptimizedRoutes, optimizeRouteByDistance } from '../components/logic/routeOptimizer';
 import { applyRouteFilters, formatStageCounts } from '../components/logic/routeFilterPipeline';
+import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '../components/logic/soldDateRange';
 import RouteGenerationOverlay from '../components/routes/RouteGenerationOverlay';
 import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../components/logic/heatmapLogic';
 const RouteChecklist = React.lazy(() => import('../components/routes/RouteChecklist'));
@@ -101,6 +102,16 @@ function polygonHistoryKey(polygon = []) {
     return `${Number(first.lat || 0).toFixed(5)}:${Number(first.lng || 0).toFixed(5)}:${polygon.length}`;
 }
 
+function exactPolygonKey(polygon = []) {
+    const normalized = normalizeHistoryPolygon(polygon);
+    if (normalized.length < 3) return null;
+    const points = [...normalized];
+    const first = points[0];
+    const last = points[points.length - 1];
+    if (points.length > 3 && first.lat === last.lat && first.lng === last.lng) points.pop();
+    return points.map(point => `${point.lat.toFixed(7)},${point.lng.toFixed(7)}`).join(';');
+}
+
 function getRouteHistoryPolygon(route) {
     return normalizeHistoryPolygon(
         route?.metadata?.precision_area?.polygon ||
@@ -147,6 +158,43 @@ function normalizeOwnershipRangeDays(value) {
     const normalizedMin = Math.max(1, Math.min(365, Math.round(min)));
     const normalizedMax = Math.max(1, Math.min(365, Math.round(max)));
     return normalizedMin < normalizedMax ? [normalizedMin, normalizedMax] : null;
+}
+
+const PRECISION_JOB_CONTEXT_STORAGE_KEY = 'fk_precisionCustomJobContext';
+
+function readPersistedPrecisionJobContext(expectedUserEmail) {
+    try {
+        const parsed = JSON.parse(localStorage.getItem(PRECISION_JOB_CONTEXT_STORAGE_KEY) || 'null');
+        const userEmail = String(parsed?.userEmail || '').trim().toLowerCase();
+        if (!userEmail || userEmail !== String(expectedUserEmail || '').trim().toLowerCase()) return null;
+        const jobId = parsed?.jobId ? String(parsed.jobId) : null;
+        const ownershipRangeDays = normalizeStrictOwnershipRangeDays(parsed?.ownershipRangeDays);
+        const polygon = normalizeHistoryPolygon(parsed?.polygon);
+        if (!jobId || !ownershipRangeDays || polygon.length < 3) return null;
+        const soldMonths = Number(parsed?.soldMonths);
+        const requestedCount = Number(parsed?.requestedCount);
+        const ownershipReferenceDate = parsed?.ownershipReferenceDate && Number.isFinite(new Date(parsed.ownershipReferenceDate).getTime())
+            ? new Date(parsed.ownershipReferenceDate).toISOString()
+            : null;
+        return {
+            jobId,
+            userEmail,
+            ownershipRangeDays,
+            ownershipReferenceDate,
+            polygon,
+            soldMonths: Number.isFinite(soldMonths) && soldMonths > 0 ? soldMonths : ownershipRangeDays[1] / 30,
+            requestedCount: Number.isFinite(requestedCount) && requestedCount > 0 ? Math.round(requestedCount) : null
+        };
+    } catch {
+        return null;
+    }
+}
+
+function persistPrecisionJobContext(context) {
+    try {
+        if (!context) localStorage.removeItem(PRECISION_JOB_CONTEXT_STORAGE_KEY);
+        else localStorage.setItem(PRECISION_JOB_CONTEXT_STORAGE_KEY, JSON.stringify(context));
+    } catch { }
 }
 
 function precisionCandidateRank(property) {
@@ -206,6 +254,8 @@ export default function Home() {
     const currentBatchDataSoldMonthsRef = useRef(null);
     const [currentBatchDataOwnershipRangeDays, setCurrentBatchDataOwnershipRangeDays] = useState(null);
     const currentBatchDataOwnershipRangeDaysRef = useRef(null);
+    const [currentBatchDataOwnershipReferenceDate, setCurrentBatchDataOwnershipReferenceDate] = useState(null);
+    const currentBatchDataOwnershipReferenceDateRef = useRef(null);
     const currentBatchDataRequestedCountRef = useRef(null);
     const currentBatchDataPolygonRef = useRef(null);
     const [highlightRecentlySold, setHighlightRecentlySold] = useState(false);
@@ -320,19 +370,67 @@ export default function Home() {
     const mapRef = useRef(null);
     const appointmentMapFocusHandledRef = useRef(false);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
+    useEffect(() => {
+        if (!user?.email) return;
+        const context = readPersistedPrecisionJobContext(user.email);
+        if (!context) {
+            setCurrentBatchDataJobId(null);
+            currentBatchDataJobIdRef.current = null;
+            currentBatchDataSoldMonthsRef.current = null;
+            setCurrentBatchDataOwnershipRangeDays(null);
+            currentBatchDataOwnershipRangeDaysRef.current = null;
+            setCurrentBatchDataOwnershipReferenceDate(null);
+            currentBatchDataOwnershipReferenceDateRef.current = null;
+            currentBatchDataRequestedCountRef.current = null;
+            currentBatchDataPolygonRef.current = null;
+            return;
+        }
+        setCurrentBatchDataJobId(context.jobId);
+        currentBatchDataJobIdRef.current = context.jobId;
+        currentBatchDataSoldMonthsRef.current = context.soldMonths;
+        setCurrentBatchDataOwnershipRangeDays(context.ownershipRangeDays);
+        currentBatchDataOwnershipRangeDaysRef.current = context.ownershipRangeDays;
+        setCurrentBatchDataOwnershipReferenceDate(context.ownershipReferenceDate);
+        currentBatchDataOwnershipReferenceDateRef.current = context.ownershipReferenceDate;
+        currentBatchDataRequestedCountRef.current = context.requestedCount;
+        currentBatchDataPolygonRef.current = context.polygon;
+    }, [user?.email]);
     const [showKnockLimitSheet, setShowKnockLimitSheet] = useState(false);
     const [knockGateMode, setKnockGateMode] = useState('limit');
 
-    const fetchRouteCandidatesFromNeon = useCallback(async ({ zipCodes = [], zipCodeFilterValue = '', soldMonths = null, polygon = null, limit = 100000, fetchJobId = null } = {}) => {
+    const fetchRouteCandidatesFromNeon = useCallback(async ({ zipCodes = [], zipCodeFilterValue = '', soldMonths = null, ownershipRangeDays = null, polygon = null, limit = 100000, fetchJobId = null } = {}) => {
+        const customOwnershipRange = normalizeOwnershipRangeDays(ownershipRangeDays);
         const res = await base44.functions.invoke('getRouteCandidatesFromNeon', {
             zip_codes: zipCodes,
             zip_code_filter: zipCodeFilterValue,
             sold_months: soldMonths,
+            ...(customOwnershipRange ? {
+                ownership_range_mode: 'custom',
+                ownership_min_days: customOwnershipRange[0],
+                ownership_max_days: customOwnershipRange[1]
+            } : {}),
             polygon,
             limit,
             fetch_job_id: fetchJobId
         });
-        return Array.isArray(res.data?.properties) ? res.data.properties : [];
+        const data = res.data || {};
+        if (customOwnershipRange) {
+            const confirmedRange = normalizeStrictOwnershipRangeDays(
+                data.ownership_range_days ?? {
+                    min: data.ownership_min_days,
+                    max: data.ownership_max_days
+                }
+            );
+            if (
+                data.ownership_range_mode !== 'custom' ||
+                !confirmedRange ||
+                confirmedRange[0] !== customOwnershipRange[0] ||
+                confirmedRange[1] !== customOwnershipRange[1]
+            ) {
+                throw new Error('The route-candidate service did not confirm the selected custom ownership range. Route generation stopped so properties outside that range cannot be used.');
+            }
+        }
+        return Array.isArray(data.properties) ? data.properties : [];
     }, []);
 
     // Load navigation preference from user settings on load
@@ -1254,11 +1352,29 @@ export default function Home() {
                 ? normalizedUiPolygon
                 : (activeFetchJobId && currentJobPolygon.length > 2 ? currentJobPolygon : null);
             console.log(`[generateRoutes] Polygon source: job=${currentJobPolygon.length}, state=${Array.isArray(drawnPolygon) ? drawnPolygon.length : 0}, draft=${Array.isArray(draftPolygon) ? draftPolygon.length : 0}, stored=${Array.isArray(storedPolygon) ? storedPolygon.length : 0}`);
-            const activePolygonKey = activeGenerationPolygon ? polygonHistoryKey(activeGenerationPolygon) : null;
-            const currentJobPolygonKey = currentJobPolygon.length > 2 ? polygonHistoryKey(currentJobPolygon) : null;
+            const activeCustomOwnershipRangeDays = activeFetchJobId
+                ? normalizeOwnershipRangeDays(currentBatchDataOwnershipRangeDaysRef.current)
+                : null;
+            const activePolygonKey = activeGenerationPolygon
+                ? (activeCustomOwnershipRangeDays ? exactPolygonKey(activeGenerationPolygon) : polygonHistoryKey(activeGenerationPolygon))
+                : null;
+            const currentJobPolygonKey = currentJobPolygon.length > 2
+                ? (activeCustomOwnershipRangeDays ? exactPolygonKey(currentJobPolygon) : polygonHistoryKey(currentJobPolygon))
+                : null;
             const requestedPrecisionCount = activeFetchJobId ? currentBatchDataRequestedCountRef.current : null;
             const isCurrentBatchDataRun = !!activeFetchJobId && !!activeGenerationPolygon && !!activePolygonKey && activePolygonKey === currentJobPolygonKey;
             const effectiveGenerationSoldFilter = isCurrentBatchDataRun ? (currentBatchDataSoldMonthsRef.current || soldDateFilter) : soldDateFilter;
+            const effectiveGenerationOwnershipRangeDays = isCurrentBatchDataRun
+                ? activeCustomOwnershipRangeDays
+                : null;
+            const effectiveGenerationOwnershipReferenceDate = isCurrentBatchDataRun
+                ? currentBatchDataOwnershipReferenceDateRef.current
+                : null;
+            if (activeCustomOwnershipRangeDays && !isCurrentBatchDataRun) {
+                toast.dismiss('build-routes');
+                setGenerationError('The selected map area no longer matches the completed custom-range import. Route generation stopped so account-wide properties or properties from another date range cannot be substituted. Re-select the completed area and try again.');
+                return false;
+            }
             if (activeFetchJobId && activeGenerationPolygon && !isCurrentBatchDataRun) {
                 console.warn('[generateRoutes] Ignoring stale BatchData job context for a different polygon', {
                     activeFetchJobId,
@@ -1270,6 +1386,7 @@ export default function Home() {
                 const polygonProps = await fetchRouteCandidatesFromNeon({
                     polygon: activeGenerationPolygon,
                     soldMonths: isCurrentBatchDataRun ? effectiveGenerationSoldFilter : 'all',
+                    ownershipRangeDays: effectiveGenerationOwnershipRangeDays,
                     limit: 50000,
                     fetchJobId: isCurrentBatchDataRun ? activeFetchJobId : null
                 });
@@ -1428,7 +1545,10 @@ export default function Home() {
             const filterResult = applyRouteFilters({
                 initialSet, drawnPolygon: activeGenerationPolygon, zipCodeFilter,
                 territoryZipCodes: user?.territory_zip_codes,
-                soldDateFilter: effectiveGenerationSoldFilter, routeConfig: effectiveRouteConfig, lastPullMode, logsByAddress, assignedHashes,
+                soldDateFilter: effectiveGenerationSoldFilter,
+                ownershipRangeDays: effectiveGenerationOwnershipRangeDays,
+                ownershipRangeReferenceDate: effectiveGenerationOwnershipReferenceDate,
+                routeConfig: effectiveRouteConfig, lastPullMode, logsByAddress, assignedHashes,
             });
             console.log(`[generateRoutes] Filter funnel: ${formatStageCounts(filterResult.stages)}`);
             if (filterResult.frozenSet) setFrozenWorkingSet(filterResult.frozenSet);
@@ -1557,7 +1677,10 @@ export default function Home() {
             const filterResult = applyRouteFilters({
                 initialSet: frozenWorkingSet, drawnPolygon, zipCodeFilter,
                 territoryZipCodes: user?.territory_zip_codes,
-                soldDateFilter, routeConfig, lastPullMode, logsByAddress: logsByAddr, assignedHashes,
+                soldDateFilter,
+                ownershipRangeDays: normalizeOwnershipRangeDays(currentBatchDataOwnershipRangeDaysRef.current),
+                ownershipRangeReferenceDate: currentBatchDataOwnershipReferenceDateRef.current,
+                routeConfig, lastPullMode, logsByAddress: logsByAddr, assignedHashes,
             });
             console.log(`[handleReorder] Filter funnel: ${formatStageCounts(filterResult.stages)}`);
             if (filterResult.error) { toast.dismiss('reorder-routes'); setGenerationError(filterResult.error); return false; }
@@ -1927,6 +2050,8 @@ export default function Home() {
                     quickFilter={quickFilter}
                     zipCodeFilter={zipCodeFilter}
                     soldDateFilter={soldDateFilter}
+                    ownershipRangeDays={currentBatchDataOwnershipRangeDays}
+                    ownershipRangeReferenceDate={currentBatchDataOwnershipReferenceDate}
                     drawnPolygon={drawnPolygon}
                     assignedHashes={assignedHashes}
                     showAllProperties={showAllProperties}
@@ -2047,8 +2172,11 @@ export default function Home() {
                         currentBatchDataJobIdRef.current = null;
                         setCurrentBatchDataOwnershipRangeDays(null);
                         currentBatchDataOwnershipRangeDaysRef.current = null;
+                        setCurrentBatchDataOwnershipReferenceDate(null);
+                        currentBatchDataOwnershipReferenceDateRef.current = null;
                         currentBatchDataRequestedCountRef.current = null;
                         currentBatchDataPolygonRef.current = null;
+                        persistPrecisionJobContext(null);
                         setGenerationError('This Precision pull completed, but the completed job id was missing. Route generation was stopped so old account data cannot be mixed into this new area. Please generate the area again.');
                         return;
                     }
@@ -2060,17 +2188,27 @@ export default function Home() {
                         currentBatchDataJobIdRef.current = null;
                         setCurrentBatchDataOwnershipRangeDays(null);
                         currentBatchDataOwnershipRangeDaysRef.current = null;
+                        setCurrentBatchDataOwnershipReferenceDate(null);
+                        currentBatchDataOwnershipReferenceDateRef.current = null;
                         currentBatchDataRequestedCountRef.current = null;
                         currentBatchDataPolygonRef.current = null;
+                        persistPrecisionJobContext(null);
                         setGenerationError('This Precision pull completed, but the selected area was missing before routes could be built. Route generation was stopped so old account data cannot be mixed into this new area. Please generate the area again.');
                         return;
                     }
                     setCurrentBatchDataJobId(completedJobId);
                     currentBatchDataJobIdRef.current = completedJobId;
-                    const completedOwnershipRangeDays = normalizeOwnershipRangeDays(jobStatus?.diagnostics?.ownership_range_days);
+                    const completedOwnershipRangeDays = normalizeStrictOwnershipRangeDays(jobStatus?.diagnostics?.ownership_range_days);
                     setCurrentBatchDataOwnershipRangeDays(completedOwnershipRangeDays);
                     currentBatchDataOwnershipRangeDaysRef.current = completedOwnershipRangeDays;
-                    currentBatchDataRequestedCountRef.current = getRequestedPrecisionCount(jobStatus);
+                    const rawOwnershipReferenceDate = jobStatus?.ownership_reference_date ?? jobStatus?.diagnostics?.ownership_reference_date;
+                    const completedOwnershipReferenceDate = completedOwnershipRangeDays && Number.isFinite(new Date(rawOwnershipReferenceDate).getTime())
+                        ? new Date(rawOwnershipReferenceDate).toISOString()
+                        : null;
+                    setCurrentBatchDataOwnershipReferenceDate(completedOwnershipReferenceDate);
+                    currentBatchDataOwnershipReferenceDateRef.current = completedOwnershipReferenceDate;
+                    const completedRequestedCount = getRequestedPrecisionCount(jobStatus);
+                    currentBatchDataRequestedCountRef.current = completedRequestedCount;
                     currentBatchDataPolygonRef.current = normalizedPullPolygon;
                     try { localStorage.setItem('fk_drawnPolygonQueried', 'true'); } catch { }
                     setDrawnPolygon(normalizedPullPolygon, true);
@@ -2082,6 +2220,15 @@ export default function Home() {
 
                     const pm = pullFetchMonths || 12;
                     currentBatchDataSoldMonthsRef.current = pm;
+                    persistPrecisionJobContext(completedOwnershipRangeDays ? {
+                        userEmail: user?.email || '',
+                        jobId: completedJobId,
+                        soldMonths: pm,
+                        ownershipRangeDays: completedOwnershipRangeDays,
+                        ownershipReferenceDate: completedOwnershipReferenceDate,
+                        requestedCount: completedRequestedCount,
+                        polygon: normalizedPullPolygon
+                    } : null);
                     setMaxDataMonths(pm);
                     try { localStorage.setItem('fk_maxDataMonths', String(pm)); } catch { }
                     setHasMlsData(!!pulledWithMls);
@@ -2092,6 +2239,7 @@ export default function Home() {
                         pulledProperties = await fetchRouteCandidatesFromNeon({
                             polygon: normalizedPullPolygon,
                             soldMonths: pm,
+                            ownershipRangeDays: completedOwnershipRangeDays,
                             limit: 50000,
                             fetchJobId: completedJobId
                         });
