@@ -6,6 +6,7 @@ import {
     isSoldDateInCustomOwnershipRange,
     normalizeOwnershipRangeDays,
 } from '../src/components/logic/soldDateRange.js';
+import { getCustomRangeRevealScrollTop } from '../src/components/logic/customRangeReveal.js';
 
 const REFERENCE = new Date('2026-07-11T12:00:00.000Z');
 const RANGE = [90, 180];
@@ -43,4 +44,24 @@ test('custom 90–180 day range excludes yesterday and both outside boundaries',
     assert.equal(isSoldDateInCustomOwnershipRange('2026-01-11', RANGE, REFERENCE), false);
     assert.equal(isSoldDateInCustomOwnershipRange(null, RANGE, REFERENCE), false);
     assert.equal(isSoldDateInCustomOwnershipRange('not-a-date', RANGE, REFERENCE), false);
+});
+
+test('mobile Custom Range reveal scrolls a newly expanded panel into view', () => {
+    assert.equal(getCustomRangeRevealScrollTop({
+        scrollTop: 180,
+        viewportTop: 120,
+        viewportBottom: 620,
+        panelTop: 590,
+        panelBottom: 860,
+    }), 638);
+});
+
+test('mobile Custom Range reveal leaves an already visible panel in place', () => {
+    assert.equal(getCustomRangeRevealScrollTop({
+        scrollTop: 180,
+        viewportTop: 120,
+        viewportBottom: 620,
+        panelTop: 160,
+        panelBottom: 560,
+    }), null);
 });

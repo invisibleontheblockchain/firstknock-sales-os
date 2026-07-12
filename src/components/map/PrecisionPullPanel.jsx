@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { createPageUrl } from '@/utils';
 import PrecisionProUpgradeSheet from '@/components/map/PrecisionProUpgradeSheet';
 import { isPrecisionProUser } from '@/lib/precisionAccess';
+import { getCustomRangeRevealScrollTop } from '@/components/logic/customRangeReveal';
 
 const PREMIUM_RECENT_RANGES = [1 / 30, 2 / 30, 0.25, 0.5, 1];
 const FREE_PRECISION_HOME_LIMIT = 50;
@@ -118,6 +119,8 @@ export default function PrecisionPullPanel({
   const [hoveredLockedOption, setHoveredLockedOption] = useState(null);
   const [showUpgradeSheet, setShowUpgradeSheet] = useState(false);
   const hasShownFallbackToast = useRef(false);
+  const scrollBodyRef = useRef(null);
+  const customRangePanelRef = useRef(null);
   const isProPlan = isPrecisionProUser(user);
 
   const goToUpgrade = () => navigate(createPageUrl('Billing') + '?plan=precision');
@@ -125,6 +128,38 @@ export default function PrecisionPullPanel({
   const historyDate = selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date;
   const [ownershipMinDays, ownershipMaxDays] = normalizeOwnershipRangeDays(ownershipRangeDays);
   const isCustomRange = ownershipRangeMode === 'custom';
+
+  const revealCustomRangePanel = useCallback(() => {
+    if (typeof window === 'undefined') return;
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const scrollBody = scrollBodyRef.current;
+        const panel = customRangePanelRef.current;
+        if (!scrollBody || !panel) return;
+
+        const bodyRect = scrollBody.getBoundingClientRect();
+        const panelRect = panel.getBoundingClientRect();
+        const revealPadding = 12;
+        const nextScrollTop = getCustomRangeRevealScrollTop({
+          scrollTop: scrollBody.scrollTop,
+          viewportTop: bodyRect.top,
+          viewportBottom: bodyRect.bottom,
+          panelTop: panelRect.top,
+          panelBottom: panelRect.bottom,
+          padding: revealPadding
+        });
+        if (nextScrollTop === null) return;
+
+        const behavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+        if (typeof scrollBody.scrollTo === 'function') {
+          scrollBody.scrollTo({ top: nextScrollTop, behavior });
+        } else {
+          scrollBody.scrollTop = nextScrollTop;
+        }
+      });
+    });
+  }, []);
 
   const updateOwnershipRangeDays = (nextRange) => {
     setOwnershipRangeDays?.(normalizeOwnershipRangeDays(nextRange));
@@ -151,6 +186,10 @@ export default function PrecisionPullPanel({
     }
   }, [isCustomRange, isProPlan, setOwnershipRangeMode, setSoldMonths, soldMonths]);
 
+  useEffect(() => {
+    if (isCustomRange && isProPlan) revealCustomRangePanel();
+  }, [isCustomRange, isProPlan, revealCustomRangePanel]);
+
   return (
     <>
     <div className="fixed inset-0 z-[2400] flex items-start sm:items-center justify-center overflow-y-auto bg-black/70 backdrop-blur-sm px-3 pb-[calc(env(safe-area-inset-bottom)+5rem)] pt-[calc(env(safe-area-inset-top)+5rem)] sm:p-6">
@@ -166,7 +205,7 @@ export default function PrecisionPullPanel({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 sm:space-y-5">
+        <div ref={scrollBodyRef} className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 sm:space-y-5">
           {selectedHistoryArea && (
             <div className="rounded-2xl border border-[#2EEB57]/25 bg-[#2EEB57]/[0.06] p-3 space-y-3">
               <div>
@@ -368,12 +407,15 @@ export default function PrecisionPullPanel({
                     type="button"
                     aria-disabled={!isProPlan}
                     aria-pressed={isCustomRange && isProPlan}
+                    aria-expanded={isCustomRange && isProPlan}
+                    aria-controls="custom-ownership-range-controls"
                     onClick={() => {
                       if (!isProPlan) {
                         setShowUpgradeSheet(true);
                         return;
                       }
                       setOwnershipRangeMode?.('custom');
+                      revealCustomRangePanel();
                     }}
                     className={`col-span-4 h-11 w-full rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1 ${
                       !isProPlan
@@ -391,10 +433,16 @@ export default function PrecisionPullPanel({
                 </div>
 
                 {isCustomRange && isProPlan && (
-                  <div className="mt-3 space-y-4 rounded-2xl border border-[#2EEB57]/25 bg-[#2EEB57]/[0.06] p-4">
+                  <div
+                    ref={customRangePanelRef}
+                    id="custom-ownership-range-controls"
+                    role="region"
+                    aria-labelledby="custom-ownership-range-heading"
+                    className="mt-3 space-y-4 rounded-2xl border border-[#2EEB57]/25 bg-[#2EEB57]/[0.06] p-4"
+                  >
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-xs font-black uppercase tracking-wider text-white">Ownership Age</p>
+                        <p id="custom-ownership-range-heading" className="text-xs font-black uppercase tracking-wider text-white">Ownership Age</p>
                         <p className="mt-0.5 text-[10px] text-gray-400">Choose the exact age window to target.</p>
                       </div>
                       <span className="rounded-full border border-white/10 bg-black/30 px-2 py-1 text-[9px] font-bold text-gray-400">1–365 days</span>
@@ -422,7 +470,7 @@ export default function PrecisionPullPanel({
                         step={1}
                         minStepsBetweenThumbs={1}
                         thumbLabels={['Minimum ownership age in days', 'Maximum ownership age in days']}
-                        className="py-3 [&_[role=slider]]:h-5 [&_[role=slider]]:w-5 [&_[role=slider]]:border-[#2EEB57]"
+                        className="py-4 sm:py-3 [&_[role=slider]]:h-7 [&_[role=slider]]:w-7 sm:[&_[role=slider]]:h-5 sm:[&_[role=slider]]:w-5 [&_[role=slider]]:border-[#2EEB57]"
                       />
                       <div className="mt-1 flex items-center justify-between text-[9px] font-bold text-gray-500">
                         <span>1 day</span>
