@@ -4,6 +4,11 @@
 
 import { subDays } from 'date-fns';
 import { isPointInPolygon } from './territoryLogic';
+import {
+    customOwnershipRangeLabel,
+    isSoldDateInCustomOwnershipRange,
+    normalizeOwnershipRangeDays,
+} from './soldDateRange';
 
 const PROPERTY_TYPE_ALIASES = {
     'Single Family': ['single family', 'single family residential', 'single-family', 'sfr', 'sfh', 'detached', 'one family', '1 family']
@@ -123,6 +128,8 @@ export function applyRouteFilters({
     zipCodeFilter,
     territoryZipCodes,
     soldDateFilter,
+    ownershipRangeDays = null,
+    ownershipRangeReferenceDate = null,
     routeConfig,
     lastPullMode,
     logsByAddress,
@@ -178,7 +185,19 @@ export function applyRouteFilters({
 
     // --- Sold Date Filter (THE BIG ONE — often culls 99% of properties) ---
     const beforeSoldDate = workingSet.length;
-    if (soldDateFilter !== null && soldDateFilter !== 'all') {
+    const customOwnershipRange = normalizeOwnershipRangeDays(ownershipRangeDays);
+    if (customOwnershipRange) {
+        // Custom Range is an exact ownership-age window, not a cumulative lookback.
+        // Fail closed for every source (including BatchData) so a stale backend or
+        // resumed job can never route a property outside the selected minimum/maximum.
+        workingSet = workingSet.filter(p =>
+            isSoldDateInCustomOwnershipRange(
+                p.sold_date,
+                customOwnershipRange,
+                ownershipRangeReferenceDate || Date.now()
+            )
+        );
+    } else if (soldDateFilter !== null && soldDateFilter !== 'all') {
         // User-facing route filters stay strict to the selected range.
         // The backend may pull a wider provider-safe window, but older buffer records
         // should not appear when the user selected “last week.”
@@ -202,15 +221,21 @@ export function applyRouteFilters({
     }
     track('soldDate');
 
-    if (soldDateFilter !== null && beforeSoldDate > 0 && workingSet.length === 0) {
+    if ((customOwnershipRange || (soldDateFilter !== null && soldDateFilter !== 'all')) && beforeSoldDate > 0 && workingSet.length === 0) {
         // Deep diagnostic — what do the sold_dates actually look like?
         const sample = frozenSet.slice(0, 200);
         const withSoldDate = sample.filter(p => p.sold_date).length;
         const examples = sample.filter(p => p.sold_date).slice(0, 5).map(p => p.sold_date);
         return {
             workingSet: [], stages, frozenSet,
-            error: `No homes match ${soldDateFilterLabel(soldDateFilter)}. Of ${sample.length} sampled, ${withSoldDate} have sold dates, but none are inside that selected range. Example sold dates: ${examples.join(', ') || 'none'}.`,
-            diagnostic: { selectedRange: soldDateFilterLabel(soldDateFilter), withSoldDateInSample: withSoldDate, sampleSize: sample.length, exampleDates: examples }
+            error: `No homes match ${customOwnershipRange ? customOwnershipRangeLabel(customOwnershipRange) : soldDateFilterLabel(soldDateFilter)}. Of ${sample.length} sampled, ${withSoldDate} have sold dates, but none are inside that selected range. Example sold dates: ${examples.join(', ') || 'none'}.`,
+            diagnostic: {
+                selectedRange: customOwnershipRange ? customOwnershipRangeLabel(customOwnershipRange) : soldDateFilterLabel(soldDateFilter),
+                ownershipRangeDays: customOwnershipRange,
+                withSoldDateInSample: withSoldDate,
+                sampleSize: sample.length,
+                exampleDates: examples
+            }
         };
     }
 

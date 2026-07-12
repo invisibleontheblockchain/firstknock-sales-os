@@ -5,6 +5,7 @@ import { DarkRoomClient } from '@/components/logic/neonClient';
 import { CONFIDENCE_COLORS } from '@/components/map/ConfidenceLegend';
 import CanvasZoneOverlay from './CanvasZoneOverlay';
 import { getCompletedPinColor } from '@/components/routes/routeRerunUtils';
+import { isSoldDateInCustomOwnershipRange, normalizeOwnershipRangeDays } from '@/components/logic/soldDateRange';
 
 /**
  * ActiveRouteLayer — High-performance active route renderer.
@@ -132,7 +133,7 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
 function ViewportCulledPins({
     viewMode, zoomLevel, activeRoute, mode, showAllProperties,
     effectiveProperties, assignedHashes, zipCodeFilter, drawnPolygon,
-    soldDateFilter, quickFilter, highlightRecentlySold, pinSize,
+    soldDateFilter, ownershipRangeDays, ownershipRangeReferenceDate, quickFilter, highlightRecentlySold, pinSize,
     mapSettings, STATUS_COLORS, setSelectedProperty, isPointInPolygon,
     subMonths, mapRef
 }) {
@@ -189,6 +190,9 @@ function ViewportCulledPins({
         const targetZips = (mode === 'generate' && zipCodeFilter && zipCodeFilter.trim())
             ? zipCodeFilter.split(',').map(z => z.trim()).filter(Boolean)
             : [];
+        const customOwnershipRange = mode === 'generate'
+            ? normalizeOwnershipRangeDays(ownershipRangeDays)
+            : null;
         const cutoff = soldDateFilter !== null ? subMonths(new Date(), parseInt(soldDateFilter)) : null;
 
         for (let i = 0; i < effectiveProperties.length; i++) {
@@ -208,7 +212,13 @@ function ViewportCulledPins({
             if (mode === 'generate' && drawnPolygon && drawnPolygon.length > 2) {
                 if (!isPointInPolygon({ lat: p.lat, lng: p.lng }, drawnPolygon)) continue;
             }
-            if (cutoff !== null) {
+            if (customOwnershipRange) {
+                if (!isSoldDateInCustomOwnershipRange(
+                    p.sold_date,
+                    customOwnershipRange,
+                    ownershipRangeReferenceDate || Date.now()
+                )) continue;
+            } else if (cutoff !== null) {
                 const hasInteraction = ['CALLBACK', 'NO_ANSWER', 'QUALIFIED', 'SOLD'].includes(p.effective_status);
                 if (!p.sold_date) { if (!hasInteraction) continue; }
                 else {
@@ -226,7 +236,7 @@ function ViewportCulledPins({
         }
         return filtered;
     }, [viewBounds, viewMode, zoomLevel, activeRoute, mode, showAllProperties, effectiveProperties,
-        assignedHashes, zipCodeFilter, drawnPolygon, soldDateFilter, quickFilter, subMonths, isPointInPolygon]);
+        assignedHashes, zipCodeFilter, drawnPolygon, soldDateFilter, ownershipRangeDays, ownershipRangeReferenceDate, quickFilter, subMonths, isPointInPolygon]);
 
     const oneMonthAgo = useMemo(() => subMonths(new Date(), 1), [subMonths]);
     const fastPinsMap = useMap();
@@ -500,6 +510,8 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
     quickFilter,
     zipCodeFilter,
     soldDateFilter,
+    ownershipRangeDays,
+    ownershipRangeReferenceDate,
     drawnPolygon,
     assignedHashes,
     showAllProperties,
@@ -646,6 +658,8 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                 zipCodeFilter={zipCodeFilter}
                 drawnPolygon={drawnPolygon}
                 soldDateFilter={soldDateFilter}
+                ownershipRangeDays={ownershipRangeDays}
+                ownershipRangeReferenceDate={ownershipRangeReferenceDate}
                 quickFilter={quickFilter}
                 highlightRecentlySold={highlightRecentlySold}
                 pinSize={pinSize}

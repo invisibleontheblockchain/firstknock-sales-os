@@ -10,6 +10,7 @@ import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/g
 import { savePolygonToHistory } from '@/components/map/PolygonHistory';
 import PrecisionPullPanel from '@/components/map/PrecisionPullPanel';
 import { hasPaidPrecisionGenerationCapacity, isPrecisionProUser } from '@/lib/precisionAccess';
+import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '@/components/logic/soldDateRange';
 
 function formatWholeNumber(value) {
   const number = Math.max(0, Math.round(Number(value) || 0));
@@ -878,7 +879,7 @@ export default function TerritoryPrompt({
     setPaidPullStarting(true);
     setPullError(null);
     try {
-      const res = await base44.functions.invoke('startBatchDataPull', {
+      const pullRequest = {
         polygon: drawnPolygon,
         requested_properties: effectiveRequestedPropertyCount,
         count_mode: usingMaxAvailable ? 'max_available' : 'fixed',
@@ -900,12 +901,65 @@ export default function TerritoryPrompt({
         include_unresolved_followups: isPreviousAreaPull ? includeUnresolvedFollowUps : false,
         repull_mode: isPreviousAreaPull ? repullMode : 'new_area',
         previous_pull_date: isPreviousAreaPull ? selectedHistoryArea?.last_pull_date || selectedHistoryArea?.date || null : null
-      });
+      };
+
+      // Custom Range requires coordinated frontend + function support. Probe the
+      // start function without creating a job or spending provider credits, then
+      // fail closed if an older deployment would treat the maximum as a cumulative
+      // lookback and accidentally include newer sales.
+      if (effectiveOwnershipRangeMode === 'custom') {
+        const preflight = await base44.functions.invoke('startBatchDataPull', {
+          ...pullRequest,
+          dry_run: true
+        });
+        const preflightData = preflight.data || {};
+        const preflightRange = normalizeStrictOwnershipRangeDays(
+          preflightData.ownership_range_days ?? {
+            min: preflightData.ownership_min_days,
+            max: preflightData.ownership_max_days
+          }
+        );
+        if (
+          preflightData.dry_run !== true ||
+          preflightData.ownership_range_mode !== 'custom' ||
+          !preflightRange ||
+          preflightRange[0] !== effectiveOwnershipRangeDays[0] ||
+          preflightRange[1] !== effectiveOwnershipRangeDays[1]
+        ) {
+          setPullError({
+            message: 'Custom Range is temporarily unavailable because the deployed import function does not support both date boundaries yet. No property import was started and no provider credits were used.',
+            upgrade: false
+          });
+          return;
+        }
+      }
+
+      const res = await base44.functions.invoke('startBatchDataPull', pullRequest);
       const data = res.data || {};
       if (data.error) {
         const isPlanGate = ['trial_required', 'paid_precision_required', 'upgrade_required'].includes(data.error);
         setPullError({ message: data.message || data.error, upgrade: isPlanGate });
         return;
+      }
+      if (effectiveOwnershipRangeMode === 'custom') {
+        const confirmedRange = normalizeStrictOwnershipRangeDays(
+          data.ownership_range_days ?? {
+            min: data.ownership_min_days,
+            max: data.ownership_max_days
+          }
+        );
+        if (
+          data.ownership_range_mode !== 'custom' ||
+          !confirmedRange ||
+          confirmedRange[0] !== effectiveOwnershipRangeDays[0] ||
+          confirmedRange[1] !== effectiveOwnershipRangeDays[1]
+        ) {
+          setPullError({
+            message: 'The property import did not confirm the selected custom ownership range. Automatic route generation was stopped so newer or older sales cannot be mixed into this route.',
+            upgrade: false
+          });
+          return;
+        }
       }
       if (data.status === 'already_running') {
         if (!data.job_id) {

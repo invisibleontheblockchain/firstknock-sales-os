@@ -54,6 +54,36 @@ function getCustomOwnershipRange(fetchJob) {
     return { min, max };
 }
 
+function parseRequestedCustomOwnershipRange(body = {}) {
+    const mode = body.ownership_range_mode;
+    if (mode === undefined || mode === null || mode === '' || mode === 'quick') {
+        return { range: null };
+    }
+    if (mode !== 'custom') {
+        return { error: 'ownership_range_mode must be either quick or custom.' };
+    }
+    const min = Number(body.ownership_min_days);
+    const max = Number(body.ownership_max_days);
+    if (!Number.isInteger(min) || !Number.isInteger(max) || min < 1 || max > 365 || min >= max) {
+        return { error: 'Custom ownership range requires whole-day minimum and maximum values from 1 to 365, with minimum less than maximum.' };
+    }
+    return { range: { min, max } };
+}
+
+function customOwnershipRangesMatch(left, right) {
+    return !!left && !!right && left.min === right.min && left.max === right.max;
+}
+
+function isSoldDateInCustomOwnershipRange(value, range, referenceMs) {
+    if (!range || !value) return false;
+    const soldTime = new Date(value).getTime();
+    if (!Number.isFinite(soldTime)) return false;
+    const soldDate = new Date(soldTime).toISOString().slice(0, 10);
+    const oldestDate = isoDateDaysAgo(range.max, referenceMs);
+    const newestDate = isoDateDaysAgo(range.min, referenceMs);
+    return soldDate >= oldestDate && soldDate <= newestDate;
+}
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -64,6 +94,10 @@ Deno.serve(async (req) => {
         if (!databaseUrl) return Response.json({ error: 'DATABASE_URL is not configured' }, { status: 500 });
 
         const body = await req.json().catch(() => ({}));
+        const requestedOwnership = parseRequestedCustomOwnershipRange(body);
+        if (requestedOwnership.error) {
+            return Response.json({ error: 'invalid_ownership_range', message: requestedOwnership.error }, { status: 400 });
+        }
         const sql = neon(databaseUrl);
         const targetEmail = user.role === 'admin' && body.user_email ? body.user_email : user.email;
         const zipCodes = normalizeZipList(body);
@@ -76,11 +110,46 @@ Deno.serve(async (req) => {
         let fetchJob = null;
         if (fetchJobId) {
             fetchJob = await base44.asServiceRole.entities.FetchJob.get(fetchJobId).catch(() => null);
+            if (!fetchJob && requestedOwnership.range) {
+                return Response.json({
+                    error: 'fetch_job_not_found',
+                    message: 'The completed property import could not be verified. Route generation stopped so properties from another date range cannot be used.'
+                }, { status: 404 });
+            }
+            if (requestedOwnership.range && String(fetchJob?.status || '').toLowerCase() !== 'completed') {
+                return Response.json({
+                    error: 'fetch_job_not_completed',
+                    message: 'Custom ownership routes can only use a completed property import.'
+                }, { status: 409 });
+            }
+            if (
+                requestedOwnership.range &&
+                String(fetchJob?.user_email || '').trim().toLowerCase() !== String(targetEmail || '').trim().toLowerCase()
+            ) {
+                return Response.json({
+                    error: 'fetch_job_owner_mismatch',
+                    message: 'The completed property import does not belong to this workspace user.'
+                }, { status: 403 });
+            }
             const fetchJobTime = fetchJob?.created_date || fetchJob?.started_at;
             const parsed = fetchJobTime ? new Date(fetchJobTime).getTime() : NaN;
             if (Number.isFinite(parsed)) referenceMs = parsed;
         }
         const customOwnershipRange = getCustomOwnershipRange(fetchJob);
+        if (requestedOwnership.range && !fetchJobId) {
+            return Response.json({
+                error: 'custom_range_requires_fetch_job',
+                message: 'Custom ownership routes require the exact completed import job.'
+            }, { status: 400 });
+        }
+        if (requestedOwnership.range && !customOwnershipRangesMatch(requestedOwnership.range, customOwnershipRange)) {
+            return Response.json({
+                error: 'ownership_range_mismatch',
+                message: 'The completed import does not match the selected custom ownership range. Route generation stopped instead of using properties from another date range.',
+                requested_ownership_range_days: requestedOwnership.range,
+                job_ownership_range_days: customOwnershipRange
+            }, { status: 409 });
+        }
         const customSoldAtOrAfter = customOwnershipRange
             ? `${isoDateDaysAgo(customOwnershipRange.max, referenceMs)}T00:00:00.000Z`
             : null;
@@ -198,7 +267,12 @@ Deno.serve(async (req) => {
             LIMIT ${limit}
         `;
 
-        let properties = rows.map(row => ({
+        const rangeCheckedRows = customOwnershipRange
+            ? rows.filter(row => isSoldDateInCustomOwnershipRange(row.sold_date, customOwnershipRange, referenceMs))
+            : rows;
+        const excludedOutsideCustomRange = rows.length - rangeCheckedRows.length;
+
+        let properties = rangeCheckedRows.map(row => ({
             ...row,
             id: String(row.id),
             address_hash: row.address_hash || String(row.id),
@@ -235,6 +309,7 @@ Deno.serve(async (req) => {
             ownership_min_days: customOwnershipRange?.min ?? null,
             ownership_max_days: customOwnershipRange?.max ?? null,
             ownership_range_days: customOwnershipRange,
+            excluded_outside_custom_range: excludedOutsideCustomRange,
             properties
         });
     } catch (error) {
