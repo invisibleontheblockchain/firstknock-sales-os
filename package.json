@@ -15,7 +15,7 @@
     "mobile:build": "vite build && cap sync"
   },
   "dependencies": {
-    "@base44/sdk": "^0.8.38",
+    "@base44/sdk": "^0.8.39",
     "@base44/vite-plugin": "^1.0.30",
     "@capacitor/android": "^8.0.0",
     "@capacitor/core": "^8.0.0",
