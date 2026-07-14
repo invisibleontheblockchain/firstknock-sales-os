@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { MapContainer, TileLayer, CircleMarker, Polyline, useMap, Circle, LayerGroup, FeatureGroup, Tooltip } from 'react-leaflet';
+import { MapContainer, TileLayer } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -31,17 +31,11 @@ if (originalSetPosition) {
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 
-import { Slider } from "@/components/ui/slider";
-import { Loader2, Navigation, Locate, List, ChevronRight, X, BarChart3, Filter, MapPin, User, Shield, Layers, Flame, Home as HomeIcon, Calendar, DollarSign, Ruler, ArrowRight, RefreshCw, Zap } from 'lucide-react';
+import { Loader2, X, BarChart3, Filter } from 'lucide-react';
 import { toast } from "sonner";
 import { determineEffectiveStatus, isPointInPolygon } from '../components/logic/territoryLogic';
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { format, subMonths, subDays, isAfter, parseISO } from 'date-fns';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { subMonths, subDays, isAfter, parseISO } from 'date-fns';
 import { generateOptimizedRoutes, optimizeRouteByDistance } from '../components/logic/routeOptimizer';
 import { calculateRouteDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
 import { applyRouteFilters, formatStageCounts } from '../components/logic/routeFilterPipeline';
@@ -50,26 +44,21 @@ import RouteGenerationOverlay from '../components/routes/RouteGenerationOverlay'
 import { generateHeatmapGrid, generateStateClusters, getHeatColor } from '../components/logic/heatmapLogic';
 const RouteChecklist = React.lazy(() => import('../components/routes/RouteChecklist'));
 import RouteCommandPanel from '../components/routes/RouteCommandPanel';
-import KnockTimeBanner from '../components/timing/KnockTimeBanner';
 // MarketSetupPrompt removed — onboarding handled by MarketOnboarding + TerritoryPrompt
 import TerritoryPrompt from '../components/map/TerritoryPrompt';
-import { darkRoom, DarkRoomClient } from '@/components/logic/neonClient';
+import { darkRoom } from '@/components/logic/neonClient';
 const CommandCenterDashboard = React.lazy(() => import('../components/dashboard/CommandCenterDashboard'));
 const MapSettingsPanel = React.lazy(() => import('../components/map/MapSettingsPanel'));
 import RouteBuilderSettings from '../components/map/RouteBuilderSettings';
 const TerritorySetupWizard = React.lazy(() => import('../components/manager/TerritorySetupWizard'));
-import { LayoutDashboard, Settings, Crosshair } from 'lucide-react';
-import { openInMaps } from '../components/logic/navigation';
 import { hydrateRoutesForMap } from '@/components/logic/routeHydration';
-import GpsTracker, { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../components/map/GpsTracker';
-import QuickMarkButtons from '../components/rep/QuickMarkButtons';
-import PropertyHistory from '../components/rep/PropertyHistory';
+import { GpsMapLayer as GpsTrackerMapLayers, GpsHud as GpsTrackerHud } from '../components/map/GpsTracker';
 import ManagerPropertyDetailSheet from '../components/map/ManagerPropertyDetailSheet';
 import MapDrawTool from '../components/map/MapDrawTool';
 import ManagerMapLayers from '../components/map/ManagerMapLayers';
 import MapToolbar from '../components/map/MapToolbar';
 import ZipCodeOverlay from '../components/map/ZipCodeOverlay';
-import PolygonHistory, { savePolygonToHistory } from '../components/map/PolygonHistory';
+import PolygonHistory from '../components/map/PolygonHistory';
 import KnockLimitSheet from '@/components/upgrade/KnockLimitSheet';
 import { getOutcomesLogged, isOutcomeBlocked, isProUser, needsCardOnFile } from '@/components/upgrade/knockGate';
 

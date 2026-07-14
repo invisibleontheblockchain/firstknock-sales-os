@@ -207,6 +207,63 @@
     "user_email": {
       "type": "string"
     },
+    "precision_usage_user_id": {
+      "type": "string",
+      "description": "Service-stamped Base44 user ID that owns this billing usage event"
+    },
+    "precision_usage_kind": {
+      "type": "string",
+      "enum": [
+        "trial",
+        "paid",
+        "unmetered"
+      ],
+      "description": "Service-stamped allowance bucket; never derived from mutable routes"
+    },
+    "precision_subscription_id": {
+      "type": "string",
+      "description": "Stripe subscription verified when the paid reservation was created"
+    },
+    "precision_invoice_id": {
+      "type": "string",
+      "description": "Current positive Stripe invoice verified when the paid reservation was created"
+    },
+    "precision_usage_period_start": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Stripe period stamped at pull start so jobs crossing renewal stay in their original bucket"
+    },
+    "precision_usage_period_end": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "precision_usage_reserved": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Capacity held while a service-owned Precision fetch is pending or running"
+    },
+    "precision_usage_count": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Final count of qualifying properties delivered by this service-owned fetch"
+    },
+    "precision_usage_recorded_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Present only after the reservation has been settled to an actual delivered count"
+    },
+    "precision_cancel_requested_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Durable service-owned cancellation intent. The reservation remains held until the processor settles an exact delivered count."
+    },
+    "precision_watchdog_recovery_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Durable watchdog recovery marker. The processor must settle exact delivered usage before the watchdog can fail the job."
+    },
     "progress_pct": {
       "type": "number",
       "default": 0
@@ -267,7 +324,7 @@
   "rls": {
     "create": {
       "user_condition": {
-        "role": "admin"
+        "id": "__service_role_only__"
       }
     },
     "read": {
@@ -277,22 +334,17 @@
         },
         {
           "user_email": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
         }
       ]
     },
     "update": {
       "user_condition": {
-        "role": "admin"
+        "id": "__service_role_only__"
       }
     },
     "delete": {
       "user_condition": {
-        "role": "admin"
+        "id": "__service_role_only__"
       }
     }
   }

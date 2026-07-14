@@ -5,19 +5,8 @@ import { Button } from "@/components/ui/button";
 import { AlertCircle, Check, Star } from 'lucide-react';
 import { toast } from "sonner";
 import BetaUsageMeter from '../components/beta/BetaUsageMeter';
-import { hasPaidPrecisionGenerationCapacity } from '@/lib/precisionAccess';
 import { getBillingState, shouldShowTrialActivation } from '@/lib/billingState';
-
-function countUniquePrecisionRouteHomes(routes = []) {
-  const hashes = new Set();
-  routes.forEach((route) => {
-    if (!route || route.route_mode === 'canvas' || route.status === 'ARCHIVED') return;
-    (route.property_hashes || []).forEach((hash) => {
-      if (hash) hashes.add(hash);
-    });
-  });
-  return hashes.size;
-}
+import { usePrecisionUsage } from '@/hooks/usePrecisionUsage';
 
 const PLANS = [
   {
@@ -79,6 +68,14 @@ export default function Billing() {
   });
 
   const {
+    data: precisionUsage,
+    isLoading: isPrecisionUsageLoading,
+    isFetching: isPrecisionUsageFetching,
+    isError: isPrecisionUsageError,
+    refetch: refetchPrecisionUsage
+  } = usePrecisionUsage(user);
+
+  const {
     data: teamMembersRaw = [],
     isError: isTeamMembersError,
     isFetching: isTeamMembersFetching,
@@ -90,13 +87,6 @@ export default function Billing() {
     enabled: !!user?.id
   });
   const teamMembers = Array.isArray(teamMembersRaw) ? teamMembersRaw : (teamMembersRaw?.items || []);
-
-  const { data: savedRoutesRaw = [] } = useQuery({
-    queryKey: ['billingPrecisionRoutes', user?.id],
-    queryFn: () => user?.id ? base44.entities.SavedRoute.filter({ manager_id: user.id }, '-created_date', 500) : [],
-    enabled: !!user?.id
-  });
-  const savedRoutes = Array.isArray(savedRoutesRaw) ? savedRoutesRaw : (savedRoutesRaw?.items || []);
 
   const activeRepCount = Math.max(
     1,
@@ -177,6 +167,7 @@ export default function Billing() {
         { duration: 6000 }
       );
       await refetchUser();
+      await refetchPrecisionUsage();
       setTimeout(() => refetchUser(), 2000);
     } catch (error) {
       console.error("[Billing] Trial activation failed:", error);
@@ -188,6 +179,7 @@ export default function Billing() {
         toast.error("Upgrade failed: " + msg, { duration: 6000 });
       }
       await refetchUser();
+      await refetchPrecisionUsage();
     } finally {
       setLoadingPriceId(null);
     }
@@ -201,12 +193,20 @@ export default function Billing() {
       toast.success("Stripe checkout is complete. Your subscription is being updated.", { duration: 6000 });
       window.history.replaceState({}, '', window.location.pathname);
       refetchUser();
-      refreshTimer = setTimeout(() => refetchUser(), 2000);
+      refetchPrecisionUsage();
+      refreshTimer = setTimeout(() => {
+        refetchUser();
+        refetchPrecisionUsage();
+      }, 2000);
     } else if (params.get('billing_return') === 'true') {
       toast.info("Returned from Stripe. Checking your payment status now.");
       window.history.replaceState({}, '', window.location.pathname);
       refetchUser();
-      refreshTimer = setTimeout(() => refetchUser(), 2000);
+      refetchPrecisionUsage();
+      refreshTimer = setTimeout(() => {
+        refetchUser();
+        refetchPrecisionUsage();
+      }, 2000);
     } else if (params.get('canceled') === 'true') {
       toast.info("Checkout canceled. You can try again anytime.");
       window.history.replaceState({}, '', window.location.pathname);
@@ -215,19 +215,9 @@ export default function Billing() {
     return () => {
       if (refreshTimer) clearTimeout(refreshTimer);
     };
-  }, [refetchUser]);
+  }, [refetchPrecisionUsage, refetchUser]);
 
   const { isTrialing, isActive, needsPaymentRecovery, hasSubscription: isSubscribed } = getBillingState(user);
-  const hasPaidPrecisionAccess = hasPaidPrecisionGenerationCapacity(user);
-  const precisionLimit = user?.precision_property_limit || user?.monthly_property_limit || (hasPaidPrecisionAccess ? 1000 : 50);
-  const precisionRouteHomes = React.useMemo(() => countUniquePrecisionRouteHomes(savedRoutes), [savedRoutes]);
-  const precisionUsed = Math.min(precisionRouteHomes, precisionLimit);
-  const precisionUsage = {
-    limit: precisionLimit,
-    used: precisionUsed,
-    remaining: Math.max(precisionLimit - precisionUsed, 0),
-    percent: precisionLimit > 0 ? Math.min(100, Math.round((precisionUsed / precisionLimit) * 100)) : 0
-  };
   const billingReadyForPlan = (planId) => isUserLoaded && (
     planId !== 'canvas' || (isTeamMembersSuccess && !isTeamMembersFetching)
   );
@@ -337,13 +327,33 @@ export default function Billing() {
                                 )}
                                 {plan.id === 'precision' && (
                                     <div className="mt-3 rounded-xl bg-black/30 border border-white/10 p-3 text-left">
-                                        <div className="flex justify-between text-xs text-gray-300 mb-2">
-                                            <span>Precision properties used</span>
-                                            <span>{precisionUsage.used.toLocaleString()} / {precisionUsage.limit.toLocaleString()}</span>
-                                        </div>
-                                        <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
-                                            <div className="h-full bg-yellow-500 rounded-full" style={{ width: `${precisionUsage.percent}%` }} />
-                                        </div>
+                                        {precisionUsage && !isPrecisionUsageError && !isPrecisionUsageFetching ? (
+                                            <>
+                                                <div className="flex justify-between text-xs text-gray-300 mb-2">
+                                                    <span>Precision properties used</span>
+                                                    <span>{precisionUsage.meterUsed.toLocaleString()} / {precisionUsage.limit.toLocaleString()}</span>
+                                                </div>
+                                                <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+                                                    <div className="h-full bg-yellow-500 rounded-full" style={{ width: `${precisionUsage.percent}%` }} />
+                                                </div>
+                                                {precisionUsage.reserved > 0 && (
+                                                    <p className="mt-2 text-[10px] text-gray-400">
+                                                        {precisionUsage.reserved.toLocaleString()} properties are reserved by an import in progress.
+                                                    </p>
+                                                )}
+                                            </>
+                                        ) : isPrecisionUsageLoading || isPrecisionUsageFetching ? (
+                                            <p className="text-xs text-gray-400">Checking authoritative usage…</p>
+                                        ) : isPrecisionUsageError ? (
+                                            <div className="flex items-center justify-between gap-3 text-xs text-amber-200">
+                                                <span>Usage unavailable</span>
+                                                <button type="button" className="font-bold text-yellow-400" onClick={() => refetchPrecisionUsage()}>
+                                                    Retry
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <p className="text-xs text-gray-400">Sign in to view usage.</p>
+                                        )}
                                     </div>
                                 )}
                             </div>

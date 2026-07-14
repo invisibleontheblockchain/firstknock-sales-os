@@ -9,9 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
 import {
-    Navigation, X, BarChart3, User, Shield, MapPin,
-    ArrowRight, Flame, Plus, Clock, CheckCircle2,
-    AlertCircle, ChevronRight, Zap, Trash2, Scissors, Pencil, Check, RefreshCw, Play, Home
+    Navigation, X, BarChart3, User, Shield, MapPin, Flame, Plus, Clock, CheckCircle2, ChevronRight, Zap, Trash2, Scissors, Pencil, Check, RefreshCw, Play, Home
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from "sonner";

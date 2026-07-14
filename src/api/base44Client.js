@@ -15,5 +15,5 @@ export const base44 = createClient({
 });
 
 if (typeof window !== 'undefined') {
-  window.base44 = base44;
+  /** @type {Window & { base44?: unknown }} */ (window).base44 = base44;
 }

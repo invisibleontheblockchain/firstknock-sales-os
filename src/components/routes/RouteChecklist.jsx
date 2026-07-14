@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Check, X, Phone, Ban, Home, Navigation, Mic, MapPin, UserX, Clock, User, DollarSign, Ruler } from 'lucide-react';
 import { getPropertyResultSummary } from '../logic/territoryLogic';

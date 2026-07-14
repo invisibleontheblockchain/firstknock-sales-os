@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useMap, Circle, CircleMarker, Polyline, Tooltip } from 'react-leaflet';
-import { Navigation, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { Circle, CircleMarker, Polyline, Tooltip } from 'react-leaflet';
+import { Navigation, ChevronUp, ChevronDown } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 
 const BRAND = { gold: '#FFD700', voidBlack: '#0A0A0A' };

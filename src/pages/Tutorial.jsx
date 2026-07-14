@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
     Map, Upload, Users, Navigation, ChevronRight, ChevronDown, MapPin, 
-    Route, FileSpreadsheet, Zap, Target, Search, BarChart3, ArrowRight, SlidersHorizontal
+    Route, FileSpreadsheet, Zap, Target, BarChart3, ArrowRight, SlidersHorizontal
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Link } from 'react-router-dom';

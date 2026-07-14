@@ -24,9 +24,43 @@ const LAND_TYPE_KEYWORDS = ['land', 'lot', 'vacant', 'acreage', 'farm', 'agricul
 
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
-async function isDiagnosticAdmin(base44) {
-    const user = await base44.auth.me().catch(() => null);
-    return !!user && (user.is_owner === true || user.role === 'admin');
+function isDiagnosticRequest(req) {
+    const expected = Deno.env.get('PRECISION_DIAGNOSTIC_SECRET');
+    const received = req.headers.get('x-precision-diagnostic-secret');
+    return Boolean(expected) && received === expected;
+}
+
+async function countPersistedPrecisionProperties(jobId) {
+    if (!DATABASE_URL || !jobId) throw new Error('Cannot settle Precision usage without DATABASE_URL and a job id.');
+    const sql = neon(DATABASE_URL);
+    const rows = await sql`
+        SELECT COUNT(*)::int AS count
+        FROM workspace_properties
+        WHERE fetch_job_id = ${jobId}
+          AND route_active = TRUE
+    `;
+    return Math.max(0, Number(rows[0]?.count || 0));
+}
+
+function cancellationRequested(job) {
+    return job?.status === 'cancelled' || Boolean(job?.precision_cancel_requested_at);
+}
+
+async function settleCancelledPrecisionUsage(base44, job, completedAt, message) {
+    const settledUsageCount = await countPersistedPrecisionProperties(job.id);
+    await base44.asServiceRole.entities.FetchJob.update(job.id, {
+        status: 'cancelled',
+        precision_usage_reserved: 0,
+        precision_usage_count: settledUsageCount,
+        precision_usage_recorded_at: completedAt,
+        completed_at: completedAt,
+        error_message: 'Cancelled by user',
+        error_log: [
+            ...(job.error_log || []),
+            `[${completedAt}] ${message} Settled ${settledUsageCount} persisted Precision properties.`
+        ]
+    });
+    return settledUsageCount;
 }
 
 function normalizePropertyTypeText(value) {
@@ -878,7 +912,7 @@ Deno.serve(async (req) => {
         }
 
         if (body.fetch_preview === true) {
-            if (!(await isDiagnosticAdmin(base44))) {
+            if (!isDiagnosticRequest(req)) {
                 return Response.json({ error: 'Admin access is required for live provider previews.' }, { status: 403 });
             }
             if (!BATCHDATA_API_KEY) throw new Error('BATCH_DATA_API_KEY is not configured');
@@ -897,7 +931,7 @@ Deno.serve(async (req) => {
         }
 
         if (body.raw_probe === true) {
-            if (!(await isDiagnosticAdmin(base44))) {
+            if (!isDiagnosticRequest(req)) {
                 return Response.json({ error: 'Admin access is required for raw provider probes.' }, { status: 403 });
             }
             if (!BATCHDATA_API_KEY) throw new Error('BATCH_DATA_API_KEY is not configured');
@@ -965,18 +999,17 @@ Deno.serve(async (req) => {
         if (!targetJobId) {
             return Response.json({ error: 'job_id is required for live processing.' }, { status: 400 });
         }
-        const job = await base44.asServiceRole.entities.FetchJob.get(targetJobId).catch(() => null);
+        let job = await base44.asServiceRole.entities.FetchJob.get(targetJobId).catch(() => null);
         if (!job) return Response.json({ error: 'Job not found', job_id: targetJobId }, { status: 404 });
         const expectedProcessorToken = String(job.dry_run_metadata?.processor_token || '');
         const receivedProcessorToken = String(body.processor_token || '');
         if (!expectedProcessorToken || receivedProcessorToken !== expectedProcessorToken) {
             return Response.json({ error: 'Not authorized to process this job.' }, { status: 403 });
         }
-        if (Array.isArray(body.synthetic_records) && !(await isDiagnosticAdmin(base44))) {
+        if (Array.isArray(body.synthetic_records) && !isDiagnosticRequest(req)) {
             return Response.json({ error: 'Admin access is required for synthetic ingestion.' }, { status: 403 });
         }
-        if (job.status === 'cancelled') return Response.json({ status: 'cancelled', job_id: job.id });
-        if (targetJobId && !['pending', 'running'].includes(job.status)) {
+        if (targetJobId && !cancellationRequested(job) && !['pending', 'running'].includes(job.status)) {
             return Response.json({ skipped: true, reason: `job_${job.status || 'inactive'}`, job_id: job.id, status: job.status });
         }
 
@@ -989,6 +1022,28 @@ Deno.serve(async (req) => {
         if (!claim.claimed) return Response.json({ skipped: true, reason: claim.reason, job_id: job.id });
         lockId = claim.lockId;
         liveJobClaimed = true;
+
+        // Re-read after obtaining the processor lease. A cancel can race the
+        // initial request, and only the lease holder may release its reservation.
+        job = await base44.asServiceRole.entities.FetchJob.get(targetJobId).catch(() => null);
+        if (!job) throw new Error(`FetchJob ${targetJobId} disappeared after the processor lease was claimed.`);
+        if (cancellationRequested(job)) {
+            const completedAt = new Date().toISOString();
+            const settledUsageCount = await settleCancelledPrecisionUsage(
+                base44,
+                job,
+                completedAt,
+                'Cancellation observed after claiming the processor lease.'
+            );
+            await releasePipelineLock(base44, lockId);
+            lockId = null;
+            return Response.json({ success: true, status: 'cancelled', job_id: job.id, active: settledUsageCount });
+        }
+        if (!['pending', 'running'].includes(job.status)) {
+            await releasePipelineLock(base44, lockId);
+            lockId = null;
+            return Response.json({ skipped: true, reason: `job_${job.status || 'inactive'}`, job_id: job.id, status: job.status });
+        }
 
         const startedAt = job.started_at || new Date().toISOString();
         await base44.asServiceRole.entities.FetchJob.update(job.id, {
@@ -1058,6 +1113,20 @@ Deno.serve(async (req) => {
             if (property.zip_code && !zipCodes.includes(property.zip_code)) zipCodes.push(property.zip_code);
             if (property.route_active === false) rejected++;
             mapped.push(property);
+        }
+
+        const beforeWriteJob = await base44.asServiceRole.entities.FetchJob.get(job.id);
+        if (cancellationRequested(beforeWriteJob)) {
+            const cancelledAt = new Date().toISOString();
+            const settledUsageCount = await settleCancelledPrecisionUsage(
+                base44,
+                beforeWriteJob,
+                cancelledAt,
+                'Cancellation observed before the Neon write; no fetched properties were added.'
+            );
+            await releasePipelineLock(base44, lockId);
+            lockId = null;
+            return Response.json({ success: true, status: 'cancelled', job_id: job.id, active: settledUsageCount });
         }
 
         const result = await writePropertiesToNeon(sql, mapped, job, excludedRouteHashes);
@@ -1145,11 +1214,35 @@ Deno.serve(async (req) => {
             }
         }
 
+        const settledUsageCount = await countPersistedPrecisionProperties(job.id);
+        const latestJob = await base44.asServiceRole.entities.FetchJob.get(job.id);
+        if (cancellationRequested(latestJob)) {
+            await base44.asServiceRole.entities.FetchJob.update(job.id, {
+                status: 'cancelled',
+                precision_usage_reserved: 0,
+                precision_usage_count: settledUsageCount,
+                precision_usage_recorded_at: completedAt,
+                completed_at: completedAt,
+                dry_run_metadata: {
+                    ...(job.dry_run_metadata || {}),
+                    completion_reason: 'cancelled_after_partial_delivery',
+                    batchdata_summary: batchdataSummary
+                },
+                error_log: [...errorLog, `[${completedAt}] Cancellation observed before completion; settled ${settledUsageCount} persisted properties without restoring the route allowance.`]
+            });
+            await releasePipelineLock(base44, lockId);
+            lockId = null;
+            return Response.json({ success: true, status: 'cancelled', job_id: job.id, active: activeCount });
+        }
+
         await base44.asServiceRole.entities.FetchJob.update(job.id, {
             status: 'completed',
             phase: 'complete',
             progress_pct: 100,
             completed_at: completedAt,
+            precision_usage_reserved: 0,
+            precision_usage_count: settledUsageCount,
+            precision_usage_recorded_at: completedAt,
             ...(integrityWarning ? { error_message: integrityWarning } : {}),
             total_fetched: reviewedCount || rawRecords.length,
             total_inserted: result.inserted,
@@ -1169,6 +1262,22 @@ Deno.serve(async (req) => {
             },
             error_log: errorLog
         });
+
+        // Catch cancellation that arrived between the pre-completion read and
+        // the completed update. The settled count is already exact, so only the
+        // terminal state needs correcting.
+        const afterCompletionJob = await base44.asServiceRole.entities.FetchJob.get(job.id);
+        if (cancellationRequested(afterCompletionJob) && afterCompletionJob.status !== 'cancelled') {
+            await base44.asServiceRole.entities.FetchJob.update(job.id, {
+                status: 'cancelled',
+                error_message: 'Cancelled by user',
+                completed_at: completedAt,
+                error_log: [
+                    ...(afterCompletionJob.error_log || errorLog),
+                    `[${completedAt}] Cancellation raced completion; retained exact settled usage of ${settledUsageCount} properties.`
+                ]
+            });
+        }
 
         const users = await base44.asServiceRole.entities.User.filter({ email: job.user_email }, null, 1).catch(() => []);
         const userArr = Array.isArray(users) ? users : (users?.items || []);
@@ -1193,10 +1302,30 @@ Deno.serve(async (req) => {
             const failedJob = recovery
                 ? await recovery.asServiceRole.entities.FetchJob.get(targetJobId).catch(() => null)
                 : null;
-            if (failedJob && ['pending', 'running'].includes(failedJob.status)) {
+            const hasUnsettledReservation = failedJob
+                && !failedJob.precision_usage_recorded_at
+                && Math.max(0, Number(failedJob.precision_usage_reserved || 0)) > 0;
+            if (failedJob && (
+                ['pending', 'running'].includes(failedJob.status)
+                || cancellationRequested(failedJob)
+                || hasUnsettledReservation
+            )) {
+                let settlement = {};
+                try {
+                    const deliveredCount = await countPersistedPrecisionProperties(failedJob.id);
+                    settlement = {
+                        precision_usage_reserved: 0,
+                        precision_usage_count: deliveredCount,
+                        precision_usage_recorded_at: new Date().toISOString()
+                    };
+                } catch (settlementError) {
+                    console.error('[processFetchChunk] Usage settlement failed; reservation remains in force:', settlementError.message);
+                }
+                const wasCancelled = cancellationRequested(failedJob);
                 await recovery.asServiceRole.entities.FetchJob.update(failedJob.id, {
-                    status: 'failed',
-                    error_message: `BatchData processing failed: ${error.message}`,
+                    status: wasCancelled ? 'cancelled' : 'failed',
+                    ...settlement,
+                    error_message: wasCancelled ? 'Cancelled by user' : `BatchData processing failed: ${error.message}`,
                     error_log: [...(failedJob.error_log || []), `[${new Date().toISOString()}] FATAL: ${error.message}`]
                 });
             }

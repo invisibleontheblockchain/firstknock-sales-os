@@ -1,7 +1,6 @@
 import React from 'react';
 import { Calendar } from 'lucide-react';
 import { Button } from "@/components/ui/button";
-import { format } from 'date-fns';
 
 const PRESETS = [
     { label: '7D', days: 7 },

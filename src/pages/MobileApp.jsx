@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Smartphone, Share, PlusSquare, Menu, ArrowRight, CheckCircle2, Apple, MonitorSmartphone } from 'lucide-react';
+import { Smartphone, Share, PlusSquare, Menu, CheckCircle2, Apple, MonitorSmartphone } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";

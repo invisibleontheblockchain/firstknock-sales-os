@@ -1,5 +1,5 @@
 import { Base44Client } from '@base44/sdk';
-const base44 = new Base44Client({ appId: "695eb764b077190880be21de", appBaseUrl: "https://my-to-do-list-81bfaad7.base44.app" });
+const base44 = new Base44Client({ appId: "695eb764b077190880be21de", appBaseUrl: "https://firstknock.online" });
 async function run() {
     try {
         const jobs = await base44.asServiceRole.entities.FetchJob.filter({}, "-created_date", 2);

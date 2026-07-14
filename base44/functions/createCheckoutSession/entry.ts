@@ -20,6 +20,17 @@ const BLOCKING_SUBSCRIPTION_STATUSES = new Set([
     'paused',
     'incomplete'
 ]);
+const FIRSTKNOCK_ORIGIN = 'https://firstknock.online';
+
+function firstKnockReturnUrl(value: any, fallbackPath: string) {
+    try {
+        const url = new URL(String(value || ''));
+        if (['https://firstknock.online', 'https://www.firstknock.online'].includes(url.origin)) {
+            return `${FIRSTKNOCK_ORIGIN}${url.pathname}${url.search}${url.hash}`;
+        }
+    } catch {}
+    return `${FIRSTKNOCK_ORIGIN}${fallbackPath}`;
+}
 
 function isBlockingSubscription(subscription: any) {
     return BLOCKING_SUBSCRIPTION_STATUSES.has(String(subscription?.status || '').toLowerCase());
@@ -27,15 +38,35 @@ function isBlockingSubscription(subscription: any) {
 
 function subscriptionBelongsToUser(subscription: any, user: any) {
     if (!subscription || !user) return false;
+    return String(subscription.metadata?.base44_user_id || '') === String(user.id);
+}
 
-    const customerId = typeof subscription.customer === 'string'
-        ? subscription.customer
-        : subscription.customer?.id;
-    const metadataUserId = subscription.metadata?.base44_user_id;
+async function searchOwnedSubscriptions(user: any, expand: string[] = []) {
+    if (typeof stripe.subscriptions.search !== 'function') return [];
+    const escapedUserId = String(user.id).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const result = await stripe.subscriptions.search({
+        query: `metadata['base44_user_id']:'${escapedUserId}'`,
+        limit: 100,
+        ...(expand.length > 0 ? { expand } : {})
+    });
+    return (result.data || []).filter((subscription: any) => subscriptionBelongsToUser(subscription, user));
+}
 
-    if (user.stripe_customer_id && customerId !== user.stripe_customer_id) return false;
-    if (metadataUserId) return metadataUserId === user.id;
-    return !!user.stripe_customer_id && customerId === user.stripe_customer_id;
+async function resolveOwnedCustomerId(user: any, subscriptions: any[] = []) {
+    const ownedSubscription = subscriptions.find((subscription: any) => subscriptionBelongsToUser(subscription, user));
+    const subscriptionCustomerId = stripeResourceId(ownedSubscription?.customer);
+    if (subscriptionCustomerId) return subscriptionCustomerId;
+
+    if (!user?.stripe_customer_id || typeof stripe.customers?.retrieve !== 'function') return null;
+    try {
+        const customer = await stripe.customers.retrieve(String(user.stripe_customer_id));
+        if (!customer?.deleted && String(customer?.metadata?.base44_user_id || '') === String(user.id)) {
+            return customer.id;
+        }
+    } catch (error: any) {
+        if (!isMissingStripeResource(error)) throw error;
+    }
+    return null;
 }
 
 function selectBlockingSubscription(storedSubscription: any, customerSubscriptions: any[], user: any) {
@@ -137,7 +168,7 @@ async function createRecoveryUrl(customerId: string, invoice: any, returnUrl: st
 
     const portalSession = await stripe.billingPortal.sessions.create({
         customer: customerId,
-        return_url: returnUrl || origin || 'https://app.base44.com'
+        return_url: firstKnockReturnUrl(returnUrl || origin, '/Billing')
     });
     return portalSession.url;
 }
@@ -152,7 +183,9 @@ async function activateTrialSubscription({
     origin
 }: any) {
     const storedSubscription = await retrieveSubscription(user.subscription_id, true);
-    let customerId = user.stripe_customer_id || stripeResourceId(storedSubscription?.customer);
+    const discoveredSubscriptions = await searchOwnedSubscriptions(user, ['data.latest_invoice.payment_intent']);
+    const ownedStoredSubscription = subscriptionBelongsToUser(storedSubscription, user) ? storedSubscription : null;
+    let customerId = await resolveOwnedCustomerId(user, [ownedStoredSubscription, ...discoveredSubscriptions].filter(Boolean));
     if (!customerId) {
         await base44.auth.updateMe({
             subscription_status: 'canceled',
@@ -174,7 +207,7 @@ async function activateTrialSubscription({
         limit: 100,
         expand: ['data.latest_invoice.payment_intent']
     });
-    const selection = selectBlockingSubscription(storedSubscription, listed.data, billingUser);
+    const selection = selectBlockingSubscription(ownedStoredSubscription, [...discoveredSubscriptions, ...(listed.data || [])], billingUser);
 
     if (selection.ambiguous) {
         return Response.json({
@@ -253,14 +286,6 @@ async function activateTrialSubscription({
             subscription_status: 'trialing',
             stripe_customer_id: customerId
         });
-    }
-
-    if (!trialSubscription.metadata?.base44_user_id) {
-        trialSubscription = await stripe.subscriptions.update(
-            trialSubscription.id,
-            { metadata: { ...trialSubscription.metadata, base44_user_id: user.id } },
-            { idempotencyKey: `firstknock-claim-trial-${trialSubscription.id}-${user.id}` }
-        );
     }
 
     const currentItem = trialSubscription.items.data[0];
@@ -351,6 +376,9 @@ Deno.serve(async (req: Request) => {
 
         const body = await req.json();
         const { action, successUrl, cancelUrl, returnUrl } = body;
+        const safeSuccessUrl = firstKnockReturnUrl(successUrl, '/Billing?success=true');
+        const safeCancelUrl = firstKnockReturnUrl(cancelUrl, '/Billing?canceled=true');
+        const safeReturnUrl = firstKnockReturnUrl(returnUrl, '/Billing');
         const planId = typeof body.planId === 'string' ? body.planId.trim().toLowerCase() : '';
         const plan = PLAN_CONFIG[planId as keyof typeof PLAN_CONFIG];
         if (!plan) {
@@ -374,7 +402,7 @@ Deno.serve(async (req: Request) => {
                 planId,
                 plan,
                 quantity,
-                returnUrl,
+                returnUrl: safeReturnUrl,
                 origin: req.headers.get('origin')
             });
         }
@@ -388,11 +416,23 @@ Deno.serve(async (req: Request) => {
         }
 
         const storedSubscription = await retrieveSubscription(user.subscription_id);
-        if (storedSubscription && isBlockingSubscription(storedSubscription) && subscriptionBelongsToUser(storedSubscription, user)) {
-            return existingSubscriptionResponse(storedSubscription);
+        const discoveredSubscriptions = await searchOwnedSubscriptions(user);
+        const ownedSubscriptions = [storedSubscription, ...discoveredSubscriptions]
+            .filter((subscription, index, list) =>
+                subscriptionBelongsToUser(subscription, user)
+                && list.findIndex(candidate => candidate?.id === subscription?.id) === index
+            );
+        const ownedBlockingSubscriptions = ownedSubscriptions.filter(isBlockingSubscription);
+        if (ownedBlockingSubscriptions.length > 1) {
+            return Response.json({
+                error: 'More than one active Stripe subscription was found. Please contact support before paying so you are not charged twice.'
+            }, { status: 409 });
+        }
+        if (ownedBlockingSubscriptions[0]) {
+            return existingSubscriptionResponse(ownedBlockingSubscriptions[0]);
         }
 
-        let customerId = user.stripe_customer_id || await createStripeCustomer(base44, user);
+        let customerId = await resolveOwnedCustomerId(user, ownedSubscriptions) || await createStripeCustomer(base44, user);
         let customerSubscriptions: any[] = [];
         try {
             const existingSubscriptions = await stripe.subscriptions.list({
@@ -406,6 +446,7 @@ Deno.serve(async (req: Request) => {
             customerId = await createStripeCustomer(base44, user);
         }
 
+        customerSubscriptions = customerSubscriptions.filter(subscription => subscriptionBelongsToUser(subscription, user));
         const existingSubscription = customerSubscriptions.find(isBlockingSubscription);
         if (existingSubscription) {
             return existingSubscriptionResponse(existingSubscription);
@@ -477,8 +518,8 @@ Deno.serve(async (req: Request) => {
                 metadata,
                 ...(trialDays === 7 ? { trial_period_days: 7 } : {})
             },
-            success_url: successUrl,
-            cancel_url: cancelUrl,
+            success_url: safeSuccessUrl,
+            cancel_url: safeCancelUrl,
             payment_method_collection: 'always',
             allow_promotion_codes: true,
             client_reference_id: user.id,

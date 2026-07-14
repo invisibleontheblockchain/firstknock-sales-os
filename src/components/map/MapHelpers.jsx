@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { CircleMarker, Circle, useMap, useMapEvents } from 'react-leaflet';
+import { CircleMarker, Circle, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
 if (typeof window !== 'undefined' && !window.__fkLeafletCameraGuardInstalled) {

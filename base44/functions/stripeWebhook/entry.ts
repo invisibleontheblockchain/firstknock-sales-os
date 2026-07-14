@@ -30,9 +30,30 @@ function invoiceHasPositivePayment(invoice: any) {
     return invoice?.status === 'paid' && Number(invoice?.amount_paid || 0) > 0;
 }
 
+function invoiceCoversCurrentPeriod(subscription: any, invoice: any) {
+    const currentStart = Number(subscription?.current_period_start);
+    if (!Number.isFinite(currentStart) || currentStart <= 0) return false;
+    if ((invoice?.lines?.data || []).some((line: any) => {
+        const lineSubscription = typeof line?.subscription === 'string' ? line.subscription : line?.subscription?.id;
+        const start = Number(line?.period?.start);
+        const end = Number(line?.period?.end);
+        return (!lineSubscription || lineSubscription === subscription.id)
+            && Number.isFinite(start) && Number.isFinite(end)
+            && start <= currentStart && currentStart < end;
+    })) return true;
+    const start = Number(invoice?.period_start);
+    const end = Number(invoice?.period_end);
+    return Number.isFinite(start) && Number.isFinite(end) && start <= currentStart && currentStart < end;
+}
+
 function subscriptionHasPaidInvoice(subscription: any, invoice: any) {
     const trialEnded = !subscription?.trial_end || subscription.trial_end * 1000 <= Date.now();
-    return subscription?.status === 'active' && trialEnded && invoiceHasPositivePayment(invoice);
+    const invoiceSubscriptionId = typeof invoice?.subscription === 'string' ? invoice.subscription : invoice?.subscription?.id;
+    return subscription?.status === 'active'
+        && trialEnded
+        && invoiceHasPositivePayment(invoice)
+        && (!invoiceSubscriptionId || invoiceSubscriptionId === subscription.id)
+        && invoiceCoversCurrentPeriod(subscription, invoice);
 }
 
 function isBlockingSubscription(subscription: any) {
@@ -59,6 +80,28 @@ async function canReplaceCurrentSubscription(base44: any, userId: string, incomi
         if (error?.raw?.code === 'resource_missing') return true;
         throw error;
     }
+}
+
+function stripeTimestampIso(value: any) {
+    const seconds = Number(value);
+    if (!Number.isFinite(seconds) || seconds <= 0) return null;
+    return new Date(seconds * 1000).toISOString();
+}
+
+function isPrecisionBillingTier(tier: string) {
+    return ['precision', 'pro', 'growth', 'enterprise'].includes(normalizeSubscriptionTier(tier));
+}
+
+async function buildSubscriptionPeriodUpdates(_base44: any, _userId: string, subscription: any, tier: string, paidConfirmed: boolean) {
+    const periodStart = stripeTimestampIso(subscription?.current_period_start);
+    const periodEnd = stripeTimestampIso(subscription?.current_period_end);
+    if (!paidConfirmed || !isPrecisionBillingTier(tier) || !periodStart || !periodEnd) return {};
+    return {
+        subscription_period_start: periodStart,
+        subscription_period_end: periodEnd,
+        precision_usage_period_start: periodStart,
+        precision_usage_period_end: periodEnd
+    };
 }
 
 // Helper to manage invite codes
@@ -130,6 +173,9 @@ Deno.serve(async (req: Request) => {
                         }
 
                         const sub = await stripe.subscriptions.retrieve(subscriptionId, { expand: ['latest_invoice'] });
+                        if (String(sub.metadata?.base44_user_id || '') !== String(userId)) {
+                            throw new Error(`Checkout Session ${session.id} subscription ownership metadata does not match the session user`);
+                        }
                         if (!await canReplaceCurrentSubscription(base44, userId, sub.id)) {
                             console.warn(`Ignoring stale Checkout Session ${session.id} for subscription ${sub.id}`);
                             break;
@@ -145,6 +191,13 @@ Deno.serve(async (req: Request) => {
                             ? subscriptionHasPaidInvoice(sub, latestInvoice)
                             : false;
                         const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id;
+                        const periodUpdates = await buildSubscriptionPeriodUpdates(
+                            base44,
+                            userId,
+                            sub,
+                            subscriptionTier,
+                            paidConfirmed
+                        );
 
                         await base44.asServiceRole.entities.User.update(userId, {
                             stripe_customer_id: customerId,
@@ -155,6 +208,7 @@ Deno.serve(async (req: Request) => {
                             subscription_tier: subscriptionTier,
                             subscription_paid_confirmed: paidConfirmed,
                             ...(paidConfirmed ? { subscription_paid_confirmed_at: new Date().toISOString() } : {}),
+                            ...periodUpdates,
                             total_seats: quantity
                         });
 
@@ -179,7 +233,6 @@ Deno.serve(async (req: Request) => {
                     const firstItem = subscription.items?.data?.[0];
                     const quantity = firstItem?.quantity || 1;
                     const planId = firstItem?.price?.id;
-                    const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
                     const latestInvoice = typeof subscription.latest_invoice === 'string'
                         ? await stripe.invoices.retrieve(subscription.latest_invoice)
                         : subscription.latest_invoice;
@@ -190,6 +243,14 @@ Deno.serve(async (req: Request) => {
                             console.warn(`Ignoring update for stale subscription ${subscription.id}`);
                             break;
                         }
+                        const subscriptionTier = inferTierFromSubscription(subscription, 'custom');
+                        const periodUpdates = await buildSubscriptionPeriodUpdates(
+                            base44,
+                            userId,
+                            subscription,
+                            subscriptionTier,
+                            paidConfirmed
+                        );
                          await base44.asServiceRole.entities.User.update(userId, {
                            subscription_id: subscription.id,
                            subscription_status: status,
@@ -197,10 +258,10 @@ Deno.serve(async (req: Request) => {
                            ...(status === 'active' || status === 'trialing' ? { stripe_card_confirmed_at: new Date().toISOString() } : {}),
                            ...(paidConfirmed
                                ? { subscription_paid_confirmed: true, subscription_paid_confirmed_at: new Date().toISOString() }
-                               : status !== 'active' ? { subscription_paid_confirmed: false } : {}),
+                               : { subscription_paid_confirmed: false }),
                            subscription_plan_id: planId,
-                           subscription_tier: inferTierFromSubscription(subscription, 'custom'),
-                           subscription_period_end: periodEnd,
+                           subscription_tier: subscriptionTier,
+                           ...periodUpdates,
                            total_seats: quantity
                          });
 
@@ -214,10 +275,12 @@ Deno.serve(async (req: Request) => {
                     break;
                 }
                 case 'invoice.paid': {
-                    const invoice = event.data.object;
-                    const subscriptionId = invoice.subscription ? (typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription.id) : null;
+                    const eventInvoice = event.data.object;
+                    const subscriptionId = eventInvoice.subscription ? (typeof eventInvoice.subscription === 'string' ? eventInvoice.subscription : eventInvoice.subscription.id) : null;
                     if (!subscriptionId) break;
-                    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+                    const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+                        expand: ['latest_invoice']
+                    });
                     const userId = subscription.metadata?.base44_user_id;
                     const quantity = subscription.items?.data?.[0]?.quantity || 1;
                     if (userId) {
@@ -225,16 +288,30 @@ Deno.serve(async (req: Request) => {
                             console.warn(`Ignoring paid invoice for stale subscription ${subscription.id}`);
                             break;
                         }
-                        const paidConfirmed = subscriptionHasPaidInvoice(subscription, invoice);
+                        const currentInvoice = subscription.latest_invoice;
+                        if (!currentInvoice || typeof currentInvoice === 'string' || currentInvoice.id !== eventInvoice.id) {
+                            console.warn(`Ignoring stale paid invoice ${eventInvoice.id}; it is not the current invoice for ${subscription.id}`);
+                            break;
+                        }
+                        const paidConfirmed = subscriptionHasPaidInvoice(subscription, currentInvoice);
+                        const subscriptionTier = inferTierFromSubscription(subscription, 'custom');
+                        const periodUpdates = await buildSubscriptionPeriodUpdates(
+                            base44,
+                            userId,
+                            subscription,
+                            subscriptionTier,
+                            paidConfirmed
+                        );
                         await base44.asServiceRole.entities.User.update(userId, {
                             subscription_id: subscription.id,
                             subscription_status: subscription.status,
-                            subscription_tier: inferTierFromSubscription(subscription, 'custom'),
+                            subscription_tier: subscriptionTier,
                             ...(paidConfirmed
                                 ? { subscription_paid_confirmed: true, subscription_paid_confirmed_at: new Date().toISOString() }
-                                : subscription.status !== 'active' ? { subscription_paid_confirmed: false } : {}),
+                                : { subscription_paid_confirmed: false }),
                             stripe_card_on_file_confirmed: subscription.status === 'active' || subscription.status === 'trialing',
                             ...(subscription.status === 'active' || subscription.status === 'trialing' ? { stripe_card_confirmed_at: new Date().toISOString() } : {}),
+                            ...periodUpdates,
                             total_seats: quantity
                         });
                         if (paidConfirmed) {
@@ -247,24 +324,35 @@ Deno.serve(async (req: Request) => {
                     break;
                 }
                 case 'invoice.payment_failed': {
-                    const invoice = event.data.object;
-                    const subscriptionId = invoice.subscription ? (typeof invoice.subscription === 'string' ? invoice.subscription : invoice.subscription.id) : null;
+                    const eventInvoice = event.data.object;
+                    const subscriptionId = eventInvoice.subscription ? (typeof eventInvoice.subscription === 'string' ? eventInvoice.subscription : eventInvoice.subscription.id) : null;
                     if (!subscriptionId) break;
-                    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+                    const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+                        expand: ['latest_invoice']
+                    });
                     const userId = subscription.metadata?.base44_user_id;
                     if (userId) {
                         if (!await isCurrentSubscription(base44, userId, subscription.id)) {
                             console.warn(`Ignoring payment failure for stale subscription ${subscription.id}`);
                             break;
                         }
+
+                        const currentInvoice = typeof subscription.latest_invoice === 'string'
+                            ? await stripe.invoices.retrieve(subscription.latest_invoice)
+                            : subscription.latest_invoice;
+                        const currentInvoiceIsUnpaid = currentInvoice
+                            && ['open', 'uncollectible'].includes(String(currentInvoice.status || '').toLowerCase());
+                        if (!currentInvoice || currentInvoice.id !== eventInvoice.id || !currentInvoiceIsUnpaid) {
+                            console.warn(`Ignoring stale payment failure ${eventInvoice.id}; it is not the current unpaid invoice for ${subscription.id}`);
+                            break;
+                        }
+
                         await base44.asServiceRole.entities.User.update(userId, {
                             subscription_id: subscription.id,
                             subscription_status: subscription.status,
-                            ...(subscription.status === 'active' ? {} : { subscription_paid_confirmed: false })
+                            subscription_paid_confirmed: false
                         });
-                        console.log(subscription.status === 'active'
-                            ? `Pending subscription change payment failed for user ${userId}; preserving existing paid access`
-                            : `Marked subscription payment failed for user ${userId}`);
+                        console.log(`Marked the current subscription payment failed for user ${userId}`);
                     }
                     break;
                 }

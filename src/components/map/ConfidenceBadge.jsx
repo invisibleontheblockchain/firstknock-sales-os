@@ -1,5 +1,5 @@
 import React from 'react';
-import { Shield, ShieldCheck, ShieldAlert, ShieldQuestion } from 'lucide-react';
+import { Shield, ShieldCheck, ShieldAlert } from 'lucide-react';
 
 const TIERS = {
     high:     { label: 'Deed Confirmed',  color: '#22c55e', bg: 'rgba(34,197,94,0.12)',  border: 'rgba(34,197,94,0.25)',  Icon: ShieldCheck },

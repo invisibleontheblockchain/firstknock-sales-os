@@ -1,3 +1,5 @@
+// @ts-check
+
 const FREE_PRECISION_HOME_LIMIT = 50;
 const PRECISION_TIERS = new Set(['pro', 'precision', 'growth', 'enterprise']);
 const NON_PRECISION_TIERS = new Set(['canvas', 'hustler']);
@@ -28,25 +30,18 @@ export function isPrecisionTierOrUnknown(user) {
 }
 
 export function isPrecisionProUser(user) {
-  const status = String(user?.subscription_status || '').toLowerCase();
-  if (user?.is_owner || user?.role === 'admin') return true;
+    const status = String(user?.subscription_status || '').toLowerCase();
   if (!['active', 'trialing'].includes(status)) return false;
+  if (status === 'active' && user?.subscription_paid_confirmed !== true) return false;
   return isPrecisionTier(user) || hasPaidPrecisionLimit(user) || (user?.subscription_paid_confirmed === true && isPrecisionTierOrUnknown(user));
 }
 
 export function hasPaidPrecisionGenerationCapacity(user) {
-  const status = String(user?.subscription_status || '').toLowerCase();
-  if (user?.is_owner || user?.role === 'admin') return true;
-  if (status !== 'active') return false;
-  if (isExplicitNonPrecisionTier(user)) return false;
-  if (isPrecisionTier(user) || hasPaidPrecisionLimit(user)) return true;
-  if (user?.subscription_paid_confirmed === true && isPrecisionTierOrUnknown(user)) return true;
-  return isPrecisionTierOrUnknown(user) && !!(user?.subscription_id || user?.stripe_customer_id);
+  return hasConfirmedPaidPrecisionAccess(user);
 }
 
 export function hasConfirmedPaidPrecisionAccess(user) {
-  const status = String(user?.subscription_status || '').toLowerCase();
-  if (user?.is_owner || user?.role === 'admin') return true;
+    const status = String(user?.subscription_status || '').toLowerCase();
   if (status !== 'active' || user?.subscription_paid_confirmed !== true) return false;
   return isPrecisionTierOrUnknown(user);
 }

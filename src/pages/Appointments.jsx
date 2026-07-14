@@ -1,16 +1,15 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Calendar, Loader2, Plus, Zap, Filter, ChevronDown, Clock, CheckCircle2, XCircle, AlertTriangle, CalendarDays, X, Phone, Trash2 } from 'lucide-react';
+import { Calendar, Loader2, Plus, Zap, Clock, CheckCircle2, AlertTriangle, CalendarDays, X, Phone, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import PullToRefresh from '@/components/mobile/PullToRefresh';
-import { format, isToday, isTomorrow, isThisWeek, parseISO, isPast } from 'date-fns';
+import { format, isToday, isTomorrow, isThisWeek, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 
 import AppointmentCard from '@/components/appointments/AppointmentCard';
 import AppointmentDetail from '@/components/appointments/AppointmentDetail';
 import AutoSchedulePanel from '@/components/appointments/AutoSchedulePanel';
-import { getIndustryLabel, INDUSTRIES } from '@/components/appointments/EligibilityScorer';
 import { openInMaps } from '@/components/logic/navigation';
 
 const TIME_TABS = [

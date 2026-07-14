@@ -43,6 +43,7 @@ function loadBackendHandler(path, { base44, stripeApi }) {
     },
     Request,
     Response,
+    URL,
     Stripe: makeStripeClass(stripeApi)
   }, { filename: path });
   assert.equal(typeof handler, 'function', `${path} did not register a Deno handler`);
@@ -50,10 +51,13 @@ function loadBackendHandler(path, { base44, stripeApi }) {
 }
 
 function makeTrial({ id = 'sub_trial', amount = 9900, tier = 'precision', customer = 'cus_1' } = {}) {
+  const periodStart = Math.floor(Date.now() / 1000);
   return {
     id,
     status: 'trialing',
     customer,
+    current_period_start: periodStart,
+    current_period_end: periodStart + 2592000,
     trial_end: Math.floor(Date.now() / 1000) + 86400,
     metadata: { base44_user_id: 'user_1', subscription_tier: tier },
     items: {
@@ -69,11 +73,20 @@ function makeTrial({ id = 'sub_trial', amount = 9900, tier = 'precision', custom
         }
       }]
     },
-    latest_invoice: { status: 'paid', amount_paid: 0 }
+    latest_invoice: {
+      id: `in_${id}`,
+      subscription: id,
+      status: 'paid',
+      amount_paid: 0,
+      period_start: periodStart,
+      period_end: periodStart + 2592000,
+      lines: { data: [{ subscription: id, period: { start: periodStart, end: periodStart + 2592000 } }] }
+    }
   };
 }
 
-function makeBase44(user, { updateMe, getUser, updateUser, teamMembers = [] } = {}) {
+function makeBase44(user, { updateMe, getUser, updateUser, teamMembers = [], savedRoutes = [], fetchJobs = [], updateFetchJob, onRouteDelete } = {}) {
+  const matches = (record, filter) => Object.entries(filter || {}).every(([key, value]) => record[key] === value);
   return {
     auth: {
       me: async () => user,
@@ -84,6 +97,18 @@ function makeBase44(user, { updateMe, getUser, updateUser, teamMembers = [] } = 
         User: {
           get: getUser || (async () => user),
           update: updateUser || (async () => {})
+        },
+        SavedRoute: {
+          filter: async () => savedRoutes,
+          delete: async (id) => onRouteDelete?.(id)
+        },
+        FetchJob: {
+          filter: async (filter, _sort, limit = 500, skip = 0) => fetchJobs.filter((job) => matches(job, filter)).slice(skip, skip + limit),
+          update: async (id, updates) => {
+            const job = fetchJobs.find((candidate) => candidate.id === id);
+            if (job) Object.assign(job, updates);
+            await updateFetchJob?.(id, updates);
+          }
         },
         InviteCode: {
           filter: async () => [],
@@ -415,6 +440,9 @@ test('normal Checkout uses server pricing, preserves Precision seat purchases, a
   const user = { id: 'user_1', email: 'test@example.com', stripe_customer_id: 'cus_1' };
   const checkoutCalls = [];
   const stripeApi = {
+    customers: {
+      retrieve: async (id) => ({ id, deleted: false, metadata: { base44_user_id: user.id } })
+    },
     subscriptions: { list: async () => ({ data: [] }) },
     checkout: {
       sessions: {
@@ -457,6 +485,8 @@ test('normal Checkout uses server pricing, preserves Precision seat purchases, a
   assert.equal(checkoutCalls[1].params.line_items[0].price_data.unit_amount, 9900);
   assert.equal(checkoutCalls[1].params.line_items[0].quantity, 99);
   assert.equal(checkoutCalls[0].options.idempotencyKey, checkoutCalls[1].options.idempotencyKey);
+  assert.equal(checkoutCalls[0].params.success_url, 'https://firstknock.online/Billing?success=true');
+  assert.equal(checkoutCalls[0].params.cancel_url, 'https://firstknock.online/Billing?canceled=true');
 });
 
 test('Checkout reuses the matching session and expires other open subscription choices', async () => {
@@ -483,6 +513,9 @@ test('Checkout reuses the matching session and expires other open subscription c
   const expired = [];
   let creates = 0;
   const stripeApi = {
+    customers: {
+      retrieve: async (id) => ({ id, deleted: false, metadata: { base44_user_id: user.id } })
+    },
     subscriptions: { list: async () => ({ data: [] }) },
     checkout: {
       sessions: {
@@ -513,6 +546,64 @@ test('Checkout reuses the matching session and expires other open subscription c
   assert.equal(creates, 0);
 });
 
+test('Checkout cannot claim a metadata-less subscription or customer from writable local locators', async () => {
+  const user = {
+    id: 'user_1',
+    email: 'test@example.com',
+    stripe_customer_id: 'cus_victim',
+    subscription_id: 'sub_victim'
+  };
+  const customerCreates = [];
+  const checkoutCreates = [];
+  const stripeApi = {
+    customers: {
+      retrieve: async () => ({ id: 'cus_victim', deleted: false, metadata: { base44_user_id: 'different_user' } }),
+      create: async (params) => {
+        customerCreates.push(params);
+        return { id: 'cus_owned' };
+      }
+    },
+    subscriptions: {
+      retrieve: async () => ({ id: 'sub_victim', status: 'trialing', customer: 'cus_victim', metadata: {} }),
+      search: async () => ({ data: [] }),
+      list: async ({ customer }) => {
+        assert.equal(customer, 'cus_owned');
+        return { data: [] };
+      }
+    },
+    checkout: {
+      sessions: {
+        list: async ({ customer }) => {
+          assert.equal(customer, 'cus_owned');
+          return { data: [] };
+        },
+        expire: async () => {},
+        create: async (params) => {
+          checkoutCreates.push(params);
+          return { url: 'https://checkout.example.com/owned' };
+        }
+      }
+    }
+  };
+  const handler = loadBackendHandler('base44/functions/createCheckoutSession/entry.ts', {
+    base44: makeBase44(user),
+    stripeApi
+  });
+  const response = await handler(new Request('https://app.example.com/api', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      planId: 'precision',
+      successUrl: 'https://app.example.com/Billing?success=true',
+      cancelUrl: 'https://app.example.com/Billing?canceled=true'
+    })
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(customerCreates[0].metadata.base44_user_id, user.id);
+  assert.equal(checkoutCreates[0].customer, 'cus_owned');
+});
+
 test('webhook rejects $0 trial invoices and accepts a positive active invoice', async () => {
   for (const scenario of [
     { status: 'trialing', amountPaid: 0, expectedPaid: false },
@@ -523,7 +614,8 @@ test('webhook rejects $0 trial invoices and accepts a positive active invoice', 
       status: scenario.status,
       trial_end: scenario.status === 'active' ? null : Math.floor(Date.now() / 1000) + 86400
     };
-    const invoice = { subscription: subscription.id, status: 'paid', amount_paid: scenario.amountPaid };
+    const invoice = { ...subscription.latest_invoice, amount_paid: scenario.amountPaid };
+    subscription.latest_invoice = invoice;
     const userUpdates = [];
     const base44 = makeBase44({ id: 'user_1', subscription_id: subscription.id }, {
       updateUser: async (_id, updates) => userUpdates.push(updates)
@@ -542,6 +634,7 @@ test('webhook rejects $0 trial invoices and accepts a positive active invoice', 
     assert.equal(response.status, 200);
     assert.equal(userUpdates.length, 1);
     assert.equal(userUpdates[0].subscription_paid_confirmed, scenario.expectedPaid);
+    assert.equal(!!userUpdates[0].precision_usage_period_start, scenario.expectedPaid);
   }
 });
 
@@ -550,8 +643,14 @@ test('subscription update webhooks read current Stripe state instead of stale ev
     ...makeTrial(),
     status: 'active',
     trial_end: null,
-    current_period_end: Math.floor(Date.now() / 1000) + 2592000,
-    latest_invoice: { status: 'paid', amount_paid: 9900 }
+    current_period_end: Math.floor(Date.now() / 1000) + 2592000
+  };
+  liveSubscription.latest_invoice = {
+    ...liveSubscription.latest_invoice,
+    amount_paid: 9900,
+    period_start: liveSubscription.current_period_start,
+    period_end: liveSubscription.current_period_end,
+    lines: { data: [{ subscription: liveSubscription.id, period: { start: liveSubscription.current_period_start, end: liveSubscription.current_period_end } }] }
   };
   const userUpdates = [];
   const base44 = makeBase44({ id: 'user_1', subscription_id: liveSubscription.id }, {
@@ -578,16 +677,525 @@ test('subscription update webhooks read current Stripe state instead of stale ev
   assert.equal(response.status, 200);
   assert.equal(userUpdates[0].subscription_status, 'active');
   assert.equal(userUpdates[0].subscription_paid_confirmed, true);
+  assert.equal(userUpdates[0].precision_usage_period_start, new Date(liveSubscription.current_period_start * 1000).toISOString());
+});
+
+test('renewal advances the paid usage period without replaying the one-time trial credit', async () => {
+  const previousStart = Math.floor(Date.now() / 1000) - 2592000;
+  const renewalStart = Math.floor(Date.now() / 1000);
+  const user = {
+    id: 'user_1',
+    email: 'test@example.com',
+    subscription_id: 'sub_trial',
+    precision_usage_period_start: new Date(previousStart * 1000).toISOString(),
+    precision_usage_reconciled_at: '2026-07-14T18:18:46.000Z',
+    precision_trial_properties_credited: 50
+  };
+  const subscription = {
+    ...makeTrial(),
+    status: 'active',
+    trial_end: null,
+    current_period_start: renewalStart,
+    current_period_end: renewalStart + 2592000,
+    latest_invoice: {
+      id: 'in_renewal',
+      subscription: 'sub_trial',
+      status: 'paid',
+      amount_paid: 9900,
+      period_start: renewalStart,
+      period_end: renewalStart + 2592000,
+      lines: { data: [{ subscription: 'sub_trial', period: { start: renewalStart, end: renewalStart + 2592000 } }] }
+    }
+  };
+  const updates = [];
+  const base44 = makeBase44(user, { updateUser: async (_id, value) => updates.push(value) });
+  const stripeApi = {
+    webhooks: {
+      constructEventAsync: async () => ({
+        type: 'invoice.paid',
+        id: 'evt_renewal',
+        data: { object: subscription.latest_invoice }
+      })
+    },
+    subscriptions: { retrieve: async () => subscription }
+  };
+  const handler = loadBackendHandler('base44/functions/stripeWebhook/entry.ts', { base44, stripeApi });
+  const response = await handler(new Request('https://app.example.com/webhook', {
+    method: 'POST',
+    headers: { 'stripe-signature': 'sig_test' },
+    body: '{}'
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(updates[0].precision_usage_period_start, new Date(renewalStart * 1000).toISOString());
+  assert.equal(updates[0].precision_usage_reconciled_at, undefined);
+  assert.equal(updates[0].precision_trial_properties_credited, undefined);
+});
+
+test('a delayed old paid invoice cannot reset a newer unpaid billing period', async () => {
+  const currentStart = Math.floor(Date.now() / 1000);
+  const subscription = {
+    ...makeTrial(),
+    status: 'active',
+    trial_end: null,
+    current_period_start: currentStart,
+    current_period_end: currentStart + 2592000,
+    latest_invoice: {
+      id: 'in_current_open',
+      subscription: 'sub_trial',
+      status: 'open',
+      amount_paid: 0,
+      period_start: currentStart,
+      period_end: currentStart + 2592000,
+      lines: { data: [{ subscription: 'sub_trial', period: { start: currentStart, end: currentStart + 2592000 } }] }
+    }
+  };
+  const oldInvoice = {
+    id: 'in_old_paid',
+    subscription: subscription.id,
+    status: 'paid',
+    amount_paid: 9900,
+    period_start: currentStart - 2592000,
+    period_end: currentStart
+  };
+  const updates = [];
+  const base44 = makeBase44({ id: 'user_1', subscription_id: subscription.id }, {
+    updateUser: async (_id, value) => updates.push(value)
+  });
+  const stripeApi = {
+    webhooks: {
+      constructEventAsync: async () => ({ type: 'invoice.paid', id: 'evt_delayed', data: { object: oldInvoice } })
+    },
+    subscriptions: { retrieve: async () => subscription }
+  };
+  const handler = loadBackendHandler('base44/functions/stripeWebhook/entry.ts', { base44, stripeApi });
+  const response = await handler(new Request('https://app.example.com/webhook', {
+    method: 'POST',
+    headers: { 'stripe-signature': 'sig_test' },
+    body: '{}'
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(updates.length, 0);
+});
+
+test('canceling a subscription changes entitlement without deleting saved routes', async () => {
+  const subscription = { ...makeTrial(), status: 'canceled' };
+  const userUpdates = [];
+  let routeDeletes = 0;
+  const base44 = makeBase44({ id: 'user_1', subscription_id: subscription.id }, {
+    updateUser: async (_id, updates) => userUpdates.push(updates),
+    onRouteDelete: () => { routeDeletes += 1; }
+  });
+  const stripeApi = {
+    webhooks: {
+      constructEventAsync: async () => ({
+        type: 'customer.subscription.deleted',
+        id: 'evt_cancel',
+        data: { object: subscription }
+      })
+    }
+  };
+  const handler = loadBackendHandler('base44/functions/stripeWebhook/entry.ts', { base44, stripeApi });
+  const response = await handler(new Request('https://app.example.com/webhook', {
+    method: 'POST',
+    headers: { 'stripe-signature': 'sig_test' },
+    body: '{}'
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(userUpdates[0].subscription_status, 'canceled');
+  assert.equal(userUpdates[0].subscription_paid_confirmed, false);
+  assert.equal(routeDeletes, 0);
+});
+
+test('existing paid usage reconciliation credits service-owned trial jobs once and preserves paid jobs', async () => {
+  const periodStart = Math.floor(Date.parse('2026-07-14T18:18:46.000Z') / 1000);
+  const user = {
+    id: 'user_1',
+    email: 'test@example.com',
+    stripe_customer_id: 'cus_1',
+    subscription_id: 'sub_paid',
+    subscription_status: 'active',
+    subscription_tier: 'precision',
+    subscription_paid_confirmed: true
+  };
+  const fetchJobs = [
+    {
+      id: 'trial_job',
+      status: 'completed',
+      provider: 'batchdata',
+      mode_tag: 'PRECISION_TARGET',
+      user_email: user.email,
+      created_date: '2026-07-13T18:00:00.000Z',
+      started_at: '2026-07-13T18:00:00.000Z',
+      completed_at: '2026-07-13T18:01:00.000Z',
+      total_expected: 50,
+      dry_run_metadata: { batchdata_summary: { active: 50 } }
+    },
+    {
+      id: 'paid_job',
+      status: 'completed',
+      provider: 'batchdata',
+      mode_tag: 'PRECISION_TARGET',
+      user_email: user.email,
+      created_date: '2026-07-15T18:00:00.000Z',
+      started_at: '2026-07-15T18:00:00.000Z',
+      completed_at: '2026-07-15T18:01:00.000Z',
+      total_expected: 50,
+      dry_run_metadata: { batchdata_summary: { active: 50 } }
+    }
+  ];
+  const subscription = {
+    ...makeTrial({ id: 'sub_paid' }),
+    status: 'active',
+    trial_end: null,
+    current_period_start: periodStart,
+    current_period_end: periodStart + 2592000,
+    latest_invoice: {
+      id: 'in_paid',
+      subscription: 'sub_paid',
+      status: 'paid',
+      amount_paid: 9900,
+      period_start: periodStart,
+      period_end: periodStart + 2592000,
+      lines: { data: [{ subscription: 'sub_paid', period: { start: periodStart, end: periodStart + 2592000 } }] }
+    }
+  };
+  const updates = [];
+  const base44 = makeBase44(user, {
+    fetchJobs,
+    updateUser: async (_id, value) => {
+      updates.push(value);
+      Object.assign(user, value);
+    }
+  });
+  const stripeApi = {
+    subscriptions: { retrieve: async () => subscription },
+    invoices: { retrieve: async () => subscription.latest_invoice }
+  };
+  const handler = loadBackendHandler('base44/functions/reconcilePrecisionUsage/entry.ts', { base44, stripeApi });
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const response = await handler(new Request('https://app.example.com/reconcile', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}'
+    }));
+    const result = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(result.reconciled, attempt === 0);
+    assert.equal(result.paid_properties_used, 50);
+    assert.equal(result.paid_properties_remaining, 950);
+  }
+
+  assert.equal(updates[0].precision_trial_properties_credited, 50);
+  assert.ok(updates[0].precision_usage_reconciled_at);
+  assert.equal(fetchJobs[0].precision_usage_kind, 'trial');
+  assert.equal(fetchJobs[1].precision_usage_kind, 'paid');
+});
+
+test('reconciliation rejects an incomplete payment without creating a paid period', async () => {
+  const user = {
+    id: 'user_1',
+    email: 'test@example.com',
+    stripe_customer_id: 'cus_1',
+    subscription_id: 'sub_incomplete',
+    subscription_status: 'incomplete',
+    subscription_tier: 'precision',
+    subscription_paid_confirmed: false
+  };
+  const subscription = {
+    ...makeTrial({ id: 'sub_incomplete' }),
+    status: 'incomplete',
+    trial_end: null,
+    latest_invoice: { status: 'open', amount_paid: 0 }
+  };
+  const updates = [];
+  const handler = loadBackendHandler('base44/functions/reconcilePrecisionUsage/entry.ts', {
+    base44: makeBase44(user, { updateUser: async (_id, value) => updates.push(value) }),
+    stripeApi: { subscriptions: { retrieve: async () => subscription } }
+  });
+  const response = await handler(new Request('https://app.example.com/reconcile', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}'
+  }));
+
+  assert.equal(response.status, 409);
+  assert.equal(updates.length, 0);
+});
+
+test('stale payment-failed webhooks cannot regress a newer or now-paid invoice', async () => {
+  const subscription = {
+    ...makeTrial({ id: 'sub_current' }),
+    status: 'active',
+    trial_end: null
+  };
+  subscription.latest_invoice = {
+    ...subscription.latest_invoice,
+    id: 'in_current_paid',
+    subscription: subscription.id,
+    status: 'paid',
+    amount_paid: 9900
+  };
+
+  const staleFailures = [
+    {
+      id: 'in_old_failed',
+      subscription: subscription.id,
+      status: 'open',
+      amount_paid: 0
+    },
+    {
+      ...subscription.latest_invoice,
+      status: 'open',
+      amount_paid: 0
+    }
+  ];
+
+  for (const eventInvoice of staleFailures) {
+    const updates = [];
+    const base44 = makeBase44({ id: 'user_1', subscription_id: subscription.id }, {
+      updateUser: async (_id, value) => updates.push(value)
+    });
+    const stripeApi = {
+      webhooks: {
+        constructEventAsync: async () => ({
+          type: 'invoice.payment_failed',
+          id: `evt_${eventInvoice.id}`,
+          data: { object: eventInvoice }
+        })
+      },
+      subscriptions: { retrieve: async () => subscription },
+      invoices: { retrieve: async () => subscription.latest_invoice }
+    };
+    const handler = loadBackendHandler('base44/functions/stripeWebhook/entry.ts', { base44, stripeApi });
+    const response = await handler(new Request('https://app.example.com/webhook', {
+      method: 'POST',
+      headers: { 'stripe-signature': 'sig_test' },
+      body: '{}'
+    }));
+
+    assert.equal(response.status, 200);
+    assert.equal(updates.length, 0, eventInvoice.id);
+  }
+});
+
+test('the current unpaid invoice still clears cached paid confirmation', async () => {
+  const subscription = {
+    ...makeTrial({ id: 'sub_failed' }),
+    status: 'past_due',
+    trial_end: null
+  };
+  subscription.latest_invoice = {
+    ...subscription.latest_invoice,
+    id: 'in_current_failed',
+    subscription: subscription.id,
+    status: 'open',
+    amount_paid: 0
+  };
+  const updates = [];
+  const base44 = makeBase44({ id: 'user_1', subscription_id: subscription.id }, {
+    updateUser: async (_id, value) => updates.push(value)
+  });
+  const stripeApi = {
+    webhooks: {
+      constructEventAsync: async () => ({
+        type: 'invoice.payment_failed',
+        id: 'evt_current_failed',
+        data: { object: subscription.latest_invoice }
+      })
+    },
+    subscriptions: { retrieve: async () => subscription }
+  };
+  const handler = loadBackendHandler('base44/functions/stripeWebhook/entry.ts', { base44, stripeApi });
+  const response = await handler(new Request('https://app.example.com/webhook', {
+    method: 'POST',
+    headers: { 'stripe-signature': 'sig_test' },
+    body: '{}'
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0].subscription_paid_confirmed, false);
+  assert.equal(updates[0].subscription_status, 'past_due');
+});
+
+test('billing portal derives its customer from an exactly owned Stripe subscription', async () => {
+  const user = {
+    id: 'user_1',
+    subscription_id: 'sub_owned',
+    stripe_customer_id: 'cus_forged'
+  };
+  const owned = {
+    ...makeTrial({ id: 'sub_owned', customer: 'cus_owned' }),
+    status: 'active',
+    trial_end: null
+  };
+  const foreign = {
+    ...makeTrial({ id: 'sub_foreign', customer: 'cus_forged' }),
+    status: 'active',
+    metadata: { base44_user_id: 'different_user' }
+  };
+  let portalCustomer = null;
+  let portalReturnUrl = null;
+  const stripeApi = {
+    subscriptions: {
+      retrieve: async () => owned,
+      list: async () => ({ data: [foreign] })
+    },
+    billingPortal: {
+      sessions: {
+        create: async ({ customer, return_url }) => {
+          portalCustomer = customer;
+          portalReturnUrl = return_url;
+          return { url: 'https://billing.example.com/owned' };
+        }
+      }
+    }
+  };
+  const handler = loadBackendHandler('base44/functions/createPortalSession/entry.ts', {
+    base44: makeBase44(user),
+    stripeApi
+  });
+  const response = await handler(new Request('https://app.example.com/portal', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ returnUrl: 'https://app.example.com/Billing' })
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(portalCustomer, 'cus_owned');
+  assert.equal(portalReturnUrl, 'https://firstknock.online/Billing');
+});
+
+test('billing portal rejects a customer hint without matching subscription ownership metadata', async () => {
+  const foreign = {
+    ...makeTrial({ id: 'sub_foreign', customer: 'cus_foreign' }),
+    status: 'active',
+    metadata: { base44_user_id: 'different_user' }
+  };
+  let portalCreates = 0;
+  const stripeApi = {
+    subscriptions: { list: async () => ({ data: [foreign] }) },
+    billingPortal: {
+      sessions: {
+        create: async () => {
+          portalCreates += 1;
+          return { url: 'https://billing.example.com/foreign' };
+        }
+      }
+    }
+  };
+  const handler = loadBackendHandler('base44/functions/createPortalSession/entry.ts', {
+    base44: makeBase44({ id: 'user_1', stripe_customer_id: 'cus_foreign' }),
+    stripeApi
+  });
+  const response = await handler(new Request('https://app.example.com/portal', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}'
+  }));
+
+  assert.equal(response.status, 404);
+  assert.equal(portalCreates, 0);
+});
+
+test('seat changes reject a customer hint without matching subscription ownership metadata', async () => {
+  const foreign = {
+    ...makeTrial({ id: 'sub_foreign', customer: 'cus_foreign' }),
+    status: 'active',
+    trial_end: null,
+    metadata: { base44_user_id: 'different_user' }
+  };
+  let mutations = 0;
+  const stripeApi = {
+    subscriptions: {
+      list: async () => ({ data: [foreign] }),
+      update: async () => { mutations += 1; }
+    },
+    prices: { create: async () => { mutations += 1; } }
+  };
+  const handler = loadBackendHandler('base44/functions/updateSubscriptionSeats/entry.ts', {
+    base44: makeBase44({ id: 'user_1', stripe_customer_id: 'cus_foreign' }),
+    stripeApi
+  });
+  const response = await handler(new Request('https://app.example.com/seats', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ quantity: 2 })
+  }));
+
+  assert.equal(response.status, 404);
+  assert.equal(mutations, 0);
+});
+
+test('seat changes mutate the exactly owned subscription and derive its portal customer', async () => {
+  const user = {
+    id: 'user_1',
+    subscription_id: 'sub_owned',
+    stripe_customer_id: 'cus_forged'
+  };
+  const owned = {
+    ...makeTrial({ id: 'sub_owned', customer: 'cus_owned' }),
+    status: 'active',
+    trial_end: null
+  };
+  const foreign = {
+    ...makeTrial({ id: 'sub_foreign', customer: 'cus_forged' }),
+    status: 'active',
+    trial_end: null,
+    metadata: { base44_user_id: 'different_user' }
+  };
+  let updatedSubscriptionId = null;
+  let portalCustomer = null;
+  let portalReturnUrl = null;
+  const stripeApi = {
+    subscriptions: {
+      retrieve: async () => owned,
+      list: async () => ({ data: [foreign] }),
+      update: async (id) => {
+        updatedSubscriptionId = id;
+        return { ...owned, latest_invoice: null };
+      }
+    },
+    prices: { create: async () => ({ id: 'price_verified_seat' }) },
+    billingPortal: {
+      sessions: {
+        create: async ({ customer, return_url }) => {
+          portalCustomer = customer;
+          portalReturnUrl = return_url;
+          return { url: 'https://billing.example.com/owned' };
+        }
+      }
+    }
+  };
+  const handler = loadBackendHandler('base44/functions/updateSubscriptionSeats/entry.ts', {
+    base44: makeBase44(user),
+    stripeApi
+  });
+  const response = await handler(new Request('https://app.example.com/seats', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ quantity: 2, returnUrl: 'https://app.example.com/AdminTeam' })
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(updatedSubscriptionId, 'sub_owned');
+  assert.equal(portalCustomer, 'cus_owned');
+  assert.equal(portalReturnUrl, 'https://firstknock.online/AdminTeam');
 });
 
 test('webhook processing failures return 500 so Stripe retries', async () => {
   const subscription = { ...makeTrial(), status: 'active', trial_end: null };
+  subscription.latest_invoice = { ...subscription.latest_invoice, amount_paid: 9900 };
   const stripeApi = {
     webhooks: {
       constructEventAsync: async () => ({
         type: 'invoice.paid',
         id: 'evt_retry',
-        data: { object: { subscription: subscription.id, status: 'paid', amount_paid: 9900 } }
+        data: { object: subscription.latest_invoice }
       })
     },
     subscriptions: { retrieve: async () => subscription }

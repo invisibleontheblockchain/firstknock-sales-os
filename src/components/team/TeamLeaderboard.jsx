@@ -1,10 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Trophy, Flame, Target, TrendingUp, TrendingDown, Clock } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { Trophy, Flame, Target, Clock } from 'lucide-react';
+import { AreaChart, Area, ResponsiveContainer } from 'recharts';
 
 export default function TeamLeaderboard({ members, logs, routes }) {
     const [period, setPeriod] = useState('all'); // 'week', 'month', 'all'

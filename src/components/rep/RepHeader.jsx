@@ -1,5 +1,5 @@
 import React from 'react';
-import { WifiOff, MapPin, Navigation, ChevronDown, CheckCircle2, RefreshCw } from 'lucide-react';
+import { WifiOff, Navigation, ChevronDown, CheckCircle2, RefreshCw } from 'lucide-react';
 import { useIsMutating } from '@tanstack/react-query';
 
 export default function RepHeader({ user, isOffline, activeRoute, stats, knockWindow, routes, onShowMap, onShowRouteList, routeProperties }) {

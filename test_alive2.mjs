@@ -2,7 +2,7 @@ import fs from 'fs';
 
 async function check() {
     const { createClient } = await import('@base44/sdk');
-    const base44 = createClient('https://my-to-do-list-81bfaad7.base44.app', { serviceRoleKey: process.env.BASE44_SERVICE_KEY || 'srole' });
+    const base44 = createClient('https://firstknock.online', { serviceRoleKey: process.env.BASE44_SERVICE_KEY || 'srole' });
     
     const verified = JSON.parse(fs.readFileSync('./src/data/verified85.json'));
     

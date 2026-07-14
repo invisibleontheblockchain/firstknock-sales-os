@@ -6,7 +6,7 @@ Symptoms: pull progress stops, user reports data never completes.
 Steps:
 1. Run `healthCheck` as admin.
 2. Run `adminDiagnostics` and inspect recent failed/running jobs.
-3. If a job is running but stale, run existing `watchdogStaleJobs`.
+3. If a job is running but stale, invoke `watchdogStaleJobs` with the deployed `PRECISION_WATCHDOG_SECRET` in the `x-precision-watchdog-secret` header. A user session or `admin` role alone is intentionally insufficient.
 4. If failed from RentCast rate limits, wait 5-10 minutes and retry the territory pull.
 5. If repeatedly failing on the same area, reduce the drawn territory size.
 

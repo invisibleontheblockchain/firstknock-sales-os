@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { GeoJSON, Tooltip, useMap } from 'react-leaflet';
+import { GeoJSON, Tooltip } from 'react-leaflet';
 
 /**
  * Draws real zip code boundary polygons from OpenDataDE GeoJSON files.
