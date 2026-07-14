@@ -8,6 +8,7 @@
     "build": "vite build",
     "lint": "eslint . --quiet",
     "lint:fix": "eslint . --fix",
+    "test:billing": "node --test test/billing-upgrade.test.mjs",
     "test:custom-range": "node --test test/custom-ownership-range.test.mjs",
     "typecheck": "tsc -p ./jsconfig.json",
     "preview": "vite preview",
