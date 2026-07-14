@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Check, Star } from 'lucide-react';
+import { AlertCircle, Check, Star } from 'lucide-react';
 import { toast } from "sonner";
 import BetaUsageMeter from '../components/beta/BetaUsageMeter';
 import { hasPaidPrecisionGenerationCapacity } from '@/lib/precisionAccess';
+import { getBillingState, shouldShowTrialActivation } from '@/lib/billingState';
 
 function countUniquePrecisionRouteHomes(routes = []) {
   const hashes = new Set();
@@ -67,16 +68,28 @@ const PLANS = [
 export default function Billing() {
   const [loadingPriceId, setLoadingPriceId] = useState(null);
 
-  const { data: user, refetch: refetchUser } = useQuery({
+  const {
+    data: user,
+    refetch: refetchUser,
+    isError: isUserError,
+    isSuccess: isUserLoaded
+  } = useQuery({
     queryKey: ['user'],
     queryFn: () => base44.auth.me()
   });
 
-  const { data: teamMembers = [] } = useQuery({
-    queryKey: ['teamMembersForBilling'],
-    queryFn: () => base44.entities.TeamMember.list(),
-    initialData: []
+  const {
+    data: teamMembersRaw = [],
+    isError: isTeamMembersError,
+    isFetching: isTeamMembersFetching,
+    isSuccess: isTeamMembersSuccess,
+    refetch: refetchTeamMembers
+  } = useQuery({
+    queryKey: ['teamMembersForBilling', user?.id],
+    queryFn: () => base44.entities.TeamMember.filter({ manager_id: user.id }, '-created_date', 500),
+    enabled: !!user?.id
   });
+  const teamMembers = Array.isArray(teamMembersRaw) ? teamMembersRaw : (teamMembersRaw?.items || []);
 
   const { data: savedRoutesRaw = [] } = useQuery({
     queryKey: ['billingPrecisionRoutes', user?.id],
@@ -131,22 +144,80 @@ export default function Billing() {
     }
   };
 
+  const handleActivateTrial = async (planId) => {
+    if (window.self !== window.top) {
+      toast.error("Stripe billing cannot run in this preview window. Please open your app in a new tab.", { duration: 5000 });
+      return;
+    }
+
+    try {
+      const selectedPlan = PLANS.find((plan) => plan.id === planId);
+      if (!selectedPlan) throw new Error('That billing plan is not available.');
+      setLoadingPriceId(planId + '_activate');
+      const res = await base44.functions.invoke('createCheckoutSession', {
+        action: 'activate_trial',
+        planId,
+        quantity: planId === 'canvas' ? activeRepCount : 1,
+        returnUrl: window.location.origin + '/Billing?billing_return=true'
+      });
+      const result = res?.data || res;
+
+      if (result?.url) {
+        window.location.href = result.url;
+        return;
+      }
+      if (!result?.success) {
+        throw new Error(result?.error || 'Stripe did not confirm the trial upgrade.');
+      }
+
+      toast.success(
+        result.already_active
+          ? "Your paid subscription is already active."
+          : "Payment confirmed! Your paid plan is being activated.",
+        { duration: 6000 }
+      );
+      await refetchUser();
+      setTimeout(() => refetchUser(), 2000);
+    } catch (error) {
+      console.error("[Billing] Trial activation failed:", error);
+      const errorData = error?.response?.data;
+      const msg = errorData?.error || error?.message || 'Unknown error';
+      if (errorData?.billing_reconciled) {
+        toast.info("Your billing status was refreshed. Please choose the paid plan again.", { duration: 6000 });
+      } else {
+        toast.error("Upgrade failed: " + msg, { duration: 6000 });
+      }
+      await refetchUser();
+    } finally {
+      setLoadingPriceId(null);
+    }
+  };
+
   // Handle return from Stripe checkout
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    let refreshTimer;
     if (params.get('success') === 'true') {
-      toast.success("Payment successful! Your subscription is being activated. It may take a moment to reflect.", { duration: 6000 });
-      // Clean up URL
+      toast.success("Stripe checkout is complete. Your subscription is being updated.", { duration: 6000 });
       window.history.replaceState({}, '', window.location.pathname);
-      // Refetch user to get updated subscription_status
-      setTimeout(() => refetchUser(), 2000);
+      refetchUser();
+      refreshTimer = setTimeout(() => refetchUser(), 2000);
+    } else if (params.get('billing_return') === 'true') {
+      toast.info("Returned from Stripe. Checking your payment status now.");
+      window.history.replaceState({}, '', window.location.pathname);
+      refetchUser();
+      refreshTimer = setTimeout(() => refetchUser(), 2000);
     } else if (params.get('canceled') === 'true') {
       toast.info("Checkout canceled. You can try again anytime.");
       window.history.replaceState({}, '', window.location.pathname);
     }
-  }, []);
 
-  const isSubscribed = user?.subscription_status === 'active' || user?.subscription_status === 'trialing';
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+    };
+  }, [refetchUser]);
+
+  const { isTrialing, isActive, needsPaymentRecovery, hasSubscription: isSubscribed } = getBillingState(user);
   const hasPaidPrecisionAccess = hasPaidPrecisionGenerationCapacity(user);
   const precisionLimit = user?.precision_property_limit || user?.monthly_property_limit || (hasPaidPrecisionAccess ? 1000 : 50);
   const precisionRouteHomes = React.useMemo(() => countUniquePrecisionRouteHomes(savedRoutes), [savedRoutes]);
@@ -157,14 +228,18 @@ export default function Billing() {
     remaining: Math.max(precisionLimit - precisionUsed, 0),
     percent: precisionLimit > 0 ? Math.min(100, Math.round((precisionUsed / precisionLimit) * 100)) : 0
   };
+  const billingReadyForPlan = (planId) => isUserLoaded && (
+    planId !== 'canvas' || (isTeamMembersSuccess && !isTeamMembersFetching)
+  );
 
   const handleManageSubscription = async () => {
     try {
       const res = await base44.functions.invoke('createPortalSession', {
         returnUrl: window.location.href
       });
-      if (res.data.url) {
-        window.location.href = res.data.url;
+      const portalUrl = res?.data?.url || res?.url;
+      if (portalUrl) {
+        window.location.href = portalUrl;
       } else {
         toast.error("Failed to load subscription portal");
       }
@@ -190,13 +265,26 @@ export default function Billing() {
                     <BetaUsageMeter showUpgrade={false} />
                 </div>
 
+                {isUserError && (
+                    <div className="mx-auto max-w-xl rounded-lg border border-amber-500/40 bg-amber-950/30 px-4 py-3 text-center text-sm text-amber-100">
+                        <p>We could not load your billing account, so checkout is paused.</p>
+                        <button
+                            type="button"
+                            onClick={() => refetchUser()}
+                            className="mt-2 font-semibold text-yellow-400 hover:text-yellow-300"
+                        >
+                            Retry account check
+                        </button>
+                    </div>
+                )}
+
 
                 {isSubscribed &&
         <div className="flex flex-col items-center gap-4">
-                        <div className="inline-block bg-green-900/30 border border-green-500/50 rounded-full px-4 py-1">
-                            <span className="text-green-400 text-sm font-bold flex items-center gap-2">
-                                <Check className="w-4 h-4" /> 
-                                {user?.subscription_status === 'trialing' ? 'TRIAL ACTIVE' : 'ACTIVE SUBSCRIPTION'}
+                        <div className={`inline-block rounded-full px-4 py-1 border ${needsPaymentRecovery ? 'bg-amber-900/30 border-amber-500/50' : 'bg-green-900/30 border-green-500/50'}`}>
+                            <span className={`${needsPaymentRecovery ? 'text-amber-300' : 'text-green-400'} text-sm font-bold flex items-center gap-2`}>
+                                {needsPaymentRecovery ? <AlertCircle className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                                {isTrialing ? 'TRIAL ACTIVE' : isActive ? 'ACTIVE SUBSCRIPTION' : 'PAYMENT ACTION NEEDED'}
                             </span>
                         </div>
                         
@@ -205,7 +293,7 @@ export default function Billing() {
             variant="outline"
             className="border-gray-700 hover:bg-gray-800 text-gray-300 text-xs h-8">
 
-                            Billing Portal / Cancel
+                            {needsPaymentRecovery ? 'Fix Payment in Stripe' : 'Billing Portal / Cancel'}
                         </Button>
                     </div>
         }
@@ -271,7 +359,29 @@ export default function Billing() {
                                 ))}
                             </ul>
 
-                            {!isSubscribed && (
+                            {plan.id === 'canvas'
+                              && isUserLoaded
+                              && (!isSubscribed || shouldShowTrialActivation(user, plan.id))
+                              && !billingReadyForPlan(plan.id) && (
+                                <div className="rounded-lg border border-gray-700 bg-gray-900/60 px-3 py-3 text-center text-xs text-gray-300">
+                                    {isTeamMembersError ? (
+                                        <>
+                                            <p>We could not verify your active rep count, so Canvas checkout is paused.</p>
+                                            <button
+                                                type="button"
+                                                onClick={() => refetchTeamMembers()}
+                                                className="mt-2 font-semibold text-yellow-400 hover:text-yellow-300"
+                                            >
+                                                Retry seat check
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <p>Verifying your active rep count before checkout…</p>
+                                    )}
+                                </div>
+                            )}
+
+                            {billingReadyForPlan(plan.id) && !isSubscribed && (
                                 <div className="flex flex-col gap-3 sm:gap-3">
                                     <Button
                                         onClick={() => handleSubscribe(plan.id, 7)}
@@ -289,11 +399,27 @@ export default function Billing() {
                                     </Button>
                                 </div>
                             )}
+                            {billingReadyForPlan(plan.id) && shouldShowTrialActivation(user, plan.id) && (
+                                <div className="flex flex-col gap-2">
+                                    <Button
+                                        onClick={() => handleActivateTrial(plan.id)}
+                                        disabled={loadingPriceId !== null}
+                                        className="w-full h-12 font-bold tracking-wide rounded-xl transition-all bg-yellow-500 text-black hover:bg-yellow-400 shadow-lg hover:shadow-yellow-500/20 text-sm sm:text-base"
+                                    >
+                                        {loadingPriceId === plan.id + '_activate'
+                                            ? 'PROCESSING PAYMENT...'
+                                            : `UPGRADE NOW — $${plan.price}${plan.unit.toUpperCase()}`}
+                                    </Button>
+                                    <p className="text-center text-xs text-gray-400">
+                                        Ends your free trial and charges the plan total today. No cancellation needed.
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     ))}
                 </div>
 
-                {!isSubscribed && (
+                {isUserLoaded && (!isSubscribed || isTrialing) && (
                     <p className="text-center text-xs sm:text-xs text-gray-500 mt-3 sm:mt-4">
                         Secure payments via Stripe. Cancel anytime.
                     </p>

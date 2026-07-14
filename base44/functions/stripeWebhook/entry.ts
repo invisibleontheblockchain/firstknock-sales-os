@@ -1,25 +1,64 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 import Stripe from 'npm:stripe@14.14.0';
 
-const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY'));
+const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '');
 const endpointSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
 const PRECISION_PRICE_CENTS = 9900;
 const CANVAS_PRICE_CENTS = 1900;
+const BLOCKING_SUBSCRIPTION_STATUSES = new Set(['active', 'trialing', 'past_due', 'unpaid', 'paused', 'incomplete']);
 
 function normalizeSubscriptionTier(value: any) {
     return String(value || '').trim().toLowerCase();
 }
 
 function inferTierFromSubscription(subscription: any, fallback = 'custom') {
+    const price = subscription?.items?.data?.[0]?.price;
+    const priceMetadataTier = normalizeSubscriptionTier(price?.metadata?.subscription_tier);
+    if (priceMetadataTier === 'precision' || priceMetadataTier === 'canvas') return priceMetadataTier;
+
     const metadataTier = normalizeSubscriptionTier(subscription?.metadata?.subscription_tier);
     if (metadataTier && metadataTier !== 'custom') return metadataTier;
 
-    const price = subscription?.items?.data?.[0]?.price;
     const amountCents = Number(price?.unit_amount || price?.unit_amount_decimal || 0);
     if (amountCents >= PRECISION_PRICE_CENTS) return 'precision';
     if (amountCents >= CANVAS_PRICE_CENTS) return 'canvas';
 
     return normalizeSubscriptionTier(fallback) || metadataTier || 'custom';
+}
+
+function invoiceHasPositivePayment(invoice: any) {
+    return invoice?.status === 'paid' && Number(invoice?.amount_paid || 0) > 0;
+}
+
+function subscriptionHasPaidInvoice(subscription: any, invoice: any) {
+    const trialEnded = !subscription?.trial_end || subscription.trial_end * 1000 <= Date.now();
+    return subscription?.status === 'active' && trialEnded && invoiceHasPositivePayment(invoice);
+}
+
+function isBlockingSubscription(subscription: any) {
+    return BLOCKING_SUBSCRIPTION_STATUSES.has(String(subscription?.status || '').toLowerCase());
+}
+
+async function getCurrentUser(base44: any, userId: string) {
+    return await base44.asServiceRole.entities.User.get(userId);
+}
+
+async function isCurrentSubscription(base44: any, userId: string, subscriptionId: string) {
+    const currentUser = await getCurrentUser(base44, userId);
+    return !currentUser?.subscription_id || currentUser.subscription_id === subscriptionId;
+}
+
+async function canReplaceCurrentSubscription(base44: any, userId: string, incomingSubscriptionId: string) {
+    const currentUser = await getCurrentUser(base44, userId);
+    if (!currentUser?.subscription_id || currentUser.subscription_id === incomingSubscriptionId) return true;
+
+    try {
+        const currentSubscription = await stripe.subscriptions.retrieve(currentUser.subscription_id);
+        return !isBlockingSubscription(currentSubscription);
+    } catch (error: any) {
+        if (error?.raw?.code === 'resource_missing') return true;
+        throw error;
+    }
 }
 
 // Helper to manage invite codes
@@ -82,31 +121,33 @@ Deno.serve(async (req: Request) => {
                 case 'checkout.session.completed': {
                     const session = event.data.object;
                     const userId = session.metadata?.base44_user_id;
-                    
+
                     if (userId) {
                         let quantity = 1;
-                        let subscriptionStatus = 'active';
-                        let subscriptionId = session.subscription ? (typeof session.subscription === 'string' ? session.subscription : session.subscription.id) : null;
-                        let subscriptionTier = session.metadata?.subscription_tier || 'custom';
-                        let paidConfirmed = session.payment_status === 'paid';
-                        if (subscriptionId) {
-                            try {
-                                const sub = await stripe.subscriptions.retrieve(subscriptionId, { expand: ['latest_invoice'] });
-                                subscriptionStatus = sub.status;
-                                subscriptionId = sub.id;
-                                subscriptionTier = inferTierFromSubscription(sub, subscriptionTier);
-                                if (sub.items && sub.items.data.length > 0) {
-                                    quantity = sub.items.data[0].quantity || 1;
-                                }
-                                const latestInvoice = sub.latest_invoice;
-                                paidConfirmed = paidConfirmed || (sub.status === 'active' && latestInvoice && typeof latestInvoice !== 'string' && latestInvoice.status === 'paid');
-                            } catch (subErr: any) {
-                                console.error(`Error retrieving subscription ${session.subscription}:`, subErr.message);
-                            }
+                        const subscriptionId = session.subscription ? (typeof session.subscription === 'string' ? session.subscription : session.subscription.id) : null;
+                        if (!subscriptionId) {
+                            throw new Error(`Checkout Session ${session.id} completed without a subscription`);
                         }
 
+                        const sub = await stripe.subscriptions.retrieve(subscriptionId, { expand: ['latest_invoice'] });
+                        if (!await canReplaceCurrentSubscription(base44, userId, sub.id)) {
+                            console.warn(`Ignoring stale Checkout Session ${session.id} for subscription ${sub.id}`);
+                            break;
+                        }
+
+                        const subscriptionStatus = sub.status;
+                        const subscriptionTier = inferTierFromSubscription(sub, session.metadata?.subscription_tier || 'custom');
+                        if (sub.items && sub.items.data.length > 0) {
+                            quantity = sub.items.data[0].quantity || 1;
+                        }
+                        const latestInvoice = sub.latest_invoice;
+                        const paidConfirmed = latestInvoice && typeof latestInvoice !== 'string'
+                            ? subscriptionHasPaidInvoice(sub, latestInvoice)
+                            : false;
+                        const customerId = typeof session.customer === 'string' ? session.customer : session.customer?.id;
+
                         await base44.asServiceRole.entities.User.update(userId, {
-                            stripe_customer_id: session.customer,
+                            stripe_customer_id: customerId,
                             stripe_card_on_file_confirmed: true,
                             stripe_card_confirmed_at: new Date().toISOString(),
                             subscription_id: subscriptionId,
@@ -127,7 +168,10 @@ Deno.serve(async (req: Request) => {
                     break;
                 }
                 case 'customer.subscription.updated': {
-                    const subscription = event.data.object;
+                    const eventSubscription = event.data.object;
+                    const subscription = await stripe.subscriptions.retrieve(eventSubscription.id, {
+                        expand: ['latest_invoice']
+                    });
                     const userId = subscription.metadata?.base44_user_id;
                     const status = subscription.status;
                     
@@ -136,27 +180,24 @@ Deno.serve(async (req: Request) => {
                     const quantity = firstItem?.quantity || 1;
                     const planId = firstItem?.price?.id;
                     const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
-                    let latestInvoicePaid = false;
-                    if (subscription.latest_invoice) {
-                        try {
-                            const invoice = typeof subscription.latest_invoice === 'string'
-                                ? await stripe.invoices.retrieve(subscription.latest_invoice)
-                                : subscription.latest_invoice;
-                            latestInvoicePaid = invoice?.status === 'paid';
-                        } catch (invoiceErr: any) {
-                            console.error(`Error retrieving latest invoice for ${subscription.id}:`, invoiceErr.message);
-                        }
-                    }
-                    const paidConfirmed = status === 'active' && latestInvoicePaid;
+                    const latestInvoice = typeof subscription.latest_invoice === 'string'
+                        ? await stripe.invoices.retrieve(subscription.latest_invoice)
+                        : subscription.latest_invoice;
+                    const paidConfirmed = subscriptionHasPaidInvoice(subscription, latestInvoice);
 
                     if (userId) {
+                        if (!await isCurrentSubscription(base44, userId, subscription.id)) {
+                            console.warn(`Ignoring update for stale subscription ${subscription.id}`);
+                            break;
+                        }
                          await base44.asServiceRole.entities.User.update(userId, {
                            subscription_id: subscription.id,
                            subscription_status: status,
                            stripe_card_on_file_confirmed: status === 'active' || status === 'trialing',
                            ...(status === 'active' || status === 'trialing' ? { stripe_card_confirmed_at: new Date().toISOString() } : {}),
-                           subscription_paid_confirmed: paidConfirmed,
-                           ...(paidConfirmed ? { subscription_paid_confirmed_at: new Date().toISOString() } : {}),
+                           ...(paidConfirmed
+                               ? { subscription_paid_confirmed: true, subscription_paid_confirmed_at: new Date().toISOString() }
+                               : status !== 'active' ? { subscription_paid_confirmed: false } : {}),
                            subscription_plan_id: planId,
                            subscription_tier: inferTierFromSubscription(subscription, 'custom'),
                            subscription_period_end: periodEnd,
@@ -180,18 +221,28 @@ Deno.serve(async (req: Request) => {
                     const userId = subscription.metadata?.base44_user_id;
                     const quantity = subscription.items?.data?.[0]?.quantity || 1;
                     if (userId) {
+                        if (!await isCurrentSubscription(base44, userId, subscription.id)) {
+                            console.warn(`Ignoring paid invoice for stale subscription ${subscription.id}`);
+                            break;
+                        }
+                        const paidConfirmed = subscriptionHasPaidInvoice(subscription, invoice);
                         await base44.asServiceRole.entities.User.update(userId, {
                             subscription_id: subscription.id,
                             subscription_status: subscription.status,
                             subscription_tier: inferTierFromSubscription(subscription, 'custom'),
-                            subscription_paid_confirmed: true,
-                            subscription_paid_confirmed_at: new Date().toISOString(),
-                            stripe_card_on_file_confirmed: true,
-                            stripe_card_confirmed_at: new Date().toISOString(),
+                            ...(paidConfirmed
+                                ? { subscription_paid_confirmed: true, subscription_paid_confirmed_at: new Date().toISOString() }
+                                : subscription.status !== 'active' ? { subscription_paid_confirmed: false } : {}),
+                            stripe_card_on_file_confirmed: subscription.status === 'active' || subscription.status === 'trialing',
+                            ...(subscription.status === 'active' || subscription.status === 'trialing' ? { stripe_card_confirmed_at: new Date().toISOString() } : {}),
                             total_seats: quantity
                         });
-                        await syncInviteCode(base44, userId, quantity);
-                        console.log(`Confirmed paid subscription invoice for user ${userId} with ${quantity} seats`);
+                        if (paidConfirmed) {
+                            await syncInviteCode(base44, userId, quantity);
+                            console.log(`Confirmed paid subscription invoice for user ${userId} with ${quantity} seats`);
+                        } else {
+                            console.log(`Ignored zero-dollar or trial invoice for user ${userId}`);
+                        }
                     }
                     break;
                 }
@@ -202,12 +253,18 @@ Deno.serve(async (req: Request) => {
                     const subscription = await stripe.subscriptions.retrieve(subscriptionId);
                     const userId = subscription.metadata?.base44_user_id;
                     if (userId) {
+                        if (!await isCurrentSubscription(base44, userId, subscription.id)) {
+                            console.warn(`Ignoring payment failure for stale subscription ${subscription.id}`);
+                            break;
+                        }
                         await base44.asServiceRole.entities.User.update(userId, {
                             subscription_id: subscription.id,
                             subscription_status: subscription.status,
-                            subscription_paid_confirmed: false
+                            ...(subscription.status === 'active' ? {} : { subscription_paid_confirmed: false })
                         });
-                        console.log(`Marked subscription payment failed for user ${userId}`);
+                        console.log(subscription.status === 'active'
+                            ? `Pending subscription change payment failed for user ${userId}; preserving existing paid access`
+                            : `Marked subscription payment failed for user ${userId}`);
                     }
                     break;
                 }
@@ -215,6 +272,10 @@ Deno.serve(async (req: Request) => {
                     const subscription = event.data.object;
                     const userId = subscription.metadata?.base44_user_id;
                     if (userId) {
+                        if (!await isCurrentSubscription(base44, userId, subscription.id)) {
+                            console.warn(`Ignoring deletion for stale subscription ${subscription.id}`);
+                            break;
+                        }
                         await base44.asServiceRole.entities.User.update(userId, {
                             subscription_status: 'canceled',
                             subscription_paid_confirmed: false
@@ -239,10 +300,10 @@ Deno.serve(async (req: Request) => {
                 }
             }
         } catch (processError) {
-            // Catch errors during processing to avoid 500 for valid (verified) events
             console.error(`Error processing event ${event.type}: ${processError.message}`);
-            // We still return 200 because the event was technically "received" and verified
-            // This prevents Stripe from retrying infinitely if it's a logic bug
+            // Stripe must retry transient Base44/Stripe failures; acknowledging a
+            // failed billing write would permanently lose the event.
+            return Response.json({ error: 'Webhook processing failed' }, { status: 500 });
         }
 
         return Response.json({ received: true });
