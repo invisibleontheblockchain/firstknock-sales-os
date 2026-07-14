@@ -42,6 +42,8 @@ export const buildSplitPreview = ({ route, stopsPerDay, startDate = '', assignme
 };
 
 export const buildSplitRouteRecords = ({ route, batches, managerId }) => {
+  const safeMetadata = { ...(route?.metadata || {}) };
+  delete safeMetadata.route_bounds;
   return batches.map((batch) => {
     const dateLabel = batch.date ? ` (${formatBatchDate(batch.date)})` : '';
     const routeName = `${route?.name || 'Route'} — Batch ${batch.batchNumber}${dateLabel}`;
@@ -59,7 +61,9 @@ export const buildSplitRouteRecords = ({ route, batches, managerId }) => {
         house_count: batch.stops.length,
         score: route?.competitivenessScore || route?.metrics?.score || 0
       },
-      start_location: route?.start_location || null,
+      start_location: null,
+      route_origin_mode: 'none',
+      metadata: safeMetadata,
       manager_id: route?.manager_id || managerId,
       parent_route_id: route?.id || null,
       batch_number: batch.batchNumber,

@@ -11,7 +11,7 @@ import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
 import {
     Navigation, X, BarChart3, User, Shield, MapPin,
     ArrowRight, Flame, Plus, Clock, CheckCircle2,
-    AlertCircle, ChevronRight, Zap, Trash2, Scissors, Pencil, Check, RefreshCw, Play
+    AlertCircle, ChevronRight, Zap, Trash2, Scissors, Pencil, Check, RefreshCw, Play, Home
 } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { toast } from "sonner";
@@ -24,6 +24,18 @@ const BRAND = {
     charcoal: '#1F1F1F',
     offWhite: '#E5E5E5'
 };
+
+function getRouteBoundsBadge(route) {
+    const bounds = route?.metadata?.route_bounds;
+    const mode = String(route?.route_origin_mode || bounds?.mode || bounds?.origin_mode || '').toLowerCase();
+    const startSource = String(bounds?.start_source || bounds?.start?.source || '').toLowerCase();
+    const isEnabled = mode === 'home_round_trip' || mode === 'current_to_home' || mode.includes('current');
+
+    if (!isEnabled) return null;
+    return mode === 'current_to_home' || mode.includes('current') || startSource.includes('current') || startSource.includes('gps')
+        ? 'Current → home'
+        : 'Home round trip';
+}
 
 export default function RouteCommandPanel({
     generatedRoutes = [],
@@ -256,11 +268,59 @@ export default function RouteCommandPanel({
                                                                     });
                                                                     console.log(`[RoutePipeline] after_merge_all_union routes=${baseRoutes.length} union=${allProps.length}`);
                                                                     if (allProps.length === 0) return;
-                                                                    const merged = generateOptimizedRoutes(allProps, allProps.length, null, [], { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest' });
+                                                                    const firstRoute = baseRoutes[0];
+                                                                    const routeBoundsKey = (route) => {
+                                                                        const start = route?.startLocation || route?.start_location;
+                                                                        const end = route?.endLocation || route?.end_location;
+                                                                        return JSON.stringify({
+                                                                            mode: route?.routeOriginMode || route?.route_origin_mode || 'none',
+                                                                            start: start ? [Number(start.lat), Number(start.lng)] : null,
+                                                                            end: end ? [Number(end.lat), Number(end.lng)] : null
+                                                                        });
+                                                                    };
+                                                                    const sameAssignee = baseRoutes.every(route =>
+                                                                        (route?.assigned_to || null) === (firstRoute?.assigned_to || null)
+                                                                    );
+                                                                    const firstOriginMode = firstRoute?.routeOriginMode || firstRoute?.route_origin_mode || 'none';
+                                                                    const firstStart = firstRoute?.startLocation || firstRoute?.start_location;
+                                                                    const firstEnd = firstRoute?.endLocation || firstRoute?.end_location;
+                                                                    const hasFirstBounds = firstStart && firstEnd
+                                                                        && firstStart.lat != null && firstStart.lat !== '' && firstStart.lng != null && firstStart.lng !== ''
+                                                                        && firstEnd.lat != null && firstEnd.lat !== '' && firstEnd.lng != null && firstEnd.lng !== ''
+                                                                        && Number.isFinite(Number(firstStart.lat)) && Number.isFinite(Number(firstStart.lng))
+                                                                        && Number.isFinite(Number(firstEnd.lat)) && Number.isFinite(Number(firstEnd.lng));
+                                                                    const sharedRouteBounds = sameAssignee && firstOriginMode !== 'none' &&
+                                                                        hasFirstBounds &&
+                                                                        baseRoutes.every(route => routeBoundsKey(route) === routeBoundsKey(firstRoute));
+                                                                    const mergeStart = sharedRouteBounds
+                                                                        ? (firstRoute.startLocation || firstRoute.start_location)
+                                                                        : null;
+                                                                    const mergeEnd = sharedRouteBounds
+                                                                        ? (firstRoute.endLocation || firstRoute.end_location)
+                                                                        : null;
+                                                                    const merged = generateOptimizedRoutes(
+                                                                        allProps,
+                                                                        allProps.length,
+                                                                        mergeStart,
+                                                                        [],
+                                                                        {
+                                                                            minimizeTurns: true,
+                                                                            use2Opt: true,
+                                                                            walkingPattern: 'nearest',
+                                                                            endLocation: mergeEnd,
+                                                                            routeOriginMode: sharedRouteBounds ? firstOriginMode : 'none'
+                                                                        }
+                                                                    );
                                                                     if (merged && merged.length > 0) {
-                                                                        const big = { ...merged[0], id: 'route_merged', name: 'All-in-One Route' };
+                                                                        const big = {
+                                                                            ...merged[0],
+                                                                            id: 'route_merged',
+                                                                            name: 'All-in-One Route',
+                                                                            assigned_to: sameAssignee ? firstRoute?.assigned_to || null : null,
+                                                                            assigned_to_name: sameAssignee ? firstRoute?.assigned_to_name || null : null
+                                                                        };
                                                                         if (onSaveRoute) {
-                                                                            onSaveRoute(big);
+                                                                            onSaveRoute(big, big.assigned_to, big.assigned_to_name);
                                                                         }
                                                                         if (onReplaceRoutes) {
                                                                             onReplaceRoutes([big]);
@@ -681,6 +741,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
     };
 
     const displayName = routeNumber && (!route.name || /^Route\s+\d+$/i.test(route.name)) ? `Route ${routeNumber}` : route.name;
+    const routeBoundsBadge = getRouteBoundsBadge(route);
 
     return (
         <div className="relative group max-w-full overflow-hidden">
@@ -752,6 +813,11 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                     {knockStats.knocked > 0 && (
                         <span className="text-yellow-500 font-bold">{knockStats.knocked}/{knockStats.total} knocked</span>
                     )}
+                    {routeBoundsBadge && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/20 bg-amber-400/10 px-1.5 py-0.5 font-bold text-amber-300">
+                            <Home className="h-3 w-3" /> {routeBoundsBadge}
+                        </span>
+                    )}
                 </div>
                 {knockStats.total > 0 && (
                     <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: '#222' }}>
@@ -778,6 +844,16 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                         </button>
                     )}
                 </div>
+                {onReoptimize && (
+                    <button
+                        onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReoptimize(route, { fromHome: true }); }}
+                        className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-amber-400/25 bg-amber-400/[0.08] px-3 text-[10px] font-black text-amber-300 transition-colors hover:border-amber-400/45 hover:bg-amber-400/[0.14] md:h-8"
+                        title="Optimize from home base"
+                    >
+                        <Home className="h-4 w-4" /> OPTIMIZE FROM HOME BASE
+                    </button>
+                )}
             </div>
             {onDelete && (
                 <button

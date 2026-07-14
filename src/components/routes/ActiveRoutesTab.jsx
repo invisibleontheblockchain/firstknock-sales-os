@@ -4,7 +4,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
     Navigation, X, Clock, CheckCircle2, AlertCircle,
-    ChevronRight, Merge, Trash2, RefreshCw, Pencil, Check, Scissors, Play
+    ChevronRight, Merge, Trash2, RefreshCw, Pencil, Check, Scissors, Play, Home
 } from 'lucide-react';
 import { generateOptimizedRoutes } from "@/components/logic/routeOptimizer";
 import { base44 } from '@/api/base44Client';
@@ -24,6 +24,18 @@ const isRerunRoute = (route) => Boolean(
     route?.metadata?.rerun_filter ||
     (route?.name || '').includes(' Rerun — ')
 );
+
+function getRouteBoundsBadge(route) {
+    const bounds = route?.metadata?.route_bounds;
+    const mode = String(route?.route_origin_mode || bounds?.mode || bounds?.origin_mode || '').toLowerCase();
+    const startSource = String(bounds?.start_source || bounds?.start?.source || '').toLowerCase();
+    const isEnabled = mode === 'home_round_trip' || mode === 'current_to_home' || mode.includes('current');
+
+    if (!isEnabled) return null;
+    return mode === 'current_to_home' || mode.includes('current') || startSource.includes('current') || startSource.includes('gps')
+        ? 'Current → home'
+        : 'Home round trip';
+}
 
 export default function ActiveRoutesTab({
     savedRoutes = [],
@@ -117,15 +129,34 @@ export default function ActiveRoutesTab({
         }
 
         try {
+            const firstSelectedRoute = selectedRoutes[0];
+            const sameAssignee = selectedRoutes.every(route => route.assigned_to === firstSelectedRoute.assigned_to);
+            const boundsKey = (route) => JSON.stringify({
+                mode: route?.route_origin_mode || 'none',
+                start: route?.start_location || null,
+                end: route?.end_location || null
+            });
+            const hasStoredBounds = (route) => {
+                const start = route?.start_location;
+                const end = route?.end_location;
+                return start && end && start.lat != null && start.lat !== '' && start.lng != null && start.lng !== ''
+                    && end.lat != null && end.lat !== '' && end.lng != null && end.lng !== ''
+                    && Number.isFinite(Number(start.lat)) && Number.isFinite(Number(start.lng))
+                    && Number.isFinite(Number(end.lat)) && Number.isFinite(Number(end.lng));
+            };
+            const sharedRouteBounds = sameAssignee && firstSelectedRoute?.route_origin_mode && firstSelectedRoute.route_origin_mode !== 'none' &&
+                hasStoredBounds(firstSelectedRoute) &&
+                selectedRoutes.every(route => boundsKey(route) === boundsKey(firstSelectedRoute));
+            const mergeStart = sharedRouteBounds ? firstSelectedRoute.start_location : null;
+            const mergeEnd = sharedRouteBounds ? firstSelectedRoute.end_location : null;
             const merged = generateOptimizedRoutes(
-                allProps, allProps.length, null, [],
-                { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest' }
+                allProps, allProps.length, mergeStart, [],
+                { minimizeTurns: true, use2Opt: true, walkingPattern: 'nearest', endLocation: mergeEnd, routeOriginMode: sharedRouteBounds ? firstSelectedRoute.route_origin_mode : 'none' }
             );
 
             if (merged && merged.length > 0) {
                 const optimizedRoute = merged[0];
                 const firstRoute = selectedRoutes[0];
-                const sameAssignee = selectedRoutes.every(route => route.assigned_to === firstRoute.assigned_to);
                 const mergedRouteData = {
                     name: `Merged (${selectedRoutes.length} routes, ${allProps.length} doors)`,
                     property_hashes: optimizedRoute.properties.map(p => p.address_hash || p.id).filter(Boolean),
@@ -138,7 +169,10 @@ export default function ActiveRoutesTab({
                     manager_id: firstRoute.manager_id,
                     assigned_to: sameAssignee ? firstRoute.assigned_to : null,
                     assigned_to_name: sameAssignee ? firstRoute.assigned_to_name : null,
-                    start_location: firstRoute.start_location || null
+                    start_location: null,
+                    end_location: null,
+                    route_origin_mode: sharedRouteBounds ? firstRoute.route_origin_mode : 'none',
+                    ...(sharedRouteBounds && firstRoute.metadata ? { metadata: firstRoute.metadata } : {})
                 };
 
                 // Save the merged route first so Optimize and Knock use a real SavedRoute ID.
@@ -453,6 +487,7 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
 
     const displayName = routeNumber && (!route.name || /^Route\s+\d+$/i.test(route.name)) ? `Route ${routeNumber}` : route.name;
     const isNew = route.metadata?.newly_generated && route.created_date && (Date.now() - new Date(route.created_date).getTime()) < 24 * 60 * 60 * 1000;
+    const routeBoundsBadge = getRouteBoundsBadge(route);
 
     return (
         <div className={`relative group flex items-start gap-1.5 sm:gap-2 min-w-0 max-w-full overflow-hidden ${isSelected ? 'ring-2 ring-[#39FF4A] rounded-2xl' : ''}`}>
@@ -541,6 +576,11 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                         {knockStats.knocked > 0 && (
                             <span className="text-yellow-500 font-bold">{knockStats.knocked}/{knockStats.total} knocked</span>
                         )}
+                        {routeBoundsBadge && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/20 bg-amber-400/10 px-1.5 py-0.5 font-bold text-amber-300">
+                                <Home className="h-3 w-3" /> {routeBoundsBadge}
+                            </span>
+                        )}
                     </div>
                     {isCompletedRoute && outcomeStats.knocked > 0 && (
                         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -609,6 +649,16 @@ function SavedRouteCard({ route, routeNumber, repColor, isActive, onSelect, onDe
                                         </button>
                                     )}
                                 </div>
+                            )}
+                            {onReoptimize && (
+                                <button
+                                    onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); onReoptimize(route, { fromHome: true }); }}
+                                    className="mt-2 flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-amber-400/25 bg-amber-400/[0.08] px-3 text-[10px] font-black text-amber-300 transition-colors hover:border-amber-400/45 hover:bg-amber-400/[0.14] md:h-8"
+                                    title="Optimize from home base"
+                                >
+                                    <Home className="h-4 w-4" /> OPTIMIZE FROM HOME BASE
+                                </button>
                             )}
                         </div>
                     )}

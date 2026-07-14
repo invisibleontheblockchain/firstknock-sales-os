@@ -1,16 +1,33 @@
 import React, { useMemo } from 'react';
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { format, subDays } from 'date-fns';
-import { DollarSign, TrendingUp, Percent } from 'lucide-react';
+import { CalendarDays, DollarSign, TrendingUp, Percent } from 'lucide-react';
 
 const SALES = ['SOLD', 'QUALIFIED'];
 
-export default function RevenueMetrics({ logs, dateDays }) {
+export default function RevenueMetrics({ logs, dateDays, selectedDate }) {
   const revenueData = useMemo(() => {
     const salesLogs = logs.filter(l => SALES.includes(l.parsed_status) && l.sale_amount > 0);
     const totalRevenue = salesLogs.reduce((s, l) => s + (l.sale_amount || 0), 0);
     const totalDeals = salesLogs.length;
     const avgDeal = totalDeals > 0 ? Math.round(totalRevenue / totalDeals) : 0;
+
+    if (selectedDate) {
+      const label = format(selectedDate, 'MMM d, yyyy');
+      return {
+        totalRevenue,
+        totalDeals,
+        avgDeal,
+        weeklyData: [{
+          week: format(selectedDate, 'MMM d'),
+          label,
+          revenue: totalRevenue,
+          deals: totalDeals,
+        }],
+        velocityPct: 0,
+        thisWeekRev: totalRevenue,
+      };
+    }
 
     const weeks = Math.max(Math.ceil(dateDays / 7), 1);
     const weeklyData = Array.from({ length: Math.min(weeks, 12) }, (_, i) => {
@@ -33,11 +50,11 @@ export default function RevenueMetrics({ logs, dateDays }) {
     const velocityPct = lastWeekRev > 0 ? Math.round(((thisWeekRev - lastWeekRev) / lastWeekRev) * 100) : 0;
 
     return { totalRevenue, totalDeals, avgDeal, weeklyData, velocityPct, thisWeekRev };
-  }, [logs, dateDays]);
+  }, [logs, dateDays, selectedDate]);
 
   const fmt = (v) => v >= 1000000 ? `$${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v}`;
 
-  const CustomTooltip = ({ active, payload }) => {
+  const CustomTooltip = ({ active = false, payload = [] }) => {
     if (!active || !payload?.length) return null;
     const d = payload[0]?.payload;
     return (
@@ -55,16 +72,29 @@ export default function RevenueMetrics({ logs, dateDays }) {
       <div className="relative">
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-gray-500">Revenue Trend</p>
-            <h3 className="mt-1 text-lg md:text-xl font-black text-white tracking-tight">Weekly performance</h3>
-            <p className="mt-1 text-[11px] text-gray-500">Revenue timing, deal size, and week-over-week movement</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.22em] text-gray-400">
+              {selectedDate ? 'Daily revenue' : 'Revenue Trend'}
+            </p>
+            <h3 className="mt-1 text-lg md:text-xl font-black text-white tracking-tight">
+              {selectedDate ? format(selectedDate, 'EEEE, MMM d, yyyy') : 'Weekly performance'}
+            </h3>
+            <p className="mt-1 text-[11px] text-gray-400">
+              {selectedDate ? 'Revenue and deal results for the selected day' : 'Revenue timing, deal size, and week-over-week movement'}
+            </p>
           </div>
-          <div className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[10px] md:text-xs font-bold border ${
-            revenueData.velocityPct >= 0 ? 'bg-green-500/10 text-green-300 border-green-400/20' : 'bg-red-500/10 text-red-300 border-red-400/20'
-          }`}>
-            <TrendingUp className="w-3 h-3" />
-            {revenueData.velocityPct >= 0 ? '+' : ''}{revenueData.velocityPct}% WoW
-          </div>
+          {selectedDate ? (
+            <div className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[10px] md:text-xs font-bold border bg-yellow-500/10 text-yellow-300 border-yellow-400/20">
+              <CalendarDays className="w-3 h-3" />
+              Selected day
+            </div>
+          ) : (
+            <div className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[10px] md:text-xs font-bold border ${
+              revenueData.velocityPct >= 0 ? 'bg-green-500/10 text-green-300 border-green-400/20' : 'bg-red-500/10 text-red-300 border-red-400/20'
+            }`}>
+              <TrendingUp className="w-3 h-3" />
+              {revenueData.velocityPct >= 0 ? '+' : ''}{revenueData.velocityPct}% WoW
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-2.5 mb-4">
@@ -79,7 +109,7 @@ export default function RevenueMetrics({ logs, dateDays }) {
                   <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-black/25">
                     <Icon className="w-3.5 h-3.5" style={{ color: s.color }} />
                   </div>
-                  <p className="text-[10px] font-semibold text-gray-500">{s.label}</p>
+                  <p className="text-[10px] font-semibold text-gray-400">{s.label}</p>
                 </div>
                 <div className="text-lg md:text-xl font-black text-white">{s.value}</div>
               </div>
@@ -87,23 +117,40 @@ export default function RevenueMetrics({ logs, dateDays }) {
           })}
         </div>
 
-        <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500">Weekly trend</p>
-            <DollarSign className="w-3.5 h-3.5 text-green-400" />
+        {selectedDate ? (
+          <div className="rounded-xl border border-white/[0.06] bg-black/20 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-400">Revenue recorded</p>
+                <p className="mt-1 text-2xl md:text-3xl font-black text-green-400">{fmt(revenueData.totalRevenue)}</p>
+              </div>
+              <DollarSign className="w-5 h-5 text-green-400" />
+            </div>
+            <p className="mt-2 text-[10px] md:text-xs text-gray-400">
+              {revenueData.totalDeals > 0
+                ? `${revenueData.totalDeals} closed ${revenueData.totalDeals === 1 ? 'deal' : 'deals'} on this day`
+                : 'No closed revenue was recorded on this day'}
+            </p>
           </div>
-          <div className="h-[140px] md:h-[180px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={revenueData.weeklyData} margin={{ top: 8, right: 6, left: -18, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" vertical={false} />
-                <XAxis dataKey="week" stroke="#6b7280" fontSize={10} tickLine={false} axisLine={false} dy={6} />
-                <YAxis stroke="#4b5563" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1000 ? `${v/1000}k` : v} />
-                <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-                <Bar dataKey="revenue" fill="#22c55e" radius={[6, 6, 2, 2]} maxBarSize={34} />
-              </BarChart>
-            </ResponsiveContainer>
+        ) : (
+          <div className="rounded-xl border border-white/[0.06] bg-black/20 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-gray-500">Weekly trend</p>
+              <DollarSign className="w-3.5 h-3.5 text-green-400" />
+            </div>
+            <div className="h-[140px] md:h-[180px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={revenueData.weeklyData} margin={{ top: 8, right: 6, left: -18, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#ffffff08" vertical={false} />
+                  <XAxis dataKey="week" stroke="#6b7280" fontSize={10} tickLine={false} axisLine={false} dy={6} />
+                  <YAxis stroke="#4b5563" fontSize={9} tickLine={false} axisLine={false} tickFormatter={(v) => v >= 1000 ? `${v/1000}k` : v} />
+                  <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                  <Bar dataKey="revenue" fill="#22c55e" radius={[6, 6, 2, 2]} maxBarSize={34} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

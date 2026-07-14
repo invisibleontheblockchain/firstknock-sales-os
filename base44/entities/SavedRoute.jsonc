@@ -63,6 +63,7 @@
     },
     "start_location": {
       "type": "object",
+      "description": "Optional non-personal fixed trip start. Personal home/current coordinates must not be stored on shared routes.",
       "properties": {
         "lat": {
           "type": "number"
@@ -74,6 +75,31 @@
           "type": "string"
         }
       }
+    },
+    "end_location": {
+      "type": "object",
+      "description": "Optional non-personal fixed trip endpoint. Personal home/current coordinates must not be stored on shared routes.",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        },
+        "address": {
+          "type": "string"
+        }
+      }
+    },
+    "route_origin_mode": {
+      "type": "string",
+      "enum": [
+        "none",
+        "home_round_trip",
+        "current_to_home"
+      ],
+      "default": "none",
+      "description": "Explicit opt-in routing bounds. none preserves normal route generation behavior."
     },
     "manager_id": {
       "type": "string",

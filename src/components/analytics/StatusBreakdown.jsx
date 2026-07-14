@@ -35,10 +35,11 @@ export default function StatusBreakdown({ properties }) {
       <div className="relative z-10">
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-xs md:text-sm font-black text-white">Status Breakdown</h3>
-          <span className="text-[9px] font-bold text-gray-500 bg-white/[0.04] px-2 py-0.5 rounded">{properties.length.toLocaleString()} doors</span>
+          <span className="text-[9px] font-bold text-gray-400 bg-white/[0.04] px-2 py-0.5 rounded">{properties.length.toLocaleString()} doors</span>
         </div>
-        <div className="space-y-2">
-          {data.map(d => (
+        {data.length > 0 ? (
+          <div className="space-y-2">
+            {data.map(d => (
             <div key={d.name}>
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
@@ -54,8 +55,13 @@ export default function StatusBreakdown({ properties }) {
                 <div className="h-full rounded-full transition-all duration-700" style={{ width: `${(d.value / maxVal) * 100}%`, background: `linear-gradient(90deg, ${d.color}80, ${d.color})` }} />
               </div>
             </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="flex min-h-[96px] items-center justify-center rounded-lg border border-dashed border-white/[0.08] px-4 text-center">
+            <p className="text-[10px] md:text-xs text-gray-400">No door outcomes were recorded for this period.</p>
+          </div>
+        )}
       </div>
     </div>
   );

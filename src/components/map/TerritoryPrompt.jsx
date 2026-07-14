@@ -139,6 +139,9 @@ export default function TerritoryPrompt({
   savedRoutes = [],
   setZipCodeFilter,
   routeConfig = {},
+  homeBase = null,
+  onSaveHomeBase,
+  onRouteBoundsPrepared,
   onPullComplete
 }) {
   const queryClient = useQueryClient();
@@ -181,6 +184,22 @@ export default function TerritoryPrompt({
   const targetPctRef = useRef(0);
   const restoredCompletedJobRef = useRef(false);
   const pullIntentRef = useRef({});
+  const activePrecisionJobStorageKey = useMemo(() => {
+    const email = String(user?.email || '').trim().toLowerCase();
+    return email ? `fk_activePrecisionJob_${email}` : null;
+  }, [user?.email]);
+  const rememberActivePrecisionJob = (jobId) => {
+    if (!activePrecisionJobStorageKey || !jobId) return;
+    try { localStorage.setItem(activePrecisionJobStorageKey, String(jobId)); } catch {}
+  };
+  const clearActivePrecisionJob = (jobId = null) => {
+    if (!activePrecisionJobStorageKey) return;
+    try {
+      if (!jobId || localStorage.getItem(activePrecisionJobStorageKey) === String(jobId)) {
+        localStorage.removeItem(activePrecisionJobStorageKey);
+      }
+    } catch {}
+  };
 
   // Smooth progress animation — ticks display forward toward real target
   useEffect(() => {
@@ -214,13 +233,28 @@ export default function TerritoryPrompt({
 
     const checkRunningJobs = async () => {
       try {
-        const jobs = await base44.entities.FetchJob.filter(
-          { user_email: user.email, status: 'running' },
-          '-created_date',
-          1
-        );
-        const jobList = Array.isArray(jobs) ? jobs : jobs?.items || [];
-        let job = jobList[0];
+        let job = null;
+        const rememberedJobId = activePrecisionJobStorageKey
+          ? localStorage.getItem(activePrecisionJobStorageKey)
+          : null;
+        if (rememberedJobId) {
+          const rememberedJob = await base44.entities.FetchJob.get(rememberedJobId).catch(() => null);
+          if (rememberedJob && ['running', 'pending', 'completed'].includes(rememberedJob.status)) {
+            job = rememberedJob;
+          } else {
+            clearActivePrecisionJob(rememberedJobId);
+          }
+        }
+
+        if (!job) {
+          const jobs = await base44.entities.FetchJob.filter(
+            { user_email: user.email, status: 'running' },
+            '-created_date',
+            1
+          );
+          const jobList = Array.isArray(jobs) ? jobs : jobs?.items || [];
+          job = jobList[0];
+        }
 
         // Also check pending
         if (!job) {
@@ -260,6 +294,7 @@ export default function TerritoryPrompt({
           const resumedOwnershipRangeMode = (
             job.ownership_range_mode ?? jobMetadata.ownership_range_mode
           ) === 'custom' && resumedOwnershipRangeDays ? 'custom' : 'quick';
+          const resumedRouteBounds = jobMetadata.route_bounds || { enabled: false };
           pullIntentRef.current[job.id] = {
             polygon: job.polygon || [],
             requestedCount: Number(jobMetadata.requested_properties ?? job.total_expected ?? 0) || null,
@@ -267,8 +302,11 @@ export default function TerritoryPrompt({
             ownershipRangeMode: resumedOwnershipRangeMode,
             ownershipRangeDays: resumedOwnershipRangeDays,
             minHomeValue: jobMetadata.filters?.min_price ?? null,
-            maxHomeValue: jobMetadata.filters?.max_price ?? null
+            maxHomeValue: jobMetadata.filters?.max_price ?? null,
+            routeBounds: resumedRouteBounds
           };
+          await onRouteBoundsPrepared?.(resumedRouteBounds);
+          rememberActivePrecisionJob(job.id);
           if (Array.isArray(job.polygon) && job.polygon.length >= 3) {
             try { localStorage.setItem('fk_drawnPolygonQueried', 'true'); } catch {}
             setDrawnPolygon(job.polygon, true);
@@ -608,7 +646,8 @@ export default function TerritoryPrompt({
               ...diagnostics,
               ownership_range_mode: completedOwnershipRangeMode,
               ownership_range_days: ownershipRangeCriteria(completedOwnershipRangeDays)
-            }
+            },
+            route_bounds: intent.routeBounds || diagnostics.route_bounds || { enabled: false }
           };
 
           if (onPullComplete) {
@@ -623,6 +662,7 @@ export default function TerritoryPrompt({
             setShowRoutePanel(false);
             setShowCompare(false);
           }
+          clearActivePrecisionJob(jobId);
           setPulling(false);
         } else if (d.status === 'cancelled') {
           clearInterval(pollRef.current);
@@ -631,12 +671,16 @@ export default function TerritoryPrompt({
           setPulling(false);
           setEtaText('');
           setPullProgress('Cancelled');
+          clearActivePrecisionJob(jobId);
+          await onRouteBoundsPrepared?.({ enabled: false });
           toast.info('Data import cancelled.');
         } else if (d.status === 'failed') {
           clearInterval(pollRef.current);
           pollRef.current = null;
           activeJobIdRef.current = null;
           setPulling(false);
+          clearActivePrecisionJob(jobId);
+          await onRouteBoundsPrepared?.({ enabled: false });
           toast.error(d.error_message || 'Fetch job failed.');
         }
       } catch (e) {
@@ -665,6 +709,8 @@ export default function TerritoryPrompt({
     setPulling(false);
     setEtaText('');
     setPullProgress('Cancelled');
+    clearActivePrecisionJob(jobId);
+    await onRouteBoundsPrepared?.({ enabled: false });
     queryClient.invalidateQueries({ queryKey: ['masterProperties'] });
     toast.info('Data import cancelled.');
   };
@@ -704,6 +750,7 @@ export default function TerritoryPrompt({
         min_price: recoveryMetadata.filters?.min_price ?? null,
         max_price: recoveryMetadata.filters?.max_price ?? null,
         route_filters: recoveryMetadata.route_filters,
+        route_bounds: recoveryMetadata.route_bounds || { enabled: false },
         include_mls: jobToRecover.include_mls !== false,
         force_full_refresh: jobToRecover.force_full_refresh || false
       });
@@ -720,6 +767,8 @@ export default function TerritoryPrompt({
         ? (data.ownership_range_mode === 'custom' && responseOwnershipRangeDays ? 'custom' : 'quick')
         : recoveryOwnershipRangeMode;
       const pollingOwnershipRangeDays = resumedExistingJob ? responseOwnershipRangeDays : recoveryOwnershipRangeDays;
+      const recoveryRouteBounds = data.route_bounds || recoveryMetadata.route_bounds || { enabled: false };
+      await onRouteBoundsPrepared?.(recoveryRouteBounds);
       pullIntentRef.current[data.job_id] = {
         polygon: resumedExistingJob ? (data.polygon || []) : (jobToRecover.polygon || []),
         requestedCount: Number(
@@ -731,12 +780,14 @@ export default function TerritoryPrompt({
         ownershipRangeMode: pollingOwnershipRangeMode,
         ownershipRangeDays: pollingOwnershipRangeDays,
         minHomeValue: resumedExistingJob ? (data.min_price ?? null) : (recoveryMetadata.filters?.min_price ?? null),
-        maxHomeValue: resumedExistingJob ? (data.max_price ?? null) : (recoveryMetadata.filters?.max_price ?? null)
+        maxHomeValue: resumedExistingJob ? (data.max_price ?? null) : (recoveryMetadata.filters?.max_price ?? null),
+        routeBounds: recoveryRouteBounds
       };
       if (resumedExistingJob && Array.isArray(data.polygon) && data.polygon.length >= 3) {
         try { localStorage.setItem('fk_drawnPolygonQueried', 'true'); } catch {}
         setDrawnPolygon(data.polygon, true);
       }
+      rememberActivePrecisionJob(data.job_id);
       startPolling(data.job_id);
     } catch (error) {
       const errCode = error.response?.data?.error || error.name;
@@ -808,7 +859,7 @@ export default function TerritoryPrompt({
     }
   };
 
-  const handlePaidBatchDataPull = async () => {
+  const handlePaidBatchDataPull = async (routeBounds = { enabled: false }) => {
     if (paidPullStarting || pulling) return;
     if (!drawnPolygon || drawnPolygon.length < 3) {
       toast.error('Draw a freehand area first.');
@@ -897,6 +948,7 @@ export default function TerritoryPrompt({
           excludeCondos: true,
           excludeLand: true
         },
+        route_bounds: routeBounds,
         force_full_refresh: isPreviousAreaPull ? repullMode === 'fill_gaps' || forceFullRefresh : false,
         include_unresolved_followups: isPreviousAreaPull ? includeUnresolvedFollowUps : false,
         repull_mode: isPreviousAreaPull ? repullMode : 'new_area',
@@ -966,6 +1018,8 @@ export default function TerritoryPrompt({
           setPullError({ message: data.message || 'An import is already running, but its job id is missing.', upgrade: false });
           return;
         }
+        const resumedRouteBounds = data.route_bounds || { enabled: false };
+        await onRouteBoundsPrepared?.(resumedRouteBounds);
         const serverOwnershipRangeDays = normalizeOwnershipRangeDays(data.ownership_range_days);
         const serverOwnershipRangeMode = data.ownership_range_mode === 'custom' && serverOwnershipRangeDays ? 'custom' : 'quick';
         const serverSoldMonths = Number(data.sold_months || 12);
@@ -976,7 +1030,8 @@ export default function TerritoryPrompt({
           ownershipRangeMode: serverOwnershipRangeMode,
           ownershipRangeDays: serverOwnershipRangeDays,
           minHomeValue: data.min_price ?? null,
-          maxHomeValue: data.max_price ?? null
+          maxHomeValue: data.max_price ?? null,
+          routeBounds: resumedRouteBounds
         };
         if (Array.isArray(data.polygon) && data.polygon.length >= 3) {
           try { localStorage.setItem('fk_drawnPolygonQueried', 'true'); } catch {}
@@ -988,12 +1043,15 @@ export default function TerritoryPrompt({
         targetPctRef.current = 0;
         setPullProgress('Resuming the active property import...');
         setEtaText('Checking active import...');
+        rememberActivePrecisionJob(data.job_id);
         startPolling(data.job_id);
         setShowPrecisionPullPanel(false);
         toast.info(data.message || 'A property import is already running. Resuming its progress.');
         return;
       }
       const startedRequestedCount = Number(data.requested_properties ?? effectiveRequestedPropertyCount) || effectiveRequestedPropertyCount;
+      const startedRouteBounds = data.route_bounds || routeBounds || { enabled: false };
+      await onRouteBoundsPrepared?.(startedRouteBounds);
       if (data.job_id) {
         pullIntentRef.current[data.job_id] = {
           polygon: drawnPolygon,
@@ -1004,6 +1062,7 @@ export default function TerritoryPrompt({
           ownershipRangeDays: effectiveOwnershipRangeDays,
           minHomeValue: effectiveMinPrice,
           maxHomeValue: effectiveMaxPrice,
+          routeBounds: startedRouteBounds,
           limitedByFreeHomeCap: data.limited_by_free_home_cap === true
         };
       }
@@ -1032,6 +1091,7 @@ export default function TerritoryPrompt({
       targetPctRef.current = 0;
       setPullProgress('Starting property import...');
       setEtaText('Starting import...');
+      rememberActivePrecisionJob(data.job_id);
       startPolling(data.job_id);
       setShowPrecisionPullPanel(false);
       toast.success(`Property import started for up to ${startedRequestedCount.toLocaleString()} homes. Routes will build automatically.`);
@@ -1250,6 +1310,8 @@ export default function TerritoryPrompt({
         includeUnresolvedFollowUps={includeUnresolvedFollowUps}
         setIncludeUnresolvedFollowUps={setIncludeUnresolvedFollowUps}
         savedRouteHomeCount={routeDeliveredPropertiesUsed}
+        homeBase={homeBase}
+        onSaveHomeBase={onSaveHomeBase}
         onClearArea={() => {setDrawnPolygon(null);setDraftPolygon([]);setDrawingMode(false);setShowPrecisionPullPanel(false);setSelectedHistoryArea(null);}}
       />
       }

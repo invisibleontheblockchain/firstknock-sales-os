@@ -8,7 +8,7 @@ export default function RepAnalyticsPipeline({ metrics }) {
     { label: 'Knocks', value: metrics.periodKnocks, note: 'total attempts' },
     { label: 'Contacts', value: metrics.contacts, note: `${metrics.contactRate}% rate` },
     { label: 'Callbacks', value: metrics.callbacks, note: 'follow-ups' },
-    { label: 'Appointments', value: metrics.upcomingAppointments, note: 'meetings' },
+    { label: 'Appointments', value: metrics.appointmentCount, note: 'meetings' },
     { label: 'Wins', value: metrics.sales, note: 'closed' },
   ];
   const maxValue = Math.max(...funnel.map((i) => i.value), 1);
@@ -17,7 +17,7 @@ export default function RepAnalyticsPipeline({ metrics }) {
     { label: 'Best Hour', value: metrics.bestHourLabel, sub: `${metrics.bestHourRate}% contact`, icon: Clock3, color: '#f59e0b' },
     { label: 'Callbacks', value: metrics.callbacks, sub: 'to revisit', icon: Phone, color: '#06b6d4' },
     { label: 'Routes', value: `${metrics.activeRoutes}/${metrics.totalRoutes}`, sub: 'active', icon: Route, color: '#22c55e' },
-    { label: 'No-Show', value: `${metrics.noShowRate}%`, sub: `${metrics.upcomingAppointments} appts`, icon: Calendar, color: '#ef4444' },
+    { label: 'No-Show', value: `${metrics.noShowRate}%`, sub: `${metrics.appointmentCount} appts`, icon: Calendar, color: '#ef4444' },
   ];
 
   return (

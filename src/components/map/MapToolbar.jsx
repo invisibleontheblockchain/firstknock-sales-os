@@ -215,11 +215,12 @@ export default function MapToolbar({
       name: routeName,
       property_hashes: activeRoute.properties.map((p) => p.address_hash || p.id).filter(Boolean),
       metrics: {
-        distance: activeRoute.totalDistance || activeRoute.metrics?.distance || 0,
+        distance: 0,
         house_count: activeRoute.properties.length,
         score: activeRoute.competitivenessScore || activeRoute.metrics?.score || 0
       },
       status: 'ACTIVE',
+      route_origin_mode: 'none',
       assigned_to: activeRoute.assigned_to || user.id,
       assigned_to_name: activeRoute.assigned_to_name || user.full_name || 'Me',
       manager_id: user.id

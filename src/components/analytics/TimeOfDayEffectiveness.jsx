@@ -24,7 +24,7 @@ export default function TimeOfDayEffectiveness({ logs }) {
     }));
   }, [logs]);
 
-  const CustomTooltip = ({ active, payload, label }) => {
+  const CustomTooltip = ({ active = false, payload = [], label = '' }) => {
     if (!active || !payload?.length) return null;
     const d = payload[0]?.payload;
     return (
@@ -46,22 +46,28 @@ export default function TimeOfDayEffectiveness({ logs }) {
           </div>
           <div>
             <h3 className="text-xs md:text-sm font-black text-white">Time of Day</h3>
-            <p className="text-[8px] md:text-[9px] text-gray-500">Volume vs contact rate by hour</p>
+            <p className="text-[8px] md:text-[9px] text-gray-400">Volume vs contact rate by hour</p>
           </div>
         </div>
-        <div className="h-[150px] md:h-[200px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={chartData} margin={{ top: 5, right: 0, left: -25, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#ffffff06" vertical={false} />
-              <XAxis dataKey="time" stroke="#444" fontSize={8} tickLine={false} dy={6} />
-              <YAxis yAxisId="left" stroke="#333" fontSize={8} tickLine={false} axisLine={false} />
-              <YAxis yAxisId="right" orientation="right" stroke="#eab308" fontSize={8} tickLine={false} unit="%" axisLine={false} />
-              <Tooltip content={<CustomTooltip />} cursor={{ fill: '#ffffff06' }} />
-              <Bar yAxisId="left" dataKey="knocks" fill="#333" radius={[3, 3, 0, 0]} barSize={16} />
-              <Line yAxisId="right" type="monotone" dataKey="rate" stroke="#eab308" strokeWidth={2} dot={{ r: 2.5, fill: '#eab308', stroke: '#000', strokeWidth: 1 }} />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
+        {chartData.some((point) => point.knocks > 0) ? (
+          <div className="h-[150px] md:h-[200px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={chartData} margin={{ top: 5, right: 0, left: -25, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff06" vertical={false} />
+                <XAxis dataKey="time" stroke="#444" fontSize={8} tickLine={false} dy={6} />
+                <YAxis yAxisId="left" stroke="#333" fontSize={8} tickLine={false} axisLine={false} />
+                <YAxis yAxisId="right" orientation="right" stroke="#eab308" fontSize={8} tickLine={false} unit="%" axisLine={false} />
+                <Tooltip content={<CustomTooltip />} cursor={{ fill: '#ffffff06' }} />
+                <Bar yAxisId="left" dataKey="knocks" fill="#333" radius={[3, 3, 0, 0]} barSize={16} />
+                <Line yAxisId="right" type="monotone" dataKey="rate" stroke="#eab308" strokeWidth={2} dot={{ r: 2.5, fill: '#eab308', stroke: '#000', strokeWidth: 1 }} />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="flex min-h-[150px] items-center justify-center rounded-lg border border-dashed border-white/[0.08] px-4 text-center md:min-h-[200px]">
+            <p className="text-[10px] md:text-xs text-gray-400">No time-of-day activity was recorded for this period.</p>
+          </div>
+        )}
       </div>
     </div>
   );

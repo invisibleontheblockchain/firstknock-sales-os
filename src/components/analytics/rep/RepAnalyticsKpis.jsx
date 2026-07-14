@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, Percent, Calendar, DoorOpen, PhoneCall, TrendingUp, Zap, MapPin, Target, ChevronDown, ChevronUp } from 'lucide-react';
+import { format } from 'date-fns';
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 
-export default function RepAnalyticsKpis({ metrics, dateDays }) {
+export default function RepAnalyticsKpis({ metrics, dateDays, selectedDate }) {
   const [commissionPct, setCommissionPct] = useState(() => {
     const saved = localStorage.getItem('fk_commission_pct');
     return saved ? parseFloat(saved) : 10;
@@ -18,7 +19,9 @@ export default function RepAnalyticsKpis({ metrics, dateDays }) {
   const fmt = (v) => v >= 1000000 ? `$${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `$${(v / 1000).toFixed(1)}k` : `$${v.toLocaleString()}`;
   const avgDealSize = metrics.sales > 0 ? Math.round(revenue / metrics.sales) : 0;
   const myCommission = Math.round(revenue * (commissionPct / 100));
-  const label = dateDays === 1 ? 'Today' : dateDays >= 99999 ? 'All Time' : `${dateDays}D`;
+  const label = selectedDate
+    ? format(selectedDate, 'MMM d, yyyy')
+    : dateDays === 1 ? 'Today' : dateDays >= 99999 ? 'All Time' : `${dateDays}D`;
 
   const heroCards = [
     { label: 'Revenue', value: fmt(revenue), sub: `${metrics.sales} deals`, icon: DollarSign, color: '#22c55e' },
@@ -27,12 +30,17 @@ export default function RepAnalyticsKpis({ metrics, dateDays }) {
   ];
 
   const stats = [
-    { label: 'Today', value: metrics.todayKnocks, icon: DoorOpen, color: '#6366f1' },
+    {
+      label: selectedDate ? format(selectedDate, 'MMM d, yyyy') : 'Today',
+      value: selectedDate ? metrics.periodKnocks : metrics.todayKnocks,
+      icon: DoorOpen,
+      color: '#6366f1'
+    },
     { label: 'Contact', value: `${metrics.contactRate}%`, icon: PhoneCall, color: '#06b6d4' },
     { label: 'Conv.', value: `${metrics.conversionRate}%`, icon: TrendingUp, color: '#f59e0b' },
     { label: 'Avg Deal', value: fmt(avgDealSize), icon: Zap, color: '#ec4899' },
     { label: 'Coverage', value: `${metrics.coveragePct}%`, icon: MapPin, color: '#8b5cf6' },
-    { label: 'Appts', value: metrics.upcomingAppointments, icon: Target, color: '#ef4444' },
+    { label: 'Appts', value: metrics.appointmentCount, icon: Target, color: '#ef4444' },
   ];
 
   return (
@@ -46,13 +54,13 @@ export default function RepAnalyticsKpis({ metrics, dateDays }) {
               <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity" style={{ background: `radial-gradient(circle at top right, ${c.color}08, transparent 70%)` }} />
               <div className="relative z-10">
                 <div className="flex items-center justify-between mb-1 md:mb-2">
-                  <span className="text-[8px] md:text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500">{c.label}</span>
+                  <span className="text-[8px] md:text-[10px] font-bold uppercase tracking-[0.12em] text-gray-400">{c.label}</span>
                   <div className="w-5 h-5 md:w-7 md:h-7 rounded-lg flex items-center justify-center" style={{ background: `${c.color}15` }}>
                     <Icon className="w-2.5 h-2.5 md:w-3.5 md:h-3.5" style={{ color: c.color }} />
                   </div>
                 </div>
                 <div className="text-lg md:text-3xl font-black text-white tracking-tight leading-none">{c.value}</div>
-                <p className="text-[8px] md:text-[10px] text-gray-500 mt-0.5 font-medium">{c.sub}</p>
+                <p className="text-[8px] md:text-[10px] text-gray-400 mt-0.5 font-medium">{c.sub}</p>
               </div>
             </div>
           );
@@ -61,6 +69,8 @@ export default function RepAnalyticsKpis({ metrics, dateDays }) {
 
       {/* Commission toggle */}
       <button
+        type="button"
+        aria-expanded={showCommission}
         onClick={() => setShowCommission(!showCommission)}
         className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-purple-500/10 bg-[#111113] hover:bg-white/[0.03] transition-colors"
       >

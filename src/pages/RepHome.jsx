@@ -1,12 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Navigation, CheckCircle2, Search, X, TrendingUp, MessageCircle, ChevronDown, CalendarDays, Sparkles } from 'lucide-react';
+import { Loader2, Navigation, CheckCircle2, Search, X, TrendingUp, MessageCircle, CalendarDays, Sparkles } from 'lucide-react';
 import localforage from 'localforage';
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { getKnockWindowLabel } from '@/components/logic/knockTimeOptimizer';
 import { determineEffectiveStatus } from '@/components/logic/territoryLogic';
 import RepMapView from '@/components/rep/RepMapView';
@@ -20,6 +19,8 @@ import TeamChat from '@/components/rep/TeamChat';
 import KnockLimitSheet from '@/components/upgrade/KnockLimitSheet';
 import KnockLimitBanner from '@/components/upgrade/KnockLimitBanner';
 import { isProUser, isOutcomeBlocked, getOutcomesLogged, needsCardOnFile } from '@/components/upgrade/knockGate';
+import { geocodeAddress } from '@/lib/geocoding';
+import { calculateRouteDistanceMiles, isValidRoutePoint, optimizeRouteWithBounds } from '@/lib/routeBounds';
 
 export default function RepHome() {
   const queryClient = useQueryClient();
@@ -40,6 +41,12 @@ export default function RepHome() {
   const appointmentRunFocusHandledRef = React.useRef(false);
   const [soldDateFilter, setSoldDateFilter] = useState('all');
   const [decisionFilter, setDecisionFilter] = useState('all');
+  const [homeBaseAddress, setHomeBaseAddress] = useState('');
+  const [homeBaseSaving, setHomeBaseSaving] = useState(false);
+  const [homeBaseError, setHomeBaseError] = useState('');
+  const [homeRouteOptimizing, setHomeRouteOptimizing] = useState(false);
+  const [homeRouteError, setHomeRouteError] = useState('');
+  const hydratedHomeBaseUserRef = React.useRef(null);
 
   // Offline Listener
   React.useEffect(() => {
@@ -54,6 +61,13 @@ export default function RepHome() {
   }, []);
 
   const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me().catch(() => null) });
+
+  React.useEffect(() => {
+    if (!user?.id || hydratedHomeBaseUserRef.current === user.id) return;
+    hydratedHomeBaseUserRef.current = user.id;
+    setHomeBaseAddress(user.home_base?.address || '');
+  }, [user?.home_base?.address, user?.id]);
+
   const [localNavigationApp, setLocalNavigationApp] = useState(() => {
     try {return localStorage.getItem('fk_navigation_app') || 'apple';} catch {return 'apple';}
   });
@@ -174,6 +188,11 @@ export default function RepHome() {
     // Prioritize 'IN_PROGRESS' then 'ACTIVE'
     return routes.find((r) => r.status === 'IN_PROGRESS') || routes.find((r) => r.status === 'ACTIVE') || routes[0];
   }, [routes, manualRouteId]);
+  const activeRouteBelongsToCurrentUser = Boolean(
+    activeRoute?.assigned_to && (
+      activeRoute.assigned_to === user?.id || allTeamMemberIds.includes(activeRoute.assigned_to)
+    )
+  );
 
   const localCanvasAssignment = useMemo(() => {
     try {
@@ -688,6 +707,139 @@ export default function RepHome() {
     queryClient.invalidateQueries({ queryKey: ['routeLogs'] })
   ]);
 
+  const handleSaveRepHomeBase = async (event) => {
+    event?.preventDefault();
+    if (homeBaseSaving || homeRouteOptimizing) return;
+
+    setHomeBaseSaving(true);
+    setHomeBaseError('');
+    setHomeRouteError('');
+    toast.loading('Looking up your Home Base...', { id: 'rep-home-base' });
+    try {
+      const resolved = await geocodeAddress(homeBaseAddress);
+      const exactHomeBase = {
+        address: resolved.address,
+        lat: Number(resolved.lat),
+        lng: Number(resolved.lng)
+      };
+      if (!isValidRoutePoint(exactHomeBase)) throw new Error('Choose a valid Home Base address first.');
+
+      await base44.auth.updateMe({ home_base: exactHomeBase });
+      setHomeBaseAddress(exactHomeBase.address);
+      queryClient.setQueryData(['user'], (current) => ({
+        ...(current || user || {}),
+        home_base: exactHomeBase
+      }));
+
+      await queryClient.invalidateQueries({ queryKey: ['user'] });
+      toast.success('Home Base saved privately.', { id: 'rep-home-base' });
+    } catch (error) {
+      const message = error?.message || 'Could not save your Home Base. Please try again.';
+      setHomeBaseError(message);
+      toast.error(message, { id: 'rep-home-base', duration: 6000 });
+    } finally {
+      setHomeBaseSaving(false);
+    }
+  };
+
+  const handleOptimizeSelectedRouteFromHome = async () => {
+    if (homeRouteOptimizing || homeBaseSaving) return;
+    if (!activeRoute?.id) {
+      const message = 'Select a route before optimizing from home.';
+      setHomeRouteError(message);
+      toast.error(message, { id: 'rep-home-route' });
+      return;
+    }
+
+    const routeToOptimize = activeRoute;
+    if (!activeRouteBelongsToCurrentUser) {
+      const message = 'This route must be assigned to you before you can optimize it from your Home Base.';
+      setHomeRouteError(message);
+      toast.error(message, { id: 'rep-home-route', duration: 6000 });
+      return;
+    }
+    setHomeRouteOptimizing(true);
+    setHomeRouteError('');
+    toast.loading('Optimizing the selected route from home...', { id: 'rep-home-route' });
+
+    try {
+      let freshUser = null;
+      try {
+        freshUser = await base44.auth.me();
+        if (freshUser) queryClient.setQueryData(['user'], freshUser);
+      } catch {
+        freshUser = user;
+      }
+
+      const exactHomeBase = freshUser?.home_base || user?.home_base;
+      if (!isValidRoutePoint(exactHomeBase)) {
+        throw new Error('Save a Home Base above before optimizing this route.');
+      }
+      if (!routeProperties.length) throw new Error('No properties are loaded for the selected route.');
+
+      const expectedPropertyCount = routeToOptimize.property_hashes?.length || 0;
+      if (expectedPropertyCount > 0 && routeProperties.length !== expectedPropertyCount) {
+        throw new Error(`Only ${routeProperties.length} of ${expectedPropertyCount} route properties loaded. Refresh and try again.`);
+      }
+      const invalidProperty = routeProperties.find((property) => !isValidRoutePoint(property));
+      if (invalidProperty) throw new Error('A route property is missing map coordinates. Ask your manager to repair this route.');
+
+      const optimized = optimizeRouteWithBounds(routeProperties, {
+        startLocation: exactHomeBase,
+        endLocation: exactHomeBase
+      });
+      if (optimized.length !== routeProperties.length) {
+        throw new Error('The optimizer could not preserve every property in this route.');
+      }
+
+      const propertyHashes = optimized.map((property) => property.address_hash || property.legacy_hash || property.id);
+      if (propertyHashes.some((hash) => !hash)) {
+        throw new Error('A route property is missing its address identifier. Ask your manager to repair this route.');
+      }
+
+      const distance = Math.round(calculateRouteDistanceMiles(optimized, {
+        startLocation: exactHomeBase,
+        endLocation: exactHomeBase
+      }) * 100) / 100;
+      const routeUpdate = {
+        property_hashes: propertyHashes,
+        metrics: {
+          ...(routeToOptimize.metrics || {}),
+          distance,
+          house_count: optimized.length
+        },
+        start_location: null,
+        end_location: null,
+        route_origin_mode: 'home_round_trip',
+        metadata: {
+          ...(routeToOptimize.metadata || {}),
+          route_bounds: { enabled: true, mode: 'home_round_trip' }
+        }
+      };
+
+      await base44.entities.SavedRoute.update(routeToOptimize.id, routeUpdate);
+      queryClient.setQueryData(['myRoutes', user?.id, allTeamMemberIds.join(',')], (currentRoutes) =>
+        Array.isArray(currentRoutes)
+          ? currentRoutes.map((route) => route.id === routeToOptimize.id ? { ...route, ...routeUpdate } : route)
+          : currentRoutes
+      );
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['myRoutes'] }),
+        queryClient.invalidateQueries({ queryKey: ['routeProperties'] })
+      ]);
+      toast.success(`Home round trip optimized (${distance} mi straight-line estimate).`, {
+        id: 'rep-home-route',
+        duration: 5000
+      });
+    } catch (error) {
+      const message = error?.message || 'Could not optimize this route from home. Please try again.';
+      setHomeRouteError(message);
+      toast.error(message, { id: 'rep-home-route', duration: 6000 });
+    } finally {
+      setHomeRouteOptimizing(false);
+    }
+  };
+
   return (
     <div className="h-full flex flex-col bg-black text-[#F0F0F5] relative overflow-hidden">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_-10%,rgba(46,235,87,0.14),transparent_34%),linear-gradient(180deg,#000000_0%,#030303_45%,#000000_100%)]" />
@@ -845,12 +997,77 @@ export default function RepHome() {
             {/* Route Switching Drawer */}
             {showRouteList &&
       <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/60 backdrop-blur-sm" onClick={() => setShowRouteList(false)}>
-                    <div className="bg-[#050505]/95 backdrop-blur-2xl rounded-t-3xl border-t border-white/10 max-h-[60vh] flex flex-col shadow-[0_-20px_70px_rgba(0,0,0,0.7)]" onClick={(e) => e.stopPropagation()}>
+                    <div className="bg-[#050505]/95 backdrop-blur-2xl rounded-t-3xl border-t border-white/10 max-h-[85dvh] flex flex-col shadow-[0_-20px_70px_rgba(0,0,0,0.7)]" onClick={(e) => e.stopPropagation()}>
                         <div className="p-4 border-b border-white/10 flex justify-between items-center">
                             <h3 className="font-bold text-white">Switch Route</h3>
                             <button onClick={() => setShowRouteList(false)}><X className="w-5 h-5 text-gray-500" /></button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                            <section className="rounded-2xl border border-[#2EEB57]/25 bg-[#2EEB57]/[0.06] p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+                                <div className="mb-3 flex items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm font-black text-white">Home Base</p>
+                                        <p className="mt-0.5 text-[11px] leading-relaxed text-white/55">
+                                            Set your private start and finish, then optimize the selected route.
+                                        </p>
+                                    </div>
+                                    {user?.home_base &&
+                    <span className="shrink-0 rounded-full border border-[#39FF4A]/30 bg-[#39FF4A]/10 px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#39FF4A]">
+                                            Saved
+                                        </span>
+                    }
+                                </div>
+
+                                <form onSubmit={handleSaveRepHomeBase} className="space-y-2.5">
+                                    <label htmlFor="rep-home-base-address" className="block text-[10px] font-black uppercase tracking-[0.14em] text-white/50">
+                                        Home address
+                                    </label>
+                                    <Input
+                    id="rep-home-base-address"
+                    value={homeBaseAddress}
+                    onChange={(event) => {
+                      setHomeBaseAddress(event.target.value);
+                      setHomeBaseError('');
+                    }}
+                    autoComplete="street-address"
+                    placeholder="Street, city, state, ZIP"
+                    disabled={homeBaseSaving || homeRouteOptimizing}
+                    className="h-11 rounded-xl border-white/10 bg-black/45 px-3 text-sm text-white placeholder:text-white/30 focus:border-[#2EEB57]/60" />
+
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                        <Button
+                      type="submit"
+                      disabled={!homeBaseAddress.trim() || homeBaseSaving || homeRouteOptimizing}
+                      className="h-11 w-full rounded-xl border border-white/15 bg-white/[0.08] text-xs font-black text-white hover:bg-white/[0.14] disabled:opacity-45">
+                                            {homeBaseSaving ?
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</> :
+                        user?.home_base ? 'Change Home Base' : 'Save Home Base'
+                      }
+                                        </Button>
+                                        <Button
+                      type="button"
+                      onClick={handleOptimizeSelectedRouteFromHome}
+                      disabled={!activeRouteBelongsToCurrentUser || !routeProperties.length || homeRouteOptimizing || homeBaseSaving}
+                      className="h-11 w-full rounded-xl bg-gradient-to-r from-[#2EEB57] to-[#B6FF5C] px-3 text-[11px] font-black text-black hover:brightness-110 disabled:opacity-45">
+                                            {homeRouteOptimizing ?
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Optimizing...</> :
+                        <><Sparkles className="mr-2 h-4 w-4" />Optimize selected route from home</>
+                      }
+                                        </Button>
+                                    </div>
+                                </form>
+
+                                {(homeBaseError || homeRouteError) &&
+                  <p aria-live="polite" className="mt-2.5 rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-[11px] leading-relaxed text-red-200">
+                                        {homeBaseError || homeRouteError}
+                                    </p>
+                  }
+                                <p className="mt-3 text-[10px] leading-relaxed text-white/40">
+                                    Address lookup uses OpenStreetMap. Your exact address stays private; your manager can request only an approximate point for a route assigned to you. Mileage is a straight-line estimate, so road travel may differ.
+                                </p>
+                            </section>
+
+                            <div className="space-y-2">
                             {routes.map((route) =>
             <button
               key={route.id}
@@ -871,6 +1088,7 @@ export default function RepHome() {
                                     </div>
                                 </button>
             )}
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -882,7 +1100,9 @@ export default function RepHome() {
         properties={routeProperties}
         onSelectProperty={(p) => setSelectedProperty(p)}
         onClose={() => {setShowMap(false);setFocusProperty(null);}}
-        focusProperty={focusProperty} />
+        focusProperty={focusProperty}
+        startLocation={activeRoute?.route_origin_mode === 'home_round_trip' ? user?.home_base : null}
+        endLocation={['home_round_trip', 'current_to_home'].includes(activeRoute?.route_origin_mode) ? user?.home_base : null} />
 
       }
 
