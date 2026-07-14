@@ -1,4 +1,3 @@
-import React from 'react';
 
 // MarketSetupPrompt is now handled by MarketOnboarding + TerritoryPrompt
 // This stub prevents import errors

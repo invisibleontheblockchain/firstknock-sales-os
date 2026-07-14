@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from '@/api/base44Client';
-import { Loader2, BrainCircuit, Clock, TrendingUp, Map } from 'lucide-react';
+import { Loader2, BrainCircuit, Clock } from 'lucide-react';
 
 export default function RouteInsights() {
     const { data: insights, isLoading } = useQuery({

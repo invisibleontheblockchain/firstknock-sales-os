@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell } from 'recharts';
 import { MapPin } from 'lucide-react';
 
 const COLORS = ['#FFD700', '#3b82f6', '#22c55e', '#8b5cf6', '#ec4899', '#f97316', '#06b6d4', '#ef4444'];

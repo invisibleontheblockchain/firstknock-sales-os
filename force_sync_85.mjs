@@ -3,7 +3,7 @@ import fs from "fs";
 
 // Use the identical pattern to trigger_pipeline.mjs so we don't hit import errors
 const base44 = createClient("695eb764b077190880be21de", {
-  url: "https://my-to-do-list-81bfaad7.base44.app"
+  url: "https://firstknock.online"
 });
 
 async function run() {

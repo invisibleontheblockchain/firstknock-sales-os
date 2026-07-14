@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React from 'react';
 import { 
     Table, 
     TableBody, 
@@ -9,14 +9,8 @@ import {
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { 
-    DropdownMenu, 
-    DropdownMenuContent, 
-    DropdownMenuItem, 
-    DropdownMenuTrigger 
-} from "@/components/ui/dropdown-menu";
-import { ChevronDown, MapPin, CheckCircle2 } from "lucide-react";
+
+
 
 export default function TableView({ properties, selectedIds, onSelect, onSelectAll }) {
     

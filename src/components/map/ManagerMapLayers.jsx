@@ -1,5 +1,5 @@
-import React, { useMemo, useCallback, useEffect, useRef } from 'react';
-import { CircleMarker, Polyline, Circle, LayerGroup, Tooltip, Marker, useMap } from 'react-leaflet';
+import React, { useMemo, useEffect, useRef } from 'react';
+import { CircleMarker, Polyline, Circle, LayerGroup, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { DarkRoomClient } from '@/components/logic/neonClient';
 import { CONFIDENCE_COLORS } from '@/components/map/ConfidenceLegend';

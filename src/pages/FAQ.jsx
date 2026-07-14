@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { 
-    HelpCircle, ChevronRight, ChevronDown, Map, Users, 
-    CreditCard, Zap, AlertCircle, FileSpreadsheet, 
-    Target, LineChart, ShieldAlert, MessageSquare,
-    Search, MousePointer2, Settings, Rocket
+    HelpCircle, ChevronRight, ChevronDown,
+    CreditCard, FileSpreadsheet,
+    Target, ShieldAlert, MessageSquare, Rocket
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Link } from 'react-router-dom';

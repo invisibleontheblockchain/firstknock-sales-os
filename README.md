@@ -644,7 +644,7 @@ cd firstknock-sales-os
 npm install
 
 # 3. Configure environment
-cp .env.example .env.local
+cp env.example .env.local
 # Edit .env.local with values below
 
 # 4. Run
@@ -660,7 +660,7 @@ The app will be available at `http://localhost:5173`.
 ### Client-Side (`.env.local`)
 ```env
 VITE_BASE44_APP_ID=695eb764b077190880be21de
-VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
+VITE_BASE44_APP_BASE_URL=https://firstknock.online
 ```
 
 ### Server-Side (Base44 Cloud Environment)
@@ -669,6 +669,8 @@ RENTCAST_API_KEY        — RentCast API key for property data ingestion
 BATCH_DATA_API_KEY      — BatchData API key for sold verification (Step 3)
 STRIPE_SECRET_KEY       — Stripe secret key for billing
 STRIPE_WEBHOOK_SECRET   — Stripe webhook signing secret
+PRECISION_WATCHDOG_SECRET — Server-held authorization for stalled-job recovery
+PRECISION_DIAGNOSTIC_SECRET — Server-held authorization for provider diagnostics
 ```
 
 ---

@@ -660,7 +660,7 @@ The app will be available at `http://localhost:5173`.
 ### Client-Side (`.env.local`)
 ```env
 VITE_BASE44_APP_ID=695eb764b077190880be21de
-VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
+VITE_BASE44_APP_BASE_URL=https://firstknock.online
 ```
 
 ### Server-Side (Base44 Cloud Environment)

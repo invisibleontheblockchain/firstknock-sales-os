@@ -5,7 +5,7 @@ async function check() {
     const verified = JSON.parse(fs.readFileSync('./src/data/verified85.json'));
     
     // Send a REST request directly to base44 locally without SDK
-    const res = await fetch('https://my-to-do-list-81bfaad7.base44.app/v1/data/MasterProperty?limit=1000', {
+    const res = await fetch('https://firstknock.online/v1/data/MasterProperty?limit=1000', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

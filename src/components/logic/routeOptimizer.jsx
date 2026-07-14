@@ -14,7 +14,7 @@
 
 import { filterByStreetCooldown, COOLDOWN_CONFIG } from './territoryLogic';
 import { latLngToCell, gridDisk } from 'h3-js';
-import { batchScoreProperties, ownershipDurationScore, SCORING_CONSTANTS } from './leadScoring';
+import { batchScoreProperties } from './leadScoring';
 import {
     calculateRouteDistanceMiles,
     isValidRoutePoint,

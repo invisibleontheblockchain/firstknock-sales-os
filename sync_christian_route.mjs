@@ -16,7 +16,7 @@ import { createClient } from "@base44/sdk";
 import fs from "fs";
 
 const base44 = createClient("695eb764b077190880be21de", {
-  url: "https://my-to-do-list-81bfaad7.base44.app"
+  url: "https://firstknock.online"
 });
 
 // ── Address Normalization (matching processFetchChunk exactly) ──

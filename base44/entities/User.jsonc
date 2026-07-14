@@ -23,16 +23,52 @@
     },
     "subscription_id": {
       "type": "string",
-      "description": "Stripe subscription ID for server-side paid access verification"
+      "description": "Client-visible Stripe subscription locator cache. Server access still requires affirmative Stripe metadata ownership."
     },
     "subscription_paid_confirmed": {
       "type": "boolean",
       "default": false,
-      "description": "True only after Stripe confirms an actual paid invoice for the subscription. Trials/card-on-file alone do not set this."
+      "description": "Client-visible webhook cache only. Paid entitlement is re-verified from live Stripe state by server functions."
     },
     "subscription_paid_confirmed_at": {
       "type": "string",
       "format": "date-time"
+    },
+    "subscription_period_start": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Client-visible Stripe period cache; never authoritative for allowance enforcement"
+    },
+    "subscription_period_end": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Current Stripe subscription period end, updated only from verified Stripe state"
+    },
+    "subscription_plan_id": {
+      "type": "string"
+    },
+    "precision_usage_period_start": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Client-visible audit cache. Service-owned FetchJob usage and live Stripe state are authoritative."
+    },
+    "precision_usage_period_end": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "precision_usage_reconciled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Set once when an existing paid account receives its included-trial reconciliation"
+    },
+    "precision_usage_reconciliation_version": {
+      "type": "integer",
+      "default": 0
+    },
+    "precision_trial_properties_credited": {
+      "type": "integer",
+      "default": 0,
+      "description": "Audit value for the one-time included trial-property credit, capped at 50"
     },
     "total_seats": {
       "type": "integer"

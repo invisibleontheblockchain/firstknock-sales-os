@@ -5,8 +5,6 @@ import Papa from 'papaparse';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { storage } from '@/lib/storage';
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { createPageUrl } from '@/utils';
 import RedfinImportSummary from '@/components/import/RedfinImportSummary';

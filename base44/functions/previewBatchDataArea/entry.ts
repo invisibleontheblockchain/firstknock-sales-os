@@ -1,5 +1,4 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
-import Stripe from 'npm:stripe@14.14.0';
 
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
@@ -93,102 +92,17 @@ async function polygonHash(points) {
     return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
 }
 
-function isPrecisionTier(user) {
-    const tier = String(user?.subscription_tier || '').toLowerCase();
-    return ['pro', 'precision', 'growth', 'enterprise'].includes(tier);
-}
-
-function isExplicitNonPrecisionTier(user) {
-    const tier = String(user?.subscription_tier || '').toLowerCase();
-    return ['canvas', 'hustler'].includes(tier);
-}
-
-function isPrecisionTierOrUnknown(user) {
-    const tier = String(user?.subscription_tier || '').toLowerCase();
-    if (isPrecisionTier(user)) return true;
-    if (isExplicitNonPrecisionTier(user)) return false;
-    if (hasPaidPrecisionLimit(user)) return true;
-    return !tier || tier === 'custom';
-}
-
-function hasPaidPrecisionLimit(user) {
-    return Number(user?.precision_property_limit || user?.monthly_property_limit || 0) > FREE_PROPERTY_CAP;
-}
-
-function stripeSubscriptionIsPaidPrecision(subscription) {
-    const amountCents = subscription.items?.data?.[0]?.price?.unit_amount || 0;
-    const latestInvoice = subscription.latest_invoice;
-    const invoicePaid = latestInvoice && typeof latestInvoice !== 'string' && latestInvoice.status === 'paid';
-    const trialEnded = !subscription.trial_end || subscription.trial_end * 1000 <= Date.now();
-    return subscription.status === 'active' && trialEnded && invoicePaid && amountCents >= 9900;
-}
-
-async function verifyStripePaidPrecisionAccess(user) {
-    const secret = Deno.env.get('STRIPE_SECRET_KEY');
-    if (!secret) return null;
-
-    const stripe = new Stripe(secret);
-    if (user?.subscription_id) {
-        const subscription = await stripe.subscriptions.retrieve(user.subscription_id, { expand: ['latest_invoice'] }).catch(() => null);
-        if (subscription && stripeSubscriptionIsPaidPrecision(subscription)) return true;
-        if (subscription) return false;
+async function getAuthoritativePrecisionUsage(base44) {
+    const response = await base44.functions.invoke('getPrecisionUsage', {});
+    const usage = response?.data || response;
+    if (!usage?.success || usage?.complete !== true || Number(usage?.version) < 2) {
+        throw new Error(usage?.message || 'Precision usage is unavailable.');
     }
-
-    if (!user?.stripe_customer_id) return null;
-    const subscriptions = await stripe.subscriptions.list({
-        customer: user.stripe_customer_id,
-        status: 'all',
-        limit: 10,
-        expand: ['data.latest_invoice']
-    }).catch(() => null);
-
-    if (!subscriptions) return null;
-    return subscriptions.data.some(stripeSubscriptionIsPaidPrecision);
-}
-
-async function hasConfirmedPaidPrecisionAccess(user) {
-    const status = String(user?.subscription_status || '').toLowerCase();
-    if (user?.is_owner || user?.role === 'admin') return true;
-    if (status !== 'active') return false;
-    if (isExplicitNonPrecisionTier(user)) return false;
-    const hasLocalPrecisionPlan = isPrecisionTier(user) || hasPaidPrecisionLimit(user);
-    if (hasLocalPrecisionPlan && user?.subscription_paid_confirmed === true) return true;
-    if (!hasLocalPrecisionPlan && !isPrecisionTierOrUnknown(user)) return false;
-
-    const verified = await verifyStripePaidPrecisionAccess(user);
-    if (verified !== null) return verified;
-    return hasLocalPrecisionPlan || (user?.subscription_paid_confirmed === true && isPrecisionTierOrUnknown(user));
-}
-
-function asArray(value) {
-    return Array.isArray(value) ? value : (value?.items || []);
-}
-
-function uniquePrecisionRouteHashes(routes) {
-    const hashes = new Set();
-    for (const route of routes) {
-        if (!route || route.route_mode === 'canvas' || route.status === 'ARCHIVED') continue;
-        for (const hash of route.property_hashes || []) {
-            if (hash) hashes.add(hash);
-        }
+    const fields = ['limit', 'used', 'reserved', 'meter_used', 'remaining', 'lifetime_used'];
+    if (fields.some(field => !Number.isFinite(Number(usage[field])) || Number(usage[field]) < 0)) {
+        throw new Error('Precision usage returned an invalid allowance snapshot.');
     }
-    return [...hashes];
-}
-
-async function getPrecisionRouteHomeStats(base44, user) {
-    const routesById = new Map();
-    const routeQueries = [];
-    if (user?.id) routeQueries.push(base44.asServiceRole.entities.SavedRoute.filter({ manager_id: user.id }, '-updated_date', 1000));
-    if (user?.email) routeQueries.push(base44.asServiceRole.entities.SavedRoute.filter({ created_by: user.email }, '-updated_date', 1000));
-
-    const results = await Promise.all(routeQueries.map(query => query.catch(() => [])));
-    for (const result of results) {
-        for (const route of asArray(result)) {
-            routesById.set(route.id || `${route.created_by || ''}:${route.name || ''}:${route.created_date || ''}`, route);
-        }
-    }
-    const hashes = uniquePrecisionRouteHashes([...routesById.values()]);
-    return { count: hashes.length, hashes };
+    return usage;
 }
 
 Deno.serve(async (req) => {
@@ -206,15 +120,14 @@ Deno.serve(async (req) => {
         const areaSqMi = polygonAreaSqMi(polygon);
         const center = centroid(polygon);
         const fips = await resolveFips(center);
-        const isAdminTestOverride = user.role === 'admin' && body.test_account_type;
-        const isPaid = isAdminTestOverride
-            ? body.test_account_type === 'paid'
-            : await hasConfirmedPaidPrecisionAccess(user);
-        const routeHomeStats = await getPrecisionRouteHomeStats(base44, user);
-        const existingRouteHomes = routeHomeStats.count;
-        const existingFreeHomes = isPaid ? 0 : existingRouteHomes;
-        const freeHomesRemaining = isPaid ? null : Math.max(0, FREE_PROPERTY_CAP - existingFreeHomes);
-        const maxProperties = isPaid ? PAID_PROPERTY_CAP : freeHomesRemaining;
+        const usage = await getAuthoritativePrecisionUsage(base44);
+        const isPaid = usage.paid_access === true;
+        const existingRouteHomes = Math.max(0, Number(usage.lifetime_used || 0));
+        const freeHomesRemaining = isPaid ? null : Math.max(0, Number(usage.remaining || 0));
+        const paidPropertyLimit = PAID_PROPERTY_CAP;
+        const paidPropertiesUsed = isPaid ? Math.max(0, Number(usage.meter_used || 0)) : null;
+        const paidPropertiesRemaining = isPaid ? Math.max(0, Number(usage.remaining || 0)) : null;
+        const maxProperties = isPaid ? paidPropertiesRemaining : freeHomesRemaining;
         const requestedRaw = Number(body.requested_properties || body.record_cap || maxProperties);
         const requestedProperties = maxProperties <= 0
             ? 0
@@ -249,6 +162,11 @@ Deno.serve(async (req) => {
             existing_route_homes: existingRouteHomes,
             excluded_route_home_count: existingRouteHomes,
             free_properties_remaining: freeHomesRemaining,
+            paid_properties_used: paidPropertiesUsed,
+            paid_properties_reserved: isPaid ? Number(usage.reserved || 0) : null,
+            paid_properties_remaining: paidPropertiesRemaining,
+            paid_property_limit: isPaid ? paidPropertyLimit : null,
+            precision_usage_period_start: usage.period_start || null,
             returned_property_count: hardRejected ? 0 : requestedProperties,
             hard_rejected: hardRejected,
             rejection_reason: rejectionReason,

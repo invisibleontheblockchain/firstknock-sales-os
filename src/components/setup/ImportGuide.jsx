@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileSpreadsheet, Upload, CheckCircle2, ArrowDown } from 'lucide-react';
+import { FileSpreadsheet, Upload, ArrowDown } from 'lucide-react';
 
 const IMPORT_SOURCES = [
     { name: 'SalesRabbit', format: 'CSV', steps: 'Settings → Export → Download CSV' },

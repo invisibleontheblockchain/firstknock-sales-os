@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { Database, Lock, Crown } from 'lucide-react';
+import { Database, Crown } from 'lucide-react';
 import { useTheme } from '@/components/theme/ThemeProvider';
 
 export default function BetaUsageMeter({ className = '' }) {

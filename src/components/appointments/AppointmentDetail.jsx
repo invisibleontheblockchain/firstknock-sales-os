@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
-import { Calendar, User, Phone, Mail, FileText, ChevronLeft, Check, Ban, Clock, RotateCcw, MapPin, Pencil, Navigation } from 'lucide-react';
+import { Calendar, User, Phone, FileText, ChevronLeft, Check, Ban, Clock, RotateCcw, MapPin, Pencil, Navigation } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { format } from 'date-fns';

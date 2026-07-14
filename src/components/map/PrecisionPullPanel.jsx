@@ -6,7 +6,6 @@ import { Home as HomeIcon, Loader2, LocateFixed, Lock, MapPin, SlidersHorizontal
 import { toast } from 'sonner';
 import { createPageUrl } from '@/utils';
 import PrecisionProUpgradeSheet from '@/components/map/PrecisionProUpgradeSheet';
-import { isPrecisionProUser } from '@/lib/precisionAccess';
 import { getCustomRangeRevealScrollTop } from '@/components/logic/customRangeReveal';
 import { geocodeAddress } from '@/lib/geocoding';
 
@@ -102,6 +101,12 @@ function formatApproxMonths(days) {
 export default function PrecisionPullPanel({
   areaLabel,
   maxProperties,
+  usageLoading = false,
+  usageError = false,
+  usageReady = false,
+  usageKind = null,
+  proAccess = false,
+  onRetryUsage,
   requestedPropertyCount,
   setRequestedPropertyCount,
   propertyCountMode = 'fixed',
@@ -122,7 +127,6 @@ export default function PrecisionPullPanel({
   pullError,
   onUpgrade,
   onClearArea,
-  user,
   selectedHistoryArea,
   repullMode = 'fill_gaps',
   setRepullMode,
@@ -140,7 +144,7 @@ export default function PrecisionPullPanel({
   const hasShownFallbackToast = useRef(false);
   const scrollBodyRef = useRef(null);
   const customRangePanelRef = useRef(null);
-  const isProPlan = isPrecisionProUser(user);
+  const isProPlan = proAccess;
   const initialHomeBase = normalizeLocation(homeBase);
   const [routeFromHomeEnabled, setRouteFromHomeEnabled] = useState(false);
   const [startPointMode, setStartPointMode] = useState('home');
@@ -237,6 +241,7 @@ export default function PrecisionPullPanel({
 
   const handleGenerate = () => {
     setRouteOriginError('');
+    if (!usageReady || Number(maxProperties) <= 0) return;
     if (!routeFromHomeEnabled) {
       return onGenerate?.({ enabled: false });
     }
@@ -301,10 +306,10 @@ export default function PrecisionPullPanel({
 
   // Max Available is the default — keep the count input synced to the plan max.
   useEffect(() => {
-    if (propertyCountMode === 'max_available' && Number(requestedPropertyCount) !== Number(maxProperties)) {
+    if (usageReady && Number(maxProperties) > 0 && propertyCountMode === 'max_available' && Number(requestedPropertyCount) !== Number(maxProperties)) {
       setRequestedPropertyCount(maxProperties);
     }
-  }, [propertyCountMode, maxProperties, requestedPropertyCount, setRequestedPropertyCount]);
+  }, [propertyCountMode, maxProperties, requestedPropertyCount, setRequestedPropertyCount, usageReady]);
 
   useEffect(() => {
     const hasLockedSelection = isCustomRange || PREMIUM_RECENT_RANGES.includes(Number(soldMonths));
@@ -391,7 +396,22 @@ export default function PrecisionPullPanel({
             </div>
           )}
 
-          {!isProPlan && (
+          {usageLoading && !usageReady && (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-[11px] text-gray-300">
+              Checking your authoritative Precision allowance…
+            </div>
+          )}
+
+          {usageError && !usageReady && (
+            <div className="rounded-2xl border border-amber-400/30 bg-amber-400/[0.08] p-3">
+              <p className="text-[11px] leading-snug text-amber-100">Precision usage is unavailable, so generation is paused.</p>
+              <button type="button" onClick={onRetryUsage} className="mt-2 text-[10px] font-black uppercase tracking-wider text-yellow-300">
+                Retry usage check
+              </button>
+            </div>
+          )}
+
+          {usageReady && usageKind === 'trial' && (
             <div className="rounded-2xl border border-yellow-400/25 bg-yellow-400/[0.08] p-3">
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-yellow-300">
                 Free Precision limit
@@ -411,26 +431,28 @@ export default function PrecisionPullPanel({
               <input
                 type="number"
                 min="1"
-                max={maxProperties}
+                max={Math.max(1, Number(maxProperties) || 1)}
                 value={requestedPropertyCount}
+                disabled={!usageReady || Number(maxProperties) <= 0}
                 onChange={(e) => {
                   setPropertyCountMode?.('fixed');
                   const value = e.target.value;
                   if (value === '') return setRequestedPropertyCount('');
-                  setRequestedPropertyCount(Math.min(Number(value) || 1, maxProperties));
+                  setRequestedPropertyCount(Math.min(Number(value) || 1, Math.max(1, Number(maxProperties) || 1)));
                 }}
-                onBlur={() => setRequestedPropertyCount(Math.max(1, Math.min(Number(requestedPropertyCount) || 1, maxProperties)))}
-                className="w-24 h-10 rounded-lg bg-black/40 border border-white/10 px-3 text-white text-sm outline-none focus:border-[#2EEB57]"
+                onBlur={() => setRequestedPropertyCount(Math.max(1, Math.min(Number(requestedPropertyCount) || 1, Math.max(1, Number(maxProperties) || 1))))}
+                className="w-24 h-10 rounded-lg bg-black/40 border border-white/10 px-3 text-white text-sm outline-none focus:border-[#2EEB57] disabled:cursor-not-allowed disabled:opacity-50"
               />
             </div>
             <div className="grid grid-cols-2 gap-1.5 rounded-2xl border border-white/10 bg-white/[0.03] p-1.5">
               <button
                 type="button"
+                disabled={!usageReady || Number(maxProperties) <= 0}
                 onClick={() => {
                   setPropertyCountMode?.('max_available');
                   setRequestedPropertyCount(maxProperties);
                 }}
-                className={`rounded-xl px-3 py-2 text-[10px] font-black transition-all ${propertyCountMode === 'max_available' ? 'bg-[#2EEB57] text-black' : 'text-[#39FF4A] hover:bg-[#2EEB57]/10'}`}
+                className={`rounded-xl px-3 py-2 text-[10px] font-black transition-all disabled:cursor-not-allowed disabled:opacity-50 ${propertyCountMode === 'max_available' ? 'bg-[#2EEB57] text-black' : 'text-[#39FF4A] hover:bg-[#2EEB57]/10'}`}
               >
                 Max Available
               </button>
@@ -808,7 +830,7 @@ export default function PrecisionPullPanel({
             </div>
           )}
           <Button
-            disabled={generating || homeBaseSaving || (routeFromHomeEnabled && startPointMode === 'current' && gpsLoading)}
+            disabled={!usageReady || Number(maxProperties) <= 0 || generating || homeBaseSaving || (routeFromHomeEnabled && startPointMode === 'current' && gpsLoading)}
             onClick={handleGenerate}
             className="w-full h-12 rounded-xl bg-[#2EEB57] hover:bg-[#39FF4A] text-black font-extrabold tracking-wide"
           >

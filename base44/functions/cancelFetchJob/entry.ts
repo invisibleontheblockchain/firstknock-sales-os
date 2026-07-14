@@ -1,5 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
+const PROCESSOR_CANCEL_WAIT_MS = 900;
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 Deno.serve(async (req) => {
     try {
         const base44 = createClientFromRequest(req);
@@ -21,11 +27,14 @@ Deno.serve(async (req) => {
         }
 
         const job = jobArr[0];
-        if (job.user_email !== user.email) {
+        const ownsJob = job.precision_usage_user_id
+            ? String(job.precision_usage_user_id) === String(user.id)
+            : String(job.user_email || '').toLowerCase() === String(user.email || '').toLowerCase();
+        if (!ownsJob) {
             return Response.json({ error: 'Not your job' }, { status: 403 });
         }
 
-        if (!['pending', 'running'].includes(job.status)) {
+        if (!['pending', 'running', 'cancelled'].includes(job.status)) {
             return Response.json({ status: job.status, job_id, message: 'Job is not active' });
         }
 
@@ -33,16 +42,40 @@ Deno.serve(async (req) => {
         const errorLog = [...(job.error_log || []), `[${cancelledAt}] Cancelled by user.`];
         await base44.asServiceRole.entities.FetchJob.update(job_id, {
             status: 'cancelled',
+            precision_cancel_requested_at: job.precision_cancel_requested_at || cancelledAt,
             error_message: 'Cancelled by user',
-            completed_at: cancelledAt,
             error_log: errorLog
         });
 
-        const locks = await base44.asServiceRole.entities.PipelineLock.filter({ job_id }, null, 20).catch(() => []);
-        const lockArr = Array.isArray(locks) ? locks : (locks?.items || []);
-        await Promise.all(lockArr.map(lock => base44.asServiceRole.entities.PipelineLock.delete(lock.id).catch(() => {})));
+        // Cancellation records intent but deliberately does not release billing
+        // capacity. The processor owns exact settlement after it has stopped
+        // writing, so a second pull cannot oversubscribe the account mid-cancel.
+        const processorToken = job.dry_run_metadata?.processor_token;
+        if (processorToken) {
+            const invokePromise = base44.asServiceRole.functions.invoke('processFetchChunk', {
+                job_id,
+                expected_chunk: job.chunk_number || 0,
+                processor_token: processorToken
+            }).catch(error => {
+                console.warn(`[cancelFetchJob] Processor cancellation handoff failed for ${job_id}: ${error.message}`);
+            });
+            await Promise.race([invokePromise, sleep(PROCESSOR_CANCEL_WAIT_MS)]);
+        }
 
-        return Response.json({ status: 'cancelled', job_id });
+        const latestJob = await base44.asServiceRole.entities.FetchJob.get(job_id).catch(() => null);
+        if (latestJob?.precision_cancel_requested_at && latestJob.precision_usage_recorded_at && latestJob.status !== 'cancelled') {
+            await base44.asServiceRole.entities.FetchJob.update(job_id, {
+                status: 'cancelled',
+                error_message: 'Cancelled by user',
+                completed_at: latestJob.completed_at || cancelledAt
+            });
+        }
+
+        return Response.json({
+            status: 'cancelled',
+            job_id,
+            settlement_pending: !latestJob?.precision_usage_recorded_at
+        });
     } catch (error) {
         console.error('[cancelFetchJob] Error:', error);
         return Response.json({ error: error.message }, { status: 500 });

@@ -1,9 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
+import { Client } from 'npm:@neondatabase/serverless@0.9.0';
 import Stripe from 'npm:stripe@14.14.0';
 
 const FREE_PROPERTY_CAP = 50;
 const PAID_PROPERTY_CAP = 1000;
 const PROCESSOR_START_WAIT_MS = 900;
+const PRECISION_PRICE_FLOOR_CENTS = 9900;
 const DEFAULT_ROUTE_TYPE_FILTERS = {
     propertyTypes: ['Single Family'],
     excludeCommercial: true,
@@ -14,6 +16,25 @@ const ALLOWED_ROUTE_PROPERTY_TYPES = new Set(['Single Family']);
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function withPrecisionUsageLock(userId, action) {
+    const databaseUrl = Deno.env.get('DATABASE_URL');
+    if (!databaseUrl) throw new Error('Precision usage locking is unavailable.');
+    const client = new Client(databaseUrl);
+    await client.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`precision-usage:${userId}`]);
+        const result = await action();
+        await client.query('COMMIT');
+        return result;
+    } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw error;
+    } finally {
+        await client.end();
+    }
 }
 
 function normalizeRouteTypeFilters(input = {}) {
@@ -94,80 +115,90 @@ function centroid(points) {
     };
 }
 
-function isPrecisionProUser(user) {
-    const status = String(user?.subscription_status || '').toLowerCase();
-    if (user?.is_owner || user?.role === 'admin') return true;
-    if (!['active', 'trialing'].includes(status)) return false;
-    return isPrecisionTier(user)
-        || Number(user?.precision_property_limit || user?.monthly_property_limit || 0) > FREE_PROPERTY_CAP
-        || (user?.subscription_paid_confirmed === true && isPrecisionTierOrUnknown(user));
+function stripeTimestampIso(value) {
+    const seconds = Number(value);
+    return Number.isFinite(seconds) && seconds > 0 ? new Date(seconds * 1000).toISOString() : null;
 }
 
-function isPrecisionTier(user) {
-    const tier = String(user?.subscription_tier || '').toLowerCase();
-    return ['pro', 'precision', 'growth', 'enterprise'].includes(tier);
+function invoiceCoversCurrentPeriod(subscription, invoice) {
+    const currentStart = Number(subscription?.current_period_start);
+    if (!Number.isFinite(currentStart) || currentStart <= 0) return false;
+    const lineMatches = (invoice?.lines?.data || []).some(line => {
+        const lineSubscription = typeof line?.subscription === 'string' ? line.subscription : line?.subscription?.id;
+        const start = Number(line?.period?.start);
+        const end = Number(line?.period?.end);
+        return (!lineSubscription || lineSubscription === subscription.id)
+            && Number.isFinite(start) && Number.isFinite(end)
+            && start <= currentStart && currentStart < end;
+    });
+    if (lineMatches) return true;
+    const start = Number(invoice?.period_start);
+    const end = Number(invoice?.period_end);
+    return Number.isFinite(start) && Number.isFinite(end) && start <= currentStart && currentStart < end;
 }
 
-function isExplicitNonPrecisionTier(user) {
-    const tier = String(user?.subscription_tier || '').toLowerCase();
-    return ['canvas', 'hustler'].includes(tier);
+function paidPrecisionEvidence(subscription, userId) {
+    if (!subscription || String(subscription?.metadata?.base44_user_id || '') !== String(userId)) return null;
+    const amountCents = Math.max(0, ...(subscription.items?.data || []).map(item => Number(item?.price?.unit_amount || 0)));
+    const invoice = subscription.latest_invoice;
+    const invoiceSubscriptionId = typeof invoice?.subscription === 'string' ? invoice.subscription : invoice?.subscription?.id;
+    const trialEnded = !subscription.trial_end || Number(subscription.trial_end) * 1000 <= Date.now();
+    if (subscription.status !== 'active' || !trialEnded || amountCents < PRECISION_PRICE_FLOOR_CENTS) return null;
+    if (!invoice || typeof invoice === 'string' || invoice.status !== 'paid' || Number(invoice.amount_paid || 0) <= 0) return null;
+    if (invoiceSubscriptionId && invoiceSubscriptionId !== subscription.id) return null;
+    if (!invoiceCoversCurrentPeriod(subscription, invoice)) return null;
+    const periodStart = stripeTimestampIso(subscription.current_period_start);
+    const periodEnd = stripeTimestampIso(subscription.current_period_end);
+    if (!periodStart || !periodEnd) return null;
+    return { kind: 'paid', paidAccess: true, proAccess: true, subscriptionId: subscription.id, invoiceId: invoice.id || null, periodStart, periodEnd };
 }
 
-function isPrecisionTierOrUnknown(user) {
-    const tier = String(user?.subscription_tier || '').toLowerCase();
-    if (isPrecisionTier(user)) return true;
-    if (isExplicitNonPrecisionTier(user)) return false;
-    if (hasPaidPrecisionLimit(user)) return true;
-    return !tier || tier === 'custom';
+function trialPrecisionEvidence(subscription, userId) {
+    if (!subscription || String(subscription?.metadata?.base44_user_id || '') !== String(userId)) return null;
+    const amountCents = Math.max(0, ...(subscription.items?.data || []).map(item => Number(item?.price?.unit_amount || 0)));
+    return subscription.status === 'trialing' && amountCents >= PRECISION_PRICE_FLOOR_CENTS
+        ? { kind: 'trial', paidAccess: false, proAccess: true, subscriptionId: subscription.id, invoiceId: null, periodStart: null, periodEnd: null }
+        : null;
 }
 
-function hasPaidPrecisionLimit(user) {
-    return Number(user?.precision_property_limit || user?.monthly_property_limit || 0) > FREE_PROPERTY_CAP;
-}
-
-function stripeSubscriptionIsPaidPrecision(subscription) {
-    const amountCents = subscription.items?.data?.[0]?.price?.unit_amount || 0;
-    const latestInvoice = subscription.latest_invoice;
-    const invoicePaid = latestInvoice && typeof latestInvoice !== 'string' && latestInvoice.status === 'paid';
-    const trialEnded = !subscription.trial_end || subscription.trial_end * 1000 <= Date.now();
-    return subscription.status === 'active' && trialEnded && invoicePaid && amountCents >= 9900;
-}
-
-async function verifyStripePaidPrecisionAccess(user) {
+async function resolvePrecisionEntitlement(user) {
     const secret = Deno.env.get('STRIPE_SECRET_KEY');
-    if (!secret) return null;
-
+    if (!secret) throw new Error('Stripe billing verification is unavailable.');
     const stripe = new Stripe(secret);
+    const candidates = new Map();
     if (user?.subscription_id) {
-        const subscription = await stripe.subscriptions.retrieve(user.subscription_id, { expand: ['latest_invoice'] }).catch(() => null);
-        if (subscription && stripeSubscriptionIsPaidPrecision(subscription)) return true;
-        if (subscription) return false;
+        try {
+            const subscription = await stripe.subscriptions.retrieve(String(user.subscription_id), { expand: ['latest_invoice'] });
+            candidates.set(subscription.id, subscription);
+        } catch (error) {
+            if (error?.raw?.code !== 'resource_missing' && error?.code !== 'resource_missing') throw error;
+        }
     }
-
-    if (!user?.stripe_customer_id) return null;
-    const subscriptions = await stripe.subscriptions.list({
-        customer: user.stripe_customer_id,
-        status: 'all',
-        limit: 10,
-        expand: ['data.latest_invoice']
-    }).catch(() => null);
-
-    if (!subscriptions) return null;
-    return subscriptions.data.some(stripeSubscriptionIsPaidPrecision);
-}
-
-async function hasConfirmedPaidPrecisionAccess(user) {
-    const status = String(user?.subscription_status || '').toLowerCase();
-    if (user?.is_owner || user?.role === 'admin') return true;
-    if (status !== 'active') return false;
-    if (isExplicitNonPrecisionTier(user)) return false;
-    const hasLocalPrecisionPlan = isPrecisionTier(user) || hasPaidPrecisionLimit(user);
-    if (hasLocalPrecisionPlan && user?.subscription_paid_confirmed === true) return true;
-    if (!hasLocalPrecisionPlan && !isPrecisionTierOrUnknown(user)) return false;
-
-    const verified = await verifyStripePaidPrecisionAccess(user);
-    if (verified !== null) return verified;
-    return hasLocalPrecisionPlan || (user?.subscription_paid_confirmed === true && isPrecisionTierOrUnknown(user));
+    if (user?.stripe_customer_id) {
+        const listed = await stripe.subscriptions.list({ customer: String(user.stripe_customer_id), status: 'all', limit: 20, expand: ['data.latest_invoice'] });
+        for (const subscription of listed.data || []) candidates.set(subscription.id, subscription);
+    }
+    const orderedCandidates = () => [...candidates.values()].sort((left, right) =>
+        Number(right.current_period_start || right.created || 0) - Number(left.current_period_start || left.created || 0)
+        || String(left.id || '').localeCompare(String(right.id || ''))
+    );
+    let paid = orderedCandidates().map(subscription => paidPrecisionEvidence(subscription, user.id)).find(Boolean);
+    if (!paid && typeof stripe.subscriptions.search === 'function') {
+        const escapedUserId = String(user.id).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        const discovered = await stripe.subscriptions.search({
+            query: `metadata['base44_user_id']:'${escapedUserId}'`,
+            limit: 20,
+            expand: ['data.latest_invoice']
+        });
+        for (const subscription of discovered.data || []) candidates.set(subscription.id, subscription);
+        paid = orderedCandidates().map(subscription => paidPrecisionEvidence(subscription, user.id)).find(Boolean);
+    }
+    if (paid) return paid;
+    for (const subscription of orderedCandidates()) {
+        const trial = trialPrecisionEvidence(subscription, user.id);
+        if (trial) return trial;
+    }
+    return { kind: 'trial', paidAccess: false, proAccess: false, subscriptionId: null, invoiceId: null, periodStart: null, periodEnd: null };
 }
 
 function isPremiumRecentRange(soldMonths) {
@@ -249,31 +280,121 @@ function asArray(value) {
     return Array.isArray(value) ? value : (value?.items || []);
 }
 
-function uniquePrecisionRouteHashes(routes) {
-    const hashes = new Set();
+async function listAll(entity, filter, sort = '-created_date', pageSize = 500) {
+    const records = [];
+    for (let skip = 0; skip < 20000; skip += pageSize) {
+        const page = await entity.filter(filter, sort, pageSize, skip);
+        const items = asArray(page);
+        records.push(...items);
+        if (items.length < pageSize) return records;
+    }
+    throw new Error('Precision history exceeds the supported usage window.');
+}
+
+function precisionRouteHashStats(routes) {
+    const lifetime = new Set();
     for (const route of routes) {
-        if (!route || route.route_mode === 'canvas' || route.status === 'ARCHIVED') continue;
+        if (!route || route.route_mode === 'canvas') continue;
         for (const hash of route.property_hashes || []) {
-            if (hash) hashes.add(hash);
+            if (!hash) continue;
+            lifetime.add(hash);
         }
     }
-    return [...hashes];
+    return { count: lifetime.size, hashes: [...lifetime] };
 }
 
 async function getPrecisionRouteHomeStats(base44, user) {
     const routesById = new Map();
     const routeQueries = [];
-    if (user?.id) routeQueries.push(base44.asServiceRole.entities.SavedRoute.filter({ manager_id: user.id }, '-updated_date', 1000));
-    if (user?.email) routeQueries.push(base44.asServiceRole.entities.SavedRoute.filter({ created_by: user.email }, '-updated_date', 1000));
+    if (user?.id) routeQueries.push(listAll(base44.asServiceRole.entities.SavedRoute, { manager_id: user.id }));
+    if (user?.email) routeQueries.push(listAll(base44.asServiceRole.entities.SavedRoute, { created_by: user.email }));
 
-    const results = await Promise.all(routeQueries.map(query => query.catch(() => [])));
+    const results = await Promise.all(routeQueries);
     for (const result of results) {
         for (const route of asArray(result)) {
             routesById.set(route.id || `${route.created_by || ''}:${route.name || ''}:${route.created_date || ''}`, route);
         }
     }
-    const hashes = uniquePrecisionRouteHashes([...routesById.values()]);
-    return { count: hashes.length, hashes };
+    return precisionRouteHashStats([...routesById.values()]);
+}
+
+function asTimestamp(value) {
+    const timestamp = value ? new Date(value).getTime() : NaN;
+    return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function legacyCompletedCount(job) {
+    const active = Number(job?.dry_run_metadata?.batchdata_summary?.active);
+    if (Number.isFinite(active) && active >= 0) return Math.floor(active);
+    const expected = Math.max(0, Math.floor(Number(job?.total_expected || job?.estimated_record_count || 0)));
+    const delivered = Math.max(0, Math.floor(Number(job?.total_inserted || 0))) + Math.max(0, Math.floor(Number(job?.total_existed || 0)));
+    return expected > 0 ? Math.min(expected, delivered) : delivered;
+}
+
+function jobUsage(job) {
+    if (job?.precision_usage_recorded_at) return { used: Math.max(0, Math.floor(Number(job.precision_usage_count || 0))), reserved: 0 };
+    if (job?.status === 'completed') return { used: legacyCompletedCount(job), reserved: 0 };
+    const hasExplicitReservation = job?.precision_usage_reserved !== undefined && job?.precision_usage_reserved !== null;
+    const legacyReservationAllowed = ['pending', 'running'].includes(job?.status);
+    const reserved = Math.max(0, Math.floor(Number(
+        hasExplicitReservation
+            ? job.precision_usage_reserved
+            : legacyReservationAllowed
+                ? (job?.total_expected ?? job?.estimated_record_count ?? 0)
+                : 0
+    )));
+    return { used: 0, reserved };
+}
+
+async function getPrecisionJobs(base44, user) {
+    const jobsById = new Map();
+    const queries = [listAll(base44.asServiceRole.entities.FetchJob, { precision_usage_user_id: user.id })];
+    if (user?.email) queries.push(listAll(base44.asServiceRole.entities.FetchJob, { user_email: user.email }));
+    for (const result of await Promise.all(queries)) {
+        for (const job of result) {
+            if (!job?.id) continue;
+            if (job.mode_tag && job.mode_tag !== 'PRECISION_TARGET') continue;
+            if (!job.mode_tag && job.provider && job.provider !== 'batchdata') continue;
+            jobsById.set(job.id, job);
+        }
+    }
+    return [...jobsById.values()];
+}
+
+async function getPrecisionAllowance(base44, user, entitlement) {
+    if (entitlement.kind === 'unmetered') return { used: 0, reserved: 0, remaining: PAID_PROPERTY_CAP, trialUsed: 0, lifetimeUsed: 0 };
+    const jobs = await getPrecisionJobs(base44, user);
+    const periodStart = asTimestamp(entitlement.periodStart);
+    const periodEnd = asTimestamp(entitlement.periodEnd);
+    let used = 0;
+    let reserved = 0;
+    let trialUsed = 0;
+    let lifetimeUsed = 0;
+    for (const job of jobs) {
+        const usage = jobUsage(job);
+        lifetimeUsed += usage.used;
+        const startedAt = asTimestamp(job.started_at || job.created_date || job.dry_run_metadata?.batchdata_only_started_at);
+        const jobPeriodStart = asTimestamp(job.precision_usage_period_start);
+        const matchesPaid = entitlement.kind === 'paid' && (
+            job.precision_usage_kind === 'paid'
+                ? jobPeriodStart !== null && periodStart !== null && Math.abs(jobPeriodStart - periodStart) < 1000
+                : !job.precision_usage_kind && startedAt !== null && periodStart !== null && startedAt >= periodStart && (periodEnd === null || startedAt < periodEnd)
+        );
+        if (matchesPaid) {
+            used += usage.used;
+            reserved += usage.reserved;
+        } else if (job.precision_usage_kind === 'trial' || !job.precision_usage_kind) {
+            trialUsed += usage.used + usage.reserved;
+        }
+    }
+    if (entitlement.kind !== 'paid') {
+        used = Math.min(FREE_PROPERTY_CAP, trialUsed);
+        reserved = 0;
+    }
+    const limit = entitlement.kind === 'paid' ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
+    used = Math.min(limit, used);
+    reserved = Math.min(Math.max(0, limit - used), reserved);
+    return { used, reserved, remaining: Math.max(0, limit - used - reserved), trialUsed: Math.min(FREE_PROPERTY_CAP, trialUsed), lifetimeUsed };
 }
 
 Deno.serve(async (req) => {
@@ -298,8 +419,11 @@ Deno.serve(async (req) => {
         const areaSqMi = polygonAreaSqMi(polygon);
         const center = centroid(polygon);
         const forceFreeForSelfTest = body.self_test_force_free === true && body.dry_run === true;
-        const hasPaidPrecisionCapacity = !forceFreeForSelfTest && await hasConfirmedPaidPrecisionAccess(user);
-        const hasPrecisionPro = !forceFreeForSelfTest && isPrecisionProUser(user);
+        const entitlement = forceFreeForSelfTest
+            ? { kind: 'trial', paidAccess: false, proAccess: false, subscriptionId: null, invoiceId: null, periodStart: null, periodEnd: null }
+            : await resolvePrecisionEntitlement(user);
+        const hasPaidPrecisionCapacity = entitlement.paidAccess;
+        const hasPrecisionPro = entitlement.proAccess;
         const ownership = parseOwnershipRange(body);
         if (ownership.error) {
             return Response.json({ error: 'invalid_ownership_range', message: ownership.error }, { status: 400 });
@@ -317,7 +441,19 @@ Deno.serve(async (req) => {
                 message: '1 day, 2 day, 1 week, 2 week, and 1 month Precision pulls require a Pro plan.'
             }, { status: 403 });
         }
-        const maxProperties = hasPaidPrecisionCapacity ? PAID_PROPERTY_CAP : FREE_PROPERTY_CAP;
+        const routeHomeStats = forceFreeForSelfTest
+            ? { count: 0, hashes: [] }
+            : await getPrecisionRouteHomeStats(base44, user);
+        const existingRouteHomes = routeHomeStats.count;
+        const allowance = forceFreeForSelfTest
+            ? { used: 0, reserved: 0, remaining: FREE_PROPERTY_CAP, trialUsed: 0, lifetimeUsed: 0 }
+            : await getPrecisionAllowance(base44, user, entitlement);
+        const paidPropertyLimit = PAID_PROPERTY_CAP;
+        const paidPropertiesUsed = hasPaidPrecisionCapacity ? allowance.used + allowance.reserved : null;
+        const paidPropertiesRemaining = hasPaidPrecisionCapacity
+            ? allowance.remaining
+            : null;
+        const maxProperties = hasPaidPrecisionCapacity ? paidPropertiesRemaining : FREE_PROPERTY_CAP;
         const requestedRaw = Number(body.requested_properties || maxProperties);
         const requestedValue = Math.max(1, Number.isFinite(requestedRaw) ? requestedRaw : maxProperties);
         if (!hasPaidPrecisionCapacity && requestedValue > FREE_PROPERTY_CAP) {
@@ -326,17 +462,18 @@ Deno.serve(async (req) => {
                 message: 'That route size is above what your current plan includes. Start or upgrade to Precision to generate larger routes.'
             }, { status: 403 });
         }
-        const routeHomeStats = forceFreeForSelfTest ? { count: 0, hashes: [] } : await getPrecisionRouteHomeStats(base44, user);
-        const existingRouteHomes = routeHomeStats.count;
-        const existingFreeHomes = hasPaidPrecisionCapacity ? 0 : existingRouteHomes;
-        const freeHomesRemaining = hasPaidPrecisionCapacity
-            ? null
-            : Math.max(0, FREE_PROPERTY_CAP - existingFreeHomes);
+        const freeHomesRemaining = hasPaidPrecisionCapacity ? null : allowance.remaining;
 
         if (!hasPaidPrecisionCapacity && freeHomesRemaining <= 0) {
             return Response.json({
                 error: 'paid_precision_required',
                 message: 'This account has already received its included 50 single-family Precision route homes. Upgrade to Precision for larger routes.'
+            }, { status: 403 });
+        }
+        if (hasPaidPrecisionCapacity && paidPropertiesRemaining <= 0) {
+            return Response.json({
+                error: 'precision_allowance_exhausted',
+                message: 'This account has used all paid Precision properties for the current billing cycle.'
             }, { status: 403 });
         }
 
@@ -345,6 +482,7 @@ Deno.serve(async (req) => {
             : Math.min(maxProperties, freeHomesRemaining);
         const requestedProperties = Math.max(1, Math.min(requestedValue, effectiveMaxProperties));
         const limitedByFreeHomeCap = !hasPaidPrecisionCapacity && requestedProperties < requestedValue;
+        const limitedByPaidPropertyCap = hasPaidPrecisionCapacity && requestedProperties < requestedValue;
         const minPriceRaw = Number(body.min_price);
         const maxPriceRaw = Number(body.max_price);
         const minPrice = Number.isFinite(minPriceRaw) && minPriceRaw > 0 ? minPriceRaw : 100000;
@@ -364,10 +502,16 @@ Deno.serve(async (req) => {
                 requested_properties: requestedProperties,
                 requested_properties_before_cap: requestedValue,
                 limited_by_free_home_cap: limitedByFreeHomeCap,
+                limited_by_paid_property_cap: limitedByPaidPropertyCap,
                 existing_active_properties: existingRouteHomes,
                 existing_route_homes: existingRouteHomes,
                 excluded_route_home_count: existingRouteHomes,
                 free_properties_remaining: freeHomesRemaining,
+                paid_properties_used: paidPropertiesUsed,
+                paid_properties_reserved: hasPaidPrecisionCapacity ? allowance.reserved : null,
+                paid_properties_remaining: paidPropertiesRemaining,
+                paid_property_limit: hasPaidPrecisionCapacity ? paidPropertyLimit : null,
+                precision_usage_period_start: entitlement.periodStart,
                 sold_months: requestedSoldMonths,
                 ...ownershipResponseFields(ownership),
                 previous_pull_date: body.previous_pull_date || null,
@@ -378,6 +522,7 @@ Deno.serve(async (req) => {
             });
         }
 
+        const startResult = await withPrecisionUsageLock(user.id, async () => {
         const runningJobs = await base44.entities.FetchJob.filter({ user_email: user.email, status: 'running' }, null, 5);
         const pendingJobs = await base44.entities.FetchJob.filter({ user_email: user.email, status: 'pending' }, null, 5);
         const runningList = Array.isArray(runningJobs) ? runningJobs : (runningJobs?.items || []);
@@ -419,6 +564,40 @@ Deno.serve(async (req) => {
             });
         }
 
+        const lockedEntitlement = await resolvePrecisionEntitlement(user);
+        const lockedHasPaidPrecisionCapacity = lockedEntitlement.paidAccess;
+        const lockedHasPrecisionPro = lockedEntitlement.proAccess;
+        if (ownership.mode === 'custom' && !lockedHasPrecisionPro) {
+            return Response.json({
+                error: 'upgrade_required',
+                message: 'Custom ownership ranges require a Pro plan.'
+            }, { status: 403 });
+        }
+        if (ownership.mode === 'quick' && isPremiumRecentRange(requestedSoldMonths) && !lockedHasPrecisionPro) {
+            return Response.json({
+                error: 'upgrade_required',
+                message: '1 day, 2 day, 1 week, 2 week, and 1 month Precision pulls require a Pro plan.'
+            }, { status: 403 });
+        }
+        if (!lockedHasPaidPrecisionCapacity && requestedValue > FREE_PROPERTY_CAP) {
+            return Response.json({
+                error: 'paid_precision_required',
+                message: 'That route size is above what your current plan includes. Start or upgrade to Precision to generate larger routes.'
+            }, { status: 403 });
+        }
+        const lockedAllowance = await getPrecisionAllowance(base44, user, lockedEntitlement);
+        if (lockedAllowance.remaining <= 0) {
+            return Response.json({
+                error: lockedHasPaidPrecisionCapacity ? 'precision_allowance_exhausted' : 'paid_precision_required',
+                message: lockedHasPaidPrecisionCapacity
+                    ? 'This account has used all paid Precision properties for the current billing cycle.'
+                    : 'This account has already received its included 50 single-family Precision route homes. Upgrade to Precision for larger routes.'
+            }, { status: 403 });
+        }
+        const reservedProperties = Math.max(1, Math.min(requestedValue, lockedAllowance.remaining));
+        const lockedLimitedByFreeHomeCap = !lockedHasPaidPrecisionCapacity && reservedProperties < requestedValue;
+        const lockedLimitedByPaidPropertyCap = lockedHasPaidPrecisionCapacity && reservedProperties < requestedValue;
+        const lockedFreeHomesRemaining = lockedHasPaidPrecisionCapacity ? null : lockedAllowance.remaining;
         const hash = requestedCustomPolygonHash || await polygonHash(polygon);
         const processorToken = crypto.randomUUID();
         const job = await base44.asServiceRole.entities.FetchJob.create({
@@ -433,18 +612,24 @@ Deno.serve(async (req) => {
             fips_code: fips.fips_code,
             area_sq_mi: Number(areaSqMi.toFixed(2)),
             polygon_hash: hash,
-            estimated_record_count: requestedProperties,
-            estimated_cost: Number((requestedProperties * 0.01).toFixed(2)),
+            estimated_record_count: reservedProperties,
+            estimated_cost: Number((reservedProperties * 0.01).toFixed(2)),
             dry_run_metadata: {
                 county_resolution: fips,
-                requested_properties: requestedProperties,
+                requested_properties: reservedProperties,
                 requested_properties_before_cap: requestedValue,
-                limited_by_free_home_cap: limitedByFreeHomeCap,
+                limited_by_free_home_cap: lockedLimitedByFreeHomeCap,
+                limited_by_paid_property_cap: lockedLimitedByPaidPropertyCap,
                 existing_active_properties: existingRouteHomes,
                 existing_route_homes: existingRouteHomes,
                 excluded_route_home_count: existingRouteHomes,
                 excluded_route_hashes: routeHomeStats.hashes,
-                free_properties_remaining: freeHomesRemaining,
+                free_properties_remaining: lockedFreeHomesRemaining,
+                paid_properties_used: lockedHasPaidPrecisionCapacity ? lockedAllowance.used + lockedAllowance.reserved : null,
+                paid_properties_reserved: lockedHasPaidPrecisionCapacity ? lockedAllowance.reserved : null,
+                paid_properties_remaining: lockedHasPaidPrecisionCapacity ? lockedAllowance.remaining : null,
+                paid_property_limit: lockedHasPaidPrecisionCapacity ? paidPropertyLimit : null,
+                precision_usage_period_start: lockedEntitlement.periodStart,
                 free_property_cap: FREE_PROPERTY_CAP,
                 count_mode: body.count_mode === 'max_available' ? 'max_available' : 'fixed',
                 repull_mode: body.repull_mode || 'new_area',
@@ -467,13 +652,47 @@ Deno.serve(async (req) => {
             pull_mode: body.force_full_refresh === true ? 'full_refresh' : 'new_area',
             include_mls: false,
             user_email: user.email,
+            precision_usage_user_id: user.id,
+            precision_usage_kind: lockedEntitlement.kind === 'paid' ? 'paid' : lockedEntitlement.kind === 'unmetered' ? 'unmetered' : 'trial',
+            ...(lockedEntitlement.subscriptionId ? { precision_subscription_id: lockedEntitlement.subscriptionId } : {}),
+            ...(lockedEntitlement.invoiceId ? { precision_invoice_id: lockedEntitlement.invoiceId } : {}),
+            ...(lockedEntitlement.periodStart ? { precision_usage_period_start: lockedEntitlement.periodStart } : {}),
+            ...(lockedEntitlement.periodEnd ? { precision_usage_period_end: lockedEntitlement.periodEnd } : {}),
+            precision_usage_reserved: reservedProperties,
+            precision_usage_count: 0,
             progress_pct: 0,
             current_offset: 0,
-            total_expected: requestedProperties,
+            total_expected: reservedProperties,
             total_sub_circles: 1,
             completed_sub_circles: 0,
             total_batchdata_calls: 0
         });
+
+        return {
+            job,
+            processorToken,
+            reservedProperties,
+            lockedAllowance,
+            lockedEntitlement,
+            lockedHasPaidPrecisionCapacity,
+            lockedLimitedByFreeHomeCap,
+            lockedLimitedByPaidPropertyCap,
+            lockedFreeHomesRemaining
+        };
+        });
+
+        if (startResult instanceof Response) return startResult;
+        const {
+            job,
+            processorToken,
+            reservedProperties,
+            lockedAllowance,
+            lockedEntitlement,
+            lockedHasPaidPrecisionCapacity,
+            lockedLimitedByFreeHomeCap,
+            lockedLimitedByPaidPropertyCap,
+            lockedFreeHomesRemaining
+        } = startResult;
 
         await startProcessor(base44, job.id, 0, processorToken);
 
@@ -482,17 +701,23 @@ Deno.serve(async (req) => {
             status: 'started',
             job_id: job.id,
             provider: 'batchdata',
-            requested_properties: requestedProperties,
+            requested_properties: reservedProperties,
             requested_properties_before_cap: requestedValue,
-            limited_by_free_home_cap: limitedByFreeHomeCap,
+            limited_by_free_home_cap: lockedLimitedByFreeHomeCap,
+            limited_by_paid_property_cap: lockedLimitedByPaidPropertyCap,
             existing_route_homes: existingRouteHomes,
             excluded_route_home_count: existingRouteHomes,
-            free_properties_remaining: freeHomesRemaining,
+            free_properties_remaining: lockedHasPaidPrecisionCapacity ? null : Math.max(0, lockedFreeHomesRemaining - reservedProperties),
+            paid_properties_used: lockedHasPaidPrecisionCapacity ? lockedAllowance.used + lockedAllowance.reserved : null,
+            paid_properties_reserved: lockedHasPaidPrecisionCapacity ? lockedAllowance.reserved + reservedProperties : null,
+            paid_properties_remaining: lockedHasPaidPrecisionCapacity ? Math.max(0, lockedAllowance.remaining - reservedProperties) : null,
+            paid_property_limit: lockedHasPaidPrecisionCapacity ? paidPropertyLimit : null,
+            precision_usage_period_start: lockedEntitlement.periodStart,
             route_filters: routeFilters,
             route_bounds: routeBounds,
             sold_months: requestedSoldMonths,
             ...ownershipResponseFields(ownership),
-            message: `Precision pull started for up to ${requestedProperties} properties.`
+            message: `Precision pull started for up to ${reservedProperties} properties.`
         });
     } catch (error) {
         return Response.json({ error: error.message }, { status: 500 });

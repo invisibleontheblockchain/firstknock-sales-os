@@ -107,7 +107,10 @@ Deno.serve(async (req) => {
         const job = jobArr[0];
 
         // Security: only let the user see their own jobs
-        if (job.user_email !== user.email) {
+        const ownsJob = job.precision_usage_user_id
+            ? String(job.precision_usage_user_id) === String(user.id)
+            : String(job.user_email || '').toLowerCase() === String(user.email || '').toLowerCase();
+        if (!ownsJob) {
             return Response.json({ error: 'Not your job' }, { status: 403 });
         }
 

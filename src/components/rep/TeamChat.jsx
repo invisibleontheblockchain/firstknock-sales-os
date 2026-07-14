@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { base44 } from '@/api/base44Client';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { X, ChevronLeft } from 'lucide-react';
+import { X } from 'lucide-react';
 import ChannelList from '@/components/chat/ChannelList';
 import MessageThread from '@/components/chat/MessageThread';
 

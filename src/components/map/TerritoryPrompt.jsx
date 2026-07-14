@@ -9,7 +9,8 @@ import { createPageUrl } from '@/utils';
 import { calculatePolygonAreaSqMiles, formatSqMiles } from '@/components/logic/geoArea';
 import { savePolygonToHistory } from '@/components/map/PolygonHistory';
 import PrecisionPullPanel from '@/components/map/PrecisionPullPanel';
-import { hasPaidPrecisionGenerationCapacity, isPrecisionProUser } from '@/lib/precisionAccess';
+import { FREE_PRECISION_PROPERTY_LIMIT } from '@/lib/precisionUsage';
+import { usePrecisionUsage } from '@/hooks/usePrecisionUsage';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '@/components/logic/soldDateRange';
 
 function formatWholeNumber(value) {
@@ -105,17 +106,6 @@ function buildPrecisionShortfallMessage({
   return `Found ${formatWholeNumber(loaded)} new qualifying sold homes in this area${filterText}; you requested ${formatWholeNumber(requested)}.${reviewedText}${skippedText}${routeTypeText} ${nextStep}`;
 }
 
-function countUniquePrecisionRouteHomes(routes = []) {
-  const hashes = new Set();
-  routes.forEach((route) => {
-    if (!route || route.route_mode === 'canvas' || route.status === 'ARCHIVED') return;
-    (route.property_hashes || []).forEach((hash) => {
-      if (hash) hashes.add(hash);
-    });
-  });
-  return hashes.size;
-}
-
 export default function TerritoryPrompt({
   mode,
   setMode,
@@ -146,6 +136,13 @@ export default function TerritoryPrompt({
 }) {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const {
+    data: precisionUsage,
+    isLoading: precisionUsageLoading,
+    isFetching: precisionUsageFetching,
+    isError: precisionUsageError,
+    refetch: refetchPrecisionUsage
+  } = usePrecisionUsage(user);
   const [pulling, setPulling] = useState(false);
   const [pullProgress, setPullProgress] = useState('');
   const [fetchMonths, setFetchMonths] = useState(() => user?.pull_months_back || 12);
@@ -495,13 +492,9 @@ export default function TerritoryPrompt({
 
   const hasPulledData = !!user?.has_pulled_data;
   const hasDefinedMarket = user?.has_defined_market || user?.territory_zip_codes?.length > 0;
-  const isPaid = user?.subscription_status === 'active' || user?.subscription_status === 'trialing' || user?.is_owner || user?.role === 'admin';
-  const freePropertyLimit = 50;
-  const hasPaidPrecisionCapacity = hasPaidPrecisionGenerationCapacity(user);
-  const routeDeliveredPropertiesUsed = useMemo(() => countUniquePrecisionRouteHomes(savedRoutes), [savedRoutes]);
-  const freePropertiesUsed = routeDeliveredPropertiesUsed;
-  const freePropertiesRemaining = Math.max(0, freePropertyLimit - freePropertiesUsed);
-  const maxRequestedProperties = hasPaidPrecisionCapacity ? 1000 : freePropertiesRemaining;
+  const isPaid = precisionUsage?.paidAccess === true;
+  const routeDeliveredPropertiesUsed = precisionUsage?.lifetimeUsed || 0;
+  const maxRequestedProperties = precisionUsage?.remaining || 0;
   const safeRequestedPropertyCount = maxRequestedProperties <= 0
     ? 0
     : Math.max(1, Math.min(Number(requestedPropertyCount) || 1, maxRequestedProperties));
@@ -662,6 +655,7 @@ export default function TerritoryPrompt({
             setShowRoutePanel(false);
             setShowCompare(false);
           }
+          await refetchPrecisionUsage();
           clearActivePrecisionJob(jobId);
           setPulling(false);
         } else if (d.status === 'cancelled') {
@@ -671,6 +665,7 @@ export default function TerritoryPrompt({
           setPulling(false);
           setEtaText('');
           setPullProgress('Cancelled');
+          await refetchPrecisionUsage();
           clearActivePrecisionJob(jobId);
           await onRouteBoundsPrepared?.({ enabled: false });
           toast.info('Data import cancelled.');
@@ -681,6 +676,7 @@ export default function TerritoryPrompt({
           setPulling(false);
           clearActivePrecisionJob(jobId);
           await onRouteBoundsPrepared?.({ enabled: false });
+          await refetchPrecisionUsage();
           toast.error(d.error_message || 'Fetch job failed.');
         }
       } catch (e) {
@@ -798,7 +794,7 @@ export default function TerritoryPrompt({
       setRecoverableJob(jobToRecover);
       setPullError({
         message,
-        upgrade: error.response?.status === 403 || ['paid_precision_required', 'upgrade_required'].includes(errCode)
+        upgrade: ['paid_precision_required', 'upgrade_required'].includes(errCode)
       });
       toast.error(message);
     }
@@ -808,6 +804,15 @@ export default function TerritoryPrompt({
     if (previewLoading || pulling) return;
     if (!drawnPolygon || drawnPolygon.length < 3) {
       toast.error('Draw a freehand area first.');
+      return;
+    }
+    if (!precisionUsage || precisionUsageError || precisionUsageFetching) {
+      setPullError({
+        message: precisionUsageError
+          ? 'Precision usage is unavailable. Retry the usage check before previewing.'
+          : 'Checking your Precision allowance. Please wait a moment.',
+        upgrade: false
+      });
       return;
     }
     const previewOwnershipRangeDays = ownershipRangeMode === 'custom'
@@ -883,31 +888,42 @@ export default function TerritoryPrompt({
         ? ownershipRangeMaxToMonths(effectiveOwnershipRangeDays)
         : Number(fetchMonths || 12);
     const usingMaxAvailable = (isPreviousAreaPull && repullMode === 'max_since_last') || propertyCountMode === 'max_available';
-    const effectiveRequestedPropertyCount = usingMaxAvailable ? maxRequestedProperties : safeRequestedPropertyCount;
     const effectiveMinPrice = minHomeValue ? Number(minHomeValue) : null;
     const effectiveMaxPrice = maxHomeValue ? Number(maxHomeValue) : null;
     const premiumRecentRange = effectiveSoldMonths <= 1;
-    let latestUser = user;
-    if (effectiveRequestedPropertyCount > freePropertyLimit || premiumRecentRange || effectiveOwnershipRangeMode === 'custom') {
-      try {
-        latestUser = await base44.auth.me();
-      } catch (error) {
-        setPullError({ message: error.message || 'Could not refresh your plan access. Please try again.', upgrade: false });
-        return;
-      }
-    }
-    const hasPaidPrecision = hasPaidPrecisionGenerationCapacity(latestUser);
-    const hasPrecisionPro = isPrecisionProUser(latestUser);
-
-    if (effectiveRequestedPropertyCount <= 0 && !hasPaidPrecision) {
+    let freshUsage;
+    try {
+      const refreshed = await refetchPrecisionUsage();
+      freshUsage = refreshed.data;
+      if (!freshUsage || refreshed.error) throw refreshed.error || new Error('Usage snapshot is incomplete.');
+    } catch (error) {
       setPullError({
-        message: 'This account has already received its included 50 single-family Precision route homes. Upgrade to Precision for larger routes.',
-        upgrade: true
+        message: error?.message || 'Could not verify your current Precision allowance. Please retry.',
+        upgrade: false
       });
       return;
     }
+    const freshMaxProperties = freshUsage.remaining;
+    const effectiveRequestedPropertyCount = usingMaxAvailable
+      ? freshMaxProperties
+      : Math.max(0, Math.min(Number(requestedPropertyCount) || 0, freshMaxProperties));
+    const hasPaidPrecision = freshUsage.paidAccess;
+    const hasPrecisionPro = freshUsage.proAccess;
 
-    if (effectiveRequestedPropertyCount > freePropertyLimit && !hasPaidPrecision) {
+    if (effectiveRequestedPropertyCount <= 0) {
+      setPullError(hasPaidPrecision
+        ? {
+            message: 'This account has used all paid Precision properties for the current billing cycle.',
+            upgrade: false
+          }
+        : {
+            message: 'This account has already received its included 50 single-family Precision route homes. Upgrade to Precision for larger routes.',
+            upgrade: true
+          });
+      return;
+    }
+
+    if (effectiveRequestedPropertyCount > FREE_PRECISION_PROPERTY_LIMIT && !hasPaidPrecision) {
       toast.info('Precision pulls over 50 houses require the paid $99/month Precision plan after the first payment clears.');
       setShowPrecisionPullPanel(false);
       navigate(createPageUrl('Billing') + '?plan=precision');
@@ -993,6 +1009,7 @@ export default function TerritoryPrompt({
         setPullError({ message: data.message || data.error, upgrade: isPlanGate });
         return;
       }
+      await refetchPrecisionUsage();
       if (effectiveOwnershipRangeMode === 'custom') {
         const confirmedRange = normalizeStrictOwnershipRangeDays(
           data.ownership_range_days ?? {
@@ -1098,7 +1115,7 @@ export default function TerritoryPrompt({
     } catch (e) {
       const errCode = e.response?.data?.error;
       const msg = e.response?.data?.message || errCode || e.message;
-      const isPlanGate = e.response?.status === 403 || ['trial_required', 'paid_precision_required', 'upgrade_required'].includes(errCode);
+      const isPlanGate = ['trial_required', 'paid_precision_required', 'upgrade_required'].includes(errCode);
       // Persistent in-panel error — a transient toast made blocked pulls look like a silent failure.
       setPullError({ message: msg, upgrade: isPlanGate });
     } finally {
@@ -1282,6 +1299,12 @@ export default function TerritoryPrompt({
       <PrecisionPullPanel
         areaLabel={actualAreaLabel}
         maxProperties={maxRequestedProperties}
+        usageLoading={precisionUsageLoading || precisionUsageFetching}
+        usageError={precisionUsageError}
+        usageReady={!!precisionUsage && !precisionUsageError && !precisionUsageFetching}
+        usageKind={precisionUsage?.kind || null}
+        proAccess={precisionUsage?.proAccess === true}
+        onRetryUsage={() => refetchPrecisionUsage()}
         requestedPropertyCount={requestedPropertyCount}
         setRequestedPropertyCount={setRequestedPropertyCount}
         propertyCountMode={propertyCountMode}
@@ -1301,7 +1324,6 @@ export default function TerritoryPrompt({
         generating={paidPullStarting}
         pullError={pullError}
         onUpgrade={() => {setShowPrecisionPullPanel(false);setPullError(null);navigate(createPageUrl('Billing') + '?plan=precision');}}
-        user={user}
         selectedHistoryArea={ghostAreasVisible ? selectedHistoryArea : null}
         repullMode={repullMode}
         setRepullMode={setRepullMode}

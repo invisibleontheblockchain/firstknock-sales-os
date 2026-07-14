@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, Zap, Shield, TrendingUp, Star, Check } from 'lucide-react';
+import { ArrowRight, Zap, Shield, TrendingUp, Star } from 'lucide-react';
 
 const COMPETITORS = [
     { name: 'SalesRabbit', pain: 'Expensive per-seat pricing' },

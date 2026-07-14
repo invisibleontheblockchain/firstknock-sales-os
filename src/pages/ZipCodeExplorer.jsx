@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
-import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, CircleMarker, Tooltip, LayerGroup } from 'react-leaflet';
-import { Search, Loader2, Home, MapPin, ArrowLeft, Navigation, Save, CheckCircle2, Download, SlidersHorizontal, ChevronDown, ChevronUp, Lock } from 'lucide-react';
+import { MapContainer, TileLayer, Popup, useMap, Polyline, CircleMarker, Tooltip, LayerGroup } from 'react-leaflet';
+import { Search, Loader2, Home, ArrowLeft, Navigation, Save, SlidersHorizontal, ChevronDown, ChevronUp, Lock } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from "@tanstack/react-query";
 import { getConnection } from '../components/neonClient';

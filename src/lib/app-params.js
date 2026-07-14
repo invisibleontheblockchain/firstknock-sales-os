@@ -1,6 +1,28 @@
+// @ts-check
+
 const isNode = typeof window === 'undefined';
-const windowObj = isNode ? { localStorage: new Map() } : window;
-const storage = windowObj.localStorage;
+const nodeStorageValues = new Map();
+const nodeStorage = {
+	getItem(key) {
+		return nodeStorageValues.has(key) ? nodeStorageValues.get(key) : null;
+	},
+	setItem(key, value) {
+		nodeStorageValues.set(String(key), String(value));
+	},
+	removeItem(key) {
+		nodeStorageValues.delete(key);
+	}
+};
+const storage = isNode ? nodeStorage : window.localStorage;
+
+const configuredAppBaseUrl = import.meta.env.VITE_BASE44_APP_BASE_URL;
+const isLocalBrowser = !isNode && ['localhost', '127.0.0.1'].includes(window.location.hostname);
+// In production and Base44 previews, authentication must stay on the origin
+// that actually served this app. The previous hard-coded Base44 slug was later
+// reassigned to another app, sending signed-out mobile visitors to its login.
+const runtimeAppBaseUrl = isNode || isLocalBrowser
+	? configuredAppBaseUrl
+	: window.location.origin;
 
 const toSnakeCase = (str) => {
 	return str.replace(/([A-Z])/g, '_$1').toLowerCase();
@@ -40,10 +62,12 @@ const getAppParams = () => {
 		storage.removeItem('token');
 	}
 	return {
-		appId: getAppParamValue("app_id", { defaultValue: import.meta.env.VITE_BASE44_APP_ID }),
+		// App identity is build-controlled. Accepting a persisted app_id query
+		// parameter could silently bind this UI to another Base44 application.
+		appId: import.meta.env.VITE_BASE44_APP_ID,
 		token: getAppParamValue("access_token", { removeFromUrl: true }),
-		fromUrl: getAppParamValue("from_url", { defaultValue: window.location.href }),
-		appBaseUrl: getAppParamValue("app_base_url", { defaultValue: import.meta.env.VITE_BASE44_APP_BASE_URL }),
+		fromUrl: getAppParamValue("from_url", { defaultValue: isNode ? undefined : window.location.href }),
+		appBaseUrl: runtimeAppBaseUrl,
 	}
 }
 

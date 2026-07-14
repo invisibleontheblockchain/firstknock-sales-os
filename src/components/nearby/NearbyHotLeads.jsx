@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { X, Navigation, Flame, MapPin, ChevronRight } from 'lucide-react';
+import { X, Navigation, Flame, ChevronRight } from 'lucide-react';
 import { scoreProperty } from '../logic/routeOptimizer';
-import { openInMaps } from '@/utils';
 
 // Haversine distance in miles
 function getDistance(lat1, lng1, lat2, lng2) {

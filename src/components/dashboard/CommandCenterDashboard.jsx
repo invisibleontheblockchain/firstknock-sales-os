@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RechartsTooltip } from 'recharts';
 import { Users, MapPin, TrendingUp, Target, X, Globe, Zap, Clock, Trophy, Medal, PieChart as PieChartIcon } from 'lucide-react';
-import { format, subDays, parseISO, startOfDay, isAfter, isToday } from 'date-fns';
+import { subDays, parseISO, startOfDay, isAfter, isToday } from 'date-fns';
 
 const COLORS = { gold: '#FFD700', green: '#22c55e', blue: '#3b82f6', purple: '#8b5cf6', red: '#ef4444', orange: '#f97316' };
 const CHART_COLORS = [COLORS.blue, COLORS.green, COLORS.gold, COLORS.orange, COLORS.purple, COLORS.red];
