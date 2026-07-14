@@ -15,6 +15,11 @@
 import { filterByStreetCooldown, COOLDOWN_CONFIG } from './territoryLogic';
 import { latLngToCell, gridDisk } from 'h3-js';
 import { batchScoreProperties, ownershipDurationScore, SCORING_CONSTANTS } from './leadScoring';
+import {
+    calculateRouteDistanceMiles,
+    isValidRoutePoint,
+    optimizeRouteWithBounds
+} from '@/lib/routeBounds';
 
 function cleanAreaLabel(value) {
     if (value === undefined || value === null) return '';
@@ -603,9 +608,20 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         minimizeTurns = false,
         use2Opt = true,
         returnToStart = false,
+        endLocation = null,
+        routeOriginMode = 'none',
         maxRouteDistance = null,
         excludeTerminal = true
     } = options;
+    const normalizedRouteOriginMode = ['home_round_trip', 'current_to_home'].includes(routeOriginMode)
+        ? routeOriginMode
+        : 'none';
+    const effectiveEndLocation = normalizedRouteOriginMode !== 'none' && isValidRoutePoint(endLocation)
+        ? endLocation
+        : null;
+    const hasFixedRouteBounds = normalizedRouteOriginMode !== 'none'
+        && isValidRoutePoint(startLocation)
+        && isValidRoutePoint(effectiveEndLocation);
 
     // Filter out properties on streets that are on cooldown
     // Also filter out invalid coordinates (Null Island 0,0)
@@ -738,9 +754,15 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
             orderedProps = fatigueAwareFrontLoad(orderedProps);
         }
 
-        // Return to start: add first property at the end conceptually (affects distance calc)
-        if (returnToStart && orderedProps.length > 1) {
-            // We don't literally duplicate, but we account for return distance in metrics
+        // Fixed external endpoints are an explicit opt-in. They are optimization
+        // anchors, never fake door records in the saved property list.
+        if (hasFixedRouteBounds && orderedProps.length > 1) {
+            orderedProps = optimizeRouteWithBounds(orderedProps, {
+                startLocation,
+                endLocation: effectiveEndLocation,
+                max2OptPasses: use2Opt ? 25 : 0,
+                max2OptStops: use2Opt ? 300 : 0
+            });
         }
 
         // Metrics — use fast distance for large routes
@@ -765,13 +787,18 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
         }
         totalScore += orderedProps[orderedProps.length - 1]?.score || 0;
 
-        // Add return-to-start distance if enabled
-        if (returnToStart && orderedProps.length > 1) {
-            const returnDist = calculateDistance(
+        // In bounded mode the displayed estimate represents the complete trip:
+        // external start -> every door -> external finish.
+        if (hasFixedRouteBounds && orderedProps.length > 0) {
+            totalDistance = calculateRouteDistanceMiles(orderedProps, {
+                startLocation,
+                endLocation: effectiveEndLocation
+            });
+        } else if (returnToStart && orderedProps.length > 1) {
+            totalDistance += calculateDistance(
                 orderedProps[orderedProps.length - 1].lat, orderedProps[orderedProps.length - 1].lng,
                 orderedProps[0].lat, orderedProps[0].lng
             );
-            totalDistance += returnDist;
         }
 
         const avgScore = totalScore / orderedProps.length;
@@ -783,6 +810,13 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
             distanceFromStart = calculateDistance(
                 startLocation.lat, startLocation.lng,
                 orderedProps[0].lat, orderedProps[0].lng
+            );
+        }
+        let distanceToEnd = 0;
+        if (effectiveEndLocation && orderedProps.length > 0) {
+            distanceToEnd = calculateDistance(
+                orderedProps[orderedProps.length - 1].lat, orderedProps[orderedProps.length - 1].lng,
+                effectiveEndLocation.lat, effectiveEndLocation.lng
             );
         }
 
@@ -823,11 +857,23 @@ export function generateOptimizedRoutes(properties, housesPerRoute = 50, startLo
             streets: routeStreets,
             totalDistance: Math.round(totalDistance * 100) / 100,
             distanceFromStart: Math.round(distanceFromStart * 100) / 100,
+            distanceToEnd: Math.round(distanceToEnd * 100) / 100,
             totalScore: Math.round(totalScore),
             avgScore: Math.round(avgScore),
             competitivenessScore,
             status: 'NOT_STARTED',
-            completedCount: 0
+            completedCount: 0,
+            ...(hasFixedRouteBounds ? {
+                startLocation: { ...startLocation },
+                endLocation: { ...effectiveEndLocation },
+                routeOriginMode: normalizedRouteOriginMode,
+                metadata: {
+                    route_bounds: {
+                        enabled: true,
+                        mode: normalizedRouteOriginMode
+                    }
+                }
+            } : {})
         });
     }
 
@@ -1244,9 +1290,13 @@ export { batchScoreProperties, ownershipDurationScore, SCORING_CONSTANTS } from 
  * @param {Object|null} startLocation - Optional {lat, lng} starting point
  * @returns {Array} Properties in optimized order
  */
-export function optimizeRouteByDistance(properties, startLocation = null) {
+export function optimizeRouteByDistance(properties, startLocation = null, endLocation = null) {
     if (!properties || properties.length === 0) return [];
     if (properties.length === 1) return [...properties];
+
+    if (isValidRoutePoint(endLocation)) {
+        return optimizeRouteWithBounds(properties, { startLocation, endLocation });
+    }
 
     // Build working copy
     const props = properties.map(p => ({ ...p }));

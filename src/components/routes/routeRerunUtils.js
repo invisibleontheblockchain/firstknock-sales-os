@@ -55,6 +55,8 @@ export function getRerunHashes(route, stats, filter) {
 }
 
 export function buildRerunRoutePayload(route, selectedHashes, filter, label) {
+  const safeMetadata = { ...(route?.metadata || {}) };
+  delete safeMetadata.route_bounds;
   return {
     name: `${route?.name || 'Completed Route'} Rerun — ${label}`,
     description: `Rerun from completed route: ${route?.name || route?.id}`,
@@ -66,12 +68,14 @@ export function buildRerunRoutePayload(route, selectedHashes, filter, label) {
     property_hashes: selectedHashes,
     metrics: {
       ...(route?.metrics || {}),
+      distance: 0,
       house_count: selectedHashes.length
     },
-    start_location: route?.start_location || null,
+    start_location: null,
+    route_origin_mode: 'none',
     manager_id: route?.manager_id || null,
     metadata: {
-      ...(route?.metadata || {}),
+      ...safeMetadata,
       rerun_from_route_id: route?.id,
       rerun_filter: filter,
       rerun_created_at: new Date().toISOString()

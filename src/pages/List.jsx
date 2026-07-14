@@ -1,11 +1,19 @@
 import React, { useMemo, useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQuery } from '@tanstack/react-query';
-import { BarChart3, Loader2, Navigation, Sparkles } from 'lucide-react';
-import { isAfter, startOfDay, subDays } from 'date-fns';
+import { AlertTriangle, BarChart3, Loader2, Navigation, Sparkles } from 'lucide-react';
+import { format, startOfDay, subDays } from 'date-fns';
 import { determineEffectiveStatus } from '../components/logic/territoryLogic';
 import { hydrateRoutesForMap } from '@/components/logic/routeHydration';
 import { isManagerAccount } from '@/lib/roles';
+import {
+    filterAnalyticsRecords,
+    fetchAllAnalyticsPages,
+    getAnalyticsDateWindow,
+    isWithinAnalyticsDateWindow,
+    parseAnalyticsTimestamp,
+    summarizeAnalyticsAppointments,
+} from '@/lib/analyticsDateFilter';
 import {
     dedupeEntities,
     getTenantManagerId,
@@ -46,6 +54,27 @@ function isPersonalAppointmentForUser(appointment, user, repIds = []) {
 export default function ListPage() {
     const [activeTab, setActiveTab] = useState('performance');
     const [dateDays, setDateDays] = useState(30);
+    const [selectedDate, setSelectedDate] = useState(null);
+    const dateWindow = useMemo(
+        () => getAnalyticsDateWindow({ dateDays, selectedDate }),
+        [dateDays, selectedDate]
+    );
+    const selectedDateKey = selectedDate && dateWindow.start && dateWindow.end
+        ? `${dateWindow.start.toISOString()}_${dateWindow.end.toISOString()}`
+        : null;
+
+    const handleChangeDays = (days) => {
+        setSelectedDate(null);
+        setDateDays(days);
+    };
+
+    const handleSelectDate = (date) => {
+        if (!date) return;
+        const day = startOfDay(date);
+        if (day > startOfDay(new Date())) return;
+        setSelectedDate(day);
+        setDateDays(1);
+    };
 
     const { data: user, isLoading: userLoading, isFetching: userFetching } = useQuery({
         queryKey: ['user'],
@@ -136,38 +165,101 @@ export default function ListPage() {
         staleTime: 1000 * 60 * 2,
     });
 
-    const { data: logsRaw = [], isLoading: logsLoading } = useQuery({
-        queryKey: ['interactionLogs', 'analytics', userEmail, tenantManagerId],
+    const {
+        data: logsRaw = [],
+        isLoading: logsLoading,
+        isError: logsError,
+        refetch: refetchLogs,
+    } = useQuery({
+        queryKey: ['interactionLogs', 'analytics', userEmail, tenantManagerId, selectedDateKey],
         staleTime: 1000 * 60 * 2,
         queryFn: async () => {
             if (!userEmail) return [];
             const creatorEmails = [...new Set([user?.email, userEmail].filter(Boolean))];
-            const results = await Promise.all(
+            const recentResults = await Promise.all(
                 creatorEmails.map((email) => base44.entities.InteractionLog.filter({ created_by: email }, '-created_date', 5000))
             );
-            return dedupeEntities(results.flatMap(toEntityArray))
+
+            const selectedResults = selectedDate && dateWindow.start && dateWindow.end
+                ? await Promise.all(creatorEmails.map((email) => fetchAllAnalyticsPages(
+                    (limit, skip) => base44.entities.InteractionLog.filter({
+                        created_by: email,
+                        created_date: {
+                            $gte: dateWindow.start.toISOString(),
+                            $lt: dateWindow.end.toISOString(),
+                        },
+                    }, '-created_date', limit, skip)
+                )))
+                : [];
+
+            return dedupeEntities([
+                ...recentResults.flatMap(toEntityArray),
+                ...selectedResults.flatMap(toEntityArray),
+            ])
                 .filter((log) => personalRecordBelongsToCurrentAccount(log, user));
         },
         enabled: userReady && !!userEmail,
     });
     const logs = toEntityArray(logsRaw);
 
-    const { data: appointmentsRaw = [], isLoading: apptsLoading } = useQuery({
-        queryKey: ['appointments', 'analytics', userEmail, tenantManagerId, myRepIdsKey],
+    const {
+        data: appointmentsRaw = [],
+        isLoading: apptsLoading,
+        isError: apptsError,
+        refetch: refetchAppointments,
+    } = useQuery({
+        queryKey: ['appointments', 'analytics', userEmail, tenantManagerId, myRepIdsKey, selectedDateKey],
         queryFn: async () => {
             if (!userReady) return [];
-            const queries = [];
+            const recentQueries = [];
             if (myRepIds.length > 0) {
-                queries.push(base44.entities.Appointment.filter({ assigned_rep: myRepIds }, '-scheduled_date', 5000));
+                recentQueries.push(base44.entities.Appointment.filter({ assigned_rep: myRepIds }, '-scheduled_date', 5000));
             }
-            if (user?.email) {
-                const creatorEmails = [...new Set([user.email, userEmail].filter(Boolean))];
+            const creatorEmails = [...new Set([user?.email, userEmail].filter(Boolean))];
+            creatorEmails.forEach((email) => {
+                recentQueries.push(base44.entities.Appointment.filter({ created_by: email }, '-scheduled_date', 5000));
+            });
+
+            const recentResults = await Promise.all(recentQueries);
+            const selectedDayFilter = selectedDate && dateWindow.start && dateWindow.end
+                ? {
+                    $or: [
+                        {
+                            scheduled_date: {
+                                $gte: dateWindow.start.toISOString(),
+                                $lt: dateWindow.end.toISOString(),
+                            },
+                        },
+                        { scheduled_date: format(dateWindow.start, 'yyyy-MM-dd') },
+                    ],
+                }
+                : null;
+            const selectedQueries = [];
+
+            if (selectedDayFilter && myRepIds.length > 0) {
+                selectedQueries.push(fetchAllAnalyticsPages(
+                    (limit, skip) => base44.entities.Appointment.filter({
+                        assigned_rep: myRepIds,
+                        ...selectedDayFilter,
+                    }, '-scheduled_date', limit, skip)
+                ));
+            }
+            if (selectedDayFilter) {
                 creatorEmails.forEach((email) => {
-                    queries.push(base44.entities.Appointment.filter({ created_by: email }, '-scheduled_date', 5000));
+                    selectedQueries.push(fetchAllAnalyticsPages(
+                        (limit, skip) => base44.entities.Appointment.filter({
+                            created_by: email,
+                            ...selectedDayFilter,
+                        }, '-scheduled_date', limit, skip)
+                    ));
                 });
             }
-            const results = await Promise.all(queries);
-            return dedupeEntities(results.flatMap(toEntityArray))
+
+            const selectedResults = await Promise.all(selectedQueries);
+            return dedupeEntities([
+                ...recentResults.flatMap(toEntityArray),
+                ...selectedResults.flatMap(toEntityArray),
+            ])
                 .filter((appointment) => isPersonalAppointmentForUser(appointment, user, myRepIds));
         },
         enabled: userReady,
@@ -210,30 +302,45 @@ export default function ListPage() {
     }, [hydratedRoutes, effectiveProperties]);
 
     const filteredLogs = useMemo(() => {
-        const cutoff = startOfDay(subDays(new Date(), dateDays));
-        return logs.filter((log) => log.created_date && isAfter(new Date(log.created_date), cutoff));
-    }, [logs, dateDays]);
+        return filterAnalyticsRecords(logs, 'created_date', dateWindow);
+    }, [logs, dateWindow]);
 
     const filteredAppointments = useMemo(() => {
-        const cutoff = startOfDay(subDays(new Date(), dateDays));
-        return personalAppointments.filter((appointment) => {
-            if (!appointment.scheduled_date) return false;
-            return isAfter(new Date(appointment.scheduled_date), cutoff);
+        return filterAnalyticsRecords(personalAppointments, 'scheduled_date', dateWindow);
+    }, [personalAppointments, dateWindow]);
+
+    const periodOutcomeProperties = useMemo(() => {
+        const latestByDoor = new Map();
+        filteredLogs.forEach((log) => {
+            const key = log.address_hash || log.id;
+            if (!key) return;
+            const timestamp = parseAnalyticsTimestamp(log.created_date)?.getTime() || 0;
+            const current = latestByDoor.get(key);
+            if (!current || timestamp >= current.timestamp) {
+                latestByDoor.set(key, {
+                    id: key,
+                    effective_status: log.parsed_status || 'OTHER',
+                    timestamp,
+                });
+            }
         });
-    }, [personalAppointments, dateDays]);
+        return [...latestByDoor.values()];
+    }, [filteredLogs]);
 
     const analytics = useMemo(() => {
-        const today = startOfDay(new Date());
-        const weekCutoff = startOfDay(subDays(new Date(), 7));
-        const todayLogs = logs.filter((log) => log.created_date && isAfter(new Date(log.created_date), today));
-        const weekLogs = logs.filter((log) => log.created_date && isAfter(new Date(log.created_date), weekCutoff));
+        const todayWindow = getAnalyticsDateWindow({ dateDays: 1 });
+        const weekWindow = getAnalyticsDateWindow({ dateDays: 7 });
+        const todayLogs = logs.filter((log) => isWithinAnalyticsDateWindow(log.created_date, todayWindow));
+        const weekLogs = logs.filter((log) => isWithinAnalyticsDateWindow(log.created_date, weekWindow));
         const sales = filteredLogs.filter((log) => SALES_STATUSES.includes(log.parsed_status)).length;
         const contacts = filteredLogs.filter((log) => !NON_CONTACT_STATUSES.includes(log.parsed_status)).length;
         const callbacks = filteredLogs.filter((log) => log.parsed_status === 'CALLBACK').length;
-        const upcomingAppointments = filteredAppointments.filter((appointment) => ['scheduled', 'confirmed'].includes(appointment.status)).length;
-        const noShows = filteredAppointments.filter((appointment) => appointment.status === 'no_show').length;
+        const appointmentMetrics = summarizeAnalyticsAppointments(filteredAppointments, {
+            selectedDay: !!selectedDate,
+        });
         const analyticsHashes = new Set(analyticsProperties.map((property) => property.address_hash || property.id).filter(Boolean));
-        const workedDoors = new Set(logs.map((log) => log.address_hash).filter(hash => hash && (!analyticsHashes.size || analyticsHashes.has(hash)))).size;
+        const coverageLogs = selectedDate ? filteredLogs : logs;
+        const workedDoors = new Set(coverageLogs.map((log) => log.address_hash).filter(hash => hash && (!analyticsHashes.size || analyticsHashes.has(hash)))).size;
         const totalDoors = analyticsProperties.length;
         const activeRoutes = savedRoutes.filter((route) => ['ACTIVE', 'IN_PROGRESS'].includes(route.status)).length;
         const totalRevenue = filteredLogs
@@ -246,7 +353,10 @@ export default function ListPage() {
             return { hour, knocks: hourLogs.length, contactRate: hourLogs.length ? Math.round((hourContacts / hourLogs.length) * 100) : 0 };
         });
         const bestHour = [...hourBuckets].sort((a, b) => (b.contactRate - a.contactRate) || (b.knocks - a.knocks))[0] || { hour: 17, contactRate: 0 };
-        const bestHourLabel = new Date(0, 0, 0, bestHour.hour, 0).toLocaleTimeString('en-US', { hour: 'numeric' });
+        const hasTimedActivity = hourBuckets.some((bucket) => bucket.knocks > 0);
+        const bestHourLabel = hasTimedActivity
+            ? new Date(0, 0, 0, bestHour.hour, 0).toLocaleTimeString('en-US', { hour: 'numeric' })
+            : 'N/A';
 
         const activeDays = new Set(logs.map((log) => startOfDay(new Date(log.created_date)).getTime()));
         let streak = 0;
@@ -263,10 +373,11 @@ export default function ListPage() {
             contacts,
             callbacks,
             sales,
-            upcomingAppointments,
+            upcomingAppointments: appointmentMetrics.upcomingCount,
+            appointmentCount: appointmentMetrics.appointmentCount,
             conversionRate: filteredLogs.length ? Math.round((sales / filteredLogs.length) * 100) : 0,
             contactRate: filteredLogs.length ? Math.round((contacts / filteredLogs.length) * 100) : 0,
-            noShowRate: filteredAppointments.length ? Math.round((noShows / filteredAppointments.length) * 100) : 0,
+            noShowRate: appointmentMetrics.noShowRate,
             workedDoors,
             coveragePct: totalDoors ? Math.round((workedDoors / totalDoors) * 100) : 0,
             activeRoutes,
@@ -276,9 +387,16 @@ export default function ListPage() {
             streak,
             totalRevenue,
         };
-    }, [logs, filteredLogs, filteredAppointments, analyticsProperties, savedRoutes]);
+    }, [logs, filteredLogs, filteredAppointments, analyticsProperties, savedRoutes, selectedDate]);
 
-    const isLoading = userLoading || userFetching || propsLoading || logsLoading || routesLoading || hydratedRoutesLoading || apptsLoading;
+    const isAnalyticsTab = activeTab === 'performance' || activeTab === 'advanced';
+    const isLoading = userLoading || userFetching || propsLoading || logsLoading || routesLoading || hydratedRoutesLoading || (isAnalyticsTab && apptsLoading);
+    const hasAnalyticsError = logsError || (isAnalyticsTab && apptsError);
+
+    const retryAnalytics = () => {
+        refetchLogs();
+        if (isAnalyticsTab) refetchAppointments();
+    };
 
     const tabs = [
         { id: 'performance', label: 'Performance', icon: BarChart3 },
@@ -313,28 +431,49 @@ export default function ListPage() {
             </div>
 
             <div className="flex-1 overflow-auto">
-                {isLoading ? (
-                    <div className="flex flex-col justify-center items-center py-24 gap-3">
-                        <Loader2 className="w-6 h-6 animate-spin text-white/40" />
-                        <span className="text-xs text-gray-600">Loading analytics...</span>
-                    </div>
-                ) : (
-                    <>
-                        {/* Shared header for performance + advanced */}
-                        {(activeTab === 'performance' || activeTab === 'advanced') && (
-                            <RepAnalyticsHeader
-                                dateDays={dateDays}
-                                onChangeDays={setDateDays}
-                                streak={analytics.streak}
-                            />
-                        )}
+                {/* Keep the date controls mounted while a new day loads so focus and scroll position stay put. */}
+                {isAnalyticsTab && (
+                    <RepAnalyticsHeader
+                        dateDays={dateDays}
+                        selectedDate={selectedDate}
+                        onChangeDays={handleChangeDays}
+                        onSelectDate={handleSelectDate}
+                        streak={analytics.streak}
+                    />
+                )}
+
+                <div role="region" aria-label="Analytics results" aria-busy={isLoading}>
+                    {isLoading ? (
+                        <div className="flex flex-col justify-center items-center py-24 gap-3">
+                            <Loader2 className="w-6 h-6 animate-spin text-white/40" />
+                            <span className="text-xs text-gray-400">Loading analytics...</span>
+                        </div>
+                    ) : hasAnalyticsError ? (
+                        <div role="alert" className="mx-auto flex max-w-md flex-col items-center px-5 py-20 text-center">
+                            <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-red-400/20 bg-red-500/10">
+                                <AlertTriangle className="h-5 w-5 text-red-300" />
+                            </div>
+                            <h2 className="mt-4 text-sm font-black text-white">Could not load analytics</h2>
+                            <p className="mt-1 text-xs text-gray-400">
+                                The data request failed, so this is not being shown as a zero-activity day.
+                            </p>
+                            <button
+                                type="button"
+                                onClick={retryAnalytics}
+                                className="mt-4 min-h-10 rounded-lg bg-white px-4 text-xs font-black text-black hover:bg-gray-200"
+                            >
+                                Try again
+                            </button>
+                        </div>
+                    ) : (
+                        <>
 
                         {activeTab === 'performance' && (
                             <div className="p-2.5 md:p-5 space-y-2 md:space-y-3 max-w-7xl mx-auto pb-24">
-                                <RepAnalyticsKpis metrics={analytics} dateDays={dateDays} />
-                                <RevenueMetrics logs={filteredLogs} dateDays={dateDays} />
+                                <RepAnalyticsKpis metrics={analytics} dateDays={dateDays} selectedDate={selectedDate} />
+                                <RevenueMetrics logs={filteredLogs} dateDays={dateDays} selectedDate={selectedDate} />
                                 <RepAnalyticsPipeline metrics={analytics} />
-                                <StatusBreakdown properties={analyticsProperties} />
+                                <StatusBreakdown properties={selectedDate ? periodOutcomeProperties : analyticsProperties} />
                             </div>
                         )}
 
@@ -346,10 +485,11 @@ export default function ListPage() {
                                     properties={analyticsProperties}
                                     appointments={filteredAppointments}
                                     dateDays={dateDays}
+                                    selectedDate={selectedDate}
                                 />
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-2 md:gap-3">
                                     <TimeOfDayEffectiveness logs={filteredLogs} />
-                                    <AppointmentTimeline appointments={filteredAppointments} days={dateDays} />
+                                    <AppointmentTimeline appointments={filteredAppointments} days={dateDays} selectedDate={selectedDate} />
                                 </div>
                             </div>
                         )}
@@ -359,8 +499,9 @@ export default function ListPage() {
                                 <RouteProgress routes={hydratedRoutes.length > 0 ? hydratedRoutes : savedRoutes} logs={logs} />
                             </div>
                         )}
-                    </>
-                )}
+                        </>
+                    )}
+                </div>
             </div>
         </div>
     );

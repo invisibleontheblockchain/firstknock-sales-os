@@ -98,7 +98,16 @@ Deno.serve(async (req) => {
             await base44.asServiceRole.entities.SavedRoute.update(bestRoute.id, {
                 assigned_to: rep.id,
                 assigned_to_name: rep.name,
-                status: 'ACTIVE'
+                status: 'ACTIVE',
+                // Home/current endpoints belong to the person who opted in.
+                // An automatically selected rep may have a different base.
+                start_location: null,
+                end_location: null,
+                route_origin_mode: 'none',
+                metadata: {
+                    ...(bestRoute.metadata || {}),
+                    route_bounds: { enabled: false, cleared_reason: 'auto_assigned' }
+                }
             });
 
             // Optional: Send notification (email/push) - For now just log

@@ -249,6 +249,7 @@ Deno.serve(async (req) => {
                 count_mode: metadata.count_mode || null,
                 filters: metadata.filters || null,
                 route_filters: metadata.route_filters || null,
+                route_bounds: metadata.route_bounds || { enabled: false },
                 completion_reason: metadata.completion_reason || null,
                 batchdata_summary: metadata.batchdata_summary || null,
                 processor_rekick_at: processorKick?.at || metadata.processor_rekick_at || null,

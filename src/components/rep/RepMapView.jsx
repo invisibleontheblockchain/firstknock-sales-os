@@ -36,6 +36,11 @@ const TOUCH_TARGET_ICON = L.divIcon({
     iconAnchor: [28, 28]
 });
 
+function isRoutePoint(point) {
+    if (!point || point.lat === null || point.lat === undefined || point.lat === '' || point.lng === null || point.lng === undefined || point.lng === '') return false;
+    return Number.isFinite(Number(point.lat)) && Number.isFinite(Number(point.lng));
+}
+
 const STATUS_COLORS = {
     ELIGIBLE: '#8888A0',
     SOLD: '#00F5A0',
@@ -163,7 +168,7 @@ function PropertyPinLayer({ properties, nearbyHashes, onSelectProperty }) {
 
 const MemoizedPropertyPinLayer = React.memo(PropertyPinLayer);
 
-export default function RepMapView({ properties, onSelectProperty, onClose, focusProperty }) {
+export default function RepMapView({ properties, onSelectProperty, onClose, focusProperty, startLocation = null, endLocation = null }) {
     const mapRef = useRef(null);
     const [position, setPosition] = useState(null);
     const [accuracy, setAccuracy] = useState(50);
@@ -232,6 +237,20 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
     }, [position, properties]);
 
     const nearbyHashes = useMemo(() => new Set(nearbyProps.map(p => p.address_hash)), [nearbyProps]);
+    const routePathPositions = useMemo(() => {
+        const positions = (properties || []).filter(isRoutePoint).map(p => [Number(p.lat), Number(p.lng)]);
+        const effectiveStart = isRoutePoint(startLocation)
+            ? startLocation
+            : isRoutePoint(endLocation) && isRoutePoint(position)
+                ? position
+                : null;
+        if (effectiveStart) positions.unshift([Number(effectiveStart.lat), Number(effectiveStart.lng)]);
+        if (isRoutePoint(endLocation)) positions.push([Number(endLocation.lat), Number(endLocation.lng)]);
+        return positions;
+    }, [endLocation, position, properties, startLocation]);
+    const endpointsMatch = isRoutePoint(startLocation) && isRoutePoint(endLocation)
+        && Number(startLocation.lat) === Number(endLocation.lat)
+        && Number(startLocation.lng) === Number(endLocation.lng);
 
     // Map center: prioritize focused property, then GPS, then first property
     const center = focusProperty
@@ -331,9 +350,9 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                     ))}
 
                     {/* Route Path (Mail Carrier Style) */}
-                    {properties?.length > 0 && (
+                    {routePathPositions.length > 1 && (
                         <Polyline
-                            positions={properties.map(p => [p.lat, p.lng])}
+                            positions={routePathPositions}
                             renderer={CANVAS_RENDERER}
                             smoothFactor={2}
                             pathOptions={{ 
@@ -343,6 +362,25 @@ export default function RepMapView({ properties, onSelectProperty, onClose, focu
                                 dashArray: lineDashArray 
                             }}
                         />
+                    )}
+
+                    {isRoutePoint(startLocation) && (
+                        <CircleMarker
+                            center={[Number(startLocation.lat), Number(startLocation.lng)]}
+                            radius={8}
+                            pathOptions={{ color: '#ffffff', fillColor: BRAND.gold, fillOpacity: 1, weight: 2 }}
+                        >
+                            <Tooltip permanent direction="top" offset={[0, -8]}>{endpointsMatch ? 'Home • Start / Finish' : 'Start'}</Tooltip>
+                        </CircleMarker>
+                    )}
+                    {!endpointsMatch && isRoutePoint(endLocation) && (
+                        <CircleMarker
+                            center={[Number(endLocation.lat), Number(endLocation.lng)]}
+                            radius={8}
+                            pathOptions={{ color: '#ffffff', fillColor: '#60A5FA', fillOpacity: 1, weight: 2 }}
+                        >
+                            <Tooltip permanent direction="top" offset={[0, -8]}>Finish</Tooltip>
+                        </CircleMarker>
                     )}
 
                     {/* Property Pins */}

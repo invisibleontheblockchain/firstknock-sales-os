@@ -46,6 +46,32 @@ function normalizePolygon(input) {
         .filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lng));
 }
 
+function normalizeRoutePoint(input) {
+    if (!input || input.lat === null || input.lat === undefined || input.lat === '' || input.lng === null || input.lng === undefined || input.lng === '') {
+        return null;
+    }
+    const lat = Number(input?.lat);
+    const lng = Number(input?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        return null;
+    }
+    return { lat, lng };
+}
+
+function normalizeRouteBounds(input) {
+    if (!input || input.enabled !== true) return { enabled: false };
+    const mode = input.mode === 'current_to_home' ? 'current_to_home' : 'home_round_trip';
+    const startLocation = normalizeRoutePoint(input.startLocation || input.start_location);
+    const endLocation = normalizeRoutePoint(input.endLocation || input.end_location);
+    if (!startLocation || !endLocation) return null;
+    return {
+        enabled: true,
+        mode,
+        start_location: startLocation,
+        end_location: endLocation
+    };
+}
+
 function polygonAreaSqMi(points) {
     if (points.length < 3) return 0;
     const avgLat = points.reduce((sum, p) => sum + p.lat, 0) / points.length;
@@ -261,6 +287,13 @@ Deno.serve(async (req) => {
         if (polygon.length < 3) {
             return Response.json({ error: 'At least 3 polygon points are required.' }, { status: 400 });
         }
+        const routeBounds = normalizeRouteBounds(body.route_bounds);
+        if (routeBounds === null) {
+            return Response.json({
+                error: 'invalid_route_bounds',
+                message: 'Route-from-home requires valid starting and ending coordinates.'
+            }, { status: 400 });
+        }
 
         const areaSqMi = polygonAreaSqMi(polygon);
         const center = centroid(polygon);
@@ -340,7 +373,8 @@ Deno.serve(async (req) => {
                 previous_pull_date: body.previous_pull_date || null,
                 include_unresolved_followups: body.include_unresolved_followups === true,
                 area_sq_mi: Number(areaSqMi.toFixed(2)),
-                route_filters: routeFilters
+                route_filters: routeFilters,
+                route_bounds: routeBounds
             });
         }
 
@@ -380,6 +414,7 @@ Deno.serve(async (req) => {
                 sold_months: Number(existingJob.sold_months || 12),
                 min_price: existingMetadata.filters?.min_price ?? null,
                 max_price: existingMetadata.filters?.max_price ?? null,
+                route_bounds: existingMetadata.route_bounds || { enabled: false },
                 ...ownershipResponseFields(existingOwnership)
             });
         }
@@ -421,6 +456,7 @@ Deno.serve(async (req) => {
                     max_price: maxPrice
                 },
                 route_filters: routeFilters,
+                route_bounds: routeBounds,
                 ownership_range_mode: ownership.mode,
                 ownership_range_days: ownership.range,
                 processor_token: processorToken,
@@ -453,6 +489,7 @@ Deno.serve(async (req) => {
             excluded_route_home_count: existingRouteHomes,
             free_properties_remaining: freeHomesRemaining,
             route_filters: routeFilters,
+            route_bounds: routeBounds,
             sold_months: requestedSoldMonths,
             ...ownershipResponseFields(ownership),
             message: `Precision pull started for up to ${requestedProperties} properties.`

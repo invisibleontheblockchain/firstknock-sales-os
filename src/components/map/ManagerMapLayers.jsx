@@ -20,6 +20,23 @@ const getRouteColor = (route, routeNumber = 1) => {
     return DEFAULT_ROUTE_COLORS[(Math.max(1, routeNumber) - 1) % DEFAULT_ROUTE_COLORS.length];
 };
 
+const isRoutePoint = (point) => Boolean(
+    point
+    && point.lat !== null && point.lat !== undefined && point.lat !== ''
+    && point.lng !== null && point.lng !== undefined && point.lng !== ''
+    && Number.isFinite(Number(point.lat))
+    && Number.isFinite(Number(point.lng))
+);
+
+const getRouteLinePoints = (route, properties) => {
+    const doors = (properties || []).filter(isRoutePoint);
+    const mode = route?.routeOriginMode || route?.route_origin_mode || route?.metadata?.route_bounds?.mode || 'none';
+    if (!['home_round_trip', 'current_to_home'].includes(mode)) return doors;
+    const start = route?.startLocation || route?.start_location;
+    const end = route?.endLocation || route?.end_location;
+    return [isRoutePoint(start) ? start : null, ...doors, isRoutePoint(end) ? end : null].filter(Boolean);
+};
+
 function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setSelectedProperty }) {
     const map = useMap();
     const layerRef = useRef(null);
@@ -29,8 +46,9 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
         if (!map || !activeRoute?.properties?.length) return;
 
         const routePoints = activeRoute.properties.filter(p => p && p.lat && p.lng);
-        if (routePoints.length > 0 && fittedRouteIdRef.current !== activeRoute.id) {
-            const bounds = L.latLngBounds(routePoints.map(p => [p.lat, p.lng]));
+        const routeLinePoints = getRouteLinePoints(activeRoute, routePoints);
+        if (routeLinePoints.length > 0 && fittedRouteIdRef.current !== activeRoute.id) {
+            const bounds = L.latLngBounds(routeLinePoints.map(p => [p.lat, p.lng]));
             map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16, animate: true });
             fittedRouteIdRef.current = activeRoute.id;
         }
@@ -47,9 +65,9 @@ function ActiveRouteLayer({ activeRoute, BRAND, mapSettings, lineDashArray, setS
         const props = routePoints;
 
         // 1. Route line
-        if (props.length > 1) {
+        if (routeLinePoints.length > 1) {
             const line = L.polyline(
-                props.map(p => [p.lat, p.lng]),
+                routeLinePoints.map(p => [p.lat, p.lng]),
                 {
                     color: routeColor,
                     weight: mapSettings.lineWidth ? mapSettings.lineWidth + 2 : 4,
@@ -452,8 +470,9 @@ function SavedRoutesLayer({
 
             // Route line
             if (showRouteLines && route.properties.length > 1) {
+                const routeLinePoints = getRouteLinePoints(route, route.properties);
                 const line = L.polyline(
-                    route.properties.filter(p => p && p.lat && p.lng).map(p => [p.lat, p.lng]),
+                    routeLinePoints.map(p => [p.lat, p.lng]),
                     {
                         color: repColor,
                         weight: mapSettings.lineWidth || 3,

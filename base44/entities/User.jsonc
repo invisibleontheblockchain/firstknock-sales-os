@@ -103,6 +103,21 @@
     "navigation_app": {
       "type": "string"
     },
+    "home_base": {
+      "type": "object",
+      "description": "Optional saved home/base location used only when the user explicitly enables bounded route optimization.",
+      "properties": {
+        "lat": {
+          "type": "number"
+        },
+        "lng": {
+          "type": "number"
+        },
+        "address": {
+          "type": "string"
+        }
+      }
+    },
     "referral_code": {
       "type": "string",
       "description": "Unique referral code for this user"

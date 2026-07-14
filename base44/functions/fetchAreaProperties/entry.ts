@@ -132,6 +132,27 @@ function normalizePolygon(input) {
     return input.map(point => ({ lat: Number(point.lat), lng: Number(point.lng) })).filter(point => Number.isFinite(point.lat) && Number.isFinite(point.lng));
 }
 
+function normalizeRoutePoint(input) {
+    if (!input || input.lat === null || input.lat === undefined || input.lat === '' || input.lng === null || input.lng === undefined || input.lng === '') return null;
+    const lat = Number(input?.lat);
+    const lng = Number(input?.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+    return { lat, lng };
+}
+
+function normalizeRouteBounds(input) {
+    if (!input || input.enabled !== true) return { enabled: false };
+    const startLocation = normalizeRoutePoint(input.startLocation || input.start_location);
+    const endLocation = normalizeRoutePoint(input.endLocation || input.end_location);
+    if (!startLocation || !endLocation) return null;
+    return {
+        enabled: true,
+        mode: input.mode === 'current_to_home' ? 'current_to_home' : 'home_round_trip',
+        start_location: startLocation,
+        end_location: endLocation
+    };
+}
+
 function polygonAreaSqMi(points) {
     if (points.length < 3) return 0;
     const avgLat = points.reduce((sum, p) => sum + p.lat, 0) / points.length;
@@ -275,6 +296,10 @@ Deno.serve(async (req) => {
         if (polygon.length < 3) {
             return Response.json({ error: 'Precision pulls now require a freehand drawn polygon.' }, { status: 400 });
         }
+        const routeBounds = normalizeRouteBounds(body.route_bounds);
+        if (routeBounds === null) {
+            return Response.json({ error: 'invalid_route_bounds', message: 'Route-from-home requires valid starting and ending coordinates.' }, { status: 400 });
+        }
 
         const areaSqMi = polygonAreaSqMi(polygon);
         const center = centroid(polygon);
@@ -349,6 +374,7 @@ Deno.serve(async (req) => {
                 ...ownershipResponseFields(ownership),
                 filters: { min_price: minPrice, max_price: maxPrice },
                 route_filters: routeFilters,
+                route_bounds: routeBounds,
                 message: 'Dry run only — BatchData-only Precision path validated without creating a FetchJob.'
             });
         }
@@ -388,6 +414,7 @@ Deno.serve(async (req) => {
                 min_price: activeMetadata.filters?.min_price ?? null,
                 max_price: activeMetadata.filters?.max_price ?? null,
                 route_filters: activeMetadata.route_filters || null,
+                route_bounds: activeMetadata.route_bounds || { enabled: false },
                 count_mode: activeMetadata.count_mode || null,
                 ...ownershipResponseFields(activeOwnership)
             });
@@ -425,6 +452,7 @@ Deno.serve(async (req) => {
                     max_price: maxPrice
                 },
                 route_filters: routeFilters,
+                route_bounds: routeBounds,
                 ownership_range_mode: ownership.mode,
                 ownership_range_days: ownership.range,
                 processor_token: processorToken,
@@ -460,6 +488,7 @@ Deno.serve(async (req) => {
             sold_months: requestedSoldMonths,
             filters: { min_price: minPrice, max_price: maxPrice },
             route_filters: routeFilters,
+            route_bounds: routeBounds,
             ...ownershipResponseFields(ownership),
             message: `BatchData Precision pull started for up to ${requestedProperties} properties.`
         });

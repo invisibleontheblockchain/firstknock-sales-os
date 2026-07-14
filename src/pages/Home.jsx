@@ -43,6 +43,7 @@ import { format, subMonths, subDays, isAfter, parseISO } from 'date-fns';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { generateOptimizedRoutes, optimizeRouteByDistance } from '../components/logic/routeOptimizer';
+import { calculateRouteDistanceMiles, isValidRoutePoint } from '@/lib/routeBounds';
 import { applyRouteFilters, formatStageCounts } from '../components/logic/routeFilterPipeline';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '../components/logic/soldDateRange';
 import RouteGenerationOverlay from '../components/routes/RouteGenerationOverlay';
@@ -162,6 +163,22 @@ function normalizeOwnershipRangeDays(value) {
 
 const PRECISION_JOB_CONTEXT_STORAGE_KEY = 'fk_precisionCustomJobContext';
 
+function normalizeRouteBoundsIntent(value) {
+    if (!value || value.enabled !== true) return { enabled: false };
+    const startLocation = value.startLocation || value.start_location;
+    const endLocation = value.endLocation || value.end_location;
+    if (!isValidRoutePoint(startLocation) || !isValidRoutePoint(endLocation)) return { enabled: false };
+    const mode = value.mode === 'current_to_home' ? 'current_to_home' : 'home_round_trip';
+    return {
+        enabled: true,
+        mode,
+        // Route-generation context can be resumed from local storage, so keep
+        // only coordinates here. Exact home addresses stay on the private User.
+        startLocation: { lat: Number(startLocation.lat), lng: Number(startLocation.lng) },
+        endLocation: { lat: Number(endLocation.lat), lng: Number(endLocation.lng) }
+    };
+}
+
 function readPersistedPrecisionJobContext(expectedUserEmail) {
     try {
         const parsed = JSON.parse(localStorage.getItem(PRECISION_JOB_CONTEXT_STORAGE_KEY) || 'null');
@@ -242,6 +259,8 @@ export default function Home() {
     const [previewRoute, setPreviewRoute] = useState(null);
     const [startLocation, setStartLocation] = useState(null); // { lat, lng, address }
     const [startAddressInput, setStartAddressInput] = useState("");
+    const pendingRouteBoundsRef = useRef(null);
+    const lastGeneratedRouteBoundsRef = useRef(null);
     const [zipCodeFilter, setZipCodeFilter] = useState(''); // Comma separated string
     const [analyzeZipFilter, setAnalyzeZipFilter] = useState('all'); // Filter for Analyze mode
     const [soldDateFilter, setSoldDateFilterRaw] = useState(12);
@@ -521,6 +540,25 @@ export default function Home() {
         enabled: !!user?.id
     });
 
+    const preparePrecisionRouteBounds = useCallback((value) => {
+        const normalized = normalizeRouteBoundsIntent(value);
+        pendingRouteBoundsRef.current = normalized.enabled ? normalized : null;
+        return normalized;
+    }, []);
+
+    const handleSaveHomeBase = useCallback(async (value) => {
+        if (!isValidRoutePoint(value)) throw new Error('Choose a valid home base first.');
+        const homeBase = {
+            lat: Number(value.lat),
+            lng: Number(value.lng),
+            ...(value.address ? { address: String(value.address).trim() } : {})
+        };
+        await base44.auth.updateMe({ home_base: homeBase });
+
+        queryClient.invalidateQueries({ queryKey: ['user'] });
+        return homeBase;
+    }, [queryClient]);
+
     // Generate Rep Colors Map - Use stored colors from TeamMember entity
     const [localRepColors, setLocalRepColors] = useState({});
 
@@ -552,18 +590,30 @@ export default function Home() {
             const member = teamMembers.find(m => m.id === memberId);
             const isSelf = memberId === user?.id;
             const assigneeName = isSelf ? (user?.full_name || 'Manager') : (member ? member.name : null);
-
-            await base44.entities.SavedRoute.update(routeId, {
+            const currentRoute = savedRoutes.find(route => route.id === routeId) || (activeRoute?.id === routeId ? activeRoute : null);
+            const assignmentChanged = !currentRoute || currentRoute.assigned_to !== memberId;
+            const assignmentUpdate = {
                 assigned_to: memberId,
                 assigned_to_name: assigneeName,
-                status: 'ACTIVE'
-            });
+                status: 'ACTIVE',
+                ...(assignmentChanged ? {
+                    start_location: null,
+                    end_location: null,
+                    route_origin_mode: 'none',
+                    metadata: {
+                        ...(currentRoute?.metadata || {}),
+                        route_bounds: { enabled: false, cleared_reason: 'assignee_changed' }
+                    }
+                } : {})
+            };
+
+            await base44.entities.SavedRoute.update(routeId, assignmentUpdate);
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
             toast.success(`Assigned to ${assigneeName || 'Unassigned'}`);
 
             // Update local state if active
             if (activeRoute && activeRoute.id === routeId) {
-                setActiveRoute(prev => ({ ...prev, assigned_to: memberId, assigned_to_name: assigneeName }));
+                setActiveRoute(prev => ({ ...prev, ...assignmentUpdate }));
             }
         } catch (e) {
             console.error(e);
@@ -827,22 +877,80 @@ export default function Home() {
         // No "New —" name prefix — the NEW badge (from metadata.newly_generated) marks fresh routes instead.
         const routeName = baseRouteName.replace(/^New\s*[—-]\s*/i, '');
 
+        const requestedRouteOriginMode = ['home_round_trip', 'current_to_home'].includes(route?.routeOriginMode || route?.route_origin_mode)
+            ? (route.routeOriginMode || route.route_origin_mode)
+            : 'none';
+        const sourceAssigneeId = route?.assigned_to || null;
+        const canPreserveRequestedBounds = requestedRouteOriginMode !== 'none' && (
+            sourceAssigneeId
+                ? sourceAssigneeId === defaultAssigneeId
+                : defaultAssigneeId === user?.id
+        );
+        const routeOriginMode = canPreserveRequestedBounds ? requestedRouteOriginMode : 'none';
+        const routeWasExplicitlyUnbounded = route?.routeOriginMode === 'none' || route?.route_origin_mode === 'none';
+        const routeStartLocation = canPreserveRequestedBounds && isValidRoutePoint(route?.startLocation || route?.start_location)
+            ? (route.startLocation || route.start_location)
+            : requestedRouteOriginMode !== 'none' || routeWasExplicitlyUnbounded
+                ? null
+                : startLocation;
+        const routeEndLocation = canPreserveRequestedBounds && isValidRoutePoint(route?.endLocation || route?.end_location)
+            ? (route.endLocation || route.end_location)
+            : null;
+        const savedProperties = requestedRouteOriginMode !== 'none' && !canPreserveRequestedBounds
+            ? optimizeRouteByDistance(route.properties || [], null)
+            : route.properties;
+        const savedDistance = requestedRouteOriginMode !== 'none' && !canPreserveRequestedBounds
+            ? Math.round(calculateRouteDistanceMiles(savedProperties) * 100) / 100
+            : route.totalDistance;
+        const savedRouteStartLocation = routeOriginMode === 'none'
+            ? routeStartLocation
+            : null;
+        const savedRouteEndLocation = routeOriginMode === 'none'
+            ? routeEndLocation
+            : null;
+
+        const safeRouteMetadata = { ...(route.metadata || {}) };
+        if (!canPreserveRequestedBounds) delete safeRouteMetadata.route_bounds;
+
+        const savedPropertyHashes = savedProperties.map(p => p.address_hash || p.id).filter(Boolean);
+        const precisionJobId = precisionAreaMetadata.precision_area?.job_id;
+
+        // A completed FetchJob can be recovered after a reload. If the browser
+        // closed after this chunk was saved but before its recovery key was
+        // cleared, treat replaying the same job/property set as idempotent.
+        if (isGeneratedRoute && precisionJobId && savedPropertyHashes.length > 0) {
+            const savedHashSet = new Set(savedPropertyHashes);
+            const existingJobRoute = savedRoutes.find(existingRoute => {
+                const existingHashes = (existingRoute?.property_hashes || []).filter(Boolean);
+                return existingRoute?.metadata?.precision_area?.job_id === precisionJobId
+                    && existingHashes.length === savedPropertyHashes.length
+                    && existingHashes.every(hash => savedHashSet.has(hash));
+            });
+
+            if (existingJobRoute) {
+                console.info(`[RoutePipeline] Skipping duplicate recovered route for precision job ${precisionJobId}.`);
+                return existingJobRoute;
+            }
+        }
+
         // @ts-ignore - 'mutateAsync' incorrectly expects 'void' instead of the data object
         return await createRouteMutation.mutateAsync({
             name: routeName,
             route_mode: routeMode,
-            property_hashes: route.properties.map(p => p.address_hash),
+            property_hashes: savedPropertyHashes,
             metrics: {
-                distance: route.totalDistance,
-                house_count: route.houseCount,
+                distance: savedDistance,
+                house_count: savedProperties.length,
                 score: route.competitivenessScore
             },
             status: 'ACTIVE',
-            start_location: startLocation,
+            start_location: savedRouteStartLocation,
+            ...(savedRouteEndLocation ? { end_location: savedRouteEndLocation } : {}),
+            route_origin_mode: routeOriginMode,
             assigned_to: defaultAssigneeId,
             assigned_to_name: defaultAssigneeName,
             manager_id: user.id,
-            metadata: isGeneratedRoute ? { ...(route.metadata || {}), ...precisionAreaMetadata, newly_generated: true, generated_at: generatedAt } : route.metadata,
+            metadata: isGeneratedRoute ? { ...safeRouteMetadata, ...precisionAreaMetadata, newly_generated: true, generated_at: generatedAt } : safeRouteMetadata,
             silent // Pass silent flag to mutation
         });
     };
@@ -978,8 +1086,9 @@ export default function Home() {
             }).sort((a, b) => b.matchScore - a.matchScore)[0];
 
             if (bestRep) {
-                // Trigger save
-                handleSaveRoute(route, bestRep.id, bestRep.name);
+                // Saving for another rep automatically removes any private
+                // start/end bounds and reorders the doors as a normal route.
+                await handleSaveRoute(route, bestRep.id, bestRep.name);
                 tempBusyCounts[bestRep.id] = (tempBusyCounts[bestRep.id] || 0) + 1;
             }
         }
@@ -1580,7 +1689,16 @@ export default function Home() {
 
             // 5. GENERATE ROUTES — yield to UI before heavy computation
             const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
-            const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
+            const preparedRouteBounds = normalizeRouteBoundsIntent(pendingRouteBoundsRef.current);
+            const start = preparedRouteBounds.enabled
+                ? preparedRouteBounds.startLocation
+                : startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
+            const end = preparedRouteBounds.enabled
+                ? preparedRouteBounds.endLocation
+                : routeConfig.returnToStart && isValidRoutePoint(start)
+                    ? start
+                    : null;
+            const routeOriginMode = preparedRouteBounds.enabled ? preparedRouteBounds.mode : 'none';
             const finalCount = workingSet.length; const filteredOut = initialCount - finalCount; const effectiveUse2Opt = finalCount > 3000 ? false : routeConfig.use2Opt;
             if (finalCount > 3000 && routeConfig.use2Opt) console.warn(`[generateRoutes] Auto-disabled 2-Opt (n=${finalCount} > 3K)`);
             const optStart = performance.now();
@@ -1591,9 +1709,11 @@ export default function Home() {
                 ? (await base44.functions.invoke('generateRoutesBackend', {
                     properties: workingSet,
                     houses_per_route: housesPerRoute,
-                    start_location: start
+                    start_location: start,
+                    end_location: end,
+                    route_origin_mode: routeOriginMode
                 })).data.routes
-                : await new Promise(resolve => setTimeout(() => resolve(generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: routeConfig.returnToStart, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights)), 50));
+                : await new Promise(resolve => setTimeout(() => resolve(generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: !preparedRouteBounds.enabled && routeConfig.returnToStart, endLocation: end, routeOriginMode, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights)), 50));
             const generatedDoorCount = Array.isArray(generated) ? generated.reduce((sum, route) => sum + (route.properties?.length || route.houseCount || 0), 0) : 0;
             console.log(`[RoutePipeline] after_route_command routes=${generated?.length || 0} doors=${generatedDoorCount} elapsed_ms=${Math.round(performance.now() - optStart)}`);
             if (!generated || generated.length === 0) { toast.dismiss('build-routes'); setGenerationError(`Optimizer returned 0 routes from ${finalCount.toLocaleString()} properties. Try relaxing filters or pulling fresh data.`); return false; }
@@ -1648,6 +1768,8 @@ export default function Home() {
                 : toastMsg;
 
             toast.success(finalToastMsg, { id: 'build-routes', duration: 5000 });
+            lastGeneratedRouteBoundsRef.current = preparedRouteBounds.enabled ? preparedRouteBounds : null;
+            if (preparedRouteBounds.enabled) preparePrecisionRouteBounds({ enabled: false });
             return true;
 
         } catch (e) {
@@ -1661,7 +1783,7 @@ export default function Home() {
             routesGeneratingRef.current = false;
             setRoutesGenerating(false);
         }
-    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, draftPolygon, frozenWorkingSet, effectiveProperties, fetchRouteCandidatesFromNeon, currentBatchDataJobId, user?.territory_zip_codes, user?.generated_zip_codes, user?.email]);
+    }, [availableProperties, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, assignedHashes, routeConfig, soldDateFilter, drawnPolygon, draftPolygon, frozenWorkingSet, effectiveProperties, fetchRouteCandidatesFromNeon, currentBatchDataJobId, preparePrecisionRouteBounds, user?.territory_zip_codes, user?.generated_zip_codes, user?.email]);
 
     // Reorder: re-run filtering + routing on frozen data without re-fetching
     const handleReorder = useCallback(async () => {
@@ -1686,14 +1808,23 @@ export default function Home() {
             if (filterResult.error) { toast.dismiss('reorder-routes'); setGenerationError(filterResult.error); return false; }
             const workingSet = filterResult.workingSet;
             const effectiveUse2Opt = workingSet.length > 3000 ? false : routeConfig.use2Opt;
-            const start = startLocation || (mapRef.current ? { lat: mapRef.current.getCenter().lat, lng: mapRef.current.getCenter().lng } : null);
+            const reorderBounds = normalizeRouteBoundsIntent(lastGeneratedRouteBoundsRef.current);
+            const start = reorderBounds.enabled
+                ? reorderBounds.startLocation
+                : startLocation || (mapRef.current ? { lat: mapRef.current.getCenter().lat, lng: mapRef.current.getCenter().lng } : null);
+            const end = reorderBounds.enabled
+                ? reorderBounds.endLocation
+                : routeConfig.returnToStart && isValidRoutePoint(start) ? start : null;
+            const routeOriginMode = reorderBounds.enabled ? reorderBounds.mode : 'none';
             const generated = workingSet.length > 5000
                 ? (await base44.functions.invoke('generateRoutesBackend', {
                     properties: workingSet,
                     houses_per_route: housesPerRoute,
-                    start_location: start
+                    start_location: start,
+                    end_location: end,
+                    route_origin_mode: routeOriginMode
                 })).data.routes
-                : generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: routeConfig.returnToStart, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights);
+                : generateOptimizedRoutes(workingSet, housesPerRoute, start, logs, { streetCooldownDays, useStreetSweep: routeConfig.walkingPattern === 'street_sweep', minimizeTurns: routeConfig.minimizeTurns, use2Opt: effectiveUse2Opt, walkingPattern: routeConfig.walkingPattern, returnToStart: !reorderBounds.enabled && routeConfig.returnToStart, endLocation: end, routeOriginMode, excludeTerminal: routeConfig.excludeTerminal }, learnedWeights);
             setRoutes(generated);
             let savedRecords = [];
             if (generated.length > 0) {
@@ -1714,39 +1845,126 @@ export default function Home() {
     }, [frozenWorkingSet, housesPerRoute, startLocation, logs, streetCooldownDays, zipCodeFilter, routeConfig, soldDateFilter, drawnPolygon, lastPullMode, learnedWeights, user?.territory_zip_codes, assignedHashes]);
 
     // Re-optimize a single saved route's order in-place — pure distance minimization (NN + 2-Opt + Or-Opt)
-    const handleReoptimizeRoute = useCallback(async (route) => {
-        const toastId = toast.loading('Optimizing for shortest distance...', { id: 'reoptimize-route' });
+    const handleReoptimizeRoute = useCallback(async (route, options = {}) => {
+        const optimizeFromHome = options?.fromHome === true;
+        toast.loading(optimizeFromHome ? 'Optimizing from home base...' : 'Optimizing for shortest distance...', { id: 'reoptimize-route' });
         const savedView = mapRef.current ? { center: mapRef.current.getCenter(), zoom: mapRef.current.getZoom() } : null;
         try {
-            const hashes = route.property_hashes || (route.properties || []).map(p => p.address_hash || p.id);
+            const hashes = (route.property_hashes || (route.properties || []).map(p => p.address_hash || p.id)).filter(Boolean);
             const routePropsByHash = new Map((route.properties || route.allProperties || []).map(p => [p.address_hash || p.id, p]));
             const routeProperties = hashes.map(hash => effectiveProperties.find(p => p.address_hash === hash) || routePropsByHash.get(hash)).filter(Boolean);
             if (routeProperties.length === 0) { toast.error('No properties found for this route.', { id: 'reoptimize-route' }); return; }
-            const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
-            const start = startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
-            const optimized = optimizeRouteByDistance(routeProperties, start);
-            if (!optimized || optimized.length === 0) { toast.error('Optimization produced no results.', { id: 'reoptimize-route' }); return; }
-            let newDistance = 0;
-            for (let i = 0; i < optimized.length - 1; i++) {
-                const R = 3959, dLat = (optimized[i + 1].lat - optimized[i].lat) * Math.PI / 180, dLng = (optimized[i + 1].lng - optimized[i].lng) * Math.PI / 180;
-                const a = Math.sin(dLat / 2) ** 2 + Math.cos(optimized[i].lat * Math.PI / 180) * Math.cos(optimized[i + 1].lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-                newDistance += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            if (routeProperties.length !== hashes.length) {
+                toast.error(`Only ${routeProperties.length} of ${hashes.length} route properties loaded. Refresh and try again.`, { id: 'reoptimize-route', duration: 6000 });
+                return;
             }
-            newDistance = Math.round(newDistance * 100) / 100;
+            const currentCenter = mapRef.current ? mapRef.current.getCenter() : null;
+            const assignedMember = teamMembers.find(member =>
+                member.id === route.assigned_to || member.user_id === route.assigned_to
+            );
+            const routeBelongsToCurrentUser = !route.assigned_to
+                || route.assigned_to === user?.id
+                || assignedMember?.user_id === user?.id
+                || Boolean(assignedMember?.email && user?.email
+                    && String(assignedMember.email).toLowerCase() === String(user.email).toLowerCase());
+            let requestedHomeBase = routeBelongsToCurrentUser ? user?.home_base : null;
+            if (optimizeFromHome && !routeBelongsToCurrentUser) {
+                try {
+                    const response = await base44.functions.invoke('getRouteHomeBase', { route_id: route.id });
+                    requestedHomeBase = response?.data?.home_base || null;
+                } catch (error) {
+                    console.warn('[Home] Could not load assigned rep Home Base:', error);
+                }
+            }
+            if (optimizeFromHome && !isValidRoutePoint(requestedHomeBase)) {
+                toast.error(
+                    assignedMember
+                        ? `${assignedMember.name || 'This rep'} needs to set a Home Base first.`
+                        : 'Set a Home Base in Precision Generate before optimizing from home.',
+                    { id: 'reoptimize-route', duration: 5000 }
+                );
+                return;
+            }
+
+            const savedStart = route.start_location || route.startLocation;
+            const savedEnd = route.end_location || route.endLocation;
+            const start = optimizeFromHome
+                ? requestedHomeBase
+                : isValidRoutePoint(savedStart)
+                    ? savedStart
+                    : startLocation || (currentCenter ? { lat: currentCenter.lat, lng: currentCenter.lng } : null);
+            const end = optimizeFromHome
+                ? requestedHomeBase
+                : isValidRoutePoint(savedEnd)
+                    ? savedEnd
+                    : null;
+            const existingRouteOriginMode = ['home_round_trip', 'current_to_home'].includes(route.route_origin_mode || route.routeOriginMode)
+                ? (route.route_origin_mode || route.routeOriginMode)
+                : 'none';
+            const routeOriginMode = optimizeFromHome
+                ? 'home_round_trip'
+                : isValidRoutePoint(end) && existingRouteOriginMode !== 'none'
+                    ? existingRouteOriginMode
+                    : 'none';
+            const optimized = optimizeRouteByDistance(routeProperties, start, end);
+            if (!optimized || optimized.length === 0) { toast.error('Optimization produced no results.', { id: 'reoptimize-route' }); return; }
+            const newDistance = Math.round(calculateRouteDistanceMiles(
+                optimized,
+                isValidRoutePoint(end) ? { startLocation: start, endLocation: end } : {}
+            ) * 100) / 100;
             const oldDistance = route.metrics?.distance || route.totalDistance || 0;
             const newOrder = optimized.map(p => p.address_hash || p.id).filter(Boolean);
-            await base44.entities.SavedRoute.update(route.id, { property_hashes: newOrder, metrics: { ...route.metrics, distance: newDistance, house_count: optimized.length } });
+            const routeBoundsMetadata = isValidRoutePoint(end)
+                ? { route_bounds: { enabled: true, mode: routeOriginMode } }
+                : {};
+            const savedBoundStart = routeOriginMode === 'none' ? start : null;
+            const savedBoundEnd = routeOriginMode === 'none' ? end : null;
+            const clearedUnavailableBounds = !optimizeFromHome && existingRouteOriginMode !== 'none' && !isValidRoutePoint(end);
+            const routeUpdate = {
+                property_hashes: newOrder,
+                metrics: { ...route.metrics, distance: newDistance, house_count: optimized.length },
+                ...(isValidRoutePoint(end) ? {
+                    start_location: savedBoundStart,
+                    end_location: savedBoundEnd,
+                    route_origin_mode: routeOriginMode,
+                    metadata: { ...(route.metadata || {}), ...routeBoundsMetadata }
+                } : clearedUnavailableBounds ? {
+                    start_location: null,
+                    end_location: null,
+                    route_origin_mode: 'none',
+                    metadata: {
+                        ...(route.metadata || {}),
+                        route_bounds: { enabled: false, cleared_reason: 'reoptimized_without_home' }
+                    }
+                } : {})
+            };
+            await base44.entities.SavedRoute.update(route.id, routeUpdate);
             queryClient.invalidateQueries({ queryKey: ['savedRoutes'] });
             if (activeRoute && activeRoute.id === route.id) {
-                setActiveRoute(prev => ({ ...prev, property_hashes: newOrder, properties: optimized, allProperties: optimized, houseCount: optimized.length, totalDistance: newDistance, metrics: { ...prev?.metrics, distance: newDistance, house_count: optimized.length } }));
+                setActiveRoute(prev => ({
+                    ...prev,
+                    ...routeUpdate,
+                    ...(routeOriginMode !== 'none' ? { startLocation: start, endLocation: end, routeOriginMode } : {}),
+                    ...(clearedUnavailableBounds ? { startLocation: null, endLocation: null, routeOriginMode: 'none' } : {}),
+                    property_hashes: newOrder,
+                    properties: optimized,
+                    allProperties: optimized,
+                    houseCount: optimized.length,
+                    totalDistance: newDistance,
+                    metrics: { ...prev?.metrics, distance: newDistance, house_count: optimized.length }
+                }));
             }
             // Restore map view to prevent zoom-out from fitBounds reacting to property reorder
             if (savedView && mapRef.current) { try { mapRef.current.setView(savedView.center, savedView.zoom, { animate: false }); } catch (e) { } }
             const savedMiles = Math.round((oldDistance - newDistance) * 100) / 100;
-            const msg = savedMiles > 0 ? `Route optimized! Saved ~${savedMiles} miles (${newDistance} mi total)` : `Route optimized (${newDistance} mi total)`;
+            const prefix = optimizeFromHome ? 'Home round trip optimized' : 'Route optimized';
+            const msg = savedMiles > 0 ? `${prefix}! Saved ~${savedMiles} estimated miles (${newDistance} mi straight-line estimate)` : `${prefix} (${newDistance} mi straight-line estimate)`;
             toast.success(msg, { id: 'reoptimize-route', duration: 4000 });
+            if (clearedUnavailableBounds) {
+                toast.info('Home Base mode was removed. Use “Optimize from Home Base” to keep a home round trip.', { duration: 6000 });
+            }
         } catch (e) { console.error('Re-optimize error:', e); toast.error('Failed to re-optimize route.', { id: 'reoptimize-route' }); }
-    }, [effectiveProperties, startLocation, logs, routeConfig, learnedWeights, activeRoute]);
+    }, [activeRoute, effectiveProperties, startLocation, teamMembers, user?.email, user?.home_base, user?.id]);
 
     // Filter and sort routes
     const filteredRoutes = useMemo(() => {
@@ -2163,7 +2381,12 @@ export default function Home() {
                 savedRoutes={savedRoutes}
                 setZipCodeFilter={setZipCodeFilter}
                 routeConfig={routeConfig}
+                homeBase={user?.home_base || null}
+                onSaveHomeBase={handleSaveHomeBase}
+                onRouteBoundsPrepared={preparePrecisionRouteBounds}
                 onPullComplete={async (pullFetchMonths, pulledWithMls, jobStatus = {}) => {
+                    const completedRouteBounds = jobStatus?.diagnostics?.route_bounds || jobStatus?.route_bounds;
+                    if (completedRouteBounds) preparePrecisionRouteBounds(completedRouteBounds);
                     setFrozenWorkingSet(null);
                     setFetchedProperties([]);
                     const completedJobId = getPrecisionJobId(jobStatus);
@@ -2177,6 +2400,7 @@ export default function Home() {
                         currentBatchDataRequestedCountRef.current = null;
                         currentBatchDataPolygonRef.current = null;
                         persistPrecisionJobContext(null);
+                        preparePrecisionRouteBounds({ enabled: false });
                         setGenerationError('This Precision pull completed, but the completed job id was missing. Route generation was stopped so old account data cannot be mixed into this new area. Please generate the area again.');
                         return;
                     }
@@ -2193,6 +2417,7 @@ export default function Home() {
                         currentBatchDataRequestedCountRef.current = null;
                         currentBatchDataPolygonRef.current = null;
                         persistPrecisionJobContext(null);
+                        preparePrecisionRouteBounds({ enabled: false });
                         setGenerationError('This Precision pull completed, but the selected area was missing before routes could be built. Route generation was stopped so old account data cannot be mixed into this new area. Please generate the area again.');
                         return;
                     }
@@ -2257,6 +2482,7 @@ export default function Home() {
                             try { localStorage.removeItem('fk_drawnPolygonQueried'); } catch { }
                         }
                     } else {
+                        preparePrecisionRouteBounds({ enabled: false });
                         const isUltraRecent = Number(pm) <= 0.25;
                         setGenerationError(isUltraRecent
                             ? 'No BatchData-confirmed sales were returned inside this exact area for the selected last-week window. Route generation was stopped so stale old data is not reused. Provider sale/intel records can lag — try 2 weeks or 1 month for this territory.'

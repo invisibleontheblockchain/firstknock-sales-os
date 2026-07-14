@@ -31,6 +31,19 @@ const BRAND = {
     offWhite: '#E5E5E5'
 };
 
+function assignmentWithoutRouteBounds(route, assignment) {
+    return {
+        ...assignment,
+        start_location: null,
+        end_location: null,
+        route_origin_mode: 'none',
+        metadata: {
+            ...(route?.metadata || {}),
+            route_bounds: { enabled: false, cleared_reason: 'assignee_changed' }
+        }
+    };
+}
+
 export default function AdminTeam() {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
@@ -131,12 +144,18 @@ export default function AdminTeam() {
     });
 
     const assignRouteMutation = useMutation({
-        mutationFn: ({ routeId, memberId, memberName }) => 
-            base44.entities.SavedRoute.update(routeId, {
+        mutationFn: ({ routeId, memberId, memberName }) => {
+            const route = routes.find(item => item.id === routeId);
+            const assignment = {
                 assigned_to: memberId,
                 assigned_to_name: memberName,
                 status: 'ACTIVE' 
-            }),
+            };
+            return base44.entities.SavedRoute.update(
+                routeId,
+                route?.assigned_to === memberId ? assignment : assignmentWithoutRouteBounds(route, assignment)
+            );
+        },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['allRoutes'] });
             toast.success("Route assigned");
@@ -164,11 +183,11 @@ export default function AdminTeam() {
 
             // Update each route to remove assignment
             const promises = memberRoutes.map(route => 
-                base44.entities.SavedRoute.update(route.id, {
+                base44.entities.SavedRoute.update(route.id, assignmentWithoutRouteBounds(route, {
                     assigned_to: null,
                     assigned_to_name: null,
                     status: 'PENDING'
-                })
+                }))
             );
             
             await Promise.all(promises);
@@ -219,7 +238,7 @@ export default function AdminTeam() {
             const memberRoutes = routes.filter(r => r.assigned_to === member.id);
             if (memberRoutes.length > 0) {
                 await Promise.all(memberRoutes.map(r =>
-                    base44.entities.SavedRoute.update(r.id, { assigned_to: null, assigned_to_name: null, status: 'PENDING' })
+                    base44.entities.SavedRoute.update(r.id, assignmentWithoutRouteBounds(r, { assigned_to: null, assigned_to_name: null, status: 'PENDING' }))
                 ));
             }
             // 2. Delete the TeamMember record

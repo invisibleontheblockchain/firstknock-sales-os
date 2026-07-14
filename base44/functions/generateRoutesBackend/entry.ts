@@ -1,7 +1,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.25';
 
 function distanceMiles(a, b) {
-    if (!a?.lat || !a?.lng || !b?.lat || !b?.lng) return 9999;
+    if (!isValidPoint(a) || !isValidPoint(b)) return 9999;
     const r = 3959;
     const dLat = (Number(b.lat) - Number(a.lat)) * Math.PI / 180;
     const dLng = (Number(b.lng) - Number(a.lng)) * Math.PI / 180;
@@ -11,10 +11,35 @@ function distanceMiles(a, b) {
     return r * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
-function nearestNeighbor(properties, startLocation) {
+function isValidPoint(point) {
+    if (!point || point.lat === null || point.lat === undefined || point.lat === '' || point.lng === null || point.lng === undefined || point.lng === '') {
+        return false;
+    }
+    const lat = Number(point?.lat);
+    const lng = Number(point?.lng);
+    return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+}
+
+function nearestNeighbor(properties, startLocation, endLocation = null) {
     const remaining = [...properties];
     const ordered = [];
     let current = startLocation || remaining[0];
+    let finalStop = null;
+
+    // Keep one door close to the fixed endpoint for the final leg. This avoids a
+    // nearest-neighbor route ending on the far side of the territory from home.
+    if (isValidPoint(endLocation) && remaining.length > 1) {
+        let finalIndex = 0;
+        let finalDistance = Infinity;
+        for (let i = 0; i < remaining.length; i++) {
+            const d = distanceMiles(remaining[i], endLocation);
+            if (d < finalDistance) {
+                finalDistance = d;
+                finalIndex = i;
+            }
+        }
+        [finalStop] = remaining.splice(finalIndex, 1);
+    }
 
     while (remaining.length > 0) {
         let bestIndex = 0;
@@ -31,13 +56,45 @@ function nearestNeighbor(properties, startLocation) {
         current = next;
     }
 
+    if (finalStop) ordered.push(finalStop);
+
     return ordered;
 }
 
-function routeDistance(properties, startLocation) {
-    if (properties.length < 2) return 0;
+function applyBoundedTwoOpt(properties, startLocation, endLocation) {
+    if (properties.length < 3 || properties.length > 750) return properties;
+    const route = [...properties];
+    let improved = true;
+    let passes = 0;
+
+    while (improved && passes < 5) {
+        improved = false;
+        passes += 1;
+        for (let i = 0; i < route.length - 1; i++) {
+            const before = i === 0 ? startLocation : route[i - 1];
+            if (!isValidPoint(before)) continue;
+            for (let j = i + 1; j < route.length; j++) {
+                const after = j === route.length - 1 ? endLocation : route[j + 1];
+                if (!isValidPoint(after)) continue;
+                const current = distanceMiles(before, route[i]) + distanceMiles(route[j], after);
+                const swapped = distanceMiles(before, route[j]) + distanceMiles(route[i], after);
+                if (swapped + 0.000001 < current) {
+                    const reversed = route.slice(i, j + 1).reverse();
+                    route.splice(i, reversed.length, ...reversed);
+                    improved = true;
+                }
+            }
+        }
+    }
+
+    return route;
+}
+
+function routeDistance(properties, startLocation, endLocation = null) {
+    if (properties.length === 0) return 0;
     let total = startLocation ? distanceMiles(startLocation, properties[0]) : 0;
     for (let i = 0; i < properties.length - 1; i++) total += distanceMiles(properties[i], properties[i + 1]);
+    if (endLocation) total += distanceMiles(properties[properties.length - 1], endLocation);
     return Math.round(total * 100) / 100;
 }
 
@@ -87,7 +144,19 @@ Deno.serve(async (req) => {
         const body = await req.json().catch(() => ({}));
         const properties = Array.isArray(body.properties) ? body.properties : [];
         const housesPerRoute = Math.min(Math.max(Number(body.houses_per_route || 100), 1), 10000);
-        const startLocation = body.start_location || null;
+        const requestedStartLocation = isValidPoint(body.start_location) ? body.start_location : null;
+        const requestedEndLocation = isValidPoint(body.end_location) ? body.end_location : null;
+        const requestedRouteOriginMode = ['home_round_trip', 'current_to_home'].includes(body.route_origin_mode)
+            ? body.route_origin_mode
+            : 'none';
+        const hasFixedRouteBounds = requestedRouteOriginMode !== 'none'
+            && requestedStartLocation !== null
+            && requestedEndLocation !== null;
+        // A start-only request is supported by the existing optimizer. The new
+        // fixed finish is accepted only as a complete, explicit opt-in pair.
+        const startLocation = requestedStartLocation;
+        const endLocation = hasFixedRouteBounds ? requestedEndLocation : null;
+        const routeOriginMode = hasFixedRouteBounds ? requestedRouteOriginMode : 'none';
         const routeMode = body.route_mode === 'canvas' ? 'canvas' : 'precision';
 
         if (properties.length === 0) return Response.json({ success: true, routes: [] });
@@ -96,15 +165,25 @@ Deno.serve(async (req) => {
         const ordered = nearestNeighbor(properties, startLocation);
         const routes = [];
         for (let i = 0; i < ordered.length; i += housesPerRoute) {
-            const chunk = ordered.slice(i, i + housesPerRoute);
+            const rawChunk = ordered.slice(i, i + housesPerRoute);
+            const chunk = endLocation
+                ? applyBoundedTwoOpt(nearestNeighbor(rawChunk, startLocation, endLocation), startLocation, endLocation)
+                : rawChunk;
             routes.push({
                 id: `backend-route-${Date.now()}-${routes.length + 1}`,
                 name: buildRouteName(chunk, routeMode, routes.length + 1),
                 route_mode: routeMode,
                 properties: chunk,
                 houseCount: chunk.length,
-                totalDistance: routeDistance(chunk, startLocation),
-                competitivenessScore: Math.round(chunk.length * 10)
+                totalDistance: routeDistance(chunk, startLocation, endLocation),
+                competitivenessScore: Math.round(chunk.length * 10),
+                ...(hasFixedRouteBounds ? {
+                    startLocation,
+                    endLocation,
+                    routeOriginMode,
+                    distanceFromStart: Math.round(distanceMiles(startLocation, chunk[0]) * 100) / 100,
+                    distanceToEnd: Math.round(distanceMiles(chunk[chunk.length - 1], endLocation) * 100) / 100
+                } : {})
             });
         }
 
