@@ -71,8 +71,9 @@ test('rep Canvas handoff is server-authorized and has no name or local deploymen
 });
 
 test('Canvas has no house-analysis UI gate and Home owns the authorized mode', async () => {
-  const [builder, home, managerLayers, territoryPrompt] = await Promise.all([
+  const [builder, workspace, home, managerLayers, territoryPrompt] = await Promise.all([
     source('src/components/map/CanvasBuilderSettings.jsx'),
+    source('src/components/map/CanvasPlannerWorkspace.jsx'),
     source('src/pages/Home.jsx'),
     source('src/components/map/ManagerMapLayers.jsx'),
     source('src/components/map/TerritoryPrompt.jsx'),
@@ -80,7 +81,8 @@ test('Canvas has no house-analysis UI gate and Home owns the authorized mode', a
 
   assert.doesNotMatch(builder, /canvasAnalyzeTerritory|CanvasOpportunityReview|canvasAnalysisStore|stable home|homes per area/i);
   assert.match(builder, /workload_basis: 'street_length'/);
-  assert.match(builder, /How many people are working this area/);
+  assert.match(workspace, /Number of areas/);
+  assert.doesNotMatch(workspace, /How many people are working this area/);
   assert.match(home, /routeMode=\{routeMode\}/);
   assert.match(home, /routeMode !== 'canvas' \|\| hasCanvasAccess\(user\)/);
   assert.doesNotMatch(managerLayers, /localStorage\.getItem\('fk_routeMode'\)/);
@@ -99,4 +101,18 @@ test('Canvas and Precision retain independent freehand boundaries', async () => 
   assert.match(home, /routeMode === 'precision' && !drawingMode/);
   assert.match(home, /onResumeBoundary=\{\(savedBoundary\) => \{/);
   assert.match(home, /setCanvasDrawnPolygon\(validation\.points\)/);
+});
+
+test('background Precision completion cannot dismiss an unsaved Canvas planner', async () => {
+  const [territoryPrompt, home] = await Promise.all([
+    source('src/components/map/TerritoryPrompt.jsx'),
+    source('src/pages/Home.jsx'),
+  ]);
+  assert.match(territoryPrompt, /const routeModeRef = useRef\(routeMode\)/);
+  assert.match(territoryPrompt, /if \(routeMode === 'precision'\) return;[\s\S]*?clearInterval\(pollRef\.current\)/);
+  assert.match(territoryPrompt, /await base44\.functions\.invoke\('fetchJobStatus'[\s\S]*?if \(routeModeRef\.current !== 'precision'\) return;/);
+  assert.match(territoryPrompt, /await onPullComplete\([\s\S]*?if \(routeModeRef\.current !== 'precision'\) return;/);
+  assert.match(home, /const routeModeRef = useRef\(routeMode\)/);
+  assert.match(home, /onPullComplete=\{async[\s\S]*?if \(routeModeRef\.current !== 'precision'\) return;/);
+  assert.match(home, /await queryClient\.refetchQueries\(\{ queryKey: \['user'\] \}\);\s*if \(routeModeRef\.current !== 'precision'\) return;/);
 });

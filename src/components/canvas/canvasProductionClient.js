@@ -80,6 +80,12 @@ export async function listMyCanvasCampaigns() {
   };
 }
 
+export function quarantineInvalidCanvasCampaigns() {
+  return invokeProductionFunction('canvasQuarantineInvalidCampaigns', {
+    confirmation: 'QUARANTINE_INVALID_CANVAS_RECORDS',
+  }, 'Invalid Canvas records could not be quarantined.');
+}
+
 export async function getMyCanvasAssignments({ sessionId } = {}) {
   const data = await invokeProductionFunction(
     'canvasGetMyAssignments',

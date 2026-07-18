@@ -40,6 +40,7 @@ function LayoutInner({ children }) {
 
   const [isOnline, setIsOnline] = React.useState(navigator.onLine);
   const [canvasDraftDirty, setCanvasDraftDirty] = React.useState(false);
+  const restoringCanvasHistoryRef = React.useRef(false);
   const queryClient = useQueryClient();
   const { data: user, isLoading } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), retry: false });
 
@@ -68,6 +69,39 @@ function LayoutInner({ children }) {
     if (confirmCanvasNavigation()) return;
     event.preventDefault();
     event.stopPropagation();
+  }, [canvasDraftDirty, confirmCanvasNavigation]);
+
+  React.useEffect(() => {
+    if (!canvasDraftDirty) {
+      restoringCanvasHistoryRef.current = false;
+      return undefined;
+    }
+    const protectedEntry = {
+      index: Number(window.history.state?.idx),
+      state: window.history.state,
+      url: window.location.href,
+    };
+    const guardCanvasHistoryNavigation = (event) => {
+      if (restoringCanvasHistoryRef.current) {
+        restoringCanvasHistoryRef.current = false;
+        event.stopImmediatePropagation();
+        return;
+      }
+      if (confirmCanvasNavigation('Browser navigation')) {
+        setCanvasDraftDirty(false);
+        return;
+      }
+      event.stopImmediatePropagation();
+      const nextIndex = Number(event.state?.idx);
+      if (Number.isFinite(protectedEntry.index) && Number.isFinite(nextIndex) && protectedEntry.index !== nextIndex) {
+        restoringCanvasHistoryRef.current = true;
+        window.history.go(protectedEntry.index - nextIndex);
+        return;
+      }
+      window.history.pushState(protectedEntry.state, '', protectedEntry.url);
+    };
+    window.addEventListener('popstate', guardCanvasHistoryNavigation, true);
+    return () => window.removeEventListener('popstate', guardCanvasHistoryNavigation, true);
   }, [canvasDraftDirty, confirmCanvasNavigation]);
 
   const handleLogout = React.useCallback(async () => {

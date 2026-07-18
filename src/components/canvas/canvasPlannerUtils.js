@@ -1,7 +1,7 @@
 const UNVERIFIED_METHODS = new Set(['', 'unknown', 'unverified', 'legacy_unverified']);
 const MAX_CANVAS_ZONES = 250;
 const MAX_CANVAS_POLYGON_POINTS = 800;
-const MAX_CANVAS_AREA_SQ_MI = 300;
+const MAX_CANVAS_AREA_SQ_MI = 1_000;
 const CANVAS_COORDINATE_EPSILON = 1e-10;
 export const MAX_CANVAS_INTERACTIVE_COMPLEXITY = 180_000;
 export const MAX_CANVAS_INTERACTIVE_WORK_UNITS = 2_000;
@@ -38,7 +38,8 @@ function canvasSegmentsIntersect(firstStart, firstEnd, secondStart, secondEnd) {
     || canvasPointOnSegment(firstEnd, secondStart, secondEnd);
 }
 
-function canvasPolygonAreaSqMiles(points) {
+export function getCanvasBoundaryAreaSqMiles(points = []) {
+  if (!Array.isArray(points) || points.length < 3) return 0;
   const averageLat = points.reduce((sum, point) => sum + point.lat, 0) / points.length;
   const latScale = 69;
   const lngScale = 69 * Math.cos(averageLat * Math.PI / 180);
@@ -98,12 +99,12 @@ export function validateCanvasBoundary(rawPolygon) {
   if (Math.abs(twiceArea) <= CANVAS_COORDINATE_EPSILON) {
     return { valid: false, code: 'ZERO_AREA_POLYGON', message: 'The Canvas boundary has no usable area. Redraw a wider territory.', points };
   }
-  const areaSqMiles = canvasPolygonAreaSqMiles(points);
+  const areaSqMiles = getCanvasBoundaryAreaSqMiles(points);
   if (!Number.isFinite(areaSqMiles) || areaSqMiles > MAX_CANVAS_AREA_SQ_MI) {
     return {
       valid: false,
       code: 'CANVAS_AREA_TOO_LARGE',
-      message: `This Canvas area is about ${Math.round(areaSqMiles).toLocaleString()} sq mi. Draw ${MAX_CANVAS_AREA_SQ_MI} sq mi or less before loading streets.`,
+      message: `This Canvas area is about ${Math.round(areaSqMiles).toLocaleString()} sq mi. Draw ${MAX_CANVAS_AREA_SQ_MI.toLocaleString()} sq mi or less before loading streets.`,
       points,
       areaSqMiles,
     };
@@ -292,7 +293,7 @@ export function getCanvasCrewAssignmentStatus(plan = {}, selectedTeamMemberIds =
   const selectedSet = new Set(selectedIds);
   const selectionMatchesAssignments = selectedIds.length === uniqueAssignedIds.length
     && uniqueAssignedIds.every((id) => selectedSet.has(id));
-  const oneToOneMode = divisionMode === 'selected_reps' || divisionMode === 'area_count';
+  const oneToOneMode = divisionMode === 'selected_reps';
   const oneToOne = everyZoneAssigned
     && uniqueAssignedIds.length === zones.length
     && selectedIds.length === zones.length
@@ -305,7 +306,7 @@ export function getCanvasCrewAssignmentStatus(plan = {}, selectedTeamMemberIds =
   let message = '';
   if (!zones.length) message = 'Create the territory preview before choosing the crew.';
   else if (!selectedIds.length) message = 'Choose the reps who should receive this work.';
-  else if (oneToOneMode && selectedIds.length !== zones.length) message = `Choose exactly ${zones.length} rep${zones.length === 1 ? '' : 's'} so every person receives one territory.`;
+  else if (oneToOneMode && selectedIds.length !== zones.length) message = `Choose exactly ${zones.length} rep${zones.length === 1 ? '' : 's'} so every selected rep receives one territory.`;
   else if (!everyZoneAssigned) message = 'Assign every territory before sending.';
   else if (oneToOneMode && !oneToOne) message = 'Each selected rep must receive exactly one territory.';
   else if (!selectionMatchesAssignments) message = 'Every selected rep must receive work, with no unselected rep assigned.';

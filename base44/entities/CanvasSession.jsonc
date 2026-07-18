@@ -71,7 +71,7 @@
     },
     "selected_team_member_ids": {
       "type": "array",
-      "description": "Manager-selected TeamMember IDs. Selected-rep and headcount plans require one zone per rep; workload-pack plans may assign multiple zones while still giving every selected rep work.",
+      "description": "Manager-selected TeamMember IDs. selected_reps plans require one zone per rep; area_count plans may assign multiple zones to a rep while still giving every selected rep work.",
       "items": { "type": "string" }
     },
     "zones": {
@@ -125,8 +125,14 @@
     "close_idempotency_key": { "type": "string" },
     "status": {
       "type": "string",
-      "enum": ["draft", "deployed", "completed", "recalled"],
+      "enum": ["draft", "deployed", "completed", "recalled", "quarantined"],
       "default": "draft"
+    },
+    "quarantined_at": { "type": "string", "format": "date-time" },
+    "quarantined_by_user_id": { "type": "string" },
+    "quarantine_reason": {
+      "type": "string",
+      "description": "Service-owned reason an untrusted legacy lifecycle record was removed from active Canvas use."
     },
     "manager_id": { "type": "string" },
     "canvas_field_write_lock_token": {

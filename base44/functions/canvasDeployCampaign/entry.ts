@@ -1902,8 +1902,14 @@ var LIFECYCLE_PAGE_SIZE = 500;
 var TEAM_VALIDATION_BATCH_SIZE = 100;
 var MAX_OSM_JSON_BYTES = 2e7;
 var MAX_OSM_ELEMENTS = 25e4;
+var MAX_OSM_TILE_JSON_BYTES = 8e6;
 var OVERPASS_TIMEOUT_MS = 15e3;
-var OVERPASS_URLS = ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
+var OVERPASS_TOTAL_TIMEOUT_MS = 9e4;
+var OVERPASS_URLS = ["https://overpass-api.de/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
+var OVERPASS_TILE_THRESHOLD_SQ_MI = 20;
+var OVERPASS_TILE_SIDE_MILES = 5;
+var MAX_OVERPASS_TILES = 144;
+var OVERPASS_TILE_CONCURRENCY = 2;
 var CANVAS_HIGHWAY_FILTER = "primary|secondary|tertiary|unclassified|residential|living_street";
 var WORKLOAD_BASES = /* @__PURE__ */ new Set(["street_length", "street_length_plus_estimated_doors"]);
 var DIVISION_MODES = /* @__PURE__ */ new Set(["selected_reps", "area_count", "street_workload_target"]);
@@ -1922,6 +1928,47 @@ var HttpError = class extends Error {
 };
 function normalized(value) {
   return String(value || "").trim().toLowerCase();
+}
+function isoInstant(value) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return null;
+  const milliseconds = Date.parse(value);
+  return Number.isFinite(milliseconds) ? milliseconds : null;
+}
+function betaGrantResolution(user) {
+  const userId = String(user?.id || "");
+  if (!userId) return { present: false, grant: null };
+  const encoded = Deno.env.get("BETA_ACCESS_GRANTS");
+  if (!encoded) return { present: false, grant: null };
+  let document;
+  try {
+    document = JSON.parse(encoded);
+  } catch {
+    return { present: false, grant: null };
+  }
+  if (!document || Array.isArray(document) || document.version !== 1 || !document.grants || Array.isArray(document.grants) || typeof document.grants !== "object") {
+    return { present: false, grant: null };
+  }
+  if (!Object.prototype.hasOwnProperty.call(document.grants, userId)) return { present: false, grant: null };
+  const candidate = document.grants[userId];
+  const startsAt = isoInstant(candidate?.starts_at);
+  const endsAt = isoInstant(candidate?.ends_at);
+  const precisionLimit = Number(candidate?.precision_limit);
+  const canvasSeats = Number(candidate?.canvas_seats);
+  if (!candidate || Array.isArray(candidate) || typeof candidate !== "object" || typeof candidate.grant_id !== "string" || !candidate.grant_id.trim() || candidate.grant_id.length > 256 || candidate.status !== "active" || !Number.isInteger(precisionLimit) || precisionLimit < 1 || precisionLimit > 1e3 || !Number.isInteger(canvasSeats) || canvasSeats < 1 || canvasSeats > 100 || startsAt === null || endsAt === null || startsAt >= endsAt) {
+    return { present: true, grant: null };
+  }
+  const now = Date.now();
+  if (now < startsAt || now >= endsAt) return { present: true, grant: null };
+  return {
+    present: true,
+    grant: {
+      grant_id: candidate.grant_id,
+      precision_limit: precisionLimit,
+      canvas_seats: canvasSeats,
+      starts_at: candidate.starts_at,
+      ends_at: candidate.ends_at
+    }
+  };
 }
 function canManageCanvas(user) {
   const appRole = normalized(user?.app_role || user?.data?.app_role);
@@ -1987,6 +2034,16 @@ async function trialHasLivePaymentMethod(stripe, subscription, user) {
 }
 async function resolveCanvasEntitlement(user) {
   if (isPrivileged(user)) return { kind: "privileged", seats: Number.POSITIVE_INFINITY, subscription_id: null };
+  const beta = betaGrantResolution(user);
+  if (beta.grant) {
+    return {
+      kind: "beta",
+      seats: beta.grant.canvas_seats,
+      canvas_seats: beta.grant.canvas_seats,
+      subscription_id: null,
+      grant_id: beta.grant.grant_id
+    };
+  }
   const secret = Deno.env.get("STRIPE_SECRET_KEY");
   if (!secret) throw new HttpError(503, "canvas_billing_unavailable", "Canvas billing verification is unavailable. Deployment was not changed.");
   const stripe = new Stripe(secret);
@@ -2128,8 +2185,8 @@ function validatePlan(session) {
   if (!selected.length || new Set(selected).size !== selected.length || !sameIdSet(selected, [...assignedRepIds])) {
     throw new HttpError(422, "selected_rep_contract_failed", "Every assigned rep must be in the manager-selected roster with no omitted or extra reps.");
   }
-  if (["selected_reps", "area_count"].includes(session.division_mode) && (zones.length !== selected.length || new Set(zoneAssigneeIds).size !== zones.length)) {
-    throw new HttpError(422, "selected_rep_contract_failed", "Rep-count planning requires exactly one area per selected rep.");
+  if (session.division_mode === "selected_reps" && (zones.length !== selected.length || new Set(zoneAssigneeIds).size !== zones.length)) {
+    throw new HttpError(422, "selected_rep_contract_failed", "Selected-rep planning requires exactly one area per selected rep.");
   }
   const qa = session.qa || {};
   if (qa.deployable !== true || qa.street_coverage_complete !== true || qa.no_duplicate_work_units !== true || qa.connected_zones !== true || qa.atomic_work_units !== true || qa.protected_units_intact !== true || Number(qa.cul_de_sac_splits || 0) !== 0) {
@@ -2157,7 +2214,7 @@ function validatePlan(session) {
       identity_validator_version: 2,
       territory_model: "street_territory_v1",
       street_work_units_complete_and_exclusive: true,
-      selected_reps_one_to_one: ["selected_reps", "area_count"].includes(session.division_mode) ? true : null,
+      selected_reps_one_to_one: session.division_mode === "selected_reps" ? true : null,
       zone_count: zones.length,
       work_unit_count: workUnits.length,
       total_street_length_meters: Number(qa.total_street_length_meters || 0),
@@ -2326,9 +2383,89 @@ out body;
 >;
 out body qt;`;
 }
-async function fetchOverpassEndpoint(url, query) {
+function canvasRoadBounds(polygon) {
+  const points = asArray2(polygon);
+  if (!points.length) return null;
+  return {
+    south: Math.min(...points.map((point) => Number(point.lat))),
+    west: Math.min(...points.map((point) => Number(point.lng))),
+    north: Math.max(...points.map((point) => Number(point.lat))),
+    east: Math.max(...points.map((point) => Number(point.lng)))
+  };
+}
+function canvasRoadTiles(polygon) {
+  const bounds = canvasRoadBounds(polygon);
+  if (!bounds) return [];
+  const centerLatitude = (bounds.south + bounds.north) / 2;
+  const widthMiles = Math.max(0, (bounds.east - bounds.west) * 69 * Math.cos(centerLatitude * Math.PI / 180));
+  const heightMiles = Math.max(0, (bounds.north - bounds.south) * 69);
+  if (widthMiles * heightMiles <= OVERPASS_TILE_THRESHOLD_SQ_MI && asArray2(polygon).length <= 120) return [];
+  const columns = Math.max(1, Math.ceil(widthMiles / OVERPASS_TILE_SIDE_MILES));
+  const rows = Math.max(1, Math.ceil(heightMiles / OVERPASS_TILE_SIDE_MILES));
+  if (columns * rows > MAX_OVERPASS_TILES) {
+    throw new HttpError(413, "canvas_topology_area_too_complex", "This boundary spans too many road-verification tiles. Nothing was deployed.", { tile_count: columns * rows, max_tiles: MAX_OVERPASS_TILES });
+  }
+  const latitudeStep = (bounds.north - bounds.south) / rows;
+  const longitudeStep = (bounds.east - bounds.west) / columns;
+  const tiles = [];
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      tiles.push({
+        south: bounds.south + latitudeStep * row,
+        west: bounds.west + longitudeStep * column,
+        north: row === rows - 1 ? bounds.north : bounds.south + latitudeStep * (row + 1),
+        east: column === columns - 1 ? bounds.east : bounds.west + longitudeStep * (column + 1)
+      });
+    }
+  }
+  return tiles;
+}
+function buildOverpassRoadTileQuery(bounds) {
+  const bbox = [bounds.south, bounds.west, bounds.north, bounds.east].map((value) => Number(value).toFixed(7)).join(",");
+  return `[out:json][timeout:25];
+(
+  way["highway"~"^(${CANVAS_HIGHWAY_FILTER})$"]["bridge"!="yes"]["tunnel"!="yes"](${bbox});
+);
+out body;
+>;
+out body qt;`;
+}
+async function readBoundedOverpassText(response, maxBytes) {
+  const contentLength = Number(response.headers?.get?.("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) throw new Error("response exceeds the supported size");
+  if (!response.body?.getReader) {
+    const encoded2 = await response.text();
+    const byteLength2 = new TextEncoder().encode(encoded2).byteLength;
+    if (byteLength2 > maxBytes) throw new Error("response exceeds the supported size");
+    return { encoded: encoded2, byteLength: byteLength2 };
+  }
+  const reader = response.body.getReader();
+  const chunks = [];
+  let byteLength = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = value instanceof Uint8Array ? value : new Uint8Array(value || []);
+    byteLength += chunk.byteLength;
+    if (byteLength > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw new Error("response exceeds the supported size");
+    }
+    chunks.push(chunk);
+  }
+  const bytes = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { encoded: new TextDecoder().decode(bytes), byteLength };
+}
+async function fetchOverpassEndpoint(url, query, { signal, maxResponseBytes = MAX_OSM_JSON_BYTES } = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), OVERPASS_TIMEOUT_MS);
+  const abortFromBatch = () => controller.abort(signal?.reason);
+  signal?.addEventListener?.("abort", abortFromBatch, { once: true });
   try {
     const response = await fetch(url, {
       method: "POST",
@@ -2341,26 +2478,96 @@ async function fetchOverpassEndpoint(url, query) {
       signal: controller.signal
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const encoded = await response.text();
-    if (encoded.length > MAX_OSM_JSON_BYTES) throw new Error("response exceeds the supported size");
+    const { encoded, byteLength } = await readBoundedOverpassText(response, maxResponseBytes);
     const parsed = JSON.parse(encoded);
-    if (!Array.isArray(parsed?.elements) || parsed.elements.length < 1 || parsed.elements.length > MAX_OSM_ELEMENTS) throw new Error("response has an invalid element count");
-    return { roadNetwork: parsed, endpoint: new URL(url).hostname };
+    if (!Array.isArray(parsed?.elements) || parsed.elements.length > MAX_OSM_ELEMENTS) throw new Error("response has an invalid element count");
+    return { roadNetwork: parsed, endpoint: new URL(url).hostname, byteLength };
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener?.("abort", abortFromBatch);
   }
 }
-async function fetchServerRoadNetwork(polygon) {
-  const query = buildOverpassRoadQuery(polygon);
+async function fetchServerRoadQuery(query, options = {}) {
   const failures = [];
   for (const url of OVERPASS_URLS) {
+    if (options.signal?.aborted) throw new Error("Canvas road verification was cancelled.");
     try {
-      return await fetchOverpassEndpoint(url, query);
+      return await fetchOverpassEndpoint(url, query, options);
     } catch (error) {
+      if (options.signal?.aborted) throw error;
       failures.push(`${new URL(url).hostname}: ${String(error?.message || error).slice(0, 160)}`);
     }
   }
   throw new HttpError(503, "canvas_topology_source_unavailable", "Server-owned OSM road verification is unavailable. Nothing was deployed.", { failures });
+}
+async function fetchServerRoadNetwork(polygon) {
+  const tiles = canvasRoadTiles(polygon);
+  const batchController = new AbortController();
+  let overallTimedOut = false;
+  const overallTimeout = setTimeout(() => {
+    overallTimedOut = true;
+    batchController.abort();
+  }, OVERPASS_TOTAL_TIMEOUT_MS);
+  if (!tiles.length) {
+    try {
+      return await fetchServerRoadQuery(buildOverpassRoadQuery(polygon), {
+        signal: batchController.signal,
+        maxResponseBytes: MAX_OSM_JSON_BYTES
+      });
+    } catch (error) {
+      if (overallTimedOut) throw new HttpError(503, "canvas_topology_source_timeout", "Server-owned OSM road verification exceeded its safe time limit. Nothing was deployed.");
+      throw error;
+    } finally {
+      clearTimeout(overallTimeout);
+    }
+  }
+  const endpoints = /* @__PURE__ */ new Set();
+  const byIdentity = /* @__PURE__ */ new Map();
+  let cursor = 0;
+  let cumulativeBytes = 0;
+  let fatalError = null;
+  const worker = async () => {
+    while (cursor < tiles.length && !fatalError) {
+      const index = cursor;
+      cursor += 1;
+      const fetched = await fetchServerRoadQuery(buildOverpassRoadTileQuery(tiles[index]), {
+        signal: batchController.signal,
+        maxResponseBytes: MAX_OSM_TILE_JSON_BYTES
+      });
+      cumulativeBytes += fetched.byteLength;
+      for (const element of asArray2(fetched.roadNetwork?.elements)) {
+        const key = `${String(element?.type || "")}:${String(element?.id ?? "")}`;
+        if (key === ":") continue;
+        const existing = byIdentity.get(key);
+        if (!existing || JSON.stringify(element).length > JSON.stringify(existing).length) byIdentity.set(key, element);
+      }
+      if (cumulativeBytes > MAX_OSM_JSON_BYTES || byIdentity.size > MAX_OSM_ELEMENTS) {
+        fatalError = new HttpError(413, "canvas_topology_too_complex", "The verified street network exceeds the supported campaign size. Nothing was deployed.", {
+          cumulative_response_bytes: cumulativeBytes,
+          element_count: byIdentity.size,
+          max_bytes: MAX_OSM_JSON_BYTES,
+          max_elements: MAX_OSM_ELEMENTS
+        });
+        batchController.abort();
+        throw fatalError;
+      }
+      endpoints.add(fetched.endpoint);
+    }
+  };
+  try {
+    await Promise.all(Array.from({ length: Math.min(OVERPASS_TILE_CONCURRENCY, tiles.length) }, () => worker()));
+  } catch (error) {
+    if (fatalError) throw fatalError;
+    if (overallTimedOut) throw new HttpError(503, "canvas_topology_source_timeout", "Server-owned OSM road verification exceeded its safe time limit. Nothing was deployed.");
+    throw error;
+  } finally {
+    clearTimeout(overallTimeout);
+  }
+  const elements = [...byIdentity.values()].sort((left, right) => String(left.type).localeCompare(String(right.type)) || Number(left.id) - Number(right.id));
+  if (elements.length > MAX_OSM_ELEMENTS) throw new HttpError(413, "canvas_topology_too_complex", "The verified street network is too large for one Canvas campaign. Nothing was deployed.", { element_count: elements.length, max_elements: MAX_OSM_ELEMENTS });
+  const roadNetwork = { elements };
+  if (JSON.stringify(roadNetwork).length > MAX_OSM_JSON_BYTES) throw new HttpError(413, "canvas_topology_too_complex", "The verified street network exceeds the supported payload size. Nothing was deployed.");
+  return { roadNetwork, endpoint: `tiled:${[...endpoints].sort().join(",")}` };
 }
 function canonicalPoint(point) {
   const lat = Number(point?.lat ?? point?.[0]);
@@ -2618,6 +2825,8 @@ Deno.serve(async (req) => {
       verified_team_member_bindings: members.map((member) => ({ team_member_id: String(member.id), user_id: String(member.user_id), email: normalized(member.email) })).sort((a, b) => a.team_member_id.localeCompare(b.team_member_id)),
       entitlement_kind: entitlement.kind,
       entitlement_subscription_id: entitlement.subscription_id,
+      entitlement_canvas_seats: Number.isFinite(entitlement.canvas_seats) ? entitlement.canvas_seats : null,
+      entitlement_grant_id: entitlement.grant_id || null,
       superseded_session_ids: supersededSessionIds,
       overlap_conflict_count: conflicts.length,
       verified_at: deployedAt,

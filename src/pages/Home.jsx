@@ -325,6 +325,8 @@ export default function Home() {
         try { return localStorage.getItem('fk_routeStatusView') || 'active'; } catch { return 'active'; }
     });
     const [routeMode, setRouteMode] = useState('precision');
+    const routeModeRef = useRef(routeMode);
+    routeModeRef.current = routeMode;
     const [canvasDraftDirty, setCanvasDraftDirty] = useState(false);
     useEffect(() => {
         window.dispatchEvent(new CustomEvent('fk-canvas-draft-dirty-changed', { detail: { dirty: canvasDraftDirty } }));
@@ -2465,6 +2467,7 @@ export default function Home() {
                 onSaveHomeBase={handleSaveHomeBase}
                 onRouteBoundsPrepared={preparePrecisionRouteBounds}
                 onPullComplete={async (pullFetchMonths, pulledWithMls, jobStatus = {}) => {
+                    if (routeModeRef.current !== 'precision') return;
                     const completedRouteBounds = jobStatus?.diagnostics?.route_bounds || jobStatus?.route_bounds;
                     if (completedRouteBounds) preparePrecisionRouteBounds(completedRouteBounds);
                     setFrozenWorkingSet(null);
@@ -2522,6 +2525,7 @@ export default function Home() {
                     setShowRoutePanel(false);
                     await queryClient.refetchQueries({ queryKey: ['masterProperties'] });
                     await queryClient.refetchQueries({ queryKey: ['user'] });
+                    if (routeModeRef.current !== 'precision') return;
 
                     const pm = pullFetchMonths || 12;
                     currentBatchDataSoldMonthsRef.current = pm;
@@ -2548,6 +2552,7 @@ export default function Home() {
                             limit: 50000,
                             fetchJobId: completedJobId
                         });
+                        if (routeModeRef.current !== 'precision') return;
                         setFetchedProperties(pulledProperties);
                     }
 

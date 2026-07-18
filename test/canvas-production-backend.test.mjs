@@ -180,6 +180,7 @@ function loadHandler(path, { base44, network = roadNetwork(), fetchImpl = null, 
     verifyCanvasLifecycleSession,
     crypto: webcrypto,
     TextEncoder,
+    TextDecoder,
     Request,
     Response,
     URL,
@@ -387,15 +388,44 @@ test('save accepts an unassigned area-count draft but marks it nondeployable', a
   assert.equal(state.sessions[0].work_units.length, 3);
 });
 
-test('headcount drafts require one distinct rep per territory', async () => {
+test('area-count drafts may assign multiple areas per rep but require exact selected-roster coverage', async () => {
   const state = makeState();
   const repeated = productionPlan({ divisionMode: 'area_count' });
   repeated.zones = repeated.zones.map((zone) => ({ ...zone, assigned_team_member_id: 'tm_1' }));
   repeated.selected_team_member_ids = ['tm_1'];
   const { saved } = await savePlan(state, repeated);
   assert.equal(saved.result.qa.every_zone_assigned, true);
+  assert.equal(saved.result.qa.selected_reps_one_to_one, null);
+  assert.equal(saved.result.qa.deployable, true);
+  const deployed = await deployPlan(state, saved, { idempotency_key: 'deploy:deferred-area-count' });
+  assert.equal(deployed.response.status, 200, JSON.stringify(deployed.result));
+  assert.equal(deployed.result.delivery_count, 1);
+  assert.equal(state.sessions[0].deployment_qa.selected_reps_one_to_one, null);
+
+  const omittedState = makeState();
+  const omitted = productionPlan({ divisionMode: 'area_count' });
+  omitted.zones = omitted.zones.map((zone) => ({ ...zone, assigned_team_member_id: 'tm_1' }));
+  omitted.selected_team_member_ids = ['tm_1', 'tm_2'];
+  const { saved: omittedSaved } = await savePlan(omittedState, omitted);
+  assert.equal(omittedSaved.result.qa.selected_reps_one_to_one, null);
+  assert.equal(omittedSaved.result.qa.deployable, false);
+  const rejected = await deployPlan(omittedState, omittedSaved, { idempotency_key: 'deploy:omitted-area-count-rep' });
+  assert.equal(rejected.response.status, 422, JSON.stringify(rejected.result));
+  assert.equal(rejected.result.error, 'selected_rep_contract_failed');
+});
+
+test('selected-rep drafts preserve strict one-area-per-rep deployment', async () => {
+  const state = makeState();
+  const repeated = productionPlan({ divisionMode: 'selected_reps' });
+  repeated.zones = repeated.zones.map((zone) => ({ ...zone, assigned_team_member_id: 'tm_1' }));
+  repeated.selected_team_member_ids = ['tm_1'];
+  const { saved } = await savePlan(state, repeated);
+  assert.equal(saved.result.qa.every_zone_assigned, true);
   assert.equal(saved.result.qa.selected_reps_one_to_one, false);
   assert.equal(saved.result.qa.deployable, false);
+  const rejected = await deployPlan(state, saved, { idempotency_key: 'deploy:repeated-selected-rep' });
+  assert.equal(rejected.response.status, 422, JSON.stringify(rejected.result));
+  assert.equal(rejected.result.error, 'selected_rep_contract_failed');
 });
 
 test('save rejects plans above the interactive complexity boundary without mutating the draft', async () => {

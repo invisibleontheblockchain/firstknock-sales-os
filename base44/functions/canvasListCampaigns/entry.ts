@@ -141,9 +141,10 @@ Deno.serve(async (req) => {
     const signingSecret = deploymentSigningSecret();
     const trustedSessions = [];
     let rejectedCampaigns = 0;
+    let quarantinableCampaigns = 0;
     for (const session of sessions) {
       if (String(session?.manager_id || "") !== String(user.id || "")) continue;
-      if (session.status !== "draft") {
+      if (!["draft", "quarantined"].includes(session.status)) {
         if (!signingSecret) {
           return Response.json({
             error: "canvas_signing_unavailable",
@@ -153,6 +154,7 @@ Deno.serve(async (req) => {
         const requiredState = session.status === "deployed" ? "active" : session.status;
         if (!await verifyCanvasLifecycleSession(signingSecret, session, requiredState)) {
           rejectedCampaigns += 1;
+          if (!String(session?.deployment_signature || "").trim()) quarantinableCampaigns += 1;
           continue;
         }
       }
@@ -160,7 +162,7 @@ Deno.serve(async (req) => {
     }
     const trustedById = new Map(trustedSessions.map((session) => [session.id, session]));
     const supersededBy = /* @__PURE__ */ new Map();
-    for (const newer of trustedSessions) {
+    for (const newer of trustedSessions.filter((session) => ["deployed", "completed", "recalled"].includes(session.status))) {
       const newerTimestamp = Date.parse(newer.deployed_at || "");
       for (const olderId of asArray2(newer.deployment_qa?.superseded_session_ids)) {
         const older = trustedById.get(olderId);
@@ -193,13 +195,16 @@ Deno.serve(async (req) => {
         deployed_at: session.deployed_at || null,
         closed_at: session.closed_at || null,
         close_action: session.close_action || null,
-        integrity_status: session.status === "draft" ? "draft" : "verified"
+        integrity_status: session.status === "draft" ? "draft" : session.status === "quarantined" ? "quarantined" : "verified",
+        quarantined_at: session.quarantined_at || null,
+        quarantine_reason: session.quarantine_reason || null
       };
     });
     return Response.json({
       success: true,
       campaigns,
       rejected_campaigns: rejectedCampaigns,
+      quarantinable_campaigns: quarantinableCampaigns,
       truncated: sessions.length >= MAX_CAMPAIGNS
     });
   } catch (error) {
