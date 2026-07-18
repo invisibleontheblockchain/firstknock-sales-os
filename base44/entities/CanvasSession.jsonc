@@ -25,18 +25,149 @@
       "type": "integer",
       "default": 1
     },
-    "zones": {
+    "planning_method": {
+      "type": "string",
+      "enum": [
+        "street_work_units",
+        "preview_only"
+      ],
+      "default": "preview_only",
+      "description": "Server-checked planning method. Only street_work_units can be deployed."
+    },
+    "assignment_basis": {
+      "type": "string",
+      "enum": [
+        "stable_door_ids",
+        "legacy_geometry"
+      ],
+      "default": "legacy_geometry",
+      "description": "Authoritative assignment basis. Production deployment requires stable_door_ids."
+    },
+    "workload_basis": {
+      "type": "string",
+      "enum": [
+        "selected_reps",
+        "homes_per_area"
+      ],
+      "default": "selected_reps",
+      "description": "Manager-facing choice used to size zones by selected reps or target homes per area."
+    },
+    "target_homes": {
+      "type": "integer",
+      "default": 0,
+      "description": "Exact eligible-home count expected in this version."
+    },
+    "selected_team_member_ids": {
       "type": "array",
-      "description": "Generated Canvas zones and assignments",
+      "description": "Manager-selected TeamMember IDs. Production selected-reps plans require exact one-to-one equality with zone assignees.",
+      "items": {
+        "type": "string"
+      }
+    },
+    "doors": {
+      "type": "array",
+      "description": "Canonical door snapshot keyed by stable_door_id for this plan version.",
       "items": {
         "type": "object"
       }
+    },
+    "zones": {
+      "type": "array",
+      "description": "Generated Canvas zones assigned by stable TeamMember ID",
+      "items": {
+        "type": "object"
+      }
+    },
+    "qa": {
+      "type": "object",
+      "description": "Generation diagnostics and hard deployment gates. The deploy function independently recomputes identity coverage."
+    },
+    "deployment_qa": {
+      "type": "object",
+      "description": "Server-derived deployment validation evidence stored by canvasDeployCampaign."
+    },
+    "analysis_id": {
+      "type": "string",
+      "description": "Owned Canvas analysis used to produce the door snapshot, when present."
+    },
+    "algorithm_version": {
+      "type": "string",
+      "description": "Versioned street-aware partitioning algorithm identifier."
+    },
+    "data_version": {
+      "type": "string",
+      "description": "Version or snapshot identifier for the door and street data."
+    },
+    "plan_hash": {
+      "type": "string",
+      "description": "Server-computed SHA-256 digest of the normalized plan."
+    },
+    "version": {
+      "type": "integer",
+      "default": 1,
+      "description": "Optimistic campaign version incremented on every draft save and signed lifecycle close."
+    },
+    "deployment_plan_version": {
+      "type": "integer",
+      "description": "Immutable draft version whose normalized plan_hash was approved at deployment."
+    },
+    "draft_saved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "deployed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "deployed_by_user_id": {
+      "type": "string"
+    },
+    "deployment_idempotency_key": {
+      "type": "string",
+      "description": "Manager-scoped key used to make repeated deploy requests safe."
+    },
+    "deployment_signature": {
+      "type": "string",
+      "description": "Server HMAC proving the plan and current active/completed/recalled lifecycle snapshot."
+    },
+    "lifecycle_state": {
+      "type": "string",
+      "enum": [
+        "active",
+        "completed",
+        "recalled"
+      ],
+      "description": "Signed campaign lifecycle. Rep delivery and overlap protection require active."
+    },
+    "lifecycle_evidence": {
+      "type": "object",
+      "description": "Signed transition evidence including actor, time, versions, idempotency key, and prior signature."
+    },
+    "closed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "closed_by_user_id": {
+      "type": "string"
+    },
+    "close_action": {
+      "type": "string",
+      "enum": [
+        "complete",
+        "recall"
+      ]
+    },
+    "close_idempotency_key": {
+      "type": "string",
+      "description": "Manager-scoped key making an exact lifecycle close retry safe."
     },
     "status": {
       "type": "string",
       "enum": [
         "draft",
-        "deployed"
+        "deployed",
+        "completed",
+        "recalled"
       ],
       "default": "draft"
     },
@@ -51,17 +182,15 @@
     "status"
   ],
   "rls": {
-    "create": true,
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
     "read": {
       "$or": [
         {
           "manager_id": "{{user.id}}"
-        },
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "manager_id": "{{user.data.team_manager_id}}"
         },
         {
           "user_condition": {
@@ -71,34 +200,14 @@
       ]
     },
     "update": {
-      "$or": [
-        {
-          "manager_id": "{{user.id}}"
-        },
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     },
     "delete": {
-      "$or": [
-        {
-          "manager_id": "{{user.id}}"
-        },
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "role": "admin"
+      }
     }
   }
 }

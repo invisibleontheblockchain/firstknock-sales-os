@@ -507,6 +507,7 @@ function SavedRoutesLayer({
 const ManagerMapLayers = React.memo(function ManagerMapLayers({
     // Mode & state
     mode,
+    routeMode = 'precision',
     activeRoute,
     zoomLevel,
     viewMode,
@@ -572,8 +573,9 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
 
     return (
         <>
-            <CanvasZoneOverlay />
+            <CanvasZoneOverlay routeMode={routeMode} />
 
+            {routeMode !== 'canvas' && <>
             {/* --- Existing Routes (Imperative for performance) --- */}
             <SavedRoutesLayer
                 mode={mode}
@@ -708,6 +710,7 @@ const ManagerMapLayers = React.memo(function ManagerMapLayers({
                     setSelectedProperty={setSelectedProperty}
                 />
             )}
+            </>}
         </>
     );
 });

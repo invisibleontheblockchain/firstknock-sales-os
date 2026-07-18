@@ -16,6 +16,15 @@ function getRepInitials(label) {
   return label.split('+')[0].trim().split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
 function dropIcon(color) {
   return L.divIcon({
     className: 'canvas-drop-icon',
@@ -28,16 +37,20 @@ function dropIcon(color) {
 function avatarIcon(initials) {
   return L.divIcon({
     className: 'canvas-zone-avatar',
-    html: `<div style="width:22px;height:22px;border-radius:999px;background:#111827;color:#E5E7EB;border:2px solid rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;box-shadow:0 8px 18px rgba(0,0,0,.35)">${initials}</div>`,
+    html: `<div style="width:22px;height:22px;border-radius:999px;background:#111827;color:#E5E7EB;border:2px solid rgba(255,255,255,.85);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;box-shadow:0 8px 18px rgba(0,0,0,.35)">${escapeHtml(initials)}</div>`,
     iconSize: [22, 22],
     iconAnchor: [11, 11],
   });
 }
 
 function labelIcon(zone, label, color) {
+  const zoneNumber = Number.isFinite(Number(zone.zone_number)) ? Number(zone.zone_number) : '?';
+  const doorCount = Array.isArray(zone.stable_door_ids)
+    ? zone.stable_door_ids.length
+    : (Number.isFinite(Number(zone.estimated_doors)) ? Number(zone.estimated_doors) : '?');
   return L.divIcon({
     className: 'canvas-zone-label',
-    html: `<div style="border:1px solid ${color};background:rgba(5,5,8,.94);border-radius:12px;overflow:hidden;text-align:center;box-shadow:0 12px 28px rgba(0,0,0,.35);min-width:76px"><div style="background:${color};color:white;font-size:10px;font-weight:900;padding:2px 8px">Z${zone.zone_number} · ${zone.estimated_doors || '?'} doors</div><div style="color:white;font-size:10px;font-weight:700;padding:4px 8px;max-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${label}</div></div>`,
+    html: `<div style="border:1px solid ${color};background:rgba(5,5,8,.94);border-radius:12px;overflow:hidden;text-align:center;box-shadow:0 12px 28px rgba(0,0,0,.35);min-width:76px"><div style="background:${color};color:white;font-size:10px;font-weight:900;padding:2px 8px">Z${zoneNumber} &middot; ${doorCount} homes</div><div style="color:white;font-size:10px;font-weight:700;padding:4px 8px;max-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(label)}</div></div>`,
     iconSize: [90, 38],
     iconAnchor: [45, 19],
   });
@@ -111,7 +124,7 @@ export default function CanvasZoneLayers({ zones = [] }) {
             {!focusMode && zone.drop_point && (
               <Marker position={zone.drop_point} icon={dropIcon(color)}>
                 <Tooltip direction="top">
-                  Drop point — Zone {zone.zone_number}
+                  Area center — Zone {zone.zone_number}
                 </Tooltip>
               </Marker>
             )}

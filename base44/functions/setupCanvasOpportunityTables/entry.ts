@@ -61,6 +61,7 @@ Deno.serve(async (req) => {
       CREATE TABLE IF NOT EXISTS opportunities (
         id TEXT PRIMARY KEY,
         analysis_id TEXT NOT NULL REFERENCES canvas_analysis(id) ON DELETE CASCADE,
+        stable_door_id TEXT NOT NULL,
         geom geometry(Point, 4326) NOT NULL,
         building_id BIGINT,
         classification_confidence TEXT NOT NULL DEFAULT 'LOW',
@@ -70,12 +71,28 @@ Deno.serve(async (req) => {
       )
     `;
 
+    // Existing installs used the per-analysis opportunity row id as the door
+    // identity. Keep that primary key for provenance, but backfill a separate
+    // building-derived identity that remains stable across analyses.
+    await sql`ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS stable_door_id TEXT`;
+    await sql`
+      UPDATE opportunities
+      SET stable_door_id = CASE
+        WHEN building_id IS NOT NULL THEN 'building:' || building_id::text
+        ELSE 'legacy-opportunity:' || id
+      END
+      WHERE stable_door_id IS NULL OR BTRIM(stable_door_id) = ''
+    `;
+    await sql`ALTER TABLE opportunities ALTER COLUMN stable_door_id SET NOT NULL`;
+
     const indexStatements = [
       'CREATE INDEX IF NOT EXISTS idx_building_footprints_geom ON building_footprints USING GIST (geom)',
       'CREATE INDEX IF NOT EXISTS idx_land_use_geom ON land_use USING GIST (geom)',
       'CREATE INDEX IF NOT EXISTS idx_land_use_type ON land_use(type)',
       'CREATE INDEX IF NOT EXISTS idx_canvas_analysis_manager ON canvas_analysis(manager_id, created_at DESC)',
       'CREATE INDEX IF NOT EXISTS idx_opportunities_analysis ON opportunities(analysis_id)',
+      'CREATE INDEX IF NOT EXISTS idx_opportunities_stable_door ON opportunities(stable_door_id)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_opportunities_analysis_stable_door ON opportunities(analysis_id, stable_door_id)',
       'CREATE INDEX IF NOT EXISTS idx_opportunities_geom ON opportunities USING GIST (geom)'
     ];
 

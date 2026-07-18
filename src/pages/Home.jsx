@@ -61,6 +61,8 @@ import ZipCodeOverlay from '../components/map/ZipCodeOverlay';
 import PolygonHistory from '../components/map/PolygonHistory';
 import KnockLimitSheet from '@/components/upgrade/KnockLimitSheet';
 import { getOutcomesLogged, isOutcomeBlocked, isProUser, needsCardOnFile } from '@/components/upgrade/knockGate';
+import { hasCanvasAccess } from '@/lib/canvasAccess';
+import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
 
 
 import { BRAND, DEFAULT_STATUS_COLORS, COLOR_SCHEME_MAP, LINE_DASH_MAP, ROUTE_COLORS } from '../components/map/homeMapConstants';
@@ -319,6 +321,8 @@ export default function Home() {
     const [routeStatusView, setRouteStatusView] = useState(() => {
         try { return localStorage.getItem('fk_routeStatusView') || 'active'; } catch { return 'active'; }
     });
+    const [routeMode, setRouteMode] = useState('precision');
+    const routeModeHydratedUserRef = useRef(null);
     const [mapSettings, setMapSettings] = useState(() => {
         const saved = localStorage.getItem('fk_mapSettings_v3');
         return saved ? JSON.parse(saved) : {
@@ -378,6 +382,28 @@ export default function Home() {
     const mapRef = useRef(null);
     const appointmentMapFocusHandledRef = useRef(false);
     const { data: user } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), staleTime: 1000 * 60 * 5 });
+    useEffect(() => {
+        if (!user?.id || routeModeHydratedUserRef.current === user.id) return;
+        routeModeHydratedUserRef.current = user.id;
+        let persisted = 'precision';
+        try { persisted = localStorage.getItem('fk_routeMode') || 'precision'; } catch {}
+        const safeMode = persisted === 'canvas' && hasCanvasAccess(user) ? 'canvas' : 'precision';
+        setRouteMode(safeMode);
+        if (safeMode !== persisted) {
+            try { localStorage.setItem('fk_routeMode', safeMode); } catch {}
+        }
+    }, [user]);
+    useEffect(() => {
+        const handleRouteModeChange = (event) => setRouteMode(event.detail?.routeMode || 'precision');
+        window.addEventListener('fk-route-mode-changed', handleRouteModeChange);
+        return () => window.removeEventListener('fk-route-mode-changed', handleRouteModeChange);
+    }, []);
+    useEffect(() => {
+        if (!user || routeMode !== 'canvas' || hasCanvasAccess(user)) return;
+        setRouteMode('precision');
+        try { localStorage.setItem('fk_routeMode', 'precision'); } catch {}
+        window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: 'precision' } }));
+    }, [routeMode, user]);
     useEffect(() => {
         if (!user?.email) return;
         const context = readPersistedPrecisionJobContext(user.email);
@@ -523,7 +549,7 @@ export default function Home() {
         staleTime: 1000 * 60 * 5,
         queryFn: () => {
             if (!user?.id) return [];
-            return base44.entities.TeamMember.filter({ manager_id: user.id }, '-created_date', 100)
+            return base44.entities.TeamMember.filter({ manager_id: user.id }, '-created_date', 250)
                 .then(res => Array.isArray(res) ? res : (res?.items || []));
         },
         enabled: !!user?.id
@@ -2230,9 +2256,20 @@ export default function Home() {
                     active={drawingMode}
                     onPointsUpdate={setDraftPolygon}
                     onConfirm={(polygon) => {
+                        const canvasBoundary = routeMode === 'canvas' ? validateCanvasBoundary(polygon) : null;
+                        if (canvasBoundary && !canvasBoundary.valid) {
+                            toast.error(canvasBoundary.message);
+                            return;
+                        }
+                        const confirmedPolygon = canvasBoundary?.points || polygon;
                         // One active builder shape at a time. Do not save to previous-area history until a preview/query succeeds.
-                        setDrawnPolygon(polygon); setDraftPolygon([]); setDrawingMode(false);
-                        toast.success("Freehand area selected! Choose property count and run Sandbox Preview.");
+                        setDrawnPolygon(confirmedPolygon); setDraftPolygon([]); setDrawingMode(false);
+                        if (routeMode === 'canvas') {
+                            setShowCompare(true);
+                            toast.success('Canvas area selected. Analyze homes, then divide the work.');
+                        } else {
+                            toast.success("Freehand area selected! Choose property count and run Sandbox Preview.");
+                        }
                     }}
                     drawnPolygon={drawnPolygon}
                     drawShape={drawShape}
@@ -2242,6 +2279,7 @@ export default function Home() {
                 {/* All map data layers extracted to ManagerMapLayers */}
                 <ManagerMapLayers
                     mode={mode}
+                    routeMode={routeMode}
                     activeRoute={filteredActiveRoute}
                     zoomLevel={zoomLevel}
                     viewMode={viewMode}
@@ -2349,6 +2387,7 @@ export default function Home() {
             {/* Territory Prompt - Drawing Controls + Initial Prompt */}
             <TerritoryPrompt
                 mode={mode}
+                routeMode={routeMode}
                 setMode={setMode}
                 activeRoute={filteredActiveRoute}
                 routesGenerating={routesGenerating}
@@ -2703,6 +2742,7 @@ export default function Home() {
                         }
                     }}
                     user={user}
+                    teamMembers={teamMembers}
                     drawnPolygon={drawnPolygon}
                     hasDrawnArea={drawnPolygon && drawnPolygon.length > 2}
                     maxDataMonths={maxDataMonths}
@@ -2795,6 +2835,9 @@ export default function Home() {
                         setHighlightRecentlySold={setHighlightRecentlySold}
                         showZipOverlay={showZipOverlay}
                         setShowZipOverlay={setShowZipOverlay}
+                        routeMode={routeMode}
+                        setRouteMode={setRouteMode}
+                        user={user}
                     />
                 </React.Suspense>
             )}

@@ -1,16 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { CircleMarker, LayerGroup, Polygon, Tooltip } from 'react-leaflet';
 
-function loadAnalysis() {
-  try {
-    if (window.__fkCanvasAnalysis) return window.__fkCanvasAnalysis;
-    const saved = sessionStorage.getItem('fk_canvasAnalysis');
-    return saved ? JSON.parse(saved) : null;
-  } catch {
-    return null;
-  }
-}
-
 function geoJsonToPositions(geometry) {
   if (!geometry) return [];
   if (geometry.type === 'Polygon') {
@@ -27,11 +17,11 @@ function excludedLabel(type = 'excluded') {
 }
 
 export default function CanvasOpportunityLayers() {
-  const [analysis, setAnalysis] = useState(loadAnalysis);
+  const [analysis, setAnalysis] = useState(null);
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {
-    const handleUpdate = (event) => setAnalysis(event.detail?.analysis || loadAnalysis());
+    const handleUpdate = (event) => setAnalysis(event.detail?.analysis || null);
     const handleVisibility = (event) => setVisible(event.detail?.visible !== false);
     window.addEventListener('fk-canvas-analysis-updated', handleUpdate);
     window.addEventListener('fk-canvas-opportunity-layer-visibility', handleVisibility);

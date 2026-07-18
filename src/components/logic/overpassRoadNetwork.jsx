@@ -1,8 +1,9 @@
-const DEFAULT_HIGHWAY_FILTER = 'primary|secondary|tertiary|residential';
+const DEFAULT_HIGHWAY_FILTER = 'primary|secondary|tertiary|unclassified|residential|living_street';
 const OVERPASS_URLS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
 ];
+const DEFAULT_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
 
 function stablePolygonKey(polygon = []) {
   return polygon
@@ -27,7 +28,7 @@ function buildOverpassQuery(polygon, highwayFilter = DEFAULT_HIGHWAY_FILTER) {
 );
 out body;
 >;
-out skel qt;`;
+out body qt;`;
 }
 
 async function fetchWithTimeout(url, body, timeoutMs) {
@@ -51,22 +52,35 @@ export function getRoadNetworkCacheKey(polygon, highwayFilter = DEFAULT_HIGHWAY_
   return `fk_overpass_${highwayFilter}_${stablePolygonKey(polygon)}`;
 }
 
+export function clearOverpassRoadNetworkCache(polygon, highwayFilter = DEFAULT_HIGHWAY_FILTER) {
+  try {
+    sessionStorage.removeItem(getRoadNetworkCacheKey(polygon, highwayFilter));
+  } catch {}
+}
+
 export async function fetchOverpassRoadNetwork(polygon, options = {}) {
   const highwayFilter = options.highwayFilter || DEFAULT_HIGHWAY_FILTER;
   const timeoutMs = Math.max(5000, Number(options.timeoutMs) || 25000);
+  const cacheMaxAgeMs = Math.max(0, Number(options.cacheMaxAgeMs) || DEFAULT_CACHE_MAX_AGE_MS);
   const query = buildOverpassQuery(polygon, highwayFilter);
   const cacheKey = getRoadNetworkCacheKey(polygon, highwayFilter);
 
-  try {
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (parsed?.elements?.length) {
-        console.info(`[FK] Canvas road network cache hit: ${parsed.elements.length} OSM elements`);
-        return parsed;
+  if (options.bypassCache === true) clearOverpassRoadNetworkCache(polygon, highwayFilter);
+  else {
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        const record = JSON.parse(cached);
+        const cachedAt = Number(record?.cached_at);
+        const data = record?.data;
+        if (Number.isFinite(cachedAt) && Date.now() - cachedAt <= cacheMaxAgeMs && data?.elements?.length) {
+          console.info(`[FK] Canvas road network cache hit: ${data.elements.length} OSM elements`);
+          return data;
+        }
+        sessionStorage.removeItem(cacheKey);
       }
-    }
-  } catch {}
+    } catch {}
+  }
 
   let lastError = null;
   for (const url of OVERPASS_URLS) {
@@ -74,7 +88,7 @@ export async function fetchOverpassRoadNetwork(polygon, options = {}) {
       const data = await fetchWithTimeout(url, query, timeoutMs);
       if (!Array.isArray(data?.elements)) throw new Error('Malformed Overpass response');
       try {
-        const serialized = JSON.stringify(data);
+        const serialized = JSON.stringify({ cached_at: Date.now(), data });
         if (serialized.length < 4_500_000) sessionStorage.setItem(cacheKey, serialized);
       } catch {}
       console.info(`[FK] Canvas road network fetched: ${data.elements.length} OSM elements`);

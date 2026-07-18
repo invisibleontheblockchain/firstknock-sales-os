@@ -108,6 +108,7 @@ function buildPrecisionShortfallMessage({
 
 export default function TerritoryPrompt({
   mode,
+  routeMode = 'precision',
   setMode,
   activeRoute,
   routesGenerating,
@@ -167,9 +168,6 @@ export default function TerritoryPrompt({
   const [previewResult, setPreviewResult] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [paidPullStarting, setPaidPullStarting] = useState(false);
-  const [routeMode, setRouteMode] = useState(() => {
-    try {return localStorage.getItem('fk_routeMode') || 'precision';} catch {return 'precision';}
-  });
   const [ghostAreasVisible, setGhostAreasVisible] = useState(() => {
     try {return localStorage.getItem('fk_showGhostAreas') === 'true';} catch {return false;}
   });
@@ -352,12 +350,6 @@ export default function TerritoryPrompt({
   }, [mode]);
 
   useEffect(() => {
-    const handler = (event) => setRouteMode(event.detail?.routeMode || 'precision');
-    window.addEventListener('fk-route-mode-changed', handler);
-    return () => window.removeEventListener('fk-route-mode-changed', handler);
-  }, []);
-
-  useEffect(() => {
     const handler = (event) => {
       const visible = !!event.detail?.visible;
       setGhostAreasVisible(visible);
@@ -482,7 +474,12 @@ export default function TerritoryPrompt({
     setForceFullRefresh(false);
     setIncludeUnresolvedFollowUps(true);
     setDrawingMode(false);
-    toast.success('Area selected. Run Preview to check available data.');
+    if (routeMode === 'canvas') {
+      setShowCompare(true);
+      toast.success('Canvas area selected. Analyze homes, then divide the work.');
+    } else {
+      toast.success('Area selected. Run Preview to check available data.');
+    }
   };
 
   const activeAreaPolygon = drawingMode && draftPolygon?.length > 2 ? draftPolygon : drawnPolygon;

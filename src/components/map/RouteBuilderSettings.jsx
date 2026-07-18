@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { toast } from "sonner";
 import CanvasBuilderSettings from './CanvasBuilderSettings.jsx';
+import { hasCanvasAccess } from '@/lib/canvasAccess';
 
 const BRAND = {
     voidBlack: '#0A0A0A',
@@ -61,6 +62,7 @@ export default function RouteBuilderSettings({
     onReorder, hasFrozenData,
     // Data
     user,
+    teamMembers = [],
     propertyPoints = [],
     drawnPolygon,
     hasDrawnArea,
@@ -94,6 +96,14 @@ export default function RouteBuilderSettings({
     }, []);
 
     useEffect(() => {
+        if (routeMode !== 'canvas' || hasCanvasAccess(user)) return;
+        setRouteMode('precision');
+        try { localStorage.setItem('fk_routeMode', 'precision'); } catch {}
+        window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: 'precision' } }));
+        toast.error('An active Canvas subscription with verified billing is required.');
+    }, [routeMode, user]);
+
+    useEffect(() => {
         const handler = (event) => setShowGhostAreas(!!event.detail?.visible);
         window.addEventListener('fk-ghost-areas-visibility', handler);
         return () => window.removeEventListener('fk-ghost-areas-visibility', handler);
@@ -111,7 +121,7 @@ export default function RouteBuilderSettings({
         toast.success(next ? 'Previous Precision areas visible' : 'Previous areas hidden');
     };
 
-    if (routeMode === 'canvas') {
+    if (routeMode === 'canvas' && hasCanvasAccess(user)) {
         return (
             <CanvasBuilderSettings
                 drawnPolygon={drawnPolygon}
@@ -120,6 +130,7 @@ export default function RouteBuilderSettings({
                 onClearPolygon={onClearPolygon}
                 onClose={onClose}
                 user={user}
+                teamMembers={teamMembers}
                 propertyPoints={propertyPoints}
             />
         );

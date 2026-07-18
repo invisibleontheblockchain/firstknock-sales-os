@@ -4,6 +4,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { X, Sun, Moon, Globe, Mountain, Eye, EyeOff, RotateCcw, Save, Navigation, Target, Users } from 'lucide-react';
+import { hasCanvasAccess } from '@/lib/canvasAccess';
 
 /* ── constants ── */
 const REP_COLOR_OPTIONS = ['#FFD700','#ef4444','#22c55e','#3b82f6','#ec4899','#f97316','#8b5cf6','#06b6d4','#eab308','#14b8a6'];
@@ -62,6 +63,7 @@ export default function MapSettingsPanel({
   highlightRecentlySold, setHighlightRecentlySold,
   showZipOverlay = false, setShowZipOverlay,
   routeMode = 'precision', setRouteMode,
+  user,
 }) {
   // Local buffered state
   const [local, setLocal] = useState({
@@ -69,7 +71,11 @@ export default function MapSettingsPanel({
     pinSize, showRouteLines, showRouteDetails, showAllProperties,
     mapTheme, navigationApp, quickFilter,
     soldDateFilter, highlightRecentlySold, showZipOverlay,
-    routeMode: (() => { try { return localStorage.getItem('fk_routeMode') || routeMode; } catch { return routeMode; } })(),
+    routeMode: (() => {
+      let selected = routeMode;
+      try { selected = localStorage.getItem('fk_routeMode') || routeMode; } catch {}
+      return selected === 'canvas' && !hasCanvasAccess(user) ? 'precision' : selected;
+    })(),
   });
 
   const upd = (key, val) => setLocal(p => ({ ...p, [key]: val }));
@@ -87,6 +93,7 @@ export default function MapSettingsPanel({
   const setLiveHighlight = (v) => { upd('highlightRecentlySold', v); setHighlightRecentlySold?.(v); };
   const setLiveZip = (v) => { upd('showZipOverlay', v); setShowZipOverlay?.(v); };
   const setLiveRouteMode = (v) => {
+    if (v === 'canvas' && !hasCanvasAccess(user)) return;
     upd('routeMode', v);
     setRouteMode?.(v);
     try { localStorage.setItem('fk_routeMode', v); } catch {}
@@ -94,6 +101,7 @@ export default function MapSettingsPanel({
   };
 
   const handleSave = () => {
+    const safeRouteMode = local.routeMode === 'canvas' && !hasCanvasAccess(user) ? 'precision' : local.routeMode;
     setMapSettings?.(local.mapSettings);
     setPinSize?.(local.pinSize);
     setShowRouteLines?.(local.showRouteLines);
@@ -103,9 +111,9 @@ export default function MapSettingsPanel({
     setNavigationApp?.(local.navigationApp);
     setHighlightRecentlySold?.(local.highlightRecentlySold);
     setShowZipOverlay?.(local.showZipOverlay);
-    setRouteMode?.(local.routeMode);
-    try { localStorage.setItem('fk_routeMode', local.routeMode); } catch {}
-    window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: local.routeMode } }));
+    setRouteMode?.(safeRouteMode);
+    try { localStorage.setItem('fk_routeMode', safeRouteMode); } catch {}
+    window.dispatchEvent(new CustomEvent('fk-route-mode-changed', { detail: { routeMode: safeRouteMode } }));
     try { localStorage.setItem('fk_navigation_app', local.navigationApp); } catch {}
     window.dispatchEvent(new CustomEvent('fk-navigation-app-changed', { detail: { navigationApp: local.navigationApp } }));
     onClose();
@@ -186,11 +194,14 @@ export default function MapSettingsPanel({
                       ].map(opt => {
                         const Icon = opt.icon;
                         const active = local.routeMode === opt.id;
+                        const unavailable = opt.id === 'canvas' && !hasCanvasAccess(user);
                         return (
                           <button
                             key={opt.id}
                             onClick={() => setLiveRouteMode(opt.id)}
-                            className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-black transition-all ${active ? opt.active : 'border-white/[0.06] bg-black/20 text-gray-500 hover:text-white hover:border-white/15'}`}
+                            disabled={unavailable}
+                            title={unavailable ? 'An active Canvas plan is required' : undefined}
+                            className={`flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-black transition-all ${active ? opt.active : 'border-white/[0.06] bg-black/20 text-gray-500 hover:text-white hover:border-white/15'} ${unavailable ? 'cursor-not-allowed opacity-40 hover:text-gray-500 hover:border-white/[0.06]' : ''}`}
                           >
                             <Icon className="w-3.5 h-3.5" />
                             {opt.label}
@@ -199,6 +210,9 @@ export default function MapSettingsPanel({
                       })}
                     </div>
                   </Row>
+                  {!hasCanvasAccess(user) && (
+                    <p className="text-[10px] text-amber-300/80">Canvas requires an active Canvas subscription with verified billing.</p>
+                  )}
                   <div className="border-t border-white/[0.04] my-2" />
                   {setShowZipOverlay && (
                     <Row label="Zip Boundaries">

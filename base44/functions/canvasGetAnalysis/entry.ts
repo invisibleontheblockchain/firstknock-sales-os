@@ -1,6 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { neon } from 'npm:@neondatabase/serverless@0.9.0';
 
+function canManageCanvas(user) {
+  const appRole = String(user?.app_role || user?.data?.app_role || '').toLowerCase();
+  const accountRole = String(user?.role || user?.data?.role || '').toLowerCase();
+  return user?.is_owner === true || appRole === 'manager' || appRole === 'admin' || accountRole === 'manager' || accountRole === 'admin';
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -8,6 +14,10 @@ Deno.serve(async (req) => {
 
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!canManageCanvas(user)) {
+      return Response.json({ error: 'Manager access required' }, { status: 403 });
     }
 
     const { analysisId, self_test } = await req.json();
@@ -27,7 +37,7 @@ Deno.serve(async (req) => {
     const rows = await sql`
       SELECT id, manager_id, polygon, total_opportunities, included, excluded, confidence, diagnostics, manager_feedback, feedback_notes, created_at, updated_at
       FROM canvas_analysis
-      WHERE id = ${analysisId}
+      WHERE id = ${analysisId} AND manager_id = ${user.id}
       LIMIT 1
     `;
 
@@ -36,9 +46,21 @@ Deno.serve(async (req) => {
     }
 
     const opportunities = await sql`
-      SELECT id, building_id::text AS building_id, classification_confidence, discovery_source, ST_Y(geom) AS lat, ST_X(geom) AS lng
-      FROM opportunities
-      WHERE analysis_id = ${analysisId}
+      SELECT
+        id AS opportunity_row_id,
+        stable_door_id,
+        building_id::text AS building_id,
+        classification_confidence,
+        discovery_source,
+        ST_Y(geom) AS lat,
+        ST_X(geom) AS lng
+      FROM opportunities o
+      WHERE o.analysis_id = ${analysisId}
+        AND EXISTS (
+          SELECT 1
+          FROM canvas_analysis a
+          WHERE a.id = o.analysis_id AND a.manager_id = ${user.id}
+        )
       LIMIT 5000
     `;
 
@@ -46,7 +68,9 @@ Deno.serve(async (req) => {
       success: true,
       analysis: rows[0],
       opportunities: opportunities.map((item) => ({
-        id: item.id,
+        id: item.stable_door_id,
+        stableDoorId: item.stable_door_id,
+        opportunityRowId: item.opportunity_row_id,
         buildingId: item.building_id,
         lat: Number(item.lat),
         lng: Number(item.lng),

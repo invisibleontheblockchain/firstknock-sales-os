@@ -1,18 +1,24 @@
-export function saveCanvasAnalysis(analysis) {
+const storageKey = (scopeId) => scopeId ? `fk_canvasAnalysis:${String(scopeId)}` : null;
+
+export function saveCanvasAnalysis(analysis, scopeId) {
   if (typeof window === 'undefined') return;
-  window.__fkCanvasAnalysis = analysis || null;
+  const key = storageKey(scopeId);
+  if (!key) return;
   try {
-    if (analysis) sessionStorage.setItem('fk_canvasAnalysis', JSON.stringify(analysis));
-    else sessionStorage.removeItem('fk_canvasAnalysis');
+    sessionStorage.removeItem('fk_canvasAnalysis');
+    if (analysis) sessionStorage.setItem(key, JSON.stringify(analysis));
+    else sessionStorage.removeItem(key);
   } catch {}
   window.dispatchEvent(new CustomEvent('fk-canvas-analysis-updated', { detail: { analysis: analysis || null } }));
 }
 
-export function loadCanvasAnalysis() {
+export function loadCanvasAnalysis(scopeId) {
   if (typeof window === 'undefined') return null;
+  const key = storageKey(scopeId);
+  if (!key) return null;
   try {
-    if (window.__fkCanvasAnalysis) return window.__fkCanvasAnalysis;
-    const saved = sessionStorage.getItem('fk_canvasAnalysis');
+    sessionStorage.removeItem('fk_canvasAnalysis');
+    const saved = sessionStorage.getItem(key);
     return saved ? JSON.parse(saved) : null;
   } catch {
     return null;

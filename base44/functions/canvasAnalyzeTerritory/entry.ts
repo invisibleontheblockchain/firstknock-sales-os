@@ -6,15 +6,65 @@ const MAX_POLYGON_POINTS = 800;
 const MAX_AREA_SQ_MI = 300;
 const MAX_RETURNED_OPPORTUNITIES = 5000;
 const MAX_RETURNED_EXCLUDED_AREAS = 250;
+const COORDINATE_EPSILON = 1e-10;
+
+function samePoint(left, right) {
+  return Math.abs(left.lat - right.lat) <= COORDINATE_EPSILON
+    && Math.abs(left.lng - right.lng) <= COORDINATE_EPSILON;
+}
 
 function normalizePolygon(rawPolygon) {
   if (!Array.isArray(rawPolygon)) return [];
-  return rawPolygon
-    .map((point) => ({
+  const parsed = rawPolygon.map((point) => ({
       lat: Number(point?.lat ?? point?.[0]),
       lng: Number(point?.lng ?? point?.lon ?? point?.longitude ?? point?.[1])
-    }))
-    .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng));
+    }));
+  if (parsed.some((point) => !Number.isFinite(point.lat) || !Number.isFinite(point.lng) || Math.abs(point.lat) > 90 || Math.abs(point.lng) > 180)) return [];
+  const points = parsed.reduce((result, point) => {
+    if (!result.length || !samePoint(result[result.length - 1], point)) result.push(point);
+    return result;
+  }, []);
+  if (points.length > 1 && samePoint(points[0], points[points.length - 1])) points.pop();
+  return points;
+}
+
+function orientation(first, second, third) {
+  const value = (second.lng - first.lng) * (third.lat - first.lat) - (second.lat - first.lat) * (third.lng - first.lng);
+  if (Math.abs(value) <= COORDINATE_EPSILON) return 0;
+  return value > 0 ? 1 : -1;
+}
+
+function pointOnSegment(point, start, end) {
+  if (orientation(start, end, point) !== 0) return false;
+  return point.lng >= Math.min(start.lng, end.lng) - COORDINATE_EPSILON
+    && point.lng <= Math.max(start.lng, end.lng) + COORDINATE_EPSILON
+    && point.lat >= Math.min(start.lat, end.lat) - COORDINATE_EPSILON
+    && point.lat <= Math.max(start.lat, end.lat) + COORDINATE_EPSILON;
+}
+
+function segmentsIntersectInclusive(firstStart, firstEnd, secondStart, secondEnd) {
+  const firstOrientation = orientation(firstStart, firstEnd, secondStart);
+  const secondOrientation = orientation(firstStart, firstEnd, secondEnd);
+  const thirdOrientation = orientation(secondStart, secondEnd, firstStart);
+  const fourthOrientation = orientation(secondStart, secondEnd, firstEnd);
+  if (firstOrientation !== secondOrientation && thirdOrientation !== fourthOrientation) return true;
+  return pointOnSegment(secondStart, firstStart, firstEnd)
+    || pointOnSegment(secondEnd, firstStart, firstEnd)
+    || pointOnSegment(firstStart, secondStart, secondEnd)
+    || pointOnSegment(firstEnd, secondStart, secondEnd);
+}
+
+function polygonSelfIntersects(points) {
+  if (points.length < 4) return false;
+  for (let firstIndex = 0; firstIndex < points.length; firstIndex += 1) {
+    const firstNextIndex = (firstIndex + 1) % points.length;
+    for (let secondIndex = firstIndex + 1; secondIndex < points.length; secondIndex += 1) {
+      const secondNextIndex = (secondIndex + 1) % points.length;
+      if (firstNextIndex === secondIndex || secondNextIndex === firstIndex) continue;
+      if (segmentsIntersectInclusive(points[firstIndex], points[firstNextIndex], points[secondIndex], points[secondNextIndex])) return true;
+    }
+  }
+  return false;
 }
 
 function closePolygon(points) {
@@ -68,6 +118,16 @@ function confidenceFor(residentialLandUse) {
   return residentialLandUse ? 'MEDIUM' : 'LOW';
 }
 
+function stableDoorIdForBuilding(buildingId) {
+  return `building:${String(buildingId)}`;
+}
+
+function canManageCanvas(user) {
+  const appRole = String(user?.app_role || user?.data?.app_role || '').toLowerCase();
+  const accountRole = String(user?.role || user?.data?.role || '').toLowerCase();
+  return user?.is_owner === true || appRole === 'manager' || appRole === 'admin' || accountRole === 'manager' || accountRole === 'admin';
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -75,6 +135,10 @@ Deno.serve(async (req) => {
 
     if (!user) {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    if (!canManageCanvas(user)) {
+      return Response.json({ error: 'Manager access required' }, { status: 403 });
     }
 
     const payload = await req.json();
@@ -89,10 +153,19 @@ Deno.serve(async (req) => {
     if (points.length > MAX_POLYGON_POINTS) {
       return Response.json({ error: `Polygon has too many points. Max ${MAX_POLYGON_POINTS}.` }, { status: 400 });
     }
+    if (polygonSelfIntersects(points)) {
+      return Response.json({
+        error: 'invalid_canvas_boundary',
+        message: 'The Canvas boundary crosses or touches itself. Redraw one simple outer boundary before analyzing homes.'
+      }, { status: 400 });
+    }
 
     const areaSqMi = polygonAreaSqMi(points);
     if (areaSqMi <= 0) {
-      return Response.json({ error: 'A valid territory polygon is required' }, { status: 400 });
+      return Response.json({ error: 'invalid_canvas_boundary', message: 'The Canvas boundary has no usable area. Redraw a wider territory.' }, { status: 400 });
+    }
+    if (areaSqMi > MAX_AREA_SQ_MI) {
+      return Response.json({ error: `Territory is too large. Maximum ${MAX_AREA_SQ_MI} square miles.` }, { status: 400 });
     }
 
     const databaseUrl = Deno.env.get('DATABASE_URL');
@@ -196,8 +269,15 @@ Deno.serve(async (req) => {
 
     const opportunityPayload = opportunities.map((item) => {
       const classificationConfidence = confidenceFor(item.residential_land_use);
+      const opportunityRowId = `opp_${analysisId}_${item.building_id}`;
+      const stableDoorId = stableDoorIdForBuilding(item.building_id);
       return {
-        id: `opp_${analysisId}_${item.building_id}`,
+        // `id` remains the frontend assignment identity for compatibility.
+        // The database row id is analysis-scoped provenance and is returned
+        // separately so repeated analyses resolve the same building identity.
+        id: stableDoorId,
+        stableDoorId,
+        opportunityRowId,
         buildingId: item.building_id,
         lat: Number(item.lat),
         lng: Number(item.lng),
@@ -234,8 +314,8 @@ Deno.serve(async (req) => {
 
     for (const item of opportunityPayload) {
       await sql`
-        INSERT INTO opportunities (id, analysis_id, geom, building_id, classification_confidence, discovery_source)
-        VALUES (${item.id}, ${analysisId}, ST_SetSRID(ST_MakePoint(${item.lng}, ${item.lat}), 4326), ${Number(item.buildingId)}, ${item.classificationConfidence}, ${item.discoverySource})
+        INSERT INTO opportunities (id, analysis_id, stable_door_id, geom, building_id, classification_confidence, discovery_source)
+        VALUES (${item.opportunityRowId}, ${analysisId}, ${item.stableDoorId}, ST_SetSRID(ST_MakePoint(${item.lng}, ${item.lat}), 4326), ${Number(item.buildingId)}, ${item.classificationConfidence}, ${item.discoverySource})
         ON CONFLICT (id) DO NOTHING
       `;
     }
