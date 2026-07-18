@@ -58,6 +58,7 @@ export default function MapToolbar({
 
   // Drawing state
   drawnPolygon,
+  drawingMode = false,
 
   // Route Visibility
   showRouteDetails,
@@ -356,13 +357,14 @@ export default function MapToolbar({
                             <Ghost className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
                           </Button>
                         )}
-                        <Button
-              onClick={() => setShowCompare(true)}
-              size="icon"
-              className="hidden sm:inline-flex bg-black/80 hover:bg-black backdrop-blur-md rounded-lg sm:rounded-xl h-8 w-8 sm:h-11 sm:w-11 font-bold shadow-xl border border-[#2EEB57]/40">
-              
+                        {!drawingMode && (
+                          <Button
+                            onClick={() => setShowCompare(true)}
+                            size="icon"
+                            className="hidden sm:inline-flex bg-black/80 hover:bg-black backdrop-blur-md rounded-lg sm:rounded-xl h-8 w-8 sm:h-11 sm:w-11 font-bold shadow-xl border border-[#2EEB57]/40">
                             {mode === 'generate' ? <Settings className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-[#2EEB57]" /> : <Filter className="w-3.5 h-3.5 sm:w-5 sm:h-5 text-[#2EEB57]" />}
-                        </Button>
+                          </Button>
+                        )}
                     </div>
 
 
@@ -623,7 +625,7 @@ export default function MapToolbar({
             {/* Bottom Action Bar */}
             <div className="absolute bottom-4 sm:bottom-6 left-0 right-0 z-[1000] pointer-events-none flex justify-center px-2">
                 <div className={`pointer-events-auto flex items-center justify-center gap-2 ${routeMode === 'canvas' && mode === 'generate' && !activeRoute ? 'max-w-[calc(100vw-1rem)] overflow-x-auto' : ''}`}>
-                    {routeMode === 'canvas' && mode === 'generate' && !activeRoute ?
+                    {routeMode === 'canvas' && mode === 'generate' && !activeRoute ? !drawingMode &&
           <>
                             <Button
               onClick={() => setShowCompare(true)}

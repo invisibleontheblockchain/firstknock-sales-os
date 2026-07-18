@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Activity,
   AlertTriangle,
@@ -45,6 +46,7 @@ import {
 import { canvasZoneLoggedCount, formatCanvasDistance, getCanvasOutcome } from '@/components/canvas/canvasOutcomeUtils';
 import { clearOverpassRoadNetworkCache, fetchOverpassRoadNetwork } from '@/components/logic/overpassRoadNetwork';
 import { planCanvasTerritories } from '@/components/logic/canvasStreetTerritoryPlanner';
+import { createPageUrl } from '@/utils';
 
 const UNASSIGNED_ZONE_COLOR = '#A855F7';
 const ASSIGNED_ZONE_COLOR = '#64748B';
@@ -194,6 +196,7 @@ export default function CanvasBuilderSettings({
   const [serverSession, setServerSession] = useState(null);
   const [selectedZoneNumber, setSelectedZoneNumber] = useState(null);
   const previousPolygonKey = useRef(polygonKey);
+  const initialRosterModeResolvedRef = useRef(false);
   const deploymentAttemptRef = useRef(null);
   const closeAttemptRef = useRef(null);
 
@@ -229,6 +232,15 @@ export default function CanvasBuilderSettings({
   const selectedDraft = savedDrafts.find((campaign) => campaignId(campaign) === selectedDraftId)
     || savedDrafts[0]
     || null;
+  const campaignSigningUnavailable = /lifecycle signing is not configured/i.test(campaignIndexError);
+
+  useEffect(() => {
+    if (!teamMembersReady || initialRosterModeResolvedRef.current) return;
+    initialRosterModeResolvedRef.current = true;
+    if (!activeTeamMembers.length && divisionBasis === 'selected_reps' && !plan && !deployed) {
+      setDivisionBasis('street_workload_target');
+    }
+  }, [activeTeamMembers.length, deployed, divisionBasis, plan, teamMembersReady]);
 
   const generationBlockers = useMemo(() => {
     const blockers = [];
@@ -666,7 +678,7 @@ export default function CanvasBuilderSettings({
 
   const contentProps = {
     sessionName, changeSessionName, polygon, hasDrawnArea, onDraw, onClearPolygon, onClose,
-    divisionBasis, setDivisionBasis, selectedTeamMemberIds, toggleTeamMember, activeTeamMembers, teamExclusions: teamEligibility.excluded,
+    divisionBasis, setDivisionBasis, selectedTeamMemberIds, toggleTeamMember, activeTeamMembers, teamMembersReady, teamExclusions: teamEligibility.excluded,
     requestedAreaCount, setRequestedAreaCount, targetStreetWorkloadMiles, setTargetStreetWorkloadMiles, requestedZoneCount, roadFetchStatus, refreshRoadData,
     generationBlockers, generatePlan, generating, plan, planStaleReason,
     zones, assignedZoneCount, selectedZone, selectedZoneNumber, setSelectedZoneNumber,
@@ -674,7 +686,7 @@ export default function CanvasBuilderSettings({
     persistDraft, deployPlan, closeCampaign, saving, deploying, closing, deployable, serverSession, deployed, activeDeployment, closedDeployment,
     startAnotherArea,
     savedDrafts, selectedDraft, selectedDraftId, setSelectedDraftId, resumeDraft, resumingDraft,
-    otherActiveCampaigns, selectedIndexedCampaign, selectedIndexedCampaignId, setSelectedIndexedCampaignId, campaignIndexLoading, campaignIndexError, refreshCampaignIndex,
+    otherActiveCampaigns, selectedIndexedCampaign, selectedIndexedCampaignId, setSelectedIndexedCampaignId, campaignIndexLoading, campaignIndexError, campaignSigningUnavailable, refreshCampaignIndex,
     liveCampaignMap, liveMapLoading, liveMapError, loadCampaignMap, markPlanStale,
   };
 
@@ -694,7 +706,7 @@ export default function CanvasBuilderSettings({
 function BuilderContent(props) {
   const {
     sessionName, changeSessionName, polygon, hasDrawnArea, onDraw, onClearPolygon, onClose,
-    divisionBasis, setDivisionBasis, selectedTeamMemberIds, toggleTeamMember, activeTeamMembers, teamExclusions,
+    divisionBasis, setDivisionBasis, selectedTeamMemberIds, toggleTeamMember, activeTeamMembers, teamMembersReady, teamExclusions,
     requestedAreaCount, setRequestedAreaCount, targetStreetWorkloadMiles, setTargetStreetWorkloadMiles, requestedZoneCount, roadFetchStatus, refreshRoadData,
     generationBlockers, generatePlan, generating, plan, planStaleReason,
     zones, assignedZoneCount, selectedZone, selectedZoneNumber, setSelectedZoneNumber,
@@ -702,7 +714,7 @@ function BuilderContent(props) {
     persistDraft, deployPlan, closeCampaign, saving, deploying, closing, deployable, serverSession, deployed, activeDeployment, closedDeployment,
     startAnotherArea,
     savedDrafts, selectedDraft, selectedDraftId, setSelectedDraftId, resumeDraft, resumingDraft,
-    otherActiveCampaigns, selectedIndexedCampaign, selectedIndexedCampaignId, setSelectedIndexedCampaignId, campaignIndexLoading, campaignIndexError, refreshCampaignIndex,
+    otherActiveCampaigns, selectedIndexedCampaign, selectedIndexedCampaignId, setSelectedIndexedCampaignId, campaignIndexLoading, campaignIndexError, campaignSigningUnavailable, refreshCampaignIndex,
     liveCampaignMap, liveMapLoading, liveMapError, loadCampaignMap, markPlanStale, compact = false,
   } = props;
 
@@ -736,11 +748,23 @@ function BuilderContent(props) {
           </section>
         )}
 
-        {(otherActiveCampaigns.length > 0 || campaignIndexLoading || campaignIndexError) && (
+        {campaignSigningUnavailable && (
+          <section className="rounded-2xl border border-amber-400/25 bg-amber-500/[0.08] p-3">
+            <div className="flex items-start gap-2">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+              <div>
+                <p className="text-xs font-black text-amber-100">Canvas deployment security needs setup</p>
+                <p className="mt-1 text-[11px] leading-relaxed text-amber-100/80">You can still draw, load streets, generate territories, and save a draft. An administrator must configure <span className="font-mono">CANVAS_DEPLOYMENT_SIGNING_SECRET</span> before active campaigns or rep deployment can be trusted.</p>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {(otherActiveCampaigns.length > 0 || campaignIndexLoading || (campaignIndexError && !campaignSigningUnavailable)) && (
           <section className="rounded-2xl border border-purple-400/20 bg-purple-500/[0.06] p-3 space-y-2">
             <div className="flex items-center justify-between"><p className="text-xs font-black text-purple-200">Active Canvas campaigns</p><button type="button" disabled={campaignIndexLoading} onClick={refreshCampaignIndex} className="text-[10px] font-bold text-purple-300">Refresh</button></div>
             {campaignIndexLoading && !otherActiveCampaigns.length && <p className="text-[11px] text-gray-400">Loading campaigns…</p>}
-            {campaignIndexError && <p className="text-[11px] text-amber-300">{campaignIndexError}</p>}
+            {campaignIndexError && !campaignSigningUnavailable && <p className="text-[11px] text-amber-300">{campaignIndexError}</p>}
             {selectedIndexedCampaign && <>
               <Select value={campaignId(selectedIndexedCampaign)} onValueChange={setSelectedIndexedCampaignId}><SelectTrigger className="h-10 border-white/10 bg-black/30 text-white"><SelectValue /></SelectTrigger><SelectContent className="z-[4000] border-white/10 bg-black text-white">{otherActiveCampaigns.map((campaign) => <SelectItem key={campaignId(campaign)} value={campaignId(campaign)}>{campaign.session_name} · {campaign.zone_count} territories</SelectItem>)}</SelectContent></Select>
               <div className="grid grid-cols-3 gap-2"><Button disabled={liveMapLoading} onClick={() => loadCampaignMap(selectedIndexedCampaign)} className="h-9 bg-purple-500/20 text-purple-100 border border-purple-400/25"><Eye className="h-4 w-4" /> Map</Button><Button disabled={closing} onClick={() => closeCampaign('complete', selectedIndexedCampaign)} className="h-9 bg-green-500/15 text-green-100 border border-green-400/25"><CheckCircle2 className="h-4 w-4" /> Done</Button><Button disabled={closing} onClick={() => closeCampaign('recall', selectedIndexedCampaign)} className="h-9 bg-red-500/15 text-red-100 border border-red-400/25"><AlertTriangle className="h-4 w-4" /> Recall</Button></div>
@@ -768,6 +792,13 @@ function BuilderContent(props) {
           <button type="button" disabled={deployed} onClick={() => { setDivisionBasis('area_count'); markPlanStale('The division method changed; regenerate territories.'); }} className={`w-full rounded-xl border px-3 py-2 text-left text-[10px] ${divisionBasis === 'area_count' ? 'border-purple-400 bg-purple-500/15 text-purple-100' : 'border-white/10 bg-white/[0.03] text-gray-400'}`}>Advanced · choose an exact number of territories</button>
           {divisionBasis === 'area_count' && <NumberField label="Number of territories" value={requestedAreaCount} min={1} max={250} disabled={deployed} onChange={(value) => { setRequestedAreaCount(value); markPlanStale('The territory count changed; regenerate.'); }} />}
           {divisionBasis === 'street_workload_target' && <><NumberField label="Approximate street workload per territory (miles)" value={targetStreetWorkloadMiles} min={0.1} max={25} step={0.1} disabled={deployed} onChange={(value) => { setTargetStreetWorkloadMiles(value); markPlanStale('The workload size changed; regenerate.'); }} /><p className="text-[10px] leading-relaxed text-gray-500">Canvas uses class-weighted, knockable street distance—not home counts. The final territory count is calculated after reading the streets and can be assigned across your reps.</p></>}
+          {teamMembersReady && !activeTeamMembers.length && (
+            <div className="rounded-2xl border border-amber-400/20 bg-amber-500/[0.07] p-3">
+              <p className="text-xs font-black text-amber-100">Plan now, assign reps later</p>
+              <p className="mt-1 text-[11px] leading-relaxed text-gray-300">Canvas can generate an unassigned preview by workload or exact territory count. Before deployment, add reps in Team and have each rep sign in and redeem your invite code.</p>
+              <Button asChild className="mt-3 h-9 w-full border border-amber-300/20 bg-amber-500/15 text-amber-50 hover:bg-amber-500/25"><Link to={createPageUrl('AdminTeam')} target="_blank" rel="noopener noreferrer"><Users className="h-4 w-4" /> Manage reps and invites</Link></Button>
+            </div>
+          )}
           {divisionBasis === 'selected_reps' && <RosterPicker activeTeamMembers={activeTeamMembers} selectedIds={selectedTeamMemberIds} toggle={toggleTeamMember} disabled={deployed} exclusions={teamExclusions} />}
           <div className="grid grid-cols-2 gap-2"><Metric label={divisionBasis === 'street_workload_target' ? 'Territories calculated' : 'Territories requested'} value={divisionBasis === 'street_workload_target' && !requestedZoneCount ? 'After generation' : requestedZoneCount} /><Metric label="Balance method" value="Street workload" /></div>
           {generationBlockers.length > 0 && <IssueList title="Before generation" issues={generationBlockers} tone="blocking" />}
