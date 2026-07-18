@@ -39,12 +39,16 @@ export default function RoleSelect() {
 
     // Check if user already has a TeamMember record (already on a team)
     const { data: existingTeamMember } = useQuery({
-        queryKey: ['existingTeamMember', user?.email],
+        queryKey: ['existingTeamMember', user?.id, user?.email],
         queryFn: async () => {
             if (!user?.email) return null;
-            const res = await base44.entities.TeamMember.filter({ email: user.email.trim().toLowerCase() }, '-created_date', 5);
+            const res = await base44.entities.TeamMember.filter({ email: user.email.trim().toLowerCase() }, '-created_date', 50);
             const members = Array.isArray(res) ? res : (res?.items || []);
-            return members[0] || null;
+            return members.find((member) => (
+                member.status !== 'inactive'
+                && (member.role || 'rep') === 'rep'
+                && (!member.user_id || member.user_id === user.id)
+            )) || null;
         },
         enabled: !!user?.email
     });
@@ -58,15 +62,18 @@ export default function RoleSelect() {
         if (role === 'rep' && existingTeamMember) {
             setIsLoading(true);
             try {
-                await updateUserMutation.mutateAsync({
-                    app_role: 'rep',
-                    team_manager_id: existingTeamMember.manager_id || null
-                });
+                // The backend resolves the membership from authenticated identity.
+                // The browser never chooses or writes the manager tenant ID.
+                const res = await base44.functions.invoke('redeemInviteCode', { action: 'claim_existing' });
+                if (!res.data?.success || res.data.role !== 'rep') {
+                    throw new Error('Unable to verify this team membership.');
+                }
+                queryClient.invalidateQueries({ queryKey: ['user'] });
                 toast.success(`Welcome back! Joining as rep.`);
                 navigate(createPageUrl('RepHome'));
             } catch (error) {
                 console.error(error);
-                toast.error("Failed to set role");
+                toast.error(error?.response?.data?.error || error?.message || "Failed to resume team access");
                 setIsLoading(false);
             }
             return;

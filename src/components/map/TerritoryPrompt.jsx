@@ -12,6 +12,7 @@ import PrecisionPullPanel from '@/components/map/PrecisionPullPanel';
 import { FREE_PRECISION_PROPERTY_LIMIT } from '@/lib/precisionUsage';
 import { usePrecisionUsage } from '@/hooks/usePrecisionUsage';
 import { normalizeOwnershipRangeDays as normalizeStrictOwnershipRangeDays } from '@/components/logic/soldDateRange';
+import { validateCanvasBoundary } from '@/components/canvas/canvasPlannerUtils';
 
 function formatWholeNumber(value) {
   const number = Math.max(0, Math.round(Number(value) || 0));
@@ -143,7 +144,7 @@ export default function TerritoryPrompt({
     isFetching: precisionUsageFetching,
     isError: precisionUsageError,
     refetch: refetchPrecisionUsage
-  } = usePrecisionUsage(user);
+  } = usePrecisionUsage(routeMode === 'precision' ? user : null);
   const [pulling, setPulling] = useState(false);
   const [pullProgress, setPullProgress] = useState('');
   const [fetchMonths, setFetchMonths] = useState(() => user?.pull_months_back || 12);
@@ -223,6 +224,7 @@ export default function TerritoryPrompt({
 
   // Auto-resume: check for running/pending fetch jobs on mount
   useEffect(() => {
+    if (routeMode !== 'precision') return;
     if (!user?.email) return;
     let cancelled = false;
 
@@ -326,16 +328,17 @@ export default function TerritoryPrompt({
 
     checkRunningJobs();
     return () => {cancelled = true;};
-  }, [user?.email, drawnPolygon]);
+  }, [routeMode, user?.email, drawnPolygon]);
 
   // Clear unqueried restored areas so draft polygons do not come back as ghost map areas.
   useEffect(() => {
+    if (routeMode !== 'precision') return;
     const restoredPolygon = localStorage.getItem('fk_drawnPolygon');
     if (drawnPolygon?.length > 2 && restoredPolygon && localStorage.getItem('fk_drawnPolygonQueried') !== 'true') {
       localStorage.removeItem('fk_drawnPolygon');
       setDrawnPolygon(null);
     }
-  }, [drawnPolygon, setDrawnPolygon]);
+  }, [routeMode, drawnPolygon, setDrawnPolygon]);
 
   // Clear only in-progress drawing when switching away; keep the confirmed area
   // so users can return after a pull/reload and still generate routes for it.
@@ -365,6 +368,7 @@ export default function TerritoryPrompt({
   }, []);
 
   useEffect(() => {
+    if (routeMode !== 'precision') return;
     if (!selectedHistoryArea) return;
     const historyPolygon = selectedHistoryArea.polygon || [];
     const samePolygon = ghostAreasVisible && drawnPolygon?.length === historyPolygon.length && drawnPolygon.every((point, index) => {
@@ -377,7 +381,7 @@ export default function TerritoryPrompt({
       setForceFullRefresh(false);
       setIncludeUnresolvedFollowUps(true);
     }
-  }, [drawnPolygon, ghostAreasVisible, selectedHistoryArea]);
+  }, [routeMode, drawnPolygon, ghostAreasVisible, selectedHistoryArea]);
 
   // Listen for toolbar draw button and previous-area selection events
   useEffect(() => {
@@ -392,6 +396,7 @@ export default function TerritoryPrompt({
       setDrawingMode(true);
     };
     const precisionPullHandler = () => {
+      if (routeMode !== 'precision') return;
       if (!drawnPolygon || drawnPolygon.length < 3) {
         toast.error('Draw a freehand area first.');
         return;
@@ -408,6 +413,7 @@ export default function TerritoryPrompt({
       setShowPrecisionPullPanel(true);
     };
     const historyHandler = (event) => {
+      if (routeMode !== 'precision') return;
       let ghostOn = false;
       try {ghostOn = localStorage.getItem('fk_showGhostAreas') === 'true';} catch {}
       if (!ghostOn) return;
@@ -445,7 +451,7 @@ export default function TerritoryPrompt({
       window.removeEventListener('fk-open-precision-pull', precisionPullHandler);
       window.removeEventListener('fk-select-polygon-history', historyHandler);
     };
-  }, [setMode, setDrawnPolygon, setDraftPolygon, setDrawingMode, setShowCompare, setShowRoutePanel, drawnPolygon, ghostAreasVisible]);
+  }, [routeMode, setMode, setDrawnPolygon, setDraftPolygon, setDrawingMode, setShowCompare, setShowRoutePanel, drawnPolygon, ghostAreasVisible]);
 
   const stopMapTouch = (event) => {
     event?.preventDefault?.();
@@ -467,7 +473,13 @@ export default function TerritoryPrompt({
       toast.error('Draw a complete area first.');
       return;
     }
-    setDrawnPolygon(draftPolygon);
+    const canvasBoundary = routeMode === 'canvas' ? validateCanvasBoundary(draftPolygon) : null;
+    if (canvasBoundary && !canvasBoundary.valid) {
+      toast.error(canvasBoundary.message);
+      return;
+    }
+    const confirmedPolygon = canvasBoundary?.points || draftPolygon;
+    setDrawnPolygon(confirmedPolygon);
     setDraftPolygon([]);
     setSelectedHistoryArea(null);
     setRepullMode('fill_gaps');
@@ -476,7 +488,7 @@ export default function TerritoryPrompt({
     setDrawingMode(false);
     if (routeMode === 'canvas') {
       setShowCompare(true);
-      toast.success('Canvas area selected. Analyze homes, then divide the work.');
+      toast.success('Canvas global area selected. Choose reps or a territory count, then divide the streets.');
     } else {
       toast.success('Area selected. Run Preview to check available data.');
     }
@@ -1175,7 +1187,7 @@ export default function TerritoryPrompt({
       }
 
             {/* Recover incomplete fetch job */}
-            {!pulling && recoverableJob && mode === 'generate' &&
+            {routeMode === 'precision' && !pulling && recoverableJob && mode === 'generate' &&
       <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[2000] w-11/12 max-w-sm animate-in fade-in">
                     <div className="bg-black/90 backdrop-blur-md border border-[#2EEB57]/50 rounded-xl p-4 shadow-2xl">
                         <p className="text-xs font-bold text-white mb-1">Incomplete data pull found</p>
@@ -1200,7 +1212,7 @@ export default function TerritoryPrompt({
       }
 
             {/* Pull Progress Bar */}
-            {pulling &&
+            {routeMode === 'precision' && pulling &&
       <div className="absolute top-14 left-1/2 -translate-x-1/2 z-[2000] w-11/12 max-w-sm animate-in fade-in">
                     <div className="bg-black/90 backdrop-blur-md border border-[#2EEB57]/50 rounded-xl p-4 shadow-2xl">
                         <div className="flex items-center gap-3 mb-2">

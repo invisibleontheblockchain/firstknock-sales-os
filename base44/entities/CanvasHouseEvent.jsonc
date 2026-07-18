@@ -1,0 +1,59 @@
+{
+  "name": "CanvasHouseEvent",
+  "type": "object",
+  "properties": {
+    "campaign_id": { "type": "string" },
+    "pin_id": { "type": "string" },
+    "zone_id": { "type": "string" },
+    "manager_id": { "type": "string" },
+    "actor_user_id": { "type": "string" },
+    "actor_team_member_id": { "type": "string" },
+    "idempotency_key": { "type": "string", "maxLength": 128 },
+    "request_hash": { "type": "string" },
+    "write_status": {
+      "type": "string",
+      "enum": ["pending", "committed"],
+      "default": "pending"
+    },
+    "applied_to_latest": { "type": "boolean", "default": true },
+    "outcome": {
+      "type": "string",
+      "enum": ["no_answer", "not_interested", "callback", "appointment", "sale", "do_not_knock"]
+    },
+    "note": { "type": "string", "maxLength": 1000 },
+    "lat": { "type": "number" },
+    "lng": { "type": "number" },
+    "address": { "type": "string", "maxLength": 500 },
+    "building_feature_id": { "type": "string", "maxLength": 256 },
+    "unit_label": { "type": "string", "maxLength": 100 },
+    "normalized_unit_label": { "type": "string", "maxLength": 100 },
+    "client_recorded_at": { "type": "string", "format": "date-time" },
+    "server_recorded_at": { "type": "string", "format": "date-time" },
+    "pin_version": { "type": "integer" }
+  },
+  "required": [
+    "campaign_id",
+    "zone_id",
+    "manager_id",
+    "actor_user_id",
+    "idempotency_key",
+    "request_hash",
+    "write_status",
+    "outcome",
+    "lat",
+    "lng",
+    "client_recorded_at",
+    "server_recorded_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": {
+      "$or": [
+        { "manager_id": "{{user.id}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

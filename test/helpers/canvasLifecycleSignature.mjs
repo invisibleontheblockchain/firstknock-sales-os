@@ -29,19 +29,22 @@ export function canvasStoredPlanForHash(session) {
     : Number(session?.version);
   return {
     session_name: session?.session_name || 'Canvas Campaign',
+    territory_model: session?.territory_model || 'street_territory_v1',
     polygon: asArray(session?.polygon),
     rep_count: Number(session?.rep_count || 0),
     planning_method: session?.planning_method,
     assignment_basis: session?.assignment_basis,
     workload_basis: session?.workload_basis,
-    target_homes: Number(session?.target_homes),
+    division_mode: session?.division_mode,
+    target_workload: session?.target_workload === null || session?.target_workload === undefined
+      ? null
+      : Number(session.target_workload),
     ...(Array.isArray(session?.selected_team_member_ids)
       ? { selected_team_member_ids: session.selected_team_member_ids }
       : {}),
-    doors: asArray(session?.doors),
     zones: asArray(session?.zones),
+    work_units: asArray(session?.work_units),
     qa: session?.qa || {},
-    analysis_id: session?.analysis_id || null,
     algorithm_version: session?.algorithm_version || null,
     data_version: session?.data_version || null,
     manager_id: session?.manager_id,

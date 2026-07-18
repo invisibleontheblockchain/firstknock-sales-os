@@ -4,7 +4,15 @@
   "properties": {
     "code": {
       "type": "string",
-      "description": "The secret PIN code"
+      "description": "The secret PIN code",
+      "rls": {
+        "write": {
+          "$or": [
+            { "data.linked_user_id": "{{user.id}}" },
+            { "user_condition": { "role": "admin" } }
+          ]
+        }
+      }
     },
     "role": {
       "type": "string",
@@ -13,7 +21,20 @@
         "manager",
         "admin"
       ],
-      "description": "Role to assign when used"
+      "description": "Role to assign when used",
+      "rls": {
+        "write": {
+          "$or": [
+            {
+              "$and": [
+                { "data.linked_user_id": "{{user.id}}" },
+                { "data.role": "rep" }
+              ]
+            },
+            { "user_condition": { "role": "admin" } }
+          ]
+        }
+      }
     },
     "label": {
       "type": "string",
@@ -21,21 +42,48 @@
     },
     "is_active": {
       "type": "boolean",
-      "default": true
+      "default": true,
+      "rls": {
+        "write": {
+          "$or": [
+            { "data.linked_user_id": "{{user.id}}" },
+            { "user_condition": { "role": "admin" } }
+          ]
+        }
+      }
     },
     "max_uses": {
       "type": "integer",
       "default": 1,
-      "description": "Maximum number of times this code can be used"
+      "description": "Maximum number of times this code can be used",
+      "rls": {
+        "write": {
+          "$or": [
+            { "data.linked_user_id": "{{user.id}}" },
+            { "user_condition": { "role": "admin" } }
+          ]
+        }
+      }
     },
     "used_count": {
       "type": "integer",
       "default": 0,
-      "description": "Number of times this code has been used"
+      "description": "Number of times this code has been used",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "linked_user_id": {
       "type": "string",
-      "description": "ID of the manager who owns this code (if linked to subscription)"
+      "description": "ID of the manager who owns this code (if linked to subscription)",
+      "rls": {
+        "write": {
+          "$or": [
+            { "data.linked_user_id": "{{user.id}}" },
+            { "user_condition": { "role": "admin" } }
+          ]
+        }
+      }
     },
     "description": {
       "type": "string",

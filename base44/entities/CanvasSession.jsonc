@@ -4,20 +4,24 @@
   "properties": {
     "session_name": {
       "type": "string",
-      "description": "Optional name for this Canvas deployment session"
+      "description": "Manager-facing name for this Canvas territory campaign"
+    },
+    "territory_model": {
+      "type": "string",
+      "enum": [
+        "street_territory_v1"
+      ],
+      "default": "street_territory_v1",
+      "description": "Canvas is territory-first. Houses are created as field pins, not preloaded into the campaign."
     },
     "polygon": {
       "type": "array",
-      "description": "Freehand territory polygon points",
+      "description": "Manager-drawn global campaign boundary",
       "items": {
         "type": "object",
         "properties": {
-          "lat": {
-            "type": "number"
-          },
-          "lng": {
-            "type": "number"
-          }
+          "lat": { "type": "number" },
+          "lng": { "type": "number" }
         }
       }
     },
@@ -28,186 +32,146 @@
     "planning_method": {
       "type": "string",
       "enum": [
-        "street_work_units",
+        "street_workload",
         "preview_only"
       ],
-      "default": "preview_only",
-      "description": "Server-checked planning method. Only street_work_units can be deployed."
+      "default": "preview_only"
     },
     "assignment_basis": {
       "type": "string",
       "enum": [
-        "stable_door_ids",
+        "street_work_unit_ids",
         "legacy_geometry"
       ],
       "default": "legacy_geometry",
-      "description": "Authoritative assignment basis. Production deployment requires stable_door_ids."
+      "description": "Production deployments assign an exclusive partition of street work units."
     },
     "workload_basis": {
       "type": "string",
       "enum": [
+        "street_length",
+        "street_length_plus_estimated_doors"
+      ],
+      "default": "street_length"
+    },
+    "division_mode": {
+      "type": "string",
+      "enum": [
         "selected_reps",
-        "homes_per_area"
+        "area_count",
+        "street_workload_target"
       ],
       "default": "selected_reps",
-      "description": "Manager-facing choice used to size zones by selected reps or target homes per area."
+      "description": "How the manager chooses the number of areas: one per selected rep, a fixed area count, or a target amount of street work per area."
     },
-    "target_homes": {
-      "type": "integer",
-      "default": 0,
-      "description": "Exact eligible-home count expected in this version."
+    "target_workload": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "For street_workload_target, the positive target class-weighted street meters per territory. Null for other division modes."
     },
     "selected_team_member_ids": {
       "type": "array",
-      "description": "Manager-selected TeamMember IDs. Production selected-reps plans require exact one-to-one equality with zone assignees.",
-      "items": {
-        "type": "string"
-      }
-    },
-    "doors": {
-      "type": "array",
-      "description": "Canonical door snapshot keyed by stable_door_id for this plan version.",
-      "items": {
-        "type": "object"
-      }
+      "description": "Manager-selected TeamMember IDs; selected-rep plans require one zone per rep.",
+      "items": { "type": "string" }
     },
     "zones": {
       "type": "array",
-      "description": "Generated Canvas zones assigned by stable TeamMember ID",
-      "items": {
-        "type": "object"
-      }
+      "description": "Connected, street-aligned territories with assignment and workload metadata",
+      "items": { "type": "object" }
+    },
+    "work_units": {
+      "type": "array",
+      "description": "Canonical road segments used to enforce field-pin ownership without a preloaded house inventory",
+      "items": { "type": "object" }
     },
     "qa": {
       "type": "object",
-      "description": "Generation diagnostics and hard deployment gates. The deploy function independently recomputes identity coverage."
+      "description": "Street partition diagnostics and deployment gates"
     },
     "deployment_qa": {
       "type": "object",
-      "description": "Server-derived deployment validation evidence stored by canvasDeployCampaign."
+      "description": "Server-derived deployment and lifecycle evidence"
     },
-    "analysis_id": {
-      "type": "string",
-      "description": "Owned Canvas analysis used to produce the door snapshot, when present."
-    },
-    "algorithm_version": {
-      "type": "string",
-      "description": "Versioned street-aware partitioning algorithm identifier."
-    },
-    "data_version": {
-      "type": "string",
-      "description": "Version or snapshot identifier for the door and street data."
-    },
+    "algorithm_version": { "type": "string" },
+    "data_version": { "type": "string" },
     "plan_hash": {
       "type": "string",
-      "description": "Server-computed SHA-256 digest of the normalized plan."
+      "description": "Server-computed SHA-256 digest of the normalized territory plan"
     },
     "version": {
       "type": "integer",
-      "default": 1,
-      "description": "Optimistic campaign version incremented on every draft save and signed lifecycle close."
+      "default": 1
     },
-    "deployment_plan_version": {
-      "type": "integer",
-      "description": "Immutable draft version whose normalized plan_hash was approved at deployment."
-    },
-    "draft_saved_at": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "deployed_at": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "deployed_by_user_id": {
-      "type": "string"
-    },
-    "deployment_idempotency_key": {
-      "type": "string",
-      "description": "Manager-scoped key used to make repeated deploy requests safe."
-    },
+    "deployment_plan_version": { "type": "integer" },
+    "draft_saved_at": { "type": "string", "format": "date-time" },
+    "deployed_at": { "type": "string", "format": "date-time" },
+    "deployed_by_user_id": { "type": "string" },
+    "deployment_idempotency_key": { "type": "string" },
     "deployment_signature": {
       "type": "string",
-      "description": "Server HMAC proving the plan and current active/completed/recalled lifecycle snapshot."
+      "description": "Server HMAC proving the immutable plan and lifecycle snapshot"
     },
     "lifecycle_state": {
       "type": "string",
-      "enum": [
-        "active",
-        "completed",
-        "recalled"
-      ],
-      "description": "Signed campaign lifecycle. Rep delivery and overlap protection require active."
+      "enum": ["active", "completed", "recalled"]
     },
-    "lifecycle_evidence": {
-      "type": "object",
-      "description": "Signed transition evidence including actor, time, versions, idempotency key, and prior signature."
-    },
-    "closed_at": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "closed_by_user_id": {
-      "type": "string"
-    },
+    "lifecycle_evidence": { "type": "object" },
+    "closed_at": { "type": "string", "format": "date-time" },
+    "closed_by_user_id": { "type": "string" },
     "close_action": {
       "type": "string",
-      "enum": [
-        "complete",
-        "recall"
-      ]
+      "enum": ["complete", "recall"]
     },
-    "close_idempotency_key": {
-      "type": "string",
-      "description": "Manager-scoped key making an exact lifecycle close retry safe."
-    },
+    "close_idempotency_key": { "type": "string" },
     "status": {
       "type": "string",
-      "enum": [
-        "draft",
-        "deployed",
-        "completed",
-        "recalled"
-      ],
+      "enum": ["draft", "deployed", "completed", "recalled"],
       "default": "draft"
     },
-    "manager_id": {
-      "type": "string"
+    "manager_id": { "type": "string" },
+    "canvas_field_write_lock_token": {
+      "type": "string",
+      "description": "Short-lived service-owned lock for idempotent pin/event writes",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "canvas_field_write_lock_acquired_at": {
+      "type": "string",
+      "format": "date-time",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "canvas_field_write_lock_expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
     }
   },
   "required": [
+    "territory_model",
     "polygon",
     "rep_count",
     "zones",
-    "status"
+    "work_units",
+    "status",
+    "manager_id"
   ],
   "rls": {
-    "create": {
-      "user_condition": {
-        "role": "admin"
-      }
-    },
+    "create": { "user_condition": { "role": "admin" } },
     "read": {
       "$or": [
-        {
-          "manager_id": "{{user.id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
+        { "manager_id": "{{user.id}}" },
+        { "user_condition": { "role": "admin" } }
       ]
     },
-    "update": {
-      "user_condition": {
-        "role": "admin"
-      }
-    },
-    "delete": {
-      "user_condition": {
-        "role": "admin"
-      }
-    }
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
   }
 }

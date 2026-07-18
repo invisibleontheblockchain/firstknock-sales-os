@@ -1,21 +1,21 @@
 const DEFAULT_HIGHWAY_FILTER = 'primary|secondary|tertiary|unclassified|residential|living_street';
 const OVERPASS_URLS = [
   'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter',
 ];
 const DEFAULT_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
 
 function stablePolygonKey(polygon = []) {
   return polygon
     .filter((point) => Number.isFinite(point?.lat) && Number.isFinite(point?.lng))
-    .map((point) => `${Number(point.lat).toFixed(6)},${Number(point.lng).toFixed(6)}`)
+    .map((point) => `${Number(point.lat).toFixed(7)},${Number(point.lng).toFixed(7)}`)
     .join('|');
 }
 
 function polygonToOverpassPoly(polygon = []) {
   return polygon
     .filter((point) => Number.isFinite(point?.lat) && Number.isFinite(point?.lng))
-    .map((point) => `${Number(point.lat).toFixed(6)} ${Number(point.lng).toFixed(6)}`)
+    .map((point) => `${Number(point.lat).toFixed(7)} ${Number(point.lng).toFixed(7)}`)
     .join(' ');
 }
 

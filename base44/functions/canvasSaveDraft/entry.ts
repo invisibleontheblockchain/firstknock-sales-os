@@ -3,11 +3,13 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 const MAX_POLYGON_POINTS = 800;
 const MAX_AREA_SQ_MI = 300;
 const MAX_ZONES = 250;
-const MAX_DOORS = 10000;
+const MAX_WORK_UNITS = 10000;
+const MAX_SEGMENTS = 50000;
 const MAX_JSON_BYTES = 8_000_000;
-const PLANNING_METHODS = new Set(['street_work_units', 'preview_only']);
-const ASSIGNMENT_BASES = new Set(['stable_door_ids', 'legacy_geometry']);
-const WORKLOAD_BASES = new Set(['selected_reps', 'homes_per_area']);
+const PLANNING_METHODS = new Set(['street_workload', 'preview_only']);
+const ASSIGNMENT_BASES = new Set(['street_work_unit_ids', 'legacy_geometry']);
+const WORKLOAD_BASES = new Set(['street_length', 'street_length_plus_estimated_doors']);
+const DIVISION_MODES = new Set(['selected_reps', 'area_count', 'street_workload_target']);
 
 class HttpError extends Error {
   status: number;
@@ -22,38 +24,35 @@ class HttpError extends Error {
   }
 }
 
-function normalizedRole(value: unknown) {
+function normalized(value: unknown) {
   return String(value || '').trim().toLowerCase();
 }
 
 function canManageCanvas(user: any) {
-  const appRole = normalizedRole(user?.app_role || user?.data?.app_role);
-  const accountRole = normalizedRole(user?.role || user?.data?.role);
+  const appRole = normalized(user?.app_role || user?.data?.app_role);
+  const accountRole = normalized(user?.role || user?.data?.role);
   return user?.is_owner === true || ['manager', 'admin'].includes(appRole) || ['manager', 'admin'].includes(accountRole);
 }
 
-// Saving a draft uses the server-authenticated billing cache. Production
-// deployment performs a fresh Stripe verification in canvasDeployCampaign.
 function hasDraftCanvasEntitlement(user: any) {
-  const accountRole = normalizedRole(user?.role || user?.data?.role);
+  const accountRole = normalized(user?.role || user?.data?.role);
   if (accountRole === 'admin') return true;
-  if (normalizedRole(user?.subscription_tier) !== 'canvas') return false;
-  const status = normalizedRole(user?.subscription_status);
+  if (normalized(user?.subscription_tier) !== 'canvas') return false;
+  const status = normalized(user?.subscription_status);
   if (status === 'active') return user?.subscription_paid_confirmed === true;
   return status === 'trialing' && user?.stripe_card_on_file_confirmed === true;
 }
 
 function requiredString(value: unknown, field: string, maxLength = 256) {
   const result = String(value || '').trim();
-  if (!result) throw new HttpError(400, 'invalid_plan', `${field} is required.`);
-  if (result.length > maxLength) throw new HttpError(400, 'invalid_plan', `${field} is too long.`);
+  if (!result || result.length > maxLength) throw new HttpError(400, 'invalid_plan', `${field} is required or invalid.`);
   return result;
 }
 
 function optionalString(value: unknown, maxLength = 512) {
   if (value === undefined || value === null || value === '') return null;
   const result = String(value).trim();
-  if (!result || result.length > maxLength) throw new HttpError(400, 'invalid_plan', 'A plan identifier is invalid.');
+  if (!result || result.length > maxLength) throw new HttpError(400, 'invalid_plan', 'A Canvas plan identifier is invalid.');
   return result;
 }
 
@@ -70,15 +69,12 @@ function samePoint(left: any, right: any) {
   return Math.abs(left.lat - right.lat) < 0.0000001 && Math.abs(left.lng - right.lng) < 0.0000001;
 }
 
-function polygonAreaSqMi(points: Array<{ lat: number; lng: number }>) {
+function polygonAreaSqMi(points: any[]) {
   const averageLat = points.reduce((sum, point) => sum + point.lat, 0) / points.length;
   const latScale = 69;
   const lngScale = 69 * Math.cos(averageLat * Math.PI / 180);
   const origin = points[0];
-  const projected = points.map((point) => ({
-    x: (point.lng - origin.lng) * lngScale,
-    y: (point.lat - origin.lat) * latScale
-  }));
+  const projected = points.map((point) => ({ x: (point.lng - origin.lng) * lngScale, y: (point.lat - origin.lat) * latScale }));
   let sum = 0;
   for (let index = 0; index < projected.length; index += 1) {
     const current = projected[index];
@@ -88,203 +84,166 @@ function polygonAreaSqMi(points: Array<{ lat: number; lng: number }>) {
   return Math.abs(sum) / 2;
 }
 
-function normalizePolygon(input: any) {
-  if (!Array.isArray(input) || input.length < 3 || input.length > MAX_POLYGON_POINTS) {
-    throw new HttpError(400, 'invalid_polygon', `polygon must contain 3-${MAX_POLYGON_POINTS} points.`);
+function normalizePolygon(input: any, field = 'polygon', maxPoints = MAX_POLYGON_POINTS) {
+  if (!Array.isArray(input) || input.length < 3 || input.length > maxPoints) {
+    throw new HttpError(400, 'invalid_polygon', `${field} must contain 3-${maxPoints} points.`);
   }
-  const points = input.map((point, index) => normalizePoint(point, `polygon[${index}]`));
+  const points = input.map((point, index) => normalizePoint(point, `${field}[${index}]`));
   if (points.length > 3 && samePoint(points[0], points[points.length - 1])) points.pop();
-  const unique = new Set(points.map((point) => `${point.lat.toFixed(7)}:${point.lng.toFixed(7)}`));
-  if (unique.size < 3) throw new HttpError(400, 'invalid_polygon', 'polygon needs at least three unique points.');
-  const areaSqMi = polygonAreaSqMi(points);
-  if (!Number.isFinite(areaSqMi) || areaSqMi <= 0 || areaSqMi > MAX_AREA_SQ_MI) {
-    throw new HttpError(400, 'invalid_polygon', `polygon area must be greater than zero and at most ${MAX_AREA_SQ_MI} square miles.`);
+  if (new Set(points.map((point) => `${point.lat.toFixed(7)}:${point.lng.toFixed(7)}`)).size < 3) {
+    throw new HttpError(400, 'invalid_polygon', `${field} needs at least three unique points.`);
   }
-  return { points, areaSqMi };
+  return points;
 }
 
-function safeJson(value: any, field: string, maxBytes = 1_000_000) {
-  if (value === undefined || value === null) return null;
-  let encoded;
-  try {
-    encoded = JSON.stringify(value);
-  } catch {
-    throw new HttpError(400, 'invalid_plan', `${field} must be valid JSON.`);
-  }
-  if (encoded.length > maxBytes) throw new HttpError(413, 'plan_too_large', `${field} is too large.`);
-  return JSON.parse(encoded);
-}
-
-function normalizeIdList(value: any, field: string) {
-  if (!Array.isArray(value)) throw new HttpError(400, 'invalid_plan', `${field} must be an array.`);
+function normalizeIdList(value: any, field: string, maxItems = MAX_WORK_UNITS) {
+  if (!Array.isArray(value) || value.length > maxItems) throw new HttpError(400, 'invalid_plan', `${field} must be an array with at most ${maxItems} items.`);
   const ids = value.map((item, index) => requiredString(item, `${field}[${index}]`, 512));
-  if (new Set(ids).size !== ids.length) throw new HttpError(400, 'duplicate_door_reference', `${field} contains a duplicate identifier.`);
+  if (new Set(ids).size !== ids.length) throw new HttpError(400, 'duplicate_reference', `${field} contains a duplicate identifier.`);
   return ids;
 }
 
 function sameIdSet(left: string[], right: string[]) {
-  if (left.length !== right.length) return false;
-  const rightSet = new Set(right);
-  return left.every((id) => rightSet.has(id));
+  return left.length === right.length && left.every((id) => new Set(right).has(id));
 }
 
-function normalizeDoors(input: any, planningMethod: string) {
-  if (!Array.isArray(input) || input.length > MAX_DOORS) {
-    throw new HttpError(400, 'invalid_plan', `doors must contain at most ${MAX_DOORS} records.`);
+function finiteNumber(value: any, field: string, minimum = 0, nullable = false) {
+  if (nullable && (value === undefined || value === null || value === '')) return null;
+  const result = Number(value);
+  if (!Number.isFinite(result) || result < minimum) throw new HttpError(400, 'invalid_plan', `${field} must be a number of at least ${minimum}.`);
+  return result;
+}
+
+function normalizeSegments(value: any, field: string) {
+  if (!Array.isArray(value) || value.length < 1) throw new HttpError(400, 'invalid_plan', `${field} must contain road segments.`);
+  return value.map((segment, index) => ({
+    edge_id: optionalString(segment?.edge_id ?? segment?.edgeId, 512),
+    start: normalizePoint(segment?.start, `${field}[${index}].start`),
+    end: normalizePoint(segment?.end, `${field}[${index}].end`),
+    street_names: normalizeIdList(segment?.street_names ?? segment?.streetNames ?? [], `${field}[${index}].street_names`, 25),
+    length_meters: finiteNumber(segment?.length_meters ?? segment?.lengthMeters, `${field}[${index}].length_meters`)
+  }));
+}
+
+function normalizeWorkUnits(input: any) {
+  if (!Array.isArray(input) || input.length < 1 || input.length > MAX_WORK_UNITS) {
+    throw new HttpError(400, 'invalid_plan', `work_units must contain 1-${MAX_WORK_UNITS} records.`);
   }
-  const seen = new Set<string>();
-  return input.map((door, index) => {
-    const stableDoorId = requiredString(door?.stable_door_id, `doors[${index}].stable_door_id`, 512);
-    if (seen.has(stableDoorId)) throw new HttpError(400, 'duplicate_stable_door_id', `Door ${stableDoorId} appears more than once in doors.`);
-    seen.add(stableDoorId);
-    const location = normalizePoint(door, `doors[${index}]`);
-    const workUnitId = optionalString(door?.work_unit_id, 512);
-    if (planningMethod === 'street_work_units' && !workUnitId) {
-      throw new HttpError(400, 'invalid_plan', `doors[${index}].work_unit_id is required for street_work_units.`);
-    }
+  let segmentCount = 0;
+  const ids = new Set<string>();
+  const units = input.map((unit, index) => {
+    const id = requiredString(unit?.id ?? unit?.work_unit_id, `work_units[${index}].id`, 512);
+    if (ids.has(id)) throw new HttpError(400, 'duplicate_work_unit', `Work unit ${id} appears more than once.`);
+    ids.add(id);
+    const segments = normalizeSegments(unit?.segments, `work_units[${index}].segments`);
+    segmentCount += segments.length;
     return {
-      stable_door_id: stableDoorId,
-      address_hash: optionalString(door?.address_hash, 512),
-      full_address: optionalString(door?.full_address, 1000),
-      lat: location.lat,
-      lng: location.lng,
-      work_unit_id: workUnitId,
-      zone_id: optionalString(door?.zone_id, 512),
-      data_source: optionalString(door?.data_source, 128)
+      id,
+      kind: optionalString(unit?.kind, 128),
+      protected: unit?.protected === true,
+      street_names: normalizeIdList(unit?.street_names ?? unit?.streetNames ?? [], `work_units[${index}].street_names`, 100),
+      neighbor_ids: normalizeIdList(unit?.neighbor_ids ?? unit?.neighborIds ?? [], `work_units[${index}].neighbor_ids`, MAX_WORK_UNITS),
+      street_length_meters: finiteNumber(unit?.street_length_meters ?? unit?.streetLengthMeters, `work_units[${index}].street_length_meters`),
+      segments
     };
   });
+  if (segmentCount > MAX_SEGMENTS) throw new HttpError(413, 'plan_too_large', `work_units may contain at most ${MAX_SEGMENTS} road segments.`);
+  for (const unit of units) {
+    const unknown = unit.neighbor_ids.filter((id) => !ids.has(id));
+    if (unknown.length) throw new HttpError(400, 'invalid_work_unit_graph', `Work unit ${unit.id} references an unknown neighbor.`);
+  }
+  return units;
+}
+
+function normalizeZoneParts(zone: any, index: number) {
+  const rawParts = Array.isArray(zone?.parts) && zone.parts.length ? zone.parts : [zone?.geometry];
+  const parts = rawParts.map((part, partIndex) => normalizePolygon(part, `zones[${index}].parts[${partIndex}]`, 5000));
+  const geometry = normalizePolygon(zone?.geometry || parts[0], `zones[${index}].geometry`, 5000);
+  return { geometry, parts };
 }
 
 function normalizeZones(input: any) {
-  if (!Array.isArray(input) || input.length > MAX_ZONES) {
-    throw new HttpError(400, 'invalid_plan', `zones must contain at most ${MAX_ZONES} records.`);
+  if (!Array.isArray(input) || input.length < 1 || input.length > MAX_ZONES) {
+    throw new HttpError(400, 'invalid_plan', `zones must contain 1-${MAX_ZONES} records.`);
   }
   const zoneIds = new Set<string>();
   const zoneNumbers = new Set<number>();
   return input.map((zone, index) => {
     const zoneId = requiredString(zone?.zone_id, `zones[${index}].zone_id`, 512);
     const zoneNumber = Number(zone?.zone_number ?? index + 1);
-    if (!Number.isInteger(zoneNumber) || zoneNumber < 1) {
-      throw new HttpError(400, 'invalid_plan', `zones[${index}].zone_number must be a positive integer.`);
-    }
-    if (zoneIds.has(zoneId) || zoneNumbers.has(zoneNumber)) {
-      throw new HttpError(400, 'duplicate_zone', 'zone_id and zone_number must be unique within a plan.');
+    if (!Number.isInteger(zoneNumber) || zoneNumber < 1 || zoneIds.has(zoneId) || zoneNumbers.has(zoneNumber)) {
+      throw new HttpError(400, 'duplicate_zone', 'Every zone needs a unique ID and positive zone number.');
     }
     zoneIds.add(zoneId);
     zoneNumbers.add(zoneNumber);
-    const estimatedMinutes = zone?.estimated_minutes === undefined || zone?.estimated_minutes === null
-      ? null
-      : Number(zone.estimated_minutes);
-    if (estimatedMinutes !== null && (!Number.isFinite(estimatedMinutes) || estimatedMinutes < 0)) {
-      throw new HttpError(400, 'invalid_plan', `zones[${index}].estimated_minutes must be non-negative.`);
-    }
+    const { geometry, parts } = normalizeZoneParts(zone, index);
+    const workUnitIds = normalizeIdList(zone?.work_unit_ids ?? zone?.street_work_unit_ids ?? [], `zones[${index}].work_unit_ids`);
     return {
       zone_id: zoneId,
       zone_number: zoneNumber,
-      geometry: safeJson(zone?.geometry, `zones[${index}].geometry`),
-      parts: safeJson(zone?.parts, `zones[${index}].parts`),
+      name: optionalString(zone?.name, 200) || `Area ${zoneNumber}`,
+      color: optionalString(zone?.color, 64),
+      geometry,
+      parts,
+      center: zone?.center ? normalizePoint(zone.center, `zones[${index}].center`) : null,
       drop_point: zone?.drop_point ? normalizePoint(zone.drop_point, `zones[${index}].drop_point`) : null,
       assigned_team_member_id: optionalString(zone?.assigned_team_member_id, 256),
-      stable_door_ids: normalizeIdList(zone?.stable_door_ids || [], `zones[${index}].stable_door_ids`),
-      work_unit_ids: normalizeIdList(zone?.work_unit_ids || [], `zones[${index}].work_unit_ids`),
-      estimated_minutes: estimatedMinutes
+      work_unit_ids: workUnitIds,
+      street_work_unit_ids: workUnitIds,
+      street_length_meters: finiteNumber(zone?.street_length_meters ?? zone?.street_length_m, `zones[${index}].street_length_meters`),
+      estimated_doors: finiteNumber(zone?.estimated_doors, `zones[${index}].estimated_doors`, 0, true),
+      estimated_minutes: finiteNumber(zone?.estimated_minutes, `zones[${index}].estimated_minutes`, 0, true),
+      workload_score: finiteNumber(zone?.workload_score ?? zone?.street_length_meters ?? zone?.street_length_m, `zones[${index}].workload_score`),
+      workload_share: finiteNumber(zone?.workload_share, `zones[${index}].workload_share`, 0, true),
+      protected_unit_over_target: zone?.protected_unit_over_target === true
     };
   });
 }
 
-function deriveQa(doors: any[], zones: any[], targetHomes: number, suppliedQa: any) {
-  const doorIds = new Set(doors.map((door) => door.stable_door_id));
+function deriveQa(workUnits: any[], zones: any[], suppliedQa: any) {
+  let clientQa: any = {};
+  try {
+    clientQa = JSON.parse(JSON.stringify(suppliedQa || {}));
+  } catch {
+    throw new HttpError(400, 'invalid_plan', 'qa must be valid JSON.');
+  }
+  const expectedIds = new Set(workUnits.map((unit) => unit.id));
   const counts = new Map<string, number>();
-  for (const zone of zones) {
-    for (const doorId of zone.stable_door_ids) counts.set(doorId, (counts.get(doorId) || 0) + 1);
-  }
-  const missingDoorIds = [...doorIds].filter((doorId) => !counts.has(doorId));
-  const duplicateDoorIds = [...counts].filter(([, count]) => count > 1).map(([doorId]) => doorId);
-  const extraDoorIds = [...counts.keys()].filter((doorId) => !doorIds.has(doorId));
-  const zoneMismatchDoorIds = doors
-    .filter((door) => door.zone_id && !zones.some((zone) => zone.zone_id === door.zone_id && zone.stable_door_ids.includes(door.stable_door_id)))
-    .map((door) => door.stable_door_id);
-  const doorUnitIds = new Set(doors.map((door) => door.work_unit_id).filter(Boolean));
-  const unitZoneCounts = new Map<string, number>();
-  const unitZoneById = new Map<string, string>();
-  for (const zone of zones) {
-    for (const unitId of zone.work_unit_ids) {
-      unitZoneCounts.set(unitId, (unitZoneCounts.get(unitId) || 0) + 1);
-      if (!unitZoneById.has(unitId)) unitZoneById.set(unitId, zone.zone_id);
-    }
-  }
-  const missingWorkUnitIds = [...doorUnitIds].filter((unitId) => !unitZoneCounts.has(unitId));
-  const duplicateWorkUnitIds = [...unitZoneCounts].filter(([, count]) => count !== 1).map(([unitId]) => unitId);
-  const extraWorkUnitIds = [...unitZoneCounts.keys()].filter((unitId) => !doorUnitIds.has(unitId));
-  const doorZoneById = new Map<string, string>();
-  for (const zone of zones) for (const doorId of zone.stable_door_ids) doorZoneById.set(doorId, zone.zone_id);
-  const workUnitZoneMismatchDoorIds = doors
-    .filter((door) => door.work_unit_id && doorZoneById.get(door.stable_door_id) !== unitZoneById.get(door.work_unit_id))
-    .map((door) => door.stable_door_id);
-  const clientQa = safeJson(suppliedQa || {}, 'qa', 250_000) || {};
-  const coverageComplete = missingDoorIds.length === 0 && extraDoorIds.length === 0 && zoneMismatchDoorIds.length === 0;
-  const noDuplicateDoors = duplicateDoorIds.length === 0;
-  const targetMatches = targetHomes === doors.length;
-  const workUnitsIntact = missingWorkUnitIds.length === 0
-    && duplicateWorkUnitIds.length === 0
-    && extraWorkUnitIds.length === 0
-    && workUnitZoneMismatchDoorIds.length === 0;
-  const requiredGeneratorGates = clientQa.connected_zones === true
-    && clientQa.atomic_work_units === true
-    && clientQa.data_quality_status === 'verified';
+  for (const zone of zones) for (const id of zone.work_unit_ids) counts.set(id, (counts.get(id) || 0) + 1);
+  const missingIds = [...expectedIds].filter((id) => !counts.has(id));
+  const duplicateIds = [...counts].filter(([, count]) => count !== 1).map(([id]) => id);
+  const extraIds = [...counts.keys()].filter((id) => !expectedIds.has(id));
+  const protectedIds = new Set(workUnits.filter((unit) => unit.protected).map((unit) => unit.id));
+  const protectedUnitsIntact = [...protectedIds].every((id) => counts.get(id) === 1);
+  const streetCoverageComplete = missingIds.length === 0 && extraIds.length === 0;
+  const noDuplicateWorkUnits = duplicateIds.length === 0;
+  const connectedZones = clientQa.connected_zones === true;
+  const atomicWorkUnits = clientQa.atomic_work_units === true && streetCoverageComplete && noDuplicateWorkUnits;
+  const culDeSacSplits = Math.max(0, Number(clientQa.cul_de_sac_splits) || 0);
   return {
     ...clientQa,
-    coverage_complete: coverageComplete,
-    no_missing_doors: missingDoorIds.length === 0,
-    no_duplicate_doors: noDuplicateDoors,
-    target_matches: targetMatches,
-    work_units_intact: workUnitsIntact,
-    missing_door_ids: missingDoorIds.slice(0, 100),
-    duplicate_door_ids: duplicateDoorIds.slice(0, 100),
-    extra_door_ids: extraDoorIds.slice(0, 100),
-    zone_mismatch_door_ids: zoneMismatchDoorIds.slice(0, 100),
-    missing_work_unit_ids: missingWorkUnitIds.slice(0, 100),
-    duplicate_work_unit_ids: duplicateWorkUnitIds.slice(0, 100),
-    extra_work_unit_ids: extraWorkUnitIds.slice(0, 100),
-    work_unit_zone_mismatch_door_ids: workUnitZoneMismatchDoorIds.slice(0, 100),
-    deployable: coverageComplete && noDuplicateDoors && targetMatches && workUnitsIntact && doors.length > 0 && zones.length > 0 && requiredGeneratorGates
+    territory_source: 'street_work_units',
+    street_coverage_complete: streetCoverageComplete,
+    no_duplicate_work_units: noDuplicateWorkUnits,
+    connected_zones: connectedZones,
+    atomic_work_units: atomicWorkUnits,
+    protected_units_intact: protectedUnitsIntact && clientQa.protected_units_intact === true,
+    cul_de_sac_splits: culDeSacSplits,
+    missing_work_unit_ids: missingIds.slice(0, 100),
+    duplicate_work_unit_ids: duplicateIds.slice(0, 100),
+    extra_work_unit_ids: extraIds.slice(0, 100),
+    work_unit_count: workUnits.length,
+    zone_count: zones.length,
+    total_street_length_meters: Number(workUnits.reduce((sum, unit) => sum + unit.street_length_meters, 0).toFixed(2)),
+    deployable: streetCoverageComplete
+      && noDuplicateWorkUnits
+      && connectedZones
+      && atomicWorkUnits
+      && protectedUnitsIntact
+      && clientQa.protected_units_intact === true
+      && culDeSacSplits === 0
+      && zones.length > 0
   };
-}
-
-function functionPayload(result: any) {
-  return result?.data && typeof result.data === 'object' ? result.data : result;
-}
-
-async function verifyAnalysisDoorUniverse(base44: any, analysisId: string | null, doors: any[], required: boolean) {
-  if (!analysisId) {
-    if (required) throw new HttpError(422, 'analysis_required', 'street_work_units drafts require an owned Canvas analysis.');
-    return null;
-  }
-  const invoked = await base44.functions.invoke('canvasGetAnalysis', { analysisId }).catch(() => null);
-  const payload = functionPayload(invoked);
-  if (!payload?.success || !payload?.analysis || !Array.isArray(payload?.opportunities)) {
-    throw new HttpError(403, 'analysis_not_owned', 'The selected Canvas analysis is unavailable to this manager.');
-  }
-  const totalOpportunities = Number(payload.analysis.total_opportunities);
-  if (!Number.isInteger(totalOpportunities) || totalOpportunities < 0 || payload.opportunities.length !== totalOpportunities) {
-    throw new HttpError(422, 'analysis_truncated', 'The Canvas analysis did not return its complete opportunity set and cannot be used for deployment.');
-  }
-  const analysisById = new Map(payload.opportunities.map((opportunity: any) => [String(opportunity.id), opportunity]));
-  const doorIds = new Set(doors.map((door) => door.stable_door_id));
-  const missingIds = [...analysisById.keys()].filter((id) => !doorIds.has(id));
-  const extraIds = [...doorIds].filter((id) => !analysisById.has(id));
-  const coordinateMismatchIds = doors.filter((door) => {
-    const opportunity: any = analysisById.get(door.stable_door_id);
-    return opportunity && (Math.abs(Number(opportunity.lat) - door.lat) > 0.00005 || Math.abs(Number(opportunity.lng) - door.lng) > 0.00005);
-  }).map((door) => door.stable_door_id);
-  if (missingIds.length || extraIds.length || coordinateMismatchIds.length) {
-    throw new HttpError(422, 'analysis_door_mismatch', 'The draft door universe must exactly match its owned Canvas analysis.', {
-      missing_door_ids: missingIds.slice(0, 100),
-      extra_door_ids: extraIds.slice(0, 100),
-      coordinate_mismatch_door_ids: coordinateMismatchIds.slice(0, 100)
-    });
-  }
-  return { analysis_id: analysisId, opportunity_count: totalOpportunities, coordinates_verified: true };
 }
 
 function canonicalize(value: any): any {
@@ -318,7 +277,7 @@ Deno.serve(async (req: Request) => {
     if (sessionId) {
       existing = await base44.entities.CanvasSession.get(sessionId).catch(() => null);
       if (!existing) throw new HttpError(404, 'session_not_found', 'Canvas session not found.');
-      if (existing.manager_id !== user.id) throw new HttpError(403, 'forbidden', 'This Canvas session belongs to another manager.');
+      if (String(existing.manager_id || '') !== String(user.id || '')) throw new HttpError(403, 'forbidden', 'This Canvas session belongs to another manager.');
       if (existing.status !== 'draft') throw new HttpError(409, 'campaign_immutable', 'Active or closed Canvas campaigns are immutable. Create a new draft to rebalance.');
       const expectedVersion = Number(body?.expected_version);
       if (!Number.isInteger(expectedVersion) || expectedVersion !== Number(existing.version || 1)) {
@@ -327,70 +286,67 @@ Deno.serve(async (req: Request) => {
       version = expectedVersion + 1;
     }
 
-    const planningMethod = requiredString(body?.planning_method, 'planning_method', 64);
-    const ambiguousAlias = optionalString(body?.split_basis, 64);
-    const assignmentBasis = requiredString(
-      body?.assignment_basis || (ASSIGNMENT_BASES.has(ambiguousAlias) ? ambiguousAlias : ''),
-      'assignment_basis',
-      64
-    );
-    const workloadBasis = requiredString(
-      body?.workload_basis || (WORKLOAD_BASES.has(ambiguousAlias) ? ambiguousAlias : ''),
-      'workload_basis',
-      64
-    );
-    if (!PLANNING_METHODS.has(planningMethod) || !ASSIGNMENT_BASES.has(assignmentBasis) || !WORKLOAD_BASES.has(workloadBasis)) {
-      throw new HttpError(400, 'invalid_plan', 'Unsupported Canvas planning method, assignment basis, or workload basis.');
+    const rawPlanningMethod = requiredString(body?.planning_method, 'planning_method', 64);
+    const planningMethod = rawPlanningMethod === 'street_work_units' ? 'street_workload' : rawPlanningMethod;
+    const assignmentBasis = requiredString(body?.assignment_basis, 'assignment_basis', 64);
+    const legacySizingMode = body?.workload_basis === 'selected_reps' || body?.workload_basis === 'homes_per_area'
+      ? body.workload_basis
+      : null;
+    const requestedDivisionMode = body?.division_mode === 'workload_size' ? 'street_workload_target' : body?.division_mode;
+    const divisionMode = requiredString(requestedDivisionMode || (legacySizingMode === 'homes_per_area' ? 'area_count' : 'selected_reps'), 'division_mode', 64);
+    const rawWorkloadBasis = legacySizingMode ? 'street_length' : requiredString(body?.workload_basis || 'street_length', 'workload_basis', 64);
+    const workloadBasis = rawWorkloadBasis === 'estimated_doors' ? 'street_length_plus_estimated_doors' : rawWorkloadBasis;
+    if (!PLANNING_METHODS.has(planningMethod) || !ASSIGNMENT_BASES.has(assignmentBasis)
+      || !WORKLOAD_BASES.has(workloadBasis) || !DIVISION_MODES.has(divisionMode)) {
+      throw new HttpError(400, 'invalid_plan', 'Unsupported Canvas planning method, assignment basis, division mode, or workload basis.');
     }
+
     const polygon = normalizePolygon(body?.polygon);
-    const doors = normalizeDoors(body?.doors, planningMethod);
+    const areaSqMi = polygonAreaSqMi(polygon);
+    if (!Number.isFinite(areaSqMi) || areaSqMi <= 0 || areaSqMi > MAX_AREA_SQ_MI) {
+      throw new HttpError(400, 'invalid_polygon', `polygon area must be greater than zero and at most ${MAX_AREA_SQ_MI} square miles.`);
+    }
+    const workUnits = normalizeWorkUnits(body?.work_units);
     const zones = normalizeZones(body?.zones);
-    const selectedTeamMemberIds = normalizeIdList(body?.selected_team_member_ids || [], 'selected_team_member_ids');
-    if (selectedTeamMemberIds.length > MAX_ZONES) {
-      throw new HttpError(400, 'invalid_plan', `selected_team_member_ids must contain at most ${MAX_ZONES} records.`);
-    }
-    if (planningMethod === 'street_work_units' && workloadBasis === 'selected_reps' && selectedTeamMemberIds.length === 0) {
-      throw new HttpError(400, 'selected_reps_required', 'selected_team_member_ids is required for a production selected-reps plan.');
-    }
-    const targetHomes = body?.target_homes === undefined ? doors.length : Number(body.target_homes);
-    if (!Number.isInteger(targetHomes) || targetHomes < 0 || targetHomes > MAX_DOORS) {
-      throw new HttpError(400, 'invalid_plan', `target_homes must be an integer from 0-${MAX_DOORS}.`);
-    }
-    const analysisId = optionalString(body?.analysis_id, 256);
-    const analysisVerification = await verifyAnalysisDoorUniverse(base44, analysisId, doors, planningMethod === 'street_work_units');
-    const derivedQa = deriveQa(doors, zones, targetHomes, body?.qa);
     const zoneAssigneeIds = zones.map((zone) => zone.assigned_team_member_id).filter(Boolean);
-    const selectedRepsOneToOne = workloadBasis !== 'selected_reps'
-      || (zones.length === selectedTeamMemberIds.length
-        && zoneAssigneeIds.length === zones.length
-        && new Set(zoneAssigneeIds).size === zoneAssigneeIds.length
-        && sameIdSet(selectedTeamMemberIds, zoneAssigneeIds));
+    const uniqueAssigneeIds = [...new Set(zoneAssigneeIds)];
+    const suppliedTeamMemberIds = normalizeIdList(body?.selected_team_member_ids || [], 'selected_team_member_ids', MAX_ZONES);
+    const selectedTeamMemberIds = suppliedTeamMemberIds.length ? suppliedTeamMemberIds : uniqueAssigneeIds;
+    const everyZoneAssigned = zoneAssigneeIds.length === zones.length;
+    const selectionMatches = everyZoneAssigned && sameIdSet(selectedTeamMemberIds, uniqueAssigneeIds);
+    const selectedRepsOneToOne = divisionMode !== 'selected_reps'
+      || (zones.length === selectedTeamMemberIds.length && uniqueAssigneeIds.length === zones.length && selectionMatches);
+    const suppliedTargetWorkload = finiteNumber(body?.target_workload, 'target_workload', 0, true);
+    if (divisionMode === 'street_workload_target' && !(Number(suppliedTargetWorkload) > 0)) {
+      throw new HttpError(400, 'invalid_plan', 'target_workload must be positive class-weighted street meters for street_workload_target planning.');
+    }
+    const targetWorkload = divisionMode === 'street_workload_target' ? suppliedTargetWorkload : null;
     const qa = {
-      ...derivedQa,
-      analysis_coverage_complete: analysisVerification !== null,
-      analysis_opportunity_count: analysisVerification?.opportunity_count ?? null,
-      analysis_coordinates_verified: analysisVerification?.coordinates_verified === true,
-      selected_reps_one_to_one: selectedRepsOneToOne,
-      deployable: derivedQa.deployable
-        && planningMethod === 'street_work_units'
-        && assignmentBasis === 'stable_door_ids'
-        && analysisVerification?.coordinates_verified === true
-        && selectedRepsOneToOne
+      ...deriveQa(workUnits, zones, body?.qa),
+      every_zone_assigned: everyZoneAssigned,
+      selected_reps_one_to_one: selectedRepsOneToOne
     };
+    qa.deployable = qa.deployable
+      && planningMethod === 'street_workload'
+      && assignmentBasis === 'street_work_unit_ids'
+      && workloadBasis === 'street_length'
+      && everyZoneAssigned
+      && selectedRepsOneToOne;
 
     const normalizedPlan = {
       session_name: optionalString(body?.session_name, 200) || 'Canvas Campaign',
-      polygon: polygon.points,
-      rep_count: new Set(zones.map((zone) => zone.assigned_team_member_id).filter(Boolean)).size,
+      territory_model: 'street_territory_v1',
+      polygon,
+      rep_count: uniqueAssigneeIds.length,
       planning_method: planningMethod,
       assignment_basis: assignmentBasis,
       workload_basis: workloadBasis,
-      target_homes: targetHomes,
+      division_mode: divisionMode,
+      target_workload: targetWorkload,
       selected_team_member_ids: selectedTeamMemberIds,
-      doors,
       zones,
+      work_units: workUnits,
       qa,
-      analysis_id: analysisId,
       algorithm_version: optionalString(body?.algorithm_version, 128),
       data_version: optionalString(body?.data_version, 256),
       manager_id: user.id,
@@ -443,7 +399,7 @@ Deno.serve(async (req: Request) => {
       version,
       status: 'draft',
       plan_hash: planHash,
-      area_sq_mi: Number(polygon.areaSqMi.toFixed(3)),
+      area_sq_mi: Number(areaSqMi.toFixed(3)),
       qa
     });
   } catch (error: any) {

@@ -22,6 +22,17 @@ const DEFAULT_BLOCKING_BARRIERS = new Set([
   'wall',
 ]);
 
+const HIGHWAY_WORKLOAD_WEIGHTS = Object.freeze({
+  residential: 1,
+  living_street: 1,
+  unclassified: 0.8,
+  road: 0.8,
+  service: 0.65,
+  tertiary: 0.3,
+  secondary: 0.15,
+  primary: 0.05,
+});
+
 const EARTH_RADIUS_METERS = 6371008.8;
 const COORDINATE_EPSILON = 1e-10;
 
@@ -169,6 +180,13 @@ function distanceToSegmentMeters(point, start, end) {
   );
 }
 
+function segmentLengthMeters(start, end) {
+  const referenceLatitude = (Number(start.lat) + Number(end.lat)) / 2;
+  const projectedStart = projectMeters(start, referenceLatitude);
+  const projectedEnd = projectMeters(end, referenceLatitude);
+  return Math.hypot(projectedEnd.x - projectedStart.x, projectedEnd.y - projectedStart.y);
+}
+
 function distanceToPolygonBoundaryMeters(point, polygon) {
   if (polygon.length < 3) return Infinity;
   return polygon.reduce((best, current, index) => Math.min(
@@ -177,13 +195,83 @@ function distanceToPolygonBoundaryMeters(point, polygon) {
   ), Infinity);
 }
 
-function segmentTouchesPolygon(start, end, polygon) {
-  if (!polygon.length) return true;
-  if (pointInPolygon(start, polygon) || pointInPolygon(end, polygon)) return true;
-  for (let index = 0; index < polygon.length; index += 1) {
-    if (segmentsIntersect(start, end, polygon[index], polygon[(index + 1) % polygon.length])) return true;
+function pointInPolygonInclusive(point, polygon) {
+  if (pointInPolygon(point, polygon)) return true;
+  return polygon.some((start, index) => pointOnSegment(point, start, polygon[(index + 1) % polygon.length]));
+}
+
+function cross2d(firstX, firstY, secondX, secondY) {
+  return firstX * secondY - firstY * secondX;
+}
+
+function interpolatePoint(start, end, position) {
+  return {
+    lat: Number(start.lat) + (Number(end.lat) - Number(start.lat)) * position,
+    lng: Number(start.lng) + (Number(end.lng) - Number(start.lng)) * position,
+  };
+}
+
+function clippedSegmentIntervals(start, end, polygon) {
+  if (!polygon.length) return [{ start, end, startPosition: 0, endPosition: 1 }];
+  const deltaLng = Number(end.lng) - Number(start.lng);
+  const deltaLat = Number(end.lat) - Number(start.lat);
+  const lengthSquared = deltaLng * deltaLng + deltaLat * deltaLat;
+  if (lengthSquared <= COORDINATE_EPSILON * COORDINATE_EPSILON) return [];
+  const positions = [0, 1];
+  const addPosition = (value) => {
+    if (!Number.isFinite(value) || value < -COORDINATE_EPSILON || value > 1 + COORDINATE_EPSILON) return;
+    const clamped = Math.max(0, Math.min(1, value));
+    if (!positions.some((existing) => Math.abs(existing - clamped) <= COORDINATE_EPSILON)) positions.push(clamped);
+  };
+
+  polygon.forEach((boundaryStart, index) => {
+    const boundaryEnd = polygon[(index + 1) % polygon.length];
+    const boundaryDeltaLng = Number(boundaryEnd.lng) - Number(boundaryStart.lng);
+    const boundaryDeltaLat = Number(boundaryEnd.lat) - Number(boundaryStart.lat);
+    const offsetLng = Number(boundaryStart.lng) - Number(start.lng);
+    const offsetLat = Number(boundaryStart.lat) - Number(start.lat);
+    const denominator = cross2d(deltaLng, deltaLat, boundaryDeltaLng, boundaryDeltaLat);
+    if (Math.abs(denominator) <= COORDINATE_EPSILON) {
+      if (Math.abs(cross2d(offsetLng, offsetLat, deltaLng, deltaLat)) > COORDINATE_EPSILON) return;
+      const firstPosition = (offsetLng * deltaLng + offsetLat * deltaLat) / lengthSquared;
+      const secondOffsetLng = Number(boundaryEnd.lng) - Number(start.lng);
+      const secondOffsetLat = Number(boundaryEnd.lat) - Number(start.lat);
+      const secondPosition = (secondOffsetLng * deltaLng + secondOffsetLat * deltaLat) / lengthSquared;
+      const overlapStart = Math.max(0, Math.min(firstPosition, secondPosition));
+      const overlapEnd = Math.min(1, Math.max(firstPosition, secondPosition));
+      if (overlapEnd >= overlapStart - COORDINATE_EPSILON) {
+        addPosition(overlapStart);
+        addPosition(overlapEnd);
+      }
+      return;
+    }
+    const segmentPosition = cross2d(offsetLng, offsetLat, boundaryDeltaLng, boundaryDeltaLat) / denominator;
+    const boundaryPosition = cross2d(offsetLng, offsetLat, deltaLng, deltaLat) / denominator;
+    if (boundaryPosition >= -COORDINATE_EPSILON && boundaryPosition <= 1 + COORDINATE_EPSILON) {
+      addPosition(segmentPosition);
+    }
+  });
+
+  positions.sort((left, right) => left - right);
+  const intervals = [];
+  for (let index = 0; index < positions.length - 1; index += 1) {
+    const startPosition = positions[index];
+    const endPosition = positions[index + 1];
+    if (endPosition - startPosition <= COORDINATE_EPSILON) continue;
+    const midpoint = interpolatePoint(start, end, (startPosition + endPosition) / 2);
+    if (!pointInPolygonInclusive(midpoint, polygon)) continue;
+    intervals.push({
+      start: startPosition <= COORDINATE_EPSILON ? start : interpolatePoint(start, end, startPosition),
+      end: endPosition >= 1 - COORDINATE_EPSILON ? end : interpolatePoint(start, end, endPosition),
+      startPosition,
+      endPosition,
+    });
   }
-  return false;
+  return intervals;
+}
+
+function virtualBoundaryNodeId(point) {
+  return `clip-node:${Number(point.lat).toFixed(12)}:${Number(point.lng).toFixed(12)}`;
 }
 
 function normalizedStreetName(value) {
@@ -530,6 +618,20 @@ function createWorkUnit(edgeIds, edgeMap, metadata = {}) {
   const edges = sortedEdgeIds.map((edgeId) => edgeMap.get(edgeId));
   const nodeIds = [...new Set(edges.flatMap((edge) => edge.nodeIds))].sort(compareIds);
   const streetNames = [...new Set(edges.flatMap((edge) => edge.streetNames))].sort(compareIds);
+  const segments = edges.map((edge) => {
+    const lengthMeters = segmentLengthMeters(edge.start, edge.end);
+    const workloadWeight = Math.max(...edge.highwayTypes.map((type) => HIGHWAY_WORKLOAD_WEIGHTS[type] ?? 0.5));
+    return {
+      edgeId: edge.id,
+      start: edge.start,
+      end: edge.end,
+      streetNames: edge.streetNames,
+      highwayTypes: edge.highwayTypes,
+      lengthMeters: Number(lengthMeters.toFixed(2)),
+      workloadWeight,
+      classWeightedLengthMeters: Number((lengthMeters * workloadWeight).toFixed(2)),
+    };
+  });
   return {
     id: `work-unit:${stableHash(signature)}`,
     signature,
@@ -540,15 +642,11 @@ function createWorkUnit(edgeIds, edgeMap, metadata = {}) {
     terminalNodeIds: [...(metadata.terminalNodeIds || [])].sort(compareIds),
     throatNodeIds: [...(metadata.throatNodeIds || [])].sort(compareIds),
     streetNames,
-    segments: edges.map((edge) => ({
-      edgeId: edge.id,
-      start: edge.start,
-      end: edge.end,
-      streetNames: edge.streetNames,
-      highwayTypes: edge.highwayTypes,
-    })),
-    doorIds: [],
-    doorCount: 0,
+    segments,
+    streetLengthMeters: Number(segments.reduce((sum, segment) => sum + segment.lengthMeters, 0).toFixed(2)),
+    classWeightedLengthMeters: Number(segments.reduce((sum, segment) => sum + segment.classWeightedLengthMeters, 0).toFixed(2)),
+    candidateIds: [],
+    candidateCount: 0,
     neighborIds: [],
   };
 }
@@ -589,17 +687,19 @@ function connectedUnitComponents(units) {
   return components.sort((left, right) => compareIds(left[0], right[0]));
 }
 
-function normalizeDoors(doors) {
-  if (!Array.isArray(doors) || !doors.length) {
-    return topologyFailure('blocked', 'DOORS_REQUIRED', 'Canvas street zoning requires address-level doors with stable IDs.');
+function normalizeCandidates(candidates) {
+  if (candidates === undefined || candidates === null) return { ok: true, candidates: [] };
+  if (!Array.isArray(candidates)) {
+    return topologyFailure('blocked', 'INVALID_CANDIDATE_INPUT', 'Optional Canvas door estimates must be an array when supplied.');
   }
+  if (!candidates.length) return { ok: true, candidates: [] };
   const normalized = [];
   const invalid = [];
   const duplicateIds = new Set();
   const seen = new Set();
-  doors.forEach((door, index) => {
-    const id = canonicalId(door?.id ?? door?.stable_id ?? door?.address_hash ?? door?.property_id);
-    const point = pointFrom(door);
+  candidates.forEach((candidate, index) => {
+    const id = canonicalId(candidate?.id ?? candidate?.candidate_id ?? candidate?.stable_id ?? candidate?.address_hash ?? candidate?.property_id);
+    const point = pointFrom(candidate);
     if (!id || !point) {
       invalid.push(index);
       return;
@@ -609,18 +709,18 @@ function normalizeDoors(doors) {
     normalized.push({
       id,
       ...point,
-      streetName: String(door?.streetName ?? door?.street_name ?? door?.street ?? ''),
-      explicitEdgeId: canonicalId(door?.roadEdgeId ?? door?.road_edge_id ?? door?.edgeId),
-      explicitWayId: canonicalId(door?.roadWayId ?? door?.road_way_id ?? door?.wayId),
+      streetName: String(candidate?.streetName ?? candidate?.street_name ?? candidate?.street ?? ''),
+      explicitEdgeId: canonicalId(candidate?.roadEdgeId ?? candidate?.road_edge_id ?? candidate?.edgeId),
+      explicitWayId: canonicalId(candidate?.roadWayId ?? candidate?.road_way_id ?? candidate?.wayId),
     });
   });
   if (invalid.length || duplicateIds.size) {
-    return topologyFailure('blocked', 'INVALID_DOOR_IDENTITIES', 'Every door must have a unique stable ID and valid coordinates.', {
+    return topologyFailure('blocked', 'INVALID_CANDIDATE_IDENTITIES', 'Every optional door estimate must have a unique ID and valid coordinates.', {
       invalidIndexes: invalid,
-      duplicateDoorIds: [...duplicateIds].sort(compareIds),
+      duplicateCandidateIds: [...duplicateIds].sort(compareIds),
     });
   }
-  return { ok: true, doors: normalized.sort((left, right) => compareIds(left.id, right.id)) };
+  return { ok: true, candidates: normalized.sort((left, right) => compareIds(left.id, right.id)) };
 }
 
 function parseRoadGraph({
@@ -665,6 +765,16 @@ function parseRoadGraph({
 
   const malformedWayIds = [];
   const edgeMap = new Map();
+  let eligibleSourceEdgeCount = 0;
+  let clippedFragmentCount = 0;
+  let clippedAwaySourceEdgeCount = 0;
+  const nodeForClippedPosition = (originalNode, point, position, endpointPosition) => {
+    if (Math.abs(position - endpointPosition) <= COORDINATE_EPSILON) return originalNode;
+    const id = virtualBoundaryNodeId(point);
+    if (!nodeMap.has(id)) nodeMap.set(id, { id, ...point, tags: {} });
+    boundaryNodeIds.add(id);
+    return nodeMap.get(id);
+  };
   ways.forEach((way) => {
     const highway = String(way.tags?.highway || '').toLowerCase();
     if (!allowed.has(highway)) return;
@@ -682,29 +792,43 @@ function parseRoadGraph({
       const leftId = nodeIds[index];
       const rightId = nodeIds[index + 1];
       if (leftId === rightId) continue;
-      const id = edgeIdFor(leftId, rightId);
-      if (blockedEdgeIds.has(id)) continue;
-      const start = nodeMap.get(leftId);
-      const end = nodeMap.get(rightId);
-      if (polygon.length && !segmentTouchesPolygon(start, end, polygon)) continue;
-      const existing = edgeMap.get(id);
-      const streetName = String(way.tags?.name || '').trim();
-      if (existing) {
-        existing.wayIds = [...new Set([...existing.wayIds, way.canonicalId])].sort(compareIds);
-        existing.streetNames = [...new Set([...existing.streetNames, streetName].filter(Boolean))].sort(compareIds);
-        existing.highwayTypes = [...new Set([...existing.highwayTypes, highway])].sort(compareIds);
-      } else {
-        const sortedNodeIds = [leftId, rightId].sort(compareIds);
-        edgeMap.set(id, {
-          id,
-          nodeIds: sortedNodeIds,
-          start: nodeMap.get(sortedNodeIds[0]),
-          end: nodeMap.get(sortedNodeIds[1]),
-          wayIds: [way.canonicalId],
-          streetNames: streetName ? [streetName] : [],
-          highwayTypes: [highway],
-        });
+      const sourceEdgeId = edgeIdFor(leftId, rightId);
+      if (blockedEdgeIds.has(sourceEdgeId)) continue;
+      eligibleSourceEdgeCount += 1;
+      const sortedNodeIds = [leftId, rightId].sort(compareIds);
+      const sourceStart = nodeMap.get(sortedNodeIds[0]);
+      const sourceEnd = nodeMap.get(sortedNodeIds[1]);
+      const intervals = clippedSegmentIntervals(sourceStart, sourceEnd, polygon);
+      if (!intervals.length) {
+        clippedAwaySourceEdgeCount += 1;
+        continue;
       }
+      clippedFragmentCount += intervals.length;
+      const streetName = String(way.tags?.name || '').trim();
+      intervals.forEach((interval) => {
+        const fragmentStart = nodeForClippedPosition(sourceStart, interval.start, interval.startPosition, 0);
+        const fragmentEnd = nodeForClippedPosition(sourceEnd, interval.end, interval.endPosition, 1);
+        if (fragmentStart.id === fragmentEnd.id) return;
+        const id = edgeIdFor(fragmentStart.id, fragmentEnd.id);
+        if (blockedEdgeIds.has(id)) return;
+        const fragmentNodeIds = [fragmentStart.id, fragmentEnd.id].sort(compareIds);
+        const existing = edgeMap.get(id);
+        if (existing) {
+          existing.wayIds = [...new Set([...existing.wayIds, way.canonicalId])].sort(compareIds);
+          existing.streetNames = [...new Set([...existing.streetNames, streetName].filter(Boolean))].sort(compareIds);
+          existing.highwayTypes = [...new Set([...existing.highwayTypes, highway])].sort(compareIds);
+        } else {
+          edgeMap.set(id, {
+            id,
+            nodeIds: fragmentNodeIds,
+            start: nodeMap.get(fragmentNodeIds[0]),
+            end: nodeMap.get(fragmentNodeIds[1]),
+            wayIds: [way.canonicalId],
+            streetNames: streetName ? [streetName] : [],
+            highwayTypes: [highway],
+          });
+        }
+      });
     }
   });
 
@@ -729,11 +853,16 @@ function parseRoadGraph({
     edgeMap,
     barrierNodeIds,
     boundaryNodeIds,
+    clippingDiagnostics: {
+      eligibleSourceEdgeCount,
+      clippedFragmentCount,
+      clippedAwaySourceEdgeCount,
+    },
   };
 }
 
-function snapDoorsToUnits(
-  doors,
+function snapCandidatesToUnits(
+  candidates,
   edgeMap,
   units,
   maxSnapDistanceMeters,
@@ -744,11 +873,11 @@ function snapDoorsToUnits(
   units.forEach((unit) => unit.edgeIds.forEach((edgeId) => edgeToUnit.set(edgeId, unit.id)));
   const edges = [...edgeMap.values()].sort((left, right) => compareIds(left.id, right.id));
   const snaps = [];
-  const unsnappedDoorIds = [];
-  const streetNameFallbackDoorIds = [];
+  const unsnappedCandidateIds = [];
+  const streetNameFallbackCandidateIds = [];
   const ambiguousSnaps = [];
 
-  doors.forEach((door) => {
+  candidates.forEach((door) => {
     let candidates = edges;
     const hasExplicitRoadLink = Boolean(door.explicitEdgeId || door.explicitWayId);
     if (door.explicitEdgeId) candidates = candidates.filter((edge) => edge.id === door.explicitEdgeId);
@@ -763,7 +892,7 @@ function snapDoorsToUnits(
         const namedUnitIds = new Set(namedCandidates.map((edge) => edgeToUnit.get(edge.id)).filter(Boolean));
         streetNameResolved = namedUnitIds.size === 1;
       }
-      else streetNameFallbackDoorIds.push(door.id);
+      else streetNameFallbackCandidateIds.push(door.id);
     }
 
     const ranked = candidates.map((edge) => ({
@@ -772,7 +901,7 @@ function snapDoorsToUnits(
     })).sort((left, right) => left.distanceMeters - right.distanceMeters || compareIds(left.edge.id, right.edge.id));
     const selected = ranked[0];
     if (!selected || selected.distanceMeters > maxSnapDistanceMeters || !edgeToUnit.has(selected.edge.id)) {
-      unsnappedDoorIds.push(door.id);
+      unsnappedCandidateIds.push(door.id);
       return;
     }
 
@@ -800,7 +929,7 @@ function snapDoorsToUnits(
             streetNames: [...candidate.edge.streetNames].sort(compareIds),
           });
           ambiguousSnaps.push({
-            doorId: door.id,
+            candidateId: door.id,
             resolutionBasis: normalizedName ? 'unresolved_street_name' : 'spatial_only',
             nearest: candidateDetails(nearest),
             competing: candidateDetails(competing),
@@ -811,22 +940,22 @@ function snapDoorsToUnits(
       }
     }
     snaps.push({
-      doorId: door.id,
+      candidateId: door.id,
       edgeId: selected.edge.id,
       workUnitId: edgeToUnit.get(selected.edge.id),
       distanceMeters: Number(selected.distanceMeters.toFixed(2)),
     });
   });
-  if (unsnappedDoorIds.length) {
-    return topologyFailure('blocked', 'UNSNAPPED_DOORS', 'One or more doors could not be safely matched to the supplied road network.', {
-      unsnappedDoorIds: unsnappedDoorIds.sort(compareIds),
+  if (unsnappedCandidateIds.length) {
+    return topologyFailure('blocked', 'UNSNAPPED_CANDIDATES', 'One or more optional door estimates could not be matched to the supplied road network.', {
+      unsnappedCandidateIds: unsnappedCandidateIds.sort(compareIds),
       maxSnapDistanceMeters,
     });
   }
   if (ambiguousSnaps.length) {
-    return topologyFailure('blocked', 'AMBIGUOUS_DOOR_SNAPS', 'One or more doors are similarly close to different street work units, so ownership cannot be verified safely.', {
-      ambiguousDoorIds: ambiguousSnaps.map((snap) => snap.doorId).sort(compareIds),
-      ambiguousSnaps: ambiguousSnaps.sort((left, right) => compareIds(left.doorId, right.doorId)),
+    return topologyFailure('blocked', 'AMBIGUOUS_CANDIDATE_SNAPS', 'Optional door estimates are similarly close to different street work units.', {
+      ambiguousCandidateIds: ambiguousSnaps.map((snap) => snap.candidateId).sort(compareIds),
+      ambiguousSnaps: ambiguousSnaps.sort((left, right) => compareIds(left.candidateId, right.candidateId)),
       thresholds: {
         maxSnapDistanceMeters,
         roadSnapAmbiguityMeters,
@@ -836,13 +965,14 @@ function snapDoorsToUnits(
   }
   return {
     ok: true,
-    snaps: snaps.sort((left, right) => compareIds(left.doorId, right.doorId)),
-    streetNameFallbackDoorIds: [...new Set(streetNameFallbackDoorIds)].sort(compareIds),
+    snaps: snaps.sort((left, right) => compareIds(left.candidateId, right.candidateId)),
+    streetNameFallbackCandidateIds: [...new Set(streetNameFallbackCandidateIds)].sort(compareIds),
   };
 }
 
 /**
- * Converts an OSM-like graph and stable door points into indivisible street work units.
+ * Converts an OSM-like graph into indivisible street work units. Door points are
+ * optional, ephemeral workload estimates; roads remain the assignment source of truth.
  * Terminal branches are atomic from their terminal node through their topology throat.
  * The result is JSON-serializable and independent of input ordering.
  */
@@ -854,21 +984,21 @@ export function buildCanvasStreetWorkUnits(input = {}) {
   if (input.polygon && (polygon.length < 3 || Math.abs(signedPolygonArea(polygon)) <= COORDINATE_EPSILON)) {
     return topologyFailure('blocked', 'INVALID_POLYGON', 'Canvas requires a valid, non-zero-area polygon.');
   }
-  const normalizedDoors = normalizeDoors(input.doors);
-  if (!normalizedDoors.ok) return normalizedDoors;
+  const normalizedCandidates = normalizeCandidates(input.candidates ?? input.doors);
+  if (!normalizedCandidates.ok) return normalizedCandidates;
   if (polygon.length) {
-    const outsideDoorIds = normalizedDoors.doors
+    const outsideCandidateIds = normalizedCandidates.candidates
       .filter((door) => !pointInPolygon(door, polygon) && distanceToPolygonBoundaryMeters(door, polygon) > 1)
       .map((door) => door.id);
-    if (outsideDoorIds.length) {
-      return topologyFailure('blocked', 'DOORS_OUTSIDE_POLYGON', 'Door input contains homes outside the selected Canvas polygon.', {
-        outsideDoorIds: outsideDoorIds.sort(compareIds),
+    if (outsideCandidateIds.length) {
+      return topologyFailure('blocked', 'CANDIDATES_OUTSIDE_POLYGON', 'Optional door estimates include points outside the selected Canvas polygon.', {
+        outsideCandidateIds: outsideCandidateIds.sort(compareIds),
       });
     }
   }
 
   const maxSnapDistanceMeters = Number(input.maxSnapDistanceMeters ?? 150);
-  const boundarySnapToleranceMeters = Number(input.boundarySnapToleranceMeters ?? 30);
+  const boundarySnapToleranceMeters = Number(input.boundarySnapToleranceMeters ?? 0.75);
   const roadSnapAmbiguityMeters = Number(input.roadSnapAmbiguityMeters ?? input.road_snap_ambiguity_meters ?? 12);
   const roadSnapAmbiguityRatio = Number(input.roadSnapAmbiguityRatio ?? input.road_snap_ambiguity_ratio ?? 1.5);
   if (!Number.isFinite(maxSnapDistanceMeters) || maxSnapDistanceMeters <= 0
@@ -885,7 +1015,13 @@ export function buildCanvasStreetWorkUnits(input = {}) {
   });
   if (!graphResult.ok) return graphResult;
 
-  const { nodeMap, edgeMap, barrierNodeIds, boundaryNodeIds } = graphResult;
+  const {
+    nodeMap,
+    edgeMap,
+    barrierNodeIds,
+    boundaryNodeIds,
+    clippingDiagnostics,
+  } = graphResult;
   const edgeIds = [...edgeMap.keys()].sort(compareIds);
   const protectedBranches = findProtectedTerminalBranches(
     edgeIds,
@@ -925,8 +1061,8 @@ export function buildCanvasStreetWorkUnits(input = {}) {
     return topologyFailure('blocked', 'ATOMIC_COVERAGE_INVALID', 'Street edges were not covered by exactly one atomic work unit.');
   }
 
-  const snapped = snapDoorsToUnits(
-    normalizedDoors.doors,
+  const snapped = snapCandidatesToUnits(
+    normalizedCandidates.candidates,
     edgeMap,
     workUnits,
     maxSnapDistanceMeters,
@@ -935,10 +1071,10 @@ export function buildCanvasStreetWorkUnits(input = {}) {
   );
   if (!snapped.ok) return snapped;
   const snapsByUnit = new Map();
-  snapped.snaps.forEach((snap) => snapsByUnit.set(snap.workUnitId, [...(snapsByUnit.get(snap.workUnitId) || []), snap.doorId]));
+  snapped.snaps.forEach((snap) => snapsByUnit.set(snap.workUnitId, [...(snapsByUnit.get(snap.workUnitId) || []), snap.candidateId]));
   workUnits = workUnits.map((unit) => {
-    const doorIds = [...(snapsByUnit.get(unit.id) || [])].sort(compareIds);
-    return { ...unit, doorIds, doorCount: doorIds.length };
+    const candidateIds = [...(snapsByUnit.get(unit.id) || [])].sort(compareIds);
+    return { ...unit, candidateIds, candidateCount: candidateIds.length };
   });
 
   const finalNeighbors = buildUnitNeighbors(workUnits, barrierNodeIds);
@@ -946,24 +1082,26 @@ export function buildCanvasStreetWorkUnits(input = {}) {
 
   return {
     ok: true,
-    status: snapped.streetNameFallbackDoorIds.length ? 'degraded' : 'ready',
+    status: snapped.streetNameFallbackCandidateIds.length ? 'degraded' : 'ready',
     workUnits,
-    doorSnaps: snapped.snaps,
+    candidateSnaps: snapped.snaps,
     components: connectedUnitComponents(workUnits),
     barriers: {
       nodeIds: [...barrierNodeIds].sort(compareIds),
     },
-    warnings: snapped.streetNameFallbackDoorIds.length ? [{
+    warnings: snapped.streetNameFallbackCandidateIds.length ? [{
       code: 'STREET_NAME_FALLBACK',
-      message: 'Some door street names did not match OSM names; those doors used nearest-road snapping.',
-      doorIds: snapped.streetNameFallbackDoorIds,
+      message: 'Some optional door-estimate street names did not match OSM names; nearest-road snapping was used.',
+      candidateIds: snapped.streetNameFallbackCandidateIds,
     }] : [],
     diagnostics: {
-      roadNodeCount: nodeMap.size,
+      roadNodeCount: new Set(workUnits.flatMap((unit) => unit.nodeIds)).size,
       roadEdgeCount: edgeMap.size,
       workUnitCount: workUnits.length,
+      totalStreetLengthMeters: Number(workUnits.reduce((sum, unit) => sum + unit.streetLengthMeters, 0).toFixed(2)),
       protectedTerminalBranchCount: workUnits.filter((unit) => unit.protected).length,
       componentCount: connectedUnitComponents(workUnits).length,
+      ...clippingDiagnostics,
     },
   };
 }

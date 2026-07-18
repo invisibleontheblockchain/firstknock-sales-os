@@ -17,6 +17,8 @@ test('Canvas uses a separate planner and production API lane', async () => {
   assert.match(client, /canvasSaveDraft/);
   assert.match(client, /canvasDeployCampaign/);
   assert.match(client, /canvasGetMyAssignments/);
+  assert.match(client, /canvasLogHouseDecision/);
+  assert.match(client, /canvasGetCampaignMap/);
   assert.doesNotMatch(client, /localStorage|SavedRoute|Property/);
 });
 
@@ -31,7 +33,7 @@ test('Canvas branches before the existing Precision builder without replacing it
   assert.match(routeBuilder, /Start Paid Pull/);
 });
 
-test('Canvas overlays render once and legacy map layers remain Precision-only', async () => {
+test('Canvas territory and outcome overlays render once and legacy map layers remain Precision-only', async () => {
   const [managerLayers, drawTool, overlay] = await Promise.all([
     source('src/components/map/ManagerMapLayers.jsx'),
     source('src/components/map/MapDrawTool.jsx'),
@@ -42,6 +44,8 @@ test('Canvas overlays render once and legacy map layers remain Precision-only', 
   assert.match(managerLayers, /routeMode !== 'canvas'/);
   assert.doesNotMatch(drawTool, /CanvasZoneOverlay/);
   assert.doesNotMatch(overlay, /localStorage|sessionStorage/);
+  assert.match(overlay, /CanvasCampaignMapLayers/);
+  assert.doesNotMatch(overlay, /CanvasOpportunityLayers/);
 });
 
 test('rep Canvas handoff is server-authorized and has no name or local deployment fallback', async () => {
@@ -53,7 +57,11 @@ test('rep Canvas handoff is server-authorized and has no name or local deploymen
   assert.match(repHome, /getMyCanvasAssignments\(\)/);
   assert.doesNotMatch(repHome, /fk_canvasCampaignSprint1|fk_canvasRosterSprint1/);
   assert.doesNotMatch(fieldView, /localStorage|assigned_to_name|\.filter\([^)]*email/i);
-  assert.match(fieldView, /stable_door_id/);
+  assert.doesNotMatch(fieldView, /stable_door_id|server-assigned homes|preloaded/i);
+  assert.match(fieldView, /logCanvasHouseDecision/);
+  assert.match(fieldView, /useMapEvents/);
+  assert.match(fieldView, /queueCanvasDecision/);
+  assert.match(fieldView, /pending on this device and is not shared yet/);
   assert.match(repHome, /enabled: !!user/);
   assert.match(repHome, /canvasFieldOpen/);
   assert.match(repHome, /refetchInterval: canvasFieldOpen \|\| \(!activeRoute && !canvasFieldDismissed\) \? CANVAS_ASSIGNMENT_POLL_MS : false/);
@@ -62,16 +70,33 @@ test('rep Canvas handoff is server-authorized and has no name or local deploymen
   assert.match(repHome, /return activeRoutes;/);
 });
 
-test('Canvas preview caches are user-scoped and Home owns the authorized mode', async () => {
-  const [analysisStore, home, managerLayers] = await Promise.all([
-    source('src/components/canvas/canvasAnalysisStore.jsx'),
+test('Canvas has no house-analysis UI gate and Home owns the authorized mode', async () => {
+  const [builder, home, managerLayers, territoryPrompt] = await Promise.all([
+    source('src/components/map/CanvasBuilderSettings.jsx'),
     source('src/pages/Home.jsx'),
     source('src/components/map/ManagerMapLayers.jsx'),
+    source('src/components/map/TerritoryPrompt.jsx'),
   ]);
 
-  assert.match(analysisStore, /fk_canvasAnalysis:\$\{String\(scopeId\)\}/);
-  assert.doesNotMatch(analysisStore, /setItem\('fk_canvasAnalysis'/);
+  assert.doesNotMatch(builder, /canvasAnalyzeTerritory|CanvasOpportunityReview|canvasAnalysisStore|stable home|homes per area/i);
+  assert.match(builder, /workload_basis: 'street_length'/);
+  assert.match(builder, /Number of territories/);
   assert.match(home, /routeMode=\{routeMode\}/);
   assert.match(home, /routeMode !== 'canvas' \|\| hasCanvasAccess\(user\)/);
   assert.doesNotMatch(managerLayers, /localStorage\.getItem\('fk_routeMode'\)/);
+  assert.doesNotMatch(territoryPrompt, /Analyze homes/);
+  assert.match(territoryPrompt, /routeMode === 'precision' && !pulling && recoverableJob/);
+  assert.match(territoryPrompt, /routeMode === 'precision' && pulling/);
+});
+
+test('Canvas and Precision retain independent freehand boundaries', async () => {
+  const home = await source('src/pages/Home.jsx');
+  assert.match(home, /const \[canvasDrawnPolygon, setCanvasDrawnPolygon\] = useState\(null\)/);
+  assert.match(home, /routeMode === 'canvas' \? canvasDrawnPolygon : drawnPolygon/);
+  assert.match(home, /if \(routeMode === 'canvas'\) setCanvasDrawnPolygon\(value\)/);
+  assert.match(home, /drawnPolygon=\{activeDrawnPolygon\}/);
+  assert.match(home, /setDrawnPolygon=\{setActiveDrawnPolygon\}/);
+  assert.match(home, /routeMode === 'precision' && !drawingMode/);
+  assert.match(home, /onResumeBoundary=\{\(savedBoundary\) => \{/);
+  assert.match(home, /setCanvasDrawnPolygon\(validation\.points\)/);
 });

@@ -91,3 +91,51 @@ export async function getMyCanvasAssignments({ sessionId } = {}) {
     assignments: Array.isArray(data.assignments) ? data.assignments : [],
   };
 }
+
+export async function getCanvasCampaignMap({ campaignId, includeEvents = false }) {
+  if (!campaignId) {
+    throw new CanvasProductionError('Choose a Canvas campaign before loading its shared map.', {
+      code: 'CANVAS_CAMPAIGN_REQUIRED',
+    });
+  }
+  const data = await invokeProductionFunction('canvasGetCampaignMap', {
+    campaign_id: campaignId,
+    include_events: includeEvents === true,
+  }, 'The shared Canvas campaign map could not be loaded.');
+  return {
+    ...data,
+    campaign: data?.campaign || null,
+    pins: Array.isArray(data?.pins) ? data.pins : [],
+    events: Array.isArray(data?.events) ? data.events : [],
+    outcome_counts: data?.outcome_counts && typeof data.outcome_counts === 'object' ? data.outcome_counts : {},
+    zone_counts: data?.zone_counts && typeof data.zone_counts === 'object' ? data.zone_counts : {},
+  };
+}
+
+export function logCanvasHouseDecision({
+  campaignId,
+  zoneId,
+  idempotencyKey,
+  point,
+  outcome,
+  note,
+  address,
+  unitLabel,
+  buildingFeatureId,
+  pinId,
+  clientRecordedAt,
+}) {
+  return invokeProductionFunction('canvasLogHouseDecision', {
+    campaign_id: campaignId,
+    zone_id: zoneId,
+    idempotency_key: idempotencyKey,
+    point,
+    outcome,
+    ...(clientRecordedAt ? { client_recorded_at: clientRecordedAt } : {}),
+    ...(note?.trim() ? { note: note.trim() } : {}),
+    ...(address?.trim() ? { address: address.trim() } : {}),
+    ...(unitLabel?.trim() ? { unit_label: unitLabel.trim() } : {}),
+    ...(buildingFeatureId ? { building_feature_id: buildingFeatureId } : {}),
+    ...(pinId ? { pin_id: pinId } : {}),
+  }, 'This house decision could not be synced. Retry before leaving the house.');
+}

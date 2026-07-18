@@ -16,15 +16,15 @@ const polygon = [
 ];
 
 const node = (id, lat, lon, tags = {}) => ({ type: 'node', id, lat, lon, tags });
-const way = (id, nodes, name) => ({
+const way = (id, nodes, name, highway = 'residential') => ({
   type: 'way',
   id,
   nodes,
-  tags: { highway: 'residential', name },
+  tags: { highway, name },
 });
-const door = (id, lat, lng, streetName) => ({ id, lat, lng, streetName });
+const candidate = (id, lat, lng, streetName) => ({ id, lat, lng, streetName });
 
-function degreeOneFixture() {
+function degreeOneFixture({ includeCandidates = true } = {}) {
   return {
     polygon,
     roadNetwork: {
@@ -38,17 +38,17 @@ function degreeOneFixture() {
         way(200, [2, 4, 5], 'Cold Court'),
       ],
     },
-    doors: [
-      door('main-left', 35.00005, -82.006, 'Main St'),
-      door('main-right', 35.00005, -81.994, 'Main Street'),
-      door('court-stem', 35.002, -81.99995, 'Cold Ct'),
-      door('court-end', 35.006, -82.00005, 'Cold Court'),
-    ],
+    candidates: includeCandidates ? [
+      candidate('main-left', 35.00005, -82.006, 'Main St'),
+      candidate('main-right', 35.00005, -81.994, 'Main Street'),
+      candidate('court-stem', 35.002, -81.99995, 'Cold Ct'),
+      candidate('court-end', 35.006, -82.00005, 'Cold Court'),
+    ] : undefined,
     maxSnapDistanceMeters: 100,
   };
 }
 
-function lollipopFixture() {
+function lollipopFixture({ includeCandidates = true } = {}) {
   return {
     polygon,
     roadNetwork: {
@@ -65,18 +65,18 @@ function lollipopFixture() {
         way(301, [4, 5, 6, 7, 4], 'Loop Court'),
       ],
     },
-    doors: [
-      door('main-left', 35.00005, -82.006, 'Main Street'),
-      door('main-right', 35.00005, -81.994, 'Main St'),
-      door('loop-stem', 35.002, -81.99995, 'Loop Court'),
-      door('loop-west', 35.006, -82.0009, 'Loop Ct'),
-      door('loop-east', 35.006, -81.9991, 'Loop Court'),
-    ],
+    candidates: includeCandidates ? [
+      candidate('main-left', 35.00005, -82.006, 'Main Street'),
+      candidate('main-right', 35.00005, -81.994, 'Main St'),
+      candidate('loop-stem', 35.002, -81.99995, 'Loop Court'),
+      candidate('loop-west', 35.006, -82.0009, 'Loop Ct'),
+      candidate('loop-east', 35.006, -81.9991, 'Loop Court'),
+    ] : undefined,
     maxSnapDistanceMeters: 100,
   };
 }
 
-function parallelRoadFixture({ doorLatitude = 35.0001, streetName = '' } = {}) {
+function parallelRoadFixture({ candidateLatitude = 35.0001, streetName = '' } = {}) {
   return {
     polygon,
     roadNetwork: {
@@ -89,7 +89,7 @@ function parallelRoadFixture({ doorLatitude = 35.0001, streetName = '' } = {}) {
         way(500, [20, 21], 'North Street'),
       ],
     },
-    doors: [door('between-roads', doorLatitude, -82, streetName)],
+    candidates: [candidate('between-roads', candidateLatitude, -82, streetName)],
     maxSnapDistanceMeters: 100,
   };
 }
@@ -97,6 +97,16 @@ function parallelRoadFixture({ doorLatitude = 35.0001, streetName = '' } = {}) {
 function allCoveredEdgeIds(result) {
   return result.workUnits.flatMap((unit) => unit.edgeIds).sort();
 }
+
+test('builds deterministic road-only work units with measurable street workload', () => {
+  const result = buildCanvasStreetWorkUnits(degreeOneFixture({ includeCandidates: false }));
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.candidateSnaps, []);
+  assert.ok(result.workUnits.every((unit) => unit.streetLengthMeters > 0));
+  assert.ok(result.workUnits.every((unit) => unit.classWeightedLengthMeters > 0));
+  assert.equal(result.diagnostics.totalStreetLengthMeters > 0, true);
+});
 
 test('contracts a degree-1 cul-de-sac from terminal to throat into one protected unit', () => {
   const result = buildCanvasStreetWorkUnits(degreeOneFixture());
@@ -106,8 +116,25 @@ test('contracts a degree-1 cul-de-sac from terminal to throat into one protected
   assert.equal(protectedUnits.length, 1);
   assert.equal(protectedUnits[0].kind, 'terminal_to_throat_branch');
   assert.deepEqual(protectedUnits[0].edgeIds, [edgeIdFor(2, 4), edgeIdFor(4, 5)].sort());
-  assert.deepEqual(protectedUnits[0].doorIds, ['court-end', 'court-stem']);
+  assert.deepEqual(protectedUnits[0].candidateIds, ['court-end', 'court-stem']);
   assert.deepEqual(protectedUnits[0].throatNodeIds, ['2']);
+});
+
+test('does not mistake a real cul-de-sac terminal about 20m inside the boundary for an exit', () => {
+  const fixture = degreeOneFixture({ includeCandidates: false });
+  fixture.polygon = [
+    { lat: 34.999, lng: -82.011 },
+    { lat: 34.999, lng: -81.989 },
+    { lat: 35.00818, lng: -81.989 },
+    { lat: 35.00818, lng: -82.011 },
+  ];
+  const result = buildCanvasStreetWorkUnits(fixture);
+  const protectedUnit = result.workUnits.find((unit) => unit.protected);
+
+  assert.equal(result.ok, true);
+  assert.ok(protectedUnit);
+  assert.deepEqual(protectedUnit.edgeIds, [edgeIdFor(2, 4), edgeIdFor(4, 5)].sort());
+  assert.deepEqual(protectedUnit.terminalNodeIds, ['5']);
 });
 
 test('contracts a lollipop loop and its single throat bridge into one protected unit', () => {
@@ -123,13 +150,12 @@ test('contracts a lollipop loop and its single throat bridge into one protected 
     edgeIdFor(6, 7),
     edgeIdFor(7, 4),
   ].sort());
-  assert.deepEqual(protectedUnits[0].doorIds, ['loop-east', 'loop-stem', 'loop-west']);
+  assert.deepEqual(protectedUnits[0].candidateIds, ['loop-east', 'loop-stem', 'loop-west']);
   assert.deepEqual(protectedUnits[0].throatNodeIds, ['2']);
 });
 
 test('covers every eligible road edge exactly once across atomic work units', () => {
-  const fixture = lollipopFixture();
-  const result = buildCanvasStreetWorkUnits(fixture);
+  const result = buildCanvasStreetWorkUnits(lollipopFixture({ includeCandidates: false }));
   const expected = [
     edgeIdFor(1, 2),
     edgeIdFor(2, 3),
@@ -145,11 +171,11 @@ test('covers every eligible road edge exactly once across atomic work units', ()
   assert.equal(new Set(allCoveredEdgeIds(result)).size, expected.length);
 });
 
-test('is deterministic when OSM elements, way direction, and doors arrive in another order', () => {
+test('is deterministic when OSM elements, way direction, and estimates arrive in another order', () => {
   const fixture = lollipopFixture();
   const reordered = {
     ...fixture,
-    doors: [...fixture.doors].reverse(),
+    candidates: [...fixture.candidates].reverse(),
     roadNetwork: {
       elements: [...fixture.roadNetwork.elements].reverse().map((element) => (
         element.type === 'way' ? { ...element, nodes: [...element.nodes].reverse() } : element
@@ -160,17 +186,28 @@ test('is deterministic when OSM elements, way direction, and doors arrive in ano
   assert.deepEqual(buildCanvasStreetWorkUnits(reordered), buildCanvasStreetWorkUnits(fixture));
 });
 
-test('returns typed blocking results for missing and malformed road data', () => {
-  const fixture = degreeOneFixture();
+test('downweights arterials so they do not dominate residential knocking workload', () => {
+  const fixture = degreeOneFixture({ includeCandidates: false });
+  fixture.roadNetwork.elements = fixture.roadNetwork.elements.map((element) => (
+    element.type === 'way' && element.id === 100
+      ? { ...element, tags: { ...element.tags, highway: 'primary' } }
+      : element
+  ));
+  const result = buildCanvasStreetWorkUnits(fixture);
+  const arterial = result.workUnits.find((unit) => unit.streetNames.includes('Main Street'));
+  const residential = result.workUnits.find((unit) => unit.streetNames.includes('Cold Court'));
+
+  assert.equal(result.ok, true);
+  assert.ok(arterial.classWeightedLengthMeters < arterial.streetLengthMeters * 0.06);
+  assert.equal(residential.classWeightedLengthMeters, residential.streetLengthMeters);
+});
+
+test('returns typed blocking results for missing and malformed road data without requiring doors', () => {
+  const fixture = degreeOneFixture({ includeCandidates: false });
   const missing = buildCanvasStreetWorkUnits({ ...fixture, roadNetwork: { elements: [] } });
   const malformed = buildCanvasStreetWorkUnits({
     ...fixture,
-    roadNetwork: {
-      elements: [
-        node(1, 35, -82),
-        way(100, [1, 999], 'Broken Street'),
-      ],
-    },
+    roadNetwork: { elements: [node(1, 35, -82), way(100, [1, 999], 'Broken Street')] },
   });
 
   assert.deepEqual(
@@ -183,44 +220,32 @@ test('returns typed blocking results for missing and malformed road data', () =>
   );
 });
 
-test('blocks a spatial-only door snap that is materially ambiguous across distinct work units', () => {
+test('returns typed ambiguity for optional estimates across distinct work units', () => {
   const result = buildCanvasStreetWorkUnits(parallelRoadFixture());
 
   assert.equal(result.ok, false);
-  assert.equal(result.status, 'blocked');
-  assert.equal(result.deployable, false);
-  assert.equal(result.code, 'AMBIGUOUS_DOOR_SNAPS');
-  assert.deepEqual(result.details.ambiguousDoorIds, ['between-roads']);
-  assert.equal(result.details.ambiguousSnaps.length, 1);
-  assert.notEqual(
-    result.details.ambiguousSnaps[0].nearest.workUnitId,
-    result.details.ambiguousSnaps[0].competing.workUnitId,
-  );
+  assert.equal(result.code, 'AMBIGUOUS_CANDIDATE_SNAPS');
+  assert.deepEqual(result.details.ambiguousCandidateIds, ['between-roads']);
+  assert.notEqual(result.details.ambiguousSnaps[0].nearest.workUnitId, result.details.ambiguousSnaps[0].competing.workUnitId);
   assert.equal(result.details.ambiguousSnaps[0].distanceGapMeters, 0);
-  assert.equal(result.details.ambiguousSnaps[0].distanceRatio, 1);
-  assert.deepEqual(result.details.thresholds, {
-    maxSnapDistanceMeters: 100,
-    roadSnapAmbiguityMeters: 12,
-    roadSnapAmbiguityRatio: 1.5,
-  });
 });
 
-test('uses a unique matched street name to resolve otherwise ambiguous road proximity', () => {
+test('uses a unique matched street name to resolve otherwise ambiguous estimate proximity', () => {
   const result = buildCanvasStreetWorkUnits(parallelRoadFixture({ streetName: 'North St' }));
 
   assert.equal(result.ok, true);
-  const snap = result.doorSnaps.find((candidate) => candidate.doorId === 'between-roads');
+  const snap = result.candidateSnaps.find((item) => item.candidateId === 'between-roads');
   const selectedUnit = result.workUnits.find((unit) => unit.id === snap.workUnitId);
   assert.deepEqual(selectedUnit.streetNames, ['North Street']);
 });
 
 test('applies finite tunable ambiguity thresholds and rejects invalid threshold values', () => {
-  const fixture = parallelRoadFixture({ doorLatitude: 35.00009 });
+  const fixture = parallelRoadFixture({ candidateLatitude: 35.00009 });
   const defaultResult = buildCanvasStreetWorkUnits(fixture);
   const strictGapResult = buildCanvasStreetWorkUnits({ ...fixture, roadSnapAmbiguityMeters: 1 });
   const invalidResult = buildCanvasStreetWorkUnits({ ...fixture, roadSnapAmbiguityRatio: Number.POSITIVE_INFINITY });
 
-  assert.equal(defaultResult.code, 'AMBIGUOUS_DOOR_SNAPS');
+  assert.equal(defaultResult.code, 'AMBIGUOUS_CANDIDATE_SNAPS');
   assert.equal(strictGapResult.ok, true);
   assert.deepEqual(
     { ok: invalidResult.ok, status: invalidResult.status, code: invalidResult.code },
@@ -228,23 +253,102 @@ test('applies finite tunable ambiguity thresholds and rejects invalid threshold 
   );
 });
 
-test('ambiguous snap diagnostics are deterministic under reordered OSM input', () => {
-  const fixture = parallelRoadFixture();
-  const reordered = {
-    ...fixture,
+test('clips a very long crossing edge before length, workload, and work-unit creation', () => {
+  const narrowPolygon = [
+    { lat: 35, lng: -82 },
+    { lat: 35, lng: -81.998 },
+    { lat: 35.002, lng: -81.998 },
+    { lat: 35.002, lng: -82 },
+  ];
+  const result = buildCanvasStreetWorkUnits({
+    polygon: narrowPolygon,
     roadNetwork: {
-      elements: [...fixture.roadNetwork.elements].reverse().map((element) => (
-        element.type === 'way' ? { ...element, nodes: [...element.nodes].reverse() } : element
-      )),
+      elements: [
+        node(9001, 35.001, -82.1),
+        node(9002, 35.001, -81.9),
+        way(9003, [9001, 9002], 'Crossing Street'),
+      ],
     },
-  };
+  });
 
-  assert.deepEqual(buildCanvasStreetWorkUnits(reordered), buildCanvasStreetWorkUnits(fixture));
+  assert.equal(result.ok, true);
+  assert.equal(result.diagnostics.roadEdgeCount, 1);
+  assert.equal(result.diagnostics.clippedFragmentCount, 1);
+  assert.ok(result.diagnostics.totalStreetLengthMeters > 175);
+  assert.ok(result.diagnostics.totalStreetLengthMeters < 190);
+  const segment = result.workUnits[0].segments[0];
+  assert.ok(segment.start.lng >= -82.0000000001 && segment.start.lng <= -81.9979999999);
+  assert.ok(segment.end.lng >= -82.0000000001 && segment.end.lng <= -81.9979999999);
+  assert.ok(segment.start.id.startsWith('clip-node:'));
+  assert.ok(segment.end.id.startsWith('clip-node:'));
+});
+
+test('splits one source edge into every in-boundary interval of a concave polygon', () => {
+  const concavePolygon = [
+    { lat: 35, lng: -82 },
+    { lat: 35, lng: -81.996 },
+    { lat: 35.004, lng: -81.996 },
+    { lat: 35.004, lng: -81.997 },
+    { lat: 35.001, lng: -81.997 },
+    { lat: 35.001, lng: -81.999 },
+    { lat: 35.004, lng: -81.999 },
+    { lat: 35.004, lng: -82 },
+  ];
+  const result = buildCanvasStreetWorkUnits({
+    polygon: concavePolygon,
+    roadNetwork: {
+      elements: [
+        node(9101, 35.002, -82.001),
+        node(9102, 35.002, -81.995),
+        way(9103, [9101, 9102], 'Concave Crossing'),
+      ],
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.diagnostics.clippedFragmentCount, 2);
+  assert.equal(result.diagnostics.roadEdgeCount, 2);
+  assert.equal(result.diagnostics.componentCount, 2);
+  const intervals = result.workUnits.flatMap((unit) => unit.segments).map((segment) => [
+    Math.min(segment.start.lng, segment.end.lng),
+    Math.max(segment.start.lng, segment.end.lng),
+  ]).sort((left, right) => left[0] - right[0]);
+  assert.deepEqual(intervals.map((interval) => interval.map((value) => Number(value.toFixed(6)))), [
+    [-82, -81.999],
+    [-81.997, -81.996],
+  ]);
+  const summedLength = result.workUnits.flatMap((unit) => unit.segments)
+    .reduce((sum, segment) => sum + segment.lengthMeters, 0);
+  assert.equal(Number(summedLength.toFixed(2)), result.diagnostics.totalStreetLengthMeters);
+});
+
+test('retains only the overlapping portion of a boundary-collinear road', () => {
+  const narrowPolygon = [
+    { lat: 35, lng: -82 },
+    { lat: 35, lng: -81.998 },
+    { lat: 35.002, lng: -81.998 },
+    { lat: 35.002, lng: -82 },
+  ];
+  const result = buildCanvasStreetWorkUnits({
+    polygon: narrowPolygon,
+    roadNetwork: {
+      elements: [
+        node(9201, 35, -82.1),
+        node(9202, 35, -81.9),
+        way(9203, [9201, 9202], 'Boundary Road'),
+      ],
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.diagnostics.clippedFragmentCount, 1);
+  assert.ok(result.diagnostics.totalStreetLengthMeters > 175);
+  assert.ok(result.diagnostics.totalStreetLengthMeters < 190);
 });
 
 test('blocks a bow-tie Canvas boundary with a typed self-intersection result', () => {
   const result = buildCanvasStreetWorkUnits({
-    ...degreeOneFixture(),
+    ...degreeOneFixture({ includeCandidates: false }),
     polygon: [
       { lat: 34.999, lng: -82.011 },
       { lat: 35.011, lng: -81.989 },

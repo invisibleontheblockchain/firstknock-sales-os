@@ -1,11 +1,8 @@
 const UNVERIFIED_METHODS = new Set(['', 'unknown', 'unverified', 'legacy_unverified']);
 const MAX_CANVAS_ZONES = 250;
+const MAX_CANVAS_POLYGON_POINTS = 800;
+const MAX_CANVAS_AREA_SQ_MI = 300;
 const CANVAS_COORDINATE_EPSILON = 1e-10;
-
-const asFiniteNumber = (value) => {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : null;
-};
 
 function sameCanvasPoint(left, right) {
   return Math.abs(left.lat - right.lat) <= CANVAS_COORDINATE_EPSILON
@@ -38,9 +35,33 @@ function canvasSegmentsIntersect(firstStart, firstEnd, secondStart, secondEnd) {
     || canvasPointOnSegment(firstEnd, secondStart, secondEnd);
 }
 
+function canvasPolygonAreaSqMiles(points) {
+  const averageLat = points.reduce((sum, point) => sum + point.lat, 0) / points.length;
+  const latScale = 69;
+  const lngScale = 69 * Math.cos(averageLat * Math.PI / 180);
+  const origin = points[0];
+  const projected = points.map((point) => ({
+    x: (point.lng - origin.lng) * lngScale,
+    y: (point.lat - origin.lat) * latScale,
+  }));
+  const twiceArea = projected.reduce((sum, point, index) => {
+    const next = projected[(index + 1) % projected.length];
+    return sum + point.x * next.y - next.x * point.y;
+  }, 0);
+  return Math.abs(twiceArea) / 2;
+}
+
 export function validateCanvasBoundary(rawPolygon) {
   if (!Array.isArray(rawPolygon)) {
     return { valid: false, code: 'INVALID_POLYGON', message: 'Draw a valid Canvas territory boundary.', points: [] };
+  }
+  if (rawPolygon.length > MAX_CANVAS_POLYGON_POINTS) {
+    return {
+      valid: false,
+      code: 'POLYGON_POINT_LIMIT_EXCEEDED',
+      message: `Canvas boundaries support up to ${MAX_CANVAS_POLYGON_POINTS} points. Draw a simpler outline before loading streets.`,
+      points: [],
+    };
   }
   const parsed = rawPolygon.map((point) => ({
     lat: Number(point?.lat ?? point?.[0]),
@@ -74,7 +95,17 @@ export function validateCanvasBoundary(rawPolygon) {
   if (Math.abs(twiceArea) <= CANVAS_COORDINATE_EPSILON) {
     return { valid: false, code: 'ZERO_AREA_POLYGON', message: 'The Canvas boundary has no usable area. Redraw a wider territory.', points };
   }
-  return { valid: true, code: 'VALID', message: '', points };
+  const areaSqMiles = canvasPolygonAreaSqMiles(points);
+  if (!Number.isFinite(areaSqMiles) || areaSqMiles > MAX_CANVAS_AREA_SQ_MI) {
+    return {
+      valid: false,
+      code: 'CANVAS_AREA_TOO_LARGE',
+      message: `This Canvas area is about ${Math.round(areaSqMiles).toLocaleString()} sq mi. Draw ${MAX_CANVAS_AREA_SQ_MI} sq mi or less before loading streets.`,
+      points,
+      areaSqMiles,
+    };
+  }
+  return { valid: true, code: 'VALID', message: '', points, areaSqMiles };
 }
 
 export function getCanvasTeamMemberEligibility(teamMembers = []) {
@@ -100,59 +131,26 @@ export function getActiveCanvasTeamMembers(teamMembers = []) {
   return getCanvasTeamMemberEligibility(teamMembers).eligible;
 }
 
-export function getStableOpportunityPoints(analysis) {
-  const opportunities = Array.isArray(analysis?.opportunities) ? analysis.opportunities : [];
-  return opportunities.map((opportunity) => {
-    const id = String(opportunity?.id || opportunity?.opportunity_id || '').trim();
-    const lat = asFiniteNumber(opportunity?.lat ?? opportunity?.latitude);
-    const lng = asFiniteNumber(opportunity?.lng ?? opportunity?.longitude);
-    if (!id || lat === null || lng === null) return null;
-    return { ...opportunity, id, lat, lng };
-  }).filter(Boolean);
-}
-
-export function getCanvasSplitTarget({
-  splitBasis,
-  selectedTeamMemberIds = [],
-  homesPerArea = 100,
-  totalHomes = 0,
-}) {
-  const safeHomes = Math.max(0, Math.floor(Number(totalHomes) || 0));
-  if (splitBasis === 'homes_per_area') {
-    const targetHomesPerArea = Math.max(1, Math.floor(Number(homesPerArea) || 1));
-    return {
-      requestedZoneCount: Math.max(1, Math.ceil(safeHomes / targetHomesPerArea)),
-      targetHomesPerArea,
-      basisLabel: `${targetHomesPerArea} homes per area`,
-    };
-  }
-
-  const requestedZoneCount = Math.max(1, new Set(selectedTeamMemberIds.filter(Boolean)).size);
-  return {
-    requestedZoneCount,
-    targetHomesPerArea: Math.max(1, Math.ceil(safeHomes / requestedZoneCount)),
-    basisLabel: `${requestedZoneCount} selected rep${requestedZoneCount === 1 ? '' : 's'}`,
-  };
-}
-
 export function getCanvasPlannerFailureMessage(result) {
   if (!result || result.ok !== false) return '';
   const message = String(result.message || '').trim();
   if (message) return message;
   const code = String(result.code || '').trim();
-  return code ? `Canvas could not create safe street areas (${code}). Change the split settings and try again.` : 'Canvas could not create safe street areas. Change the split settings and try again.';
+  return code
+    ? `Canvas could not create connected street territories (${code}). Change the division settings and try again.`
+    : 'Canvas could not create connected street territories. Change the division settings and try again.';
 }
 
 export function formatCanvasOverlapConfirmation(details = {}) {
   const conflicts = Array.isArray(details?.conflicts) ? details.conflicts : [];
   const conflictIds = details?.required_supersede_session_ids || details?.conflicting_session_ids || [];
   const count = Math.max(conflicts.length, Array.isArray(conflictIds) ? conflictIds.length : 0);
-  const heading = `This area overlaps ${count || 'one or more'} active Canvas campaign${count === 1 ? '' : 's'}. Confirming removes each entire conflicting campaign from every rep.`;
+  const heading = `This global area overlaps ${count || 'one or more'} active Canvas campaign${count === 1 ? '' : 's'}. Confirming removes each entire conflicting campaign from every rep.`;
   const lines = conflicts.slice(0, 8).map((conflict, index) => {
     const name = String(conflict?.session_name || `Campaign ${index + 1}`).trim().slice(0, 100);
-    const homes = Math.max(0, Number(conflict?.stable_door_id_count) || 0);
     const workUnits = Math.max(0, Number(conflict?.work_unit_id_count) || 0);
-    return `• ${name}: ${homes} overlapping home${homes === 1 ? '' : 's'}, ${workUnits} street unit${workUnits === 1 ? '' : 's'}`;
+    const zones = Math.max(0, Number(conflict?.zone_count) || 0);
+    return `• ${name}: ${workUnits} overlapping street unit${workUnits === 1 ? '' : 's'}${zones ? ` across ${zones} territor${zones === 1 ? 'y' : 'ies'}` : ''}`;
   });
   const omitted = conflicts.length > lines.length ? `\n• ${conflicts.length - lines.length} more conflicting campaign${conflicts.length - lines.length === 1 ? '' : 's'}` : '';
   return `${heading}${lines.length ? `\n\n${lines.join('\n')}${omitted}` : ''}\n\nReplace these campaigns for reps?`;
@@ -172,7 +170,6 @@ export function assignCanvasZonesRoundRobin(zones = [], selectedTeamMemberIds = 
   const membersById = new Map(getActiveCanvasTeamMembers(teamMembers).map((member) => [String(member.id), member]));
   const validIds = [...new Set(selectedTeamMemberIds.map((id) => String(id || '').trim()).filter((id) => membersById.has(id)))];
   if (!validIds.length) return zones.map((zone) => ({ ...zone, assignments: [], assigned_team_member_ids: [], assigned_team_member_id: null, assigned_to: null, assigned_to_name: '' }));
-
   return zones.map((zone, index) => {
     const teamMemberId = validIds[index % validIds.length];
     return {
@@ -218,25 +215,64 @@ export function reconcileCanvasPlanWithEligibleTeam(plan, teamMembers = []) {
     return updateCanvasZoneAssignment(zone, null, []);
   });
   const changed = removedSelectedIds.length > 0 || clearedZoneIds.length > 0;
-  if (!changed) {
-    return { plan, changed: false, removedSelectedIds, clearedZoneIds, requiresRegeneration: false };
-  }
-  const warning = 'The active Canvas roster changed; removed reps were cleared from this plan.';
+  if (!changed) return { plan, changed: false, removedSelectedIds, clearedZoneIds, requiresRegeneration: false };
+  const warning = 'The active Canvas roster changed; removed reps were cleared from this territory plan.';
+  const selectedRepMode = plan.division_mode === 'selected_reps' || plan.division_basis === 'selected_reps';
   return {
     plan: {
       ...plan,
       selected_team_member_ids: selectedTeamMemberIds,
       zones,
-      qa: {
-        ...(plan.qa || {}),
-        deployable: false,
-        warnings: [...new Set([...(plan.qa?.warnings || []), warning])],
-      },
+      qa: { ...(plan.qa || {}), deployable: false, warnings: [...new Set([...(plan.qa?.warnings || []), warning])] },
     },
     changed: true,
     removedSelectedIds,
     clearedZoneIds,
-    requiresRegeneration: plan.workload_basis === 'selected_reps' && removedSelectedIds.length > 0,
+    requiresRegeneration: selectedRepMode && removedSelectedIds.length > 0,
+  };
+}
+
+export function restoreCanvasDraftPlan(campaign, teamMembers = []) {
+  if (!campaign || String(campaign.stored_status || campaign.status || '') !== 'draft') {
+    throw new Error('Only a saved Canvas draft can be resumed in the planner.');
+  }
+  const zones = Array.isArray(campaign.zones) ? campaign.zones : [];
+  const workUnits = Array.isArray(campaign.work_units) ? campaign.work_units : [];
+  if (!zones.length || !workUnits.length) throw new Error('This Canvas draft is missing its saved street plan.');
+  const membersById = new Map((Array.isArray(teamMembers) ? teamMembers : []).map((member) => [String(member?.id || ''), member]));
+  const restoredZones = zones.map((zone, index) => {
+    const assignmentId = String(zone?.assigned_team_member_id || '');
+    return {
+      ...zone,
+      zone_number: Number(zone?.zone_number) || index + 1,
+      assignments: assignmentId ? [assignmentId] : [],
+      assigned_team_member_ids: assignmentId ? [assignmentId] : [],
+      assigned_to: assignmentId || null,
+      assigned_to_name: assignmentId ? memberLabel(membersById.get(assignmentId)) : '',
+    };
+  });
+  const qa = normalizedQa(campaign.qa || {});
+  const divisionMode = String(campaign.division_mode || 'area_count');
+  const savedSelectedIds = [...new Set((campaign.selected_team_member_ids || []).map(String).filter(Boolean))];
+  const assignedIds = [...new Set(restoredZones.map((zone) => String(zone.assigned_team_member_id || '')).filter(Boolean))];
+  const selectedIds = savedSelectedIds.length ? savedSelectedIds : assignedIds;
+  return {
+    ok: true,
+    status: qa.warnings.length ? 'degraded' : 'ready',
+    deployable: qa.deployable,
+    territory_model: campaign.territory_model || 'street_territory_v1',
+    planning_method: campaign.planning_method || 'street_workload',
+    assignment_basis: campaign.assignment_basis || 'street_work_unit_ids',
+    workload_basis: campaign.workload_basis || 'street_length',
+    division_mode: divisionMode,
+    division_basis: divisionMode,
+    target_workload: campaign.target_workload ?? null,
+    selected_team_member_ids: divisionMode === 'selected_reps' ? selectedIds : [],
+    algorithm_version: campaign.algorithm_version || '',
+    data_version: campaign.data_version || '',
+    zones: restoredZones,
+    work_units: workUnits,
+    qa,
   };
 }
 
@@ -245,48 +281,51 @@ function normalizeIssueList(value) {
   return value.map((issue) => typeof issue === 'string' ? issue : issue?.message).filter(Boolean);
 }
 
-export function normalizeCanvasPlannerResult(result, context = {}) {
-  const zones = Array.isArray(result) ? result : Array.isArray(result?.zones) ? result.zones : [];
-  const qa = Array.isArray(result) ? {} : (result?.qa || {});
-  const diagnostics = Array.isArray(result) ? {} : (result?.diagnostics || {});
-  const rawMethod = String(result?.method || result?.planning_method || result?.generation_method || diagnostics?.method || diagnostics?.generation_method || 'legacy_unverified').toLowerCase();
-  const methodVerified = !UNVERIFIED_METHODS.has(rawMethod);
-  const explicitRoadAligned = result?.road_aligned ?? result?.street_aligned ?? diagnostics?.road_aligned ?? diagnostics?.street_aligned;
-  const explicitCuldesac = result?.culdesac_integrity
-    ?? result?.cul_de_sac_integrity
-    ?? diagnostics?.culdesac_integrity
-    ?? diagnostics?.cul_de_sac_integrity
-    ?? (qa?.protected_units_intact === true && Number(qa?.cul_de_sac_splits) === 0);
-  const requestedZoneCount = Math.max(1, Number(context.requestedZoneCount) || 1);
-  const doorCounts = zones.map((zone) => Math.max(0, Number(zone?.estimated_doors) || zone?.stable_door_ids?.length || 0));
-  const averageDoors = doorCounts.length ? doorCounts.reduce((sum, count) => sum + count, 0) / doorCounts.length : 0;
-  const maxImbalancePercent = averageDoors > 0
-    ? Math.round(Math.max(...doorCounts.map((count) => Math.abs(count - averageDoors) / averageDoors)) * 100)
-    : null;
+function normalizedQa(qa = {}) {
+  return {
+    ...qa,
+    deployable: qa.deployable === true,
+    street_coverage_complete: qa.street_coverage_complete === true || qa.coverage_complete === true,
+    no_duplicate_work_units: qa.no_duplicate_work_units === true,
+    no_missing_work_units: qa.no_missing_work_units === true,
+    connected_zones: qa.connected_zones === true,
+    atomic_work_units: qa.atomic_work_units === true,
+    cul_de_sac_splits: Math.max(0, Number(qa.cul_de_sac_splits) || 0),
+    protected_units_intact: qa.protected_units_intact === true,
+    data_quality_status: qa.data_quality_status || 'unverified',
+    warnings: normalizeIssueList(qa.warnings),
+  };
+}
 
+export function normalizeCanvasPlannerResult(result, context = {}) {
+  const zones = Array.isArray(result?.zones) ? result.zones : [];
+  const qa = normalizedQa(result?.qa || {});
+  const diagnostics = result?.diagnostics || {};
+  const rawMethod = String(result?.method || result?.planning_method || diagnostics?.method || 'legacy_unverified').toLowerCase();
+  const methodVerified = !UNVERIFIED_METHODS.has(rawMethod);
+  const requestedZoneCount = Math.max(1, Number(context.requestedZoneCount) || zones.length || 1);
+  const workloadScores = zones.map((zone) => Math.max(0, Number(zone?.workload_score ?? zone?.street_length_meters) || 0));
+  const average = workloadScores.length ? workloadScores.reduce((sum, value) => sum + value, 0) / workloadScores.length : 0;
+  const maxImbalancePercent = average > 0
+    ? Math.round(Math.max(...workloadScores.map((value) => Math.abs(value - average) / average)) * 100)
+    : null;
   const blockingIssues = [
-    ...normalizeIssueList(diagnostics?.blocking || result?.blocking),
-    ...(zones.length ? [] : ['No usable areas were generated.']),
-    ...(zones.some((zone) => !Array.isArray(zone?.geometry) || zone.geometry.length < 3) ? ['At least one generated area has invalid geometry.'] : []),
+    ...(zones.length ? [] : ['No usable territories were generated.']),
+    ...(zones.some((zone) => !Array.isArray(zone?.geometry) || zone.geometry.length < 3) ? ['At least one territory has invalid display geometry.'] : []),
   ];
   const degradedIssues = [
-    ...normalizeIssueList(diagnostics?.warnings || diagnostics?.degraded || result?.warnings),
-    ...(context.roadFetchStatus === 'ready' ? [] : ['The road network was not ready for this draft.']),
-    ...(methodVerified ? [] : ['The generator did not provide verifiable method diagnostics.']),
-    ...(result?.planning_method === 'street_work_units' && !String(result?.algorithm_version || '').trim() ? ['The planner did not provide an algorithm version.'] : []),
-    ...(result?.planning_method === 'street_work_units' && !String(result?.data_version || '').trim() ? ['The planner did not provide a road-data version.'] : []),
-    ...(explicitRoadAligned === true ? [] : ['Street-boundary alignment was not explicitly verified.']),
-    ...((explicitCuldesac === true || explicitCuldesac === 'passed') ? [] : ['Cul-de-sac integrity was not explicitly verified.']),
-    ...(zones.length !== requestedZoneCount ? [`Requested ${requestedZoneCount} areas; generated ${zones.length}.`] : []),
-    ...(maxImbalancePercent !== null && maxImbalancePercent > 25 ? [`Home-count imbalance reaches ${maxImbalancePercent}%.`] : []),
+    ...normalizeIssueList(diagnostics?.warnings || result?.warnings),
+    ...(context.roadFetchStatus === 'ready' ? [] : ['The street network was not ready for this draft.']),
+    ...(methodVerified ? [] : ['The planner did not provide verifiable method diagnostics.']),
+    ...(zones.length !== requestedZoneCount ? [`Requested ${requestedZoneCount} territories; generated ${zones.length}.`] : []),
+    ...(maxImbalancePercent !== null && maxImbalancePercent > 25 ? [`Street-workload imbalance reaches ${maxImbalancePercent}%.`] : []),
   ];
-
   return {
     zones,
     method: rawMethod,
     methodVerified,
-    roadAligned: explicitRoadAligned === true,
-    culdesacIntegrity: explicitCuldesac === true || explicitCuldesac === 'passed',
+    roadAligned: result?.road_aligned === true || result?.street_aligned === true,
+    culdesacIntegrity: result?.culdesac_integrity === true || (qa.protected_units_intact && qa.cul_de_sac_splits === 0),
     blockingIssues: [...new Set(blockingIssues)],
     degradedIssues: [...new Set(degradedIssues)],
     maxImbalancePercent,
@@ -298,144 +337,20 @@ export function normalizeCanvasPlannerResult(result, context = {}) {
 
 export function isVerifiedCanvasPlannerResult(result) {
   if (!result || Array.isArray(result)) return false;
-  const qa = result.qa || {};
+  const qa = normalizedQa(result.qa || {});
   return result.ok === true
     && result.deployable === true
-    && (result.status === 'ready' || result.status === 'degraded')
-    && result.planning_method === 'street_work_units'
-    && result.assignment_basis === 'stable_door_ids'
+    && ['ready', 'degraded'].includes(result.status)
+    && result.planning_method === 'street_workload'
+    && result.assignment_basis === 'street_work_unit_ids'
     && Boolean(String(result.algorithm_version || '').trim())
     && Boolean(String(result.data_version || '').trim())
-    && qa.deployable === true
-    && qa.coverage_complete === true
-    && qa.no_duplicate_doors === true
-    && qa.no_missing_doors === true
-    && qa.connected_zones === true
-    && qa.atomic_work_units === true
-    && Number(qa.cul_de_sac_splits) === 0
-    && qa.protected_units_intact === true
-    && qa.data_quality_status === 'verified';
-}
-
-export function getCanvasGenerationBlockers({
-  polygon,
-  splitBasis,
-  selectedTeamMemberIds = [],
-  teamMembers = [],
-  homesPerArea,
-  analysis,
-  roadFetchStatus,
-}) {
-  const blockers = [];
-  const activeMemberIds = new Set(getActiveCanvasTeamMembers(teamMembers).map((member) => String(member.id)));
-  const validSelectedIds = [...new Set(selectedTeamMemberIds.map((id) => String(id || '')).filter((id) => activeMemberIds.has(id)))];
-  const opportunities = getStableOpportunityPoints(analysis);
-  const totalOpportunities = Math.max(0, Number(analysis?.totalOpportunities) || 0);
-
-  if (!Array.isArray(polygon) || polygon.length < 3) blockers.push('Draw the cold-knocking territory.');
-  if (roadFetchStatus === 'loading') blockers.push('Wait for the street network to finish loading.');
-  else if (roadFetchStatus !== 'ready') blockers.push('Street data is required; redraw or retry when the road network is available.');
-  if (!analysis?.analysisId) blockers.push('Analyze the territory to discover stable home opportunities.');
-  else if (!opportunities.length) blockers.push('The analysis did not return usable home opportunities.');
-  if (totalOpportunities > opportunities.length) blockers.push(`Analysis returned ${opportunities.length} of ${totalOpportunities} homes; full coverage is required before dividing the territory.`);
-  if (splitBasis === 'homes_per_area') {
-    if (!Number.isFinite(Number(homesPerArea)) || Number(homesPerArea) < 1) blockers.push('Set a valid homes-per-area target.');
-    else if (Math.ceil(opportunities.length / Math.max(1, Number(homesPerArea))) > MAX_CANVAS_ZONES) blockers.push(`Canvas supports at most ${MAX_CANVAS_ZONES} areas in one campaign. Increase the homes-per-area target.`);
-  } else if (!validSelectedIds.length) {
-    blockers.push('Select at least one active team member.');
-  } else if (validSelectedIds.length > MAX_CANVAS_ZONES) {
-    blockers.push(`Canvas supports at most ${MAX_CANVAS_ZONES} selected reps in one campaign.`);
-  }
-
-  return [...new Set(blockers)];
-}
-
-function pointInRing(point, ring = []) {
-  if (!point || ring.length < 3) return false;
-  let inside = false;
-  for (let index = 0, previousIndex = ring.length - 1; index < ring.length; previousIndex = index, index += 1) {
-    const current = ring[index];
-    const previous = ring[previousIndex];
-    const intersects = ((current.lat > point.lat) !== (previous.lat > point.lat))
-      && (point.lng < ((previous.lng - current.lng) * (point.lat - current.lat)) / ((previous.lat - current.lat) || Number.EPSILON) + current.lng);
-    if (intersects) inside = !inside;
-  }
-  return inside;
-}
-
-export function attachStableDoorsToCanvasZones(zones = [], opportunityPoints = []) {
-  const normalizedZones = zones.map((zone, index) => ({
-    ...zone,
-    zone_id: String(zone?.zone_id || zone?.id || `canvas_zone_${Number(zone?.zone_number) || index + 1}`),
-    stable_door_ids: [],
-  }));
-  const doors = [];
-  const missingDoorIds = [];
-
-  opportunityPoints.forEach((opportunity) => {
-    const stableDoorId = String(opportunity?.stable_door_id || opportunity?.id || opportunity?.opportunity_id || '').trim();
-    if (!stableDoorId) return;
-    const matchingZone = normalizedZones.find((zone) => (zone.parts || [zone.geometry]).some((part) => pointInRing(opportunity, part)));
-    if (!matchingZone) {
-      missingDoorIds.push(stableDoorId);
-      return;
-    }
-    matchingZone.stable_door_ids.push(stableDoorId);
-    doors.push({
-      stable_door_id: stableDoorId,
-      address_hash: opportunity.address_hash || opportunity.addressHash || null,
-      lat: Number(opportunity.lat),
-      lng: Number(opportunity.lng),
-      work_unit_id: opportunity.work_unit_id || opportunity.workUnitId || null,
-      zone_id: matchingZone.zone_id,
-    });
-  });
-
-  return { zones: normalizedZones, doors, missingDoorIds };
-}
-
-function normalizedQa(qa = {}) {
-  return {
-    deployable: qa.deployable === true,
-    coverage_complete: qa.coverage_complete === true,
-    no_duplicate_doors: qa.no_duplicate_doors === true,
-    no_missing_doors: qa.no_missing_doors === true,
-    connected_zones: qa.connected_zones === true,
-    atomic_work_units: qa.atomic_work_units === true,
-    cul_de_sac_splits: Math.max(0, Number(qa.cul_de_sac_splits) || 0),
-    protected_units_intact: qa.protected_units_intact === true,
-    data_quality_status: qa.data_quality_status || 'unverified',
-    warnings: normalizeIssueList(qa.warnings),
-  };
-}
-
-export function isCanvasPlanDeployable(plan = {}) {
-  const qa = normalizedQa(plan.qa || plan.diagnostics?.qa);
-  const doors = Array.isArray(plan.doors) ? plan.doors : [];
-  const zones = Array.isArray(plan.zones) ? plan.zones : [];
-  const selectedRepCount = new Set((plan.selected_team_member_ids || []).filter(Boolean)).size;
-  const selectedRepIds = new Set((plan.selected_team_member_ids || []).map(String).filter(Boolean));
-  const assignedRepIds = zones.map((zone) => String(zone?.assigned_team_member_id || '')).filter(Boolean);
-  const selectedRepAssignmentsExact = plan.workload_basis !== 'selected_reps'
-    || (selectedRepIds.size === zones.length
-      && new Set(assignedRepIds).size === assignedRepIds.length
-      && assignedRepIds.length === zones.length
-      && assignedRepIds.every((id) => selectedRepIds.has(id)));
-  return plan.planning_method === 'street_work_units'
-    && plan.assignment_basis === 'stable_door_ids'
-    && (plan.workload_basis === 'selected_reps' || plan.workload_basis === 'homes_per_area')
-    && Boolean(String(plan.algorithm_version || '').trim())
-    && Boolean(String(plan.data_version || '').trim())
-    && doors.length > 0
-    && doors.every((door) => door?.stable_door_id && door?.work_unit_id)
-    && zones.length > 0
-    && (plan.workload_basis !== 'selected_reps' || selectedRepCount === 0 || zones.length === selectedRepCount)
-    && selectedRepAssignmentsExact
-    && zones.every((zone) => zone?.assigned_team_member_id && Array.isArray(zone?.stable_door_ids))
+    && Array.isArray(result.work_units)
+    && result.work_units.length > 0
     && qa.deployable
-    && qa.coverage_complete
-    && qa.no_duplicate_doors
-    && qa.no_missing_doors
+    && qa.street_coverage_complete
+    && qa.no_duplicate_work_units
+    && qa.no_missing_work_units
     && qa.connected_zones
     && qa.atomic_work_units
     && qa.cul_de_sac_splits === 0
@@ -443,56 +358,126 @@ export function isCanvasPlanDeployable(plan = {}) {
     && qa.data_quality_status === 'verified';
 }
 
-export function buildCanvasDraftPayload({
-  sessionId,
-  expectedVersion,
-  sessionName,
+export function getCanvasGenerationBlockers({
   polygon,
-  analysisId,
-  plan,
+  divisionMode = 'selected_reps',
+  selectedTeamMemberIds = [],
+  teamMembers = [],
+  requestedAreaCount = 1,
+  roadFetchStatus,
 }) {
-  const qa = {
-    ...normalizedQa(plan?.qa || plan?.diagnostics?.qa),
-    deployable: isCanvasPlanDeployable(plan || {}),
+  const blockers = [];
+  const boundary = validateCanvasBoundary(polygon);
+  const activeMemberIds = new Set(getActiveCanvasTeamMembers(teamMembers).map((member) => String(member.id)));
+  const validSelectedIds = [...new Set(selectedTeamMemberIds.map(String).filter((id) => activeMemberIds.has(id)))];
+  if (!boundary.valid) blockers.push(boundary.message);
+  if (roadFetchStatus === 'loading') blockers.push('Wait for the street network to finish loading.');
+  else if (roadFetchStatus !== 'ready') blockers.push('Street data is required before Canvas can divide this area.');
+  if (divisionMode === 'selected_reps' && !validSelectedIds.length) blockers.push('Select at least one active rep.');
+  if (divisionMode === 'selected_reps' && validSelectedIds.length > MAX_CANVAS_ZONES) blockers.push(`Canvas supports at most ${MAX_CANVAS_ZONES} selected reps.`);
+  if (divisionMode !== 'selected_reps' && (!Number.isInteger(Number(requestedAreaCount)) || Number(requestedAreaCount) < 1 || Number(requestedAreaCount) > MAX_CANVAS_ZONES)) blockers.push(`Choose between 1 and ${MAX_CANVAS_ZONES} territories.`);
+  return [...new Set(blockers)];
+}
+
+export function isCanvasPlanDeployable(plan = {}) {
+  const qa = normalizedQa(plan.qa || plan.diagnostics?.qa);
+  const workUnits = Array.isArray(plan.work_units) ? plan.work_units : [];
+  const zones = Array.isArray(plan.zones) ? plan.zones : [];
+  const selectedRepIds = new Set((plan.selected_team_member_ids || []).map(String).filter(Boolean));
+  const assignedRepIds = zones.map((zone) => String(zone?.assigned_team_member_id || '')).filter(Boolean);
+  const divisionMode = plan.division_mode || plan.division_basis || 'selected_reps';
+  const selectedRepsOneToOne = divisionMode !== 'selected_reps'
+    || (selectedRepIds.size === zones.length
+      && new Set(assignedRepIds).size === assignedRepIds.length
+      && assignedRepIds.length === zones.length
+      && assignedRepIds.every((id) => selectedRepIds.has(id)));
+  const ownedUnitIds = zones.flatMap((zone) => Array.isArray(zone?.work_unit_ids) ? zone.work_unit_ids : []);
+  return plan.planning_method === 'street_workload'
+    && plan.assignment_basis === 'street_work_unit_ids'
+    && Boolean(String(plan.algorithm_version || '').trim())
+    && Boolean(String(plan.data_version || '').trim())
+    && workUnits.length > 0
+    && zones.length > 0
+    && zones.every((zone) => zone?.assigned_team_member_id && Array.isArray(zone?.work_unit_ids) && zone.work_unit_ids.length > 0)
+    && ownedUnitIds.length === workUnits.length
+    && new Set(ownedUnitIds).size === workUnits.length
+    && selectedRepsOneToOne
+    && qa.deployable
+    && qa.street_coverage_complete
+    && qa.no_duplicate_work_units
+    && qa.no_missing_work_units
+    && qa.connected_zones
+    && qa.atomic_work_units
+    && qa.cul_de_sac_splits === 0
+    && qa.protected_units_intact
+    && qa.data_quality_status === 'verified';
+}
+
+function normalizeWorkUnit(unit) {
+  return {
+    id: String(unit?.id || unit?.work_unit_id || ''),
+    kind: unit?.kind || null,
+    protected: unit?.protected === true,
+    street_names: unit?.street_names || unit?.streetNames || [],
+    neighbor_ids: unit?.neighbor_ids || unit?.neighborIds || [],
+    street_length_meters: Number(unit?.street_length_meters ?? unit?.streetLengthMeters ?? 0),
+    segments: (Array.isArray(unit?.segments) ? unit.segments : []).map((segment) => ({
+      edge_id: segment?.edge_id ?? segment?.edgeId ?? null,
+      start: segment?.start,
+      end: segment?.end,
+      street_names: segment?.street_names || segment?.streetNames || [],
+      length_meters: Number(segment?.length_meters ?? segment?.lengthMeters ?? 0),
+    })),
   };
-  const planningMethod = plan?.planning_method === 'street_work_units' ? 'street_work_units' : 'preview_only';
-  const assignmentBasis = plan?.assignment_basis === 'stable_door_ids' ? 'stable_door_ids' : 'legacy_geometry';
-  const workloadBasis = plan?.workload_basis === 'homes_per_area' ? 'homes_per_area' : 'selected_reps';
-  const doors = (Array.isArray(plan?.doors) ? plan.doors : []).map((door) => ({
-    stable_door_id: String(door.stable_door_id || door.id || ''),
-    address_hash: door.address_hash || null,
-    lat: Number(door.lat),
-    lng: Number(door.lng),
-    work_unit_id: door.work_unit_id || null,
-    zone_id: door.zone_id || null,
-  })).filter((door) => door.stable_door_id && Number.isFinite(door.lat) && Number.isFinite(door.lng));
+}
+
+export function buildCanvasDraftPayload({ sessionId, expectedVersion, sessionName, polygon, plan }) {
+  const qa = { ...normalizedQa(plan?.qa || plan?.diagnostics?.qa), deployable: isCanvasPlanDeployable(plan || {}) };
+  const planningMethod = plan?.planning_method === 'street_workload' ? 'street_workload' : 'preview_only';
+  const assignmentBasis = plan?.assignment_basis === 'street_work_unit_ids' ? 'street_work_unit_ids' : 'legacy_geometry';
+  const divisionMode = plan?.division_mode || plan?.division_basis || 'selected_reps';
+  const workloadBasis = ['street_length', 'estimated_doors', 'street_length_plus_estimated_doors'].includes(plan?.workload_basis)
+    ? plan.workload_basis
+    : 'street_length';
   const zones = (Array.isArray(plan?.zones) ? plan.zones : []).map((zone, index) => ({
     zone_id: String(zone.zone_id || zone.id || `canvas_zone_${Number(zone.zone_number) || index + 1}`),
     zone_number: Number(zone.zone_number) || index + 1,
+    name: zone.name || `Area ${Number(zone.zone_number) || index + 1}`,
+    color: zone.color || null,
     geometry: zone.geometry || null,
     parts: Array.isArray(zone.parts) ? zone.parts : undefined,
+    center: zone.center || null,
     drop_point: zone.drop_point || null,
     assigned_team_member_id: zone.assigned_team_member_id || getCanvasZoneAssignmentIds(zone)[0] || null,
-    stable_door_ids: Array.isArray(zone.stable_door_ids) ? [...new Set(zone.stable_door_ids.filter(Boolean))] : [],
     work_unit_ids: Array.isArray(zone.work_unit_ids) ? [...new Set(zone.work_unit_ids.filter(Boolean))] : [],
-    estimated_minutes: Number.isFinite(Number(zone.estimated_minutes)) ? Number(zone.estimated_minutes) : undefined,
+    street_work_unit_ids: Array.isArray(zone.work_unit_ids) ? [...new Set(zone.work_unit_ids.filter(Boolean))] : [],
+    street_length_meters: Number(zone.street_length_meters ?? zone.street_length_m ?? 0),
+    estimated_doors: zone.estimated_doors !== null && zone.estimated_doors !== undefined && zone.estimated_doors !== '' && Number.isFinite(Number(zone.estimated_doors)) ? Number(zone.estimated_doors) : null,
+    estimated_minutes: Number.isFinite(Number(zone.estimated_minutes)) ? Number(zone.estimated_minutes) : null,
+    workload_score: Number(zone.workload_score ?? zone.street_length_meters ?? 0),
+    workload_share: Number.isFinite(Number(zone.workload_share)) ? Number(zone.workload_share) : null,
+    protected_unit_over_target: zone.protected_unit_over_target === true,
   }));
-
+  const assignedTeamMemberIds = [...new Set(zones.map((zone) => String(zone.assigned_team_member_id || '')).filter(Boolean))];
+  const selectedTeamMemberIds = divisionMode === 'selected_reps'
+    ? [...new Set((plan?.selected_team_member_ids || []).map(String).filter(Boolean))]
+    : assignedTeamMemberIds;
   return {
     ...(sessionId ? { session_id: sessionId } : {}),
     ...(expectedVersion !== undefined && expectedVersion !== null ? { expected_version: expectedVersion } : {}),
-    session_name: String(sessionName || 'Canvas Draft Preview').trim() || 'Canvas Draft Preview',
+    session_name: String(sessionName || 'Canvas Territory Draft').trim() || 'Canvas Territory Draft',
+    territory_model: 'street_territory_v1',
     polygon,
     planning_method: planningMethod,
     assignment_basis: assignmentBasis,
+    division_mode: divisionMode,
     workload_basis: workloadBasis,
-    selected_team_member_ids: [...new Set((plan?.selected_team_member_ids || []).map(String).filter(Boolean))],
-    target_homes: doors.length,
-    ...(analysisId && planningMethod === 'street_work_units' ? { analysis_id: analysisId } : {}),
+    selected_team_member_ids: selectedTeamMemberIds,
+    target_workload: plan?.target_workload !== null && plan?.target_workload !== undefined && plan?.target_workload !== '' && Number.isFinite(Number(plan.target_workload)) ? Number(plan.target_workload) : null,
     ...(plan?.algorithm_version ? { algorithm_version: plan.algorithm_version } : {}),
     ...(plan?.data_version ? { data_version: plan.data_version } : {}),
     zones,
-    doors,
+    work_units: (Array.isArray(plan?.work_units) ? plan.work_units : []).map(normalizeWorkUnit),
     qa,
   };
 }
