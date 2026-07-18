@@ -63,6 +63,7 @@ export default function RouteBuilderSettings({
     // Data
     user,
     teamMembers = [], teamMembersReady = true,
+    canvasTeamMembers = [], canvasTeamMembersReady = true, onRefreshCanvasTeamMembers, onCanvasDraftDirtyChange,
     drawnPolygon,
     hasDrawnArea,
     maxDataMonths,
@@ -130,8 +131,10 @@ export default function RouteBuilderSettings({
                 onResumeBoundary={onResumeBoundary}
                 onClose={onClose}
                 user={user}
-                teamMembers={teamMembers}
-                teamMembersReady={teamMembersReady}
+                teamMembers={canvasTeamMembers}
+                teamMembersReady={canvasTeamMembersReady}
+                onRefreshTeamMembers={onRefreshCanvasTeamMembers}
+                onDraftDirtyChange={onCanvasDraftDirtyChange}
             />
         );
     };

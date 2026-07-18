@@ -3,6 +3,9 @@ const MAX_CANVAS_ZONES = 250;
 const MAX_CANVAS_POLYGON_POINTS = 800;
 const MAX_CANVAS_AREA_SQ_MI = 300;
 const CANVAS_COORDINATE_EPSILON = 1e-10;
+export const MAX_CANVAS_INTERACTIVE_COMPLEXITY = 180_000;
+export const MAX_CANVAS_INTERACTIVE_WORK_UNITS = 2_000;
+export const MAX_CANVAS_INTERACTIVE_SEGMENTS = 50_000;
 
 function sameCanvasPoint(left, right) {
   return Math.abs(left.lat - right.lat) <= CANVAS_COORDINATE_EPSILON
@@ -232,6 +235,94 @@ export function reconcileCanvasPlanWithEligibleTeam(plan, teamMembers = []) {
   };
 }
 
+export function getCanvasWorkloadDeviation(plan = {}) {
+  const zones = Array.isArray(plan?.zones) ? plan.zones : [];
+  const zoneScores = zones.map((zone) => Number(zone?.workload_score ?? zone?.street_length_meters));
+  if (zoneScores.length > 0 && zoneScores.every((score) => Number.isFinite(score) && score >= 0)) {
+    const average = zoneScores.reduce((sum, score) => sum + score, 0) / zoneScores.length;
+    if (average > 0) {
+      return {
+        verified: true,
+        value: Math.round(Math.max(...zoneScores.map((score) => Math.abs(score - average) / average)) * 100),
+        source: 'zone_workload_scores',
+        scores: zoneScores,
+      };
+    }
+  }
+  if (zones.length > 0) return { verified: false, value: null, source: 'unavailable', scores: [] };
+
+  const supplied = plan?.qa?.max_workload_deviation_percent ?? plan?.diagnostics?.max_workload_deviation_percent;
+  const parsed = supplied === null || supplied === undefined || supplied === '' ? Number.NaN : Number(supplied);
+  if (Number.isFinite(parsed) && parsed >= 0) {
+    return { verified: true, value: Math.round(parsed), source: 'planner_qa', scores: [] };
+  }
+  return { verified: false, value: null, source: 'unavailable', scores: [] };
+}
+
+export function getCanvasPlanComplexityStatus(plan = {}) {
+  const zoneCount = Array.isArray(plan?.zones) ? plan.zones.length : 0;
+  const workUnitCount = Array.isArray(plan?.work_units) ? plan.work_units.length : 0;
+  const segmentCount = (Array.isArray(plan?.work_units) ? plan.work_units : [])
+    .reduce((sum, unit) => sum + (Array.isArray(unit?.segments) ? unit.segments.length : 0), 0);
+  const complexity = zoneCount * workUnitCount;
+  const supported = zoneCount > 0
+    && workUnitCount > 0
+    && workUnitCount <= MAX_CANVAS_INTERACTIVE_WORK_UNITS
+    && segmentCount <= MAX_CANVAS_INTERACTIVE_SEGMENTS
+    && complexity <= MAX_CANVAS_INTERACTIVE_COMPLEXITY;
+  return {
+    supported,
+    zoneCount,
+    workUnitCount,
+    segmentCount,
+    complexity,
+    message: supported
+      ? ''
+      : `This street plan is too complex to verify safely as one campaign. Redraw a smaller work area or use fewer territories, then create the preview again.`,
+  };
+}
+
+export function getCanvasCrewAssignmentStatus(plan = {}, selectedTeamMemberIds = []) {
+  const zones = Array.isArray(plan?.zones) ? plan.zones : [];
+  const divisionMode = plan?.division_mode || plan?.division_basis || 'selected_reps';
+  const selectedIds = [...new Set((selectedTeamMemberIds || []).map(String).filter(Boolean))];
+  const assignedIds = zones.map((zone) => String(zone?.assigned_team_member_id || '')).filter(Boolean);
+  const uniqueAssignedIds = [...new Set(assignedIds)];
+  const everyZoneAssigned = zones.length > 0 && assignedIds.length === zones.length;
+  const selectedSet = new Set(selectedIds);
+  const selectionMatchesAssignments = selectedIds.length === uniqueAssignedIds.length
+    && uniqueAssignedIds.every((id) => selectedSet.has(id));
+  const oneToOneMode = divisionMode === 'selected_reps' || divisionMode === 'area_count';
+  const oneToOne = everyZoneAssigned
+    && uniqueAssignedIds.length === zones.length
+    && selectedIds.length === zones.length
+    && selectionMatchesAssignments;
+  const valid = selectedIds.length > 0
+    && everyZoneAssigned
+    && selectionMatchesAssignments
+    && (!oneToOneMode || oneToOne);
+
+  let message = '';
+  if (!zones.length) message = 'Create the territory preview before choosing the crew.';
+  else if (!selectedIds.length) message = 'Choose the reps who should receive this work.';
+  else if (oneToOneMode && selectedIds.length !== zones.length) message = `Choose exactly ${zones.length} rep${zones.length === 1 ? '' : 's'} so every person receives one territory.`;
+  else if (!everyZoneAssigned) message = 'Assign every territory before sending.';
+  else if (oneToOneMode && !oneToOne) message = 'Each selected rep must receive exactly one territory.';
+  else if (!selectionMatchesAssignments) message = 'Every selected rep must receive work, with no unselected rep assigned.';
+
+  return {
+    valid,
+    message,
+    divisionMode,
+    selectedIds,
+    assignedIds,
+    uniqueAssignedIds,
+    everyZoneAssigned,
+    selectionMatchesAssignments,
+    oneToOne,
+  };
+}
+
 export function restoreCanvasDraftPlan(campaign, teamMembers = []) {
   if (!campaign || String(campaign.stored_status || campaign.status || '') !== 'draft') {
     throw new Error('Only a saved Canvas draft can be resumed in the planner.');
@@ -267,7 +358,7 @@ export function restoreCanvasDraftPlan(campaign, teamMembers = []) {
     division_mode: divisionMode,
     division_basis: divisionMode,
     target_workload: campaign.target_workload ?? null,
-    selected_team_member_ids: divisionMode === 'selected_reps' ? selectedIds : [],
+    selected_team_member_ids: selectedIds,
     algorithm_version: campaign.algorithm_version || '',
     data_version: campaign.data_version || '',
     zones: restoredZones,
@@ -383,14 +474,7 @@ export function isCanvasPlanDeployable(plan = {}) {
   const qa = normalizedQa(plan.qa || plan.diagnostics?.qa);
   const workUnits = Array.isArray(plan.work_units) ? plan.work_units : [];
   const zones = Array.isArray(plan.zones) ? plan.zones : [];
-  const selectedRepIds = new Set((plan.selected_team_member_ids || []).map(String).filter(Boolean));
-  const assignedRepIds = zones.map((zone) => String(zone?.assigned_team_member_id || '')).filter(Boolean);
-  const divisionMode = plan.division_mode || plan.division_basis || 'selected_reps';
-  const selectedRepsOneToOne = divisionMode !== 'selected_reps'
-    || (selectedRepIds.size === zones.length
-      && new Set(assignedRepIds).size === assignedRepIds.length
-      && assignedRepIds.length === zones.length
-      && assignedRepIds.every((id) => selectedRepIds.has(id)));
+  const crewAssignment = getCanvasCrewAssignmentStatus(plan, plan.selected_team_member_ids || []);
   const ownedUnitIds = zones.flatMap((zone) => Array.isArray(zone?.work_unit_ids) ? zone.work_unit_ids : []);
   return plan.planning_method === 'street_workload'
     && plan.assignment_basis === 'street_work_unit_ids'
@@ -401,7 +485,7 @@ export function isCanvasPlanDeployable(plan = {}) {
     && zones.every((zone) => zone?.assigned_team_member_id && Array.isArray(zone?.work_unit_ids) && zone.work_unit_ids.length > 0)
     && ownedUnitIds.length === workUnits.length
     && new Set(ownedUnitIds).size === workUnits.length
-    && selectedRepsOneToOne
+    && crewAssignment.valid
     && qa.deployable
     && qa.street_coverage_complete
     && qa.no_duplicate_work_units
@@ -459,9 +543,8 @@ export function buildCanvasDraftPayload({ sessionId, expectedVersion, sessionNam
     protected_unit_over_target: zone.protected_unit_over_target === true,
   }));
   const assignedTeamMemberIds = [...new Set(zones.map((zone) => String(zone.assigned_team_member_id || '')).filter(Boolean))];
-  const selectedTeamMemberIds = divisionMode === 'selected_reps'
-    ? [...new Set((plan?.selected_team_member_ids || []).map(String).filter(Boolean))]
-    : assignedTeamMemberIds;
+  const managerSelectedTeamMemberIds = [...new Set((plan?.selected_team_member_ids || []).map(String).filter(Boolean))];
+  const selectedTeamMemberIds = managerSelectedTeamMemberIds.length ? managerSelectedTeamMemberIds : assignedTeamMemberIds;
   return {
     ...(sessionId ? { session_id: sessionId } : {}),
     ...(expectedVersion !== undefined && expectedVersion !== null ? { expected_version: expectedVersion } : {}),

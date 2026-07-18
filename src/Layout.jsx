@@ -39,8 +39,42 @@ function LayoutInner({ children }) {
   const accentText = contrastText(accent);
 
   const [isOnline, setIsOnline] = React.useState(navigator.onLine);
+  const [canvasDraftDirty, setCanvasDraftDirty] = React.useState(false);
   const queryClient = useQueryClient();
   const { data: user, isLoading } = useQuery({ queryKey: ['user'], queryFn: () => base44.auth.me(), retry: false });
+
+  React.useEffect(() => {
+    const onCanvasDraftDirtyChanged = (event) => setCanvasDraftDirty(event?.detail?.dirty === true);
+    window.addEventListener('fk-canvas-draft-dirty-changed', onCanvasDraftDirtyChanged);
+    return () => window.removeEventListener('fk-canvas-draft-dirty-changed', onCanvasDraftDirtyChanged);
+  }, []);
+
+  const confirmCanvasNavigation = React.useCallback((action = 'Leaving this page') => (
+    !canvasDraftDirty
+    || window.confirm(`You have unsaved Canvas territory changes. ${action} will discard them. Continue?`)
+  ), [canvasDraftDirty]);
+
+  const guardCanvasNavigationCapture = React.useCallback((event) => {
+    if (!canvasDraftDirty || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const anchor = event.target?.closest?.('a[href]');
+    if (!anchor || anchor.target === '_blank' || anchor.hasAttribute('download')) return;
+    try {
+      const currentUrl = new URL(window.location.href);
+      const targetUrl = new URL(anchor.href, currentUrl);
+      if (targetUrl.origin === currentUrl.origin && targetUrl.pathname === currentUrl.pathname && targetUrl.search === currentUrl.search) return;
+    } catch {
+      // If the destination cannot be normalized, treat it as navigation away.
+    }
+    if (confirmCanvasNavigation()) return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, [canvasDraftDirty, confirmCanvasNavigation]);
+
+  const handleLogout = React.useCallback(async () => {
+    if (!confirmCanvasNavigation('Logging out')) return;
+    try {await base44.auth.logout(window.location.origin);} catch {window.location.reload();}
+    queryClient.clear();
+  }, [confirmCanvasNavigation, queryClient]);
 
   React.useEffect(() => {
     if (typeof window !== 'undefined' && window.location.pathname === '/login') {
@@ -143,7 +177,7 @@ function LayoutInner({ children }) {
   if (!appRole && !hasManagerAccess && !isRoleSelectPage) {window.location.href = createPageUrl('RoleSelect');return null;}
 
   return (
-    <div className="fixed inset-0 flex flex-col font-sans overflow-hidden bg-[#000000] text-[#FFFFFF]">
+    <div onClickCapture={guardCanvasNavigationCapture} className="fixed inset-0 flex flex-col font-sans overflow-hidden bg-[#000000] text-[#FFFFFF]">
             <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap');
                 
@@ -212,7 +246,7 @@ function LayoutInner({ children }) {
                         <Link to={createPageUrl('Billing')} className={`rounded-full px-4 py-1.5 text-[10px] font-extrabold tracking-[0.18em] transition-all ${isPageActive('Billing') ? 'bg-white text-black hover:bg-[#39FF4A]' : 'text-white/60 hover:text-white hover:bg-white/10'}`}>PLANS</Link>
                         <div className="h-5 w-px bg-white/10" />
                         <Link to={createPageUrl('MobileApp')} className="flex h-8 w-8 items-center justify-center rounded-full text-white/70 transition-all hover:bg-white/10 hover:text-[#39FF4A]"><Smartphone className="w-4 h-4" /></Link>
-                        <button onClick={async () => {try {await base44.auth.logout(window.location.origin);} catch {window.location.reload();}queryClient.clear();}} className="flex h-8 w-8 items-center justify-center rounded-full text-white/45 transition-all hover:bg-white/10 hover:text-white" title="Logout"><LogOut className="w-4 h-4" /></button>
+                        <button onClick={handleLogout} className="flex h-8 w-8 items-center justify-center rounded-full text-white/45 transition-all hover:bg-white/10 hover:text-white" title="Logout"><LogOut className="w-4 h-4" /></button>
                         <span className={`mx-1 w-1.5 h-1.5 rounded-full ${isOnline ? 'bg-[#2EEB57] shadow-[0_0_10px_rgba(46,235,87,0.9)]' : 'bg-red-500'}`} />
                     </div>
 
@@ -234,7 +268,7 @@ function LayoutInner({ children }) {
 
                                 <DropdownMenuItem asChild className="focus:bg-slate-800 focus:text-white cursor-pointer"><Link to={createPageUrl('Referrals')} className="flex items-center w-full"><Gift className="mr-2 h-4 w-4" /><span>Referrals</span></Link></DropdownMenuItem>
                                 <DropdownMenuSeparator className="bg-slate-800" />
-                                <DropdownMenuItem onClick={async () => {try {await base44.auth.logout(window.location.origin);} catch {window.location.reload();}queryClient.clear();}} className="focus:bg-slate-800 focus:text-white cursor-pointer"><LogOut className="mr-2 h-4 w-4" /><span>Logout</span></DropdownMenuItem>
+                                <DropdownMenuItem onClick={handleLogout} className="focus:bg-slate-800 focus:text-white cursor-pointer"><LogOut className="mr-2 h-4 w-4" /><span>Logout</span></DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
@@ -252,6 +286,7 @@ function LayoutInner({ children }) {
           user={user}
           onComplete={({ method, shape }) => {
             if (method === 'draw') {
+              if (!confirmCanvasNavigation('Opening drawing setup')) return;
               // Navigate to Home and trigger drawing mode with chosen shape
               window.location.href = createPageUrl('Home') + '?startDraw=true' + (shape ? `&drawShape=${shape}` : '');
             }

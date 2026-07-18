@@ -5,8 +5,11 @@ import {
   assignCanvasZonesRoundRobin,
   buildCanvasDraftPayload,
   formatCanvasOverlapConfirmation,
+  getCanvasCrewAssignmentStatus,
+  getCanvasPlanComplexityStatus,
   getCanvasPlannerFailureMessage,
   getCanvasTeamMemberEligibility,
+  getCanvasWorkloadDeviation,
   isCanvasPlanDeployable,
   isVerifiedCanvasPlannerResult,
   reconcileCanvasPlanWithEligibleTeam,
@@ -240,6 +243,68 @@ test('Canvas assignment stores TeamMember IDs and display labels separately', ()
   assert.equal(zones[0].assigned_to_name, 'Rep rep_1');
 });
 
+test('Canvas preserves one territory per selected rep at 2, 20, and 200 reps', () => {
+  for (const count of [2, 20, 200]) {
+    const repIds = Array.from({ length: count }, (_, index) => `rep_${index + 1}`);
+    const zones = Array.from({ length: count }, (_, index) => ({ zone_id: `zone_${index + 1}` }));
+    const assigned = assignCanvasZonesRoundRobin(zones, repIds, repIds.map((id) => linkedRep(id)));
+    assert.equal(assigned.length, count);
+    assert.deepEqual(assigned.map((zone) => zone.assigned_team_member_id), repIds);
+    assert.equal(new Set(assigned.map((zone) => zone.assigned_team_member_id)).size, count);
+  }
+});
+
+test('headcount assignment requires one distinct selected rep per territory', () => {
+  const zones = [
+    { zone_id: 'zone_1', assigned_team_member_id: 'rep_1' },
+    { zone_id: 'zone_2', assigned_team_member_id: 'rep_1' },
+  ];
+  const duplicate = getCanvasCrewAssignmentStatus({ division_mode: 'area_count', zones }, ['rep_1', 'rep_2']);
+  assert.equal(duplicate.valid, false);
+  assert.match(duplicate.message, /exactly one territory/);
+
+  const oneEach = getCanvasCrewAssignmentStatus({
+    division_mode: 'area_count',
+    zones: [zones[0], { ...zones[1], assigned_team_member_id: 'rep_2' }],
+  }, ['rep_1', 'rep_2']);
+  assert.equal(oneEach.valid, true);
+
+  const extraSelection = getCanvasCrewAssignmentStatus({
+    division_mode: 'area_count',
+    zones: [zones[0], { ...zones[1], assigned_team_member_id: 'rep_2' }],
+  }, ['rep_1', 'rep_2', 'rep_3']);
+  assert.equal(extraSelection.valid, false);
+  assert.match(extraSelection.message, /exactly 2 reps/);
+});
+
+test('workload packs may repeat reps but cannot silently omit a selected rep', () => {
+  const zones = [
+    { zone_id: 'zone_1', assigned_team_member_id: 'rep_1' },
+    { zone_id: 'zone_2', assigned_team_member_id: 'rep_1' },
+  ];
+  assert.equal(getCanvasCrewAssignmentStatus({ division_mode: 'street_workload_target', zones }, ['rep_1']).valid, true);
+  const omitted = getCanvasCrewAssignmentStatus({ division_mode: 'street_workload_target', zones }, ['rep_1', 'rep_2']);
+  assert.equal(omitted.valid, false);
+  assert.match(omitted.message, /Every selected rep must receive work/);
+});
+
+test('workload deviation is recomputed from zones and fails closed when unavailable', () => {
+  const recomputed = getCanvasWorkloadDeviation({
+    qa: { max_workload_deviation_percent: 'not-a-number' },
+    zones: [{ workload_score: 100 }, { workload_score: 300 }],
+  });
+  assert.equal(recomputed.verified, true);
+  assert.equal(recomputed.value, 50);
+  assert.equal(recomputed.source, 'zone_workload_scores');
+
+  const unavailable = getCanvasWorkloadDeviation({
+    qa: { max_workload_deviation_percent: 'not-a-number' },
+    zones: [{ workload_score: null }],
+  });
+  assert.equal(unavailable.verified, false);
+  assert.equal(unavailable.value, null);
+});
+
 test('Canvas roster churn clears invalid assignments and regenerates only selected-rep splits', () => {
   const result = reconcileCanvasPlanWithEligibleTeam({
     division_mode: 'selected_reps',
@@ -401,15 +466,32 @@ test('manager has lifecycle controls and a polling shared outcome map', () => {
   assert.match(field, /All do-not-knock pins are still loaded/);
 });
 
-test('Canvas exposes rep-count, approximate workload-size, and advanced fixed-count planning', () => {
+test('Canvas leads with crew intent and keeps approximate street sizing advanced', () => {
   const builder = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
-  assert.match(builder, /title="Selected reps"/);
-  assert.match(builder, /title="Workload size"/);
-  assert.match(builder, /target_street_workload_meters_per_area: targetWorkloadMeters/);
-  assert.match(builder, /class-weighted, knockable street distance—not home counts/);
-  assert.match(builder, /Advanced · choose an exact number of territories/);
-  assert.match(builder, /Shortest/);
-  assert.match(builder, /Max deviation/);
+  assert.match(builder, /label="Choose who is working"/);
+  assert.match(builder, /title="Choose reps"/);
+  assert.match(builder, /title="Enter headcount"/);
+  assert.match(builder, /How many people are working this area\?/);
+  assert.match(builder, /one connected territory per person/);
+  assert.match(builder, /colored map preview updates automatically/);
+  assert.match(builder, /window\.setTimeout\(\(\) => \{[\s\S]*?generatePlan\(\{ quiet: true \}\)[\s\S]*?\}, 600\)/);
+  assert.match(builder, /divisionBasis !== 'area_count'/);
+  assert.match(builder, /!plan \|\| !planStaleReason/);
+  assert.match(builder, /lastAttemptedPreviewRevisionRef/);
+  assert.match(builder, /livePreviewTimerRef/);
+  assert.match(builder, /window\.clearTimeout\(livePreviewTimerRef\.current\)/);
+  assert.match(builder, /plannerAbortRef\.current\?\.abort\(\)/);
+  assert.match(builder, /toast\.dismiss\(toastId\)/);
+  assert.match(builder, /const sendable = deployable\s*&& !planStaleReason/);
+  assert.match(builder, /if \(planStaleReason\) return toast\.error\('The territory preview is out of date\./);
+  assert.match(builder, /target_street_workload_meters_per_area: requestSnapshot\.targetWorkloadMeters/);
+  assert.match(builder, /create standard-size work packs/);
+  assert.match(builder, /Target street coverage per territory \(miles\)/);
+  assert.match(builder, /not a door count or promised walking time/);
+  assert.match(builder, /value="Balanced streets"/);
+  assert.match(builder, /Weighted range/);
+  assert.match(builder, /Maximum deviation/);
+  assert.match(builder, /Quality details/);
 });
 
 test('Canvas touch and pen drawing commits on release without changing Precision confirmation behavior', () => {
@@ -427,19 +509,115 @@ test('Canvas touch and pen drawing commits on release without changing Precision
   assert.match(toolbar, /routeMode === 'canvas' && mode === 'generate' && !activeRoute \? !drawingMode &&/);
 });
 
-test('Canvas without linked reps defaults to a previewable workload plan and explains deployment recovery', () => {
+test('Canvas without linked reps defaults to a previewable headcount plan and explains deployment recovery', () => {
   const builder = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
   assert.match(builder, /initialRosterModeResolvedRef/);
   assert.match(builder, /activeTeamMembers, teamMembersReady, teamExclusions/);
   assert.match(builder, /campaignIndexError, campaignSigningUnavailable, refreshCampaignIndex/);
   assert.match(builder, /!activeTeamMembers\.length && divisionBasis === 'selected_reps' && !plan && !deployed/);
-  assert.match(builder, /setDivisionBasis\('street_workload_target'\)/);
+  assert.match(builder, /setDivisionBasis\('area_count'\)/);
   assert.match(builder, /Plan now, assign reps later/);
+  assert.match(builder, /Enter your crew size and build the territory preview now/);
   assert.match(builder, /have each rep sign in and redeem your invite code/);
-  assert.match(builder, /Manage reps and invites/);
+  assert.match(builder, /Manage reps/);
+  assert.match(builder, /Refresh roster/);
   assert.match(builder, /to=\{createPageUrl\('AdminTeam'\)\} target="_blank" rel="noopener noreferrer"/);
   assert.match(builder, /Canvas deployment security needs setup/);
   assert.match(builder, /You can still draw, load streets, generate territories, and save a draft/);
+});
+
+test('Canvas complexity guard matches the exact save and deploy boundary', () => {
+  const allowed = getCanvasPlanComplexityStatus({
+    zones: Array.from({ length: 250 }, () => ({})),
+    work_units: Array.from({ length: 720 }, () => ({})),
+  });
+  const rejectedProduct = getCanvasPlanComplexityStatus({
+    zones: Array.from({ length: 250 }, () => ({})),
+    work_units: Array.from({ length: 721 }, () => ({})),
+  });
+  const rejectedUnits = getCanvasPlanComplexityStatus({
+    zones: [{}],
+    work_units: Array.from({ length: 2_001 }, () => ({})),
+  });
+  const rejectedSegments = getCanvasPlanComplexityStatus({
+    zones: [{}],
+    work_units: [{ segments: Array.from({ length: 50_001 }, () => ({})) }],
+  });
+  assert.equal(allowed.complexity, 180_000);
+  assert.equal(allowed.supported, true);
+  assert.equal(rejectedProduct.complexity, 180_250);
+  assert.equal(rejectedProduct.supported, false);
+  assert.equal(rejectedUnits.supported, false);
+  assert.equal(rejectedSegments.segmentCount, 50_001);
+  assert.equal(rejectedSegments.supported, false);
+});
+
+test('Canvas guards every visible unsaved-plan exit and keeps saved draft identity across replanning', () => {
+  const builder = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
+  const toolbar = readFileSync(new URL('../src/components/map/MapToolbar.jsx', import.meta.url), 'utf8');
+  const settings = readFileSync(new URL('../src/components/map/MapSettingsPanel.jsx', import.meta.url), 'utf8');
+  const home = readFileSync(new URL('../src/pages/Home.jsx', import.meta.url), 'utf8');
+  const layout = readFileSync(new URL('../src/Layout.jsx', import.meta.url), 'utf8');
+  assert.match(builder, /confirmDiscardUnsaved\('Closing the planner'\)/);
+  assert.match(builder, /confirmDiscardUnsaved\('Redrawing the work area'\)/);
+  assert.match(builder, /confirmDiscardUnsaved\('Clearing the work area'\)/);
+  assert.match(builder, /confirmDiscardUnsaved\('Opening this saved draft'\)/);
+  assert.match(builder, /window\.addEventListener\('beforeunload'/);
+  assert.match(toolbar, /allowCanvasDiscard\('Opening Live View'\)/);
+  assert.match(home, /requestRouteModeChange/);
+  assert.match(home, /fk-canvas-draft-dirty-changed/);
+  assert.match(settings, /setRouteMode\?\.\(v\) === false/);
+  assert.match(layout, /window\.addEventListener\('fk-canvas-draft-dirty-changed'/);
+  assert.match(layout, /onClickCapture=\{guardCanvasNavigationCapture\}/);
+  assert.match(layout, /targetUrl\.pathname === currentUrl\.pathname && targetUrl\.search === currentUrl\.search/);
+  assert.match(layout, /event\.preventDefault\(\);\s*event\.stopPropagation\(\);/);
+  assert.match(layout, /if \(!confirmCanvasNavigation\('Logging out'\)\) return/);
+  const generationStart = builder.indexOf('const generatePlan = async');
+  const generationEnd = builder.indexOf('const autoAssign =', generationStart);
+  assert.ok(generationStart >= 0 && generationEnd > generationStart);
+  assert.doesNotMatch(builder.slice(generationStart, generationEnd), /setServerSession\(null\)/);
+});
+
+test('flexible drafts preserve the manager-selected crew instead of silently dropping extras', () => {
+  const plan = {
+    ...assignedPlan({ divisionMode: 'area_count' }),
+    division_mode: 'area_count',
+    division_basis: 'area_count',
+    selected_team_member_ids: ['rep_1', 'rep_2'],
+  };
+  const payload = buildCanvasDraftPayload({ sessionName: 'Crew intent', polygon, plan });
+  assert.deepEqual(payload.selected_team_member_ids, ['rep_1', 'rep_2']);
+
+  const restored = restoreCanvasDraftPlan({
+    ...payload,
+    campaign_id: 'draft_flexible',
+    stored_status: 'draft',
+    qa: { ...payload.qa, warnings: [] },
+  }, [linkedRep('rep_1'), linkedRep('rep_2')]);
+  assert.deepEqual(restored.selected_team_member_ids, ['rep_1', 'rep_2']);
+});
+
+test('large Canvas rosters use explicit searchable bulk selection and never silently assign roster order', () => {
+  const builder = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
+  assert.match(builder, /placeholder="Search reps"/);
+  assert.match(builder, /Select all active/);
+  assert.match(builder, /replaceTeamMemberSelection/);
+  assert.match(builder, /const assignmentPool = selectedTeamMemberIds/);
+  assert.doesNotMatch(builder, /const assignmentPool = divisionBasis === 'selected_reps' \? selectedTeamMemberIds : activeTeamMembers\.map/);
+  assert.match(builder, /assignmentPool\.length > zones\.length/);
+  assert.match(builder, /Choose at most \$\{zones\.length\} reps/);
+  assert.match(builder, /clearFlexibleAssignments/);
+  assert.match(builder, /map-first review for large teams/);
+});
+
+test('Canvas makes materially uneven but street-safe plans an explicit manager decision', () => {
+  const builder = readFileSync(new URL('../src/components/map/CanvasBuilderSettings.jsx', import.meta.url), 'utf8');
+  assert.match(builder, /workloadDeviationStatus\.verified[\s\S]*?workloadDeviationStatus\.value > 25[\s\S]*?!workloadExceptionAccepted/);
+  assert.match(builder, /I reviewed and accept this uneven split/);
+  assert.match(builder, /role="checkbox" aria-checked=\{workloadExceptionAccepted\}/);
+  assert.match(builder, /if \(workloadExceptionNeedsAcceptance\) return toast\.error/);
+  assert.match(builder, /disabled=\{!sendable \|\| mutationsLocked\}/);
+  assert.match(builder, /natural street units intact instead of cutting a cul-de-sac/);
 });
 
 test('Canvas renders authoritative street ownership instead of filled territory surfaces', () => {
